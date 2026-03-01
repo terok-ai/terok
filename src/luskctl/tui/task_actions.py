@@ -250,7 +250,8 @@ class TaskActionsMixin:
 
         try:
             project = load_project(pid)
-        except Exception as e:
+        except (SystemExit, Exception) as e:
+            self._autopilot_pending_name = None
             self.notify(f"Error loading project: {e}")
             return
 
@@ -266,6 +267,7 @@ class TaskActionsMixin:
     async def _on_agent_selection_result(self, result: tuple[str, list[str] | None] | None) -> None:
         """Handle the result from AgentSelectionScreen, then show the prompt screen."""
         if result is None:
+            self._autopilot_pending_name = None
             return
 
         self._autopilot_pending_agent = result
@@ -277,6 +279,8 @@ class TaskActionsMixin:
     async def _on_autopilot_prompt_result(self, prompt: str | None) -> None:
         """Handle the prompt returned from AutopilotPromptScreen and launch."""
         if not prompt:
+            self._autopilot_pending_name = None
+            self._autopilot_pending_agent = None
             return
 
         result = self._autopilot_pending_agent

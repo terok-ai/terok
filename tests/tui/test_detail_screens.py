@@ -238,6 +238,45 @@ class ScreenConstructionTests(TestCase):
         self.assertIsNotNone(screen)
         self.assertEqual(screen._subagents, [])
 
+    def test_agent_selection_screen_invalid_default_falls_back(self) -> None:
+        screens, _ = import_screens()
+        screen = screens.AgentSelectionScreen(default_agent="nonexistent")
+        # Should fall back to first registered provider, not keep invalid name
+        self.assertNotEqual(screen._default_agent, "nonexistent")
+        self.assertEqual(screen._selected_agent, screen._default_agent)
+
+    def test_agent_selection_screen_cancel_dismisses_none(self) -> None:
+        screens, _ = import_screens()
+        screen = screens.AgentSelectionScreen()
+        screen.dismiss = mock.Mock()
+        screen.action_cancel()
+        screen.dismiss.assert_called_once_with(None)
+
+    def test_agent_selection_screen_submit_returns_tuple(self) -> None:
+        screens, _ = import_screens()
+        screen = screens.AgentSelectionScreen(default_agent="codex")
+        screen.dismiss = mock.Mock()
+        # Simulate submit without subagents — should return (agent, None)
+        screen._submit()
+        screen.dismiss.assert_called_once()
+        result = screen.dismiss.call_args[0][0]
+        self.assertIsInstance(result, tuple)
+        self.assertEqual(result[0], "codex")
+        self.assertIsNone(result[1])
+
+    def test_agent_selection_screen_number_key_updates_selection(self) -> None:
+        screens, _ = import_screens()
+        screen = screens.AgentSelectionScreen(default_agent="claude")
+        # Stub query_one to return a mock OptionList
+        mock_option_list = mock.Mock()
+        screen.query_one = mock.Mock(return_value=mock_option_list)
+        event = make_key_event("2")
+        event.character = "2"
+        screen.on_key(event)
+        # Agent should have changed from default
+        self.assertNotEqual(screen._selected_agent, "claude")
+        event.stop.assert_called_once()
+
 
 class TaskScreenKeyBindingTests(TestCase):
     """Tests for TaskDetailsScreen.on_key case-sensitive dispatch."""

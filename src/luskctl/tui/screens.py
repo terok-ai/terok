@@ -477,8 +477,14 @@ class AgentSelectionScreen(screen.ModalScreen[tuple[str, list[str] | None] | Non
         """
         super().__init__()
         self._subagents = subagents or []
-        self._default_agent = default_agent
-        self._selected_agent: str = default_agent
+
+        from ..lib.containers.headless_providers import HEADLESS_PROVIDERS
+
+        if default_agent in HEADLESS_PROVIDERS:
+            self._default_agent = default_agent
+        else:
+            self._default_agent = next(iter(HEADLESS_PROVIDERS))
+        self._selected_agent: str = self._default_agent
 
     def compose(self) -> ComposeResult:
         """Build the agent list, optional sub-agent checkboxes, and buttons."""
