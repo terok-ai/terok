@@ -295,6 +295,48 @@ class GenerateAgentWrapperTests(unittest.TestCase):
         self.assertIn("--continue", wrapper)
         self.assertIn("session-id.txt", wrapper)
 
+    def test_continue_flag_is_standalone(self) -> None:
+        """Providers with continue_flag pass it standalone (no session ID argument)."""
+        project = _make_project()
+        for name, p in HEADLESS_PROVIDERS.items():
+            if not p.continue_flag:
+                continue
+            wrapper = generate_agent_wrapper(p, project, has_agents=False)
+            # --continue should appear standalone, not followed by a session ID read
+            self.assertIn(f"_resume_args+=({p.continue_flag})", wrapper, f"{name}")
+            self.assertNotIn("$(cat", wrapper, f"{name} should not read session ID file")
+
+    def test_continue_providers_write_session_marker(self) -> None:
+        """Providers with continue_flag write session-id.txt after command exits."""
+        project = _make_project()
+        for name, p in HEADLESS_PROVIDERS.items():
+            if not p.continue_flag:
+                continue
+            wrapper = generate_agent_wrapper(p, project, has_agents=False)
+            self.assertIn(
+                "touch /home/dev/.luskctl/session-id.txt", wrapper, f"{name} missing marker write"
+            )
+
+    def test_continue_providers_preserve_exit_code(self) -> None:
+        """Providers with continue_flag preserve the agent's exit code."""
+        project = _make_project()
+        for name, p in HEADLESS_PROVIDERS.items():
+            if not p.continue_flag:
+                continue
+            wrapper = generate_agent_wrapper(p, project, has_agents=False)
+            self.assertIn("local _rc=$?", wrapper, f"{name} missing exit code capture")
+            self.assertIn("return $_rc", wrapper, f"{name} missing exit code return")
+
+    def test_no_continue_providers_skip_session_logic(self) -> None:
+        """Providers without continue_flag do not include session resume logic."""
+        project = _make_project()
+        for name, p in HEADLESS_PROVIDERS.items():
+            if name == "claude" or p.continue_flag:
+                continue
+            wrapper = generate_agent_wrapper(p, project, has_agents=False)
+            self.assertNotIn("_resume_args", wrapper, f"{name} should not have resume args")
+            self.assertNotIn("session-id.txt", wrapper, f"{name} should not reference session")
+
 
 class ResolveProviderValueTests(unittest.TestCase):
     """Tests for resolve_provider_value() config resolution."""

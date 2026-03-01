@@ -530,14 +530,16 @@ def _generate_generic_wrapper(provider: HeadlessProvider, project: Project) -> s
         "    done",
     ]
 
-    # Session resume support for providers that have it
+    # Session resume support for providers that have it.
+    # --continue is a standalone flag (no session ID argument) for all
+    # non-Claude providers — it tells the agent to resume its most recent
+    # session.  The session-id.txt marker file is created after the first
+    # run so that --continue is only passed on subsequent invocations
+    # (i.e. follow-up prompts via `podman start`).
     if provider.continue_flag:
         lines.append("    local _resume_args=()")
-        lines.append("    [ -s /home/dev/.luskctl/session-id.txt ] && \\")
-        lines.append(
-            f"        _resume_args+=({provider.continue_flag}"
-            ' "$(cat /home/dev/.luskctl/session-id.txt)")'
-        )
+        lines.append("    [ -f /home/dev/.luskctl/session-id.txt ] && \\")
+        lines.append(f"        _resume_args+=({provider.continue_flag})")
 
     # Git env vars and exec — with optional timeout
     lines.append('    if [ -n "$_timeout" ]; then')
@@ -548,6 +550,9 @@ def _generate_generic_wrapper(provider: HeadlessProvider, project: Project) -> s
 
     if provider.continue_flag:
         lines.append(f'        timeout "$_timeout" {binary} "${{_resume_args[@]}}" "$@"')
+        # Write session marker so subsequent runs pass --continue.
+        # Preserve the agent's exit code across the touch.
+        lines.append("        local _rc=$?; touch /home/dev/.luskctl/session-id.txt; return $_rc")
     else:
         lines.append(f'        timeout "$_timeout" {binary} "$@"')
 
@@ -559,6 +564,7 @@ def _generate_generic_wrapper(provider: HeadlessProvider, project: Project) -> s
 
     if provider.continue_flag:
         lines.append(f'        command {binary} "${{_resume_args[@]}}" "$@"')
+        lines.append("        local _rc=$?; touch /home/dev/.luskctl/session-id.txt; return $_rc")
     else:
         lines.append(f'        command {binary} "$@"')
 

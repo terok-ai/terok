@@ -544,11 +544,16 @@ def task_followup_headless(
     """Send a follow-up prompt to a completed/failed headless task.
 
     Updates prompt.txt in the existing agent-config directory and restarts
-    the stopped container via ``podman start``.  For providers that support
-    session resume (e.g. Claude via ``--resume`` from ``claude-session.txt``),
-    the session is automatically continued.  For providers without session
-    resume, the container restarts and re-reads ``prompt.txt`` but starts a
-    fresh session.
+    the stopped container via ``podman start``.  Session context is
+    automatically restored for providers that support it:
+
+    - **Claude**: resumes via ``--resume <session-id>`` (captured by a
+      ``SessionStart`` hook that writes ``claude-session.txt``).
+    - **Vibe / OpenCode / Blablador**: resumes via standalone ``--continue``
+      flag.  A ``session-id.txt`` marker is written after the first run;
+      the shell wrapper detects it on restart and passes ``--continue``.
+    - **Codex / Copilot**: no session resume support — follow-ups start a
+      fresh session with the accumulated prompt history.
 
     Per-run flags (model, max_turns, timeout) carry forward from the
     original ``task_run_headless`` invocation since ``podman start``
