@@ -253,6 +253,98 @@ def get_provider(name: str | None, project: Project) -> HeadlessProvider:
     return provider
 
 
+@dataclass(frozen=True)
+class ProviderConfig:
+    """Resolved per-run config for a headless provider.
+
+    Produced by :func:`apply_provider_config` after best-effort feature mapping.
+    """
+
+    model: str | None
+    """Model override for providers that support it, else ``None``."""
+
+    max_turns: int | None
+    """Max turns for providers that support it, else ``None``."""
+
+    timeout: int
+    """Effective timeout in seconds."""
+
+    prompt_extra: str
+    """Extra text to append to the prompt (best-effort feature analogues)."""
+
+    warnings: tuple[str, ...]
+    """Warnings about unsupported features (for user display)."""
+
+
+def apply_provider_config(
+    provider: HeadlessProvider,
+    config: dict,
+    *,
+    model_override: str | None = None,
+    max_turns_override: int | None = None,
+    timeout_override: int | None = None,
+) -> ProviderConfig:
+    """Resolve config values for a provider with best-effort feature mapping.
+
+    CLI flag overrides (``model_override``, etc.) take precedence over config
+    values.  When the provider lacks a feature, an analogue is used where
+    possible (e.g. injecting max-turns guidance into the prompt), and a
+    warning is emitted for features that have no analogue.
+
+    Args:
+        config: Merged agent config dict (from :func:`resolve_agent_config`).
+        model_override: Explicit ``--model`` from CLI (takes precedence).
+        max_turns_override: Explicit ``--max-turns`` from CLI.
+        timeout_override: Explicit ``--timeout`` from CLI.
+    """
+    from ..containers.agent_config import resolve_provider_value
+
+    warnings: list[str] = []
+    prompt_parts: list[str] = []
+
+    # --- Model ---
+    cfg_model = resolve_provider_value("model", config, provider.name)
+    model = model_override or (str(cfg_model) if cfg_model is not None else None)
+    if model and not provider.model_flag:
+        warnings.append(
+            f"{provider.label} does not support model selection; ignoring model={model!r}"
+        )
+        model = None
+
+    # --- Max turns ---
+    cfg_turns = resolve_provider_value("max_turns", config, provider.name)
+    max_turns_raw = max_turns_override if max_turns_override is not None else cfg_turns
+    max_turns: int | None = int(max_turns_raw) if max_turns_raw is not None else None
+    if max_turns is not None and not provider.max_turns_flag:
+        # Best-effort: inject into prompt as guidance
+        prompt_parts.append(f"Important: complete this task in no more than {max_turns} steps.")
+        warnings.append(
+            f"{provider.label} does not support --max-turns; "
+            f"added guidance to prompt instead ({max_turns} steps)"
+        )
+        max_turns = None
+
+    # --- Timeout ---
+    cfg_timeout = resolve_provider_value("timeout", config, provider.name)
+    timeout = timeout_override or (int(cfg_timeout) if cfg_timeout is not None else 1800)
+
+    # --- Subagents (warning only — filtering is handled elsewhere) ---
+    subagents = config.get("subagents")
+    if subagents and not provider.supports_agents_json:
+        warnings.append(
+            f"{provider.label} does not support sub-agents (--agents); "
+            f"sub-agent definitions will be ignored"
+        )
+
+    return ProviderConfig(
+        model=model,
+        max_turns=max_turns,
+        timeout=timeout,
+        prompt_extra="\n".join(prompt_parts),
+        warnings=tuple(warnings),
+    )
+
+
 def build_headless_command(
     provider: HeadlessProvider,
     *,
@@ -362,7 +454,7 @@ def generate_agent_wrapper(
     *,
     claude_wrapper_fn: Callable[[bool, Project, bool], str] | None = None,
 ) -> str:
-    """Generate the shell wrapper function content for a provider.
+    """Generate the shell wrapper function content for a single provider.
 
     For Claude, uses *claude_wrapper_fn* (which should be
     ``agents._generate_claude_wrapper``) to produce the full wrapper with
@@ -376,6 +468,9 @@ def generate_agent_wrapper(
     Args:
         claude_wrapper_fn: ``(has_agents, project, skip_permissions) -> str``.
             Required when ``provider.name == "claude"``.
+
+    See also :func:`generate_all_wrappers` which produces wrappers for every
+    registered provider in a single file.
     """
     if provider.name == "claude":
         if claude_wrapper_fn is None:
@@ -383,6 +478,31 @@ def generate_agent_wrapper(
         return claude_wrapper_fn(has_agents, project, True)
 
     return _generate_generic_wrapper(provider, project)
+
+
+def generate_all_wrappers(
+    project: Project,
+    has_agents: bool,
+    *,
+    claude_wrapper_fn: Callable[[bool, Project, bool], str] | None = None,
+) -> str:
+    """Generate shell wrappers for **all** registered providers in one file.
+
+    The output file contains a shell function per provider (``claude()``,
+    ``codex()``, ``vibe()``, etc.), each with correct git env vars, timeout
+    support, and session resume logic.  This allows interactive CLI users to
+    invoke any agent regardless of which provider was configured as default.
+
+    Args:
+        claude_wrapper_fn: Required — produces the Claude wrapper.
+    """
+    sections: list[str] = []
+    for provider in HEADLESS_PROVIDERS.values():
+        section = generate_agent_wrapper(
+            provider, project, has_agents, claude_wrapper_fn=claude_wrapper_fn
+        )
+        sections.append(section)
+    return "\n".join(sections)
 
 
 def _generate_generic_wrapper(provider: HeadlessProvider, project: Project) -> str:

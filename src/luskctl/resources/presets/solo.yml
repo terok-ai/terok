@@ -2,6 +2,14 @@
 #
 # Good for: quick fixes, small features, one-shot prompts.
 # Usage: luskctl run <project> "<prompt>" --preset solo
+#
+# Per-provider model keys: each provider uses the model best suited for
+# quick tasks. A flat string (e.g. "model: sonnet") works too and applies
+# to all providers. Providers not listed here use their own default.
 
-model: sonnet
+model:
+  claude: sonnet
+  codex: codex-mini
+  vibe: mistral-small
+  _default: fast
 max_turns: 25

@@ -346,6 +346,42 @@ default_agent: claude
 | Sub-agents (`--agent`) | Yes | No | No | No | No | No |
 | Structured log output | Yes | No | No | No | No | No |
 
+### Per-Provider Config Values
+
+Config keys like `model`, `max_turns`, and `timeout` can be set per-provider
+using a dict syntax.  A flat value applies to all providers (backward compatible):
+
+```yaml
+# Flat value — same for all providers
+model: sonnet
+max_turns: 25
+```
+
+A dict maps each provider to its own value, with `_default` as fallback:
+
+```yaml
+# Per-provider values
+model:
+  claude: opus
+  codex: codex-mini
+  vibe: mistral-small
+  _default: fast
+max_turns:
+  claude: 50
+  vibe: 30
+  _default: 25
+timeout: 1800  # flat values still work
+```
+
+Providers not listed in the dict (and without `_default`) use their own built-in
+default.  CLI flags (`--model`, `--max-turns`, `--timeout`) always override
+config values.
+
+**Best-effort feature mapping**: When a provider doesn't support a configured
+feature, luskctl applies an analogue where possible.  For example, `max_turns`
+for providers without `--max-turns` support is injected as guidance text in the
+prompt.  Features with no analogue produce a warning but don't block the run.
+
 ### Sub-Agent Configuration
 
 Define sub-agents in your `project.yml` under the `agent:` section. Each

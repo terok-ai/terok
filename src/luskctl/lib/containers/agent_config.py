@@ -74,6 +74,32 @@ def build_agent_config_stack(
     return stack
 
 
+def resolve_provider_value(
+    key: str,
+    config: dict[str, Any],
+    provider_name: str,
+) -> Any | None:
+    """Extract a provider-aware config value.
+
+    Supports two forms:
+
+    * **Flat value** — ``model: opus`` → same for all providers.
+    * **Per-provider dict** — ``model: {claude: opus, codex: o3, _default: fast}``
+      → looks up *provider_name*, falls back to ``_default``, then ``None``.
+
+    Returns ``None`` when the key is absent or has no match for the provider.
+    """
+    val = config.get(key)
+    if val is None:
+        return None
+    if isinstance(val, dict):
+        provider_val = val.get(provider_name)
+        if provider_val is not None:
+            return provider_val
+        return val.get("_default")
+    return val
+
+
 def resolve_agent_config(
     project_id: str,
     preset: str | None = None,

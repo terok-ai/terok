@@ -351,12 +351,11 @@ def prepare_agent_config_dir(
             (agent_config_dir / "agents.json").write_text(agents_json, encoding="utf-8")
             has_agents = True
 
-    # Write the shell wrapper function (provider-aware)
-    from .headless_providers import generate_agent_wrapper
+    # Write shell wrapper functions for ALL providers so interactive CLI users
+    # can invoke any agent (each provider gets its own shell function).
+    from .headless_providers import generate_all_wrappers
 
-    wrapper = generate_agent_wrapper(
-        resolved, project, has_agents, claude_wrapper_fn=_generate_claude_wrapper
-    )
+    wrapper = generate_all_wrappers(project, has_agents, claude_wrapper_fn=_generate_claude_wrapper)
     (agent_config_dir / "luskctl-agent.sh").write_text(wrapper, encoding="utf-8")
 
     # Write SessionStart hook — only for providers that support it (Claude)

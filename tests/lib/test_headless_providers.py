@@ -8,11 +8,14 @@ import unittest
 import unittest.mock
 from dataclasses import FrozenInstanceError
 
+from luskctl.lib.containers.agent_config import resolve_provider_value
 from luskctl.lib.containers.headless_providers import (
     HEADLESS_PROVIDERS,
     PROVIDER_NAMES,
+    apply_provider_config,
     build_headless_command,
     generate_agent_wrapper,
+    generate_all_wrappers,
     get_provider,
 )
 from luskctl.lib.core.project_model import Project
@@ -291,3 +294,159 @@ class GenerateAgentWrapperTests(unittest.TestCase):
         wrapper = generate_agent_wrapper(p, project, has_agents=False)
         self.assertIn("--continue", wrapper)
         self.assertIn("session-id.txt", wrapper)
+
+
+class ResolveProviderValueTests(unittest.TestCase):
+    """Tests for resolve_provider_value() config resolution."""
+
+    def test_flat_string_value(self) -> None:
+        """Flat string value is returned for any provider."""
+        config = {"model": "opus"}
+        self.assertEqual(resolve_provider_value("model", config, "claude"), "opus")
+        self.assertEqual(resolve_provider_value("model", config, "codex"), "opus")
+
+    def test_flat_int_value(self) -> None:
+        """Flat int value is returned for any provider."""
+        config = {"max_turns": 50}
+        self.assertEqual(resolve_provider_value("max_turns", config, "claude"), 50)
+
+    def test_per_provider_dict(self) -> None:
+        """Per-provider dict returns provider-specific value."""
+        config = {"model": {"claude": "opus", "codex": "o3"}}
+        self.assertEqual(resolve_provider_value("model", config, "claude"), "opus")
+        self.assertEqual(resolve_provider_value("model", config, "codex"), "o3")
+
+    def test_per_provider_dict_with_default(self) -> None:
+        """Per-provider dict falls back to _default for unlisted providers."""
+        config = {"model": {"claude": "opus", "_default": "fast"}}
+        self.assertEqual(resolve_provider_value("model", config, "claude"), "opus")
+        self.assertEqual(resolve_provider_value("model", config, "codex"), "fast")
+
+    def test_per_provider_dict_no_match(self) -> None:
+        """Per-provider dict returns None when provider is not listed and no _default."""
+        config = {"model": {"claude": "opus"}}
+        self.assertIsNone(resolve_provider_value("model", config, "codex"))
+
+    def test_missing_key_returns_none(self) -> None:
+        """Missing key returns None."""
+        self.assertIsNone(resolve_provider_value("model", {}, "claude"))
+
+    def test_none_value_returns_none(self) -> None:
+        """Explicit None value returns None."""
+        config = {"model": None}
+        self.assertIsNone(resolve_provider_value("model", config, "claude"))
+
+
+class ApplyProviderConfigTests(unittest.TestCase):
+    """Tests for apply_provider_config() best-effort feature mapping."""
+
+    def test_model_from_config(self) -> None:
+        """Model value is read from config when no CLI override."""
+        p = HEADLESS_PROVIDERS["claude"]
+        pcfg = apply_provider_config(p, {"model": "opus"})
+        self.assertEqual(pcfg.model, "opus")
+        self.assertEqual(pcfg.warnings, ())
+
+    def test_model_cli_overrides_config(self) -> None:
+        """CLI --model flag overrides config value."""
+        p = HEADLESS_PROVIDERS["claude"]
+        pcfg = apply_provider_config(p, {"model": "haiku"}, model_override="opus")
+        self.assertEqual(pcfg.model, "opus")
+
+    def test_model_per_provider(self) -> None:
+        """Per-provider model dict picks the right value."""
+        p = HEADLESS_PROVIDERS["codex"]
+        pcfg = apply_provider_config(p, {"model": {"claude": "opus", "codex": "o3"}})
+        self.assertEqual(pcfg.model, "o3")
+
+    def test_model_unsupported_provider_warns(self) -> None:
+        """Provider without model_flag gets warning and model=None."""
+        p = HEADLESS_PROVIDERS["blablador"]  # model_flag is None
+        pcfg = apply_provider_config(p, {"model": "big"})
+        self.assertIsNone(pcfg.model)
+        self.assertEqual(len(pcfg.warnings), 1)
+        self.assertIn("model selection", pcfg.warnings[0])
+
+    def test_max_turns_supported(self) -> None:
+        """Provider with max_turns_flag passes through the value."""
+        p = HEADLESS_PROVIDERS["claude"]  # has max_turns_flag
+        pcfg = apply_provider_config(p, {"max_turns": 50})
+        self.assertEqual(pcfg.max_turns, 50)
+        self.assertEqual(pcfg.prompt_extra, "")
+
+    def test_max_turns_unsupported_injects_prompt(self) -> None:
+        """Provider without max_turns_flag gets prompt injection + warning."""
+        p = HEADLESS_PROVIDERS["codex"]  # no max_turns_flag
+        pcfg = apply_provider_config(p, {"max_turns": 30})
+        self.assertIsNone(pcfg.max_turns)
+        self.assertIn("30 steps", pcfg.prompt_extra)
+        self.assertEqual(len(pcfg.warnings), 1)
+        self.assertIn("max-turns", pcfg.warnings[0])
+
+    def test_timeout_from_config(self) -> None:
+        """Timeout is read from config when no CLI override."""
+        p = HEADLESS_PROVIDERS["claude"]
+        pcfg = apply_provider_config(p, {"timeout": 3600})
+        self.assertEqual(pcfg.timeout, 3600)
+
+    def test_timeout_cli_overrides_config(self) -> None:
+        """CLI --timeout overrides config value."""
+        p = HEADLESS_PROVIDERS["claude"]
+        pcfg = apply_provider_config(p, {"timeout": 3600}, timeout_override=900)
+        self.assertEqual(pcfg.timeout, 900)
+
+    def test_timeout_default(self) -> None:
+        """Missing timeout defaults to 1800."""
+        p = HEADLESS_PROVIDERS["claude"]
+        pcfg = apply_provider_config(p, {})
+        self.assertEqual(pcfg.timeout, 1800)
+
+    def test_subagents_warning_for_non_claude(self) -> None:
+        """Non-Claude providers get warning about subagents."""
+        p = HEADLESS_PROVIDERS["codex"]
+        pcfg = apply_provider_config(p, {"subagents": [{"name": "test"}]})
+        self.assertTrue(any("sub-agent" in w for w in pcfg.warnings))
+
+    def test_no_subagent_warning_for_claude(self) -> None:
+        """Claude provider does not get subagent warning."""
+        p = HEADLESS_PROVIDERS["claude"]
+        pcfg = apply_provider_config(p, {"subagents": [{"name": "test"}]})
+        self.assertFalse(any("sub-agent" in w for w in pcfg.warnings))
+
+    def test_empty_config_no_warnings(self) -> None:
+        """Empty config produces no warnings."""
+        p = HEADLESS_PROVIDERS["claude"]
+        pcfg = apply_provider_config(p, {})
+        self.assertEqual(pcfg.warnings, ())
+        self.assertIsNone(pcfg.model)
+        self.assertIsNone(pcfg.max_turns)
+
+
+class GenerateAllWrappersTests(unittest.TestCase):
+    """Tests for generate_all_wrappers() multi-provider file."""
+
+    @staticmethod
+    def _claude_wrapper_fn(has_agents: bool, project: object, skip_permissions: bool) -> str:
+        """Stub for agents._generate_claude_wrapper used in tests."""
+        from luskctl.lib.containers.agents import _generate_claude_wrapper
+
+        return _generate_claude_wrapper(has_agents, project, skip_permissions)
+
+    def test_all_providers_in_output(self) -> None:
+        """Output contains wrapper functions for all six providers."""
+        project = _make_project()
+        wrapper = generate_all_wrappers(
+            project, has_agents=False, claude_wrapper_fn=self._claude_wrapper_fn
+        )
+        for name, p in HEADLESS_PROVIDERS.items():
+            self.assertIn(f"{p.binary}()", wrapper, f"Missing wrapper for {name}")
+
+    def test_all_wrappers_have_git_committer(self) -> None:
+        """All wrappers in the combined file set GIT_COMMITTER_NAME."""
+        project = _make_project(human_name="Bob")
+        wrapper = generate_all_wrappers(
+            project, has_agents=False, claude_wrapper_fn=self._claude_wrapper_fn
+        )
+        # Each provider's wrapper mentions the committer name at least once
+        # (actually twice per provider — if/else branches)
+        self.assertGreaterEqual(wrapper.count("Bob"), len(HEADLESS_PROVIDERS))

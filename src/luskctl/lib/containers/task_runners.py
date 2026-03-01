@@ -416,7 +416,7 @@ def task_run_headless(
 
     Returns the task_id.
     """
-    from .headless_providers import build_headless_command, get_provider
+    from .headless_providers import apply_provider_config, build_headless_command, get_provider
 
     project = load_project(project_id)
     resolved = get_provider(provider, project)
@@ -435,6 +435,26 @@ def task_run_headless(
         project_id, preset=preset, cli_overrides=cli_overrides if cli_overrides else None
     )
 
+    # Apply provider-aware config resolution with best-effort feature mapping.
+    # CLI flags override config values; unsupported features produce warnings
+    # or prompt augmentation.
+    pcfg = apply_provider_config(
+        resolved,
+        effective,
+        model_override=model,
+        max_turns_override=max_turns,
+        timeout_override=timeout,
+    )
+
+    # Print warnings about unsupported features
+    for warning in pcfg.warnings:
+        print(f"Warning: {warning}")
+
+    # Augment prompt with best-effort feature analogues (e.g. max-turns guidance)
+    effective_prompt = prompt
+    if pcfg.prompt_extra:
+        effective_prompt = f"{prompt}\n\n{pcfg.prompt_extra}"
+
     # Create a new task
     task_id = task_new(project_id, name=name)
 
@@ -448,7 +468,7 @@ def task_run_headless(
         task_id,
         subagents,
         agents,
-        prompt=prompt,
+        prompt=effective_prompt,
         provider=resolved.name,
     )
 
@@ -458,14 +478,12 @@ def task_run_headless(
     # Mount agent-config dir to /home/dev/.luskctl
     volumes.append(f"{agent_config_dir}:/home/dev/.luskctl:Z")
 
-    effective_timeout = timeout or 1800
-
     # Build headless command via provider registry
     headless_cmd = build_headless_command(
         resolved,
-        timeout=effective_timeout,
-        model=model,
-        max_turns=max_turns,
+        timeout=pcfg.timeout,
+        model=pcfg.model,
+        max_turns=pcfg.max_turns,
     )
 
     # Build podman command (DETACHED)

@@ -97,7 +97,7 @@ depends_on = ["luskctl.lib.containers.headless_providers", "luskctl.lib.core.con
 [[modules]]
 path = "luskctl.lib.containers.headless_providers"
 layer = "services"
-depends_on = ["luskctl.lib.core.projects"]
+depends_on = ["luskctl.lib.containers.agent_config", "luskctl.lib.core.projects"]
 
 # Agent config resolution (layered merging across scopes)
 [[modules]]
@@ -445,11 +445,11 @@ expose = ["parse_md_agent", "prepare_agent_config_dir"]
 from = ["luskctl.lib.containers.agents"]
 
 [[interfaces]]
-expose = ["HeadlessProvider", "HEADLESS_PROVIDERS", "PROVIDER_NAMES", "get_provider", "build_headless_command", "generate_agent_wrapper"]
+expose = ["HeadlessProvider", "HEADLESS_PROVIDERS", "PROVIDER_NAMES", "ProviderConfig", "get_provider", "apply_provider_config", "build_headless_command", "generate_agent_wrapper", "generate_all_wrappers"]
 from = ["luskctl.lib.containers.headless_providers"]
 
 [[interfaces]]
-expose = ["build_agent_config_stack", "resolve_agent_config"]
+expose = ["build_agent_config_stack", "resolve_agent_config", "resolve_provider_value"]
 from = ["luskctl.lib.containers.agent_config"]
 
 [[interfaces]]
