@@ -105,9 +105,13 @@ def render_project_details(
 
     if has_yaml or has_file:
         # Check if _inherit is present (or YAML is absent = implicit inherit)
-        inherits = not has_yaml or (
-            isinstance(yaml_instructions, list) and "_inherit" in yaml_instructions
-        )
+        inherits = not has_yaml
+        if isinstance(yaml_instructions, list):
+            inherits = "_inherit" in yaml_instructions
+        elif isinstance(yaml_instructions, dict):
+            inherits = any(
+                isinstance(v, list) and "_inherit" in v for v in yaml_instructions.values()
+            )
         if inherits:
             instr_s = Text("custom + inherited", style=Style(color=success_color))
         else:

@@ -528,7 +528,7 @@ Every task container receives instructions explaining the workspace layout, avai
 
 Create `instructions.md` in your project root with project-specific notes. These are appended to the bundled default automatically:
 
-```
+```markdown
 # Project Notes
 This project uses Poetry. Run `make check` before committing.
 ```

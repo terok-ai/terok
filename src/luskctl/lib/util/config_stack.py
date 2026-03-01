@@ -36,6 +36,8 @@ def deep_merge(base: dict, override: dict) -> dict:
     -----
     * Dicts are merged recursively by default.
     * A ``None`` value in *override* **deletes** the corresponding key.
+    * A bare ``"_inherit"`` string keeps the base value unchanged
+      (equivalent to omitting the key, but explicit).
     * Lists in *override* replace the base list wholesale **unless** the
       list contains the sentinel string ``"_inherit"``, in which case the
       sentinel is replaced by the base list elements (splice).
@@ -51,6 +53,11 @@ def deep_merge(base: dict, override: dict) -> dict:
             ov = override[key]
             # None → delete
             if ov is None:
+                continue
+            # Bare _inherit string → keep base value (explicit no-op)
+            if ov == _INHERIT:
+                if key in base:
+                    merged[key] = base[key]
                 continue
             bv = base.get(key)
             if isinstance(ov, dict) and isinstance(bv, dict):

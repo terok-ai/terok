@@ -91,6 +91,9 @@ def resolve_instructions(
             base = str(resolved)
     elif isinstance(val, list):
         base = _splice_inherit(val, default)
+    elif val == _INHERIT_SENTINEL:
+        # Bare _inherit string → same as absent (use bundled default)
+        base = default
     else:
         base = str(val)
 

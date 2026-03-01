@@ -64,6 +64,15 @@ class ResolveInstructionsTests(unittest.TestCase):
         }
         self.assertEqual(resolve_instructions(config, "vibe"), "Default instructions")
 
+    def test_per_provider_dict_list_with_inherit(self) -> None:
+        """Provider-specific list supports _inherit splicing."""
+        config = {"instructions": {"claude": ["_inherit", "Team policy."]}}
+        default = bundled_default_instructions()
+        self.assertEqual(
+            resolve_instructions(config, "claude"),
+            f"{default}\n\nTeam policy.",
+        )
+
     def test_per_provider_dict_no_match_returns_bundled(self) -> None:
         """Per-provider dict with no match and no _default returns bundled default."""
         config = {"instructions": {"claude": "Claude only"}}
@@ -109,6 +118,13 @@ class ResolveInstructionsTests(unittest.TestCase):
         result = resolve_instructions(config, "claude")
         self.assertEqual(result, "Custom only.")
         self.assertNotIn("luskctl", result)
+
+    def test_bare_inherit_string_returns_default(self) -> None:
+        """Bare _inherit string is treated as absent (returns bundled default)."""
+        config = {"instructions": "_inherit"}
+        result = resolve_instructions(config, "claude")
+        default = bundled_default_instructions()
+        self.assertEqual(result, default)
 
     def test_empty_list(self) -> None:
         """Empty list produces empty string (no default)."""

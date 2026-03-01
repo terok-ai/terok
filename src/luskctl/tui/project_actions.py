@@ -346,16 +346,29 @@ class ProjectActionsMixin:
             agent = raw.setdefault("agent", {})
             current = agent.get("instructions")
 
-            # Determine current mode and toggle
-            has_inherit = (isinstance(current, list) and "_inherit" in current) or current is None
-            if has_inherit:
-                # Switch to override mode (no parent defaults)
+            # Determine current mode and toggle, preserving existing custom entries
+            if current is None:
+                # Implicit inherit → explicit custom-only (empty)
                 agent["instructions"] = []
                 mode_label = "custom only (defaults disabled)"
+            elif isinstance(current, list):
+                items = [item for item in current if item != "_inherit"]
+                if "_inherit" in current:
+                    # Disable inheritance, keep existing custom entries
+                    agent["instructions"] = items
+                    mode_label = "custom only (defaults disabled)"
+                else:
+                    # Enable inheritance, preserve existing custom entries
+                    agent["instructions"] = ["_inherit", *items]
+                    mode_label = "inheriting defaults"
             else:
-                # Switch to inherit mode (include parent defaults)
-                agent["instructions"] = ["_inherit"]
-                mode_label = "inheriting defaults"
+                # Scalar/dict forms — not safe to toggle automatically
+                self.notify(
+                    "Toggle supports list/implicit instructions only; "
+                    "edit project.yml manually for this form.",
+                    severity="warning",
+                )
+                return
 
             project_yml.write_text(_yaml.safe_dump(raw, default_flow_style=False), encoding="utf-8")
             self.notify(f"Instructions: {mode_label}")

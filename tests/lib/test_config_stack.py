@@ -80,6 +80,18 @@ class DeepMergeTests(unittest.TestCase):
         result = deep_merge(base, override)
         self.assertEqual(result, {"x": {"a": 1, "b": 2, "c": 3}})
 
+    def test_bare_inherit_keeps_base_value(self) -> None:
+        """Bare _inherit string keeps the base value unchanged."""
+        base = {"a": 1, "b": [1, 2], "c": {"x": 1}}
+        override = {"a": "_inherit", "b": "_inherit", "c": "_inherit"}
+        self.assertEqual(deep_merge(base, override), {"a": 1, "b": [1, 2], "c": {"x": 1}})
+
+    def test_bare_inherit_no_base_drops_key(self) -> None:
+        """Bare _inherit with no base value drops the key."""
+        base = {"a": 1}
+        override = {"a": "_inherit", "b": "_inherit"}
+        self.assertEqual(deep_merge(base, override), {"a": 1})
+
     def test_empty_base(self) -> None:
         self.assertEqual(deep_merge({}, {"a": 1}), {"a": 1})
 
