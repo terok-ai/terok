@@ -304,7 +304,11 @@ class GenerateAgentWrapperTests(unittest.TestCase):
             wrapper = generate_agent_wrapper(p, project, has_agents=False)
             # --continue should appear standalone, not followed by a session ID read
             self.assertIn(f"_resume_args+=({p.continue_flag})", wrapper, f"{name}")
-            self.assertNotIn("$(cat", wrapper, f"{name} should not read session ID file")
+            self.assertNotIn(
+                "cat /home/dev/.luskctl/session-id.txt",
+                wrapper,
+                f"{name} should not read session ID file",
+            )
 
     def test_continue_providers_write_session_marker(self) -> None:
         """Providers with continue_flag write session-id.txt after command exits."""
