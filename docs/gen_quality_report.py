@@ -12,8 +12,10 @@ the results into a single Markdown page with a Mermaid dependency diagram.
 from __future__ import annotations
 
 import json
+import re
 import subprocess
 import sys
+from collections import defaultdict
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -22,6 +24,11 @@ import mkdocs_gen_files
 ROOT = Path(__file__).parent.parent
 SRC = ROOT / "src" / "terok"
 COMPLEXITY_THRESHOLD = 15
+_VENV_BIN = Path(sys.executable).parent
+
+# Depth at which to aggregate modules in the dependency diagram.
+# 3 → terok.lib.containers, terok.lib.core, etc.
+_GRAPH_DEPTH = 3
 
 
 def _run(
@@ -42,10 +49,10 @@ def _run(
 
 def _section_complexity() -> str:
     """Generate cognitive complexity section from complexipy."""
-    # Run complexipy to populate the cache
-    run_result = _run(
-        sys.executable, "-m", "complexipy", str(SRC), "--ignore-complexity", "--quiet"
-    )
+    # Run complexipy to populate the cache (use CLI entry point, not -m).
+    # Note: --quiet is omitted because it causes a spurious non-zero exit code
+    # in complexipy >=5.x.  capture_output=True suppresses stdout anyway.
+    run_result = _run(str(_VENV_BIN / "complexipy"), str(SRC), "--ignore-complexity")
     if run_result.returncode != 0:
         output = (run_result.stdout + run_result.stderr).strip()
         return f"!!! warning\n    complexipy failed; skipping complexity report.\n\n```\n{output}\n```\n"
@@ -146,6 +153,46 @@ def _section_dead_code() -> str:
     return "".join(lines)
 
 
+def _coarsen_module(name: str, depth: int = _GRAPH_DEPTH) -> str:
+    """Truncate a dotted module path to *depth* segments."""
+    parts = name.split(".")
+    return ".".join(parts[:depth])
+
+
+def _coarsen_graph(mermaid_lines: list[str]) -> list[str]:
+    """Aggregate fine-grained mermaid edges into a coarser high-level graph.
+
+    Edges between sub-modules of the same group are dropped.  Duplicate
+    coarsened edges are collapsed and annotated with a count.
+    """
+    edge_re = re.compile(r"^\s*(.+?)\s*-->\s*(.+?)\s*$")
+    edge_counts: dict[tuple[str, str], int] = defaultdict(int)
+    nodes: set[str] = set()
+
+    for line in mermaid_lines:
+        m = edge_re.match(line)
+        if not m:
+            continue
+        src = _coarsen_module(m.group(1).strip())
+        dst = _coarsen_module(m.group(2).strip())
+        nodes.add(src)
+        nodes.add(dst)
+        if src != dst:
+            edge_counts[(src, dst)] += 1
+
+    # Build the coarsened graph (top-down)
+    out = ["graph TD"]
+    for (src, dst), count in sorted(edge_counts.items()):
+        label = f"|{count}|" if count > 1 else ""
+        # Use short aliases to keep the diagram compact
+        out.append(f"    {src} -->{label} {dst}")
+    # Emit isolated nodes (no outgoing edges)
+    connected = {n for pair in edge_counts for n in pair}
+    for node in sorted(nodes - connected):
+        out.append(f"    {node}")
+    return out
+
+
 def _section_dependency_diagram() -> str:
     """Generate module dependency diagram from tach."""
     result = _run(sys.executable, "-m", "tach", "show", "--mermaid", "-o", "-")
@@ -158,19 +205,21 @@ def _section_dependency_diagram() -> str:
     if not output:
         return "!!! warning\n    tach show --mermaid produced no output.\n"
 
-    # Extract just the mermaid graph (skip the NOTE lines)
-    mermaid_lines = []
+    # Extract just the mermaid edges (skip the NOTE lines and the "graph" header)
+    edge_lines = []
     in_graph = False
     for line in output.splitlines():
         if line.startswith("graph "):
             in_graph = True
+            continue
         if in_graph:
-            mermaid_lines.append(line)
+            edge_lines.append(line)
 
-    if not mermaid_lines:
+    if not edge_lines:
         return "!!! warning\n    Could not parse mermaid output from tach.\n"
 
-    return "```mermaid\n" + "\n".join(mermaid_lines) + "\n```\n"
+    coarsened = _coarsen_graph(edge_lines)
+    return "```mermaid\n" + "\n".join(coarsened) + "\n```\n"
 
 
 def _section_dependency_report() -> str:
@@ -182,7 +231,11 @@ def _section_dependency_report() -> str:
     output = result.stdout.strip()
     if not output:
         return "No dependency report available.\n"
-    return f"```\n{output}\n```\n"
+    return (
+        "<details>\n<summary>Full dependency report (click to expand)</summary>\n\n"
+        f"```\n{output}\n```\n\n"
+        "</details>\n"
+    )
 
 
 def _section_boundary_check() -> str:
@@ -197,9 +250,7 @@ def _section_boundary_check() -> str:
 def _section_docstring_coverage() -> str:
     """Generate docstring coverage section."""
     result = _run(
-        sys.executable,
-        "-m",
-        "docstr_coverage",
+        str(_VENV_BIN / "docstr-coverage"),
         str(SRC),
         "--fail-under=0",
     )
