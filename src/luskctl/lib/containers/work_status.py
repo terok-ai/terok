@@ -21,8 +21,20 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
+from tempfile import NamedTemporaryFile
 
 import yaml
+
+
+def _write_yaml_atomic(path: Path, data: dict[str, str]) -> None:
+    """Write *data* as YAML to *path* atomically via temp-file + replace."""
+    payload = yaml.safe_dump(data, sort_keys=False)
+    with NamedTemporaryFile(
+        "w", encoding="utf-8", dir=path.parent, suffix=".tmp", delete=False
+    ) as tmp:
+        tmp.write(payload)
+        tmp_path = Path(tmp.name)
+    tmp_path.replace(path)
 
 STATUS_FILE_NAME = "work-status.yml"
 """Filename agents write inside their agent-config directory."""
@@ -117,7 +129,7 @@ def write_work_status(
     data: dict[str, str] = {"status": status}
     if message:
         data["message"] = message
-    path.write_text(yaml.safe_dump(data, sort_keys=False), encoding="utf-8")
+    _write_yaml_atomic(path, data)
 
 
 # ---------- Pending phase I/O ----------
@@ -163,7 +175,7 @@ def write_pending_phase(agent_config_dir: Path, phase: str, prompt: str) -> None
     agent_config_dir.mkdir(parents=True, exist_ok=True)
     phase_path = agent_config_dir / PENDING_PHASE_FILE
     data = {"phase": phase, "prompt": prompt}
-    phase_path.write_text(yaml.safe_dump(data, sort_keys=False), encoding="utf-8")
+    _write_yaml_atomic(phase_path, data)
 
 
 def clear_pending_phase(agent_config_dir: Path) -> None:
