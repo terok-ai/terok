@@ -84,6 +84,7 @@ if _HAS_TEXTUAL:
         "edit_instructions": "_action_edit_instructions",
         "toggle_inherit": "_action_toggle_instructions_inherit",
         "show_resolved": "_action_show_resolved_instructions",
+        "delete_project": "_action_delete_project",
     }
 
     TASK_ACTION_HANDLERS: dict[str, str] = {

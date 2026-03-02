@@ -24,6 +24,7 @@ from ..lib.facade import (
     generate_dockerfiles,
     init_project_ssh,
     maybe_pause_for_ssh_key_registration,
+    project_delete,
     sync_project_gate,
 )
 from .shell_launch import launch_login
@@ -430,6 +431,46 @@ class ProjectActionsMixin:
             print(f"\n=== End ({len(text)} chars) ===")
 
         await self._run_suspended(work, refresh=None)
+
+    # ---------- Project deletion ----------
+
+    async def _action_delete_project(self) -> None:
+        """Delete the current project after confirmation."""
+        if not self.current_project_id:
+            self.notify("No project selected.")
+            return
+
+        from .screens import ConfirmDeleteScreen
+
+        pid = self.current_project_id
+        await self.push_screen(
+            ConfirmDeleteScreen(pid),
+            self._on_delete_project_confirmed,
+        )
+
+    async def _on_delete_project_confirmed(self, confirmed: bool) -> None:
+        """Handle the result from the delete confirmation screen."""
+        if not confirmed or not self.current_project_id:
+            return
+
+        pid = self.current_project_id
+
+        def work() -> None:
+            """Delete the project and all associated data."""
+            project_delete(pid)
+
+        with self.suspend():
+            try:
+                work()
+                print(f"Project '{pid}' has been deleted.")
+            except SystemExit as e:
+                print(f"Error: {e}")
+            except Exception as e:
+                print(f"Error: {e}")
+            input("\n[Press Enter to return to TerokTUI] ")
+
+        await self.refresh_projects()
+        self.notify(f"Project '{pid}' deleted.")
 
     # --- Project wizard ---
 

@@ -77,6 +77,7 @@ depends_on = [
     "terok.lib.containers.task_logs",
     "terok.lib.containers.task_runners",
     "terok.lib.containers.tasks",
+    "terok.lib.core.config",
     "terok.lib.core.projects",
     "terok.lib.security.auth",
     "terok.lib.security.git_gate",
@@ -627,6 +628,7 @@ expose = [
     "find_projects_sharing_gate",
     "get_project_state",
     "is_task_image_old",
+    "project_delete",
     "maybe_pause_for_ssh_key_registration",
 ]
 from = ["terok.lib.facade"]

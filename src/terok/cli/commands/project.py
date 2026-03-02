@@ -2,13 +2,14 @@
 #
 # SPDX-License-Identifier: Apache-2.0
 
-"""Project management commands: list, derive, wizard, presets."""
+"""Project management commands: list, derive, delete, wizard, presets."""
 
 from __future__ import annotations
 
 import argparse
 
 from ...lib.core.projects import derive_project, list_presets, list_projects
+from ...lib.facade import project_delete
 from ...lib.wizards.new_project import run_wizard
 from ._completers import complete_project_ids as _complete_project_ids, set_completer
 from .setup import cmd_project_init
@@ -35,6 +36,17 @@ def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) ->
         _complete_project_ids,
     )
     p_derive.add_argument("new_id", help="New project ID")
+
+    # project-delete
+    p_delete = subparsers.add_parser(
+        "project-delete",
+        help="Delete a project and all its associated data (non-recoverable)",
+    )
+    set_completer(
+        p_delete.add_argument("project_id", help="Project ID to delete"),
+        _complete_project_ids,
+    )
+    p_delete.add_argument("--force", action="store_true", help="Skip confirmation prompt")
 
     # presets
     p_presets = subparsers.add_parser("presets", help="Manage agent config presets")
@@ -64,6 +76,19 @@ def dispatch(args: argparse.Namespace) -> bool:
         print(f"  1. Edit {target / 'project.yml'} (customize agent: section)")
         print(f"  2. Initialize: terokctl project-init {args.new_id}")
         print("  Tip: global presets are shared across projects (see terokctl config)")
+        return True
+    if args.cmd == "project-delete":
+        pid = args.project_id
+        if not args.force:
+            print(f"WARNING: This will permanently delete project '{pid}' and all its data.")
+            print("This includes task workspaces, containers, build artifacts, and config files.")
+            print("This action cannot be undone.")
+            answer = input(f"\nType the project ID '{pid}' to confirm deletion: ")
+            if answer.strip() != pid:
+                print("Aborted.")
+                return True
+        project_delete(pid)
+        print(f"Project '{pid}' has been deleted.")
         return True
     if args.cmd == "project-wizard":
         run_wizard(init_fn=cmd_project_init)

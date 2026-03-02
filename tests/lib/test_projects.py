@@ -9,8 +9,10 @@ import unittest.mock
 from pathlib import Path
 
 from terok.lib.containers.project_state import get_project_state
+from terok.lib.containers.tasks import task_new
 from terok.lib.core.config import build_root, state_root
 from terok.lib.core.projects import list_projects, load_project
+from terok.lib.facade import project_delete
 from test_utils import project_env, write_project
 
 
@@ -143,3 +145,89 @@ git:
                     "gate_last_commit": None,
                 },
             )
+
+    def test_project_delete_removes_config_and_state(self) -> None:
+        """project_delete removes project config dir and task state."""
+        project_id = "del-proj"
+        yaml_text = f"project:\n  id: {project_id}\n"
+        with project_env(yaml_text, project_id=project_id) as ctx:
+            # Create a task so there's state to clean up
+            with unittest.mock.patch("terok.lib.containers.tasks.subprocess.run") as run_mock:
+                run_mock.return_value.returncode = 0
+                task_id = task_new(project_id)
+
+            meta_path = ctx.state_dir / "projects" / project_id / "tasks" / f"{task_id}.yml"
+            self.assertTrue(meta_path.is_file())
+
+            proj = load_project(project_id)
+            workspace = proj.tasks_root / str(task_id)
+            self.assertTrue(workspace.is_dir())
+            config_dir = proj.root
+            self.assertTrue(config_dir.is_dir())
+
+            with unittest.mock.patch("terok.lib.containers.tasks.subprocess.run") as run_mock:
+                run_mock.return_value.returncode = 0
+                project_delete(project_id)
+
+            # Config, workspace, and metadata should all be gone
+            self.assertFalse(config_dir.exists())
+            self.assertFalse(workspace.exists())
+            self.assertFalse(meta_path.exists())
+
+    def test_project_delete_preserves_shared_gate(self) -> None:
+        """project_delete keeps the gate if another project shares it."""
+        with tempfile.TemporaryDirectory() as td:
+            base = Path(td)
+            config_dir = base / "config"
+            state_dir = base / "state"
+
+            # Two projects sharing the same gate path
+            gate_path = state_dir / "gate" / "shared.git"
+            gate_path.mkdir(parents=True, exist_ok=True)
+            (gate_path / "HEAD").write_text("ref: refs/heads/main\n")
+
+            for pid in ("proj-a", "proj-b"):
+                write_project(
+                    config_dir,
+                    pid,
+                    f"project:\n  id: {pid}\ngate:\n  path: {gate_path}\n",
+                )
+
+            with unittest.mock.patch.dict(
+                os.environ,
+                {
+                    "TEROK_CONFIG_DIR": str(config_dir),
+                    "TEROK_STATE_DIR": str(state_dir),
+                },
+            ):
+                with unittest.mock.patch("terok.lib.containers.tasks.subprocess.run"):
+                    project_delete("proj-a")
+
+                # Gate should still exist because proj-b uses it
+                self.assertTrue(gate_path.is_dir())
+                # proj-a config should be gone
+                self.assertFalse((config_dir / "proj-a").exists())
+                # proj-b should still be loadable
+                proj_b = load_project("proj-b")
+                self.assertEqual(proj_b.id, "proj-b")
+
+    def test_project_delete_removes_unshared_gate(self) -> None:
+        """project_delete removes the gate when no other project uses it."""
+        project_id = "solo-gate"
+        yaml_text = f"project:\n  id: {project_id}\n"
+        with project_env(yaml_text, project_id=project_id) as ctx:
+            # Create a gate directory
+            gate_dir = ctx.state_dir / "gate" / f"{project_id}.git"
+            gate_dir.mkdir(parents=True, exist_ok=True)
+            (gate_dir / "HEAD").write_text("ref: refs/heads/main\n")
+
+            with unittest.mock.patch("terok.lib.containers.tasks.subprocess.run"):
+                project_delete(project_id)
+
+            self.assertFalse(gate_dir.exists())
+
+    def test_project_delete_nonexistent_raises(self) -> None:
+        """project_delete raises SystemExit for a nonexistent project."""
+        with project_env("project:\n  id: exists\n", project_id="exists"):
+            with self.assertRaises(SystemExit):
+                project_delete("no-such-project")
