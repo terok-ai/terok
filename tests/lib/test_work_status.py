@@ -271,6 +271,18 @@ class TestPendingPhase(unittest.TestCase):
         self.assertEqual(pp.phase, "reviewing")
         self.assertEqual(pp.prompt, "Review changes")
 
+    def test_write_rejects_empty_phase(self):
+        with self.assertRaises(ValueError):
+            write_pending_phase(self.tmp_dir, "", "Run tests")
+
+    def test_write_rejects_non_string_phase(self):
+        with self.assertRaises(ValueError):
+            write_pending_phase(self.tmp_dir, 123, "Run tests")  # type: ignore[arg-type]
+
+    def test_write_rejects_non_string_prompt(self):
+        with self.assertRaises(ValueError):
+            write_pending_phase(self.tmp_dir, "testing", {"x": 1})  # type: ignore[arg-type]
+
     def test_write_creates_parent_dirs(self):
         nested = self.tmp_dir / "a" / "b"
         write_pending_phase(nested, "testing", "Run tests")

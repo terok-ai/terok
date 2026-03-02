@@ -156,8 +156,10 @@ def read_pending_phase(agent_config_dir: Path) -> PendingPhase | None:
 
 def write_pending_phase(agent_config_dir: Path, phase: str, prompt: str) -> None:
     """Write ``pending-phase.yml`` into *agent_config_dir*."""
-    if not phase:
+    if not isinstance(phase, str) or not phase:
         raise ValueError("phase must be a non-empty string")
+    if not isinstance(prompt, str):
+        raise ValueError("prompt must be a string")
     agent_config_dir.mkdir(parents=True, exist_ok=True)
     phase_path = agent_config_dir / PENDING_PHASE_FILE
     data = {"phase": phase, "prompt": prompt}
