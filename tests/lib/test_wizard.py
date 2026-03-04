@@ -118,10 +118,18 @@ class CollectWizardInputsTests(unittest.TestCase):
         "builtins.input",
         side_effect=["1", "MyProject", "https://x.com/r.git", "main", "n"],
     )
-    def test_uppercase_auto_lowercased(self, _input: unittest.mock.Mock) -> None:
+    @unittest.mock.patch("builtins.print")
+    def test_uppercase_auto_lowercased(
+        self, mock_print: unittest.mock.Mock, _input: unittest.mock.Mock
+    ) -> None:
         result = collect_wizard_inputs()
         self.assertIsNotNone(result)
         self.assertEqual(result["project_id"], "myproject")
+        printed = [" ".join(str(a) for a in c.args) for c in mock_print.call_args_list]
+        self.assertTrue(
+            any("lowercased to 'myproject'" in line for line in printed),
+            f"Expected lowercase note in printed output, got: {printed}",
+        )
 
     @unittest.mock.patch(
         "builtins.input",

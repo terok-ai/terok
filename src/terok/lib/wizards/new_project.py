@@ -4,7 +4,6 @@
 
 """Interactive project wizard for creating new project configurations."""
 
-import re
 import sys
 import tempfile
 from collections.abc import Callable
@@ -15,6 +14,7 @@ from pathlib import Path
 from terok.ui_utils.editor import open_in_editor
 
 from ..core.config import user_projects_root
+from ..core.project_model import validate_project_id
 from ..util.fs import ensure_dir_writable
 from ..util.template_utils import render_template
 
@@ -26,8 +26,6 @@ TEMPLATES: list[tuple[str, str]] = [
     ("Gatekeeping – NVIDIA CUDA (GPU)", "gatekeeping-nvidia.yml"),
 ]
 
-_PROJECT_ID_RE = re.compile(r"^[a-z0-9][a-z0-9_-]*$")
-
 _TEMPLATE_DIR: Traversable = resources.files("terok") / "resources" / "templates" / "projects"
 
 
@@ -35,11 +33,10 @@ def _validate_project_id(project_id: str) -> str | None:
     """Return an error message if *project_id* is invalid, else ``None``."""
     if not project_id:
         return "Project ID cannot be empty."
-    if not _PROJECT_ID_RE.match(project_id):
-        return (
-            "Project ID must contain only lowercase alphanumeric characters, hyphens, "
-            "and underscores, and start with a lowercase alphanumeric character."
-        )
+    try:
+        validate_project_id(project_id)
+    except SystemExit as exc:
+        return str(exc)
     return None
 
 
