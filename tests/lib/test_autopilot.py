@@ -449,8 +449,8 @@ class PrepareAgentConfigDirTests(unittest.TestCase):
         self.assertEqual(instr_path.read_text(encoding="utf-8"), "Custom instructions here.")
 
     @unittest.mock.patch("terok.lib.containers.agents._write_session_hook")
-    def test_prepare_agent_config_no_instructions_file_when_none(self, _mock_hook: object) -> None:
-        """No instructions.md when instructions is None."""
+    def test_prepare_agent_config_default_instructions_when_none(self, _mock_hook: object) -> None:
+        """Default instructions.md written when instructions is None."""
         from terok.lib.containers.agents import prepare_agent_config_dir
 
         project = self._make_project()
@@ -459,7 +459,9 @@ class PrepareAgentConfigDirTests(unittest.TestCase):
 
         agent_config_dir = prepare_agent_config_dir(project, task_id, subagents=[])
         instr_path = agent_config_dir / "instructions.md"
-        self.assertFalse(instr_path.is_file())
+        self.assertTrue(instr_path.is_file())
+        content = instr_path.read_text(encoding="utf-8")
+        self.assertIn("conventions", content)
 
     @unittest.mock.patch("terok.lib.containers.agents._write_session_hook")
     def test_wrapper_has_append_system_prompt_when_instructions(self, _mock_hook: object) -> None:

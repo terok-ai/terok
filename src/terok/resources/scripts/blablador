@@ -77,7 +77,14 @@ def _fetch_models(base_url: str, api_key: str) -> list[str] | None:
     return sorted(set(models)) if models else None
 
 
-def _build_config(base_url: str, api_key: str, model: str, models: list[str] | None) -> dict:
+def _build_blablador_update(
+    base_url: str, api_key: str, model: str, models: list[str] | None
+) -> dict:
+    """Build the blablador-specific config fragment to merge into opencode.json.
+
+    Returns a dict containing only the keys that blablador needs to set or
+    update: ``$schema``, ``model``, ``provider.blablador``, and ``permission``.
+    """
     model_map = {model: {"name": model}}
     if models:
         for mid in models:
@@ -101,6 +108,42 @@ def _build_config(base_url: str, api_key: str, model: str, models: list[str] | N
             "*": "allow",
         },
     }
+
+
+def _merge_blablador_config(existing: dict, update: dict) -> dict:
+    """Merge a blablador update into an existing opencode.json config.
+
+    Only the ``provider.blablador`` section is replaced wholesale; other
+    provider entries and top-level keys (e.g. ``instructions``) are preserved.
+    ``model`` is set only if currently unset or already blablador-prefixed.
+    ``permission`` is set only if currently unset.
+    """
+    merged = dict(existing)
+
+    # Schema — always set
+    merged["$schema"] = update["$schema"]
+
+    # Provider — deep-merge: replace blablador, keep others
+    existing_providers = merged.get("provider")
+    if not isinstance(existing_providers, dict):
+        existing_providers = {}
+    update_providers = update.get("provider", {})
+    merged_providers = dict(existing_providers)
+    merged_providers.update(update_providers)
+    merged["provider"] = merged_providers
+
+    # Model — only overwrite if unset or already a blablador model
+    current_model = merged.get("model")
+    if not current_model or (
+        isinstance(current_model, str) and current_model.startswith("blablador/")
+    ):
+        merged["model"] = update["model"]
+
+    # Permission — only set if not already configured
+    if "permission" not in merged:
+        merged["permission"] = update["permission"]
+
+    return merged
 
 
 def _opencode_config_path() -> Path:
@@ -147,10 +190,32 @@ def _get_configured_options(config: dict | None) -> dict:
 
 
 def _write_opencode_config(config: dict) -> Path:
-    """Write config to OpenCode's standard location."""
+    """Write config to OpenCode's standard location via atomic replace.
+
+    Uses write-to-temp + ``os.replace`` so concurrent blablador instances
+    never see a partially-written file.
+
+    Note: no file locking is used by design.  All concurrent blablador
+    instances write semantically equivalent data (same API, same model list),
+    so content races are harmless.  The atomic replace is only needed to
+    prevent readers from seeing a partially-written file.
+    """
+    import tempfile
+
     config_path = _opencode_config_path()
     config_path.parent.mkdir(parents=True, exist_ok=True)
-    config_path.write_text(json.dumps(config, indent=2), encoding="utf-8")
+    tmp_path = None
+    try:
+        with tempfile.NamedTemporaryFile(
+            "w", encoding="utf-8", dir=config_path.parent, suffix=".tmp", delete=False
+        ) as f:
+            tmp_path = f.name
+            f.write(json.dumps(config, indent=2) + "\n")
+        os.replace(tmp_path, config_path)
+    except BaseException:
+        if tmp_path and os.path.exists(tmp_path):
+            os.unlink(tmp_path)
+        raise
     return config_path
 
 
@@ -213,8 +278,7 @@ def main() -> int:
     # Update config if models, credentials, or base URL changed
     stored_options = _get_configured_options(existing_config)
     options_changed = (
-        stored_options.get("baseURL") != base_url
-        or stored_options.get("apiKey") != api_key
+        stored_options.get("baseURL") != base_url or stored_options.get("apiKey") != api_key
     )
     if fetched_models:
         fetched_set = set(fetched_models)
@@ -223,13 +287,15 @@ def main() -> int:
             new_models = fetched_set - configured_models
             if new_models:
                 print(f"New models available: {', '.join(sorted(new_models))}")
-            config = _build_config(base_url, api_key, model, fetched_models)
-            _write_opencode_config(config)
+            update = _build_blablador_update(base_url, api_key, model, fetched_models)
+            merged = _merge_blablador_config(existing_config or {}, update)
+            _write_opencode_config(merged)
     elif options_changed or not configured_models:
         # Fetch failed: preserve known models if available, refresh options
         fallback_models = sorted(configured_models) if configured_models else [model]
-        config = _build_config(base_url, api_key, model, fallback_models)
-        _write_opencode_config(config)
+        update = _build_blablador_update(base_url, api_key, model, fallback_models)
+        merged = _merge_blablador_config(existing_config or {}, update)
+        _write_opencode_config(merged)
 
     cmd = ["opencode"] + opencode_args
     env = {**os.environ, "OPENCODE_CONFIG": str(_opencode_config_path())}

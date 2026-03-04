@@ -500,6 +500,18 @@ class ApplyProviderConfigTests(unittest.TestCase):
         pcfg = apply_provider_config(p, {}, instructions="Custom instructions.")
         self.assertNotIn("Custom instructions.", pcfg.prompt_extra)
 
+    def test_instructions_opencode_not_in_prompt_extra(self) -> None:
+        """OpenCode does NOT get prompt injection (uses opencode.json instructions)."""
+        p = HEADLESS_PROVIDERS["opencode"]
+        pcfg = apply_provider_config(p, {}, instructions="Custom instructions.")
+        self.assertNotIn("Custom instructions.", pcfg.prompt_extra)
+
+    def test_instructions_blablador_not_in_prompt_extra(self) -> None:
+        """Blablador does NOT get prompt injection (uses opencode.json instructions)."""
+        p = HEADLESS_PROVIDERS["blablador"]
+        pcfg = apply_provider_config(p, {}, instructions="Custom instructions.")
+        self.assertNotIn("Custom instructions.", pcfg.prompt_extra)
+
     def test_instructions_prepended_before_other_prompt_parts(self) -> None:
         """Instructions are prepended before max-turns guidance for other providers."""
         p = HEADLESS_PROVIDERS["copilot"]  # no max_turns_flag

@@ -317,6 +317,68 @@ def _write_session_hook(settings_path: Path) -> None:
                 fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
 
 
+def _inject_opencode_instructions(config_path: Path) -> None:
+    """Inject the instructions file path into an opencode.json config.
+
+    Ensures the ``"instructions"`` key is a list containing the container-local
+    path ``"/home/dev/.terok/instructions.md"``.  If the file does not exist it
+    is created with ``{}``.  If the instructions entry is already present the
+    file is left untouched (idempotent).
+
+    Uses the same inter-process file lock + atomic-replace pattern as
+    :func:`_write_session_hook` for concurrency safety.
+    """
+    try:
+        import fcntl
+    except ImportError:  # pragma: no cover - fcntl is unavailable on some platforms.
+        fcntl = None  # type: ignore[assignment]
+
+    instr_path = "/home/dev/.terok/instructions.md"
+
+    lock_path = config_path.with_suffix(config_path.suffix + ".lock")
+    config_path.parent.mkdir(parents=True, exist_ok=True)
+
+    with lock_path.open("a+", encoding="utf-8") as lock_file:
+        if fcntl is not None:
+            fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX)
+        try:
+            if config_path.is_file():
+                try:
+                    loaded = json.loads(config_path.read_text(encoding="utf-8"))
+                    existing = loaded if isinstance(loaded, dict) else {}
+                except (json.JSONDecodeError, OSError):
+                    existing = {}
+            else:
+                existing = {}
+
+            instructions = existing.get("instructions")
+            if isinstance(instructions, list) and instr_path in instructions:
+                return  # already present
+
+            if isinstance(instructions, list):
+                instructions.append(instr_path)
+            else:
+                existing["instructions"] = [instr_path]
+
+            tmp_path: Path | None = None
+            try:
+                with tempfile.NamedTemporaryFile(
+                    "w",
+                    encoding="utf-8",
+                    dir=config_path.parent,
+                    delete=False,
+                ) as tmp_file:
+                    tmp_file.write(json.dumps(existing, indent=2) + "\n")
+                    tmp_path = Path(tmp_file.name)
+                os.replace(tmp_path, config_path)
+            finally:
+                if tmp_path is not None and tmp_path.exists():
+                    tmp_path.unlink()
+        finally:
+            if fcntl is not None:
+                fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
+
+
 def prepare_agent_config_dir(
     project: Project,
     task_id: str,
@@ -330,18 +392,22 @@ def prepare_agent_config_dir(
     """Create and populate the agent-config directory for a task.
 
     Writes:
-    - terok-agent.sh (always) — wrapper function with git env vars
+    - terok-agent.sh (always) — wrapper functions with git env vars
     - agents.json (only when provider supports it and sub-agents are non-empty)
     - prompt.txt (if prompt given, headless only)
-    - instructions.md (if instructions given) — resolved agent instructions
+    - instructions.md (always) — custom instructions or a neutral default
     - <envs>/_claude-config/settings.json — SessionStart hook (Claude only)
+    - opencode.json entries — ``instructions`` path injected into shared
+      OpenCode and Blablador configs
 
     Args:
         provider: Headless provider name (e.g. ``"claude"``, ``"codex"``).
             Controls which wrapper is generated and which provider-specific
             files are written.
-        instructions: Resolved instructions text to write to ``instructions.md``.
-            For Claude, the wrapper reads this file via ``--append-system-prompt``.
+        instructions: Custom instructions text. When ``None``, a neutral
+            default is written instead so that ``opencode.json`` references
+            always resolve. See :mod:`~terok.lib.containers.headless_providers`
+            module docstring for the per-provider delivery matrix.
 
     Returns the agent_config_dir path.
     """
@@ -370,10 +436,21 @@ def prepare_agent_config_dir(
             stacklevel=2,
         )
 
-    # Write instructions file (resolved instructions for debugging and Claude delivery)
+    # Write instructions file — always present so opencode.json `instructions`
+    # references never point to a missing file.  When no custom instructions
+    # are configured, a neutral default is used.
+    _DEFAULT_INSTRUCTIONS = "Follow the project's coding conventions and existing patterns."
+
     has_instructions = bool(instructions)
-    if instructions:
-        (agent_config_dir / "instructions.md").write_text(instructions, encoding="utf-8")
+    instructions_text = instructions or _DEFAULT_INSTRUCTIONS
+    (agent_config_dir / "instructions.md").write_text(instructions_text, encoding="utf-8")
+
+    # Inject instructions path into opencode.json configs on the host so
+    # both opencode and blablador discover them natively (works for both
+    # interactive and headless modes).
+    envs_base = get_envs_base_dir()
+    _inject_opencode_instructions(envs_base / "_opencode-config" / "opencode.json")
+    _inject_opencode_instructions(envs_base / "_blablador-config" / "opencode" / "opencode.json")
 
     # Write shell wrapper functions for ALL providers so interactive CLI users
     # can invoke any agent (each provider gets its own shell function).
@@ -384,7 +461,9 @@ def prepare_agent_config_dir(
         return _generate_claude_wrapper(ha, proj, sp, has_instructions=has_instructions)
 
     wrapper = generate_all_wrappers(
-        project, has_agents, claude_wrapper_fn=_claude_wrapper_with_instructions
+        project,
+        has_agents,
+        claude_wrapper_fn=_claude_wrapper_with_instructions,
     )
     (agent_config_dir / "terok-agent.sh").write_text(wrapper, encoding="utf-8")
 

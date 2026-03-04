@@ -8,6 +8,21 @@ Defines a frozen dataclass per provider and a registry dict, following the
 same pattern as ``AuthProvider`` in ``security/auth.py``.  Dispatch functions
 resolve the active provider, build the headless CLI command, and generate the
 per-provider shell wrapper.
+
+Instruction delivery
+~~~~~~~~~~~~~~~~~~~~
+Custom instructions are delivered via a provider-specific channel:
+
+- **Claude**: ``--append-system-prompt`` flag (injected by the wrapper).
+- **Codex**: ``model_instructions_file`` config (``-c`` flag in the wrapper).
+- **OpenCode / Blablador**: ``"instructions"`` array in ``opencode.json``
+  pointing to ``/home/dev/.terok/instructions.md`` (injected on the host by
+  :func:`~terok.lib.containers.agents._inject_opencode_instructions`).
+- **Other providers** (Copilot, Vibe, …): best-effort prompt prepending
+  via ``prompt_extra`` in :class:`ProviderConfig`.
+
+The instructions file is always written (with a neutral default when no
+custom text is configured) so that config-file references never dangle.
 """
 
 from __future__ import annotations
@@ -193,7 +208,7 @@ HEADLESS_PROVIDERS: dict[str, HeadlessProvider] = {
         binary="blablador",
         git_author_name="Blablador",
         git_author_email="noreply@hzdr.de",
-        headless_subcommand=None,
+        headless_subcommand="run",
         prompt_flag="",
         auto_approve_flags=(),
         output_format_flags=(),
@@ -297,11 +312,10 @@ def apply_provider_config(
         model_override: Explicit ``--model`` from CLI (takes precedence).
         max_turns_override: Explicit ``--max-turns`` from CLI.
         timeout_override: Explicit ``--timeout`` from CLI.
-        instructions: Resolved instructions text. Delivery is provider-aware:
-            Claude receives instructions via the wrapper's
-            ``--append-system-prompt`` flag; Codex loads them via
-            ``-c model_instructions_file=...`` in the wrapper; other providers
-            get instructions prepended to ``prompt_extra``.
+        instructions: Resolved instructions text. Delivery is provider-aware
+            (see module docstring for the full matrix).  Only providers not
+            covered by a dedicated channel receive instructions via
+            ``prompt_extra``.
     """
     from ..containers.agent_config import resolve_provider_value
 
@@ -344,10 +358,11 @@ def apply_provider_config(
 
     # --- Instructions ---
     # Claude receives instructions via --append-system-prompt in the wrapper.
-    # Codex receives instructions via -c model_instructions_file=... in the
-    # wrapper so both interactive and headless runs get startup context.
-    # Other providers get best-effort prompt prepending.
-    if instructions and provider.name not in {"claude", "codex"}:
+    # Codex receives instructions via -c model_instructions_file=... in the wrapper.
+    # OpenCode and Blablador receive instructions via opencode.json `instructions`
+    # array (injected by prepare_agent_config_dir).
+    # Remaining providers get best-effort prompt prepending.
+    if instructions and provider.name not in {"claude", "codex", "opencode", "blablador"}:
         prompt_parts.insert(0, instructions)
 
     return ProviderConfig(
@@ -477,14 +492,16 @@ def generate_agent_wrapper(
     avoid a circular import between this module and ``agents``.
 
     For other providers, produces a simpler wrapper that sets git env vars
-    and delegates to the binary.
+    and delegates to the binary.  Instructions are delivered via
+    ``opencode.json`` (OpenCode/Blablador), ``model_instructions_file``
+    (Codex), or ``--append-system-prompt`` (Claude) — not via the wrapper.
 
     Args:
         claude_wrapper_fn: ``(has_agents, project, skip_permissions) -> str``.
             Required when ``provider.name == "claude"``.
 
     See also :func:`generate_all_wrappers` which produces wrappers for every
-    registered provider in a single file.
+    registered provider in one file.
     """
     if provider.name == "claude":
         if claude_wrapper_fn is None:
@@ -513,7 +530,10 @@ def generate_all_wrappers(
     sections: list[str] = []
     for provider in HEADLESS_PROVIDERS.values():
         section = generate_agent_wrapper(
-            provider, project, has_agents, claude_wrapper_fn=claude_wrapper_fn
+            provider,
+            project,
+            has_agents,
+            claude_wrapper_fn=claude_wrapper_fn,
         )
         sections.append(section)
     return "\n".join(sections)

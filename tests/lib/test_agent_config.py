@@ -4,6 +4,7 @@
 
 """Tests for layered agent config resolution and presets."""
 
+import json
 import os
 import tempfile
 import unittest
@@ -603,6 +604,92 @@ class BundledPresetTests(unittest.TestCase):
             # At least one other bundled preset should remain bundled
             remaining_bundled = [n for n, s in by_name.items() if s == "bundled"]
             self.assertGreater(len(remaining_bundled), 0)
+
+
+class InjectOpencodeInstructionsTests(unittest.TestCase):
+    """Tests for _inject_opencode_instructions()."""
+
+    def test_creates_file_if_missing(self) -> None:
+        """Creates opencode.json with instructions entry if file does not exist."""
+        from terok.lib.containers.agents import _inject_opencode_instructions
+
+        with tempfile.TemporaryDirectory() as td:
+            config_path = Path(td) / "opencode.json"
+            _inject_opencode_instructions(config_path)
+
+            self.assertTrue(config_path.is_file())
+            data = json.loads(config_path.read_text(encoding="utf-8"))
+            self.assertEqual(data["instructions"], ["/home/dev/.terok/instructions.md"])
+
+    def test_idempotent_when_already_present(self) -> None:
+        """Does not duplicate the instructions entry on repeated calls."""
+        from terok.lib.containers.agents import _inject_opencode_instructions
+
+        with tempfile.TemporaryDirectory() as td:
+            config_path = Path(td) / "opencode.json"
+            _inject_opencode_instructions(config_path)
+            _inject_opencode_instructions(config_path)
+
+            data = json.loads(config_path.read_text(encoding="utf-8"))
+            self.assertEqual(data["instructions"], ["/home/dev/.terok/instructions.md"])
+
+    def test_preserves_existing_instructions(self) -> None:
+        """Appends to existing instructions list without removing entries."""
+        from terok.lib.containers.agents import _inject_opencode_instructions
+
+        with tempfile.TemporaryDirectory() as td:
+            config_path = Path(td) / "opencode.json"
+            config_path.write_text(
+                json.dumps({"instructions": ["/some/other/file.md"]}), encoding="utf-8"
+            )
+            _inject_opencode_instructions(config_path)
+
+            data = json.loads(config_path.read_text(encoding="utf-8"))
+            self.assertEqual(
+                data["instructions"],
+                ["/some/other/file.md", "/home/dev/.terok/instructions.md"],
+            )
+
+    def test_preserves_existing_config_keys(self) -> None:
+        """Preserves other keys in the opencode.json file."""
+        from terok.lib.containers.agents import _inject_opencode_instructions
+
+        with tempfile.TemporaryDirectory() as td:
+            config_path = Path(td) / "opencode.json"
+            config_path.write_text(
+                json.dumps({"model": "test/model", "provider": {"test": {}}}),
+                encoding="utf-8",
+            )
+            _inject_opencode_instructions(config_path)
+
+            data = json.loads(config_path.read_text(encoding="utf-8"))
+            self.assertEqual(data["model"], "test/model")
+            self.assertEqual(data["provider"], {"test": {}})
+            self.assertEqual(data["instructions"], ["/home/dev/.terok/instructions.md"])
+
+    def test_creates_parent_directories(self) -> None:
+        """Creates parent directories if they do not exist."""
+        from terok.lib.containers.agents import _inject_opencode_instructions
+
+        with tempfile.TemporaryDirectory() as td:
+            config_path = Path(td) / "nested" / "dir" / "opencode.json"
+            _inject_opencode_instructions(config_path)
+
+            self.assertTrue(config_path.is_file())
+            data = json.loads(config_path.read_text(encoding="utf-8"))
+            self.assertEqual(data["instructions"], ["/home/dev/.terok/instructions.md"])
+
+    def test_handles_invalid_json(self) -> None:
+        """Overwrites file with valid config if existing JSON is invalid."""
+        from terok.lib.containers.agents import _inject_opencode_instructions
+
+        with tempfile.TemporaryDirectory() as td:
+            config_path = Path(td) / "opencode.json"
+            config_path.write_text("not valid json", encoding="utf-8")
+            _inject_opencode_instructions(config_path)
+
+            data = json.loads(config_path.read_text(encoding="utf-8"))
+            self.assertEqual(data["instructions"], ["/home/dev/.terok/instructions.md"])
 
 
 class ValidateProjectIdTests(unittest.TestCase):

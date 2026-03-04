@@ -158,10 +158,10 @@ class BlabladorScriptTests(unittest.TestCase):
         self.assertIsNone(result)
 
     def test_build_config_structure(self) -> None:
-        """Test that _build_config generates correct OpenCode configuration."""
+        """Test that _build_blablador_update generates correct OpenCode configuration."""
         blablador = load_blablador_module()
 
-        config = blablador._build_config(
+        config = blablador._build_blablador_update(
             base_url="https://api.helmholtz-blablador.fz-juelich.de/v1",
             api_key="test-key-123",
             model="test-model",
@@ -443,7 +443,7 @@ class BlabladorConfigSeparationTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as td:
             config_path = Path(td) / "opencode" / "opencode.json"
             # Seed an existing config with old credentials
-            old_config = blablador._build_config(
+            old_config = blablador._build_blablador_update(
                 base_url="https://old-url/v1",
                 api_key="old-key",
                 model="alias-huge",
@@ -479,11 +479,11 @@ class BlabladorConfigTests(unittest.TestCase):
     """Tests for Blablador configuration structure."""
 
     def test_config_json_structure(self) -> None:
-        """Test that _build_config generates valid and correctly structured config."""
+        """Test that _build_blablador_update generates valid and correctly structured config."""
         blablador = load_blablador_module()
 
-        # Call the actual _build_config function
-        config = blablador._build_config(
+        # Call the actual _build_blablador_update function
+        config = blablador._build_blablador_update(
             base_url="https://api.helmholtz-blablador.fz-juelich.de/v1",
             api_key="test-api-key-456",
             model="alias-code",
@@ -510,6 +510,152 @@ class BlabladorConfigTests(unittest.TestCase):
         # Verify model map includes the models we passed
         self.assertIn("alias-code", parsed["provider"]["blablador"]["models"])
         self.assertIn("other-model", parsed["provider"]["blablador"]["models"])
+
+
+class BlabladorMergeConfigTests(unittest.TestCase):
+    """Tests for merge-based config writing (preserves existing settings)."""
+
+    def setUp(self) -> None:
+        if "blablador" in sys.modules:
+            del sys.modules["blablador"]
+
+    def tearDown(self) -> None:
+        if "blablador" in sys.modules:
+            del sys.modules["blablador"]
+
+    def test_merge_preserves_instructions(self) -> None:
+        """Merging blablador config preserves existing instructions key."""
+        blablador = load_blablador_module()
+
+        existing = {"instructions": ["/home/dev/.terok/instructions.md"]}
+        update = blablador._build_blablador_update(
+            "https://api.example.com/v1", "key", "alias-huge", ["alias-huge"]
+        )
+        merged = blablador._merge_blablador_config(existing, update)
+
+        self.assertEqual(merged["instructions"], ["/home/dev/.terok/instructions.md"])
+        self.assertIn("blablador", merged["provider"])
+
+    def test_merge_preserves_other_providers(self) -> None:
+        """Merging blablador config preserves other provider entries."""
+        blablador = load_blablador_module()
+
+        existing = {
+            "provider": {"other-provider": {"npm": "other-npm", "models": {}}},
+        }
+        update = blablador._build_blablador_update(
+            "https://api.example.com/v1", "key", "alias-huge", ["alias-huge"]
+        )
+        merged = blablador._merge_blablador_config(existing, update)
+
+        self.assertIn("other-provider", merged["provider"])
+        self.assertIn("blablador", merged["provider"])
+
+    def test_merge_preserves_existing_permission(self) -> None:
+        """Merging does not overwrite existing permission settings."""
+        blablador = load_blablador_module()
+
+        existing = {"permission": {"Bash(*)": "deny"}}
+        update = blablador._build_blablador_update(
+            "https://api.example.com/v1", "key", "alias-huge", ["alias-huge"]
+        )
+        merged = blablador._merge_blablador_config(existing, update)
+
+        self.assertEqual(merged["permission"], {"Bash(*)": "deny"})
+
+    def test_merge_sets_permission_when_missing(self) -> None:
+        """Merging sets permission to allow-all when not already set."""
+        blablador = load_blablador_module()
+
+        existing = {}
+        update = blablador._build_blablador_update(
+            "https://api.example.com/v1", "key", "alias-huge", ["alias-huge"]
+        )
+        merged = blablador._merge_blablador_config(existing, update)
+
+        self.assertEqual(merged["permission"], {"*": "allow"})
+
+    def test_merge_preserves_non_blablador_model(self) -> None:
+        """Merging does not overwrite model if it's not a blablador model."""
+        blablador = load_blablador_module()
+
+        existing = {"model": "other-provider/custom-model"}
+        update = blablador._build_blablador_update(
+            "https://api.example.com/v1", "key", "alias-huge", ["alias-huge"]
+        )
+        merged = blablador._merge_blablador_config(existing, update)
+
+        self.assertEqual(merged["model"], "other-provider/custom-model")
+
+    def test_merge_overwrites_blablador_model(self) -> None:
+        """Merging updates model if it's already a blablador model."""
+        blablador = load_blablador_module()
+
+        existing = {"model": "blablador/old-model"}
+        update = blablador._build_blablador_update(
+            "https://api.example.com/v1", "key", "alias-huge", ["alias-huge"]
+        )
+        merged = blablador._merge_blablador_config(existing, update)
+
+        self.assertEqual(merged["model"], "blablador/alias-huge")
+
+    def test_merge_updates_blablador_provider(self) -> None:
+        """Merging replaces the blablador provider section entirely."""
+        blablador = load_blablador_module()
+
+        existing = {
+            "provider": {
+                "blablador": {"npm": "old-npm", "models": {"old-model": {"name": "old"}}},
+            }
+        }
+        update = blablador._build_blablador_update(
+            "https://api.example.com/v1", "new-key", "alias-huge", ["alias-huge"]
+        )
+        merged = blablador._merge_blablador_config(existing, update)
+
+        provider = merged["provider"]["blablador"]
+        self.assertEqual(provider["npm"], "@ai-sdk/openai-compatible")
+        self.assertEqual(provider["options"]["apiKey"], "new-key")
+
+    def test_main_preserves_instructions_on_update(self) -> None:
+        """main() preserves instructions key when updating config."""
+        blablador = load_blablador_module()
+
+        mock_response = make_mock_http_response({"data": [{"id": "alias-huge"}]})
+
+        with tempfile.TemporaryDirectory() as td:
+            config_path = Path(td) / "opencode" / "opencode.json"
+            config_path.parent.mkdir(parents=True, exist_ok=True)
+            # Seed config with instructions
+            config_path.write_text(
+                json.dumps(
+                    {
+                        "instructions": ["/home/dev/.terok/instructions.md"],
+                        "provider": {
+                            "blablador": {
+                                "options": {"baseURL": "https://old/v1", "apiKey": "old"},
+                                "models": {},
+                            }
+                        },
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            with (
+                unittest.mock.patch.object(blablador, "_load_api_key", return_value="new-key"),
+                unittest.mock.patch("blablador.request.urlopen", return_value=mock_response),
+                unittest.mock.patch.object(
+                    blablador, "_opencode_config_path", return_value=config_path
+                ),
+                unittest.mock.patch("blablador.subprocess.call", return_value=0),
+                unittest.mock.patch("sys.argv", ["blablador"]),
+            ):
+                blablador.main()
+
+            updated = json.loads(config_path.read_text(encoding="utf-8"))
+            self.assertEqual(updated["instructions"], ["/home/dev/.terok/instructions.md"])
+            self.assertEqual(updated["provider"]["blablador"]["options"]["apiKey"], "new-key")
 
 
 if __name__ == "__main__":
