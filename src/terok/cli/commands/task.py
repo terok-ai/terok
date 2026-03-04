@@ -176,7 +176,7 @@ def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) ->
     t_restart.add_argument(
         "--backend",
         choices=list(WEB_BACKENDS),
-        help=f"Backend to use when re-running a web task ({_BACKENDS_HELP}; default: use saved backend)",
+        help=argparse.SUPPRESS,
     )
 
     t_followup = tsub.add_parser(
