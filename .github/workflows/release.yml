@@ -1,27 +1,15 @@
-# Releases are created via Actions → Release → Run workflow.
-# Do not use the "New release" page — the workflow handles version bumping,
-# tagging, building, and publishing automatically.
-
 name: Release
 
 on:
-  workflow_dispatch:
-    inputs:
-      version:
-        description: "Release version (e.g. 0.5.0)"
-        required: true
-        type: string
+  push:
+    tags:
+      - "v*"
 
 permissions:
   contents: write
 
 jobs:
-  ci:
-    uses: ./.github/workflows/ci.yml
-
-  release:
-    needs: ci
-    if: github.ref == 'refs/heads/master'
+  build:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
@@ -39,36 +27,8 @@ jobs:
           virtualenvs-create: true
           virtualenvs-in-project: true
 
-      - name: Validate release version
-        env:
-          RELEASE_VERSION: ${{ inputs.version }}
-        run: |
-          if ! [[ "$RELEASE_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-            echo "::error::Invalid version '$RELEASE_VERSION' — expected N.N.N" >&2
-            exit 1
-          fi
-
       - name: Install dynamic versioning plugin
         run: poetry self add "poetry-dynamic-versioning[plugin]"
-
-      - name: Bump version in pyproject.toml
-        env:
-          RELEASE_VERSION: ${{ inputs.version }}
-        run: poetry version "$RELEASE_VERSION"
-
-      - name: Commit version bump
-        env:
-          RELEASE_VERSION: ${{ inputs.version }}
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add pyproject.toml
-          git commit -m "release: v$RELEASE_VERSION"
-
-      - name: Create tag
-        env:
-          RELEASE_VERSION: ${{ inputs.version }}
-        run: git tag "v$RELEASE_VERSION"
 
       - name: Cache virtualenv
         id: cached-poetry-dependencies
@@ -84,15 +44,7 @@ jobs:
       - name: Build distributions
         run: poetry build
 
-      - name: Push commit and tag
-        env:
-          RELEASE_VERSION: ${{ inputs.version }}
-        run: git push origin HEAD "v$RELEASE_VERSION"
-
-      - name: Create GitHub Release
+      - name: Upload release assets
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: "v${{ inputs.version }}"
-          name: "v${{ inputs.version }}"
-          generate_release_notes: true
           files: dist/*

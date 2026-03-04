@@ -273,23 +273,16 @@ This pattern (config key for inheritance control + file for additive content) is
 
 ## Making a Release
 
-Releases are created through the **GitHub Actions Release workflow**. Do not create `v*` tags manually — the workflow handles version bumping, tagging, building, and publishing in one step.
-
 ### Steps
 
-1. Go to **Actions → Release → Run workflow**
-2. Enter the version number (e.g. `0.5.0`) — without the `v` prefix
-3. The workflow will:
-   - Bump `version` in `pyproject.toml`
-   - Commit the change
-   - Create the `v0.5.0` tag
-   - Push the commit and tag
-   - Build wheel and sdist
-   - Create a GitHub Release with the built artifacts
+1. Update `version` in `pyproject.toml` to the new version (e.g. `0.5.0`)
+2. Run `poetry lock --no-update` if needed, then commit: `release: bump version to 0.5.0`
+3. Merge the version bump to `master`
+4. Go to **Releases → New release** on GitHub
+5. Create a new tag `v0.5.0` targeting `master`
+6. Click **Generate release notes**, review, and publish
 
-### Troubleshooting
-
-If a release needs to be re-done, delete the tag and GitHub Release first, then re-run the workflow.
+The release workflow triggers on `v*` tags automatically — it builds the wheel/sdist and attaches them to the GitHub Release.
 
 ### Version Display
 
