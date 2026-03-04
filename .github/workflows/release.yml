@@ -1,6 +1,6 @@
 # Releases are created via Actions → Release → Run workflow.
 # Do not use the "New release" page — v* tags are protected by a repository
-# ruleset that only allows GitHub Actions to create them.
+# ruleset that only allows the release GitHub App to create them.
 
 name: Release
 
@@ -20,9 +20,17 @@ jobs:
     if: github.ref == 'refs/heads/master'
     runs-on: ubuntu-latest
     steps:
+      - name: Generate GitHub App token
+        id: app-token
+        uses: actions/create-github-app-token@v2
+        with:
+          app-id: ${{ secrets.RELEASE_APP_ID }}
+          private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
+
       - uses: actions/checkout@v6
         with:
           fetch-depth: 0
+          token: ${{ steps.app-token.outputs.token }}
 
       - name: Set up Python
         uses: actions/setup-python@v6

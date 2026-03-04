@@ -287,6 +287,26 @@ Releases are created exclusively through the **GitHub Actions Release workflow**
    - Build wheel and sdist
    - Create a GitHub Release with the built artifacts
 
+### Tag Protection Setup (one-time)
+
+To prevent manual tag creation while allowing the Release workflow to create tags,
+set up a repository ruleset **and** a GitHub App:
+
+1. **Create a GitHub App** (org-level or personal):
+   - Permissions: **Contents: Read & write**
+   - Install it on the terok repository
+   - Note the **App ID** and generate a **private key**
+   - Add both as repository secrets: `RELEASE_APP_ID` and `RELEASE_APP_PRIVATE_KEY`
+
+2. **Create a tag ruleset** in Settings → Rules → Rulesets → New tag ruleset:
+   - Name: `Protect release tags`
+   - Target: tags matching `v*`
+   - Enable: **Restrict creations**
+   - Bypass: add the GitHub App created above
+
+The Release workflow uses `actions/create-github-app-token` to authenticate
+as the app, which has bypass permission to create `v*` tags.
+
 ### Troubleshooting
 
 If you see a "tag creation denied" error when trying to push a `v*` tag manually, that is by design. Go to **Actions → Release** and use the workflow instead.
