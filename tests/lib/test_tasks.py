@@ -214,30 +214,38 @@ class TaskTests(unittest.TestCase):
             self._patch_task_meta(ctx, project_id, "1", mode="cli")
             self._patch_task_meta(ctx, project_id, "2", mode="cli")
 
-            # Manually create a 3-digit task (100)
+            # Manually create a 2-digit task (10) and a 3-digit task (100)
             meta_dir = ctx.state_dir / "projects" / project_id / "tasks"
-            ws_dir = ctx.state_dir / "projects" / project_id / "workspaces" / "100"
-            ws_dir.mkdir(parents=True, exist_ok=True)
-            meta_100 = {
-                "task_id": "100",
-                "name": "triple-digit",
-                "mode": "cli",
-                "workspace": str(ws_dir),
-                "web_port": None,
-            }
-            (meta_dir / "100.yml").write_text(yaml.safe_dump(meta_100))
+            ws_base = ctx.state_dir / "projects" / project_id / "workspaces"
+            for tid, name in [("10", "double-digit"), ("100", "triple-digit")]:
+                ws_dir = ws_base / tid
+                ws_dir.mkdir(parents=True, exist_ok=True)
+                meta = {
+                    "task_id": tid,
+                    "name": name,
+                    "mode": "cli",
+                    "workspace": str(ws_dir),
+                    "web_port": None,
+                }
+                (meta_dir / f"{tid}.yml").write_text(yaml.safe_dump(meta))
 
             with unittest.mock.patch(
                 "terok.lib.containers.tasks.get_all_task_states",
-                return_value={"1": "running", "2": "exited", "100": "running"},
+                return_value={
+                    "1": "running",
+                    "2": "exited",
+                    "10": "running",
+                    "100": "running",
+                },
             ):
                 buf = StringIO()
                 with redirect_stdout(buf):
                     task_list(project_id)
             output = buf.getvalue()
-            # 1-digit: 2 leading spaces; 3-digit: no leading spaces
+            # 1-digit: 2 leading spaces; 2-digit: 1 leading space; 3-digit: none
             self.assertRegex(output, r"(?m)^- {3}1:")
             self.assertRegex(output, r"(?m)^- {3}2:")
+            self.assertRegex(output, r"(?m)^- {2}10:")
             self.assertRegex(output, r"(?m)^- 100:")
 
     def test_task_list_filter_by_mode(self) -> None:
