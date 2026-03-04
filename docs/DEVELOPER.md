@@ -276,7 +276,7 @@ This pattern (config key for inheritance control + file for additive content) is
 ### Steps
 
 1. Update `version` in `pyproject.toml` to the new version (e.g. `0.5.0`)
-2. Run `poetry lock --no-update` if needed, then commit: `release: bump version to 0.5.0`
+2. Commit: `release: bump version to 0.5.0`
 3. Merge the version bump to `master`
 4. Go to **Releases → New release** on GitHub
 5. Create a new tag `v0.5.0` targeting `master`
