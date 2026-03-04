@@ -452,7 +452,7 @@ def task_list(
         if t.work_status:
             extra.append(f"work={t.work_status}")
         extra_s = f" [{'; '.join(extra)}]" if extra else ""
-        print(f"- {t.task_id}: {t.name} {t_status}{extra_s}")
+        print(f"- {t.task_id:>3}: {t.name} {t_status}{extra_s}")
 
 
 def _check_mode(meta: dict, expected: str) -> None:

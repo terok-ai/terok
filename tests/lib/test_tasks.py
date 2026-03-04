@@ -168,10 +168,10 @@ class TaskTests(unittest.TestCase):
                 with redirect_stdout(buf):
                     task_list(project_id)
             output = buf.getvalue()
-            # Output format: "- 1: <name> running [mode=cli]"
-            self.assertIn("- 1:", output)
+            # Task IDs are right-aligned to 3 characters
+            self.assertRegex(output, r"(?m)^- {3}1:")
             self.assertIn("running", output)
-            self.assertIn("- 2:", output)
+            self.assertRegex(output, r"(?m)^- {3}2:")
             self.assertIn("stopped", output)
 
     def test_task_list_filter_by_status(self) -> None:
@@ -196,10 +196,57 @@ class TaskTests(unittest.TestCase):
                 with redirect_stdout(buf):
                     task_list(project_id, status="running")
             output = buf.getvalue()
-            # Output format: "- 1: <name> running [mode=cli]"
-            self.assertIn("- 1:", output)
+            # Task IDs are right-aligned to 3 characters
+            self.assertRegex(output, r"(?m)^- {3}1:")
             self.assertIn("running", output)
-            self.assertNotIn("- 2:", output)
+            self.assertNotRegex(output, r"(?m)^- {3}2:")
+
+    def test_task_list_id_alignment(self) -> None:
+        """task_list right-aligns task IDs to 3 characters."""
+        project_id = "proj_align"
+        with project_env(
+            f"project:\n  id: {project_id}\n",
+            project_id=project_id,
+        ) as ctx:
+            # Create tasks 1 and 2 normally
+            task_new(project_id)
+            task_new(project_id)
+            self._patch_task_meta(ctx, project_id, "1", mode="cli")
+            self._patch_task_meta(ctx, project_id, "2", mode="cli")
+
+            # Manually create a 2-digit task (10) and a 3-digit task (100)
+            meta_dir = ctx.state_dir / "projects" / project_id / "tasks"
+            ws_base = ctx.state_dir / "projects" / project_id / "workspaces"
+            for tid, name in [("10", "double-digit"), ("100", "triple-digit")]:
+                ws_dir = ws_base / tid
+                ws_dir.mkdir(parents=True, exist_ok=True)
+                meta = {
+                    "task_id": tid,
+                    "name": name,
+                    "mode": "cli",
+                    "workspace": str(ws_dir),
+                    "web_port": None,
+                }
+                (meta_dir / f"{tid}.yml").write_text(yaml.safe_dump(meta))
+
+            with unittest.mock.patch(
+                "terok.lib.containers.tasks.get_all_task_states",
+                return_value={
+                    "1": "running",
+                    "2": "exited",
+                    "10": "running",
+                    "100": "running",
+                },
+            ):
+                buf = StringIO()
+                with redirect_stdout(buf):
+                    task_list(project_id)
+            output = buf.getvalue()
+            # 1-digit: 2 leading spaces; 2-digit: 1 leading space; 3-digit: none
+            self.assertRegex(output, r"(?m)^- {3}1:")
+            self.assertRegex(output, r"(?m)^- {3}2:")
+            self.assertRegex(output, r"(?m)^- {2}10:")
+            self.assertRegex(output, r"(?m)^- 100:")
 
     def test_task_list_filter_by_mode(self) -> None:
         """task_list --mode filters tasks by their mode field."""
