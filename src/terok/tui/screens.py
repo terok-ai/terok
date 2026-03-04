@@ -414,15 +414,15 @@ class OpenCodeConfigScreen(screen.ModalScreen[str | None]):
             self.notify("File path cannot be empty.")
             return
 
-        src = Path(raw)
+        src = Path(raw).expanduser()
         if not src.is_file():
             self.notify(f"File not found: {src}")
             return
 
         try:
             data = json.loads(src.read_text(encoding="utf-8"))
-        except json.JSONDecodeError as e:
-            self.notify(f"Invalid JSON: {e}")
+        except (json.JSONDecodeError, OSError, UnicodeDecodeError) as e:
+            self.notify(f"Cannot read config: {e}")
             return
         if not isinstance(data, dict):
             self.notify("Invalid config: expected a JSON object")

@@ -84,6 +84,7 @@ if _HAS_TEXTUAL:
         "edit_instructions": "_action_edit_instructions",
         "toggle_inherit": "_action_toggle_instructions_inherit",
         "show_resolved": "_action_show_resolved_instructions",
+        "import_opencode_config": "_action_import_opencode_config",
     }
 
     TASK_ACTION_HANDLERS: dict[str, str] = {
@@ -758,9 +759,6 @@ if _HAS_TEXTUAL:
             """Handle project actions."""
             if action.startswith("auth_"):
                 await self._action_auth(action[5:])
-                return
-            if action == "import_opencode_config":
-                await self._action_import_opencode_config()
                 return
             handler = PROJECT_ACTION_HANDLERS.get(action)
             if handler:

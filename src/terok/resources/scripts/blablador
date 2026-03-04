@@ -135,6 +135,16 @@ def _get_configured_models(config: dict | None) -> set[str]:
         return set()
 
 
+def _get_configured_options(config: dict | None) -> dict:
+    """Extract provider options (baseURL, apiKey) from existing config."""
+    if not config:
+        return {}
+    try:
+        return config.get("provider", {}).get("blablador", {}).get("options", {})
+    except (AttributeError, TypeError):
+        return {}
+
+
 def _write_opencode_config(config: dict) -> Path:
     """Write config to OpenCode's standard location."""
     config_path = _opencode_config_path()
@@ -199,10 +209,16 @@ def main() -> int:
         )
         model = FALLBACK_MODEL
 
-    # Update config if we have new models or no config exists
+    # Update config if models, credentials, or base URL changed
     if fetched_models:
         fetched_set = set(fetched_models)
-        if fetched_set != configured_models:
+        stored_options = _get_configured_options(existing_config)
+        needs_update = (
+            fetched_set != configured_models
+            or stored_options.get("baseURL") != base_url
+            or stored_options.get("apiKey") != api_key
+        )
+        if needs_update:
             new_models = fetched_set - configured_models
             if new_models:
                 print(f"New models available: {', '.join(sorted(new_models))}")

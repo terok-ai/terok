@@ -393,7 +393,7 @@ class BlabladorConfigSeparationTests(unittest.TestCase):
         config_path = blablador._opencode_config_path()
         home = Path.home()
         self.assertTrue(
-            str(config_path).startswith(str(home / ".blablador")),
+            config_path.resolve().is_relative_to((home / ".blablador").resolve()),
             f"Expected path under ~/.blablador/, got {config_path}",
         )
         self.assertEqual(config_path.name, "opencode.json")

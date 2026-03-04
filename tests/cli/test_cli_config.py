@@ -169,7 +169,7 @@ class CliConfigImportOpenCodeTests(unittest.TestCase):
                     ["terok", "config", "import-opencode", str(src)],
                     envs_root,
                 )
-            self.assertIn("Invalid JSON", str(ctx.exception))
+            self.assertIn("Cannot read config", str(ctx.exception))
 
     def test_import_missing_file_exits(self) -> None:
         """Missing file raises SystemExit."""

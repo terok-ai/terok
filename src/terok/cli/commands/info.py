@@ -110,8 +110,8 @@ def _cmd_import_opencode(file_path: str) -> None:
 
     try:
         data = json.loads(src.read_text(encoding="utf-8"))
-    except json.JSONDecodeError as e:
-        raise SystemExit(f"Invalid JSON: {e}")
+    except (json.JSONDecodeError, OSError, UnicodeDecodeError) as e:
+        raise SystemExit(f"Cannot read config: {e}")
     if not isinstance(data, dict):
         raise SystemExit("Invalid OpenCode config: expected a JSON object")
 
