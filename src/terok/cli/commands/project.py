@@ -46,9 +46,7 @@ def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) ->
         p_delete.add_argument("project_id", help="Project ID to delete"),
         _complete_project_ids,
     )
-    p_delete.add_argument(
-        "--force", action="store_true", help="Skip confirmation prompt"
-    )
+    p_delete.add_argument("--force", action="store_true", help="Skip confirmation prompt")
 
     # presets
     p_presets = subparsers.add_parser("presets", help="Manage agent config presets")
