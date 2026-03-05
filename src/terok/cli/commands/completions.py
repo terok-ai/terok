@@ -19,6 +19,17 @@ _BASH_COMPLETION_DIRS = (
     Path("/etc") / "bash_completion.d",
 )
 
+_SHELL_RC_FILES = (
+    Path.home() / ".bashrc",
+    Path.home() / ".zshrc",
+    Path.home() / ".config" / "fish" / "config.fish",
+)
+
+_RC_MARKERS = (
+    "terokctl completions",
+    "register-python-argcomplete terokctl",
+)
+
 
 def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
     """Register the ``completions`` subcommand."""
@@ -43,5 +54,14 @@ def dispatch(args: argparse.Namespace) -> bool:
 
 
 def is_completion_installed() -> bool:
-    """Check whether a bash completion file for terokctl exists in standard locations."""
-    return any((d / "terokctl").is_file() for d in _BASH_COMPLETION_DIRS)
+    """Check whether terokctl completions are set up (file or rc-file marker)."""
+    if any((d / "terokctl").is_file() for d in _BASH_COMPLETION_DIRS):
+        return True
+    for rc in _SHELL_RC_FILES:
+        try:
+            content = rc.read_text(encoding="utf-8")
+        except OSError:
+            continue
+        if any(m in content for m in _RC_MARKERS):
+            return True
+    return False
