@@ -16,11 +16,7 @@ You are running inside an isolated Podman container managed by terok.
 
 ## Pre-installed tools
 
-- **git** — version control
-- **gh** — GitHub CLI (issues, PRs, API)
-- **glab** — GitLab CLI
-- **curl** — HTTP client
-- **rg** (ripgrep) — fast recursive text search
+git, gh (GitHub CLI), glab (GitLab CLI), rg (ripgrep), fd-find, jq, yq, ast-grep (`sg` — structural code search/rewrite using AST patterns; `sg run -p 'PATTERN' -l LANG` to search).
 
 Python 3 and Node.js are available. Use `sudo apt install` or `pip`/`npm` for anything else.
 

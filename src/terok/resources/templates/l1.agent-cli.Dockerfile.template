@@ -19,6 +19,21 @@ RUN set -eux; \
     apt-get install -y --no-install-recommends nodejs; \
     rm -rf /var/lib/apt/lists/*
 
+# Code exploration tools (fd-find, jq, wget are apt; yq and ast-grep need separate install)
+RUN apt-get update && apt-get install -y --no-install-recommends \
+      fd-find jq wget \
+    && rm -rf /var/lib/apt/lists/*
+
+# yq (YAML processor, like jq but for YAML)
+RUN set -eux; \
+    ARCH=$(dpkg --print-architecture); \
+    curl -fsSL -o /usr/local/bin/yq \
+      "https://github.com/mikefarah/yq/releases/latest/download/yq_linux_${ARCH}"; \
+    chmod +x /usr/local/bin/yq
+
+# ast-grep (structural code search/rewrite using AST patterns)
+RUN npm install -g @ast-grep/cli
+
 # Install mistral-vibe and mistralai SDK using pipx as root, ensuring PATH is set up
 RUN set -eux; \
     pipx install mistral-vibe; \
