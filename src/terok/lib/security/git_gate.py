@@ -285,6 +285,8 @@ def get_upstream_head(project_id: str, branch: str = None) -> dict | None:
             return None
 
         branch = branch or project.default_branch
+        if not branch:
+            return None
         env = _git_env_with_ssh(project)
 
         # git ls-remote only queries refs, doesn't download objects
@@ -330,6 +332,8 @@ def get_gate_branch_head(project_id: str, branch: str = None) -> str | None:
             return None
 
         branch = branch or project.default_branch
+        if not branch:
+            return None
         env = _git_env_with_ssh(project)
 
         # Query the ref in the bare mirror
@@ -357,6 +361,18 @@ def compare_gate_vs_upstream(project_id: str, branch: str = None) -> GateStalene
     project = load_project(project_id)
     branch = branch or project.default_branch
     now = datetime.now().isoformat()
+
+    if not branch:
+        return GateStalenessInfo(
+            branch=None,
+            gate_head=None,
+            upstream_head=None,
+            is_stale=False,
+            commits_behind=None,
+            commits_ahead=None,
+            checked_at=now,
+            error="No branch configured",
+        )
 
     # Get gate HEAD
     gate_head = get_gate_branch_head(project_id, branch)
