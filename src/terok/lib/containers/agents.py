@@ -386,12 +386,19 @@ class AgentConfigSpec:
 
     project: Project
     task_id: str
-    subagents: list[dict]
-    selected_agents: list[str] | None = None
+    subagents: tuple[dict, ...]
+    selected_agents: tuple[str, ...] | None = None
     prompt: str | None = None
     skip_permissions: bool = True
     provider: str = "claude"
     instructions: str | None = None
+
+    def __post_init__(self) -> None:
+        """Coerce mutable sequences to tuples for true immutability."""
+        if isinstance(self.subagents, list):
+            object.__setattr__(self, "subagents", tuple(self.subagents))
+        if isinstance(self.selected_agents, list):
+            object.__setattr__(self, "selected_agents", tuple(self.selected_agents))
 
 
 def prepare_agent_config_dir(spec: AgentConfigSpec) -> Path:

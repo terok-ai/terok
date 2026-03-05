@@ -24,12 +24,12 @@ if TYPE_CHECKING:
     from terok.lib.core.projects import Project
 
 from terok.lib.containers.agents import (
-    WrapperConfig,
     _generate_claude_wrapper,
     _subagents_to_json,
     _write_session_hook,
     parse_md_agent,
 )
+from terok.lib.containers.headless_providers import WrapperConfig
 from terok.lib.containers.task_runners import (
     HeadlessRunRequest,
     task_followup_headless,

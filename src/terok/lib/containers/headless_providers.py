@@ -379,7 +379,11 @@ def apply_provider_config(
 
     # --- Timeout ---
     cfg_timeout = resolve_provider_value("timeout", config, provider.name)
-    timeout = overrides.timeout or (int(cfg_timeout) if cfg_timeout is not None else 1800)
+    timeout = (
+        overrides.timeout
+        if overrides.timeout is not None
+        else (int(cfg_timeout) if cfg_timeout is not None else 1800)
+    )
 
     # --- Subagents (warning only — filtering is handled elsewhere) ---
     subagents = config.get("subagents")
