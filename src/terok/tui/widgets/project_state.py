@@ -10,6 +10,7 @@ from rich.style import Style
 from rich.text import Text
 from textual.widgets import Static
 
+from ...lib.containers.task_display import GPU_DISPLAY, SECURITY_CLASS_DISPLAY, has_gpu
 from ...lib.core.projects import Project
 from ...lib.facade import GateStalenessInfo
 from ...lib.util.emoji import draw_emoji
@@ -25,13 +26,16 @@ def render_project_loading(
         return Text("No project selected.")
 
     upstream = project.upstream_url or "-"
-    security_emoji = draw_emoji("🚪" if project.security_class == "gatekeeping" else "🌐")
+    sec = SECURITY_CLASS_DISPLAY.get(project.security_class, SECURITY_CLASS_DISPLAY["online"])
+    security_emoji = draw_emoji(sec.emoji, label=sec.label)
+    gpu = GPU_DISPLAY[has_gpu(project)]
+    gpu_emoji = draw_emoji(gpu.emoji, label=gpu.label)
     tasks_line = (
         Text("Tasks:     loading") if task_count is None else Text(f"Tasks:     {task_count}")
     )
 
     lines = [
-        Text(f"Project:   {project.id} {security_emoji}"),
+        Text(f"Project:   {project.id} {security_emoji}{gpu_emoji}"),
         Text(upstream),
         Text(""),
         Text("Loading details..."),
@@ -92,7 +96,10 @@ def render_project_details(
         Text("Tasks:     unknown") if task_count is None else Text(f"Tasks:     {task_count}")
     )
     upstream = project.upstream_url or "-"
-    security_emoji = draw_emoji("🚪" if project.security_class == "gatekeeping" else "🌐")
+    sec = SECURITY_CLASS_DISPLAY.get(project.security_class, SECURITY_CLASS_DISPLAY["online"])
+    security_emoji = draw_emoji(sec.emoji, label=sec.label)
+    gpu = GPU_DISPLAY[has_gpu(project)]
+    gpu_emoji = draw_emoji(gpu.emoji, label=gpu.label)
 
     dim_style = Style(dim=True)
     # Three-state badge based on YAML config + file existence
@@ -120,7 +127,7 @@ def render_project_details(
         instr_s = Text("default", style=dim_style)
 
     lines = [
-        Text(f"Project:   {project.id} {security_emoji}"),
+        Text(f"Project:   {project.id} {security_emoji}{gpu_emoji}"),
         Text(upstream),
         Text(""),
         Text.assemble("Dockerfiles: ", docker_s),

@@ -15,7 +15,7 @@ lifecycle and metadata I/O.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from .tasks import TaskMeta
@@ -63,6 +63,49 @@ WEB_BACKEND_EMOJI: dict[str, str] = {
 }
 
 WEB_BACKEND_DEFAULT_EMOJI = "🌍"
+
+
+@dataclass(frozen=True)
+class ProjectBadge:
+    """Display attributes for a project-level badge (security class, GPU, etc.)."""
+
+    emoji: str
+    label: str
+
+
+SECURITY_CLASS_DISPLAY: dict[str, ProjectBadge] = {
+    "gatekeeping": ProjectBadge(emoji="🚪", label="gate"),
+    "online": ProjectBadge(emoji="🌐", label="online"),
+}
+
+GPU_DISPLAY: dict[bool, ProjectBadge] = {
+    True: ProjectBadge(emoji="🎮", label="GPU"),
+    False: ProjectBadge(emoji="💿", label="CPU"),
+}
+
+
+def has_gpu(project: Any) -> bool:
+    """Check whether a project has GPU enabled in its ``project.yml``.
+
+    Accepts any object with a ``root`` attribute pointing to the project
+    directory (typically a ``Project`` instance).  Returns ``False`` on
+    any error.
+    """
+    try:
+        import yaml
+
+        root = getattr(project, "root", None)
+        if root is None:
+            return False
+        cfg = yaml.safe_load((root / "project.yml").read_text()) or {}
+        gpus = (cfg.get("run") or {}).get("gpus")
+        if isinstance(gpus, str):
+            return gpus.lower() == "all"
+        if isinstance(gpus, bool):
+            return gpus
+    except Exception:
+        pass
+    return False
 
 
 def effective_status(task: TaskMeta) -> str:

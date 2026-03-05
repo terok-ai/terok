@@ -41,8 +41,8 @@ def render_task_details(
     accent_style = Style(color=variables.get("primary", "cyan"))
     warning_style = Style(color=variables.get("warning", "yellow"))
 
-    m_emoji = draw_emoji(mode_emoji(task))
     m_info = MODE_DISPLAY.get(task.mode, MODE_DISPLAY[None])
+    m_emoji = draw_emoji(mode_emoji(task), label=m_info.label)
     mode_display = m_info.label or "Not assigned (choose CLI or Web mode)"
 
     s_info = STATUS_DISPLAY.get(task.status, STATUS_DISPLAY["created"])
@@ -52,7 +52,7 @@ def render_task_details(
     ]
     lines.append(Text(f"Name:      {task.name}"))
     lines += [
-        Text(f"Status:    {draw_emoji(s_info.emoji)} {s_info.label}"),
+        Text(f"Status:    {draw_emoji(s_info.emoji, label=s_info.label)} {s_info.label}"),
         Text(f"Type:      {m_emoji} {mode_display}"),
         Text(f"Workspace: {task.workspace}"),
     ]
