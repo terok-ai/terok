@@ -515,23 +515,20 @@ def capture_task_logs(project_id: str, task_id: str, mode: str) -> Path | None:
 
     cname = container_name(project.id, mode, task_id)
     try:
-        result = subprocess.run(
-            ["podman", "logs", "--timestamps", cname],
-            capture_output=True,
-            timeout=60,
-        )
+        with log_file.open("wb") as f:
+            result = subprocess.run(
+                ["podman", "logs", "--timestamps", cname],
+                stdout=f,
+                stderr=subprocess.PIPE,
+                timeout=60,
+            )
     except (FileNotFoundError, subprocess.TimeoutExpired):
+        log_file.unlink(missing_ok=True)
         return None
 
     if result.returncode != 0:
+        log_file.unlink(missing_ok=True)
         return None
-
-    # Write combined stdout + stderr with stream markers
-    with log_file.open("wb") as f:
-        if result.stdout:
-            f.write(result.stdout)
-        if result.stderr:
-            f.write(result.stderr)
 
     return log_file
 
@@ -551,7 +548,7 @@ def _archive_task(project: Project, task_id: str, meta: dict) -> Path | None:
     """
     try:
         task_name = meta.get("name", "")
-        ts = datetime.now(tz=UTC).strftime("%Y%m%dT%H%M%SZ")
+        ts = datetime.now(tz=UTC).strftime("%Y%m%dT%H%M%S%fZ")
         # Build archive dir name: timestamp_taskid_name (name may be empty)
         dir_name = f"{ts}_{task_id}"
         if task_name:
@@ -560,7 +557,16 @@ def _archive_task(project: Project, task_id: str, meta: dict) -> Path | None:
         archive_root = tasks_archive_dir(project.id)
         ensure_dir(archive_root)
         archive_dir = archive_root / dir_name
-        archive_dir.mkdir(parents=True, exist_ok=True)
+        # Use a suffix loop to handle the unlikely case of a collision
+        suffix = 0
+        while True:
+            candidate = archive_dir if suffix == 0 else archive_root / f"{dir_name}_{suffix}"
+            try:
+                candidate.mkdir(parents=True, exist_ok=False)
+                archive_dir = candidate
+                break
+            except FileExistsError:
+                suffix += 1
 
         # Save metadata snapshot
         (archive_dir / "task.yml").write_text(yaml.safe_dump(meta))

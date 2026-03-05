@@ -74,6 +74,10 @@ def task_logs(
             f"Start it first via 'terokctl task run-cli {project_id} {task_id}'."
         )
 
+    # Validate --tail early so both live and persisted paths behave consistently
+    if options.tail is not None and options.tail < 0:
+        raise SystemExit("--tail must be >= 0")
+
     cname = container_name(project.id, mode, task_id)
 
     # Verify container exists (running or exited)
@@ -101,8 +105,6 @@ def task_logs(
     if options.follow:
         cmd.append("-f")
     if options.tail is not None:
-        if options.tail < 0:
-            raise SystemExit("--tail must be >= 0")
         cmd.extend(["--tail", str(options.tail)])
     cmd.append(cname)
 
@@ -207,13 +209,19 @@ def _show_persisted_logs(
 
     Applies the same formatter pipeline as live container logs so output
     is consistent whether reading from podman or from the host filesystem.
+    Streams the file line-by-line to avoid loading the entire log into memory.
     """
+    from collections import deque
+
     formatter = auto_detect_formatter(mode, streaming=streaming, provider=provider)
 
-    lines = log_file.read_text(encoding="utf-8", errors="replace").splitlines()
-    if tail is not None:
-        lines = lines[-tail:]
-
-    for line in lines:
-        formatter.feed_line(line)
+    with log_file.open("r", encoding="utf-8", errors="replace") as f:
+        if tail is not None and tail > 0:
+            for line in deque((ln.rstrip("\n") for ln in f), maxlen=tail):
+                formatter.feed_line(line)
+        elif tail == 0:
+            pass  # tail=0 means show nothing
+        else:
+            for line in f:
+                formatter.feed_line(line.rstrip("\n"))
     formatter.finish()

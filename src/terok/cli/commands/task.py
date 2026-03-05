@@ -409,7 +409,9 @@ def _dispatch_archive_sub(args: argparse.Namespace) -> bool:
                 f"No archived logs found for prefix {args.archive_id!r}. "
                 f"Use 'terokctl task archive list {args.project_id}' to see available archives."
             )
-        print(log_file.read_text(encoding="utf-8", errors="replace"), end="")
+        with log_file.open("r", encoding="utf-8", errors="replace") as f:
+            for line in f:
+                print(line, end="")
     else:
         return False
     return True

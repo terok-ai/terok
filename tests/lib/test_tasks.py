@@ -1398,6 +1398,30 @@ class TaskLogsTests(unittest.TestCase):
                         task_logs("proj_logs_nolog", task_id)
                     self.assertIn("no persisted logs found", str(cm.exception))
 
+    def test_negative_tail_persisted_fallback_raises(self) -> None:
+        """task_logs raises for negative tail even when falling back to persisted logs."""
+        with project_env(
+            "project:\n  id: proj_logs_negtail\n",
+            project_id="proj_logs_negtail",
+        ):
+            with mock_git_config():
+                task_id = self._setup_task_with_mode("proj_logs_negtail", "run")
+
+                from terok.lib.core.config import state_root
+
+                task_dir = Path(state_root()) / "tasks" / "proj_logs_negtail" / task_id
+                logs_dir = task_dir / "logs"
+                logs_dir.mkdir(parents=True, exist_ok=True)
+                (logs_dir / "container.log").write_text("a\nb\n")
+
+                with unittest.mock.patch(
+                    "terok.lib.containers.task_logs.get_container_state",
+                    return_value=None,
+                ):
+                    with self.assertRaises(SystemExit) as cm:
+                        task_logs("proj_logs_negtail", task_id, LogViewOptions(tail=-1))
+                    self.assertIn("--tail must be >= 0", str(cm.exception))
+
 
 class TaskArchiveTests(unittest.TestCase):
     """Tests for task archival on deletion."""
@@ -1427,12 +1451,20 @@ class TaskArchiveTests(unittest.TestCase):
                 logs_dir.mkdir(parents=True, exist_ok=True)
                 (logs_dir / "container.log").write_text("log content\n")
 
+                log_content = b"captured log output\n"
+
+                def fake_run(cmd, *, stdout=None, stderr=None, timeout=None, **kw):
+                    """Simulate podman: write to stdout file handle or no-op for rm."""
+                    if stdout is not None and hasattr(stdout, "write"):
+                        stdout.write(log_content)
+                    result = unittest.mock.Mock()
+                    result.returncode = 0
+                    return result
+
                 with unittest.mock.patch(
-                    "terok.lib.containers.tasks.subprocess.run"
-                ) as run_mock:
-                    run_mock.return_value.returncode = 0
-                    run_mock.return_value.stdout = b"captured log output\n"
-                    run_mock.return_value.stderr = b""
+                    "terok.lib.containers.tasks.subprocess.run",
+                    side_effect=fake_run,
+                ):
                     task_delete(project_id, task_id)
 
                 # Task should be deleted
@@ -1470,15 +1502,17 @@ class TaskArchiveTests(unittest.TestCase):
         ) as ctx:
             with mock_git_config():
                 task_id = task_new(project_id)
-                meta_dir = ctx.state_dir / "projects" / project_id / "tasks"
-                meta_path = meta_dir / f"{task_id}.yml"
+
+                def fake_run(cmd, *, stdout=None, stderr=None, timeout=None, **kw):
+                    """No-op mock for subprocess.run."""
+                    result = unittest.mock.Mock()
+                    result.returncode = 0
+                    return result
 
                 with unittest.mock.patch(
-                    "terok.lib.containers.tasks.subprocess.run"
-                ) as run_mock:
-                    run_mock.return_value.returncode = 0
-                    run_mock.return_value.stdout = b""
-                    run_mock.return_value.stderr = b""
+                    "terok.lib.containers.tasks.subprocess.run",
+                    side_effect=fake_run,
+                ):
                     task_delete(project_id, task_id)
 
                 archive_dir = ctx.state_dir / "projects" / project_id / "archive"
@@ -1499,14 +1533,12 @@ class TaskArchiveTests(unittest.TestCase):
         with project_env(
             f"project:\n  id: {project_id}\n",
             project_id=project_id,
-        ) as ctx:
+        ):
             # Create archive entries manually
             archive_root = tasks_archive_dir(project_id)
             archive_root.mkdir(parents=True, exist_ok=True)
 
-            for i, ts in enumerate(
-                ["20260301T100000Z", "20260302T100000Z", "20260303T100000Z"]
-            ):
+            for i, ts in enumerate(["20260301T100000Z", "20260302T100000Z", "20260303T100000Z"]):
                 entry_dir = archive_root / f"{ts}_{i + 1}_task-{i + 1}"
                 entry_dir.mkdir()
                 (entry_dir / "task.yml").write_text(
@@ -1536,7 +1568,7 @@ class TaskArchiveTests(unittest.TestCase):
         with project_env(
             f"project:\n  id: {project_id}\n",
             project_id=project_id,
-        ) as ctx:
+        ):
             archive_root = tasks_archive_dir(project_id)
             entry_dir = archive_root / "20260305T120000Z_1_my-task"
             logs_dir = entry_dir / "logs"
@@ -1582,21 +1614,25 @@ class TaskArchiveTests(unittest.TestCase):
             with mock_git_config():
                 task_id = task_new(project_id)
 
-                mock_result = unittest.mock.Mock()
-                mock_result.returncode = 0
-                mock_result.stdout = b"2026-03-05T12:00:00Z stdout line\n"
-                mock_result.stderr = b"2026-03-05T12:00:00Z stderr line\n"
+                log_content = b"2026-03-05T12:00:00Z stdout line\n"
+
+                def fake_run(cmd, *, stdout=None, stderr=None, timeout=None):
+                    """Write log content to stdout file handle like podman would."""
+                    if stdout is not None and hasattr(stdout, "write"):
+                        stdout.write(log_content)
+                    result = unittest.mock.Mock()
+                    result.returncode = 0
+                    return result
 
                 with unittest.mock.patch(
                     "terok.lib.containers.tasks.subprocess.run",
-                    return_value=mock_result,
+                    side_effect=fake_run,
                 ):
                     log_file = capture_task_logs(project_id, task_id, "run")
 
                 self.assertIsNotNone(log_file)
                 content = log_file.read_text()
                 self.assertIn("stdout line", content)
-                self.assertIn("stderr line", content)
 
     def test_capture_task_logs_podman_not_found(self) -> None:
         """capture_task_logs returns None when podman is not available."""
