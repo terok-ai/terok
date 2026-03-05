@@ -40,21 +40,42 @@ class CleanupResult:
 
 
 def _run_podman(*args: str) -> subprocess.CompletedProcess[str]:
-    """Run a podman command and return the result."""
-    return subprocess.run(
-        ["podman", *args],
-        capture_output=True,
-        text=True,
-        timeout=30,
-    )
+    """Run a podman command and return the result.
+
+    Returns a synthetic failed result if podman is not found or times out,
+    so callers can check ``returncode`` without exception handling.
+    """
+    try:
+        return subprocess.run(
+            ["podman", *args],
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+    except FileNotFoundError:
+        return subprocess.CompletedProcess(
+            args=["podman", *args], returncode=127, stdout="", stderr="podman not found"
+        )
+    except subprocess.TimeoutExpired as exc:
+        return subprocess.CompletedProcess(
+            args=["podman", *args],
+            returncode=124,
+            stdout=exc.stdout or "",
+            stderr=exc.stderr or "podman command timed out",
+        )
 
 
-def _known_project_ids() -> set[str]:
-    """Return the set of currently configured project IDs."""
+def _known_project_ids() -> set[str] | None:
+    """Return the set of currently configured project IDs, or None on failure.
+
+    Returning None (rather than an empty set) lets callers distinguish
+    "no projects configured" from "project discovery failed", preventing
+    accidental deletion of valid L2 images.
+    """
     try:
         return {p.id for p in list_projects()}
     except Exception:
-        return set()
+        return None
 
 
 def _terok_image_prefixes() -> tuple[str, ...]:
@@ -128,13 +149,15 @@ def find_orphaned_images() -> list[ImageInfo]:
     # Dangling images that descended from terok base layers
     dangling = _find_dangling_terok_images()
 
-    # L2 images for projects that no longer exist
-    all_images = list_images()
-    orphaned_l2 = [
-        img
-        for img in all_images
-        if _is_terok_l2_image(img.repository, img.tag) and img.repository not in known_ids
-    ]
+    # L2 images for projects that no longer exist (skip if discovery failed)
+    orphaned_l2: list[ImageInfo] = []
+    if known_ids is not None:
+        all_images = list_images()
+        orphaned_l2 = [
+            img
+            for img in all_images
+            if _is_terok_l2_image(img.repository, img.tag) and img.repository not in known_ids
+        ]
 
     # Combine, dedup by image ID
     seen_ids: set[str] = set()
@@ -224,7 +247,7 @@ def cleanup_images(dry_run: bool = False) -> CleanupResult:
         dry_run: If True, only report what would be removed without removing.
 
     Returns:
-        CleanupResult with lists of removed and failed image IDs.
+        CleanupResult with lists of removed and failed image display names.
     """
     orphaned = find_orphaned_images()
     removed: list[str] = []

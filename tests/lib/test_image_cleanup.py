@@ -118,6 +118,27 @@ class TestFindOrphanedImages(unittest.TestCase):
         orphaned = find_orphaned_images()
         self.assertEqual(len(orphaned), 1)
 
+    @unittest.mock.patch("terok.lib.containers.image_cleanup._find_dangling_terok_images")
+    @unittest.mock.patch("terok.lib.containers.image_cleanup.list_images")
+    @unittest.mock.patch("terok.lib.containers.image_cleanup._known_project_ids")
+    def test_skips_l2_orphan_detection_on_discovery_failure(
+        self,
+        mock_known: unittest.mock.Mock,
+        mock_list: unittest.mock.Mock,
+        mock_dangling: unittest.mock.Mock,
+    ) -> None:
+        """When project discovery fails, L2 images must NOT be treated as orphaned."""
+        mock_known.return_value = None  # discovery failed
+        mock_dangling.return_value = []
+        mock_list.return_value = [
+            ImageInfo("proj-a", "l2-cli", "sha256:aaa", "1GB", "1 day ago"),
+        ]
+        orphaned = find_orphaned_images()
+        # Should not consider proj-a orphaned since we couldn't verify projects
+        self.assertEqual(len(orphaned), 0)
+        # list_images should not even be called when discovery fails
+        mock_list.assert_not_called()
+
 
 class TestCleanupImages(unittest.TestCase):
     """Tests for cleanup_images()."""
