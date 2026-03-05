@@ -463,7 +463,8 @@ class TaskActionsMixin:
 
         mode = self.current_task.mode or "cli"
         cname = container_name(pid, mode, tid)
-        await self._launch_terminal_session(cmd, title=f"login:{cname}", cname=cname)
+        task_name = self.current_task.name or tid
+        await self._launch_terminal_session(cmd, title=f"{pid}:{tid}:{task_name}", cname=cname)
 
     # ---------- Task management actions ----------
 
