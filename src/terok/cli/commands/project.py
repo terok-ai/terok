@@ -100,16 +100,17 @@ def dispatch(args: argparse.Namespace) -> bool:
 def _cmd_project_delete(project_id: str, *, force: bool = False) -> None:
     """Delete a project after confirmation (unless --force)."""
     project = load_project(project_id)
+    pid = project.id
 
-    print(f"Project: {project_id}")
+    print(f"Project: {pid}")
     print(f"  Config root: {project.root}")
     print(f"  Security class: {project.security_class}")
     if project.upstream_url:
         print(f"  Upstream: {project.upstream_url}")
 
-    sharing = find_projects_sharing_gate(project.gate_path, exclude_project=project_id)
+    sharing = find_projects_sharing_gate(project.gate_path, exclude_project=pid)
     if sharing:
-        names = ", ".join(pid for pid, _ in sharing)
+        names = ", ".join(p for p, _ in sharing)
         print(f"\n  Note: gate is shared with: {names} (will NOT be deleted)")
 
     print("\nWARNING: This will permanently delete the project configuration,")
@@ -118,17 +119,17 @@ def _cmd_project_delete(project_id: str, *, force: bool = False) -> None:
 
     if not force:
         try:
-            answer = input(f"\nType '{project_id}' to confirm deletion: ").strip()
+            answer = input(f"\nType '{pid}' to confirm deletion: ").strip()
         except EOFError:
             print("Deletion cancelled (no interactive stdin). Use --force to skip confirmation.")
             return
-        if answer != project_id:
+        if answer != pid:
             print("Deletion cancelled.")
             return
 
-    result = delete_project(project_id)
+    result = delete_project(pid)
 
-    print(f"\nProject '{project_id}' deleted.")
+    print(f"\nProject '{pid}' deleted.")
     if result["deleted"]:
         print("Removed:")
         for path in result["deleted"]:
