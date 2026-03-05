@@ -106,6 +106,10 @@ terokctl task list <project>   # List tasks
 terokctl task delete <project> <task_id>  # Delete a task
 ```
 
+## Tips
+
+- **Clipboard:** If mouse selection doesn't copy to your clipboard, hold **Shift** while selecting, then **Shift+Ctrl+C** to copy. See [Tips](docs/USAGE.md#tips) for details.
+
 ## Configuration
 
 ### Global Config
