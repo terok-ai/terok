@@ -24,7 +24,7 @@ class ImageInfo:
 
     @property
     def full_name(self) -> str:
-        """Return ``repository:tag`` or ``<none>:<none>`` for dangling images."""
+        """Return ``repository:tag`` or ``<none> (<short-id>)`` for dangling images."""
         if self.repository == "<none>" and self.tag == "<none>":
             return f"<none> ({self.image_id[:12]})"
         return f"{self.repository}:{self.tag}"
@@ -156,7 +156,9 @@ def find_orphaned_images() -> list[ImageInfo]:
         orphaned_l2 = [
             img
             for img in all_images
-            if _is_terok_l2_image(img.repository, img.tag) and img.repository not in known_ids
+            if _is_terok_l2_image(img.repository, img.tag)
+            and img.repository not in known_ids
+            and _is_terok_built_image(img.image_id)
         ]
 
     # Combine, dedup by image ID
@@ -192,7 +194,7 @@ def _find_dangling_terok_images() -> list[ImageInfo]:
         if len(parts) < 5:
             continue
         repo, tag, img_id, size, created = parts
-        if _is_dangling_from_terok(img_id):
+        if _is_terok_built_image(img_id):
             dangling.append(
                 ImageInfo(
                     repository=repo,
@@ -205,11 +207,11 @@ def _find_dangling_terok_images() -> list[ImageInfo]:
     return dangling
 
 
-def _is_dangling_from_terok(image_id: str) -> bool:
-    """Check if a dangling image originated from a terok build.
+def _is_terok_built_image(image_id: str) -> bool:
+    """Check if an image originated from a terok build.
 
-    Inspects the image history for terok layer names or the
-    ``terok.build_context_hash`` label.
+    Inspects the ``terok.build_context_hash`` label and image history
+    for terok layer names.
     """
     # Check for terok label
     result = _run_podman(

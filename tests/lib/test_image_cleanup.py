@@ -83,6 +83,7 @@ class TestListImages(unittest.TestCase):
 class TestFindOrphanedImages(unittest.TestCase):
     """Tests for find_orphaned_images()."""
 
+    @unittest.mock.patch("terok.lib.containers.image_cleanup._is_terok_built_image")
     @unittest.mock.patch("terok.lib.containers.image_cleanup._find_dangling_terok_images")
     @unittest.mock.patch("terok.lib.containers.image_cleanup.list_images")
     @unittest.mock.patch("terok.lib.containers.image_cleanup._known_project_ids")
@@ -91,9 +92,11 @@ class TestFindOrphanedImages(unittest.TestCase):
         mock_known: unittest.mock.Mock,
         mock_list: unittest.mock.Mock,
         mock_dangling: unittest.mock.Mock,
+        mock_built: unittest.mock.Mock,
     ) -> None:
         mock_known.return_value = {"proj-a"}
         mock_dangling.return_value = []
+        mock_built.return_value = True
         mock_list.return_value = [
             ImageInfo("proj-a", "l2-cli", "sha256:aaa", "1GB", "1 day ago"),
             ImageInfo("proj-deleted", "l2-cli", "sha256:bbb", "1GB", "5 days ago"),
@@ -102,6 +105,28 @@ class TestFindOrphanedImages(unittest.TestCase):
         self.assertEqual(len(orphaned), 1)
         self.assertEqual(orphaned[0].repository, "proj-deleted")
 
+    @unittest.mock.patch("terok.lib.containers.image_cleanup._is_terok_built_image")
+    @unittest.mock.patch("terok.lib.containers.image_cleanup._find_dangling_terok_images")
+    @unittest.mock.patch("terok.lib.containers.image_cleanup.list_images")
+    @unittest.mock.patch("terok.lib.containers.image_cleanup._known_project_ids")
+    def test_skips_non_terok_l2_images(
+        self,
+        mock_known: unittest.mock.Mock,
+        mock_list: unittest.mock.Mock,
+        mock_dangling: unittest.mock.Mock,
+        mock_built: unittest.mock.Mock,
+    ) -> None:
+        """L2-tagged images not built by terok should not be treated as orphaned."""
+        mock_known.return_value = set()
+        mock_dangling.return_value = []
+        mock_built.return_value = False  # not a terok-built image
+        mock_list.return_value = [
+            ImageInfo("foreign-img", "l2-cli", "sha256:fff", "1GB", "1 day ago"),
+        ]
+        orphaned = find_orphaned_images()
+        self.assertEqual(len(orphaned), 0)
+
+    @unittest.mock.patch("terok.lib.containers.image_cleanup._is_terok_built_image")
     @unittest.mock.patch("terok.lib.containers.image_cleanup._find_dangling_terok_images")
     @unittest.mock.patch("terok.lib.containers.image_cleanup.list_images")
     @unittest.mock.patch("terok.lib.containers.image_cleanup._known_project_ids")
@@ -110,8 +135,10 @@ class TestFindOrphanedImages(unittest.TestCase):
         mock_known: unittest.mock.Mock,
         mock_list: unittest.mock.Mock,
         mock_dangling: unittest.mock.Mock,
+        mock_built: unittest.mock.Mock,
     ) -> None:
         mock_known.return_value = set()
+        mock_built.return_value = True
         img = ImageInfo("proj-x", "l2-cli", "sha256:same", "1GB", "1 day ago")
         mock_dangling.return_value = [img]
         mock_list.return_value = [img]
