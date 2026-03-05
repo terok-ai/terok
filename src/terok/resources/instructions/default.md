@@ -19,8 +19,11 @@ You are running inside an isolated Podman container managed by terok.
 - **git** — version control
 - **gh** — GitHub CLI (issues, PRs, API)
 - **glab** — GitLab CLI
-- **curl** — HTTP client
+- **curl**, **wget** — HTTP clients
 - **rg** (ripgrep) — fast recursive text search
+- **fd** — fast file finder (alternative to `find`)
+- **jq** / **yq** — JSON and YAML processors
+- **ast-grep** (`sg`) — structural code search and rewrite using AST patterns. Supports most languages. Use `sg run --pattern 'PATTERN' --lang LANG` to search, `sg scan` with rules for batch rewrites.
 
 Python 3 and Node.js are available. Use `sudo apt install` or `pip`/`npm` for anything else.
 
