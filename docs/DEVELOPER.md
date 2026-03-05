@@ -18,9 +18,8 @@ The host follows logs and detaches when either of these markers appears, or afte
 
 ### UI Mode (task run-ui)
 
-Readiness is determined by log markers, not port probing. The host follows container logs and detaches when it sees specific startup markers from Codex UI:
-- Primary marker: `"Codex UI ("` (the main startup banner when HTTP server is ready)
-- Secondary marker: `"Logging Codex UI activity"` (log redirection message)
+Readiness is determined by log markers, not port probing. The host follows container logs and detaches when it sees the startup marker from Terok Web UI:
+- Marker: `"Terok Web UI started"` (emitted when the HTTP server is ready to accept connections)
 
 This approach avoids false positives from port binding before actual server readiness. The default entry script is `resources/scripts/terok-ui-entry.sh` which runs the pre-installed CodexUI distribution (downloaded into the L1 UI image at build time) and only fetches it at runtime if it is missing.
 
@@ -54,7 +53,7 @@ terok builds project containers in three logical layers:
 | Layer | Image Name | Purpose |
 |-------|------------|---------|
 | L0 | `terok-l0:<base-tag>` | Development base (Ubuntu 24.04, git, ssh, dev user) |
-| L1-CLI | `terok-l1-cli:<base-tag>` | Agent tools (Codex, Claude Code, Mistral Vibe) |
+| L1-CLI | `terok-l1-cli:<base-tag>` | Agent tools (Claude Code, Codex, GitHub Copilot, OpenCode, Mistral Vibe) |
 | L1-UI | `terok-l1-ui:<base-tag>` | UI dependencies and entry script |
 | L2 | `<project>:l2-cli`, `<project>:l2-ui` | Project-specific config and user snippets |
 
@@ -171,7 +170,7 @@ make tach      # Verify tach.toml boundary rules
 To run all checks (equivalent to CI):
 
 ```bash
-make check     # Runs lint + test + tach
+make check     # Runs lint + test + tach + docstrings + deadcode + reuse
 ```
 
 ### Available Make Targets
@@ -182,7 +181,10 @@ make check     # Runs lint + test + tach
 | `make format` | Auto-fix lint issues and format | When lint fails |
 | `make test` | Run tests with coverage | Before pushing |
 | `make tach` | Check module boundary rules | After changing imports |
-| `make check` | Run lint + test + tach | Before opening a PR |
+| `make docstrings` | Check docstring coverage (95% min) | After adding public APIs |
+| `make deadcode` | Detect unused code | Before opening a PR |
+| `make reuse` | Check REUSE/SPDX license compliance | Before opening a PR |
+| `make check` | Run all checks (lint + test + tach + docstrings + deadcode + reuse) | Before opening a PR |
 | `make docs` | Serve documentation locally | When editing docs |
 | `make install-dev` | Install all dependencies | Initial setup |
 | `make clean` | Remove build artifacts | When needed |

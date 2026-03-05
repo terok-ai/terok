@@ -67,7 +67,7 @@ terokctl ssh-init myproj
 terokctl task new myproj
 terokctl task run-cli myproj 1    # CLI mode
 # or
-terokctl task run-ui myproj 1     # Web UI mode
+terokctl task run-web myproj 1    # Web UI mode (requires --experimental)
 ```
 
 ### Headless Agent Runs (Autopilot)
@@ -100,10 +100,14 @@ per-project in `<project>/presets/`. See the
 ### Common Commands
 
 ```bash
-terokctl projects              # List projects
-terokctl config                # Show resolved paths
-terokctl task list <project>   # List tasks
-terokctl task delete <project> <task_id>  # Delete a task
+terokctl projects                          # List projects
+terokctl config                            # Show resolved paths
+terokctl task list <project>               # List tasks
+terokctl task delete <project> <task_id>   # Delete a task
+terokctl image list [project]              # List terok images
+terokctl image cleanup [--dry-run]         # Remove orphaned images
+terokctl project-delete <project>          # Delete a project
+terokctl completions bash                  # Generate shell completions
 ```
 
 ## Tips
@@ -154,7 +158,7 @@ make lint      # Run linter (required)
 make format    # Auto-fix issues if lint fails
 
 # Before pushing
-make test      # Run tests
+make check     # Run all checks (lint + test + tach + docstrings + deadcode + reuse)
 ```
 
 See [Developer Guide](docs/DEVELOPER.md) for full details.

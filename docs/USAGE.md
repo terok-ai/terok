@@ -10,6 +10,8 @@ A prefix-/XDG-aware tool to manage containerized AI agent projects using Podman.
 - [From Zero to First Run](#from-zero-to-first-run)
 - [Headless Agent Runs (Autopilot)](#headless-agent-runs-autopilot)
 - [Presets](#presets)
+- [Image Management](#image-management)
+- [Project Management](#project-management)
 - [GPU Passthrough](#gpu-passthrough)
 - [Tips](#tips)
 - [FAQ](#faq)
@@ -33,7 +35,15 @@ pip install -e .
 pip install '.[tui]'
 ```
 
-After install, you should have console scripts: `terok`, `terok`
+After install, you should have console scripts: `terok`, `terokctl`
+
+### Global Flags
+
+Both `terok` and `terokctl` support:
+
+| Flag | Description |
+|------|-------------|
+| `--no-emoji` | Replace emojis with text labels (e.g. `[gate]` instead of emoji) |
 
 ### Shell Completion
 
@@ -245,8 +255,38 @@ terokctl task list myproj
 # Run in CLI mode (headless agent)
 terokctl task run-cli myproj 1
 
-# Or run in UI mode (web interface)
-terokctl task run-ui myproj 1 --backend codex
+# Or run in web mode (web interface, requires --experimental)
+terokctl task run-web myproj 1 --backend codex
+```
+
+#### Additional Task Operations
+
+```bash
+# Create and immediately run a task in one step
+terokctl task start myproj
+
+# Rename a task
+terokctl task rename myproj 1 fix-auth-bug
+
+# Follow up on a completed/failed headless task with a new prompt
+terokctl task followup myproj 1 -p "Now add tests for the fix"
+
+# View formatted container logs
+terokctl task logs myproj 1              # Latest logs
+terokctl task logs myproj 1 -f           # Follow live output
+terokctl task logs myproj 1 --tail 50    # Last 50 lines
+terokctl task logs myproj 1 --raw        # Raw podman output
+
+# Stop or restart a task
+terokctl task stop myproj 1
+terokctl task restart myproj 1
+
+# Delete a task
+terokctl task delete myproj 1
+
+# View archived (deleted) tasks and their logs
+terokctl task archive list myproj
+terokctl task archive logs myproj 20260305T143000Z
 ```
 
 ### Step 8: Log into a Running Container
@@ -724,6 +764,58 @@ terokctl task start myproj --preset solo
 ```
 
 Each task remembers its preset — `terokctl task restart` reuses it automatically.
+
+---
+
+## Image Management
+
+Manage terok container images (L0/L1/L2 layers) with the `image` subcommand.
+
+```bash
+# List all terok images with sizes
+terokctl image list
+
+# List images for a specific project
+terokctl image list myproj
+
+# Remove orphaned and dangling terok images
+terokctl image cleanup
+
+# Preview what would be removed without actually deleting
+terokctl image cleanup --dry-run
+```
+
+---
+
+## Project Management
+
+### Deleting a Project
+
+Remove a project and all its associated data (tasks, containers, images):
+
+```bash
+# Delete with confirmation prompt
+terokctl project-delete myproj
+
+# Skip confirmation
+terokctl project-delete myproj --force
+```
+
+### Deriving a Project
+
+Create a new project from an existing one (shared infrastructure, fresh agent config):
+
+```bash
+terokctl project-derive myproj myproj-v2
+```
+
+### OpenCode Config Import
+
+Import an OpenCode config file into the shared mount:
+
+```bash
+terokctl config import-opencode /path/to/opencode.json
+```
 
 ---
 
