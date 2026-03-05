@@ -14,6 +14,11 @@ helpers for multi-step workflows like project initialization.
 
 from .containers.docker import build_images, generate_dockerfiles
 from .containers.environment import WEB_BACKENDS
+from .containers.image_cleanup import (  # noqa: F401 — re-exported public API
+    cleanup_images,
+    find_orphaned_images,
+    list_images,
+)
 from .containers.project_state import get_project_state, is_task_image_old
 from .containers.task_logs import LogViewOptions, task_logs  # noqa: F401 — re-exported public API
 from .containers.task_runners import (  # noqa: F401 — re-exported public API
@@ -67,6 +72,10 @@ __all__ = [
     # Docker / image management
     "generate_dockerfiles",
     "build_images",
+    # Image listing & cleanup
+    "list_images",
+    "find_orphaned_images",
+    "cleanup_images",
     # Environment
     "WEB_BACKENDS",
     # Task lifecycle

@@ -74,6 +74,7 @@ layer = "services"
 depends_on = [
     "terok.lib.containers.docker",
     "terok.lib.containers.environment",
+    "terok.lib.containers.image_cleanup",
     "terok.lib.containers.project_state",
     "terok.lib.containers.task_logs",
     "terok.lib.containers.task_runners",
@@ -206,6 +207,12 @@ depends_on = ["terok.lib.core.config"]
 path = "terok.lib.containers.docker"
 layer = "services"
 depends_on = ["terok.lib.core.config", "terok.lib.core.images", "terok.lib.core.projects", "terok.lib.util.fs"]
+
+# Image listing & cleanup
+[[modules]]
+path = "terok.lib.containers.image_cleanup"
+layer = "services"
+depends_on = ["terok.lib.core.projects"]
 
 # Project infrastructure state (queries podman & filesystem)
 [[modules]]
@@ -510,6 +517,10 @@ expose = [
 from = ["terok.lib.containers.docker"]
 
 [[interfaces]]
+expose = ["list_images", "find_orphaned_images", "cleanup_images", "ImageInfo", "CleanupResult"]
+from = ["terok.lib.containers.image_cleanup"]
+
+[[interfaces]]
 expose = ["init_project_ssh"]
 from = ["terok.lib.security.ssh"]
 
@@ -610,6 +621,9 @@ from = ["terok.lib.wizards.new_project"]
 expose = [
     "generate_dockerfiles",
     "build_images",
+    "list_images",
+    "find_orphaned_images",
+    "cleanup_images",
     "WEB_BACKENDS",
     "task_new",
     "task_delete",

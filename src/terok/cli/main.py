@@ -15,7 +15,7 @@ import argparse
 
 from ..lib.core.config import set_experimental
 from ..lib.core.version import format_version_string, get_version_info
-from .commands import completions, info, project, setup, task
+from .commands import completions, image, info, project, setup, task
 
 # Optional: bash completion via argcomplete
 try:
@@ -28,6 +28,7 @@ _DISPATCHERS = [
     task.dispatch,
     project.dispatch,
     setup.dispatch,
+    image.dispatch,
     info.dispatch,
     completions.dispatch,
 ]
@@ -83,6 +84,7 @@ def main() -> None:
     task.register(sub)
     project.register(sub)
     setup.register(sub)
+    image.register(sub)
     info.register(sub)
     completions.register(sub)
 
