@@ -116,9 +116,9 @@ def _cmd_project_delete(project_id: str, *, force: bool = False) -> None:
     from ...lib.core.config import deleted_projects_dir
 
     archive_dir = deleted_projects_dir()
-    print("\nWARNING: This will permanently delete the project configuration,")
-    print("all task workspaces, metadata, build artifacts, and SSH credentials.")
-    print(f"Project files will be archived at: {archive_dir}")
+    print("\nWARNING: All project data will be permanently deleted.")
+    print(f"Project config, task metadata, and build artifacts will be archived at: {archive_dir}")
+    print("SSH credentials and git gate contents are NOT included in the archive.")
 
     if not force:
         try:
