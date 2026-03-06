@@ -9,4 +9,4 @@ Description=terok git gate connection handler
 [Service]
 Type=simple
 StandardInput=socket
-ExecStart=terok-gate --inetd --base-path={{GATE_BASE_PATH}} --token-file={{TOKEN_FILE}}
+ExecStart={{TEROK_GATE_BIN}} --inetd --base-path={{GATE_BASE_PATH}} --token-file={{TOKEN_FILE}}

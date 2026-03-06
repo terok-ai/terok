@@ -32,8 +32,8 @@ from terok.lib.security.gate_server import (
 class TestUnitVersion(unittest.TestCase):
     """Tests for _UNIT_VERSION."""
 
-    def test_unit_version_is_2(self) -> None:
-        self.assertEqual(_UNIT_VERSION, 2)
+    def test_unit_version_is_3(self) -> None:
+        self.assertEqual(_UNIT_VERSION, 3)
 
 
 class TestSystemdDetection(unittest.TestCase):
@@ -102,7 +102,10 @@ class TestInstallUninstall(unittest.TestCase):
     """Tests for systemd unit install/uninstall."""
 
     @unittest.mock.patch("subprocess.run")
-    def test_install_writes_files(self, mock_run: unittest.mock.Mock) -> None:
+    @unittest.mock.patch("shutil.which", return_value="/usr/local/bin/terok-gate")
+    def test_install_writes_files(
+        self, _mock_which: unittest.mock.Mock, mock_run: unittest.mock.Mock
+    ) -> None:
         mock_run.return_value = unittest.mock.Mock(returncode=0)
         with tempfile.TemporaryDirectory() as td:
             unit_dir = Path(td) / "systemd" / "user"
@@ -128,14 +131,24 @@ class TestInstallUninstall(unittest.TestCase):
             # Verify socket file contains port
             socket_content = (unit_dir / "terok-gate.socket").read_text()
             self.assertIn("127.0.0.1:9418", socket_content)
-            # Verify service file contains base path and token file
+            # Verify service file contains absolute path in ExecStart and args
             service_content = (unit_dir / "terok-gate@.service").read_text()
+            self.assertIn("ExecStart=/usr/local/bin/terok-gate", service_content)
             self.assertIn("/tmp/gate", service_content)
             self.assertIn("--token-file=", service_content)
-            self.assertIn("terok-gate", service_content)
             # Verify version stamp is rendered in both files
-            self.assertIn("# terok-gate-version: 2", socket_content)
-            self.assertIn("# terok-gate-version: 2", service_content)
+            version_stamp = f"# terok-gate-version: {_UNIT_VERSION}"
+            self.assertIn(version_stamp, socket_content)
+            self.assertIn(version_stamp, service_content)
+
+    @unittest.mock.patch("subprocess.run")
+    @unittest.mock.patch("shutil.which", return_value=None)
+    def test_install_fails_without_binary(
+        self, _mock_which: unittest.mock.Mock, _mock_run: unittest.mock.Mock
+    ) -> None:
+        with self.assertRaises(SystemExit) as ctx:
+            install_systemd_units()
+        self.assertIn("terok-gate", str(ctx.exception))
 
     @unittest.mock.patch("subprocess.run")
     def test_uninstall_removes_files(self, mock_run: unittest.mock.Mock) -> None:
