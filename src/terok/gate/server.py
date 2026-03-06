@@ -201,12 +201,15 @@ def _make_handler_class(base_path: Path, token_store: TokenStore) -> type[BaseHT
 
             # Stream request body to CGI stdin
             if remaining > 0:
-                while remaining > 0:
-                    chunk = self.rfile.read(min(remaining, 8192))
-                    if not chunk:
-                        break
-                    proc.stdin.write(chunk)
-                    remaining -= len(chunk)
+                try:
+                    while remaining > 0:
+                        chunk = self.rfile.read(min(remaining, 8192))
+                        if not chunk:
+                            break
+                        proc.stdin.write(chunk)
+                        remaining -= len(chunk)
+                except BrokenPipeError:
+                    pass  # CGI process closed stdin early
             proc.stdin.close()
 
             # Parse CGI response headers

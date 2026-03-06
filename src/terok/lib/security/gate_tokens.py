@@ -21,6 +21,7 @@ import json
 import os
 import secrets
 import tempfile
+from collections.abc import Iterator
 from pathlib import Path
 
 from ..core.config import state_root
@@ -83,7 +84,7 @@ def _read_tokens(path: Path) -> dict[str, dict[str, str]]:
     }
 
 
-def _write_tokens(path: Path, tokens: dict) -> None:
+def _write_tokens(path: Path, tokens: dict[str, dict[str, str]]) -> None:
     """Atomic write: write to a temp file, then ``os.replace()`` over the original."""
     path.parent.mkdir(parents=True, exist_ok=True)
     fd, tmp = tempfile.mkstemp(dir=path.parent, suffix=".tmp")
@@ -99,7 +100,7 @@ def _write_tokens(path: Path, tokens: dict) -> None:
 
 
 @contextlib.contextmanager
-def _token_lock(path: Path):
+def _token_lock(path: Path) -> Iterator[None]:
     """Advisory file lock serializing token read-modify-write cycles."""
     lock_path = path.with_suffix(path.suffix + ".lock")
     lock_path.parent.mkdir(parents=True, exist_ok=True)
