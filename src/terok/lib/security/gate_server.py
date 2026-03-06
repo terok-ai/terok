@@ -47,7 +47,7 @@ from ..core.paths import runtime_root
 # ---------- Constants ----------
 
 _DEFAULT_PORT = 9418
-_UNIT_VERSION = 2
+_UNIT_VERSION = 3
 """Bump when the systemd unit templates change.  ``ensure_server_reachable``
 checks the installed version and refuses to start tasks if it is stale."""
 
@@ -136,10 +136,19 @@ def _installed_unit_version() -> int | None:
 
 def install_systemd_units() -> None:
     """Render and install systemd socket+service units, then enable+start the socket."""
+    import shutil
+
     import terok.gate
 
     from ..util.template_utils import render_template
     from .gate_tokens import token_file_path
+
+    gate_bin = shutil.which("terok-gate")
+    if not gate_bin:
+        raise SystemExit(
+            "Cannot find 'terok-gate' on PATH.\n"
+            "Ensure terok is installed (pip/pipx/poetry) and the binary is accessible."
+        )
 
     unit_dir = _systemd_unit_dir()
     unit_dir.mkdir(parents=True, exist_ok=True)
@@ -150,6 +159,7 @@ def install_systemd_units() -> None:
         "GATE_BASE_PATH": str(_get_gate_base_path()),
         "TOKEN_FILE": str(token_file_path()),
         "UNIT_VERSION": str(_UNIT_VERSION),
+        "TEROK_GATE_BIN": gate_bin,
     }
 
     for template_name in ("terok-gate.socket", "terok-gate@.service"):
