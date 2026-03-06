@@ -405,7 +405,13 @@ class LogViewerScreen(screen.Screen[None]):
         self.run_worker(self._stream_logs, thread=True, group="log-stream")
 
     def _stream_logs(self) -> None:
-        """Worker thread: stream podman logs through the formatter."""
+        """Worker thread: stream podman logs through the formatter.
+
+        Uses binary I/O with ``read1()`` and manual line splitting to avoid
+        the buffering mismatch between ``select()`` on the raw fd and
+        Python's ``TextIOWrapper``/``BufferedReader`` internal buffer, which
+        could cause lines to get stuck unread in the Python buffer.
+        """
         formatter: _TuiLogFormatter | _PlainTextTuiFormatter
         if self.mode == "run" and (self.provider or "claude") == "claude":
             formatter = _TuiLogFormatter(streaming=self.follow)
@@ -422,7 +428,6 @@ class LogViewerScreen(screen.Screen[None]):
                 cmd,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.STDOUT,
-                text=True,
             )
         except FileNotFoundError:
             self._post_text(Text("Error: podman not found", style=_STYLE_RESULT_ERR))
@@ -435,29 +440,52 @@ class LogViewerScreen(screen.Screen[None]):
             stdout = self._process.stdout
             if stdout is None:
                 return
-            fd = stdout.fileno()
 
+            buf = b""
             while not self._stop_event.is_set():
-                ready, _, _ = select.select([fd], [], [], 0.2)
-                if not ready:
-                    # Check if process has exited
-                    if self._process.poll() is not None:
-                        break
-                    continue
-                line = stdout.readline()
-                if not line:
+                if self._process.poll() is not None:
+                    # Process exited — drain remaining output
+                    remaining = stdout.read()
+                    if remaining:
+                        buf += remaining
                     break
-                texts = formatter.feed_line(line)
-                for t in texts:
-                    self._post_text(t)
 
-            # Drain remaining output after process exits
-            for line in stdout:
+                try:
+                    ready, _, _ = select.select([stdout], [], [], 0.2)
+                    if not ready:
+                        continue
+                    chunk = stdout.read1(4096) if hasattr(stdout, "read1") else b""
+                    if not chunk:
+                        continue
+                    buf += chunk
+                except (OSError, ValueError):
+                    break
+
+                # Process complete lines
+                while b"\n" in buf:
+                    raw_line, buf = buf.split(b"\n", 1)
+                    line = raw_line.decode("utf-8", errors="replace")
+                    texts = formatter.feed_line(line)
+                    for t in texts:
+                        self._post_text(t)
+
+            # Process any remaining complete lines in the buffer
+            while b"\n" in buf:
                 if self._stop_event.is_set():
                     break
+                raw_line, buf = buf.split(b"\n", 1)
+                line = raw_line.decode("utf-8", errors="replace")
                 texts = formatter.feed_line(line)
                 for t in texts:
                     self._post_text(t)
+
+            # Flush any trailing partial line
+            if buf and not self._stop_event.is_set():
+                line = buf.decode("utf-8", errors="replace")
+                if line.strip():
+                    texts = formatter.feed_line(line)
+                    for t in texts:
+                        self._post_text(t)
 
             # Finish (summary, etc.)
             for t in formatter.finish():
