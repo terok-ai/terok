@@ -211,6 +211,11 @@ def build_root() -> Path:
     return _resolve_path(None, ("paths", "build_root"), lambda: state_root() / "build")
 
 
+def deleted_projects_dir() -> Path:
+    """Return the directory for archived deleted projects (``state_root() / "deleted-projects"``)."""
+    return state_root() / "deleted-projects"
+
+
 def get_ui_base_port() -> int:
     """Return the base port for the web UI (default 7860)."""
     return int(get_global_section("ui").get("base_port", 7860))

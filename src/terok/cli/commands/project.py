@@ -113,9 +113,12 @@ def _cmd_project_delete(project_id: str, *, force: bool = False) -> None:
         names = ", ".join(p for p, _ in sharing)
         print(f"\n  Note: gate is shared with: {names} (will NOT be deleted)")
 
+    from ...lib.core.config import deleted_projects_dir
+
+    archive_dir = deleted_projects_dir()
     print("\nWARNING: This will permanently delete the project configuration,")
     print("all task workspaces, metadata, build artifacts, and SSH credentials.")
-    print("This action cannot be undone.")
+    print(f"Project files will be archived at: {archive_dir}")
 
     if not force:
         try:
@@ -130,6 +133,8 @@ def _cmd_project_delete(project_id: str, *, force: bool = False) -> None:
     result = delete_project(pid)
 
     print(f"\nProject '{pid}' deleted.")
+    if result.get("archive"):
+        print(f"Archive: {result['archive']}")
     if result["deleted"]:
         print("Removed:")
         for path in result["deleted"]:

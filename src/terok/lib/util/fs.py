@@ -5,6 +5,7 @@
 """Filesystem helpers for directory creation and writability checks."""
 
 import os
+from datetime import UTC, datetime
 from pathlib import Path
 
 
@@ -29,3 +30,23 @@ def ensure_dir_writable(path: Path, label: str) -> None:
             f"Fix permissions for the user running terok (uid={uid}, gid={gid}). "
             f"Example: sudo chown -R {uid}:{gid} {path}"
         )
+
+
+def archive_timestamp() -> str:
+    """Generate a UTC timestamp string suitable for archive filenames."""
+    return datetime.now(tz=UTC).strftime("%Y%m%dT%H%M%S%fZ")
+
+
+def unique_archive_path(root: Path, base_name: str, suffix: str = "") -> Path:
+    """Return a collision-safe path under *root* for an archive entry.
+
+    Appends *suffix* (e.g. ``".tar.gz"``) to *base_name*.  If the resulting
+    path already exists, appends ``_1``, ``_2``, … before the suffix until a
+    free name is found.
+    """
+    candidate = root / f"{base_name}{suffix}"
+    counter = 0
+    while candidate.exists():
+        counter += 1
+        candidate = root / f"{base_name}_{counter}{suffix}"
+    return candidate

@@ -493,9 +493,12 @@ class ProjectActionsMixin:
             names = ", ".join(p for p, _ in sharing)
             lines.append(f"\nNote: gate is shared with: {names} (will NOT be deleted)")
 
+        from ..lib.core.config import deleted_projects_dir
+
+        archive_dir = deleted_projects_dir()
         lines.append("\nThis will permanently delete the project configuration,")
         lines.append("all task workspaces, metadata, build artifacts, and SSH credentials.")
-        lines.append("This action cannot be undone.")
+        lines.append(f"Project files will be archived at: {archive_dir}")
 
         from .screens import ConfirmDeleteScreen
 
@@ -520,6 +523,8 @@ class ProjectActionsMixin:
             return
 
         msg = f"Project '{pid}' deleted."
+        if result.get("archive"):
+            msg += f" Archive: {result['archive']}"
         if result.get("skipped"):
             msg += f" ({len(result['skipped'])} item(s) skipped)"
         self.notify(msg)

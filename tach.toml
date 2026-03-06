@@ -84,6 +84,7 @@ depends_on = [
     "terok.lib.security.auth",
     "terok.lib.security.git_gate",
     "terok.lib.security.ssh",
+    "terok.lib.util.fs",
 ]
 
 # ── SERVICES LAYER ──────────────────────────────────────────────────
@@ -553,6 +554,7 @@ expose = [
     "config_root",
     "state_root",
     "build_root",
+    "deleted_projects_dir",
     "user_projects_root",
     "global_presets_dir",
     "bundled_presets_dir",
@@ -679,7 +681,7 @@ from = ["terok.lib.util.emoji"]
 
 # Filesystem utility interface
 [[interfaces]]
-expose = ["ensure_dir", "ensure_dir_writable"]
+expose = ["ensure_dir", "ensure_dir_writable", "archive_timestamp", "unique_archive_path"]
 from = ["terok.lib.util.fs"]
 
 # Port allocation interface

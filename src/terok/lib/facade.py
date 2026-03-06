@@ -14,6 +14,8 @@ helpers for multi-step workflows like project initialization.
 
 import logging
 import shutil
+import tarfile
+from pathlib import Path
 
 from .containers.docker import build_images, generate_dockerfiles
 from .containers.environment import WEB_BACKENDS
@@ -44,7 +46,7 @@ from .containers.tasks import (  # noqa: F401 — re-exported public API
     task_status,
     task_stop,
 )
-from .core.config import build_root, get_envs_base_dir, state_root
+from .core.config import build_root, deleted_projects_dir, get_envs_base_dir, state_root
 from .core.projects import load_project
 from .security.auth import AUTH_PROVIDERS, AuthProvider, authenticate
 from .security.git_gate import (
@@ -56,8 +58,64 @@ from .security.git_gate import (
     sync_project_gate,
 )
 from .security.ssh import init_project_ssh
+from .util.fs import archive_timestamp, ensure_dir, unique_archive_path
 
 _logger = logging.getLogger(__name__)
+
+
+def _archive_project(project_id: str) -> str | None:
+    """Create a compressed archive of project data before deletion.
+
+    Collects project config, task metadata/archives, and build artifacts
+    into a ``.tar.gz`` file under ``deleted_projects_dir()``.  SSH
+    credentials and git gate contents are excluded for security.
+
+    Returns the archive file path as a string, or ``None`` on failure.
+    """
+    try:
+        project = load_project(project_id)
+        pid = project.id
+
+        archive_root = deleted_projects_dir()
+        ensure_dir(archive_root)
+
+        ts = archive_timestamp()
+        base_name = f"{ts}_{pid}"
+        archive_path = unique_archive_path(archive_root, base_name, suffix=".tar.gz")
+
+        # Directories to include: (arcname_prefix, source_path)
+        sources: list[tuple[str, Path]] = []
+
+        # Project config
+        if project.root.is_dir():
+            sources.append(("config", project.root))
+
+        # Task metadata + task archives
+        project_state = state_root() / "projects" / pid
+        if project_state.is_dir():
+            sources.append(("state", project_state))
+
+        # Build artifacts
+        build_dir = build_root() / pid
+        if build_dir.is_dir():
+            sources.append(("build", build_dir))
+
+        if not sources:
+            _logger.debug("_archive_project: nothing to archive for %s", pid)
+            return None
+
+        with tarfile.open(archive_path, "w:gz") as tar:
+            for prefix, src_dir in sources:
+                for item in src_dir.rglob("*"):
+                    if item.is_file():
+                        arcname = f"{prefix}/{item.relative_to(src_dir)}"
+                        tar.add(str(item), arcname=arcname)
+
+        _logger.debug("_archive_project: archived %s to %s", pid, archive_path)
+        return str(archive_path)
+    except Exception as exc:
+        _logger.warning("_archive_project: failed to archive %s: %s", project_id, exc)
+        return None
 
 
 def delete_project(project_id: str) -> dict[str, list[str]]:
@@ -70,6 +128,9 @@ def delete_project(project_id: str) -> dict[str, list[str]]:
     Returns a dict with ``deleted`` (list of paths removed) and ``skipped``
     (list of descriptions for items that were not removed).
     """
+    # Archive project data before any destructive operations
+    archive_path = _archive_project(project_id)
+
     project = load_project(project_id)
     pid = project.id
     deleted: list[str] = []
@@ -127,7 +188,13 @@ def delete_project(project_id: str) -> dict[str, list[str]]:
         shutil.rmtree(project.root)
         deleted.append(str(project.root))
 
-    return {"deleted": deleted, "skipped": skipped}
+    result: dict[str, list[str] | str | None] = {
+        "deleted": deleted,
+        "skipped": skipped,
+    }
+    if archive_path:
+        result["archive"] = archive_path
+    return result
 
 
 def maybe_pause_for_ssh_key_registration(project_id: str) -> None:
