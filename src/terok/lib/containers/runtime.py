@@ -102,6 +102,19 @@ def stop_task_containers(project: Any, task_id: str) -> None:
     """
     from ..util.logging_utils import _log_debug
 
+    # Best-effort shield cleanup (hardened mode needs pre_stop)
+    try:
+        from ..security.shield import is_shield_active, shield_pre_stop
+
+        if is_shield_active(project):
+            for mode in CONTAINER_MODES:
+                try:
+                    shield_pre_stop(container_name(project.id, mode, task_id))
+                except Exception:
+                    pass
+    except Exception:
+        pass
+
     # The naming scheme is kept in sync with task_run_cli/task_run_web/task_run_headless.
     names = [container_name(project.id, mode, task_id) for mode in CONTAINER_MODES]
 

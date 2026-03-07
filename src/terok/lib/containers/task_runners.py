@@ -20,6 +20,7 @@ import yaml
 from ..core.config import get_gate_server_port
 from ..core.images import project_cli_image, project_web_image
 from ..core.projects import load_project
+from ..security.shield import is_shield_active, shield_post_start, shield_pre_start
 from ..util.ansi import (
     blue as _blue,
     green as _green,
@@ -207,7 +208,15 @@ def _run_container(
     """
     cmd: list[str] = ["podman", "run", "-d"]
     cmd += _podman_userns_args()
-    cmd += _podman_network_args(gate_port=get_gate_server_port())
+
+    # Shield replaces network args when active (includes cap drops + hook/annotation)
+    _shield_active = is_shield_active(project)
+    if _shield_active:
+        shield_args = shield_pre_start(project, cname)
+        cmd += shield_args
+    else:
+        cmd += _podman_network_args(gate_port=get_gate_server_port())
+
     cmd += gpu_run_args(project)
     if extra_args:
         cmd += extra_args
@@ -225,6 +234,9 @@ def _run_container(
         raise SystemExit("podman not found; please install podman")
     except subprocess.CalledProcessError as e:
         raise SystemExit(_enrich_run_error("Run failed", e))
+
+    if _shield_active:
+        shield_post_start(project, cname)
 
 
 def task_run_cli(

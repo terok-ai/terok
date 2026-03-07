@@ -1,0 +1,8 @@
+# dev-python profile: PyPI, conda-forge
+# Applied to: inet terok_shield allow_v4
+
+# PyPI (Fastly CDN)
+add element inet terok_shield allow_v4 { 151.101.0.0/16 }
+
+# conda-forge (Fastly + GitHub)
+add element inet terok_shield allow_v4 { 185.199.108.0/22 }

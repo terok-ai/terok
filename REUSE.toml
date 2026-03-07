@@ -12,6 +12,7 @@ path = [
   "**/*.txt",
   "**/*.template",
   "**/*.conf",
+  "**/*.nft",
   "**/*.dockerinclude",
   ".gitignore",
   "MANIFEST.in",

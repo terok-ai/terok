@@ -1,0 +1,5 @@
+# Base DNS allowlist: Ubuntu archive/security repos
+# These domains are resolved at container start and added to the allow set.
+archive.ubuntu.com
+security.ubuntu.com
+changelogs.ubuntu.com

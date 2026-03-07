@@ -39,10 +39,12 @@ layer = "presentation"
 depends_on = [
     "terok.lib.containers.agent_config",
     "terok.lib.containers.headless_providers",
+    "terok.lib.containers.runtime",
     "terok.lib.core.config",
     "terok.lib.core.projects",
     "terok.lib.core.version",
     "terok.lib.facade",
+    "terok.lib.security.shield",
     "terok.lib.util.emoji",
     "terok.lib.wizards.new_project",
     "terok.ui_utils.terminal",
@@ -84,6 +86,7 @@ depends_on = [
     "terok.lib.security.auth",
     "terok.lib.security.gate_server",
     "terok.lib.security.git_gate",
+    "terok.lib.security.shield",
     "terok.lib.security.ssh",
     "terok.lib.util.fs",
 ]
@@ -185,6 +188,7 @@ depends_on = [
     "terok.lib.core.config",
     "terok.lib.core.images",
     "terok.lib.core.projects",
+    "terok.lib.security.shield",
     "terok.lib.util.ansi",
     "terok.lib.util.podman",
 ]
@@ -193,7 +197,7 @@ depends_on = [
 [[modules]]
 path = "terok.lib.containers.runtime"
 layer = "services"
-depends_on = ["terok.lib.core.projects", "terok.lib.util.logging_utils"]
+depends_on = ["terok.lib.core.projects", "terok.lib.security.shield", "terok.lib.util.logging_utils"]
 
 # Task environment & volume mounts
 [[modules]]
@@ -275,6 +279,24 @@ path = "terok.gate"
 layer = "services"
 depends_on = []
 utility = true
+
+# SECURITY BOUNDARY. Zero dependencies. Auditable in isolation.
+[[modules]]
+path = "terok.lib.security.shield.nft"
+layer = "services"
+depends_on = []
+
+# Shield package (everything except nft.py)
+[[modules]]
+path = "terok.lib.security.shield"
+layer = "services"
+depends_on = [
+    "terok.lib.security.shield.nft",
+    "terok.lib.core.config",
+    "terok.lib.core.paths",
+    "terok.lib.core.projects",
+    "terok.lib.util.podman",
+]
 
 # Git gate sync & validation
 [[modules]]
@@ -586,6 +608,41 @@ expose = [
 ]
 from = ["terok.lib.security.git_gate"]
 
+# Shield nft.py security boundary (zero imports)
+[[interfaces]]
+expose = [
+    "safe_name",
+    "safe_ip",
+    "standard_ruleset",
+    "hardened_ruleset",
+    "add_elements",
+    "create_set",
+    "forward_rule",
+    "verify_ruleset",
+]
+from = ["terok.lib.security.shield.nft"]
+
+# Shield public API
+[[interfaces]]
+expose = [
+    "is_shield_active",
+    "shield_pre_start",
+    "shield_post_start",
+    "shield_pre_stop",
+    "shield_allow_domain",
+    "shield_deny_domain",
+    "shield_status",
+    "shield_setup",
+    "shield_rules",
+    "ShieldConfig",
+    "ShieldMode",
+    "load_shield_config",
+    "tail_log",
+    "list_log_files",
+    "log_event",
+]
+from = ["terok.lib.security.shield"]
+
 [[interfaces]]
 expose = ["get_project_state", "is_task_image_old"]
 from = ["terok.lib.containers.project_state"]
@@ -722,6 +779,18 @@ expose = [
     "get_project_state",
     "is_task_image_old",
     "maybe_pause_for_ssh_key_registration",
+    "ShieldConfig",
+    "ShieldMode",
+    "is_shield_active",
+    "load_shield_config",
+    "shield_allow_domain",
+    "shield_deny_domain",
+    "shield_pre_start",
+    "shield_pre_stop",
+    "shield_post_start",
+    "shield_rules",
+    "shield_setup",
+    "shield_status",
 ]
 from = ["terok.lib.facade"]
 

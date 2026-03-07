@@ -1,0 +1,19 @@
+# dev-standard profile: GitHub, PyPI, npm, Ubuntu repos, Docker Hub
+# Applied to: inet terok_shield allow_v4
+
+# GitHub (hooks, API, packages)
+add element inet terok_shield allow_v4 { 140.82.112.0/20 }
+add element inet terok_shield allow_v4 { 143.55.64.0/20 }
+add element inet terok_shield allow_v4 { 185.199.108.0/22 }
+add element inet terok_shield allow_v4 { 192.30.252.0/22 }
+
+# Fastly CDN (PyPI, npm, rubygems)
+add element inet terok_shield allow_v4 { 151.101.0.0/16 }
+
+# Cloudflare (npm, various)
+add element inet terok_shield allow_v4 { 104.16.0.0/13 }
+add element inet terok_shield allow_v4 { 172.64.0.0/13 }
+
+# Docker Hub / registry
+add element inet terok_shield allow_v4 { 44.205.64.0/20 }
+add element inet terok_shield allow_v4 { 52.1.184.0/21 }

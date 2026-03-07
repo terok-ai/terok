@@ -1,0 +1,8 @@
+# dev-node profile: npm, yarn registries
+# Applied to: inet terok_shield allow_v4
+
+# npm registry (Cloudflare)
+add element inet terok_shield allow_v4 { 104.16.0.0/13 }
+
+# Fastly (yarn, npm fallback)
+add element inet terok_shield allow_v4 { 151.101.0.0/16 }

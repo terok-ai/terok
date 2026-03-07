@@ -1,0 +1,10 @@
+# nvidia-hpc profile: NVIDIA downloads, NGC container registry
+# Applied to: inet terok_shield allow_v4
+
+# NVIDIA developer downloads
+add element inet terok_shield allow_v4 { 152.195.19.0/24 }
+add element inet terok_shield allow_v4 { 23.222.0.0/16 }
+
+# NGC container registry (AWS)
+add element inet terok_shield allow_v4 { 52.216.0.0/15 }
+add element inet terok_shield allow_v4 { 54.231.0.0/16 }

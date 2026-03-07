@@ -1,4 +1,4 @@
-.PHONY: all lint format test tach docstrings complexity deadcode reuse check install install-dev clean spdx
+.PHONY: all lint format test tach docstrings complexity deadcode reuse security check install install-dev clean spdx
 
 all: check
 
@@ -44,8 +44,12 @@ ifndef NAME
 endif
 	poetry run reuse annotate --template compact --copyright "$(NAME)" --license Apache-2.0 $(FILES)
 
+# Run SAST security scan on shield module
+security:
+	poetry run bandit -r src/terok/lib/security/shield/ -ll
+
 # Run all checks (equivalent to CI)
-check: lint test tach docstrings deadcode reuse
+check: lint test tach docstrings deadcode reuse security
 
 # Install runtime dependencies only
 install:

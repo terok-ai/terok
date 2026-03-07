@@ -1,0 +1,14 @@
+# dev-standard DNS allowlist: common development services
+github.com
+api.github.com
+codeload.github.com
+objects.githubusercontent.com
+raw.githubusercontent.com
+pypi.org
+files.pythonhosted.org
+registry.npmjs.org
+registry.yarnpkg.com
+hub.docker.com
+registry-1.docker.io
+auth.docker.io
+production.cloudflare.docker.com
