@@ -593,7 +593,7 @@ def task_run_headless(request: HeadlessRunRequest) -> str:
 
     if request.follow:
         exit_code = wait_for_exit(cname)
-        _print_run_summary(task_dir / "workspace")
+        _print_run_summary(task_dir / "workspace-dangerous")
 
         update_task_exit_code(project.id, task_id, exit_code)
 
@@ -710,7 +710,7 @@ def task_followup_headless(
 
     if follow:
         exit_code = wait_for_exit(cname)
-        _print_run_summary(task_dir / "workspace")
+        _print_run_summary(task_dir / "workspace-dangerous")
 
         update_task_exit_code(project.id, task_id, exit_code)
 

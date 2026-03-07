@@ -226,7 +226,7 @@ def build_task_env_and_volumes(project: Project, task_id: str) -> tuple[dict, li
     - Provide REPO_ROOT and git info for the init script.
     """
     task_dir = project.tasks_root / str(task_id)
-    repo_dir = task_dir / "workspace"
+    repo_dir = task_dir / "workspace-dangerous"
     repo_dir.mkdir(parents=True, exist_ok=True)
 
     envs_base = get_envs_base_dir()

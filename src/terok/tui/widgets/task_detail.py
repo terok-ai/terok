@@ -31,6 +31,7 @@ def render_task_details(
     image_old: bool | None = None,
     empty_message: str | None = None,
     css_variables: dict[str, str] | None = None,
+    show_workspace: bool = True,
 ) -> Text:
     """Render task details as a Rich Text object."""
     if task is None:
@@ -59,7 +60,8 @@ def render_task_details(
         if task.work_message:
             work_text += f' \u2014 "{task.work_message}"'
         lines.append(Text(f"Work:      {work_text}"))
-    lines.append(Text(f"Workspace: {task.workspace}"))
+    if show_workspace:
+        lines.append(Text(f"Workspace: {task.workspace}"))
     if task.status == "running" and image_old:
         lines.append(Text.assemble("Image:     ", Text("old", style=warning_style)))
     if task.web_port:
@@ -118,6 +120,11 @@ class TaskDetails(Static):
         else:
             self.current_project_id = self.app.current_project_id if self.app else None
         rendered = render_task_details(
-            task, self.current_project_id, image_old, empty_message, _get_css_variables(self)
+            task,
+            self.current_project_id,
+            image_old,
+            empty_message,
+            _get_css_variables(self),
+            show_workspace=False,
         )
         content.update(rendered)

@@ -128,7 +128,7 @@ class TaskTests(unittest.TestCase):
             task_new(project_id)
 
             # Verify marker file exists in the workspace subdirectory
-            workspace_dir = ctx.state_dir / "tasks" / project_id / "1" / "workspace"
+            workspace_dir = ctx.state_dir / "tasks" / project_id / "1" / "workspace-dangerous"
             marker_path = workspace_dir / ".new-task-marker"
             self.assertTrue(marker_path.is_file(), "Marker file should be created by task_new()")
 
@@ -557,7 +557,7 @@ class TaskTests(unittest.TestCase):
             clear_env=True,
         ) as ctx:
             task_new(project_id)
-            workspace_dir = ctx.state_dir / "tasks" / project_id / "1" / "workspace"
+            workspace_dir = ctx.state_dir / "tasks" / project_id / "1" / "workspace-dangerous"
             self.assertEqual(
                 sorted(p.name for p in workspace_dir.iterdir()),
                 [".new-task-marker"],
@@ -641,7 +641,7 @@ class TaskTests(unittest.TestCase):
             clear_env=True,
         ) as ctx:
             task_new(project_id)
-            workspace_dir = ctx.state_dir / "tasks" / project_id / "1" / "workspace"
+            workspace_dir = ctx.state_dir / "tasks" / project_id / "1" / "workspace-dangerous"
             self.assertEqual(
                 sorted(p.name for p in workspace_dir.iterdir()),
                 [".new-task-marker"],
@@ -855,7 +855,7 @@ class TaskTests(unittest.TestCase):
                 run_mock.return_value = mock_result
 
                 # Also need to mock .git existence check
-                workspace_dir = ctx.state_dir / "tasks" / project_id / "1" / "workspace"
+                workspace_dir = ctx.state_dir / "tasks" / project_id / "1" / "workspace-dangerous"
                 git_dir = workspace_dir / ".git"
                 git_dir.mkdir(parents=True, exist_ok=True)
 
@@ -882,7 +882,7 @@ class TaskTests(unittest.TestCase):
                 mock_result.stdout = expected_diff
                 run_mock.return_value = mock_result
 
-                workspace_dir = ctx.state_dir / "tasks" / project_id / "1" / "workspace"
+                workspace_dir = ctx.state_dir / "tasks" / project_id / "1" / "workspace-dangerous"
                 git_dir = workspace_dir / ".git"
                 git_dir.mkdir(parents=True, exist_ok=True)
 
@@ -917,7 +917,7 @@ class TaskTests(unittest.TestCase):
                 mock_result.stdout = expected_diff
                 run_mock.return_value = mock_result
 
-                workspace_dir = ctx.state_dir / "tasks" / project_id / "1" / "workspace"
+                workspace_dir = ctx.state_dir / "tasks" / project_id / "1" / "workspace-dangerous"
                 git_dir = workspace_dir / ".git"
                 git_dir.mkdir(parents=True, exist_ok=True)
 
@@ -948,7 +948,7 @@ class TaskTests(unittest.TestCase):
                 mock_result.returncode = 1
                 run_mock.return_value = mock_result
 
-                workspace_dir = ctx.state_dir / "tasks" / project_id / "1" / "workspace"
+                workspace_dir = ctx.state_dir / "tasks" / project_id / "1" / "workspace-dangerous"
                 git_dir = workspace_dir / ".git"
                 git_dir.mkdir(parents=True, exist_ok=True)
 

@@ -166,7 +166,7 @@ def get_workspace_git_diff(project_id: str, task_id: str, against: str = "HEAD")
     try:
         project = load_project(project_id)
         tasks_root = project.tasks_root
-        workspace_dir = tasks_root / task_id / "workspace"
+        workspace_dir = tasks_root / task_id / "workspace-dangerous"
 
         if not workspace_dir.exists() or not workspace_dir.is_dir():
             return None
@@ -225,6 +225,30 @@ def update_task_exit_code(project_id: str, task_id: str, exit_code: int | None) 
     meta = yaml.safe_load(meta_path.read_text()) or {}
     meta["exit_code"] = exit_code
     meta_path.write_text(yaml.safe_dump(meta))
+
+
+def _write_task_readme(task_dir: Path) -> None:
+    """Write a README.md explaining the task directory layout and security."""
+    readme = task_dir / "README.md"
+    readme.write_text(
+        "# Task Directory\n"
+        "\n"
+        "## workspace-dangerous/\n"
+        "\n"
+        "This directory contains a git repository checked out from the project\n"
+        "source. It is mounted into the task container at `/workspace`.\n"
+        "\n"
+        "**WARNING: Do not execute code or run git commands in this directory\n"
+        "from the host.** The container has full write access and could have\n"
+        "rewritten git hooks, checked in malicious scripts, or otherwise\n"
+        "poisoned the repository contents.\n"
+        "\n"
+        "The safe way to interact with the repository is through the **git\n"
+        "gate** — a separate, host-controlled bare repo that agents push to.\n"
+        "Even online-mode agents can be instructed to mirror their work to\n"
+        "the gate.\n",
+        encoding="utf-8",
+    )
 
 
 def task_new(project_id: str, *, name: str | None = None) -> str:
@@ -286,7 +310,7 @@ def task_new(project_id: str, *, name: str | None = None) -> str:
     # Create the workspace subdirectory and place a marker file to signal
     # that this is a fresh task. The init script will reset to latest HEAD
     # when it sees this marker, then remove it. See docstring above.
-    workspace_dir = ws / "workspace"
+    workspace_dir = ws / "workspace-dangerous"
     ensure_dir(workspace_dir)
     marker_path = workspace_dir / ".new-task-marker"
     marker_path.write_text(
@@ -295,6 +319,9 @@ def task_new(project_id: str, *, name: str | None = None) -> str:
         "# If you see this file in an initialized workspace, something went wrong.\n",
         encoding="utf-8",
     )
+
+    # Write a README explaining the security implications of the task directory
+    _write_task_readme(ws)
 
     meta = {
         "task_id": next_id,
