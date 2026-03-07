@@ -259,12 +259,13 @@ def _section_layer_overview() -> str:
         return ""
 
     layer_of: dict[str, str] = {}
-    layer_counts: dict[str, int] = defaultdict(int)
+    layer_modules: dict[str, list[str]] = defaultdict(list)
     for m in modules:
         path = m.get("path", "")
         layer = m.get("layer", "?")
         layer_of[path] = layer
-        layer_counts[layer] += 1
+        short = path.removeprefix("terok.").removeprefix("lib.")
+        layer_modules[layer].append(short)
 
     # Collect inter-layer dependency edges
     layer_edges: dict[tuple[str, str], int] = defaultdict(int)
@@ -275,13 +276,14 @@ def _section_layer_overview() -> str:
             if src_layer != dst_layer:
                 layer_edges[(src_layer, dst_layer)] += 1
 
-    if not layer_edges and len(layer_counts) < 2:
+    if not layer_edges and len(layer_modules) < 2:
         return ""
 
     lines = ["```mermaid\ngraph TD\n"]
-    for layer in sorted(layer_counts):
-        count = layer_counts[layer]
-        lines.append(f'    {layer}["{layer} ({count} modules)"]\n')
+    for layer in sorted(layer_modules):
+        mods = sorted(layer_modules[layer])
+        mod_list = "<br/>".join(mods)
+        lines.append(f'    {layer}["<b>{layer} ({len(mods)})</b><br/>{mod_list}"]\n')
     for (src, dst), count in sorted(layer_edges.items()):
         label = f"|{count} deps|" if count > 1 else ""
         lines.append(f"    {src} -->{label} {dst}\n")
