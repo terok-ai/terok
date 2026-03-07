@@ -5,6 +5,7 @@
 
 import asyncio
 import contextlib
+import sys
 from unittest import TestCase, main, mock
 
 from rich.text import Text
@@ -920,6 +921,199 @@ class ProjectScreenNoneStateTests(TestCase):
         screen = screens.ProjectDetailsScreen(project=project, state=None, task_count=3)
         self.assertIsNone(screen._state)
         self.assertEqual(screen._task_count, 3)
+
+
+class GateServerScreenTests(TestCase):
+    """Tests for the GateServerScreen."""
+
+    def test_gate_server_screen_construction(self) -> None:
+        screens, _ = import_screens()
+        status = mock.Mock()
+        status.mode = "systemd"
+        status.running = True
+        status.port = 9418
+        screen = screens.GateServerScreen(status)
+        self.assertEqual(screen._status, status)
+
+    def test_gate_server_screen_construction_default(self) -> None:
+        screens, _ = import_screens()
+        screen = screens.GateServerScreen()
+        self.assertIsNone(screen._status)
+
+    def test_gate_server_screen_dismiss(self) -> None:
+        screens, _ = import_screens()
+        screen = screens.GateServerScreen()
+        screen.dismiss = mock.Mock()
+        screen.action_dismiss()
+        screen.dismiss.assert_called_once_with(None)
+
+    def test_gate_server_screen_action_install(self) -> None:
+        screens, _ = import_screens()
+        screen = screens.GateServerScreen()
+        screen.dismiss = mock.Mock()
+        screen.action_gate_install()
+        screen.dismiss.assert_called_once_with("gate_install")
+
+    def test_gate_server_screen_action_uninstall(self) -> None:
+        screens, _ = import_screens()
+        screen = screens.GateServerScreen()
+        screen.dismiss = mock.Mock()
+        screen.action_gate_uninstall()
+        screen.dismiss.assert_called_once_with("gate_uninstall")
+
+    def test_gate_server_screen_action_start(self) -> None:
+        screens, _ = import_screens()
+        screen = screens.GateServerScreen()
+        screen.dismiss = mock.Mock()
+        screen.action_gate_start()
+        screen.dismiss.assert_called_once_with("gate_start")
+
+    def test_gate_server_screen_action_stop(self) -> None:
+        screens, _ = import_screens()
+        screen = screens.GateServerScreen()
+        screen.dismiss = mock.Mock()
+        screen.action_gate_stop()
+        screen.dismiss.assert_called_once_with("gate_stop")
+
+
+class CommandPaletteTests(TestCase):
+    """Tests for command palette customization."""
+
+    def test_get_system_commands_includes_gate_server(self) -> None:
+        from tui_test_helpers import build_textual_stubs
+
+        stubs = build_textual_stubs()
+        app_mod, AppClass = import_app(stubs)
+        instance = AppClass()
+        # get_system_commands imports SystemCommand at call time, so we need
+        # textual.app in sys.modules during the call.
+        with mock.patch.dict(sys.modules, stubs):
+            commands = list(AppClass.get_system_commands(instance, screen=mock.Mock()))
+        titles = [cmd.title for cmd in commands]
+        self.assertIn("Git Gate Server", titles)
+
+
+class RenderGateServerStatusTests(TestCase):
+    """Tests for the render_gate_server_status helper."""
+
+    def test_render_gate_server_status_none(self) -> None:
+        screens, _ = import_screens()
+        result = screens.render_gate_server_status(None)
+        self.assertIsInstance(result, Text)
+        self.assertIn("unknown", str(result))
+
+    def test_render_gate_server_status_running(self) -> None:
+        screens, _ = import_screens()
+        status = mock.Mock()
+        status.mode = "systemd"
+        status.running = True
+        status.port = 9418
+        with mock.patch.object(screens, "check_units_outdated", return_value=None):
+            result = screens.render_gate_server_status(status)
+        text_str = str(result)
+        self.assertIn("running", text_str)
+        self.assertIn("systemd", text_str)
+        self.assertIn("9418", text_str)
+
+    def test_render_gate_server_status_stopped(self) -> None:
+        screens, _ = import_screens()
+        status = mock.Mock()
+        status.mode = "none"
+        status.running = False
+        status.port = 9418
+        with mock.patch.object(screens, "check_units_outdated", return_value=None):
+            result = screens.render_gate_server_status(status)
+        text_str = str(result)
+        self.assertIn("stopped", text_str)
+        self.assertIn("not running", text_str)
+
+    def test_render_gate_server_status_outdated(self) -> None:
+        screens, _ = import_screens()
+        status = mock.Mock()
+        status.mode = "systemd"
+        status.running = True
+        status.port = 9418
+        with mock.patch.object(
+            screens, "check_units_outdated", return_value="Units outdated (v1 vs v3)"
+        ):
+            result = screens.render_gate_server_status(status)
+        text_str = str(result)
+        self.assertIn("outdated", text_str)
+
+
+class CombinedGateStatusTests(TestCase):
+    """Tests for combined gate status in render_project_details."""
+
+    def test_render_project_details_gate_server_down(self) -> None:
+        widgets = import_widgets()
+        project = mock.Mock()
+        project.id = "test-proj"
+        project.upstream_url = "https://example.com/repo.git"
+        project.security_class = "online"
+        state = {"ssh": True, "dockerfiles": True, "images": True, "gate": True}
+        gate_status = mock.Mock()
+        gate_status.running = False
+
+        result = widgets.render_project_details(
+            project, state, task_count=5, gate_server_status=gate_status
+        )
+        text_str = str(result)
+        self.assertIn("server down", text_str)
+
+    def test_render_project_details_gate_server_ok(self) -> None:
+        widgets = import_widgets()
+        project = mock.Mock()
+        project.id = "test-proj"
+        project.upstream_url = "https://example.com/repo.git"
+        project.security_class = "online"
+        state = {"ssh": True, "dockerfiles": True, "images": True, "gate": True}
+        gate_status = mock.Mock()
+        gate_status.running = True
+
+        result = widgets.render_project_details(
+            project, state, task_count=5, gate_server_status=gate_status
+        )
+        text_str = str(result)
+        self.assertNotIn("server down", text_str)
+        self.assertIn("yes", text_str)
+
+    def test_render_project_details_gate_server_none_fallback(self) -> None:
+        """When gate_server_status is None, show normal repo-based status."""
+        widgets = import_widgets()
+        project = mock.Mock()
+        project.id = "test-proj"
+        project.upstream_url = "https://example.com/repo.git"
+        project.security_class = "online"
+        state = {"ssh": True, "dockerfiles": True, "images": True, "gate": False}
+
+        result = widgets.render_project_details(project, state, task_count=5)
+        text_str = str(result)
+        self.assertNotIn("server down", text_str)
+
+
+class GateServerActionDispatchTests(TestCase):
+    """Tests for gate server action dispatch routing."""
+
+    def test_gate_server_action_dispatch_all(self) -> None:
+        """Every entry in GATE_SERVER_ACTION_HANDLERS routes to its handler."""
+        app_mod, AppClass = import_app()
+
+        for action, handler in app_mod.GATE_SERVER_ACTION_HANDLERS.items():
+            with self.subTest(action=action):
+                instance = mock.Mock(spec=AppClass)
+                coro = AppClass._on_gate_server_action_result(instance, action)
+                asyncio.run(coro)
+                getattr(instance, handler).assert_called_once()
+
+    def test_gate_server_action_dispatch_none(self) -> None:
+        """None result does not dispatch any handler."""
+        app_mod, AppClass = import_app()
+        instance = mock.Mock(spec=AppClass)
+        coro = AppClass._on_gate_server_action_result(instance, None)
+        asyncio.run(coro)
+        # No action handler should have been called
+        for handler in app_mod.GATE_SERVER_ACTION_HANDLERS.values():
+            getattr(instance, handler).assert_not_called()
 
 
 if __name__ == "__main__":

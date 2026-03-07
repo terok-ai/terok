@@ -11,7 +11,7 @@ from the main app module into a reusable mixin class.
 
 
 class PollingMixin:
-    """Mixin providing upstream and container status polling for the TUI app.
+    """Mixin providing upstream, container status, and gate server polling for the TUI app.
 
     Expects the host class to provide:
     - self.current_project_id: str | None
@@ -22,6 +22,8 @@ class PollingMixin:
     - self._last_notified_stale: bool
     - self._auto_sync_cooldown: dict[str, float]
     - self._container_status_timer
+    - self._gate_server_timer
+    - self._last_gate_server_running: bool | None
     - self.run_worker(...)
     - self.set_interval(...)
     - self.notify(...)
@@ -95,6 +97,34 @@ class PollingMixin:
         if self._container_status_timer is not None:
             self._container_status_timer.stop()
             self._container_status_timer = None
+
+    # ---------- Gate server polling ----------
+
+    def _start_gate_server_polling(self) -> None:
+        """Start background polling for gate server status every 60 seconds."""
+        self._stop_gate_server_polling()
+        self._gate_server_timer = self.set_interval(
+            60, self._poll_gate_server, name="gate_server_polling"
+        )
+
+    def _stop_gate_server_polling(self) -> None:
+        """Stop the gate server status polling timer."""
+        if self._gate_server_timer is not None:
+            self._gate_server_timer.stop()
+            self._gate_server_timer = None
+
+    def _poll_gate_server(self) -> None:
+        """Check gate server status in a background worker."""
+        from ..lib.facade import get_server_status
+
+        self.run_worker(
+            get_server_status,
+            name="gate-server-poll",
+            group="gate-server-poll",
+            exclusive=True,
+            thread=True,
+            exit_on_error=False,
+        )
 
     def _poll_container_status(self) -> None:
         """Check container status for all visible tasks via a single batch query."""

@@ -58,11 +58,40 @@ def build_textual_stubs() -> dict[str, types.ModuleType]:
         def __init__(self, *args: Any, **kwargs: Any) -> None:
             pass
 
+        def get_system_commands(self, screen: Any) -> Any:
+            return iter(())
+
     class ComposeResult:
         pass
 
+    class SystemCommand(tuple):
+        """Stub for Textual's SystemCommand named tuple."""
+
+        def __new__(
+            cls, title: str, help: str, callback: Any, discover: bool = True
+        ) -> "SystemCommand":
+            instance = super().__new__(cls, (title, help, callback, discover))
+            return instance
+
+        @property
+        def title(self) -> str:
+            return self[0]
+
+        @property
+        def help(self) -> str:
+            return self[1]
+
+        @property
+        def callback(self) -> Any:
+            return self[2]
+
+        @property
+        def discover(self) -> bool:
+            return self[3]
+
     app_mod.App = App
     app_mod.ComposeResult = ComposeResult
+    app_mod.SystemCommand = SystemCommand
 
     containers_mod = types.ModuleType("textual.containers")
 

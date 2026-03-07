@@ -42,10 +42,18 @@ try:  # pragma: no cover - optional import for test stubs
 except Exception:  # pragma: no cover - textual may be a stub module
     Input = None  # type: ignore[assignment,misc]
 
+from rich.style import Style
+from rich.text import Text
+
 from ..lib.containers.tasks import sanitize_task_name, validate_task_name
 from ..lib.core.config import is_experimental
 from ..lib.core.projects import Project
-from ..lib.facade import GateStalenessInfo
+from ..lib.facade import (
+    GateServerStatus,
+    GateStalenessInfo,
+    check_units_outdated,
+    get_gate_base_path,
+)
 from .widgets import TaskMeta, render_project_details, render_project_loading, render_task_details
 
 
@@ -78,6 +86,154 @@ _DETAIL_SCREEN_CSS = """
         margin: 0 1;
     }
 """
+
+
+# ---------------------------------------------------------------------------
+# Gate Server helpers
+# ---------------------------------------------------------------------------
+
+
+def render_gate_server_status(status: GateServerStatus | None) -> Text:
+    """Render gate server status details as a Rich Text object."""
+    if status is None:
+        return Text("Gate server status unknown.")
+
+    ok_style = Style(color="green")
+    err_style = Style(color="red")
+    warn_style = Style(color="yellow")
+
+    mode_s = Text(status.mode)
+    running_s = (
+        Text("running", style=ok_style) if status.running else Text("stopped", style=err_style)
+    )
+
+    lines = [
+        Text.assemble("Mode:      ", mode_s),
+        Text.assemble("Status:    ", running_s),
+        Text(f"Port:      {status.port}"),
+        Text(f"Base path: {get_gate_base_path()}"),
+    ]
+
+    outdated = check_units_outdated()
+    if outdated:
+        lines.append(Text(""))
+        lines.append(Text(outdated, style=warn_style))
+
+    if not status.running:
+        lines.append(Text(""))
+        lines.append(
+            Text(
+                "The gate server is not running. Use the actions below to install or start it.",
+                style=Style(dim=True),
+            )
+        )
+
+    return Text("\n").join(lines)
+
+
+# ---------------------------------------------------------------------------
+# Gate Server Screen
+# ---------------------------------------------------------------------------
+
+
+class GateServerScreen(screen.Screen[str | None]):
+    """Full-page screen for managing the gate server."""
+
+    BINDINGS = [
+        _modal_binding("escape", "dismiss", "Back"),
+        _modal_binding("q", "dismiss", "Back"),
+        _modal_binding("i", "gate_install", "Install systemd socket"),
+        _modal_binding("u", "gate_uninstall", "Uninstall systemd units"),
+        _modal_binding("s", "gate_start", "Start daemon"),
+        _modal_binding("p", "gate_stop", "Stop daemon"),
+        _modal_binding("r", "gate_refresh", "Refresh status"),
+    ]
+
+    CSS = (
+        """
+    GateServerScreen {
+        layout: vertical;
+        background: $background;
+    }
+    """
+        + _DETAIL_SCREEN_CSS
+    )
+
+    def __init__(self, status: GateServerStatus | None = None) -> None:
+        """Store gate server status for rendering."""
+        super().__init__()
+        self._status = status
+
+    def compose(self) -> ComposeResult:
+        """Build the detail pane and action list for gate server management."""
+        detail_pane = Static(id="detail-content")
+        detail_pane.border_title = "Git Gate Server"
+        detail_pane.border_subtitle = "Esc to close"
+        yield detail_pane
+
+        yield OptionList(
+            Option("\\[i]nstall systemd socket", id="gate_install"),
+            Option("\\[u]ninstall systemd units", id="gate_uninstall"),
+            None,
+            Option("\\[s]tart daemon", id="gate_start"),
+            Option("sto\\[p] daemon", id="gate_stop"),
+            None,
+            Option("\\[r]efresh status", id="gate_refresh"),
+            id="actions-list",
+        )
+
+    def on_mount(self) -> None:
+        """Render gate server status and focus the action list."""
+        self._render_status()
+        actions = self.query_one("#actions-list", OptionList)
+        actions.focus()
+
+    def _render_status(self) -> None:
+        """Update the detail pane with current status."""
+        detail_widget = self.query_one("#detail-content", Static)
+        detail_widget.update(render_gate_server_status(self._status))
+
+    def _refresh_status(self) -> None:
+        """Re-fetch status and update the display."""
+        from ..lib.facade import get_server_status
+
+        try:
+            self._status = get_server_status()
+        except Exception:
+            self._status = None
+        self._render_status()
+
+    def on_option_list_option_selected(self, event: OptionList.OptionSelected) -> None:
+        """Handle action selection from the option list."""
+        option_id = event.option_id
+        if option_id == "gate_refresh":
+            self._refresh_status()
+        elif option_id:
+            self.dismiss(option_id)
+
+    def action_dismiss(self) -> None:
+        """Close the screen without selecting an action."""
+        self.dismiss(None)
+
+    def action_gate_install(self) -> None:
+        """Trigger systemd socket installation."""
+        self.dismiss("gate_install")
+
+    def action_gate_uninstall(self) -> None:
+        """Trigger systemd unit uninstallation."""
+        self.dismiss("gate_uninstall")
+
+    def action_gate_start(self) -> None:
+        """Trigger daemon start."""
+        self.dismiss("gate_start")
+
+    def action_gate_stop(self) -> None:
+        """Trigger daemon stop."""
+        self.dismiss("gate_stop")
+
+    def action_gate_refresh(self) -> None:
+        """Refresh the status display."""
+        self._refresh_status()
 
 
 # ---------------------------------------------------------------------------

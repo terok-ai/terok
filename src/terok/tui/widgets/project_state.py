@@ -3,6 +3,8 @@
 
 """Project state rendering widget and helpers."""
 
+from __future__ import annotations
+
 from typing import Any
 
 from rich.style import Style
@@ -11,7 +13,7 @@ from textual.widgets import Static
 
 from ...lib.containers.task_display import GPU_DISPLAY, SECURITY_CLASS_DISPLAY, has_gpu
 from ...lib.core.projects import Project
-from ...lib.facade import GateStalenessInfo
+from ...lib.facade import GateServerStatus, GateStalenessInfo
 from ...lib.util.emoji import render_emoji
 from .task_detail import _get_css_variables
 
@@ -48,6 +50,7 @@ def render_project_details(
     task_count: int | None = None,
     staleness: GateStalenessInfo | None = None,
     css_variables: dict[str, str] | None = None,
+    gate_server_status: GateServerStatus | None = None,
 ) -> Text:
     """Render project details as a Rich Text object."""
     if project is None or state is None:
@@ -80,15 +83,25 @@ def render_project_details(
         images_value = "old"
     images_s = _status_text(images_value)
     ssh_s = _status_text("yes" if state.get("ssh") else "no")
-    gate_value = "yes" if state.get("gate") else "no"
-    if gate_value == "yes" and staleness is not None and not staleness.error and staleness.is_stale:
-        behind = staleness.commits_behind or 0
-        ahead = staleness.commits_ahead or 0
-        if ahead > 0 and behind == 0:
-            gate_value = "new"
-        else:
-            gate_value = "old"
-    gate_s = _status_text(gate_value)
+
+    # Gate line: server status overrides repo status when server is down
+    if gate_server_status is not None and not gate_server_status.running:
+        gate_s = Text("server down", style=Style(color=error_color))
+    else:
+        gate_value = "yes" if state.get("gate") else "no"
+        if (
+            gate_value == "yes"
+            and staleness is not None
+            and not staleness.error
+            and staleness.is_stale
+        ):
+            behind = staleness.commits_behind or 0
+            ahead = staleness.commits_ahead or 0
+            if ahead > 0 and behind == 0:
+                gate_value = "new"
+            else:
+                gate_value = "old"
+        gate_s = _status_text(gate_value)
 
     tasks_line = (
         Text("Tasks:     unknown") if task_count is None else Text(f"Tasks:     {task_count}")
@@ -203,8 +216,16 @@ class ProjectState(Static):
         state: dict | None,
         task_count: int | None = None,
         staleness: GateStalenessInfo | None = None,
+        gate_server_status: GateServerStatus | None = None,
     ) -> None:
         """Display fully loaded project details including infrastructure status."""
         self.update(
-            render_project_details(project, state, task_count, staleness, _get_css_variables(self))
+            render_project_details(
+                project,
+                state,
+                task_count,
+                staleness,
+                _get_css_variables(self),
+                gate_server_status=gate_server_status,
+            )
         )

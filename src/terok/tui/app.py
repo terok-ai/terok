@@ -54,9 +54,11 @@ if _HAS_TEXTUAL:
         short_version as _short_version,
     )
     from ..lib.facade import (
+        GateServerStatus,
         GateStalenessInfo,
         compare_gate_vs_upstream,
         get_project_state,
+        get_server_status,
         is_task_image_old,
     )
 
@@ -68,12 +70,13 @@ if _HAS_TEXTUAL:
         project: Project | None = None
         state: dict | None = None
         staleness: GateStalenessInfo | None = None
+        gate_server_status: GateServerStatus | None = None
         error: str | None = None
 
     from .clipboard import get_clipboard_helper_status
     from .polling import PollingMixin
     from .project_actions import ProjectActionsMixin
-    from .screens import ProjectDetailsScreen, TaskDetailsScreen
+    from .screens import GateServerScreen, ProjectDetailsScreen, TaskDetailsScreen
     from .task_actions import TaskActionsMixin
     from .widgets import (
         ProjectList,
@@ -102,6 +105,13 @@ if _HAS_TEXTUAL:
         "show_resolved": "_action_show_resolved_instructions",
         "import_opencode_config": "_action_import_opencode_config",
         "delete_project": "_action_delete_project",
+    }
+
+    GATE_SERVER_ACTION_HANDLERS: dict[str, str] = {
+        "gate_install": "_action_gate_install",
+        "gate_uninstall": "_action_gate_uninstall",
+        "gate_start": "_action_gate_start",
+        "gate_stop": "_action_gate_stop",
     }
 
     TASK_ACTION_HANDLERS: dict[str, str] = {
@@ -217,6 +227,10 @@ if _HAS_TEXTUAL:
             self._auto_sync_cooldown: dict[str, float] = {}  # Per-project cooldown timestamps
             # Container status polling state
             self._container_status_timer = None
+            # Gate server polling state
+            self._gate_server_timer = None
+            self._last_gate_server_running: bool | None = None
+            self._last_gate_server_status: GateServerStatus | None = None
             # Cached state for detail screens
             self._last_project_state: dict | None = None
             self._last_image_old: bool | None = None
@@ -291,6 +305,17 @@ if _HAS_TEXTUAL:
                 # call_after_refresh may not exist on very old Textual; in
                 # that case we simply skip this extra logging.
                 pass
+
+            # Startup gate server health check
+            self.run_worker(
+                get_server_status,
+                name="gate-health-check",
+                group="gate-health",
+                thread=True,
+                exit_on_error=False,
+            )
+            # Start periodic gate server polling
+            self._start_gate_server_polling()
 
         def _log_layout_debug(self) -> None:
             """Write a one-shot snapshot of key widget sizes to the state dir.
@@ -513,7 +538,17 @@ if _HAS_TEXTUAL:
                         staleness = compare_gate_vs_upstream(project_id)
                     except Exception:
                         staleness = None
-                return ProjectStateResult(project_id, project, state, staleness)
+                try:
+                    gate_status = get_server_status()
+                except Exception:
+                    gate_status = None
+                return ProjectStateResult(
+                    project_id,
+                    project,
+                    state,
+                    staleness,
+                    gate_server_status=gate_status,
+                )
             except SystemExit as e:
                 return ProjectStateResult(project_id, error=str(e))
             except Exception as e:
@@ -604,8 +639,13 @@ if _HAS_TEXTUAL:
                 self._projects_by_id[psr.project_id] = psr.project
                 self._staleness_info = psr.staleness
                 self._last_project_state = psr.state
+                self._last_gate_server_status = psr.gate_server_status
                 state_widget.set_state(
-                    psr.project, psr.state, self._last_task_count, self._staleness_info
+                    psr.project,
+                    psr.state,
+                    self._last_task_count,
+                    self._staleness_info,
+                    gate_server_status=psr.gate_server_status,
                 )
                 return
 
@@ -706,6 +746,33 @@ if _HAS_TEXTUAL:
                     await self.refresh_tasks()
                 return
 
+            if worker.group == "gate-health":
+                result = worker.result
+                if result and not result.running:
+                    self.notify(
+                        "Gate server is not running. "
+                        "Press Ctrl+P \u2192 Git Gate Server to manage.",
+                        severity="warning",
+                        timeout=10,
+                    )
+                return
+
+            if worker.group == "gate-server-poll":
+                result = worker.result
+                if not result:
+                    return
+                was_running = self._last_gate_server_running
+                now_running = result.running
+                if was_running is True and not now_running:
+                    self.notify("Gate server stopped", severity="warning")
+                elif was_running is False and now_running:
+                    self.notify("Gate server is now running")
+                self._last_gate_server_running = now_running
+                self._last_gate_server_status = result
+                # Refresh project state to update the combined gate line
+                self._refresh_project_state()
+                return
+
         # ---------- Actions (keys + called from buttons) ----------
 
         async def action_edit_global_instructions(self) -> None:
@@ -720,6 +787,7 @@ if _HAS_TEXTUAL:
             """Exit the TUI cleanly."""
             self._stop_upstream_polling()
             self._stop_container_status_polling()
+            self._stop_gate_server_polling()
             self.exit()
 
         async def action_show_project_actions(self) -> None:
@@ -783,6 +851,34 @@ if _HAS_TEXTUAL:
         async def _handle_task_action(self, action: str) -> None:
             """Handle task actions."""
             handler = TASK_ACTION_HANDLERS.get(action)
+            if handler:
+                await getattr(self, handler)()
+
+        # ---------- Command palette ----------
+
+        def get_system_commands(self, screen):
+            """Add gate server management to the command palette."""
+            from textual.app import SystemCommand
+
+            yield from super().get_system_commands(screen)
+            yield SystemCommand(
+                "Git Gate Server",
+                "Manage gate server status and operations",
+                self.action_show_gate_server,
+            )
+
+        async def action_show_gate_server(self) -> None:
+            """Open the gate server management screen."""
+            await self.push_screen(
+                GateServerScreen(self._last_gate_server_status),
+                self._on_gate_server_action_result,
+            )
+
+        async def _on_gate_server_action_result(self, result: str | None) -> None:
+            """Handle result from gate server screen."""
+            if not result:
+                return
+            handler = GATE_SERVER_ACTION_HANDLERS.get(result)
             if handler:
                 await getattr(self, handler)()
 

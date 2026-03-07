@@ -24,8 +24,12 @@ from ..lib.facade import (
     find_projects_sharing_gate,
     generate_dockerfiles,
     init_project_ssh,
+    install_systemd_units,
     maybe_pause_for_ssh_key_registration,
+    start_daemon,
+    stop_daemon,
     sync_project_gate,
+    uninstall_systemd_units,
 )
 from .shell_launch import launch_login
 
@@ -530,3 +534,33 @@ class ProjectActionsMixin:
 
         self.current_project_id = None
         await self.refresh_projects()
+
+    # ---------- Gate server actions ----------
+
+    async def _action_gate_install(self) -> None:
+        """Install systemd socket units for the gate server."""
+        await self._run_suspended(
+            install_systemd_units,
+            success_msg="Gate server systemd units installed",
+        )
+
+    async def _action_gate_uninstall(self) -> None:
+        """Uninstall systemd units for the gate server."""
+        await self._run_suspended(
+            uninstall_systemd_units,
+            success_msg="Gate server systemd units uninstalled",
+        )
+
+    async def _action_gate_start(self) -> None:
+        """Start the gate server daemon."""
+        await self._run_suspended(
+            start_daemon,
+            success_msg="Gate server daemon started",
+        )
+
+    async def _action_gate_stop(self) -> None:
+        """Stop the gate server daemon."""
+        await self._run_suspended(
+            stop_daemon,
+            success_msg="Gate server daemon stopped",
+        )
