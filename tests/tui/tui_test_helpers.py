@@ -58,7 +58,7 @@ def build_textual_stubs() -> dict[str, types.ModuleType]:
         def __init__(self, *args: Any, **kwargs: Any) -> None:
             pass
 
-        def get_system_commands(self, screen: Any) -> Any:
+        def get_system_commands(self, _screen: Any) -> Any:
             return iter(())
 
     class ComposeResult:
