@@ -44,6 +44,8 @@ def _run(
         )
     except subprocess.TimeoutExpired:
         return subprocess.CompletedProcess(cmd, returncode=1, stdout="", stderr="timed out")
+    except FileNotFoundError as exc:
+        return subprocess.CompletedProcess(cmd, returncode=1, stdout="", stderr=str(exc))
 
 
 def _load_tach_toml() -> tuple[str, object, list[dict]] | None:
@@ -185,12 +187,15 @@ def _section_dead_code() -> str:
     )
     output = (result.stdout + result.stderr).strip()
     if not output:
+        if result.returncode != 0:
+            return f"!!! warning\n    vulture failed (exit {result.returncode}).\n"
         return "No dead code found at 80% confidence threshold.\n"
 
     def _md_cell(value: str) -> str:
         return value.replace("|", r"\|").replace("\n", " ")
 
     lines = ["| Confidence | Location | Issue |\n", "|---:|---|---|\n"]
+    parsed = 0
     for line in output.splitlines():
         # Format: path:line: message (NN% confidence)
         if "% confidence)" in line:
@@ -204,8 +209,11 @@ def _section_dead_code() -> str:
             lines.append(
                 f"| {_md_cell(confidence)} | `{_md_cell(location)}` | {_md_cell(message)} |\n"
             )
+            parsed += 1
         else:
             lines.append(f"| — | — | {_md_cell(line)} |\n")
+    if parsed == 0 and result.returncode != 0:
+        return f"!!! warning\n    vulture failed.\n\n```text\n{output}\n```\n"
     return "".join(lines)
 
 
