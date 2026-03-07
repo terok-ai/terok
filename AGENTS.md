@@ -52,7 +52,7 @@ make install-dev          # Apply the updated lockfile to your local environment
 make install-dev  # Install all development dependencies
 make docs         # Serve documentation locally
 make clean        # Remove build artifacts
-make spdx NAME="Your Name" FILES="src/terok/new_file.py"  # Add SPDX header
+make spdx NAME="Jiri Vyskocil" FILES="src/terok/new_file.py"  # Add SPDX header
 ```
 
 ## Coding Standards
@@ -68,7 +68,8 @@ make spdx NAME="Your Name" FILES="src/terok/new_file.py"  # Add SPDX header
   # SPDX-FileCopyrightText: 2025-2026 Jiri Vyskocil
   # SPDX-License-Identifier: Apache-2.0
   ```
-  Use `make spdx NAME="Your Name" FILES="path/to/file.py"` to add headers (uses the compact template in `.reuse/templates/`). For files that already have a header, this adds a second copyright line — it does not replace the existing one. Files covered by `REUSE.toml` glob patterns (`.md`, `.yml`, `.toml`, `.json`, etc.) do not need inline headers. `make reuse` checks compliance but does not generate headers.
+  Use `make spdx NAME="Jiri Vyskocil" FILES="path/to/file.py"` to add headers (uses the compact template in `.reuse/templates/`). For files that already have a header, this adds a second copyright line — it does not replace the existing one. Files covered by `REUSE.toml` glob patterns (`.md`, `.yml`, `.toml`, `.json`, etc.) do not need inline headers. `make reuse` checks compliance but does not generate headers.
+  **Copyright holder**: NAME must be the real name of the person who created the file (ASCII-only, no project names). When creating new files, ask the user for their name if unknown. When modifying an existing file that already has an SPDX header, add a second copyright line with your own (or the contributor's) name — do not replace the original author.
 - **Emojis**: Must be natively wide (`East_Asian_Width=W`) — no VS16 (U+FE0F) sequences. Use `draw_emoji()` from `terok.lib.util.emoji` for aligned output. See `docs/DEVELOPER.md` → "Emoji width constraints" for details
 
 ## Development Workflow
