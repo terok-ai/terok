@@ -332,11 +332,22 @@ path = "terok.lib.core.project_model"
 layer = "core"
 depends_on = []
 
+# Git authorship mode helpers
+[[modules]]
+path = "terok.lib.core.git_authorship"
+layer = "core"
+depends_on = []
+
 # Project discovery, loading, and preset management
 [[modules]]
 path = "terok.lib.core.projects"
 layer = "core"
-depends_on = ["terok.lib.core.config", "terok.lib.core.project_model", "terok.lib.util.config_stack"]
+depends_on = [
+    "terok.lib.core.config",
+    "terok.lib.core.git_authorship",
+    "terok.lib.core.project_model",
+    "terok.lib.util.config_stack",
+]
 
 # Image naming conventions
 [[modules]]

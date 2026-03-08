@@ -267,9 +267,7 @@ class GenerateClaudeWrapperTests(unittest.TestCase):
         self.assertIn("claude()", wrapper)
         self.assertIn("--dangerously-skip-permissions", wrapper)
         self.assertIn('--add-dir "/"', wrapper)
-        self.assertIn("GIT_AUTHOR_NAME=Claude", wrapper)
-        self.assertIn("GIT_COMMITTER_NAME", wrapper)
-        self.assertIn("Test User", wrapper)
+        self.assertIn("_terok_apply_git_identity Claude noreply@anthropic.com", wrapper)
         # Should NOT contain agents reference when has_agents=False
         self.assertNotIn("agents.json", wrapper)
 
@@ -319,9 +317,8 @@ class GenerateClaudeWrapperTests(unittest.TestCase):
         self.assertIn('timeout "$_timeout" claude', wrapper)
         # Wrapper should still have the non-timeout path
         self.assertIn('command claude "${_args[@]}" "$@"', wrapper)
-        # Both paths should have git env vars
-        self.assertEqual(wrapper.count("GIT_AUTHOR_NAME=Claude"), 2)
-        self.assertEqual(wrapper.count("GIT_AUTHOR_EMAIL=noreply@anthropic.com"), 2)
+        # Both paths should apply git identity through the shared helper
+        self.assertEqual(wrapper.count("_terok_apply_git_identity Claude noreply@anthropic.com"), 2)
 
     def test_wrapper_resume_from_session_file(self) -> None:
         """Wrapper adds --resume from claude-session.txt when it exists."""

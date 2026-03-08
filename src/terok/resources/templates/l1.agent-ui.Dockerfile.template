@@ -18,17 +18,22 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
       ssh ca-certificates python-is-python3 python3 git nodejs curl \
     && rm -rf /var/lib/apt/lists/*
 
+RUN mkdir -p /usr/local/share/terok
+COPY scripts/terok-git-identity.sh /usr/local/share/terok/terok-git-identity.sh
+RUN chmod +x /usr/local/share/terok/terok-git-identity.sh
+
 RUN set -eux; \
     printf '%s\n' \
-      'alias codex="GIT_AUTHOR_NAME=Codex GIT_AUTHOR_EMAIL=codex@openai.com GIT_COMMITTER_NAME="\${HUMAN_GIT_NAME:-Nobody}" GIT_COMMITTER_EMAIL="\${HUMAN_GIT_EMAIL:-nobody@localhost}" codex --dangerously-bypass-approvals-and-sandbox"' \
-      'alias claude="GIT_AUTHOR_NAME=Claude GIT_AUTHOR_EMAIL=noreply@anthropic.com GIT_COMMITTER_NAME="\${HUMAN_GIT_NAME:-Nobody}" GIT_COMMITTER_EMAIL="\${HUMAN_GIT_EMAIL:-nobody@localhost}" claude --dangerously-skip-permissions"' \
-      'alias copilot="GIT_AUTHOR_NAME=\"GitHub Copilot\" GIT_AUTHOR_EMAIL=copilot@github.com GIT_COMMITTER_NAME=\"\${HUMAN_GIT_NAME:-Nobody}\" GIT_COMMITTER_EMAIL=\"\${HUMAN_GIT_EMAIL:-nobody@localhost}\" copilot"' \
+      '[ -r /usr/local/share/terok/terok-git-identity.sh ] && . /usr/local/share/terok/terok-git-identity.sh' \
+      '[ -r /etc/profile.d/zz-terok-project.sh ] && . /etc/profile.d/zz-terok-project.sh' \
       > /etc/profile.d/terok-agent-aliases.sh; \
     if [ -f /etc/bash.bashrc ]; then \
       printf '\n# terok agent aliases\n. /etc/profile.d/terok-agent-aliases.sh\n' >> /etc/bash.bashrc; \
     else \
       printf '# terok agent aliases\n. /etc/profile.d/terok-agent-aliases.sh\n' > /etc/bash.bashrc; \
     fi
+
+RUN ln -s /home/dev/.terok/terok-agent.sh /etc/profile.d/zz-terok-project.sh
 
 RUN set -eux; \
     mkdir -p "${TEROK_UI_DIR}"; \

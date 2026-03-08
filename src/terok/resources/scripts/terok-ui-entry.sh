@@ -5,6 +5,12 @@
 
 set -euo pipefail
 
+GIT_IDENTITY_HELPER="/usr/local/share/terok/terok-git-identity.sh"
+if [[ -r "${GIT_IDENTITY_HELPER}" ]]; then
+  # shellcheck source=/dev/null
+  . "${GIT_IDENTITY_HELPER}"
+fi
+
 # Reuse SSH + project repo init (if script exists)
 if command -v /usr/local/bin/init-ssh-and-repo.sh >/dev/null 2>&1; then
   /usr/local/bin/init-ssh-and-repo.sh || exit $?
@@ -13,34 +19,25 @@ fi
 # Set git author/committer based on UI backend for AI-generated commits
 # Author = AI agent, Committer = Human (if configured)
 # This ensures commits made by the UI are properly attributed
-if command -v git >/dev/null 2>&1 && [[ -n "${TEROK_UI_BACKEND:-}" ]]; then
+if command -v git >/dev/null 2>&1 && [[ -n "${TEROK_UI_BACKEND:-}" ]] && declare -F _terok_apply_git_identity >/dev/null 2>&1; then
   case "${TEROK_UI_BACKEND,,}" in
     codex)
-      export GIT_AUTHOR_NAME="Codex"
-      export GIT_AUTHOR_EMAIL="codex@openai.com"
+      _terok_apply_git_identity "Codex" "noreply@openai.com"
       ;;
     claude)
-      export GIT_AUTHOR_NAME="Claude"
-      export GIT_AUTHOR_EMAIL="noreply@anthropic.com"
+      _terok_apply_git_identity "Claude" "noreply@anthropic.com"
       ;;
     copilot)
-      export GIT_AUTHOR_NAME="GitHub Copilot"
-      export GIT_AUTHOR_EMAIL="copilot@github.com"
+      _terok_apply_git_identity "GitHub Copilot" "copilot@github.com"
       ;;
     mistral)
-      export GIT_AUTHOR_NAME="Mistral Vibe"
-      export GIT_AUTHOR_EMAIL="vibe@mistral.ai"
+      _terok_apply_git_identity "Mistral Vibe" "vibe@mistral.ai"
       ;;
     *)
       # Default fallback for unknown backends
-      export GIT_AUTHOR_NAME="AI Agent"
-      export GIT_AUTHOR_EMAIL="ai-agent@localhost"
+      _terok_apply_git_identity "AI Agent" "ai-agent@localhost"
       ;;
   esac
-  
-  # Set committer to human credentials
-  export GIT_COMMITTER_NAME="${HUMAN_GIT_NAME:-Nobody}"
-  export GIT_COMMITTER_EMAIL="${HUMAN_GIT_EMAIL:-nobody@localhost}"
 fi
 
 : "${TEROK_UI_DIR:=/opt/terok-web-ui}"

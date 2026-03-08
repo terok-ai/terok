@@ -244,7 +244,7 @@ class GenerateAgentWrapperTests(unittest.TestCase):
         )
         self.assertIn("claude()", wrapper)
         self.assertIn("--add-dir", wrapper)
-        self.assertIn("GIT_AUTHOR_NAME=Claude", wrapper)
+        self.assertIn("_terok_apply_git_identity Claude noreply@anthropic.com", wrapper)
 
     def test_claude_wrapper_with_agents(self) -> None:
         """Claude wrapper includes agents.json loading when has_agents=True."""
@@ -268,8 +268,7 @@ class GenerateAgentWrapperTests(unittest.TestCase):
         p = HEADLESS_PROVIDERS["codex"]
         wrapper = generate_agent_wrapper(p, project, has_agents=False)
         self.assertIn("codex()", wrapper)
-        self.assertIn("GIT_AUTHOR_NAME=Codex", wrapper)
-        self.assertIn("GIT_AUTHOR_EMAIL=noreply@openai.com", wrapper)
+        self.assertIn("_terok_apply_git_identity Codex noreply@openai.com", wrapper)
         self.assertIn("model_instructions_file", wrapper)
         self.assertIn("instructions.md", wrapper)
         self.assertNotIn("--add-dir", wrapper)
@@ -283,15 +282,15 @@ class GenerateAgentWrapperTests(unittest.TestCase):
             wrapper = generate_agent_wrapper(p, project, has_agents=False)
             self.assertIn("--terok-timeout", wrapper, f"{name} missing timeout support")
 
-    def test_generic_wrapper_has_git_committer(self) -> None:
-        """All wrappers set GIT_COMMITTER_NAME from project human_name."""
+    def test_generic_wrapper_uses_authorship_helper(self) -> None:
+        """All wrappers use the shared Git authorship helper."""
         project = _make_project(human_name="Alice", human_email="alice@example.com")
         for name, p in HEADLESS_PROVIDERS.items():
             kwargs: dict = {}
             if name == "claude":
                 kwargs["claude_wrapper_fn"] = self._claude_wrapper_fn
             wrapper = generate_agent_wrapper(p, project, has_agents=False, **kwargs)
-            self.assertIn("Alice", wrapper, f"{name} missing committer name")
+            self.assertIn("_terok_apply_git_identity", wrapper, f"{name} missing helper call")
 
     # Canonical sets of providers by session_file support.
     # Hardcoded so tests fail fast if a provider accidentally gains/loses the field.
@@ -578,12 +577,13 @@ class GenerateAllWrappersTests(unittest.TestCase):
         for name, p in HEADLESS_PROVIDERS.items():
             self.assertIn(f"{p.binary}()", wrapper, f"Missing wrapper for {name}")
 
-    def test_all_wrappers_have_git_committer(self) -> None:
-        """All wrappers in the combined file set GIT_COMMITTER_NAME."""
+    def test_all_wrappers_use_authorship_helper(self) -> None:
+        """All wrappers in the combined file use the shared helper."""
         project = _make_project(human_name="Bob")
         wrapper = generate_all_wrappers(
             project, has_agents=False, claude_wrapper_fn=self._claude_wrapper_fn
         )
-        # Each provider's wrapper mentions the committer name at least once
-        # (actually twice per provider — if/else branches)
-        self.assertGreaterEqual(wrapper.count("Bob"), len(HEADLESS_PROVIDERS))
+        # Each provider's wrapper calls the helper in headless + interactive paths.
+        self.assertGreaterEqual(
+            wrapper.count("_terok_apply_git_identity"), len(HEADLESS_PROVIDERS) * 2
+        )

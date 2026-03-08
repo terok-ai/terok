@@ -100,15 +100,19 @@ terokctl ssh-init <project_id> [--key-type ed25519|rsa] [--key-name NAME] [--for
 
 ## Git identity configuration
 - terok automatically configures git author and committer identities inside containers to identify AI-generated commits.
-- **Git Author**: Set to the AI agent that created the commit (Codex, Claude, or Mistral Vibe).
-- **Git Committer**: Set to human credentials (configurable per project).
-- **For CLI mode**: Git identity is set via environment variables in the command aliases for each agent:
-  - `codex` -> Author: `Codex <codex@openai.com>`, Committer: human credentials
+- By default, terok uses **author = AI agent** and **committer = human credentials**.
+- The mapping is configurable via `git.authorship` in `project.yml` or global `config.yml`.
+  - `agent-human` (default): author = agent, committer = human
+  - `human-agent`: author = human, committer = agent
+  - `human`: author = human, committer left to git defaults
+  - `agent`: author = agent, committer left to git defaults
+- **For CLI mode**: Git identity is set by terok's shell wrappers for each agent:
+  - `codex` -> Author: `Codex <noreply@openai.com>`, Committer: human credentials
   - `claude` -> Author: `Claude <noreply@anthropic.com>`, Committer: human credentials
   - `vibe` -> Author: `Mistral Vibe <vibe@mistral.ai>`, Committer: human credentials
-  - Each agent's alias sets its own git author, allowing multiple agents to coexist in the same container.
+  - Each agent wrapper supplies its own AI identity, allowing multiple agents to coexist in the same container.
 - **For UI mode**: Git identity is set in the entry script based on the default agent (configured via `DEFAULT_AGENT` env var, `default_agent` in config, or `--backend` CLI flag):
-  - `codex` -> Author: `Codex <codex@openai.com>`, Committer: human credentials
+  - `codex` -> Author: `Codex <noreply@openai.com>`, Committer: human credentials
   - `claude` -> Author: `Claude <noreply@anthropic.com>`, Committer: human credentials
   - `mistral` -> Author: `Mistral Vibe <vibe@mistral.ai>`, Committer: human credentials
   - Unknown backends default to Author: `AI Agent <ai-agent@localhost>`, Committer: human credentials
@@ -117,8 +121,12 @@ terokctl ssh-init <project_id> [--key-type ed25519|rsa] [--key-name NAME] [--for
   2. Global terokctl config: `human_name` and `human_email` in the `git:` section of `~/.config/terok/config.yml`
   3. Global git config: `git config --global user.name` and `git config --global user.email`
   4. Defaults: `Nobody <nobody@localhost>`
+- **Authorship mode configuration** (checked in order):
+  1. Per-project: `authorship` in the `git:` section of `project.yml`
+  2. Global terokctl config: `authorship` in the `git:` section of `~/.config/terok/config.yml`
+  3. Default: `agent-human`
 - Email addresses for Codex, Claude, and Mistral are GitHub-recognized and will display with avatars in commit history.
-- This approach ensures commits show both the AI agent (author) and the human supervisor (committer).
+- Commit messages and prompts can still mention the AI agent regardless of authorship mode.
 
 ## Quick reference (runtime mounts)
 - `/workspace` <- `<state_root>/tasks/<project>/<task>/workspace-dangerous:Z`

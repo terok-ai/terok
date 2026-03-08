@@ -44,6 +44,8 @@ class Project:
     # Optional human credentials for git committer (while AI is the author)
     human_name: str | None = None
     human_email: str | None = None
+    # How terok maps human/agent identities onto Git author/committer fields.
+    git_authorship: str = "agent-human"
     # Upstream polling configuration for gatekeeping mode
     upstream_polling_enabled: bool = True
     upstream_polling_interval_minutes: int = 5

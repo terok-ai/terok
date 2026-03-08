@@ -156,6 +156,7 @@ paths:
 git:
   human_name: "Your Name"
   human_email: "your@email.com"
+  authorship: agent-human    # or: human-agent, human, agent
 ```
 
 ---
@@ -186,6 +187,7 @@ project:
 git:
   upstream_url: git@github.com:yourorg/yourrepo.git  # or https://...
   default_branch: main
+  # authorship: human-agent  # optional: author = human, committer = agent
 
 # Optional: SSH hints for containers
 ssh:

@@ -238,6 +238,7 @@ def build_task_env_and_volumes(project: Project, task_id: str) -> tuple[dict, li
         "TASK_ID": task_id,
         "REPO_ROOT": "/workspace",
         "GIT_RESET_MODE": os.environ.get("TEROK_GIT_RESET_MODE", "none"),
+        "TEROK_GIT_AUTHORSHIP": project.git_authorship,
         "CLAUDE_CONFIG_DIR": "/home/dev/.claude",
         "HUMAN_GIT_NAME": project.human_name or "Nobody",
         "HUMAN_GIT_EMAIL": project.human_email or "nobody@localhost",

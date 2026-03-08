@@ -50,10 +50,10 @@ class HeadlessProvider:
     """CLI binary name (e.g. ``"claude"``, ``"codex"``, ``"opencode"``)."""
 
     git_author_name: str
-    """GIT_AUTHOR_NAME set inside the container."""
+    """AI identity name for Git author/committer policy application."""
 
     git_author_email: str
-    """GIT_AUTHOR_EMAIL set inside the container."""
+    """AI identity email for Git author/committer policy application."""
 
     # -- Headless command construction --
 
@@ -594,8 +594,6 @@ def _generate_generic_wrapper(provider: HeadlessProvider, project: Project) -> s
     - When the user passes their own arguments, passthrough is transparent
       — no resume args are injected.
     """
-    human_name = shlex.quote(project.human_name or "Nobody")
-    human_email = shlex.quote(project.human_email or "nobody@localhost")
     author_name = shlex.quote(provider.git_author_name)
     author_email = shlex.quote(provider.git_author_email)
     binary = provider.binary
@@ -611,6 +609,8 @@ def _generate_generic_wrapper(provider: HeadlessProvider, project: Project) -> s
         "            *) break ;;",
         "        esac",
         "    done",
+        "    [ -r /usr/local/share/terok/terok-git-identity.sh ] && \\",
+        "        . /usr/local/share/terok/terok-git-identity.sh",
     ]
 
     # OpenCode session plugin setup for opencode/blablador.
@@ -672,25 +672,18 @@ def _generate_generic_wrapper(provider: HeadlessProvider, project: Project) -> s
 
     # Git env vars and exec — with optional timeout (headless mode)
     lines.append('    if [ -n "$_timeout" ]; then')
-
-    # Build env var block
-    env_lines = [
-        f"        GIT_AUTHOR_NAME={author_name} \\",
-        f"        GIT_AUTHOR_EMAIL={author_email} \\",
-        f"        GIT_COMMITTER_NAME=${{HUMAN_GIT_NAME:-{human_name}}} \\",
-        f"        GIT_COMMITTER_EMAIL=${{HUMAN_GIT_EMAIL:-{human_email}}} \\",
-    ]
+    lines.append("        (")
+    lines.append(f"            _terok_apply_git_identity {author_name} {author_email}")
     if session_path:
-        env_lines.append(f"        TEROK_SESSION_FILE={session_path} \\")
-
-    lines.extend(env_lines)
+        lines.append(f"            export TEROK_SESSION_FILE={session_path}")
 
     if session_path and provider.resume_flag:
-        lines.append(f'        timeout "$_timeout" {binary} "${{_resume_args[@]}}" "$@"')
+        lines.append(f'            timeout "$_timeout" {binary} "${{_resume_args[@]}}" "$@"')
     elif provider.name == "codex":
-        lines.append(f'        timeout "$_timeout" {binary} "${{_instr_args[@]}}" "$@"')
+        lines.append(f'            timeout "$_timeout" {binary} "${{_instr_args[@]}}" "$@"')
     else:
-        lines.append(f'        timeout "$_timeout" {binary} "$@"')
+        lines.append(f'            timeout "$_timeout" {binary} "$@"')
+    lines.append("        )")
 
     # Post-run: capture vibe session ID
     if provider.name == "vibe" and session_path:
@@ -698,25 +691,19 @@ def _generate_generic_wrapper(provider: HeadlessProvider, project: Project) -> s
 
     # Interactive mode (no timeout)
     lines.append("    else")
-
-    env_lines_interactive = [
-        f"        GIT_AUTHOR_NAME={author_name} \\",
-        f"        GIT_AUTHOR_EMAIL={author_email} \\",
-        f"        GIT_COMMITTER_NAME=${{HUMAN_GIT_NAME:-{human_name}}} \\",
-        f"        GIT_COMMITTER_EMAIL=${{HUMAN_GIT_EMAIL:-{human_email}}} \\",
-    ]
+    lines.append("        (")
+    lines.append(f"            _terok_apply_git_identity {author_name} {author_email}")
     # Set session file env var for bare interactive launch only
     if session_path:
-        env_lines_interactive.append(f"        TEROK_SESSION_FILE={session_path} \\")
-
-    lines.extend(env_lines_interactive)
+        lines.append(f"            export TEROK_SESSION_FILE={session_path}")
 
     if session_path and provider.resume_flag:
-        lines.append(f'        command {binary} "${{_resume_args[@]}}" "$@"')
+        lines.append(f'            command {binary} "${{_resume_args[@]}}" "$@"')
     elif provider.name == "codex":
-        lines.append(f'        command {binary} "${{_instr_args[@]}}" "$@"')
+        lines.append(f'            command {binary} "${{_instr_args[@]}}" "$@"')
     else:
-        lines.append(f'        command {binary} "$@"')
+        lines.append(f'            command {binary} "$@"')
+    lines.append("        )")
 
     lines.append("    fi")
     lines.append("}")

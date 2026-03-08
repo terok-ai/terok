@@ -96,8 +96,9 @@ See [SHARED_DIRS.md](SHARED_DIRS.md) for detailed documentation.
 | `REPO_ROOT` | `/workspace` | Init script clone target |
 | `CLAUDE_CONFIG_DIR` | `/home/dev/.claude` | Claude Code config location |
 | `GIT_RESET_MODE` | `none` (default) | Controls workspace reset behavior |
-| `HUMAN_GIT_NAME` | From config or "Nobody" | Git committer name |
-| `HUMAN_GIT_EMAIL` | From config or "nobody@localhost" | Git committer email |
+| `TEROK_GIT_AUTHORSHIP` | `agent-human` (default) | Maps human/agent identities onto author/committer |
+| `HUMAN_GIT_NAME` | From config or "Nobody" | Human Git identity name |
+| `HUMAN_GIT_EMAIL` | From config or "nobody@localhost" | Human Git identity email |
 
 ### Conditional Variables (based on security mode)
 

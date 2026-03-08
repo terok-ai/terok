@@ -21,6 +21,7 @@ from .config import (
     state_root,
     user_projects_root,
 )
+from .git_authorship import normalize_git_authorship
 from .project_model import (  # noqa: F401 — re-exported public API
     PresetInfo,
     Project,
@@ -279,6 +280,7 @@ def load_project(project_id: str) -> Project:
 
     human_name = identity.get("human_name") or "Nobody"
     human_email = identity.get("human_email") or "nobody@localhost"
+    git_authorship = normalize_git_authorship(identity.get("authorship"))
 
     # Upstream polling configuration
     polling_cfg = gate_cfg.get("upstream_polling", {}) or {}
@@ -330,6 +332,7 @@ def load_project(project_id: str) -> Project:
         expose_external_remote=expose_external_remote,
         human_name=human_name,
         human_email=human_email,
+        git_authorship=git_authorship,
         upstream_polling_enabled=upstream_polling_enabled,
         upstream_polling_interval_minutes=upstream_polling_interval_minutes,
         auto_sync_enabled=auto_sync_enabled,

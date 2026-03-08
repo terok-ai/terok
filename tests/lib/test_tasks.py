@@ -432,9 +432,20 @@ class TaskTests(unittest.TestCase):
             env, volumes = build_task_env_and_volumes(load_project(project_id), task_id="8")
             self.assertEqual(env["CODE_REPO"], "https://example.com/repo.git")
             self.assertEqual(env["GIT_BRANCH"], "main")
+            self.assertEqual(env["TEROK_GIT_AUTHORSHIP"], "agent-human")
             self.assertIn("http://", env["CLONE_FROM"])
             self.assertIn(f"@host.containers.internal:9418/{project_id}.git", env["CLONE_FROM"])
             _assert_volume_mount(volumes, f"{ssh_dir}:/home/dev/.ssh", ":z")
+
+    def test_build_task_env_uses_configured_git_authorship(self) -> None:
+        """Task containers receive the resolved Git authorship mode."""
+        project_id = "proj_authorship_env"
+        with project_env(
+            f"project:\n  id: {project_id}\ngit:\n  upstream_url: https://example.com/repo.git\n  authorship: human-agent\n",
+            project_id=project_id,
+        ):
+            env, _volumes = build_task_env_and_volumes(load_project(project_id), task_id="1")
+            self.assertEqual(env["TEROK_GIT_AUTHORSHIP"], "human-agent")
 
     def test_apply_ui_env_overrides_passthrough(self) -> None:
         base_env = {"EXISTING": "1", "CLAUDE_API_KEY": "override"}

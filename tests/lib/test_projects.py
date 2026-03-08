@@ -32,6 +32,52 @@ git:
                 proj.gate_path, (state_root() / "gate" / f"{project_id}.git").resolve()
             )
             self.assertEqual(proj.staging_root, (build_root() / project_id).resolve())
+            self.assertEqual(proj.git_authorship, "agent-human")
+
+    def test_load_project_git_authorship_from_project(self) -> None:
+        """Project git.authorship overrides the default."""
+        project_id = "proj-authorship"
+        yaml = f"""\
+project:
+  id: {project_id}
+git:
+  upstream_url: https://example.com/repo.git
+  authorship: human-agent
+"""
+        with project_env(yaml, project_id=project_id):
+            proj = load_project(project_id)
+            self.assertEqual(proj.git_authorship, "human-agent")
+
+    def test_load_project_git_authorship_from_global_config(self) -> None:
+        """Global git.authorship applies when project.yml omits it."""
+        project_id = "proj-global-authorship"
+        yaml = f"""\
+project:
+  id: {project_id}
+git:
+  upstream_url: https://example.com/repo.git
+"""
+        with project_env(yaml, project_id=project_id) as ctx:
+            config_file = ctx.base / "config.yml"
+            config_file.write_text("git:\n  authorship: human\n", encoding="utf-8")
+            with unittest.mock.patch.dict(os.environ, {"TEROK_CONFIG_FILE": str(config_file)}):
+                proj = load_project(project_id)
+            self.assertEqual(proj.git_authorship, "human")
+
+    def test_load_project_invalid_git_authorship_raises(self) -> None:
+        """Invalid git.authorship values fail with a clear error."""
+        project_id = "proj-bad-authorship"
+        yaml = f"""\
+project:
+  id: {project_id}
+git:
+  upstream_url: https://example.com/repo.git
+  authorship: mystery-mode
+"""
+        with project_env(yaml, project_id=project_id):
+            with self.assertRaises(SystemExit) as ctx:
+                load_project(project_id)
+            self.assertIn("git.authorship", str(ctx.exception))
 
     def test_list_projects_prefers_user(self) -> None:
         with tempfile.TemporaryDirectory() as td:
