@@ -507,7 +507,8 @@ def _section_coverage_treemap() -> str:
         svg = _CODECOV_TREEMAP_LOCAL.read_text(encoding="utf-8")
         with mkdocs_gen_files.open("coverage_treemap.svg", "w") as f:
             f.write(svg)
-        src = "coverage_treemap.svg"
+        # quality-report.md → quality-report/index.html, so go up one level.
+        src = "../coverage_treemap.svg"
     else:
         src = _CODECOV_TREEMAP_REMOTE
     return f'<object id="codecov-treemap-img" type="image/svg+xml" data="{src}"></object>\n\n'
