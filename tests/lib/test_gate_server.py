@@ -116,7 +116,9 @@ class TestInstallUninstall(unittest.TestCase):
                     "terok.lib.security.gate_server._systemd_unit_dir",
                     return_value=unit_dir,
                 ),
-                unittest.mock.patch("terok.lib.security.gate_server._get_port", return_value=9418),
+                unittest.mock.patch(
+                    "terok.lib.security.gate_server._get_port", return_value=GATE_PORT
+                ),
                 unittest.mock.patch(
                     "terok.lib.security.gate_server._get_gate_base_path",
                     return_value=Path("/tmp/gate"),
@@ -373,41 +375,41 @@ class TestGetServerStatus(unittest.TestCase):
 
     @unittest.mock.patch("terok.lib.security.gate_server.is_daemon_running", return_value=False)
     @unittest.mock.patch("terok.lib.security.gate_server.is_socket_installed", return_value=False)
-    @unittest.mock.patch("terok.lib.security.gate_server._get_port", return_value=9418)
+    @unittest.mock.patch("terok.lib.security.gate_server._get_port", return_value=GATE_PORT)
     def test_none(self, *_mocks: unittest.mock.Mock) -> None:
         status = get_server_status()
-        self.assertEqual(status, GateServerStatus(mode="none", running=False, port=9418))
+        self.assertEqual(status, GateServerStatus(mode="none", running=False, port=GATE_PORT))
 
     @unittest.mock.patch("terok.lib.security.gate_server.is_socket_active", return_value=True)
     @unittest.mock.patch("terok.lib.security.gate_server.is_socket_installed", return_value=True)
-    @unittest.mock.patch("terok.lib.security.gate_server._get_port", return_value=9418)
+    @unittest.mock.patch("terok.lib.security.gate_server._get_port", return_value=GATE_PORT)
     def test_systemd_active(self, *_mocks: unittest.mock.Mock) -> None:
         status = get_server_status()
-        self.assertEqual(status, GateServerStatus(mode="systemd", running=True, port=9418))
+        self.assertEqual(status, GateServerStatus(mode="systemd", running=True, port=GATE_PORT))
 
     @unittest.mock.patch("terok.lib.security.gate_server.is_daemon_running", return_value=False)
     @unittest.mock.patch("terok.lib.security.gate_server.is_socket_active", return_value=False)
     @unittest.mock.patch("terok.lib.security.gate_server.is_socket_installed", return_value=True)
-    @unittest.mock.patch("terok.lib.security.gate_server._get_port", return_value=9418)
+    @unittest.mock.patch("terok.lib.security.gate_server._get_port", return_value=GATE_PORT)
     def test_systemd_inactive(self, *_mocks: unittest.mock.Mock) -> None:
         status = get_server_status()
-        self.assertEqual(status, GateServerStatus(mode="systemd", running=False, port=9418))
+        self.assertEqual(status, GateServerStatus(mode="systemd", running=False, port=GATE_PORT))
 
     @unittest.mock.patch("terok.lib.security.gate_server.is_daemon_running", return_value=True)
     @unittest.mock.patch("terok.lib.security.gate_server.is_socket_active", return_value=False)
     @unittest.mock.patch("terok.lib.security.gate_server.is_socket_installed", return_value=True)
-    @unittest.mock.patch("terok.lib.security.gate_server._get_port", return_value=9418)
+    @unittest.mock.patch("terok.lib.security.gate_server._get_port", return_value=GATE_PORT)
     def test_daemon_fallback_when_socket_inactive(self, *_mocks: unittest.mock.Mock) -> None:
         """Daemon fallback is detected even when systemd units are installed."""
         status = get_server_status()
-        self.assertEqual(status, GateServerStatus(mode="daemon", running=True, port=9418))
+        self.assertEqual(status, GateServerStatus(mode="daemon", running=True, port=GATE_PORT))
 
     @unittest.mock.patch("terok.lib.security.gate_server.is_daemon_running", return_value=True)
     @unittest.mock.patch("terok.lib.security.gate_server.is_socket_installed", return_value=False)
-    @unittest.mock.patch("terok.lib.security.gate_server._get_port", return_value=9418)
+    @unittest.mock.patch("terok.lib.security.gate_server._get_port", return_value=GATE_PORT)
     def test_daemon_running(self, *_mocks: unittest.mock.Mock) -> None:
         status = get_server_status()
-        self.assertEqual(status, GateServerStatus(mode="daemon", running=True, port=9418))
+        self.assertEqual(status, GateServerStatus(mode="daemon", running=True, port=GATE_PORT))
 
 
 class TestEnsureServerReachable(unittest.TestCase):
@@ -415,7 +417,7 @@ class TestEnsureServerReachable(unittest.TestCase):
 
     @unittest.mock.patch(
         "terok.lib.security.gate_server.get_server_status",
-        return_value=GateServerStatus(mode="daemon", running=True, port=9418),
+        return_value=GateServerStatus(mode="daemon", running=True, port=GATE_PORT),
     )
     def test_passes_when_running(self, _mock: unittest.mock.Mock) -> None:
         ensure_server_reachable()  # Should not raise
@@ -423,7 +425,7 @@ class TestEnsureServerReachable(unittest.TestCase):
     @unittest.mock.patch("terok.lib.security.gate_server.is_systemd_available", return_value=True)
     @unittest.mock.patch(
         "terok.lib.security.gate_server.get_server_status",
-        return_value=GateServerStatus(mode="none", running=False, port=9418),
+        return_value=GateServerStatus(mode="none", running=False, port=GATE_PORT),
     )
     def test_raises_when_not_running_systemd(self, *_mocks: unittest.mock.Mock) -> None:
         with self.assertRaises(SystemExit) as ctx:
@@ -433,7 +435,7 @@ class TestEnsureServerReachable(unittest.TestCase):
     @unittest.mock.patch("terok.lib.security.gate_server.is_systemd_available", return_value=False)
     @unittest.mock.patch(
         "terok.lib.security.gate_server.get_server_status",
-        return_value=GateServerStatus(mode="none", running=False, port=9418),
+        return_value=GateServerStatus(mode="none", running=False, port=GATE_PORT),
     )
     def test_raises_when_not_running_no_systemd(self, *_mocks: unittest.mock.Mock) -> None:
         with self.assertRaises(SystemExit) as ctx:
@@ -446,7 +448,7 @@ class TestEnsureServerReachable(unittest.TestCase):
     )
     @unittest.mock.patch(
         "terok.lib.security.gate_server.get_server_status",
-        return_value=GateServerStatus(mode="systemd", running=True, port=9418),
+        return_value=GateServerStatus(mode="systemd", running=True, port=GATE_PORT),
     )
     def test_raises_when_units_outdated(self, *_mocks: unittest.mock.Mock) -> None:
         with self.assertRaises(SystemExit) as ctx:
@@ -460,7 +462,7 @@ class TestEnsureServerReachable(unittest.TestCase):
     )
     @unittest.mock.patch(
         "terok.lib.security.gate_server.get_server_status",
-        return_value=GateServerStatus(mode="systemd", running=True, port=9418),
+        return_value=GateServerStatus(mode="systemd", running=True, port=GATE_PORT),
     )
     def test_raises_when_units_unversioned(self, *_mocks: unittest.mock.Mock) -> None:
         with self.assertRaises(SystemExit) as ctx:
@@ -473,7 +475,7 @@ class TestEnsureServerReachable(unittest.TestCase):
     )
     @unittest.mock.patch(
         "terok.lib.security.gate_server.get_server_status",
-        return_value=GateServerStatus(mode="systemd", running=True, port=9418),
+        return_value=GateServerStatus(mode="systemd", running=True, port=GATE_PORT),
     )
     def test_passes_when_units_current(self, *_mocks: unittest.mock.Mock) -> None:
         ensure_server_reachable()  # Should not raise
@@ -503,7 +505,9 @@ class TestInstalledUnitVersion(unittest.TestCase):
         """Unit file without version stamp returns None."""
         with tempfile.TemporaryDirectory() as td:
             unit_dir = Path(td)
-            (unit_dir / "terok-gate.socket").write_text("[Socket]\nListenStream=127.0.0.1:9418\n")
+            (unit_dir / "terok-gate.socket").write_text(
+                f"[Socket]\nListenStream={LOCALHOST}:{GATE_PORT}\n"
+            )
             with unittest.mock.patch(
                 "terok.lib.security.gate_server._systemd_unit_dir",
                 return_value=unit_dir,

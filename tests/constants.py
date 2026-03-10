@@ -11,8 +11,8 @@ Centralises magic literals so they can be found and updated in one place.
 LOCALHOST = "127.0.0.1"
 """Loopback address used for bind/connect in tests."""
 
-TEST_IP = "1.2.3.4"
-"""Generic fake IPv4 address for mock returns."""
+TEST_IP = "198.51.100.42"
+"""RFC 5737 TEST-NET-2 address for mock returns."""
 
 TEST_IP_RFC5737 = "203.0.113.42"
 """RFC 5737 TEST-NET-3 address for firewall allow/deny tests."""

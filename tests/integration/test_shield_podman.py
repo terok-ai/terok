@@ -17,7 +17,7 @@ from terok_shield import ShieldConfig, ShieldMode
 
 from constants import EGRESS_DOMAIN, GATE_PORT, TEST_EGRESS_URL, TEST_IP_RFC5737
 
-from .conftest import podman_missing, root_required
+from .conftest import skip_if_no_podman, skip_if_no_root
 
 pytestmark = pytest.mark.needs_podman
 
@@ -48,7 +48,7 @@ def podman_container(
         args = shield_pre_start(cname, config=config)
 
     cmd = ["podman", "run", "-d", "--name", cname, *args, "alpine:latest", "sleep", "300"]
-    subprocess.run(cmd, check=True, capture_output=True)
+    subprocess.run(cmd, check=True, capture_output=True, timeout=60)
 
     yield cname
 
@@ -58,7 +58,7 @@ def podman_container(
 # ── TestShieldEndToEnd ───────────────────────────────────
 
 
-@podman_missing
+@skip_if_no_podman
 class TestShieldEndToEnd:
     """End-to-end tests with a real container."""
 
@@ -69,13 +69,14 @@ class TestShieldEndToEnd:
             capture_output=True,
             text=True,
             check=True,
+            timeout=30,
         )
         info = json.loads(result.stdout)
         annotations = info[0].get("Config", {}).get("Annotations", {})
         assert "terok.shield.profiles" in annotations
         assert "dev-standard" in annotations["terok.shield.profiles"]
 
-    @root_required
+    @skip_if_no_root
     def test_shield_rules_returns_ruleset(self, podman_container: str) -> None:
         """shield_rules returns a non-empty ruleset containing terok_shield."""
         from terok_shield import shield_rules
@@ -84,7 +85,7 @@ class TestShieldEndToEnd:
         output = shield_rules(podman_container, config=config)
         assert "terok_shield" in output
 
-    @root_required
+    @skip_if_no_root
     def test_allow_then_deny(self, podman_container: str) -> None:
         """shield_allow adds an IP; shield_deny removes it."""
         from terok_shield import shield_allow, shield_deny, shield_rules
@@ -104,8 +105,8 @@ class TestShieldEndToEnd:
 # ── TestShieldEgress ──────────────────────────────────────
 
 
-@podman_missing
-@root_required
+@skip_if_no_podman
+@skip_if_no_root
 class TestShieldEgress:
     """Egress filtering tests (requires network + root)."""
 

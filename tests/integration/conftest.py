@@ -11,7 +11,7 @@ environments via environment-variable redirection.
 import json
 import os
 import shutil
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from pathlib import Path
 
 import pytest
@@ -21,8 +21,8 @@ from constants import GATE_PORT, TEST_IP
 
 # ── Skip decorators ────────────────────────────────────────
 
-podman_missing = pytest.mark.skipif(shutil.which("podman") is None, reason="podman not found")
-root_required = pytest.mark.skipif(os.geteuid() != 0, reason="root required")
+skip_if_no_podman = pytest.mark.skipif(shutil.which("podman") is None, reason="podman not found")
+skip_if_no_root = pytest.mark.skipif(os.geteuid() != 0, reason="root required")
 
 
 # ── Autouse override ──────────────────────────────────────
@@ -96,7 +96,7 @@ def installed_hooks(shield_env: dict[str, Path]) -> dict[str, Path]:
 # ── Mock factory for terok_shield.run.run ─────────────────
 
 
-def mock_run_factory(rootless_mode: str = "pasta"):
+def mock_run_factory(rootless_mode: str = "pasta") -> Callable[..., str]:
     """Return a fake ``terok_shield.run.run`` that handles known commands.
 
     Handles ``podman info``, ``dig``, and silently ignores nft/inspect calls.
@@ -107,6 +107,8 @@ def mock_run_factory(rootless_mode: str = "pasta"):
             return json.dumps({"host": {"rootlessNetworkCmd": rootless_mode}})
         if cmd[0] == "dig":
             return f"{TEST_IP}\n"
-        return ""
+        if cmd[0] == "nft" or cmd[:2] == ["podman", "inspect"]:
+            return ""
+        raise AssertionError(f"Unexpected terok_shield.run.run call: {cmd!r}")
 
     return mock_run

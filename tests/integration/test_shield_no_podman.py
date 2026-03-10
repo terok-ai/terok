@@ -11,7 +11,7 @@ and terok config helpers that are unavailable in test.
 
 import json
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 from terok_shield import ShieldConfig, ShieldMode, compose_profiles, list_profiles
@@ -311,7 +311,7 @@ class TestTaskRunnerShieldIntegration:
             from terok.lib.containers.task_runners import _run_container
             from terok.lib.core.project_model import Project
 
-            project = Project.__new__(Project)
+            project = MagicMock(spec=Project)
 
             _run_container(
                 cname="integ-test-ctr",

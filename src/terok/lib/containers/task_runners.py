@@ -783,7 +783,7 @@ def task_restart(project_id: str, task_id: str, backend: str | None = None) -> N
         elif mode == "web":
             port = meta.get("web_port")
             if port:
-                print(f"Web UI: http://127.0.0.1:{port}/")
+                print(f"Web UI: http://{_LOCALHOST}:{port}/")
     else:
         # Container doesn't exist - re-run the task
         print(f"Container {cname} not found, re-running task...")
