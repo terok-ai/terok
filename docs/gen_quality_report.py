@@ -30,9 +30,7 @@ _VENV_BIN = Path(sys.executable).parent
 _GRAPH_DEPTH = 3
 
 _CODECOV_TREEMAP_LOCAL = ROOT / "docs" / "assets" / "coverage_treemap.svg"
-_CODECOV_TREEMAP_REMOTE = (
-    "https://codecov.io/gh/terok-ai/terok/graphs/tree.svg?token=zfJUmuTAqG"
-)
+_CODECOV_TREEMAP_REMOTE = "https://codecov.io/gh/terok-ai/terok/graphs/tree.svg?token=zfJUmuTAqG"
 
 
 def _run(
