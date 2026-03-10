@@ -30,7 +30,6 @@ _VENV_BIN = Path(sys.executable).parent
 _GRAPH_DEPTH = 3
 
 _CODECOV_TREEMAP_LOCAL = ROOT / "docs" / "assets" / "coverage_treemap.svg"
-_CODECOV_TREEMAP_REMOTE = "https://codecov.io/gh/terok-ai/terok/graphs/tree.svg?token=zfJUmuTAqG"
 
 
 def _run(
@@ -499,19 +498,16 @@ def _section_docstring_coverage() -> str:
 def _section_coverage_treemap() -> str:
     """Generate the Codecov coverage treemap embed.
 
-    If CI downloaded the SVG to ``docs/assets/``, write it as a sibling of the
-    generated page and reference it locally via ``<object>``.  Otherwise fall
-    back to the remote Codecov URL.
+    Expects the SVG to have been downloaded by CI into ``docs/assets/``.
+    Returns a placeholder when the file is absent (local dev builds).
     """
-    if _CODECOV_TREEMAP_LOCAL.is_file():
-        svg = _CODECOV_TREEMAP_LOCAL.read_text(encoding="utf-8")
-        with mkdocs_gen_files.open("coverage_treemap.svg", "w") as f:
-            f.write(svg)
-        # quality-report.md → quality-report/index.html, so go up one level.
-        src = "../coverage_treemap.svg"
-    else:
-        src = _CODECOV_TREEMAP_REMOTE
-    return f'<object id="codecov-treemap-img" type="image/svg+xml" data="{src}"></object>\n\n'
+    if not _CODECOV_TREEMAP_LOCAL.is_file():
+        return "!!! info\n    Coverage treemap not available (CI downloads it at build time).\n\n"
+    svg = _CODECOV_TREEMAP_LOCAL.read_text(encoding="utf-8")
+    with mkdocs_gen_files.open("coverage_treemap.svg", "w") as f:
+        f.write(svg)
+    # quality-report.md → quality-report/index.html, so go up one level.
+    return '<object id="codecov-treemap-img" type="image/svg+xml" data="../coverage_treemap.svg"></object>\n\n'
 
 
 def generate_report() -> str:

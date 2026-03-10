@@ -54,9 +54,9 @@ jobs:
         run: |
           mkdir -p docs/assets
           curl -sfL "https://codecov.io/gh/terok-ai/terok/graphs/tree.svg?token=zfJUmuTAqG" \
-            > docs/assets/coverage_treemap.svg
-          # Non-fatal: an empty file is handled gracefully by the report generator.
-          [ -s docs/assets/coverage_treemap.svg ] || rm -f docs/assets/coverage_treemap.svg
+            -o docs/assets/coverage_treemap.svg
+          # Intentionally fatal: if the download fails, rerun the job manually.
+          [ -s docs/assets/coverage_treemap.svg ]
 
       - name: Build documentation
         run: poetry run mkdocs build --strict
