@@ -119,6 +119,7 @@ jobs:
         run: poetry run pytest --ignore=tests/integration --cov=terok --cov-report=xml --cov-report=term-missing --junitxml=junit.xml -o junit_family=legacy
 
       - name: Run integration tests (no-podman tier)
+        if: ${{ always() }}
         run: poetry run pytest tests/integration/ -m "not needs_podman" -v --junitxml=junit-integration.xml -o junit_family=legacy
 
       - name: Upload coverage to Codecov

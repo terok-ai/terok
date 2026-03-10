@@ -9,6 +9,7 @@ is absent.  Some additionally require root for nftables operations.
 
 import json
 import subprocess
+import uuid
 from pathlib import Path
 from unittest.mock import patch
 
@@ -32,7 +33,7 @@ def podman_container(
     """Start a real Podman container with shield args, yield its name, cleanup."""
     from terok_shield import shield_pre_start
 
-    cname = "terok-shield-integ-test"
+    cname = f"terok-shield-integ-{uuid.uuid4().hex[:8]}"
     config = ShieldConfig(
         mode=ShieldMode.HOOK,
         default_profiles=("dev-standard",),
