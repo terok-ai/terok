@@ -168,6 +168,7 @@ def get_task_meta(project_id: str, task_id: str) -> TaskMeta:
         raise SystemExit(f"Unknown task {task_id}")
     raw = yaml.safe_load(meta_path.read_text()) or {}
     mode = raw.get("mode")
+    tid = str(raw.get("task_id", ""))
     # Hydrate live container state only for tasks that have actually been started
     live_state: str | None = None
     if mode is not None:
@@ -176,8 +177,20 @@ def get_task_meta(project_id: str, task_id: str) -> TaskMeta:
             live_state = get_container_state(cname)
         except Exception:
             pass
+    # Hydrate work status from agent-config (same logic as _get_tasks)
+    ws_status: str | None = None
+    ws_message: str | None = None
+    if tid:
+        try:
+            project = load_project(project_id)
+            agent_cfg = project.tasks_root / tid / "agent-config"
+            ws = read_work_status(agent_cfg)
+            ws_status = ws.status
+            ws_message = ws.message
+        except (SystemExit, Exception):
+            pass
     return TaskMeta(
-        task_id=str(raw.get("task_id", "")),
+        task_id=tid,
         mode=mode,
         workspace=raw.get("workspace", ""),
         web_port=raw.get("web_port"),
@@ -189,6 +202,8 @@ def get_task_meta(project_id: str, task_id: str) -> TaskMeta:
         name=raw["name"],
         provider=raw.get("provider"),
         unrestricted=raw.get("unrestricted"),
+        work_status=ws_status,
+        work_message=ws_message,
     )
 
 
@@ -570,15 +585,19 @@ def mark_task_deleting(project_id: str, task_id: str) -> None:
         _log_debug(f"mark_task_deleting: failed project_id={project_id} task_id={task_id}: {e}")
 
 
-def capture_task_logs(project_id: str, task_id: str, mode: str) -> Path | None:
+def capture_task_logs(project: ProjectConfig | str, task_id: str, mode: str) -> Path | None:
     """Capture container logs to the task's ``logs/`` directory on the host.
 
     Writes stdout/stderr from ``podman logs`` to
     ``<tasks_root>/<task_id>/logs/container.log``.  Returns the log file
     path on success, or ``None`` if the container doesn't exist or podman
     fails.
+
+    *project* may be a :class:`ProjectConfig` or a project-ID string
+    (the string form loads the config internally for backward compat).
     """
-    project = load_project(project_id)
+    if isinstance(project, str):
+        project = load_project(project)
     task_dir = project.tasks_root / str(task_id)
     logs_dir = task_dir / "logs"
     ensure_dir(logs_dir)
@@ -661,7 +680,7 @@ def _task_delete(project: ProjectConfig, task_id: str) -> None:
     mode = meta.get("mode")
     if mode:
         _log_debug("task_delete: capturing container logs")
-        capture_task_logs(project.id, task_id, mode)
+        capture_task_logs(project, task_id, mode)
 
     if meta:
         _log_debug("task_delete: archiving task")

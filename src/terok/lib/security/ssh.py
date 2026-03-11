@@ -100,12 +100,12 @@ class SSHManager:
         _RESERVED_NAMES = {"config", "known_hosts", "authorized_keys"}
         key_path = Path(key_name)
         if key_path.is_absolute() or ".." in key_path.parts or "/" in key_name or "\\" in key_name:
-            raise ValueError(
+            raise SystemExit(
                 f"Invalid SSH key name {key_name!r}: must be a plain filename, "
                 "not an absolute path or traversal sequence"
             )
         if key_name.lower() in _RESERVED_NAMES:
-            raise ValueError(
+            raise SystemExit(
                 f"Invalid SSH key name {key_name!r}: collides with reserved "
                 f"filename (reserved: {', '.join(sorted(_RESERVED_NAMES))})"
             )
