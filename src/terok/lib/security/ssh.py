@@ -96,12 +96,18 @@ class SSHManager:
         if not key_name:
             key_name = effective_ssh_key_name(project, key_type=key_type)
 
-        # Reject path-like key names to prevent escaping the SSH directory
+        # Reject path-like or reserved key names
+        _RESERVED_NAMES = {"config", "known_hosts", "authorized_keys"}
         key_path = Path(key_name)
         if key_path.is_absolute() or ".." in key_path.parts or "/" in key_name or "\\" in key_name:
             raise ValueError(
                 f"Invalid SSH key name {key_name!r}: must be a plain filename, "
                 "not an absolute path or traversal sequence"
+            )
+        if key_name.lower() in _RESERVED_NAMES:
+            raise ValueError(
+                f"Invalid SSH key name {key_name!r}: collides with reserved "
+                f"filename (reserved: {', '.join(sorted(_RESERVED_NAMES))})"
             )
 
         priv_path = target_dir / key_name

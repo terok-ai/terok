@@ -168,13 +168,14 @@ def get_task_meta(project_id: str, task_id: str) -> TaskMeta:
         raise SystemExit(f"Unknown task {task_id}")
     raw = yaml.safe_load(meta_path.read_text()) or {}
     mode = raw.get("mode")
-    # Hydrate live container state so status is accurate
+    # Hydrate live container state only for tasks that have actually been started
     live_state: str | None = None
-    try:
-        cname = container_name(project_id, mode or "cli", task_id)
-        live_state = get_container_state(cname)
-    except Exception:
-        pass
+    if mode is not None:
+        try:
+            cname = container_name(project_id, mode, task_id)
+            live_state = get_container_state(cname)
+        except Exception:
+            pass
     return TaskMeta(
         task_id=str(raw.get("task_id", "")),
         mode=mode,
