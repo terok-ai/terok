@@ -112,6 +112,16 @@ class SSHManager:
         pub_path = target_dir / f"{key_name}.pub"
         cfg_path = target_dir / "config"
 
+        # Refuse to reuse artifacts that are symlinks or non-regular files
+        for p in (priv_path, pub_path, cfg_path):
+            if p.exists() or p.is_symlink():
+                if p.is_symlink() or not p.is_file():
+                    raise SystemExit(
+                        f"Refusing to use {p}: expected a regular file but found "
+                        f"{'a symlink' if p.is_symlink() else 'a non-regular file'}. "
+                        "Remove it manually and retry."
+                    )
+
         if force or not priv_path.exists() or not pub_path.exists():
             self._generate_keypair(key_type, priv_path, pub_path, project.id)
 
@@ -135,10 +145,7 @@ class SSHManager:
     def _generate_keypair(key_type: str, priv_path: Path, pub_path: Path, project_id: str) -> None:
         """Generate an SSH keypair, removing any stale half-existing files first."""
         for p in (priv_path, pub_path):
-            try:
-                p.unlink(missing_ok=True)
-            except Exception:
-                pass
+            p.unlink(missing_ok=True)
 
         cmd = [
             "ssh-keygen",
