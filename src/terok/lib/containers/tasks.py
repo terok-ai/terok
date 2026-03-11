@@ -187,7 +187,7 @@ def get_task_meta(project_id: str, task_id: str) -> TaskMeta:
             ws = read_work_status(agent_cfg)
             ws_status = ws.status
             ws_message = ws.message
-        except (SystemExit, Exception):
+        except (Exception, SystemExit):  # noqa: BLE001 — best-effort; missing config is normal
             pass
     return TaskMeta(
         task_id=tid,
