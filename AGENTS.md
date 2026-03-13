@@ -80,7 +80,7 @@ make spdx NAME="Real Human Name" FILES="src/terok/new_file.py"  # Add SPDX heade
     ```
   When modifying an existing file, always run `make spdx` with the contributor's name to add their copyright line. NAME must be a real person's name (ASCII-only), not a project name. Use a single year (year of first contribution), not a range. Ask the user for their name if unknown. Files covered by `REUSE.toml` glob patterns (`.md`, `.yml`, `.toml`, `.json`, etc.) do not need inline headers. `make reuse` checks compliance but does not generate headers.
 - **Emojis**: Must be natively wide (`East_Asian_Width=W`) — no VS16 (U+FE0F) sequences. Use `draw_emoji()` from `terok.lib.util.emoji` for aligned output. See `docs/DEVELOPER.md` → "Emoji width constraints" for details
-- **Test constants**: Never use literal IPs, URLs, ports, or filesystem paths in tests. Define them as named constants in `tests/constants.py` and import from there. This centralises magic values, avoids SonarCloud "publicly writable directory" warnings, and makes future changes trivial. For mock filesystem paths, use a subdirectory under `MOCK_BASE` (e.g. `/tmp/terok-testing/...`) — never `/tmp` directly
+- **No magic literals**: Never use literal IPs, URLs, ports, or filesystem paths directly in code. Define them as named constants and import from there — `tests/constants.py` for test code, appropriate module-level constants for production code. This centralises magic values and makes future changes trivial. In tests, mock filesystem paths must use a subdirectory under `MOCK_BASE` (e.g. `/tmp/terok-testing/...`) — never `/tmp` directly
 
 ## Development Workflow
 
