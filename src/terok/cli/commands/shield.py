@@ -111,7 +111,12 @@ def dispatch(args: argparse.Namespace) -> bool:
             kwargs = _extract_handler_kwargs(args, cmd_def)
             cmd_def.handler(shield, cname, **kwargs)
         else:
-            # Non-container commands (status, profiles, preview)
+            # Non-container commands (status, profiles, preview) use the
+            # registry handler directly.  For ``status`` this deliberately
+            # shows *available* profiles (filesystem scan via Shield.status)
+            # rather than *configured* profiles from the terok config.
+            # The config-aware view lives in shield.status() (facade) and
+            # is used by the TUI; the CLI shows runtime reality instead.
             import tempfile
 
             with tempfile.TemporaryDirectory() as tmp:
