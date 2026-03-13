@@ -583,13 +583,15 @@ class TaskActionsMixin:
         task = self.current_task
         tid = task.task_id
         cname = container_name(pid, task.mode or "cli", tid)
-        task_dir = load_project(pid).tasks_root / str(tid)
 
         def work() -> tuple[str, str, str | None]:
             """Execute shield action in background thread."""
             try:
+                task_dir = load_project(pid).tasks_root / str(tid)
                 shield_fn(cname, task_dir)
                 return pid, tid, None
+            except SystemExit as e:
+                return pid, tid, str(e)
             except Exception as e:
                 return pid, tid, str(e)
 
