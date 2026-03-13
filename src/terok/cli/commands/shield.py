@@ -110,10 +110,10 @@ def dispatch(args: argparse.Namespace) -> bool:
 
     project_id = getattr(args, "project_id", None)
     task_id = getattr(args, "task_id", None)
-    if bool(project_id) != bool(task_id):
+    if (project_id is None) != (task_id is None):
         print("Error: provide both <project_id> and <task_id>, or neither", file=sys.stderr)
         sys.exit(1)
-    has_task = project_id and task_id
+    has_task = project_id is not None and task_id is not None
 
     try:
         if has_task:
