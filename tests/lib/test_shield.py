@@ -6,7 +6,7 @@
 import unittest
 from unittest.mock import MagicMock, patch
 
-from terok_shield import Shield, ShieldMode
+from terok_shield import NftNotFoundError, Shield, ShieldMode
 
 from constants import GATE_PORT, MOCK_CONFIG_ROOT, MOCK_TASK_DIR
 from terok.lib.security.shield import (
@@ -115,6 +115,16 @@ class TestMakeShield(unittest.TestCase):
         """Non-string/non-list profiles value raises TypeError."""
         with self.assertRaises(TypeError):
             make_shield(MOCK_TASK_DIR)
+
+
+class TestNftNotFoundReExport(unittest.TestCase):
+    """Verify NftNotFoundError is re-exported from the shield adapter."""
+
+    def test_re_exported(self) -> None:
+        """NftNotFoundError is importable from the shield adapter module."""
+        from terok.lib.security.shield import NftNotFoundError as _Err
+
+        self.assertIs(_Err, NftNotFoundError)
 
 
 class TestPreStart(unittest.TestCase):

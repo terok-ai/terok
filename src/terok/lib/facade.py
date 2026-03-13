@@ -84,6 +84,7 @@ from .security.git_gate import (
     find_projects_sharing_gate,
 )
 from .security.shield import (  # noqa: F401 — re-exported public API
+    NftNotFoundError,
     make_shield,
     status as shield_status,
 )

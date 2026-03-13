@@ -9,7 +9,12 @@ Each task gets its own ``state_dir`` under ``{task_dir}/shield/``.
 
 from pathlib import Path
 
-from terok_shield import Shield, ShieldConfig, ShieldMode
+from terok_shield import (
+    NftNotFoundError,  # noqa: F401 — re-exported
+    Shield,
+    ShieldConfig,
+    ShieldMode,
+)
 
 from ..core.config import get_gate_server_port, get_global_section
 from ..core.paths import config_root
@@ -59,6 +64,10 @@ def make_shield(task_dir: Path) -> Shield:
 
     Reads the ``shield:`` section of the global config and builds a
     :class:`ShieldConfig` with ``state_dir`` scoped to *task_dir*.
+
+    The ``Shield`` constructor validates that the ``nft`` binary is
+    available on the host and raises :class:`~terok_shield.NftNotFoundError`
+    if it is missing.
     """
     sec = get_global_section("shield")
     profiles = _normalize_profiles(sec.get("profiles", _DEFAULT_PROFILES))

@@ -626,6 +626,7 @@ from = ["terok.lib.security.ssh"]
 
 [[interfaces]]
 expose = [
+    "NftNotFoundError",
     "make_shield",
     "pre_start",
     "status",
@@ -783,6 +784,7 @@ expose = [
     "is_task_image_old",
     "make_shield",
     "maybe_pause_for_ssh_key_registration",
+    "NftNotFoundError",
     "shield_status",
 ]
 from = ["terok.lib.facade"]
