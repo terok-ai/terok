@@ -176,5 +176,5 @@ class TestResolveTask(unittest.TestCase):
     def test_never_run_task_raises(self, mock_proj: MagicMock, _meta: MagicMock) -> None:
         """Task with mode=None raises ValueError."""
         mock_proj.return_value = MagicMock(id="proj")
-        with self.assertRaises(ValueError, msg="has never been run"):
+        with self.assertRaisesRegex(ValueError, "has never been run"):
             _resolve_task("proj", "1")

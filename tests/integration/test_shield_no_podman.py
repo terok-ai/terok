@@ -26,9 +26,8 @@ def _make_shield(
     config: ShieldConfig,
     *,
     rootless_mode: str = "pasta",
-    euid: int = 1000,
 ) -> Shield:
-    """Create a Shield with MockRunner and patched euid."""
+    """Create a Shield with MockRunner."""
     runner = MockRunner(rootless_mode)
     return Shield(config, runner=runner)
 
@@ -41,7 +40,7 @@ def _pre_start_with_mocks(
     euid: int = 1000,
 ) -> list[str]:
     """Call ``shield.pre_start`` with a mock runner."""
-    shield = _make_shield(config, rootless_mode=rootless_mode, euid=euid)
+    shield = _make_shield(config, rootless_mode=rootless_mode)
     with patch("os.geteuid", return_value=euid):
         return shield.pre_start(container)
 

@@ -14,7 +14,7 @@ import argparse
 import sys
 from pathlib import Path
 
-from terok_shield import COMMANDS, CommandDef, ExecError
+from terok_shield import COMMANDS, ArgDef, CommandDef, ExecError
 
 from ...lib.facade import make_shield
 
@@ -25,7 +25,7 @@ def _add_project_task_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--task", "-t", required=True, help="Task ID")
 
 
-def _add_arg(parser: argparse.ArgumentParser, arg: object) -> None:
+def _add_arg(parser: argparse.ArgumentParser, arg: ArgDef) -> None:
     """Register an :class:`ArgDef` with an argparse parser.
 
     Local helper mirroring ``ArgDef.add_to()`` (proposed for terok-shield).
