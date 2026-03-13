@@ -1,10 +1,12 @@
 # SPDX-FileCopyrightText: 2025 Jiri Vyskocil
 # SPDX-License-Identifier: Apache-2.0
 
-"""Shared test constants for IP addresses, URLs, and network values.
+"""Shared test constants for IP addresses, URLs, paths, and network values.
 
 Centralises magic literals so they can be found and updated in one place.
 """
+
+from pathlib import Path
 
 # ── IP addresses ──────────────────────────────────────────
 
@@ -51,3 +53,18 @@ EGRESS_DOMAIN = "example.com"
 def localhost_url(port: int) -> str:
     """Build an ``http://127.0.0.1:{port}/`` URL."""
     return f"http://{LOCALHOST}:{port}/"
+
+
+# ── Mock filesystem paths ────────────────────────────────
+
+MOCK_BASE = Path("/tmp/terok-testing")
+"""Root for all synthetic paths used in unit-test mocks."""
+
+MOCK_TASK_DIR = MOCK_BASE / "tasks" / "42"
+"""Fake per-task directory used by shield adapter tests."""
+
+MOCK_TASK_DIR_1 = MOCK_BASE / "tasks" / "1"
+"""Alternate fake task directory (task id "1")."""
+
+MOCK_CONFIG_ROOT = Path("/home/user/.config/terok")
+"""Fake XDG-style config root used by path-related tests."""

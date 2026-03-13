@@ -5,12 +5,11 @@
 """Tests for the terok-shield adapter (terok.lib.security.shield)."""
 
 import unittest
-from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 from terok_shield import Shield, ShieldMode
 
-from constants import GATE_PORT
+from constants import GATE_PORT, MOCK_CONFIG_ROOT, MOCK_TASK_DIR
 from terok.lib.security.shield import (
     _normalize_profiles,
     _profiles_dir,
@@ -26,8 +25,8 @@ class TestStateDir(unittest.TestCase):
 
     def test_returns_shield_subdir(self) -> None:
         """_state_dir returns task_dir/shield."""
-        result = _state_dir(Path("/tmp/tasks/42"))
-        self.assertEqual(result, Path("/tmp/tasks/42/shield"))
+        result = _state_dir(MOCK_TASK_DIR)
+        self.assertEqual(result, MOCK_TASK_DIR / "shield")
 
 
 class TestNormalizeProfiles(unittest.TestCase):
@@ -59,10 +58,10 @@ class TestNormalizeProfiles(unittest.TestCase):
 class TestProfilesDir(unittest.TestCase):
     """Tests for _profiles_dir()."""
 
-    @patch("terok.lib.security.shield.config_root", return_value=Path("/home/user/.config/terok"))
+    @patch("terok.lib.security.shield.config_root", return_value=MOCK_CONFIG_ROOT)
     def test_returns_shield_profiles_subdir(self, _mock: MagicMock) -> None:
         """_profiles_dir returns config_root/shield/profiles."""
-        self.assertEqual(_profiles_dir(), Path("/home/user/.config/terok/shield/profiles"))
+        self.assertEqual(_profiles_dir(), MOCK_CONFIG_ROOT / "shield" / "profiles")
 
 
 class TestMakeShield(unittest.TestCase):
@@ -72,14 +71,14 @@ class TestMakeShield(unittest.TestCase):
     @patch("terok.lib.security.shield.get_gate_server_port", return_value=GATE_PORT)
     def test_defaults(self, _port: MagicMock, _sec: MagicMock) -> None:
         """Default config uses hook mode, dev-standard profile, audit on."""
-        shield = make_shield(Path("/tmp/tasks/42"))
+        shield = make_shield(MOCK_TASK_DIR)
         self.assertIsInstance(shield, Shield)
         cfg = shield.config
         self.assertEqual(cfg.mode, ShieldMode.HOOK)
         self.assertEqual(cfg.default_profiles, ("dev-standard",))
         self.assertEqual(cfg.loopback_ports, (GATE_PORT,))
         self.assertTrue(cfg.audit_enabled)
-        self.assertEqual(cfg.state_dir, Path("/tmp/tasks/42/shield"))
+        self.assertEqual(cfg.state_dir, MOCK_TASK_DIR / "shield")
         self.assertIsNotNone(cfg.profiles_dir)
 
     @patch(
@@ -89,7 +88,7 @@ class TestMakeShield(unittest.TestCase):
     @patch("terok.lib.security.shield.get_gate_server_port", return_value=7777)
     def test_custom(self, _port: MagicMock, _sec: MagicMock) -> None:
         """Custom config values are mapped correctly."""
-        cfg = make_shield(Path("/tmp/tasks/42")).config
+        cfg = make_shield(MOCK_TASK_DIR).config
         self.assertEqual(cfg.default_profiles, ("custom-a", "custom-b"))
         self.assertEqual(cfg.loopback_ports, (7777,))
         self.assertFalse(cfg.audit_enabled)
@@ -101,16 +100,14 @@ class TestMakeShield(unittest.TestCase):
     @patch("terok.lib.security.shield.get_gate_server_port", return_value=GATE_PORT)
     def test_single_profile_string(self, _port: MagicMock, _sec: MagicMock) -> None:
         """A single profile string is normalised to a tuple."""
-        self.assertEqual(
-            make_shield(Path("/tmp/tasks/42")).config.default_profiles, ("single-profile",)
-        )
+        self.assertEqual(make_shield(MOCK_TASK_DIR).config.default_profiles, ("single-profile",))
 
     @patch("terok.lib.security.shield.get_global_section", return_value={"profiles": 123})
     @patch("terok.lib.security.shield.get_gate_server_port", return_value=GATE_PORT)
     def test_invalid_profiles_type(self, _port: MagicMock, _sec: MagicMock) -> None:
         """Non-string/non-list profiles value raises TypeError."""
         with self.assertRaises(TypeError):
-            make_shield(Path("/tmp/tasks/42"))
+            make_shield(MOCK_TASK_DIR)
 
 
 class TestPreStart(unittest.TestCase):
@@ -123,9 +120,9 @@ class TestPreStart(unittest.TestCase):
         mock_shield.pre_start.return_value = ["--network", "hook-net"]
         mock_make.return_value = mock_shield
 
-        result = pre_start("my-container", Path("/tmp/tasks/42"))
+        result = pre_start("my-container", MOCK_TASK_DIR)
 
-        mock_make.assert_called_once_with(Path("/tmp/tasks/42"))
+        mock_make.assert_called_once_with(MOCK_TASK_DIR)
         mock_shield.pre_start.assert_called_once_with("my-container")
         self.assertEqual(result, ["--network", "hook-net"])
 

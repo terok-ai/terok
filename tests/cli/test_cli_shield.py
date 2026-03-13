@@ -11,6 +11,7 @@ from unittest.mock import MagicMock, patch
 
 from terok_shield import ExecError
 
+from constants import MOCK_TASK_DIR_1
 from terok.cli.commands.shield import _resolve_task, dispatch, register
 
 
@@ -125,7 +126,7 @@ class TestDispatch(unittest.TestCase):
         self, mock_make: MagicMock, mock_resolve: MagicMock
     ) -> None:
         """ExecError from nft produces a 'not running' message."""
-        mock_resolve.return_value = ("proj-cli-1", "/tmp/tasks/1")
+        mock_resolve.return_value = ("proj-cli-1", str(MOCK_TASK_DIR_1))
         mock_shield = MagicMock()
         mock_shield.state.side_effect = ExecError(["nft", "list"], 1, "no such process")
         mock_make.return_value = mock_shield
@@ -146,7 +147,7 @@ class TestDispatch(unittest.TestCase):
         self, mock_make: MagicMock, mock_resolve: MagicMock
     ) -> None:
         """RuntimeError from handler is caught and printed cleanly."""
-        mock_resolve.return_value = ("proj-cli-1", "/tmp/tasks/1")
+        mock_resolve.return_value = ("proj-cli-1", str(MOCK_TASK_DIR_1))
         mock_shield = MagicMock()
         mock_shield.allow.side_effect = RuntimeError("No IPs allowed for proj-cli-1")
         mock_make.return_value = mock_shield
