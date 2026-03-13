@@ -173,6 +173,21 @@ shield:
             proj = load_project(project_id)
             self.assertTrue(proj.shield_drop_on_task_start)
 
+    def test_load_project_shield_drop_on_task_start_disabled(self) -> None:
+        """shield.drop_on_task_start: false is parsed correctly."""
+        project_id = "proj-shield-no-drop"
+        yaml = f"""\
+project:
+  id: {project_id}
+git:
+  upstream_url: https://example.com/repo.git
+shield:
+  drop_on_task_start: false
+"""
+        with project_env(yaml, project_id=project_id):
+            proj = load_project(project_id)
+            self.assertFalse(proj.shield_drop_on_task_start)
+
     def test_get_project_state(self) -> None:
         project_id = "proj3"
         yaml = f"""\
