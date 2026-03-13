@@ -559,6 +559,15 @@ class TaskScreenKeyBindingTests(TestCase):
         screen.on_key(event)
         screen.dismiss.assert_called_once_with("shield_up")
 
+    def test_lowercase_s_blocked_without_tasks(self) -> None:
+        """Lowercase s is a no-op without tasks."""
+        screens, _ = import_screens()
+        screen = screens.TaskDetailsScreen(task=None, has_tasks=False, project_id="p")
+        screen.dismiss = mock.Mock()
+        event = make_key_event("s")
+        screen.on_key(event)
+        screen.dismiss.assert_not_called()
+
     def test_escape_dismisses_none(self) -> None:
         screens, _ = import_screens()
         screen = screens.TaskDetailsScreen(task=None, has_tasks=False, project_id="p")

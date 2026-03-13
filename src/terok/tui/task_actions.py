@@ -7,6 +7,9 @@ Handles task creation, deletion, renaming, running (CLI/web/autopilot),
 login, restart, follow-up, log viewing, and diff copying.
 """
 
+from collections.abc import Callable
+from pathlib import Path
+
 from ..lib.containers.agents import parse_md_agent
 from ..lib.containers.autopilot import wait_for_container_exit
 from ..lib.containers.runtime import container_name, get_container_state
@@ -567,63 +570,44 @@ class TaskActionsMixin:
 
     # --- Shield actions ---
 
-    async def _action_shield_down(self) -> None:
-        """Drop the shield (bypass mode) for the current task."""
+    def _action_shield_toggle(
+        self,
+        action: str,
+        shield_fn: Callable[[str, Path], None],
+    ) -> None:
+        """Run a shield action (down/up) for the current task in a background worker."""
         if not self.current_project_id or not self.current_task:
             self.notify("No task selected.")
             return
         pid = self.current_project_id
         task = self.current_task
         tid = task.task_id
-        mode = task.mode or "cli"
-        cname = container_name(pid, mode, tid)
-        project = load_project(pid)
-        task_dir = project.tasks_root / str(tid)
+        cname = container_name(pid, task.mode or "cli", tid)
+        task_dir = load_project(pid).tasks_root / str(tid)
 
         def work() -> tuple[str, str, str | None]:
-            """Drop shield in background thread."""
+            """Execute shield action in background thread."""
             try:
-                shield_down(cname, task_dir)
+                shield_fn(cname, task_dir)
                 return pid, tid, None
             except Exception as e:
                 return pid, tid, str(e)
 
         self.run_worker(
             work,
-            name=f"shield-action:down:{pid}:{tid}",
+            name=f"shield-action:{action}:{pid}:{tid}",
             group="shield-action",
             thread=True,
             exit_on_error=False,
         )
+
+    async def _action_shield_down(self) -> None:
+        """Drop the shield (bypass mode) for the current task."""
+        self._action_shield_toggle("down", shield_down)
 
     async def _action_shield_up(self) -> None:
         """Raise the shield (deny-all) for the current task."""
-        if not self.current_project_id or not self.current_task:
-            self.notify("No task selected.")
-            return
-        pid = self.current_project_id
-        task = self.current_task
-        tid = task.task_id
-        mode = task.mode or "cli"
-        cname = container_name(pid, mode, tid)
-        project = load_project(pid)
-        task_dir = project.tasks_root / str(tid)
-
-        def work() -> tuple[str, str, str | None]:
-            """Raise shield in background thread."""
-            try:
-                shield_up(cname, task_dir)
-                return pid, tid, None
-            except Exception as e:
-                return pid, tid, str(e)
-
-        self.run_worker(
-            work,
-            name=f"shield-action:up:{pid}:{tid}",
-            group="shield-action",
-            thread=True,
-            exit_on_error=False,
-        )
+        self._action_shield_toggle("up", shield_up)
 
     # --- Main-screen task pane shortcuts (c/w/d) ---
 
