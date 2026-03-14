@@ -394,15 +394,16 @@ class TestPreStartShieldNeedsSetup(unittest.TestCase):
 class TestRunSetup(unittest.TestCase):
     """Tests for run_setup()."""
 
-    @patch("terok.lib.security.shield.setup_hooks_direct")
     @patch(
         "terok.lib.security.shield.check_environment",
         return_value=EnvironmentCheck(hooks="not-installed", needs_setup=True),
     )
-    def test_calls_setup_hooks_when_needed(self, _env: MagicMock, mock_direct: MagicMock) -> None:
-        """run_setup() delegates to setup_hooks_direct when setup is needed."""
-        run_setup()
-        mock_direct.assert_called_once()
+    def test_no_flags_exits_with_usage(self, _env: MagicMock) -> None:
+        """run_setup() without --root or --user raises SystemExit with usage hint."""
+        with self.assertRaises(SystemExit) as ctx:
+            run_setup()
+        self.assertIn("--root", str(ctx.exception))
+        self.assertIn("--user", str(ctx.exception))
 
     @patch("builtins.print")
     @patch(

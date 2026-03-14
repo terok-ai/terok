@@ -184,19 +184,19 @@ def check_environment() -> EnvironmentCheck:
         return EnvironmentCheck(
             ok=False,
             health="bypass",
-            issues=["bypass_firewall_no_protection is active — firewall disabled"],
+            issues=["bypass_firewall_no_protection is set — egress firewall disabled"],
         )
     with tempfile.TemporaryDirectory() as tmp:
         return make_shield(Path(tmp)).check_environment()
 
 
 def run_setup(*, root: bool = False, user: bool = False) -> None:
-    """Install global OCI hooks for podman < 5.6.0 (interactive, may prompt for sudo).
+    """Install global OCI hooks for podman < 5.6.0.
 
     Checks the environment first — if podman >= 5.6.0 uses per-container
     hooks natively, prints a message and returns without installing anything.
 
-    Raises :class:`SystemExit` on errors.
+    Raises :class:`SystemExit` when neither ``--root`` nor ``--user`` is given.
     """
     env = check_environment()
     if env.hooks == "per-container":
@@ -205,7 +205,13 @@ def run_setup(*, root: bool = False, user: bool = False) -> None:
             "Global hook setup is not needed."
         )
         return
-    setup_hooks_direct(root=root or not user)
+    if not root and not user:
+        raise SystemExit(
+            "Specify --root (system-wide, uses sudo) or --user (user-local).\n"
+            "  terokctl shield setup --root   # /etc/containers/oci/hooks.d\n"
+            "  terokctl shield setup --user   # ~/.local/share/containers/oci/hooks.d"
+        )
+    setup_hooks_direct(root=root)
 
 
 def setup_hooks_direct(*, root: bool = False) -> None:
@@ -219,6 +225,6 @@ def setup_hooks_direct(*, root: bool = False) -> None:
         target = system_hooks_dir()
         setup_global_hooks(target, use_sudo=True)
     else:
-        target = USER_HOOKS_DIR
+        target = Path(USER_HOOKS_DIR).expanduser()
         setup_global_hooks(target)
         ensure_containers_conf_hooks_dir(target)

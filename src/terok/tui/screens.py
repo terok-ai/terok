@@ -1278,20 +1278,12 @@ def render_shield_status(
         lines.append(Text(f"Mode:      {mode}"))
         lines.append(Text(f"Audit:     {audit}"))
         lines.append(Text(f"Profiles:  {', '.join(profiles) or '(none)'}"))
-        if shield_info.get("bypass_firewall_no_protection"):
-            lines.append(Text(""))
-            lines.append(
-                Text(
-                    "!! bypass_firewall_no_protection is set — firewall DISABLED !!",
-                    style=Style(color="red", bold=True),
-                )
-            )
-
     if env_check.issues:
         lines.append(Text(""))
         lines.append(Text("Issues:"))
         for issue in env_check.issues:
-            lines.append(Text(f"  - {issue}"))
+            style = Style(color="red", bold=True) if "bypass" in issue else None
+            lines.append(Text(f"  - {issue}", style=style))
 
     if env_check.setup_hint:
         lines.append(Text(""))
@@ -1467,7 +1459,7 @@ class ShieldSetupScreen(screen.ModalScreen[str | None]):
         align: center middle;
     }
     #setup-dialog {
-        width: 50;
+        width: 64;
         height: auto;
         max-height: 14;
         border: round $primary;
@@ -1491,15 +1483,15 @@ class ShieldSetupScreen(screen.ModalScreen[str | None]):
         with Vertical(id="setup-dialog") as dialog:
             yield Static("Install global OCI hooks for podman < 5.6.0")
             with Horizontal(id="setup-buttons"):
-                yield Button("[r] System-wide", id="btn-root", variant="warning")
-                yield Button("[u] User-local", id="btn-user", variant="primary")
-                yield Button("Cancel", id="btn-cancel", variant="default")
+                yield Button("[r] System-wide (sudo)", id="btn-root")
+                yield Button("[u] User-local", id="btn-user")
+                yield Button("Cancel", id="btn-cancel")
         dialog.border_title = "Shield Setup"
         dialog.border_subtitle = "Esc to cancel"
 
     def on_mount(self) -> None:
-        """Focus the user-local button (safer default)."""
-        self.query_one("#btn-user", Button).focus()
+        """Focus the first button on modal open."""
+        self.query_one("#btn-root", Button).focus()
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
         """Handle button presses."""
