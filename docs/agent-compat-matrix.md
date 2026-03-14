@@ -18,8 +18,8 @@ local LLM via OpenCode; Tier-3: Copilot.
 | Vibe | `--agent auto-approve` | `VIBE_AUTO_APPROVE=true` | `auto_approve = true` in TOML | `vibe-acp` (bundled) | `VIBE_AUTO_APPROVE` env var |
 | Blablador | (inherits OpenCode) | `OPENCODE_PERMISSION='{"*":"allow"}'` | `"permission": {"*":"allow"}` in opencode.json | needs wrapper (#410) | `OPENCODE_PERMISSION` env var |
 | OpenCode | — | `OPENCODE_PERMISSION='{"*":"allow"}'` | `"permission": {"*":"allow"}` in opencode.json | `opencode acp` (native) | `OPENCODE_PERMISSION` env var |
-| Codex | `--yolo` | — | `approval_policy` + `sandbox_mode` in config.toml | `codex-acp` (npm) | `/etc/codex/config.toml` |
-| Copilot | `--allow-all-tools` | — | — (unstable) | `copilot --acp` (native) | spawn with `--allow-all-tools --acp` |
+| Codex | `--yolo` | — | `approval_policy` + `sandbox_mode` in config.toml | `codex-acp` (npm) | `~/.codex/config.toml` |
+| Copilot | `--yolo` / `--allow-all` | `COPILOT_ALLOW_ALL=true` | — (unstable) | `copilot --acp` (native) | spawn with `--yolo --acp` |
 
 ### Current terok status and ACP gap
 
@@ -29,11 +29,11 @@ by Toad bypass the wrappers and need separate mechanisms:
 | Agent | terok `auto_approve_flags` | terok `auto_approve_env` | ACP covered? |
 |-------|---------------------------|-------------------------|--------------|
 | Claude | `--dangerously-skip-permissions` | — | **No** |
-| Vibe | `--auto-approve` (bug: should be `--agent auto-approve`) | — | **No** |
+| Vibe | `--auto-approve` (bug: not a valid flag; use `--agent auto-approve`) | — | **No** |
 | Blablador | — | `OPENCODE_PERMISSION` | **Partially** |
 | OpenCode | — | `OPENCODE_PERMISSION` | **Partially** |
 | Codex | `--dangerously-bypass-approvals-and-sandbox` | — | **No** |
-| Copilot | `--allow-all-tools` | — | **No** |
+| Copilot | `--allow-all-tools` (bug: should be `--yolo` for full unrestricted) | — | **No** |
 
 ### Recommended ACP implementation
 
@@ -44,9 +44,9 @@ When `TEROK_UNRESTRICTED=1`, additionally:
   per-container)
 - **Vibe**: set `VIBE_AUTO_APPROVE=true` in container env (pydantic-settings)
 - **OpenCode/Blablador**: already handled via `auto_approve_env`
-- **Codex**: write `/etc/codex/config.toml` with `approval_policy = "never"`
-  and `sandbox_mode = "danger-full-access"` (per-container)
-- **Copilot**: spawn Toad's ACP subprocess with `--allow-all-tools`
+- **Codex**: write `~/.codex/config.toml` with `approval_policy = "never"`
+  and `sandbox_mode = "danger-full-access"` (per-container via shared home)
+- **Copilot**: spawn Toad's ACP subprocess with `--yolo`
 
 When unset: omit files and env vars; agents use vendor defaults.
 
@@ -84,22 +84,24 @@ cross-path mechanism.
 ### OpenCode / Blablador
 
 `OPENCODE_PERMISSION` is merged on top of all config layers. No CLI flag for
-permissions. `opencode run` auto-rejects all permission requests by default.
-Blablador uses a separate config path (`OPENCODE_CONFIG`); for ACP, a
-`blablador-acp` wrapper is needed (#410).
+permissions. `opencode run` auto-allows most operations by default (only
+`doom_loop` and `external_directory` default to `ask`). Blablador uses a
+separate config path (`OPENCODE_CONFIG`); for ACP, a `blablador-acp` wrapper
+is needed (#410).
 
 ### Codex
 
-`codex-acp` accepts `-c key=value` overrides (same parser as CLI). System
-config at `/etc/codex/config.toml` is read by both CLI and ACP adapter.
-Enterprise: `/etc/codex/requirements.toml` can restrict allowed policies.
+`codex-acp` accepts `-c key=value` overrides (same parser as CLI). Config
+at `~/.codex/config.toml` (user) and `.codex/config.toml` (project) read by
+both CLI and ACP adapter. Enterprise: `requirements.toml` can restrict
+allowed policies.
 
 ### Copilot
 
-No env vars or stable config for permissions. `--allow-all-tools` (tool
-auto-approval) and `--yolo` (alias for `--allow-all`, includes paths/URLs)
-both work with `--acp` at spawn time. terok uses `--allow-all-tools`. No
-per-session ACP permission control (upstream gap #1607).
+`--yolo` / `--allow-all` grants full permissions (tools + paths + URLs).
+`--allow-all-tools` is a subset (tools only). `COPILOT_ALLOW_ALL` env var
+also works. All flags work with `--acp` at spawn time. No per-session ACP
+permission control (upstream gap #1607).
 
 ## Sources
 
