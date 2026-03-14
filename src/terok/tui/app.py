@@ -1079,8 +1079,7 @@ else:
     def main() -> None:
         """Print an error message when Textual is not installed and exit."""
         print(
-            "terok TUI requires the 'textual' package, which should be included with terok.\n"
-            "Try reinstalling terok.",
+            "terok TUI requires the 'textual' package, but it is not installed.",
             file=sys.stderr,
         )
         sys.exit(1)
