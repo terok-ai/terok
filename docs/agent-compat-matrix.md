@@ -1,6 +1,7 @@
 # Agent Configuration Compatibility Matrix
 
-Last verified: 2026-03-14
+Last verified: 2026-03-14. Re-verify quarterly and whenever an agent version
+update breaks the existing integration.
 
 This document tracks how each supported AI agent CLI handles configuration
 relevant to terok's container integration. It covers both direct CLI invocation
@@ -241,7 +242,7 @@ Instructions from multiple config layers are concatenated (not replaced).
 | CLI flag | `--full-auto` (sandbox=workspace-write + approval=on-request) | Yes | Yes | No |
 | CLI flag | `--yolo` (sandbox=danger-full-access + approval=never) | Yes | Yes | No |
 | CLI flag | `-a never -s danger-full-access` | Yes | Yes | No |
-| `-c` override | `-c approval_policy=never -c sandbox_mode=danger-full-access` | Yes | **Yes** |
+| `-c` override | `-c approval_policy=never -c sandbox_mode=danger-full-access` | Yes | Yes | **Yes** |
 | User config | `~/.codex/config.toml` | No (shared if mounted) | Yes | Yes |
 | System config | `/etc/codex/config.toml` | Per-container | Yes | Yes |
 | Project config | `.codex/config.toml` (requires `trust_level = "trusted"`) | Invades repo | Yes | Yes |
@@ -393,3 +394,35 @@ Each task runs in its own Podman container, so per-container = per-task:
 | OpenCode | `instructions` array in opencode.json | Injected by terok on host side |
 | Codex | `AGENTS.md` in workspace | `-c` overrides work for ACP too |
 | Copilot | `AGENTS.md` in workspace | `COPILOT_CUSTOM_INSTRUCTIONS_DIRS` env var |
+
+---
+
+## Sources
+
+Primary sources used for this research. Check these when re-verifying.
+
+### Claude Code
+
+- ACP adapter source: `github.com/zed-industries/claude-code-acp` — `src/acp-agent.ts` (permission mode resolution, `PERMISSION_MODE_ALIASES`, `IS_SANDBOX` / `ALLOW_BYPASS` logic, `createSession` options), `src/settings.ts` (settings precedence, managed settings path, `SettingsManager`)
+- Official docs: `code.claude.com/docs/en/settings` (settings precedence), `code.claude.com/docs/en/permissions` (permission modes), `code.claude.com/docs/en/cli-usage` (CLI flags)
+
+### Mistral Vibe
+
+- Source: `github.com/mistralai/mistral-vibe` — `vibe/core/config/_settings.py` (`VibeConfig` with pydantic-settings, `auto_approve` field, `env_prefix="VIBE_"`), `vibe/acp/acp_agent_loop.py` (`_create_acp_session` approval callback, `auto_approve` check), `vibe/acp/entrypoint.py` (ACP entry point, config loading), `vibe/core/config/harness_files/_harness_manager.py` (config file location resolution)
+- PyPI: `pyproject.toml` `[project.scripts]` confirms `vibe-acp` entry point is bundled
+
+### OpenCode
+
+- Source: `github.com/sst/opencode` — `packages/opencode/src/config/config.ts` (permission types, `OPENCODE_PERMISSION` env var merge, config loading precedence, managed config path), `packages/opencode/src/flag/flag.ts` (all `OPENCODE_*` env vars), `packages/opencode/src/cli/cmd/run.ts` (headless permission auto-reject), `packages/opencode/src/cli/cmd/acp.ts` (ACP entry point, bootstrap)
+
+### OpenAI Codex
+
+- Source: `github.com/openai/codex` — `codex-rs/config/src/lib.rs` (config structure, `AskForApproval` enum, `SandboxMode` enum, config layer precedence), `codex-rs/config/src/requirements.rs` (`ConfigRequirementsToml`, system requirements paths), `codex-rs/codex-acp/src/main.rs` (ACP entry point, `CliConfigOverrides` reuse)
+- ACP adapter source: `github.com/zed-industries/codex-acp` — confirms `-c` flag passthrough and full config stack loading
+
+### GitHub Copilot
+
+- Repo: `github.com/github/copilot` (closed-source binary; README, CHANGELOG.md, issue tracker)
+- CHANGELOG.md entries: v0.0.397 (ACP introduction), v0.0.400 (ACP permission flags), v0.0.411 (autopilot GA), v0.0.422 (config renames, JSONL output)
+- Issues: #179 (global tool config, open), #307 (permissions proposal, open), #1020 (`permissions.allow` cleared on startup), #1607 (ACP per-session permissions gap)
+- SDK docs: `PermissionHandler.ApproveAll` default behaviour
