@@ -837,7 +837,7 @@ if _HAS_TEXTUAL:
                         from ..lib.security.shield import SHIELD_SECURITY_HINT
 
                         self.notify(f"Shield dropped for task {task_id}. {SHIELD_SECURITY_HINT}")
-                    else:
+                    elif action == "up":
                         self.notify(f"Shield up for task {task_id}")
                 # Refresh shield state after action
                 if (

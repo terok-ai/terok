@@ -141,10 +141,12 @@ git:
   authorship: agent-human    # or: human-agent, human, agent
 ```
 
+<!-- markdownlint-disable MD046 -->
 !!! info "Auto-deduction from host git config"
 
     If `human_name` and `human_email` are not set, terok deduces them from
     the host's `git config user.name` and `git config user.email`.
+<!-- markdownlint-enable MD046 -->
 
 ---
 
