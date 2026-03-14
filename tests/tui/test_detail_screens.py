@@ -11,6 +11,8 @@ from unittest import TestCase, main, mock
 from rich.text import Text
 from tui_test_helpers import import_app, import_screens, import_widgets, make_key_event
 
+from constants import MOCK_BASE
+
 
 class RenderHelpersTests(TestCase):
     """Tests for the extracted render_* helper functions."""
@@ -216,7 +218,7 @@ class RenderHelpersTests(TestCase):
         task = widgets.TaskMeta(
             task_id="99",
             mode="cli",
-            workspace="/tmp/ws",
+            workspace=str(MOCK_BASE / "ws"),
             web_port=None,
             container_state="running",
             shield_state="DISABLED",
@@ -232,7 +234,7 @@ class RenderHelpersTests(TestCase):
         task = widgets.TaskMeta(
             task_id="98",
             mode="cli",
-            workspace="/tmp/ws",
+            workspace=str(MOCK_BASE / "ws"),
             web_port=None,
             container_state="running",
             shield_state="INACTIVE",
@@ -247,7 +249,7 @@ class RenderHelpersTests(TestCase):
         task = widgets.TaskMeta(
             task_id="97",
             mode="cli",
-            workspace="/tmp/ws",
+            workspace=str(MOCK_BASE / "ws"),
             web_port=None,
             container_state="running",
             shield_state="UP",
