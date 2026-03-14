@@ -20,22 +20,20 @@ Complete guide to installing, configuring, and using terok.
 
 ## Installation
 
-### Via pip
+### Recommended: pipx
 
 ```bash
-# Build from source
-python -m pip install --upgrade build
-python -m build
-pip install dist/terok-*.whl
-
-# Or install directly (editable for development)
-pip install -e .
-
-# With TUI support
-pip install '.[tui]'
+# Download the latest .whl from the GitHub Releases page, then:
+pipx install ./terok-*.whl
 ```
 
-After install, you should have console scripts: `terok`, `terokctl`
+### Alternative: pip
+
+```bash
+pip install ./terok-*.whl
+```
+
+After install, you should have console scripts: `terok` (TUI), `terokctl` (CLI).
 
 ### Global Flags
 
@@ -77,33 +75,6 @@ terokctl completions fish   # Print fish completion script to stdout
 
 Run `terokctl config` to check whether completions are detected as installed.
 
-### Custom Install Paths
-
-**User-local (no root):**
-```bash
-pip install --user .
-# Binaries go to ~/.local/bin (ensure it's on PATH)
-```
-
-**Custom prefix (Debian/Ubuntu):**
-
-On Debian/Ubuntu, pip uses the `posix_local` scheme which inserts `/local` under the prefix.
-
-```bash
-# Correct - let pip add /local:
-pip install --prefix=/virt/podman .
-# Result: /virt/podman/local/bin/terok
-
-# Wrong - don't add /local yourself:
-pip install --prefix=/virt/podman/local .
-# Result: /virt/podman/local/local/bin/terok
-```
-
-**Virtual environment (recommended):**
-```bash
-python -m venv .venv && . .venv/bin/activate && pip install .
-```
-
 ---
 
 ## Runtime Locations
@@ -144,24 +115,45 @@ cp examples/terok-config.yml ~/.config/terok/config.yml
 
 ### Minimum Settings
 
+Every project needs these four fields in its `project.yml`:
+
 ```yaml
-ui:
-  base_port: 7860           # Default port for UI mode
+project:
+  id: myproj
+  security_class: online        # or "gatekeeping"
 
-paths:
-  user_projects_root: ~/.config/terok/projects
-  state_root: ~/.local/share/terok
-  build_root: ~/.local/share/terok/build
+docker:
+  base_image: docker.io/library/ubuntu:24.04
 
+git:
+  upstream_url: https://github.com/yourorg/yourrepo.git
+```
+
+### Nice-to-Have Settings
+
+These can be set in `project.yml` (per-project) or `config.yml` (global default):
+
+```yaml
 git:
   human_name: "Your Name"
   human_email: "your@email.com"
+  default_branch: main
   authorship: agent-human    # or: human-agent, human, agent
 ```
+
+<!-- markdownlint-disable MD046 -->
+!!! info "Auto-deduction from host git config"
+
+    If `human_name` and `human_email` are not set, terok deduces them from
+    the host's `git config user.name` and `git config user.email`.
+<!-- markdownlint-enable MD046 -->
 
 ---
 
 ## From Zero to First Run
+
+The quickest way to manage projects is through the TUI — run `terok` after
+install.  The steps below show the equivalent CLI workflow.
 
 ### Prerequisites
 
@@ -184,18 +176,14 @@ project:
   id: myproj
   security_class: online    # or "gatekeeping" for restricted mode
 
+docker:
+  base_image: docker.io/library/ubuntu:24.04
+  user_snippet_file: user.dockerinclude  # optional
+
 git:
   upstream_url: git@github.com:yourorg/yourrepo.git  # or https://...
   default_branch: main
   # authorship: human-agent  # optional: author = human, committer = agent
-
-# Optional: SSH hints for containers
-ssh:
-  key_name: id_ed25519_myproj  # matches key created by ssh-init
-
-# Optional: Docker include snippet
-docker:
-  user_snippet_file: user.dockerinclude
 ```
 
 ### Step 3: (Optional) Docker Include Snippet
@@ -942,23 +930,8 @@ When enabled, terok adds:
 
 ## FAQ
 
-### How do I install with a custom prefix?
-
-See [Custom Install Paths](#custom-install-paths) above.
-
 ### Where are templates and scripts stored?
 
 Loaded from Python package resources bundled with the wheel (under `terok/resources/`). The application never reads from `/usr/share`.
 
-### How do I enable the TUI?
-
-```bash
-pip install 'terok[tui]'
-```
-
-Then run: `terok`
-
-### How do I package for Debian/RPM?
-
-See [packaging.md](packaging.md).
 

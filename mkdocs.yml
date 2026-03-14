@@ -86,7 +86,7 @@ nav:
     - Security Modes: git-gate-and-security-modes.md
     - Shield Security: shield-security.md
     - Login Design: login-design.md
-    - Packaging: packaging.md
+
   - Developer Guide:
     - Contributing: developer.md
     - Code Quality: quality-report.md

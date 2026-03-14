@@ -11,8 +11,8 @@ weakened or absent.
 
 | State | Meaning | Risk |
 |-------|---------|------|
-| **up** (deny-all) | Only allowlisted IPs/domains and the gate server are reachable | Lowest — intended production state |
-| **down** (bypass) | All egress traffic is allowed; audit logging still active | Medium — see [Shield Down](#shield-down-bypass-mode) |
+| **up** (deny-all) | Only allowlisted IPs/domains and the gate server are reachable | Low — intended production state |
+| **down** (bypass) | All egress traffic is allowed; audit logging still active | High — see [Shield Down](#shield-down-bypass-mode) |
 | **disabled** / missing | No firewall hooks installed at all; no audit logging | Highest — see [Shield Disabled](#shield-disabled-or-missing) |
 
 ---
@@ -24,7 +24,7 @@ toggle, or the `shield.drop_on_task_start` config — the nftables rules switch
 to allow-all but the OCI hook infrastructure remains in place.  **Audit
 logging continues.**
 
-### What you lose
+### What you lose protection against
 
 **Secrets exfiltration.**
 A compromised or prompt-injected agent can send API keys, tokens, SSH

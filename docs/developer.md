@@ -174,7 +174,7 @@ See [shared-dirs.md](shared-dirs.md) for detailed documentation.
 - Git gate (if present) is used as read-only clone accelerator
 
 ### Gatekeeping Mode
-- `CODE_REPO` points to `file:///git-gate/gate.git`
+- `CODE_REPO` points to the gate server's HTTP endpoint
 - Container's default `origin` is the gate, not upstream
 - Human review required before changes are promoted to upstream
 
@@ -436,12 +436,3 @@ The release workflow triggers on `v*` tags automatically — it builds the wheel
 
 Between releases, `poetry-dynamic-versioning` generates PEP 440 versions from git tags automatically (e.g. `0.4.0.post3.dev0+gabcdef`). The TUI title bar shows a shortened form: `v0.4.0+` when past a release, `v0.4.0` at a tagged release.
 
----
-
-## Packaging
-
-See [packaging.md](packaging.md) for details on:
-- Python packaging (pip/Poetry)
-- Distribution packages (deb/rpm)
-- FHS compliance
-- Runtime lookup strategy

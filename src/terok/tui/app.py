@@ -837,8 +837,8 @@ if _HAS_TEXTUAL:
                         from ..lib.security.shield import SHIELD_SECURITY_HINT
 
                         self.notify(f"Shield dropped for task {task_id}. {SHIELD_SECURITY_HINT}")
-                    else:
-                        self.notify(f"Shield updated for task {task_id}")
+                    elif action == "up":
+                        self.notify(f"Shield up for task {task_id}")
                 # Refresh shield state after action
                 if (
                     self.current_task
@@ -1079,7 +1079,7 @@ else:
     def main() -> None:
         """Print an error message when Textual is not installed and exit."""
         print(
-            "terok TUI requires the 'textual' package.\nInstall it with: pip install 'terok[tui]'",
+            "terok TUI requires the 'textual' package, but it is not installed.",
             file=sys.stderr,
         )
         sys.exit(1)

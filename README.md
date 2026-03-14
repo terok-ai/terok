@@ -19,7 +19,6 @@ A tool for managing containerized AI coding agent projects using Podman. Provide
 | [Shared Directories](docs/shared-dirs.md) | Volume mounts and SSH configuration |
 | [Security Modes](docs/git-gate-and-security-modes.md) | Online vs gatekeeping modes |
 | [Login Design](docs/login-design.md) | Login session architecture |
-| [Packaging](docs/packaging.md) | pip, deb, and rpm packaging |
 
 ## Quick Start
 
@@ -32,13 +31,8 @@ A tool for managing containerized AI coding agent projects using Podman. Provide
 ### Installation
 
 ```bash
-# Clone and install
-git clone git@github.com:terok-ai/terok.git
-cd terok
-pip install .
-
-# With TUI support
-pip install '.[tui]'
+# Install the latest release wheel (download from GitHub Releases page)
+pipx install ./terok-*.whl
 ```
 
 ### Basic Workflow
@@ -122,13 +116,6 @@ terokctl completions install               # Install shell completions
 Location: `~/.config/terok/config.yml`
 
 ```yaml
-ui:
-  base_port: 7860
-
-paths:
-  user_projects_root: ~/.config/terok/projects
-  state_root: ~/.local/share/terok
-
 git:
   human_name: "Your Name"
   human_email: "your@email.com"
@@ -145,7 +132,6 @@ git:
 ## Requirements
 
 - **Podman** is required for build/run commands
-- **TUI** is optional: `pip install 'terok[tui]'`
 
 ## Contributing
 
