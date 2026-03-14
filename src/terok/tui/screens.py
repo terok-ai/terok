@@ -1144,8 +1144,11 @@ class TaskDetailsScreen(screen.Screen[str | None]):
             options.append(Option("re\\[n]ame task", id="rename"))
             options.append(Option("delete task  \\[X]", id="delete"))
             options.append(None)
+            from ..lib.core.config import get_shield_bypass_firewall_no_protection
+
             options.append(Option("shield \\[D]own (bypass)", id="shield_down"))
-            options.append(Option("\\[s]hield up (deny-all)", id="shield_up"))
+            if not get_shield_bypass_firewall_no_protection():
+                options.append(Option("\\[s]hield up (deny-all)", id="shield_up"))
         options.append(None)
         options.append(Option("New task (no run)  \\[C]", id="new"))
 

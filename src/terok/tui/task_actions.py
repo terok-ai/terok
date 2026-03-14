@@ -20,7 +20,7 @@ from ..lib.containers.tasks import (
     get_workspace_git_diff,
     mark_task_deleting,
 )
-from ..lib.core.config import is_experimental
+from ..lib.core.config import get_shield_bypass_firewall_no_protection, is_experimental
 from ..lib.core.projects import load_project
 from ..lib.facade import (
     HeadlessRunRequest,
@@ -609,6 +609,13 @@ class TaskActionsMixin:
 
     def _action_shield_up(self) -> None:
         """Raise the shield (deny-all) for the current task."""
+        if get_shield_bypass_firewall_no_protection():
+            from ..lib.security.shield import SHIELD_SECURITY_HINT
+
+            self.notify(
+                f"Shield unavailable (bypass_firewall_no_protection). {SHIELD_SECURITY_HINT}"
+            )
+            return
         self._action_shield_toggle("up", shield_up)
 
     # --- Main-screen task pane shortcuts (c/w/X/D/s) ---
@@ -627,6 +634,13 @@ class TaskActionsMixin:
 
     def action_shield_up_from_main(self) -> None:
         """Raise the shield from the main screen."""
+        if get_shield_bypass_firewall_no_protection():
+            from ..lib.security.shield import SHIELD_SECURITY_HINT
+
+            self.notify(
+                f"Shield unavailable (bypass_firewall_no_protection). {SHIELD_SECURITY_HINT}"
+            )
+            return
         self._action_shield_toggle("up", shield_up)
 
     async def action_login_from_main(self) -> None:
