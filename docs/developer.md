@@ -205,20 +205,13 @@ Default: unrestricted (True)
   ▼
 TEROK_UNRESTRICTED=1 env var  ← single decision carrier
   │
-  ▼  (per-container, all launch paths)
+  ▼  (per-container, all launch paths — immutable after creation)
 Agent-native env vars and config files:
   ├─ VIBE_AUTO_APPROVE=true           (container env)
   ├─ OPENCODE_PERMISSION='{"*":"allow"}'  (container env)
   ├─ COPILOT_ALLOW_ALL=true           (container env)
   ├─ /etc/claude-code/managed-settings.json  (init script)
   └─ /etc/codex/requirements.toml     (init script)
-  │
-  ▼  (CLI path only — redundant reinforcement)
-Shell wrapper functions also inject CLI flags:
-  ├─ claude():   --dangerously-skip-permissions
-  ├─ codex():    --dangerously-bypass-approvals-and-sandbox
-  ├─ copilot():  --yolo
-  └─ vibe():     --agent auto-approve
 ```
 
 ### Key decision points

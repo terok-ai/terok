@@ -277,7 +277,13 @@ def collect_all_auto_approve_env() -> dict[str, str]:
     """
     merged: dict[str, str] = {}
     for p in HEADLESS_PROVIDERS.values():
-        merged.update(p.auto_approve_env)
+        for key, value in p.auto_approve_env.items():
+            if key in merged and merged[key] != value:
+                raise ValueError(
+                    f"Conflicting auto_approve_env for {key!r}: "
+                    f"{merged[key]!r} vs {value!r} (provider {p.name!r})"
+                )
+            merged[key] = value
     return merged
 
 

@@ -42,12 +42,12 @@ regardless of launch path (CLI wrapper, ACP, or direct invocation):
 | Blablador | `OPENCODE_PERMISSION` env var | inherits OpenCode's mechanism |
 | Copilot | `COPILOT_ALLOW_ALL=true` env var | no stable config file mechanism |
 
-Shell wrappers additionally inject CLI flags (`--dangerously-skip-permissions`,
-`--yolo`, `--agent auto-approve`, etc.) as redundant reinforcement for the
-CLI path. The env vars and config files are the authoritative mechanism.
-
 When `TEROK_UNRESTRICTED` is unset: config files are not written and env
 vars are not set; agents use vendor defaults.
+
+**Invariant**: a container's permission mode is set at creation and never
+changes during its lifetime. Podman container env vars are immutable, and
+the init script re-reads them on every start — no stale state is possible.
 
 ## Instruction Delivery
 
