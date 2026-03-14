@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import pytest
 
-from constants import EXAMPLE_UPSTREAM_URL
+from testnet import EXAMPLE_UPSTREAM_URL
 
 from ..helpers import NEW_TASK_MARKER, TerokIntegrationEnv
 

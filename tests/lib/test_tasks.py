@@ -11,7 +11,6 @@ from pathlib import Path
 
 import yaml
 
-from constants import localhost_url
 from terok.lib.containers.environment import apply_web_env_overrides, build_task_env_and_volumes
 from terok.lib.containers.task_logs import LogViewOptions, task_logs
 from terok.lib.containers.task_runners import task_run_cli, task_run_web
@@ -27,6 +26,7 @@ from terok.tui.clipboard import (
     get_clipboard_helper_status,
 )
 from test_utils import mock_git_config, parse_meta_value, project_env, write_project
+from testnet import localhost_url
 
 
 def _assert_volume_mount(volumes: list[str], expected_base: str, expected_suffix: str) -> None:

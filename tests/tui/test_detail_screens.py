@@ -11,7 +11,7 @@ from unittest import TestCase, main, mock
 from rich.text import Text
 from tui_test_helpers import import_app, import_screens, import_widgets, make_key_event
 
-from constants import MOCK_BASE
+from testfs import MOCK_BASE
 
 
 class RenderHelpersTests(TestCase):

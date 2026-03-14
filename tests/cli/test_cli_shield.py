@@ -10,8 +10,8 @@ from unittest.mock import MagicMock, patch
 
 from terok_shield import ExecError
 
-from constants import MOCK_TASK_DIR_1
 from terok.cli.commands.shield import _resolve_task, dispatch, register
+from testfs import MOCK_TASK_DIR_1
 
 
 class TestRegister(unittest.TestCase):

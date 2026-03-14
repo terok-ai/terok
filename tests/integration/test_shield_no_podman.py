@@ -20,7 +20,7 @@ Shield = terok_shield.Shield
 ShieldConfig = terok_shield.ShieldConfig
 ShieldMode = terok_shield.ShieldMode
 
-from constants import GATE_PORT, HOST_ALIAS_LOOPBACK, HOST_ALIAS_SLIRP
+from testnet import GATE_PORT, HOST_ALIAS_LOOPBACK, HOST_ALIAS_SLIRP
 
 from .conftest import MockRunner
 

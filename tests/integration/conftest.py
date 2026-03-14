@@ -27,7 +27,8 @@ from pathlib import Path
 
 import pytest
 
-from constants import GATE_PORT, TEST_IP
+from testfs import CONFIG_ROOT_NAME, HOME_DIR_NAME, STATE_ROOT_NAME, XDG_CONFIG_HOME_NAME
+from testnet import GATE_PORT, TEST_IP
 
 from .helpers import TerokIntegrationEnv
 
@@ -179,10 +180,10 @@ def mock_runner() -> MockRunner:
 @pytest.fixture
 def terok_env(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> TerokIntegrationEnv:
     """Return an isolated terok config/state environment for a test."""
-    home_dir = tmp_path / "home"
-    xdg_config_home = tmp_path / "xdg-config"
-    system_config_root = tmp_path / "config"
-    state_root = tmp_path / "state"
+    home_dir = tmp_path / HOME_DIR_NAME
+    xdg_config_home = tmp_path / XDG_CONFIG_HOME_NAME
+    system_config_root = tmp_path / CONFIG_ROOT_NAME
+    state_root = tmp_path / STATE_ROOT_NAME
 
     for path in (home_dir, xdg_config_home, system_config_root, state_root):
         path.mkdir(parents=True, exist_ok=True)

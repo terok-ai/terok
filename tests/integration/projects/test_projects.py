@@ -8,7 +8,7 @@ from __future__ import annotations
 import pytest
 import yaml
 
-from constants import TEST_UPSTREAM_URL
+from testnet import TEST_UPSTREAM_URL
 
 from ..helpers import TerokIntegrationEnv
 

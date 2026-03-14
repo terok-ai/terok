@@ -16,7 +16,6 @@ from terok_shield import (
     ShieldState,
 )
 
-from constants import GATE_PORT, MOCK_CONFIG_ROOT, MOCK_TASK_DIR
 from terok.lib.security.shield import (
     _BYPASS_WARNING,
     _normalize_profiles,
@@ -32,6 +31,8 @@ from terok.lib.security.shield import (
     status,
     up,
 )
+from testfs import MOCK_CONFIG_ROOT, MOCK_TASK_DIR
+from testnet import GATE_PORT
 
 
 class TestStateDir(unittest.TestCase):

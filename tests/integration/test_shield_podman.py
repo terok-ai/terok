@@ -18,7 +18,7 @@ import pytest
 terok_shield = pytest.importorskip("terok_shield")
 Shield = terok_shield.Shield
 
-from constants import EGRESS_DOMAIN, TEST_EGRESS_URL, TEST_IP_RFC5737
+from testnet import EGRESS_DOMAIN, TEST_EGRESS_URL, TEST_IP_RFC5737
 
 from .conftest import podman_missing, skip_if_no_root
 

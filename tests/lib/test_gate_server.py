@@ -11,7 +11,6 @@ import unittest
 import unittest.mock
 from pathlib import Path
 
-from constants import GATE_PORT, LOCALHOST
 from terok.lib.security.gate_server import (
     _UNIT_VERSION,
     GateServerStatus,
@@ -29,6 +28,7 @@ from terok.lib.security.gate_server import (
     stop_daemon,
     uninstall_systemd_units,
 )
+from testnet import GATE_PORT, LOCALHOST
 
 
 class TestUnitVersion(unittest.TestCase):

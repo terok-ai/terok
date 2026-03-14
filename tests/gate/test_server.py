@@ -12,7 +12,6 @@ import unittest.mock
 from http.server import BaseHTTPRequestHandler
 from pathlib import Path
 
-from constants import GATE_PORT, LOCALHOST_PEER
 from terok.gate.server import (
     _ROUTE,
     TokenStore,
@@ -22,6 +21,7 @@ from terok.gate.server import (
     _parse_content_length,
     _validate_token_data,
 )
+from testnet import GATE_PORT, LOCALHOST_PEER
 
 
 class TestTokenStore(unittest.TestCase):
