@@ -138,7 +138,6 @@ HEADLESS_PROVIDERS: dict[str, HeadlessProvider] = {
         git_author_email="noreply@anthropic.com",
         headless_subcommand=None,
         prompt_flag="-p",
-
         auto_approve_env={},
         output_format_flags=("--output-format", "stream-json"),
         model_flag="--model",
@@ -161,7 +160,6 @@ HEADLESS_PROVIDERS: dict[str, HeadlessProvider] = {
         git_author_email="noreply@openai.com",
         headless_subcommand="exec",
         prompt_flag="",
-
         auto_approve_env={},
         output_format_flags=(),
         model_flag="--model",
@@ -184,7 +182,6 @@ HEADLESS_PROVIDERS: dict[str, HeadlessProvider] = {
         git_author_email="noreply@github.com",
         headless_subcommand=None,
         prompt_flag="-p",
-
         auto_approve_env={"COPILOT_ALLOW_ALL": "true"},
         output_format_flags=(),
         model_flag="--model",
@@ -207,7 +204,6 @@ HEADLESS_PROVIDERS: dict[str, HeadlessProvider] = {
         git_author_email="noreply@mistral.ai",
         headless_subcommand=None,
         prompt_flag="--prompt",
-
         auto_approve_env={"VIBE_AUTO_APPROVE": "true"},
         output_format_flags=(),
         model_flag="--agent",
@@ -230,7 +226,6 @@ HEADLESS_PROVIDERS: dict[str, HeadlessProvider] = {
         git_author_email="noreply@hzdr.de",
         headless_subcommand="run",
         prompt_flag="",
-
         auto_approve_env={"OPENCODE_PERMISSION": '{"*":"allow"}'},
         output_format_flags=(),
         model_flag=None,
@@ -253,7 +248,6 @@ HEADLESS_PROVIDERS: dict[str, HeadlessProvider] = {
         git_author_email="noreply@opencode.ai",
         headless_subcommand="run",
         prompt_flag="",
-
         auto_approve_env={"OPENCODE_PERMISSION": '{"*":"allow"}'},
         output_format_flags=(),
         model_flag="--model",
