@@ -37,12 +37,12 @@ def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) ->
     p_build.add_argument(
         "--agents",
         action="store_true",
-        help="Rebuild L0+L1+L2 with fresh agent installs (codex, claude, opencode, vibe)",
+        help="Rebuild from L0 with fresh agents (codex, claude, opencode, vibe)",
     )
     p_build.add_argument(
         "--full-rebuild",
         action="store_true",
-        help="Full rebuild with no cache (includes base image pull and apt packages)",
+        help="Rebuild from L0 (no cache) (includes base image pull and apt packages)",
     )
     p_build.add_argument(
         "--dev",

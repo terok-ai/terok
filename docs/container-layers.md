@@ -45,13 +45,13 @@ The UI backend is configurable (Codex, Claude, or Mistral). Precedence:
 | Command | Layers Built | When to Use |
 |---------|-------------|-------------|
 | `terokctl build <project>` | L2 only | Project config changes |
-| `terokctl build --agents <project>` | L0 + L1 + L2 | Update agents to latest versions |
-| `terokctl build --full-rebuild <project>` | L0 + L1 + L2 (no cache) | Update base image or apt packages |
+| `terokctl build --agents <project>` | L0 + L1 + L2 | Rebuild from L0 with fresh agents |
+| `terokctl build --full-rebuild <project>` | L0 + L1 + L2 (no cache) | Rebuild from L0 (no cache) with fresh base image + apt packages |
 | `terokctl build --dev <project>` | + L2-dev image | Manual debugging container |
 
-The `--agents` flag passes a unique `AGENT_CACHE_BUST` build arg to L1, invalidating the cache for agent install layers while preserving cache for apt packages.
+The `--agents` flag rebuilds from L0 and passes a unique `AGENT_CACHE_BUST` build arg to L1, invalidating the cache for agent install layers while preserving cache for apt packages where possible.
 
-The `--full-rebuild` flag adds `--no-cache` and `--pull=always` to rebuild everything from scratch.
+The `--full-rebuild` flag rebuilds from L0 with `--no-cache` and `--pull=always`, forcing a fresh base-image pull and fresh apt-package layers.
 
 `<base-tag>` is derived from `docker.base_image` (sanitized), e.g. `ubuntu:24.04` becomes `ubuntu-24.04`.
 

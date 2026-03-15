@@ -254,8 +254,8 @@ def build_images(
     Args:
         project_id: The project to build images for
         include_dev: Also build a dev image from L0 (tagged as <project>:l2-dev)
-        rebuild_agents: Rebuild L0+L1+L2 with fresh agent installs (cache bust)
-        full_rebuild: Full rebuild with --no-cache and --pull=always
+        rebuild_agents: Rebuild from L0 with fresh agents (L1 cache bust)
+        full_rebuild: Rebuild from L0 with --no-cache and --pull=always
     """
     import time
 

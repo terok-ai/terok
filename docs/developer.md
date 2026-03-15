@@ -253,6 +253,20 @@ provider-agnostic: it doesn't need to know *which* flags each agent needs.
 | Provider env registry | `headless_providers.py` → `HeadlessProvider` dataclass | `auto_approve_env: dict[str, str]` per provider |
 | Status display | `tasks.py` → `task_status()`, `task_detail.py` | Reads `meta["unrestricted"]` and shows "unrestricted" / "restricted" |
 
+### In-container `hilfe`
+
+The in-container `hilfe` command is shipped from
+`src/terok/resources/scripts/hilfe`. The CLI login banner in
+`l1.agent-cli.Dockerfile.template` intentionally calls
+`_TEROK_LOGIN=1 hilfe --kurz`, so the short and full help stay centralized.
+
+When you change agent availability, `/workspace` or `/home/dev` mount behavior,
+update flows, or rebuild terminology, keep these in sync:
+
+- `src/terok/resources/scripts/hilfe`
+- `l1.agent-cli.Dockerfile.template` welcome hook
+- user docs (`docs/usage.md`, and related container docs if terminology changed)
+
 ### Adding a new agent
 
 To add permission-mode support for a new agent:

@@ -207,10 +207,10 @@ terokctl generate myproj
 # Build only L2 project images (fast, reuses existing L0/L1 layers)
 terokctl build myproj
 
-# Rebuild L0+L1+L2 with fresh agent installs (codex, claude, opencode, vibe)
+# Rebuild from L0 with fresh agents (codex, claude, opencode, vibe)
 terokctl build --agents myproj
 
-# Full rebuild with no cache (includes base image pull and apt packages)
+# Rebuild from L0 (no cache) (includes base image pull and apt packages)
 terokctl build --full-rebuild myproj
 
 # Optional: build a dev image from L0 as well
@@ -220,8 +220,8 @@ terokctl build --agents myproj --dev
 
 Build modes:
 - **Default** (`build`): Only rebuilds L2 project images, reuses existing L0/L1. Use for project config changes.
-- **Agents** (`--agents`): Rebuilds L0+L1+L2 with fresh agent downloads. Use to update AI agents to latest versions.
-- **Full rebuild** (`--full-rebuild`): Complete rebuild with `--no-cache` and `--pull=always`. Use when base image or apt packages need updating.
+- **Rebuild from L0 with fresh agents** (`--agents`): Rebuilds L0+L1+L2 and refreshes agent installs. Affects new containers only.
+- **Rebuild from L0 (no cache)** (`--full-rebuild`): Rebuilds L0+L1+L2 with `--no-cache` and `--pull=always`. Use when base image or apt packages need updating. Affects new containers only.
 
 ### Step 6: Initialize SSH (for private repos)
 
@@ -302,6 +302,8 @@ terokctl login myproj 1
 
 This opens a tmux session inside the container. The session persists across
 disconnects — re-running `terokctl login` reattaches to the same session.
+Interactive shells show `hilfe --kurz` on entry; run `hilfe` inside the
+container for the fuller in-container help.
 
 #### From the TUI
 
@@ -937,5 +939,3 @@ When enabled, terok adds:
 ### Where are templates and scripts stored?
 
 Loaded from Python package resources bundled with the wheel (under `terok/resources/`). The application never reads from `/usr/share`.
-
-

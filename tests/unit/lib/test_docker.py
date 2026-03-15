@@ -93,6 +93,8 @@ def test_generate_dockerfiles_outputs_expected_files_and_content() -> None:
             )
         )
         l2_content = (out_dir / "L2.Dockerfile").read_text(encoding="utf-8")
+        l1_cli_content = (out_dir / "L1.cli.Dockerfile").read_text(encoding="utf-8")
+        assert "hilfe --kurz" in l1_cli_content
         assert f'SSH_KEY_NAME="id_ed25519_{project_id}"' in l2_content
         assert "{{DEFAULT_BRANCH}}" not in l2_content
         assert f'CODE_REPO="{UPSTREAM_URL}"' in l2_content

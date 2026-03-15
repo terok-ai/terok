@@ -201,25 +201,25 @@ class ProjectActionsMixin:
         )
 
     async def _action_build_agents(self) -> None:
-        """Build L0+L1+L2 with fresh agent installs."""
+        """Rebuild from L0 with fresh agents."""
         if not self.current_project_id:
             self.notify("No project selected.")
             return
         pid = self.current_project_id
         await self._run_suspended(
             lambda: build_images(pid, rebuild_agents=True),
-            success_msg=f"Built L0+L1+L2 with fresh agents for {pid}",
+            success_msg=f"Rebuilt from L0 with fresh agents for {pid}",
         )
 
     async def _action_build_full(self) -> None:
-        """Full rebuild with no cache."""
+        """Rebuild from L0 (no cache)."""
         if not self.current_project_id:
             self.notify("No project selected.")
             return
         pid = self.current_project_id
         await self._run_suspended(
             lambda: build_images(pid, full_rebuild=True),
-            success_msg=f"Full rebuild (no cache) completed for {pid}",
+            success_msg=f"Rebuilt from L0 (no cache) for {pid}",
         )
 
     async def _action_project_init(self) -> None:

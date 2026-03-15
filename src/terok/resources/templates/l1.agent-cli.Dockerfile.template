@@ -126,7 +126,7 @@ RUN set -eux; \
       '# Print help banner on interactive login' \
       'if [ -t 1 ] && [ -z "$_TEROK_BANNER_SHOWN" ]; then' \
       '  export _TEROK_BANNER_SHOWN=1' \
-      '  _TEROK_LOGIN=1 hilfe 2>/dev/null || true' \
+      '  _TEROK_LOGIN=1 hilfe --kurz 2>/dev/null || true' \
       'fi' \
       '' \
       '# Source terok project config (agent wrapper functions)' \
@@ -151,7 +151,7 @@ USER dev
 WORKDIR /home/dev
 
 # Cache bust point - changing AGENT_CACHE_BUST invalidates all layers below
-# Used by `terokctl build --agents` to force fresh agent installs
+# Used by `terokctl build --agents` to rebuild from L0 with fresh agents
 ARG AGENT_CACHE_BUST=0
 
 # Install AI agent CLIs as dev user

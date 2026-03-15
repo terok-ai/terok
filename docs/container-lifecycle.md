@@ -160,8 +160,8 @@ Auth containers are ephemeral because:
 | Command | What it builds | When to use |
 |---------|---------------|-------------|
 | `terokctl build <project>` | L2 only | Normal use (reuses L0/L1) |
-| `terokctl build --agents <project>` | L0 + L1 + L2 | Update agents (Codex, Claude, etc.) |
-| `terokctl build --full-rebuild <project>` | L0 + L1 + L2 (no cache) | Update base image / apt packages |
+| `terokctl build --agents <project>` | L0 + L1 + L2 | Rebuild from L0 with fresh agents |
+| `terokctl build --full-rebuild <project>` | L0 + L1 + L2 (no cache) | Rebuild from L0 (no cache) with fresh base image + apt packages |
 | `terokctl build --dev <project>` | + L2-dev image | Manual debugging container |
 
 ### Image Staleness Detection
