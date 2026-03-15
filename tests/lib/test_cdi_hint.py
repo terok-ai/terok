@@ -5,76 +5,52 @@
 
 import subprocess
 
+import pytest
+
 from terok.lib.containers.task_runners import _CDI_HINT, _enrich_run_error
 
 
-class TestCdiHint:
-    """Tests for _enrich_run_error CDI detection."""
+def make_error(stderr: str | bytes | None, returncode: int = 1) -> subprocess.CalledProcessError:
+    """Create a ``CalledProcessError`` carrying test stderr content."""
+    exc = subprocess.CalledProcessError(returncode, ["podman", "run"])
+    exc.stderr = stderr if isinstance(stderr, bytes) or stderr is None else stderr.encode()
+    return exc
 
-    def _make_error(self, stderr: str, returncode: int = 1) -> subprocess.CalledProcessError:
-        """Create a CalledProcessError with stderr bytes."""
-        exc = subprocess.CalledProcessError(returncode, ["podman", "run"])
-        exc.stderr = stderr.encode()
-        return exc
 
-    def test_cdi_hint_on_nvidia_device_error(self) -> None:
-        """CDI hint is shown when stderr mentions nvidia.com/gpu."""
-        exc = self._make_error("Error: nvidia.com/gpu=all: device not found")
-        msg = _enrich_run_error("Run failed", exc)
-        assert _CDI_HINT in msg
-        assert "nvidia.com/gpu=all" in msg
+@pytest.mark.parametrize(
+    ("stderr", "expects_hint"),
+    [
+        ("Error: nvidia.com/gpu=all: device not found", True),
+        ("Error: cdi.k8s.io: registry not configured", True),
+        ("Error: CDI device injection failed", True),
+        ("Error: image not found", False),
+        ("Error: encoding failed", False),
+        ("Error: cdi device failed", False),
+        ("Error: Cdi device failed", False),
+        ("", False),
+        (None, False),
+    ],
+    ids=[
+        "nvidia-device",
+        "cdi-k8s",
+        "uppercase-cdi",
+        "unrelated",
+        "lowercase-substring",
+        "lowercase-cdi",
+        "mixed-case-cdi",
+        "empty",
+        "none",
+    ],
+)
+def test_cdi_hint_detection(stderr: str | None, expects_hint: bool) -> None:
+    """CDI hint is emitted only for explicit supported error patterns."""
+    message = _enrich_run_error("Run failed", make_error(stderr))
+    assert (_CDI_HINT in message) is expects_hint
+    if stderr:
+        assert stderr.split(": ", 1)[-1] in message
 
-    def test_cdi_hint_on_cdi_k8s_error(self) -> None:
-        """CDI hint is shown when stderr mentions cdi.k8s.io."""
-        exc = self._make_error("Error: cdi.k8s.io: registry not configured")
-        msg = _enrich_run_error("Run failed", exc)
-        assert _CDI_HINT in msg
 
-    def test_cdi_hint_on_uppercase_cdi_error(self) -> None:
-        """CDI hint is shown when stderr mentions uppercase CDI."""
-        exc = self._make_error("Error: CDI device injection failed")
-        msg = _enrich_run_error("Run failed", exc)
-        assert _CDI_HINT in msg
-
-    def test_no_cdi_hint_on_unrelated_error(self) -> None:
-        """CDI hint is NOT shown for unrelated errors."""
-        exc = self._make_error("Error: image not found")
-        msg = _enrich_run_error("Run failed", exc)
-        assert _CDI_HINT not in msg
-        assert "image not found" in msg
-
-    def test_no_cdi_hint_on_lowercase_cdi_substring(self) -> None:
-        """CDI hint is NOT shown when stderr only contains 'cdi' as a lowercase substring."""
-        exc = self._make_error("Error: encoding failed")
-        msg = _enrich_run_error("Run failed", exc)
-        assert _CDI_HINT not in msg
-
-    def test_empty_stderr_no_hint(self) -> None:
-        """No CDI hint when stderr is empty."""
-        exc = subprocess.CalledProcessError(1, ["podman", "run"])
-        exc.stderr = b""
-        msg = _enrich_run_error("Run failed", exc)
-        assert _CDI_HINT not in msg
-
-    def test_none_stderr_no_hint(self) -> None:
-        """No CDI hint when stderr is None."""
-        exc = subprocess.CalledProcessError(1, ["podman", "run"])
-        exc.stderr = None
-        msg = _enrich_run_error("Run failed", exc)
-        assert _CDI_HINT not in msg
-
-    def test_cdi_hint_only_on_explicit_patterns(self) -> None:
-        """CDI hint is shown only for explicit patterns, not arbitrary case variants."""
-        for text in ("Error: cdi device failed", "Error: Cdi device failed"):
-            exc = self._make_error(text)
-            msg = _enrich_run_error("Run failed", exc)
-            assert _CDI_HINT not in msg, f"CDI hint should not match: {text!r}"
-        exc = self._make_error("Error: CDI device failed")
-        msg = _enrich_run_error("Run failed", exc)
-        assert _CDI_HINT in msg
-
-    def test_prefix_in_message(self) -> None:
-        """The prefix is always included in the error message."""
-        exc = self._make_error("some error")
-        msg = _enrich_run_error("Custom prefix", exc)
-        assert msg.startswith("Custom prefix:")
+def test_prefix_in_message() -> None:
+    """The supplied prefix is always included in the enriched error message."""
+    message = _enrich_run_error("Custom prefix", make_error("some error"))
+    assert message.startswith("Custom prefix:")

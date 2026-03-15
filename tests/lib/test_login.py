@@ -1,6 +1,10 @@
 # SPDX-FileCopyrightText: 2026 Jiri Vyskocil
 # SPDX-License-Identifier: Apache-2.0
 
+"""Tests for task-login helpers."""
+
+from __future__ import annotations
+
 import types
 import unittest.mock
 
@@ -11,68 +15,95 @@ from terok.lib.containers.tasks import get_login_command, task_login, task_new
 from test_utils import mock_git_config, project_env
 
 
+def project_yaml(project_id: str, extra: str = "") -> str:
+    """Build a minimal project config for login tests."""
+    return f"project:\n  id: {project_id}\n{extra}"
+
+
+def setup_task_with_mode(
+    ctx: types.SimpleNamespace,
+    project_id: str,
+    *,
+    mode: str | None = None,
+) -> None:
+    """Create a task and optionally set its execution mode in metadata."""
+    task_new(project_id)
+    if mode:
+        meta_path = ctx.state_dir / "projects" / project_id / "tasks" / "1.yml"
+        meta = yaml.safe_load(meta_path.read_text())
+        meta["mode"] = mode
+        meta_path.write_text(yaml.safe_dump(meta))
+
+
+def assert_login_error(
+    project_id: str,
+    error_text: str,
+    *,
+    mode: str | None = None,
+    container_state: str | None = None,
+) -> None:
+    """Assert that ``task_login`` fails with a specific error message."""
+    with project_env(project_yaml(project_id), project_id=project_id) as ctx:
+        setup_task_with_mode(ctx, project_id, mode=mode)
+        with unittest.mock.patch(
+            "terok.lib.containers.tasks.get_container_state",
+            return_value=container_state,
+        ):
+            with pytest.raises(SystemExit, match=error_text):
+                task_login(
+                    project_id, "1" if mode else "999" if project_id.endswith("unknown") else "1"
+                )
+
+
+LOGIN_COMMAND = [
+    "podman",
+    "exec",
+    "-it",
+    "proj-cli-cli-1",
+    "tmux",
+    "new-session",
+    "-A",
+    "-s",
+    "main",
+]
+
+
 class TestLogin:
-    """Tests for task_login, get_login_command, and _validate_login."""
+    """Tests for task_login, get_login_command, and validation."""
 
-    @staticmethod
-    def _setup_task_with_mode(
-        ctx: types.SimpleNamespace, project_id: str, *, mode: str | None = None
+    @pytest.mark.parametrize(
+        ("project_id", "mode", "container_state", "error_text"),
+        [
+            ("proj_login_unknown", None, None, "Unknown task"),
+            ("proj_login_nomode", None, None, "never been run"),
+            ("proj_login_nf", "cli", None, "does not exist"),
+            ("proj_login_nr", "cli", "exited", "not running"),
+        ],
+        ids=["unknown-task", "no-mode", "container-missing", "container-not-running"],
+    )
+    def test_task_login_errors(
+        self,
+        project_id: str,
+        mode: str | None,
+        container_state: str | None,
+        error_text: str,
     ) -> None:
-        """Create a task inside an active project_env, optionally setting mode in metadata."""
-        task_new(project_id)
-        if mode:
-            meta_dir = ctx.state_dir / "projects" / project_id / "tasks"
-            meta_path = meta_dir / "1.yml"
-            meta = yaml.safe_load(meta_path.read_text())
-            meta["mode"] = mode
-            meta_path.write_text(yaml.safe_dump(meta))
-
-    def test_task_login_unknown_task(self) -> None:
-        """task_login raises SystemExit for non-existent task."""
-        project_id = "proj_login_unknown"
-        with project_env(f"project:\n  id: {project_id}\n", project_id=project_id):
-            with pytest.raises(SystemExit) as ctx:
-                task_login(project_id, "999")
-            assert "Unknown task" in str(ctx.value)
-
-    def test_task_login_no_mode(self) -> None:
-        """task_login raises SystemExit when task has never been run (no mode)."""
-        project_id = "proj_login_nomode"
-        with project_env(f"project:\n  id: {project_id}\n", project_id=project_id) as ctx:
-            self._setup_task_with_mode(ctx, project_id)
-            with pytest.raises(SystemExit) as exc_ctx:
-                task_login(project_id, "1")
-            assert "never been run" in str(exc_ctx.value)
-
-    def test_task_login_container_not_found(self) -> None:
-        """task_login raises SystemExit when container does not exist."""
-        project_id = "proj_login_nf"
-        with project_env(f"project:\n  id: {project_id}\n", project_id=project_id) as ctx:
-            self._setup_task_with_mode(ctx, project_id, mode="cli")
+        with project_env(project_yaml(project_id), project_id=project_id) as ctx:
+            if project_id != "proj_login_unknown":
+                setup_task_with_mode(ctx, project_id, mode=mode)
             with unittest.mock.patch(
-                "terok.lib.containers.tasks.get_container_state", return_value=None
+                "terok.lib.containers.tasks.get_container_state",
+                return_value=container_state,
             ):
                 with pytest.raises(SystemExit) as exc_ctx:
-                    task_login(project_id, "1")
-                assert "does not exist" in str(exc_ctx.value)
-
-    def test_task_login_container_not_running(self) -> None:
-        """task_login raises SystemExit when container is not running."""
-        project_id = "proj_login_nr"
-        with project_env(f"project:\n  id: {project_id}\n", project_id=project_id) as ctx:
-            self._setup_task_with_mode(ctx, project_id, mode="cli")
-            with unittest.mock.patch(
-                "terok.lib.containers.tasks.get_container_state", return_value="exited"
-            ):
-                with pytest.raises(SystemExit) as exc_ctx:
-                    task_login(project_id, "1")
-                assert "not running" in str(exc_ctx.value)
+                    task_login(project_id, "999" if project_id == "proj_login_unknown" else "1")
+            assert error_text in str(exc_ctx.value)
 
     def test_task_login_success(self) -> None:
-        """task_login calls os.execvp with correct podman+tmux command."""
-        project_id = "proj_login_ok"
-        with project_env(f"project:\n  id: {project_id}\n", project_id=project_id) as ctx:
-            self._setup_task_with_mode(ctx, project_id, mode="cli")
+        """task_login calls os.execvp with the correct podman+tmux command."""
+        project_id = "proj-cli"
+        with project_env(project_yaml(project_id), project_id=project_id) as ctx:
+            setup_task_with_mode(ctx, project_id, mode="cli")
             with (
                 unittest.mock.patch(
                     "terok.lib.containers.tasks.get_container_state",
@@ -81,62 +112,36 @@ class TestLogin:
                 unittest.mock.patch("terok.lib.containers.tasks.os.execvp") as mock_exec,
             ):
                 task_login(project_id, "1")
+        mock_exec.assert_called_once_with("podman", LOGIN_COMMAND)
 
-                mock_exec.assert_called_once_with(
-                    "podman",
-                    [
-                        "podman",
-                        "exec",
-                        "-it",
-                        f"{project_id}-cli-1",
-                        "tmux",
-                        "new-session",
-                        "-A",
-                        "-s",
-                        "main",
-                    ],
-                )
-
-    def test_get_login_command_returns_list(self) -> None:
-        """get_login_command returns correct command list for CLI-mode task."""
-        project_id = "proj_logincmd"
-        with project_env(f"project:\n  id: {project_id}\n", project_id=project_id) as ctx:
-            self._setup_task_with_mode(ctx, project_id, mode="cli")
+    @pytest.mark.parametrize(
+        ("mode", "expected_container"),
+        [("cli", "proj_logincmd-cli-1"), ("web", "proj_loginweb-web-1")],
+        ids=["cli", "web"],
+    )
+    def test_get_login_command_returns_expected_container_name(
+        self,
+        mode: str,
+        expected_container: str,
+    ) -> None:
+        project_id = expected_container.split("-")[0] if mode == "cli" else "proj_loginweb"
+        project_id = "proj_logincmd" if mode == "cli" else "proj_loginweb"
+        with project_env(project_yaml(project_id), project_id=project_id) as ctx:
+            setup_task_with_mode(ctx, project_id, mode=mode)
             with unittest.mock.patch(
                 "terok.lib.containers.tasks.get_container_state",
                 return_value="running",
             ):
-                cmd = get_login_command(project_id, "1")
-                assert cmd == [
-                    "podman",
-                    "exec",
-                    "-it",
-                    f"{project_id}-cli-1",
-                    "tmux",
-                    "new-session",
-                    "-A",
-                    "-s",
-                    "main",
-                ]
-
-    def test_get_login_command_web_mode(self) -> None:
-        """get_login_command uses web mode container name when mode is web."""
-        project_id = "proj_loginweb"
-        with project_env(f"project:\n  id: {project_id}\n", project_id=project_id) as ctx:
-            self._setup_task_with_mode(ctx, project_id, mode="web")
-            with unittest.mock.patch(
-                "terok.lib.containers.tasks.get_container_state",
-                return_value="running",
-            ):
-                cmd = get_login_command(project_id, "1")
-                assert cmd[3] == f"{project_id}-web-1"
+                command = get_login_command(project_id, "1")
+        assert command[3] == expected_container
+        assert command[-4:] == ["tmux", "new-session", "-A", "-s", "main"][-4:]
 
     def test_login_no_longer_injects_agent_config(self) -> None:
         """get_login_command does NOT inject agent config (handled via mount)."""
         project_id = "proj_login_cfg"
         yaml_text = f"project:\n  id: {project_id}\nagent:\n  model: sonnet\n"
         with project_env(yaml_text, project_id=project_id) as ctx:
-            self._setup_task_with_mode(ctx, project_id, mode="cli")
+            setup_task_with_mode(ctx, project_id, mode="cli")
             with (
                 unittest.mock.patch(
                     "terok.lib.containers.tasks.get_container_state",
@@ -145,11 +150,8 @@ class TestLogin:
                 mock_git_config(),
                 unittest.mock.patch("terok.lib.containers.tasks.subprocess.run") as mock_run,
             ):
-                cmd = get_login_command(project_id, "1")
+                command = get_login_command(project_id, "1")
 
-                # Should still return the tmux command
-                assert cmd[3] == f"{project_id}-cli-1"
-                assert "tmux" in cmd
-
-                # No podman exec/cp calls --- config injection is via mount
-                mock_run.assert_not_called()
+        assert command[3] == f"{project_id}-cli-1"
+        assert "tmux" in command
+        mock_run.assert_not_called()

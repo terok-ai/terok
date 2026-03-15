@@ -3,10 +3,13 @@
 
 """Tests for the generic config stack engine."""
 
+from __future__ import annotations
+
 import json
 import tempfile
 from pathlib import Path
 
+import pytest
 import yaml
 
 from terok.lib.util.config_stack import (
@@ -18,102 +21,70 @@ from terok.lib.util.config_stack import (
 )
 
 
-class TestDeepMerge:
-    """Tests for deep_merge()."""
-
-    def test_simple_override(self) -> None:
-        base = {"a": 1, "b": 2}
-        override = {"b": 3, "c": 4}
-        assert deep_merge(base, override) == {"a": 1, "b": 3, "c": 4}
-
-    def test_nested_merge(self) -> None:
-        base = {"x": {"a": 1, "b": 2}}
-        override = {"x": {"b": 3, "c": 4}}
-        assert deep_merge(base, override) == {"x": {"a": 1, "b": 3, "c": 4}}
-
-    def test_none_deletes_key(self) -> None:
-        base = {"a": 1, "b": 2, "c": 3}
-        override = {"b": None}
-        assert deep_merge(base, override) == {"a": 1, "c": 3}
-
-    def test_none_deletes_nested_key(self) -> None:
-        base = {"x": {"a": 1, "b": 2}}
-        override = {"x": {"a": None}}
-        assert deep_merge(base, override) == {"x": {"b": 2}}
-
-    def test_list_replacement(self) -> None:
-        base = {"items": [1, 2, 3]}
-        override = {"items": [4, 5]}
-        assert deep_merge(base, override) == {"items": [4, 5]}
-
-    def test_list_inherit_splices_base(self) -> None:
-        base = {"items": ["a", "b"]}
-        override = {"items": ["_inherit", "c"]}
-        assert deep_merge(base, override) == {"items": ["a", "b", "c"]}
-
-    def test_list_inherit_at_end(self) -> None:
-        base = {"items": ["a", "b"]}
-        override = {"items": ["c", "_inherit"]}
-        assert deep_merge(base, override) == {"items": ["c", "a", "b"]}
-
-    def test_list_inherit_in_middle(self) -> None:
-        base = {"items": ["b"]}
-        override = {"items": ["a", "_inherit", "c"]}
-        assert deep_merge(base, override) == {"items": ["a", "b", "c"]}
-
-    def test_dict_inherit_keeps_parent(self) -> None:
-        base = {"x": {"a": 1, "b": 2}}
-        override = {"x": {"_inherit": True, "c": 3}}
-        assert deep_merge(base, override) == {"x": {"a": 1, "b": 2, "c": 3}}
-
-    def test_dict_inherit_overlay_overrides(self) -> None:
-        base = {"x": {"a": 1, "b": 2}}
-        override = {"x": {"_inherit": True, "b": 9, "c": 3}}
-        assert deep_merge(base, override) == {"x": {"a": 1, "b": 9, "c": 3}}
-
-    def test_dict_without_inherit_merges_recursively(self) -> None:
-        """Dicts merge recursively by default (no _inherit needed for dicts)."""
-        base = {"x": {"a": 1, "b": 2}}
-        override = {"x": {"c": 3}}
-        result = deep_merge(base, override)
-        assert result == {"x": {"a": 1, "b": 2, "c": 3}}
-
-    def test_bare_inherit_keeps_base_value(self) -> None:
-        """Bare _inherit string keeps the base value unchanged."""
-        base = {"a": 1, "b": [1, 2], "c": {"x": 1}}
-        override = {"a": "_inherit", "b": "_inherit", "c": "_inherit"}
-        assert deep_merge(base, override) == {"a": 1, "b": [1, 2], "c": {"x": 1}}
-
-    def test_bare_inherit_no_base_drops_key(self) -> None:
-        """Bare _inherit with no base value drops the key."""
-        base = {"a": 1}
-        override = {"a": "_inherit", "b": "_inherit"}
-        assert deep_merge(base, override) == {"a": 1}
-
-    def test_empty_base(self) -> None:
-        assert deep_merge({}, {"a": 1}) == {"a": 1}
-
-    def test_empty_override(self) -> None:
-        assert deep_merge({"a": 1}, {}) == {"a": 1}
-
-    def test_both_empty(self) -> None:
-        assert deep_merge({}, {}) == {}
-
-    def test_scalar_replaces_dict(self) -> None:
-        base = {"x": {"a": 1}}
-        override = {"x": "flat"}
-        assert deep_merge(base, override) == {"x": "flat"}
-
-    def test_dict_replaces_scalar(self) -> None:
-        base = {"x": "flat"}
-        override = {"x": {"a": 1}}
-        assert deep_merge(base, override) == {"x": {"a": 1}}
-
-    def test_deeply_nested(self) -> None:
-        base = {"a": {"b": {"c": {"d": 1, "e": 2}}}}
-        override = {"a": {"b": {"c": {"e": 3, "f": 4}}}}
-        expected = {"a": {"b": {"c": {"d": 1, "e": 3, "f": 4}}}}
-        assert deep_merge(base, override) == expected
+@pytest.mark.parametrize(
+    ("base", "override", "expected"),
+    [
+        ({"a": 1, "b": 2}, {"b": 3, "c": 4}, {"a": 1, "b": 3, "c": 4}),
+        ({"x": {"a": 1, "b": 2}}, {"x": {"b": 3, "c": 4}}, {"x": {"a": 1, "b": 3, "c": 4}}),
+        ({"a": 1, "b": 2, "c": 3}, {"b": None}, {"a": 1, "c": 3}),
+        ({"x": {"a": 1, "b": 2}}, {"x": {"a": None}}, {"x": {"b": 2}}),
+        ({"items": [1, 2, 3]}, {"items": [4, 5]}, {"items": [4, 5]}),
+        ({"items": ["a", "b"]}, {"items": ["_inherit", "c"]}, {"items": ["a", "b", "c"]}),
+        ({"items": ["a", "b"]}, {"items": ["c", "_inherit"]}, {"items": ["c", "a", "b"]}),
+        ({"items": ["b"]}, {"items": ["a", "_inherit", "c"]}, {"items": ["a", "b", "c"]}),
+        (
+            {"x": {"a": 1, "b": 2}},
+            {"x": {"_inherit": True, "c": 3}},
+            {"x": {"a": 1, "b": 2, "c": 3}},
+        ),
+        (
+            {"x": {"a": 1, "b": 2}},
+            {"x": {"_inherit": True, "b": 9, "c": 3}},
+            {"x": {"a": 1, "b": 9, "c": 3}},
+        ),
+        ({"x": {"a": 1, "b": 2}}, {"x": {"c": 3}}, {"x": {"a": 1, "b": 2, "c": 3}}),
+        (
+            {"a": 1, "b": [1, 2], "c": {"x": 1}},
+            {"a": "_inherit", "b": "_inherit", "c": "_inherit"},
+            {"a": 1, "b": [1, 2], "c": {"x": 1}},
+        ),
+        ({"a": 1}, {"a": "_inherit", "b": "_inherit"}, {"a": 1}),
+        ({}, {"a": 1}, {"a": 1}),
+        ({"a": 1}, {}, {"a": 1}),
+        ({}, {}, {}),
+        ({"x": {"a": 1}}, {"x": "flat"}, {"x": "flat"}),
+        ({"x": "flat"}, {"x": {"a": 1}}, {"x": {"a": 1}}),
+        (
+            {"a": {"b": {"c": {"d": 1, "e": 2}}}},
+            {"a": {"b": {"c": {"e": 3, "f": 4}}}},
+            {"a": {"b": {"c": {"d": 1, "e": 3, "f": 4}}}},
+        ),
+    ],
+    ids=[
+        "simple-override",
+        "nested-merge",
+        "delete-key",
+        "delete-nested-key",
+        "replace-list",
+        "inherit-list-prefix",
+        "inherit-list-suffix",
+        "inherit-list-middle",
+        "inherit-dict-keep-parent",
+        "inherit-dict-override-parent",
+        "recursive-merge",
+        "bare-inherit-keep-base",
+        "bare-inherit-drop-missing",
+        "empty-base",
+        "empty-override",
+        "both-empty",
+        "scalar-over-dict",
+        "dict-over-scalar",
+        "deeply-nested",
+    ],
+)
+def test_deep_merge(base: dict, override: dict, expected: dict) -> None:
+    """deep_merge handles overrides, deletions, inheritance, and recursion."""
+    assert deep_merge(base, override) == expected
 
 
 class TestConfigStack:
@@ -135,8 +106,7 @@ class TestConfigStack:
         stack = ConfigStack()
         stack.push(ConfigScope("global", None, {"agent": {"model": "haiku"}, "other": 1}))
         stack.push(ConfigScope("project", None, {"agent": {"model": "sonnet", "turns": 5}}))
-        result = stack.resolve_section("agent")
-        assert result == {"model": "sonnet", "turns": 5}
+        assert stack.resolve_section("agent") == {"model": "sonnet", "turns": 5}
 
     def test_section_resolution_missing_section(self) -> None:
         stack = ConfigStack()
@@ -144,8 +114,7 @@ class TestConfigStack:
         assert stack.resolve_section("agent") == {}
 
     def test_empty_stack(self) -> None:
-        stack = ConfigStack()
-        assert stack.resolve() == {}
+        assert ConfigStack().resolve() == {}
 
     def test_scope_with_none_deletion(self) -> None:
         stack = ConfigStack()
@@ -155,11 +124,10 @@ class TestConfigStack:
 
     def test_scopes_property(self) -> None:
         stack = ConfigStack()
-        s1 = ConfigScope("a", None, {})
-        s2 = ConfigScope("b", None, {})
-        stack.push(s1)
-        stack.push(s2)
-        assert stack.scopes == [s1, s2]
+        scopes = [ConfigScope("a", None, {}), ConfigScope("b", None, {})]
+        for scope in scopes:
+            stack.push(scope)
+        assert stack.scopes == scopes
 
     def test_scopes_property_is_copy(self) -> None:
         stack = ConfigStack()
@@ -169,44 +137,40 @@ class TestConfigStack:
         assert len(stack.scopes) == 1
 
 
-class TestLoader:
-    """Tests for YAML/JSON scope loaders."""
+@pytest.mark.parametrize(
+    ("loader", "suffix", "content", "expected"),
+    [
+        (load_yaml_scope, ".yml", yaml.dump({"key": "value"}), {"key": "value"}),
+        (load_json_scope, ".json", json.dumps({"key": "value"}), {"key": "value"}),
+        (load_yaml_scope, ".yml", "", {}),
+        (load_json_scope, ".json", "{}", {}),
+    ],
+    ids=["yaml", "json", "yaml-empty", "json-empty-object"],
+)
+def test_scope_loaders(
+    loader,
+    suffix: str,
+    content: str,
+    expected: dict[str, object],
+) -> None:
+    """YAML/JSON scope loaders read files and normalize empty inputs."""
+    with tempfile.TemporaryDirectory() as td:
+        path = Path(td) / f"test{suffix}"
+        path.write_text(content, encoding="utf-8")
+        scope = loader("test", path)
+    assert scope.level == "test"
+    assert scope.source == path
+    assert scope.data == expected
 
-    def test_load_yaml_scope(self) -> None:
-        with tempfile.TemporaryDirectory() as td:
-            p = Path(td) / "test.yml"
-            p.write_text(yaml.dump({"key": "value"}), encoding="utf-8")
-            scope = load_yaml_scope("test", p)
-            assert scope.level == "test"
-            assert scope.source == p
-            assert scope.data == {"key": "value"}
 
-    def test_load_json_scope(self) -> None:
-        with tempfile.TemporaryDirectory() as td:
-            p = Path(td) / "test.json"
-            p.write_text(json.dumps({"key": "value"}), encoding="utf-8")
-            scope = load_json_scope("test", p)
-            assert scope.level == "test"
-            assert scope.data == {"key": "value"}
-
-    def test_load_yaml_missing_file(self) -> None:
-        scope = load_yaml_scope("missing", Path("/nonexistent/config.yml"))
-        assert scope.data == {}
-
-    def test_load_json_missing_file(self) -> None:
-        scope = load_json_scope("missing", Path("/nonexistent/config.json"))
-        assert scope.data == {}
-
-    def test_load_yaml_empty_file(self) -> None:
-        with tempfile.TemporaryDirectory() as td:
-            p = Path(td) / "empty.yml"
-            p.write_text("", encoding="utf-8")
-            scope = load_yaml_scope("empty", p)
-            assert scope.data == {}
-
-    def test_load_json_empty_object(self) -> None:
-        with tempfile.TemporaryDirectory() as td:
-            p = Path(td) / "empty.json"
-            p.write_text("{}", encoding="utf-8")
-            scope = load_json_scope("empty", p)
-            assert scope.data == {}
+@pytest.mark.parametrize(
+    ("loader", "path"),
+    [
+        (load_yaml_scope, Path("/nonexistent/config.yml")),
+        (load_json_scope, Path("/nonexistent/config.json")),
+    ],
+    ids=["yaml-missing", "json-missing"],
+)
+def test_scope_loaders_missing_files(loader, path: Path) -> None:
+    """Missing config files are treated as empty scopes."""
+    assert loader("missing", path).data == {}
