@@ -602,15 +602,24 @@ class TestWriteSessionHook:
 class TestPrepareAgentConfigDir:
     """Tests for prepare_agent_config_dir."""
 
-    @unittest.mock.patch("terok.lib.containers.agents._write_session_hook")
-    def test_prepare_agent_config_writes_instructions(self, _mock_hook: object) -> None:
-        """Instructions text is written to instructions.md in agent-config dir."""
-        project = make_project_config(
+    @staticmethod
+    def _prepare_project(tasks_root: Path):
+        """Create a minimal project config for ``prepare_agent_config`` tests."""
+        return make_project_config(
             project_id="test-proj",
             root=FAKE_PROJECT_ROOT,
-            tasks_root=Path(tempfile.mkdtemp()),
+            tasks_root=tasks_root,
             gate_path=FAKE_PROJECT_GATE_DIR,
         )
+
+    @unittest.mock.patch("terok.lib.containers.agents._write_session_hook")
+    def test_prepare_agent_config_writes_instructions(
+        self,
+        _mock_hook: object,
+        tmp_path: Path,
+    ) -> None:
+        """Instructions text is written to instructions.md in agent-config dir."""
+        project = self._prepare_project(tmp_path / "tasks")
         agent_config_dir = prepare_agent_config(
             project, "test-task-1", instructions="Custom instructions here."
         )
@@ -619,14 +628,13 @@ class TestPrepareAgentConfigDir:
         assert instr_path.read_text(encoding="utf-8") == "Custom instructions here."
 
     @unittest.mock.patch("terok.lib.containers.agents._write_session_hook")
-    def test_prepare_agent_config_default_instructions_when_none(self, _mock_hook: object) -> None:
+    def test_prepare_agent_config_default_instructions_when_none(
+        self,
+        _mock_hook: object,
+        tmp_path: Path,
+    ) -> None:
         """Default instructions.md written when instructions is None."""
-        project = make_project_config(
-            project_id="test-proj",
-            root=FAKE_PROJECT_ROOT,
-            tasks_root=Path(tempfile.mkdtemp()),
-            gate_path=FAKE_PROJECT_GATE_DIR,
-        )
+        project = self._prepare_project(tmp_path / "tasks")
         agent_config_dir = prepare_agent_config(project, "test-task-2")
         instr_path = agent_config_dir / "instructions.md"
         assert instr_path.is_file()
@@ -634,14 +642,13 @@ class TestPrepareAgentConfigDir:
         assert "conventions" in content
 
     @unittest.mock.patch("terok.lib.containers.agents._write_session_hook")
-    def test_wrapper_has_append_system_prompt_when_instructions(self, _mock_hook: object) -> None:
+    def test_wrapper_has_append_system_prompt_when_instructions(
+        self,
+        _mock_hook: object,
+        tmp_path: Path,
+    ) -> None:
         """Claude wrapper includes --append-system-prompt when instructions are provided."""
-        project = make_project_config(
-            project_id="test-proj",
-            root=FAKE_PROJECT_ROOT,
-            tasks_root=Path(tempfile.mkdtemp()),
-            gate_path=FAKE_PROJECT_GATE_DIR,
-        )
+        project = self._prepare_project(tmp_path / "tasks")
         agent_config_dir = prepare_agent_config(
             project, "test-task-3", instructions="Test instructions."
         )

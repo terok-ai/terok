@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import json
 import os
+from collections.abc import Iterator
 from contextlib import ExitStack, contextmanager
 from pathlib import Path
 from types import SimpleNamespace
@@ -14,11 +15,14 @@ import pytest
 
 from testcli import run_cli
 
+TEST_UI_BASE_PORT = 7777
+"""UI base port baked into the temporary config layout for config CLI tests."""
+
 
 def make_config_layout(tmp_path: Path) -> SimpleNamespace:
     """Create a filesystem layout used by the ``terok config`` tests."""
     global_cfg = tmp_path / "global.yml"
-    global_cfg.write_text("ui:\n  base_port: 7777\n", encoding="utf-8")
+    global_cfg.write_text(f"ui:\n  base_port: {TEST_UI_BASE_PORT}\n", encoding="utf-8")
 
     user_root = tmp_path / "user-projects"
     system_root = tmp_path / "system-projects"
@@ -57,9 +61,11 @@ def make_config_layout(tmp_path: Path) -> SimpleNamespace:
 
 
 @contextmanager
-def patch_config_command(layout: SimpleNamespace):
+def patch_config_command(layout: SimpleNamespace) -> Iterator[None]:
     """Patch the ``terok config`` command to use the temporary test layout."""
     with ExitStack() as stack:
+        # Intentional: clear the environment so config discovery is driven solely by the
+        # temporary TEROK_CONFIG_FILE path, keeping output deterministic across hosts.
         stack.enter_context(
             patch.dict(os.environ, {"TEROK_CONFIG_FILE": str(layout.global_cfg)}, clear=True)
         )
@@ -73,7 +79,9 @@ def patch_config_command(layout: SimpleNamespace):
                 return_value=[layout.global_cfg],
             )
         )
-        stack.enter_context(patch("terok.cli.commands.info._get_ui_base_port", return_value=7777))
+        stack.enter_context(
+            patch("terok.cli.commands.info._get_ui_base_port", return_value=TEST_UI_BASE_PORT)
+        )
         stack.enter_context(
             patch("terok.cli.commands.info._get_envs_base_dir", return_value=layout.envs_root)
         )

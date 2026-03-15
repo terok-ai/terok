@@ -5,6 +5,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from pathlib import Path
 from unittest.mock import patch
 
@@ -14,7 +15,9 @@ from terok.cli.commands import completions
 
 
 @pytest.fixture()
-def patch_completion_locations(monkeypatch):
+def patch_completion_locations(
+    monkeypatch: pytest.MonkeyPatch,
+) -> Callable[..., None]:
     """Return a helper that replaces completion search locations for one test."""
 
     def _apply(

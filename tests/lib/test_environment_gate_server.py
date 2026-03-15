@@ -11,11 +11,10 @@ from unittest.mock import patch
 import pytest
 
 from terok.lib.containers.environment import _security_mode_env_and_volumes
-from terok.lib.core.projects import load_project
+from terok.lib.core.projects import ProjectConfig, load_project
 from test_utils import mock_git_config, project_env
 from testfs import FAKE_SSH_DIR
-
-GATE_SERVER_PORT = 9418
+from testnet import GATE_PORT, gate_repo_url
 
 _GATEKEEPING_YAML = """\
 project:
@@ -41,11 +40,6 @@ def gate_mounts(volumes: list[str]) -> list[str]:
     return [volume for volume in volumes if "git-gate" in volume or "gate" in volume.split(":")[0]]
 
 
-def gate_url(project_id: str, token: str, *, port: int = GATE_SERVER_PORT) -> str:
-    """Build the authenticated gate HTTP URL used by the environment helper."""
-    return f"http://{token}@host.containers.internal:{port}/{project_id}.git"
-
-
 def resolve_security_env(
     yaml_text: str,
     *,
@@ -53,7 +47,7 @@ def resolve_security_env(
     with_gate: bool,
     token: str | None = None,
     ensure_side_effect: BaseException | None = None,
-) -> tuple[object, dict[str, str], list[str]]:
+) -> tuple[ProjectConfig, dict[str, str], list[str]]:
     """Load a project and evaluate gate-related env/volume settings."""
     with (
         mock_git_config(),
@@ -62,9 +56,7 @@ def resolve_security_env(
             "terok.lib.containers.environment.ensure_server_reachable",
             side_effect=ensure_side_effect,
         ),
-        patch(
-            "terok.lib.containers.environment.get_gate_server_port", return_value=GATE_SERVER_PORT
-        ),
+        patch("terok.lib.containers.environment.get_gate_server_port", return_value=GATE_PORT),
         patch(
             "terok.lib.containers.environment.get_gate_base_path",
             return_value=ctx.state_dir / "gate",
@@ -97,7 +89,7 @@ def test_gate_projects_use_http_urls_with_tokens(
         token=token,
     )
 
-    assert env[env_key] == gate_url(project_id, token)
+    assert env[env_key] == gate_repo_url(project_id, token)
     assert gate_mounts(volumes) == []
 
     if project.security_class == "gatekeeping":
@@ -140,7 +132,7 @@ def test_online_gate_server_fallback(server_reachable: bool) -> None:
     )
 
     if server_reachable:
-        assert env["CLONE_FROM"] == gate_url("online-proj", "cafebabe" * 4)
+        assert env["CLONE_FROM"] == gate_repo_url("online-proj", "cafebabe" * 4)
     else:
         assert "CLONE_FROM" not in env
     assert env["CODE_REPO"] == "https://example.com/repo.git"

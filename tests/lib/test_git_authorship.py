@@ -12,6 +12,9 @@ from importlib import resources
 
 import pytest
 
+SCRIPT_TIMEOUT_SECONDS = 15
+"""Timeout for the shell-based Git authorship helper smoke test."""
+
 
 def apply_mode(mode: str) -> dict[str, str | None]:
     """Run the shared helper in a shell and capture the resulting Git env."""
@@ -39,7 +42,13 @@ keys = (
 print(json.dumps({{key: os.environ.get(key) for key in keys}}))
 PY
 """
-        result = subprocess.run(["bash", "-lc", shell], check=True, capture_output=True, text=True)
+        result = subprocess.run(
+            ["bash", "-lc", shell],
+            check=True,
+            capture_output=True,
+            text=True,
+            timeout=SCRIPT_TIMEOUT_SECONDS,
+        )
     return json.loads(result.stdout)
 
 

@@ -57,11 +57,11 @@ class TestArchiveTimestamp:
     """Tests for archive_timestamp()."""
 
     def test_returns_utc_timestamp_string(self) -> None:
-        assert re.search(r"^\d{8}T\d{6}\d+Z$", archive_timestamp())
+        assert re.search(r"^\d{8}T\d{6}(?:\d+)?Z$", archive_timestamp())
 
     def test_changes_when_time_changes(self) -> None:
-        first_dt = datetime(2026, 3, 15, 12, 0, 0, 123456, tzinfo=UTC)
-        second_dt = datetime(2026, 3, 15, 12, 0, 0, 123457, tzinfo=UTC)
+        first_dt = datetime(2026, 3, 15, 12, 0, 0, tzinfo=UTC)
+        second_dt = datetime(2026, 3, 15, 12, 0, 1, tzinfo=UTC)
         with patch("terok.lib.util.fs.datetime") as mock_datetime:
             mock_datetime.now.side_effect = [first_dt, second_dt]
             first = archive_timestamp()

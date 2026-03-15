@@ -5,6 +5,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable, Iterator
 from pathlib import Path
 
 import pytest
@@ -13,7 +14,7 @@ from terok.lib.core import config as cfg
 
 
 @pytest.fixture(autouse=True)
-def reset_experimental() -> None:
+def reset_experimental() -> Iterator[None]:
     """Reset the module-global experimental flag around each test."""
     cfg.set_experimental(False)
     yield
@@ -67,7 +68,7 @@ def test_path_resolution(
     tmp_path: Path,
     env_var: str,
     config_text: str | None,
-    resolver,
+    resolver: Callable[[], Path],
     expected_name: str,
 ) -> None:
     expected_path = tmp_path / expected_name

@@ -617,8 +617,9 @@ class TestGenerateAllWrappers:
 
     def test_all_wrappers_use_authorship_helper(self) -> None:
         """All wrappers in the combined file use the shared helper."""
-        wrapper = _all_wrappers(project=_make_project(human_name="Bob"))
-        assert wrapper.count("_terok_apply_git_identity") >= len(HEADLESS_PROVIDERS) * 2
+        project = _make_project(human_name="Bob")
+        for name in HEADLESS_PROVIDERS:
+            assert "_terok_apply_git_identity" in _provider_wrapper(name, project=project)
 
     def test_all_wrappers_valid_bash_syntax(self) -> None:
         """Combined wrapper output passes bash -n syntax check."""

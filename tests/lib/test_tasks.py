@@ -28,7 +28,12 @@ from terok.tui.clipboard import (
 )
 from test_utils import mock_git_config, parse_meta_value, project_env, write_project
 from testfs import CONTAINER_SSH_DIR
-from testnet import localhost_url
+from testnet import CONTAINER_HOSTNAME, GATE_PORT, localhost_url
+
+
+def _gate_repo_fragment(project_id: str, *, port: int = GATE_PORT) -> str:
+    """Return the host-side gate URL fragment embedded in task env vars."""
+    return f"@{CONTAINER_HOSTNAME}:{port}/{project_id}.git"
 
 
 def _assert_volume_mount(volumes: list[str], expected_base: str, expected_suffix: str) -> None:
@@ -165,6 +170,11 @@ class TestTask:
                 task_list(project_id, **filters)
         return buf.getvalue()
 
+    @staticmethod
+    def _task_row_pattern(task_id: str) -> re.Pattern[str]:
+        """Return the regex pattern matching a task row for ``task_id``."""
+        return re.compile(rf"(?m)^-{' ' * max(1, 4 - len(task_id))}{re.escape(task_id)}:")
+
     def test_task_list_no_filters(self) -> None:
         """task_list with no filters prints all tasks."""
         project_id = "proj_list"
@@ -263,8 +273,8 @@ class TestTask:
             self._patch_task_meta(ctx, project_id, "2", mode="web")
 
             output = self._task_list_output(project_id, {"2": None}, mode="web")
-            assert "1:" not in output
-            assert "2:" in output
+            assert not self._task_row_pattern("1").search(output)
+            assert self._task_row_pattern("2").search(output)
 
     def test_task_list_filter_by_agent(self) -> None:
         """task_list --agent filters tasks by their preset field."""
@@ -280,8 +290,8 @@ class TestTask:
             self._patch_task_meta(ctx, project_id, "2", preset="codex")
 
             output = self._task_list_output(project_id, {"1": None, "2": None}, agent="claude")
-            assert "1:" in output
-            assert "2:" not in output
+            assert self._task_row_pattern("1").search(output)
+            assert not self._task_row_pattern("2").search(output)
 
     def test_task_list_combined_filters(self) -> None:
         """task_list with multiple filters applies all of them (AND logic)."""
@@ -305,9 +315,9 @@ class TestTask:
             output = self._task_list_output(
                 project_id, {"1": "running", "3": "exited"}, status="running", mode="cli"
             )
-            assert "1:" in output
-            assert "2:" not in output
-            assert "3:" not in output
+            assert self._task_row_pattern("1").search(output)
+            assert not self._task_row_pattern("2").search(output)
+            assert not self._task_row_pattern("3").search(output)
 
     def test_task_list_no_match(self) -> None:
         """task_list prints 'No tasks found' when filters match nothing."""
@@ -323,7 +333,10 @@ class TestTask:
             assert "No tasks found" in output
 
     @unittest.mock.patch("terok.lib.containers.environment.ensure_server_reachable")
-    @unittest.mock.patch("terok.lib.containers.environment.get_gate_server_port", return_value=9418)
+    @unittest.mock.patch(
+        "terok.lib.containers.environment.get_gate_server_port",
+        return_value=GATE_PORT,
+    )
     @unittest.mock.patch(
         "terok.lib.security.gate_tokens.create_token", return_value="tok" * 10 + "ab"
     )
@@ -341,7 +354,7 @@ class TestTask:
             )
 
             assert "http://" in env["CODE_REPO"]
-            assert f"@host.containers.internal:9418/{project_id}.git" in env["CODE_REPO"]
+            assert _gate_repo_fragment(project_id) in env["CODE_REPO"]
             # No gate volume mount (served via gate server)
             gate_mounts = [v for v in volumes if "gate" in v.split(":")[0]]
             assert gate_mounts == []
@@ -350,7 +363,10 @@ class TestTask:
             assert ssh_mounts == []
 
     @unittest.mock.patch("terok.lib.containers.environment.ensure_server_reachable")
-    @unittest.mock.patch("terok.lib.containers.environment.get_gate_server_port", return_value=9418)
+    @unittest.mock.patch(
+        "terok.lib.containers.environment.get_gate_server_port",
+        return_value=GATE_PORT,
+    )
     @unittest.mock.patch(
         "terok.lib.security.gate_tokens.create_token", return_value="tok" * 10 + "ab"
     )
@@ -379,12 +395,15 @@ class TestTask:
 
             # Verify gatekeeping behavior: CODE_REPO is http:// URL with token
             assert "http://" in env["CODE_REPO"]
-            assert f"@host.containers.internal:9418/{project_id}.git" in env["CODE_REPO"]
+            assert _gate_repo_fragment(project_id) in env["CODE_REPO"]
             # Verify SSH IS mounted when mount_in_gatekeeping is true
             _assert_volume_mount(volumes, f"{ssh_dir}:{CONTAINER_SSH_DIR}", ":z")
 
     @unittest.mock.patch("terok.lib.containers.environment.ensure_server_reachable")
-    @unittest.mock.patch("terok.lib.containers.environment.get_gate_server_port", return_value=9418)
+    @unittest.mock.patch(
+        "terok.lib.containers.environment.get_gate_server_port",
+        return_value=GATE_PORT,
+    )
     @unittest.mock.patch(
         "terok.lib.security.gate_tokens.create_token", return_value="tok" * 10 + "ab"
     )
@@ -410,7 +429,7 @@ class TestTask:
             assert env["GIT_BRANCH"] == "main"
             assert env["TEROK_GIT_AUTHORSHIP"] == "agent-human"
             assert "http://" in env["CLONE_FROM"]
-            assert f"@host.containers.internal:9418/{project_id}.git" in env["CLONE_FROM"]
+            assert _gate_repo_fragment(project_id) in env["CLONE_FROM"]
             _assert_volume_mount(volumes, f"{ssh_dir}:{CONTAINER_SSH_DIR}", ":z")
 
     def test_build_task_env_uses_configured_git_authorship(self) -> None:
@@ -1049,7 +1068,10 @@ class TestTask:
                 assert "xclip" in status.hint
 
     @unittest.mock.patch("terok.lib.containers.environment.ensure_server_reachable")
-    @unittest.mock.patch("terok.lib.containers.environment.get_gate_server_port", return_value=9418)
+    @unittest.mock.patch(
+        "terok.lib.containers.environment.get_gate_server_port",
+        return_value=GATE_PORT,
+    )
     @unittest.mock.patch(
         "terok.lib.security.gate_tokens.create_token", return_value="tok" * 10 + "ab"
     )
@@ -1072,10 +1094,13 @@ class TestTask:
             assert env["EXTERNAL_REMOTE_URL"] == upstream_url
             # Verify gatekeeping mode settings are still correct
             assert "http://" in env["CODE_REPO"]
-            assert f"@host.containers.internal:9418/{project_id}.git" in env["CODE_REPO"]
+            assert _gate_repo_fragment(project_id) in env["CODE_REPO"]
 
     @unittest.mock.patch("terok.lib.containers.environment.ensure_server_reachable")
-    @unittest.mock.patch("terok.lib.containers.environment.get_gate_server_port", return_value=9418)
+    @unittest.mock.patch(
+        "terok.lib.containers.environment.get_gate_server_port",
+        return_value=GATE_PORT,
+    )
     @unittest.mock.patch(
         "terok.lib.security.gate_tokens.create_token", return_value="tok" * 10 + "ab"
     )
@@ -1098,10 +1123,13 @@ class TestTask:
             assert "EXTERNAL_REMOTE_URL" not in env
             # Verify gatekeeping mode settings are still correct
             assert "http://" in env["CODE_REPO"]
-            assert f"@host.containers.internal:9418/{project_id}.git" in env["CODE_REPO"]
+            assert _gate_repo_fragment(project_id) in env["CODE_REPO"]
 
     @unittest.mock.patch("terok.lib.containers.environment.ensure_server_reachable")
-    @unittest.mock.patch("terok.lib.containers.environment.get_gate_server_port", return_value=9418)
+    @unittest.mock.patch(
+        "terok.lib.containers.environment.get_gate_server_port",
+        return_value=GATE_PORT,
+    )
     @unittest.mock.patch(
         "terok.lib.security.gate_tokens.create_token", return_value="tok" * 10 + "ab"
     )
@@ -1123,7 +1151,7 @@ class TestTask:
             assert "EXTERNAL_REMOTE_URL" not in env
             # Verify gatekeeping mode settings are still correct
             assert "http://" in env["CODE_REPO"]
-            assert f"@host.containers.internal:9418/{project_id}.git" in env["CODE_REPO"]
+            assert _gate_repo_fragment(project_id) in env["CODE_REPO"]
 
 
 class TestTaskLogs:

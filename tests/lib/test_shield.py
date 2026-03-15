@@ -6,7 +6,7 @@
 from __future__ import annotations
 
 import warnings
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -38,6 +38,14 @@ from testfs import MOCK_CONFIG_ROOT, MOCK_TASK_DIR
 from testnet import GATE_PORT
 
 _BYPASS_PATCH = "terok.lib.security.shield.get_shield_bypass_firewall_no_protection"
+CUSTOM_GATE_PORT = GATE_PORT + 1
+
+
+@pytest.fixture(autouse=True)
+def _bypass_disabled_by_default() -> Iterator[None]:
+    """Keep normal-path shield tests deterministic unless explicitly overridden."""
+    with patch(_BYPASS_PATCH, return_value=False):
+        yield
 
 
 def collect_warning_messages(func: Callable[[], object]) -> list[str]:
@@ -49,12 +57,16 @@ def collect_warning_messages(func: Callable[[], object]) -> list[str]:
 
 
 def make_mock_shield(
-    *, shield_state: ShieldState = ShieldState.UP, pre_start_args=None
+    *,
+    shield_state: ShieldState = ShieldState.UP,
+    pre_start_args: list[str] | None = None,
 ) -> MagicMock:
     """Create a mock ``Shield`` instance with useful defaults."""
     mock_shield = MagicMock(spec=Shield)
     mock_shield.state.return_value = shield_state
-    mock_shield.pre_start.return_value = pre_start_args or ["--network", "hook-net"]
+    mock_shield.pre_start.return_value = (
+        ["--network", "hook-net"] if pre_start_args is None else pre_start_args
+    )
     return mock_shield
 
 
@@ -102,7 +114,7 @@ def test_profiles_dir_returns_shield_profiles_subdir(_mock: MagicMock) -> None:
         pytest.param(
             {"profiles": ["custom-a", "custom-b"], "audit": False},
             ("custom-a", "custom-b"),
-            7777,
+            CUSTOM_GATE_PORT,
             False,
             id="custom-values",
         ),

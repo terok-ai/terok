@@ -86,19 +86,16 @@ def test_open_in_editor_outcomes(
 ) -> None:
     """Opening a file in the editor succeeds or fails cleanly for common outcomes."""
     path = config_path(tmp_path)
-    with patch("terok.ui_utils.editor._resolve_editor", return_value=resolved_editor):
-        if run_side_effect is None:
-            with patch("subprocess.run") as mock_run:
-                assert open_in_editor(path) is expected
-                if resolved_editor is not None:
-                    mock_run.assert_called_once_with([resolved_editor, str(path)], check=True)
-        else:
-            with patch("subprocess.run", side_effect=run_side_effect):
-                assert open_in_editor(path) is expected
+    with (
+        patch("terok.ui_utils.editor._resolve_editor", return_value=resolved_editor),
+        patch("subprocess.run", side_effect=run_side_effect) as mock_run,
+    ):
+        assert open_in_editor(path) is expected
+        if resolved_editor is not None and run_side_effect is None:
+            mock_run.assert_called_once_with([resolved_editor, str(path)], check=True)
 
     err = capsys.readouterr().err
     if expect_error_output:
         assert "EDITOR" in err
-        assert err
     else:
         assert err == ""

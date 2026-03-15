@@ -350,9 +350,8 @@ class TestIsDaemonRunning:
                     "terok.lib.security.gate_server._is_managed_server",
                     return_value=managed,
                 ),
+                unittest.mock.patch("os.kill", side_effect=kill_side_effect),
             ]
-            if kill_side_effect is not None:
-                patches.append(unittest.mock.patch("os.kill", side_effect=kill_side_effect))
 
             with contextlib.ExitStack() as stack:
                 for patcher in patches:

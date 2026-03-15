@@ -192,7 +192,7 @@ def test_build_images_applies_expected_flags(
         commands = build_commands("proj_build_flags", image_exists=True, **build_kwargs)
 
     rendered = [" ".join(cmd) for cmd in commands]
-    assert all(any(token in cmd for cmd in rendered) for token in required_tokens)
+    assert any(all(token in cmd for token in required_tokens) for cmd in rendered)
 
 
 def test_build_images_auto_detects_missing_l1() -> None:

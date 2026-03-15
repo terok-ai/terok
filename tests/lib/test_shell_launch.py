@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import subprocess
 import unittest.mock
+from collections.abc import Callable
 
 import pytest
 
@@ -76,7 +77,7 @@ class TestTerminalDetection:
     )
     def test_terminal_detection(
         self,
-        detector,
+        detector: Callable[[], bool],
         env: dict[str, str],
         parent_match: bool,
         expected: bool,
