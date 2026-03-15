@@ -565,7 +565,7 @@ expose = [
 from = ["terok.lib.containers.tasks"]
 
 [[interfaces]]
-expose = ["task_run_cli", "task_run_web", "task_run_headless", "task_restart", "task_followup_headless", "HeadlessRunRequest", "DetachedSummary"]
+expose = ["task_run_cli", "task_run_toad", "task_run_web", "task_run_headless", "task_restart", "task_followup_headless", "HeadlessRunRequest", "DetachedSummary"]
 from = ["terok.lib.containers.task_runners"]
 
 [[interfaces]]
@@ -768,6 +768,7 @@ expose = [
     "task_archive_logs",
     "get_tasks",
     "task_run_cli",
+    "task_run_toad",
     "task_run_web",
     "task_run_headless",
     "HeadlessRunRequest",

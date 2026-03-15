@@ -545,7 +545,15 @@ class TaskScreenKeyBindingTests(TestCase):
         screen.on_key(event)
         screen.dismiss.assert_called_once_with("cli")
 
-    def test_lowercase_w_works_with_tasks(self) -> None:
+    def test_lowercase_w_dispatches_toad(self) -> None:
+        screens, _ = import_screens()
+        screen = screens.TaskDetailsScreen(task=None, has_tasks=True, project_id="p")
+        screen.dismiss = mock.Mock()
+        event = make_key_event("w")
+        screen.on_key(event)
+        screen.dismiss.assert_called_once_with("toad")
+
+    def test_uppercase_w_dispatches_task_start_web_with_experimental(self) -> None:
         from terok.lib.core.config import set_experimental
 
         set_experimental(True)
@@ -553,26 +561,11 @@ class TaskScreenKeyBindingTests(TestCase):
             screens, _ = import_screens()
             screen = screens.TaskDetailsScreen(task=None, has_tasks=True, project_id="p")
             screen.dismiss = mock.Mock()
-            event = make_key_event("w")
+            event = make_key_event("W")
             screen.on_key(event)
-            screen.dismiss.assert_called_once_with("web")
+            screen.dismiss.assert_called_once_with("task_start_web")
         finally:
             set_experimental(False)
-
-    def test_lowercase_w_blocked_without_experimental(self) -> None:
-        from terok.lib.core.config import is_experimental, set_experimental
-
-        previous = is_experimental()
-        set_experimental(False)
-        try:
-            screens, _ = import_screens()
-            screen = screens.TaskDetailsScreen(task=None, has_tasks=True, project_id="p")
-            screen.dismiss = mock.Mock()
-            event = make_key_event("w")
-            screen.on_key(event)
-            screen.dismiss.assert_not_called()
-        finally:
-            set_experimental(previous)
 
     def test_lowercase_r_works_with_tasks(self) -> None:
         screens, _ = import_screens()

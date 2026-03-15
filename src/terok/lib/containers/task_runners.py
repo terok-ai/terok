@@ -60,6 +60,7 @@ if TYPE_CHECKING:
     from ..core.project_model import ProjectConfig
 
 _LOCALHOST = "127.0.0.1"
+_TOAD_CONTAINER_PORT = 8080
 _FALSE_STRINGS = frozenset({"false", "0", "no", "off"})
 
 
@@ -606,6 +607,105 @@ def task_run_web(
     )
 
 
+def task_run_toad(
+    project_id: str,
+    task_id: str,
+    agents: list[str] | None = None,
+    preset: str | None = None,
+    unrestricted: bool | None = None,
+) -> None:
+    """Launch Toad multi-agent TUI served over the web for browser access.
+
+    Uses the same CLI image as interactive tasks but with ``toad --serve``
+    as the entrypoint and a forwarded port for browser access.
+    """
+    project = load_project(project_id)
+    meta, meta_path = load_task_meta(project.id, task_id, "toad")
+
+    port = meta.get("web_port")
+    if not isinstance(port, int):
+        port = assign_web_port()
+        meta["web_port"] = port
+
+    cname = container_name(project.id, "toad", task_id)
+    container_state = get_container_state(cname)
+
+    if container_state is not None:
+        color_enabled = _supports_color()
+        url = f"http://{_LOCALHOST}:{port}/"
+        if container_state == "running":
+            print(f"Container {_green(cname, color_enabled)} is already running.")
+            print(f"Toad: {_blue(url, color_enabled)}")
+            return
+        print(f"Starting existing container {_green(cname, color_enabled)}...")
+        _podman_start(cname)
+        _assert_running(cname)
+        print("Container started.")
+        print(f"Toad: {_blue(url, color_enabled)}")
+        return
+
+    env, volumes = build_task_env_and_volumes(project, task_id)
+
+    agent_config_dir = _prepare_agent_config(project, project_id, task_id, agents, preset)
+    volumes.append(f"{agent_config_dir}:/home/dev/.terok:Z")
+
+    # Resolve unrestricted mode: CLI flag → config → default (True)
+    if unrestricted is None:
+        _effective = resolve_agent_config(project_id, preset=preset)
+        _cfg_val = resolve_provider_value(
+            "unrestricted", _effective, project.default_agent or "claude"
+        )
+        unrestricted = _cfg_val is None or _str_to_bool(_cfg_val)
+    if unrestricted:
+        _apply_unrestricted_env(env)
+
+    meta["mode"] = "toad"
+    meta["unrestricted"] = unrestricted
+    if preset:
+        meta["preset"] = preset
+    meta_path.write_text(yaml.safe_dump(meta))
+
+    task_dir = project.tasks_root / str(task_id)
+    toad_cmd = (
+        f"init-ssh-and-repo.sh && toad --serve -H 0.0.0.0 -p {_TOAD_CONTAINER_PORT} /workspace"
+    )
+    _run_container(
+        cname=cname,
+        image=project_cli_image(project.id),
+        env=env,
+        volumes=volumes,
+        project=project,
+        task_dir=task_dir,
+        extra_args=["-p", f"{_LOCALHOST}:{port}:{_TOAD_CONTAINER_PORT}"],
+        command=["bash", "-lc", toad_cmd],
+    )
+    _maybe_drop_shield(project, cname, task_dir)
+
+    def _toad_ready(line: str) -> bool:
+        """Return True when textual-serve reports it is serving."""
+        return "Serving " in line
+
+    ready = stream_initial_logs(
+        container_name=cname,
+        timeout_sec=None,
+        ready_check=_toad_ready,
+    )
+
+    if not ready or not is_container_running(cname):
+        print(f"Toad failed to start. Check logs: podman logs {cname}")
+        raise SystemExit(1)
+
+    color_enabled = _supports_color()
+    url = f"http://{_LOCALHOST}:{port}/"
+    print(
+        f"\n>> Toad is serving."
+        f"\n- Name: {_green(cname, color_enabled)}"
+        f"\n- URL:  {_blue(url, color_enabled)}"
+        f"\n- Logs: {_yellow(f'podman logs -f {cname}', color_enabled)}"
+        f"\n- Stop: {_red(f'podman stop {cname}', color_enabled)}"
+    )
+
+
 def _print_run_summary(workspace: Path) -> None:
     """Print a summary of changes made by the headless agent."""
     try:
@@ -954,6 +1054,10 @@ def task_restart(project_id: str, task_id: str, backend: str | None = None) -> N
             port = meta.get("web_port")
             if port:
                 print(f"Web UI: http://{_LOCALHOST}:{port}/")
+        elif mode == "toad":
+            port = meta.get("web_port")
+            if port:
+                print(f"Toad: http://{_LOCALHOST}:{port}/")
     else:
         # Container doesn't exist - re-run the task
         print(f"Container {cname} not found, re-running task...")
@@ -964,5 +1068,7 @@ def task_restart(project_id: str, task_id: str, backend: str | None = None) -> N
             task_run_web(
                 project_id, task_id, backend=backend or meta.get("backend"), preset=saved_preset
             )
+        elif mode == "toad":
+            task_run_toad(project_id, task_id, preset=saved_preset)
         else:
             raise SystemExit(f"Unknown mode '{mode}' for task {task_id}")

@@ -33,6 +33,7 @@ from ..lib.facade import (
     task_restart,
     task_run_cli,
     task_run_headless,
+    task_run_toad,
     task_run_web,
 )
 from .clipboard import copy_to_clipboard_detailed
@@ -176,6 +177,21 @@ class TaskActionsMixin:
             backend = self._prompt_ui_backend()
             print(f"Starting Web UI for {pid}/{tid} (backend: {backend})...\n")
             task_run_web(pid, tid, backend=backend)
+
+        await self._run_suspended(work, refresh="tasks")
+
+    async def action_run_toad(self) -> None:
+        """Run Toad multi-agent TUI (browser access) for current task."""
+        if not self.current_project_id or not self.current_task:
+            self.notify("No task selected.")
+            return
+        pid = self.current_project_id
+        tid = self.current_task.task_id
+
+        def work() -> None:
+            """Launch Toad serve container."""
+            print(f"Starting Toad for {pid}/{tid}...\n")
+            task_run_toad(pid, tid)
 
         await self._run_suspended(work, refresh="tasks")
 

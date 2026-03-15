@@ -44,6 +44,7 @@ from .containers.task_runners import (  # noqa: F401 — re-exported public API
     task_restart,
     task_run_cli,
     task_run_headless,
+    task_run_toad,
     task_run_web,
 )
 from .containers.tasks import (  # noqa: F401 — re-exported public API
@@ -179,6 +180,7 @@ __all__ = [
     "get_tasks",
     # Task runners
     "task_run_cli",
+    "task_run_toad",
     "task_run_web",
     "task_run_headless",
     "HeadlessRunRequest",

@@ -134,6 +134,7 @@ if _HAS_TEXTUAL:
         "task_start_autopilot": "_action_task_start_autopilot",
         "new": "action_new_task",
         "cli": "action_run_cli",
+        "toad": "action_run_toad",
         "web": "_action_run_web",
         "delete": "action_delete_task",
         "restart": "_action_restart_task",

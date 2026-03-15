@@ -29,6 +29,7 @@ from ...lib.facade import (
     task_restart,
     task_run_cli,
     task_run_headless,
+    task_run_toad,
     task_run_web,
     task_status,
     task_stop,
@@ -191,6 +192,11 @@ def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) ->
     t_run_ui.add_argument("--preset", help="Name of a preset to apply (global or project-level)")
     _add_restriction_flags(t_run_ui)
 
+    t_run_toad = tsub.add_parser("run-toad", help="Run Toad multi-agent TUI (browser access)")
+    _add_project_task_args(t_run_toad)
+    t_run_toad.add_argument("--preset", help="Name of a preset to apply (global or project-level)")
+    _add_restriction_flags(t_run_toad)
+
     t_delete = tsub.add_parser("delete", help="Delete a task and its containers")
     _add_project_task_args(t_delete)
 
@@ -231,6 +237,11 @@ def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) ->
         "--web",
         action="store_true",
         help=argparse.SUPPRESS,
+    )
+    t_start.add_argument(
+        "--toad",
+        action="store_true",
+        help="Start Toad multi-agent TUI (browser access)",
     )
     t_start.add_argument(
         "--backend",
@@ -369,6 +380,13 @@ def _dispatch_task_sub(args: argparse.Namespace) -> bool:
             preset=getattr(args, "preset", None),
             unrestricted=_resolve_unrestricted(args),
         )
+    elif args.task_cmd == "run-toad":
+        task_run_toad(
+            args.project_id,
+            args.task_id,
+            preset=getattr(args, "preset", None),
+            unrestricted=_resolve_unrestricted(args),
+        )
     elif args.task_cmd == "delete":
         task_delete(args.project_id, args.task_id)
         print(f"Deleted task {args.task_id}. Archive: terokctl task archive list {args.project_id}")
@@ -393,7 +411,9 @@ def _dispatch_task_sub(args: argparse.Namespace) -> bool:
         selected = getattr(args, "selected_agents", None)
         preset = getattr(args, "preset", None)
         restriction = _resolve_unrestricted(args)
-        if args.web:
+        if getattr(args, "toad", False):
+            task_run_toad(args.project_id, task_id, preset=preset, unrestricted=restriction)
+        elif args.web:
             task_run_web(
                 args.project_id,
                 task_id,

@@ -1205,14 +1205,13 @@ class TaskDetailsScreen(screen.Screen[str | None]):
         # Lowercase keys — all require tasks to exist
         lower_map: dict[str, str] = {
             "c": "cli",
+            "w": "toad",
             "r": "restart",
             "l": "login",
             "u": "followup",
             "n": "rename",
             "s": "shield_up",
         }
-        if is_experimental():
-            lower_map["w"] = "web"
         if key in lower_map:
             if not self._has_tasks:
                 return
