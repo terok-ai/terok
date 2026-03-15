@@ -53,6 +53,7 @@ MODE_DISPLAY: dict[str | None, ModeInfo] = {
     "cli": ModeInfo(emoji="\U0001f4bb", label="CLI"),
     "web": ModeInfo(emoji="\U0001f30d", label="Web"),
     "run": ModeInfo(emoji="\U0001f680", label="Autopilot"),
+    "toad": ModeInfo(emoji="\U0001f438", label="Toad"),
     None: ModeInfo(emoji="\U0001f997", label=""),
 }
 
