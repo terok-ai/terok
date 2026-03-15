@@ -1,6 +1,8 @@
 # SPDX-FileCopyrightText: 2026 Jiri Vyskocil
 # SPDX-License-Identifier: Apache-2.0
 
+"""Tests for the CLI project-wizard alias."""
+
 from __future__ import annotations
 
 import sys
@@ -13,9 +15,7 @@ def test_project_wizard_dispatch(monkeypatch) -> None:
     from terok.cli.main import main
 
     monkeypatch.setattr(sys, "argv", ["terok", "project-wizard"])
-
     with patch("terok.cli.commands.project.run_wizard") as mock_wizard:
         main()
 
-    mock_wizard.assert_called_once()
-    assert mock_wizard.call_args.kwargs.get("init_fn") is cmd_project_init
+    mock_wizard.assert_called_once_with(init_fn=cmd_project_init)

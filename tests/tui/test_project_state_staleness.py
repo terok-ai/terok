@@ -1,6 +1,10 @@
 # SPDX-FileCopyrightText: 2026 Jiri Vyskocil
 # SPDX-License-Identifier: Apache-2.0
 
+"""Tests for project-state loading with gate staleness information."""
+
+from __future__ import annotations
+
 from unittest import mock
 
 import pytest
@@ -12,24 +16,24 @@ from testnet import TEST_UPSTREAM_URL
 
 @pytest.mark.parametrize("security_class", ["online", "gatekeeping"])
 def test_staleness_checked_for_online_and_gatekeeping(security_class: str) -> None:
+    """Online and gatekeeping projects both query gate staleness during state load."""
     stubs = build_textual_stubs()
     _, _, app = import_fresh(stubs)
 
     staleness = make_staleness_info(commits_behind=1)
-    project = mock.Mock()
-    project.security_class = security_class
-    project.upstream_url = TEST_UPSTREAM_URL
-
+    project = mock.Mock(security_class=security_class, upstream_url=TEST_UPSTREAM_URL)
     state = {"gate": True}
+    mock_gate = mock.Mock(
+        compare_vs_upstream=mock.Mock(return_value=staleness),
+        last_commit=mock.Mock(return_value="abc123"),
+    )
 
-    mock_gate = mock.Mock()
-    mock_gate.compare_vs_upstream.return_value = staleness
-    mock_gate.last_commit.return_value = "abc123"
-
-    with mock.patch.object(app, "load_project", return_value=project):
-        with mock.patch.object(app, "get_project_state", return_value=state):
-            with mock.patch.object(app, "GitGate", return_value=mock_gate):
-                result = app.TerokTUI._load_project_state(mock.Mock(), "proj1")
+    with (
+        mock.patch.object(app, "load_project", return_value=project),
+        mock.patch.object(app, "get_project_state", return_value=state),
+        mock.patch.object(app, "GitGate", return_value=mock_gate),
+    ):
+        result = app.TerokTUI._load_project_state(mock.Mock(), "proj1")
 
     mock_gate.compare_vs_upstream.assert_called_once()
     assert result.project_id == "proj1"

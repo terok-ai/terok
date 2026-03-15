@@ -3,6 +3,8 @@
 
 """Tests for shield CLI commands (registry-driven dispatch)."""
 
+from __future__ import annotations
+
 import argparse
 from io import StringIO
 from unittest.mock import MagicMock, patch
@@ -14,248 +16,243 @@ from terok.cli.commands.shield import _resolve_task, dispatch, register
 from testfs import MOCK_TASK_DIR_1
 
 
-class TestRegister:
-    """Tests for register() building subparsers from COMMANDS."""
-
-    def setup_method(self, method: object) -> None:
-        """Create a parser with shield subparsers."""
-        self.parser = argparse.ArgumentParser()
-        subs = self.parser.add_subparsers(dest="cmd")
-        register(subs)
-
-    def test_status_without_task(self) -> None:
-        """status subcommand parses without project/task."""
-        args = self.parser.parse_args(["shield", "status"])
-        assert args.shield_cmd == "status"
-
-    def test_status_with_task(self) -> None:
-        """status with project_id and task_id queries container state."""
-        args = self.parser.parse_args(["shield", "status", "proj", "1"])
-        assert args.shield_cmd == "status"
-        assert args.project_id == "proj"
-        assert args.task_id == "1"
-
-    def test_allow_subcommand(self) -> None:
-        """allow requires project_id, task_id, and target."""
-        args = self.parser.parse_args(["shield", "allow", "proj", "task1", "example.com"])
-        assert args.shield_cmd == "allow"
-        assert args.project_id == "proj"
-        assert args.task_id == "task1"
-        assert args.target == "example.com"
-
-    def test_deny_subcommand(self) -> None:
-        """deny requires project_id, task_id, and target."""
-        args = self.parser.parse_args(["shield", "deny", "proj", "task1", "example.com"])
-        assert args.shield_cmd == "deny"
-
-    def test_down_subcommand(self) -> None:
-        """down accepts project_id, task_id, and optional --all."""
-        args = self.parser.parse_args(["shield", "down", "proj", "task1", "--all"])
-        assert args.shield_cmd == "down"
-        assert args.allow_all
-
-    def test_up_subcommand(self) -> None:
-        """up requires project_id and task_id."""
-        args = self.parser.parse_args(["shield", "up", "proj", "task1"])
-        assert args.shield_cmd == "up"
-
-    def test_rules_subcommand(self) -> None:
-        """rules requires project_id and task_id."""
-        args = self.parser.parse_args(["shield", "rules", "proj", "task1"])
-        assert args.shield_cmd == "rules"
-
-    def test_profiles_subcommand(self) -> None:
-        """profiles subcommand has no project/task args."""
-        args = self.parser.parse_args(["shield", "profiles"])
-        assert args.shield_cmd == "profiles"
-        assert not hasattr(args, "project_id")
-
-    def test_standalone_only_excluded(self) -> None:
-        """prepare, run, resolve are not registered (standalone_only)."""
-        for cmd in ("prepare", "run", "resolve"):
-            with pytest.raises(SystemExit):
-                self.parser.parse_args(["shield", cmd])
+@pytest.fixture()
+def shield_parser() -> argparse.ArgumentParser:
+    """Return an argument parser with the shield subcommands registered."""
+    parser = argparse.ArgumentParser()
+    register(parser.add_subparsers(dest="cmd"))
+    return parser
 
 
-class TestDispatch:
-    """Tests for dispatch()."""
-
-    def test_wrong_cmd_returns_false(self) -> None:
-        """dispatch returns False for non-shield commands."""
-        args = argparse.Namespace(cmd="project")
-        assert not dispatch(args)
-
-    @patch("terok.cli.commands.shield.make_shield")
-    def test_status_without_task(self, mock_make: MagicMock) -> None:
-        """dispatch handles bare status (no task) via registry handler."""
-        mock_shield = MagicMock()
-        mock_shield.status.return_value = {
-            "mode": "hook",
-            "profiles": ["dev-standard"],
-            "audit_enabled": True,
-        }
-        mock_make.return_value = mock_shield
-
-        args = argparse.Namespace(cmd="shield", shield_cmd="status")
-        with patch("sys.stdout", new_callable=StringIO) as out:
-            result = dispatch(args)
-
-        assert result
-        output = out.getvalue()
-        assert "Mode" in output
-        assert "hook" in output
-
-    def test_partial_task_selector_exits(self) -> None:
-        """Providing project_id without task_id exits with error."""
-        args = argparse.Namespace(
-            cmd="shield", shield_cmd="status", project_id="proj", task_id=None
-        )
-        with (
-            patch("sys.stderr", new_callable=StringIO) as err,
-            pytest.raises(SystemExit) as ctx,
-        ):
-            dispatch(args)
-
-        assert ctx.value.code == 1
-        assert "both" in err.getvalue()
-
-    @patch("terok.cli.commands.shield._resolve_task")
-    @patch("terok.cli.commands.shield.make_shield")
-    def test_status_with_task(self, mock_make: MagicMock, mock_resolve: MagicMock) -> None:
-        """dispatch handles status with project/task — queries container state."""
-        mock_resolve.return_value = ("proj-cli-1", str(MOCK_TASK_DIR_1))
-        mock_shield = MagicMock()
-        mock_shield.state.return_value = MagicMock(value="up")
-        mock_make.return_value = mock_shield
-
-        args = argparse.Namespace(cmd="shield", shield_cmd="status", project_id="proj", task_id="1")
-        with patch("sys.stdout", new_callable=StringIO) as out:
-            result = dispatch(args)
-
-        assert result
-        assert "up" in out.getvalue()
-        mock_shield.state.assert_called_once_with("proj-cli-1")
-
-    @patch("terok.cli.commands.shield.make_shield")
-    def test_preview_all_without_down_prints_error(self, mock_make: MagicMock) -> None:
-        """preview --all without --down prints clean error to stderr."""
-        mock_shield = MagicMock()
-        mock_shield.preview.side_effect = ValueError("--all requires --down")
-        mock_make.return_value = mock_shield
-
-        args = argparse.Namespace(cmd="shield", shield_cmd="preview", down=False, allow_all=True)
-        with (
-            patch("sys.stderr", new_callable=StringIO) as err,
-            pytest.raises(SystemExit) as ctx,
-        ):
-            dispatch(args)
-
-        assert ctx.value.code == 1
-        assert "--all requires --down" in err.getvalue()
-
-    @patch("terok.cli.commands.shield._resolve_task")
-    @patch("terok.cli.commands.shield.make_shield")
-    def test_exec_error_prints_not_running(
-        self, mock_make: MagicMock, mock_resolve: MagicMock
-    ) -> None:
-        """ExecError from nft produces a 'not running' message."""
-        mock_resolve.return_value = ("proj-cli-1", str(MOCK_TASK_DIR_1))
-        mock_shield = MagicMock()
-        mock_shield.state.side_effect = ExecError(["nft", "list"], 1, "no such process")
-        mock_make.return_value = mock_shield
-
-        args = argparse.Namespace(cmd="shield", shield_cmd="status", project_id="proj", task_id="1")
-        with (
-            patch("sys.stderr", new_callable=StringIO) as err,
-            pytest.raises(SystemExit) as ctx,
-        ):
-            dispatch(args)
-
-        assert ctx.value.code == 1
-        assert "not running" in err.getvalue()
-
-    @patch("terok.cli.commands.shield._resolve_task")
-    @patch("terok.cli.commands.shield.make_shield")
-    def test_runtime_error_prints_message(
-        self, mock_make: MagicMock, mock_resolve: MagicMock
-    ) -> None:
-        """RuntimeError from handler is caught and printed cleanly."""
-        mock_resolve.return_value = ("proj-cli-1", str(MOCK_TASK_DIR_1))
-        mock_shield = MagicMock()
-        mock_shield.allow.side_effect = RuntimeError("No IPs allowed for proj-cli-1")
-        mock_make.return_value = mock_shield
-
-        args = argparse.Namespace(
-            cmd="shield",
-            shield_cmd="allow",
-            project_id="proj",
-            task_id="1",
-            target="example.com",
-        )
-        with (
-            patch("sys.stderr", new_callable=StringIO) as err,
-            pytest.raises(SystemExit) as ctx,
-        ):
-            dispatch(args)
-
-        assert ctx.value.code == 1
-        assert "No IPs allowed" in err.getvalue()
+@pytest.mark.parametrize(
+    ("argv", "expected"),
+    [
+        pytest.param(["shield", "status"], {"shield_cmd": "status"}, id="status-no-task"),
+        pytest.param(
+            ["shield", "status", "proj", "1"],
+            {"shield_cmd": "status", "project_id": "proj", "task_id": "1"},
+            id="status-with-task",
+        ),
+        pytest.param(
+            ["shield", "allow", "proj", "task1", "example.com"],
+            {
+                "shield_cmd": "allow",
+                "project_id": "proj",
+                "task_id": "task1",
+                "target": "example.com",
+            },
+            id="allow",
+        ),
+        pytest.param(
+            ["shield", "deny", "proj", "task1", "example.com"], {"shield_cmd": "deny"}, id="deny"
+        ),
+        pytest.param(
+            ["shield", "down", "proj", "task1", "--all"],
+            {"shield_cmd": "down", "allow_all": True},
+            id="down-all",
+        ),
+        pytest.param(["shield", "up", "proj", "task1"], {"shield_cmd": "up"}, id="up"),
+        pytest.param(["shield", "rules", "proj", "task1"], {"shield_cmd": "rules"}, id="rules"),
+        pytest.param(
+            ["shield", "profiles"],
+            {"shield_cmd": "profiles", "project_id": None},
+            id="profiles",
+        ),
+        pytest.param(["shield", "setup"], {"shield_cmd": "setup"}, id="setup"),
+        pytest.param(
+            ["shield", "setup", "--root"],
+            {"shield_cmd": "setup", "root": True, "user": False},
+            id="setup-root",
+        ),
+        pytest.param(
+            ["shield", "setup", "--user"],
+            {"shield_cmd": "setup", "root": False, "user": True},
+            id="setup-user",
+        ),
+    ],
+)
+def test_register_parses_shield_subcommands(
+    shield_parser: argparse.ArgumentParser,
+    argv: list[str],
+    expected: dict[str, object | None],
+) -> None:
+    """Registered shield subcommands parse the expected argument shapes."""
+    args = shield_parser.parse_args(argv)
+    for key, value in expected.items():
+        if value is None:
+            assert not hasattr(args, key)
+        else:
+            assert getattr(args, key) == value
 
 
-class TestSetupSubcommand:
-    """Tests for the manually registered setup subcommand."""
-
-    def setup_method(self, method: object) -> None:
-        """Create a parser with shield subparsers."""
-        self.parser = argparse.ArgumentParser()
-        subs = self.parser.add_subparsers(dest="cmd")
-        register(subs)
-
-    def test_setup_registered(self) -> None:
-        """setup subcommand is registered and parses."""
-        args = self.parser.parse_args(["shield", "setup"])
-        assert args.shield_cmd == "setup"
-
-    def test_setup_root_flag(self) -> None:
-        """setup --root flag is parsed."""
-        args = self.parser.parse_args(["shield", "setup", "--root"])
-        assert args.root
-        assert not args.user
-
-    def test_setup_user_flag(self) -> None:
-        """setup --user flag is parsed."""
-        args = self.parser.parse_args(["shield", "setup", "--user"])
-        assert not args.root
-        assert args.user
+@pytest.mark.parametrize("command", ["prepare", "run", "resolve"])
+def test_register_excludes_standalone_only_commands(
+    shield_parser: argparse.ArgumentParser,
+    command: str,
+) -> None:
+    """Standalone-only commands are not available through the main CLI parser."""
+    with pytest.raises(SystemExit):
+        shield_parser.parse_args(["shield", command])
 
 
-class TestSetupDispatch:
-    """Tests for setup command dispatch."""
-
-    @patch("terok.lib.facade.shield_run_setup")
-    def test_setup_root_dispatch(self, mock_setup: MagicMock) -> None:
-        """dispatch calls shield_run_setup(root=True) for --root."""
-        args = argparse.Namespace(cmd="shield", shield_cmd="setup", root=True, user=False)
-        result = dispatch(args)
-        assert result
-        mock_setup.assert_called_once_with(root=True, user=False)
-
-    @patch("terok.lib.facade.shield_run_setup")
-    def test_setup_user_dispatch(self, mock_setup: MagicMock) -> None:
-        """dispatch calls shield_run_setup(user=True) for --user."""
-        args = argparse.Namespace(cmd="shield", shield_cmd="setup", root=False, user=True)
-        result = dispatch(args)
-        assert result
-        mock_setup.assert_called_once_with(root=False, user=True)
+def test_dispatch_returns_false_for_non_shield_commands() -> None:
+    """Dispatch ignores non-shield CLI namespaces."""
+    assert not dispatch(argparse.Namespace(cmd="project"))
 
 
-class TestResolveTask:
-    """Tests for _resolve_task()."""
+@patch("terok.cli.commands.shield.make_shield")
+def test_dispatch_status_without_task(mock_make: MagicMock) -> None:
+    """Bare ``shield status`` renders the configured shield status."""
+    mock_shield = MagicMock()
+    mock_shield.status.return_value = {
+        "mode": "hook",
+        "profiles": ["dev-standard"],
+        "audit_enabled": True,
+    }
+    mock_make.return_value = mock_shield
 
-    @patch("terok.lib.containers.tasks.load_task_meta", return_value=({"mode": None}, None))
-    @patch("terok.lib.core.projects.load_project")
-    def test_never_run_task_raises(self, mock_proj: MagicMock, _meta: MagicMock) -> None:
-        """Task with mode=None raises ValueError."""
-        mock_proj.return_value = MagicMock(id="proj")
-        with pytest.raises(ValueError, match="has never been run"):
-            _resolve_task("proj", "1")
+    with patch("sys.stdout", new_callable=StringIO) as out:
+        assert dispatch(argparse.Namespace(cmd="shield", shield_cmd="status"))
+
+    assert "Mode" in out.getvalue()
+    assert "hook" in out.getvalue()
+
+
+def test_dispatch_partial_task_selector_exits() -> None:
+    """Providing only one half of the project/task selector exits cleanly."""
+    args = argparse.Namespace(cmd="shield", shield_cmd="status", project_id="proj", task_id=None)
+    with (
+        patch("sys.stderr", new_callable=StringIO) as err,
+        pytest.raises(SystemExit) as exc_info,
+    ):
+        dispatch(args)
+
+    assert exc_info.value.code == 1
+    assert "both" in err.getvalue()
+
+
+@pytest.mark.parametrize(
+    ("shield_cmd", "shield_method", "shield_result", "expected_text"),
+    [
+        pytest.param("status", "state", MagicMock(value="up"), "up", id="task-status"),
+    ],
+)
+@patch("terok.cli.commands.shield._resolve_task", return_value=("proj-cli-1", str(MOCK_TASK_DIR_1)))
+@patch("terok.cli.commands.shield.make_shield")
+def test_dispatch_task_scoped_commands(
+    mock_make: MagicMock,
+    _resolve: MagicMock,
+    shield_cmd: str,
+    shield_method: str,
+    shield_result: object,
+    expected_text: str,
+) -> None:
+    """Task-scoped shield commands resolve the task and delegate to the shield object."""
+    mock_shield = MagicMock()
+    getattr(mock_shield, shield_method).return_value = shield_result
+    mock_make.return_value = mock_shield
+
+    args = argparse.Namespace(cmd="shield", shield_cmd=shield_cmd, project_id="proj", task_id="1")
+    with patch("sys.stdout", new_callable=StringIO) as out:
+        assert dispatch(args)
+
+    getattr(mock_shield, shield_method).assert_called_once_with("proj-cli-1")
+    assert expected_text in out.getvalue()
+
+
+@patch("terok.cli.commands.shield.make_shield")
+def test_dispatch_preview_all_without_down_prints_error(mock_make: MagicMock) -> None:
+    """``preview --all`` without ``--down`` fails with a clean CLI error."""
+    mock_shield = MagicMock()
+    mock_shield.preview.side_effect = ValueError("--all requires --down")
+    mock_make.return_value = mock_shield
+
+    args = argparse.Namespace(cmd="shield", shield_cmd="preview", down=False, allow_all=True)
+    with (
+        patch("sys.stderr", new_callable=StringIO) as err,
+        pytest.raises(SystemExit) as exc_info,
+    ):
+        dispatch(args)
+
+    assert exc_info.value.code == 1
+    assert "--all requires --down" in err.getvalue()
+
+
+@patch("terok.cli.commands.shield._resolve_task", return_value=("proj-cli-1", str(MOCK_TASK_DIR_1)))
+@patch("terok.cli.commands.shield.make_shield")
+def test_dispatch_exec_error_prints_not_running(
+    mock_make: MagicMock,
+    _resolve: MagicMock,
+) -> None:
+    """NFT execution errors are translated into a user-facing not-running message."""
+    mock_shield = MagicMock()
+    mock_shield.state.side_effect = ExecError(["nft", "list"], 1, "no such process")
+    mock_make.return_value = mock_shield
+
+    args = argparse.Namespace(cmd="shield", shield_cmd="status", project_id="proj", task_id="1")
+    with (
+        patch("sys.stderr", new_callable=StringIO) as err,
+        pytest.raises(SystemExit) as exc_info,
+    ):
+        dispatch(args)
+
+    assert exc_info.value.code == 1
+    assert "not running" in err.getvalue()
+
+
+@patch("terok.cli.commands.shield._resolve_task", return_value=("proj-cli-1", str(MOCK_TASK_DIR_1)))
+@patch("terok.cli.commands.shield.make_shield")
+def test_dispatch_runtime_error_prints_message(
+    mock_make: MagicMock,
+    _resolve: MagicMock,
+) -> None:
+    """Runtime errors from shield commands are surfaced cleanly."""
+    mock_shield = MagicMock()
+    mock_shield.allow.side_effect = RuntimeError("No IPs allowed for proj-cli-1")
+    mock_make.return_value = mock_shield
+
+    args = argparse.Namespace(
+        cmd="shield",
+        shield_cmd="allow",
+        project_id="proj",
+        task_id="1",
+        target="example.com",
+    )
+    with (
+        patch("sys.stderr", new_callable=StringIO) as err,
+        pytest.raises(SystemExit) as exc_info,
+    ):
+        dispatch(args)
+
+    assert exc_info.value.code == 1
+    assert "No IPs allowed" in err.getvalue()
+
+
+@pytest.mark.parametrize(
+    ("kwargs", "expected"),
+    [
+        pytest.param({"root": True, "user": False}, {"root": True, "user": False}, id="setup-root"),
+        pytest.param({"root": False, "user": True}, {"root": False, "user": True}, id="setup-user"),
+    ],
+)
+@patch("terok.lib.facade.shield_run_setup")
+def test_setup_dispatch(
+    mock_setup: MagicMock,
+    kwargs: dict[str, bool],
+    expected: dict[str, bool],
+) -> None:
+    """The setup subcommand delegates to the facade with the parsed flags."""
+    assert dispatch(argparse.Namespace(cmd="shield", shield_cmd="setup", **kwargs))
+    mock_setup.assert_called_once_with(**expected)
+
+
+@patch("terok.lib.containers.tasks.load_task_meta", return_value=({"mode": None}, None))
+@patch("terok.lib.core.projects.load_project")
+def test_resolve_task_errors(
+    mock_project: MagicMock,
+    _meta: MagicMock,
+) -> None:
+    """Task resolution rejects tasks that have never been run."""
+    mock_project.return_value = MagicMock(id="proj")
+    with pytest.raises(ValueError, match="has never been run"):
+        _resolve_task("proj", "1")

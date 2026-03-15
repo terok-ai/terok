@@ -1,9 +1,12 @@
 # SPDX-FileCopyrightText: 2025 Jiri Vyskocil
 # SPDX-License-Identifier: Apache-2.0
 
-"""Tests for the terok-shield adapter (terok.lib.security.shield)."""
+"""Tests for the terok-shield adapter (``terok.lib.security.shield``)."""
+
+from __future__ import annotations
 
 import warnings
+from collections.abc import Callable
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -34,435 +37,351 @@ from terok.lib.security.shield import (
 from testfs import MOCK_CONFIG_ROOT, MOCK_TASK_DIR
 from testnet import GATE_PORT
 
-
-class TestStateDir:
-    """Tests for _state_dir()."""
-
-    def test_returns_shield_subdir(self) -> None:
-        """_state_dir returns task_dir/shield."""
-        result = _state_dir(MOCK_TASK_DIR)
-        assert result == MOCK_TASK_DIR / "shield"
-
-
-class TestNormalizeProfiles:
-    """Tests for _normalize_profiles()."""
-
-    def test_string_becomes_tuple(self) -> None:
-        """A single string is normalised to a one-element tuple."""
-        assert _normalize_profiles("foo") == ("foo",)
-
-    def test_list_becomes_tuple(self) -> None:
-        """A list of strings is converted to a tuple."""
-        assert _normalize_profiles(["a", "b"]) == ("a", "b")
-
-    def test_tuple_passthrough(self) -> None:
-        """A tuple of strings passes through unchanged."""
-        assert _normalize_profiles(("x",)) == ("x",)
-
-    def test_invalid_type_raises(self) -> None:
-        """Non-string/non-list raises TypeError."""
-        with pytest.raises(TypeError):
-            _normalize_profiles(123)
-
-    def test_non_string_item_raises(self) -> None:
-        """A list containing a non-string raises TypeError."""
-        with pytest.raises(TypeError):
-            _normalize_profiles(["ok", 42])
-
-
-class TestProfilesDir:
-    """Tests for _profiles_dir()."""
-
-    @patch("terok.lib.security.shield.config_root", return_value=MOCK_CONFIG_ROOT)
-    def test_returns_shield_profiles_subdir(self, _mock: MagicMock) -> None:
-        """_profiles_dir returns config_root/shield/profiles."""
-        assert _profiles_dir() == MOCK_CONFIG_ROOT / "shield" / "profiles"
-
-
-@patch("terok_shield.SubprocessRunner", autospec=True)
-class TestMakeShield:
-    """Tests for make_shield()."""
-
-    @patch("terok.lib.security.shield.config_root", return_value=MOCK_CONFIG_ROOT)
-    @patch("terok.lib.security.shield.get_global_section", return_value={})
-    @patch("terok.lib.security.shield.get_gate_server_port", return_value=GATE_PORT)
-    def test_defaults(
-        self, _port: MagicMock, _sec: MagicMock, _root: MagicMock, _runner: MagicMock
-    ) -> None:
-        """Default config uses hook mode, dev-standard profile, audit on."""
-        shield = make_shield(MOCK_TASK_DIR)
-        assert isinstance(shield, Shield)
-        cfg = shield.config
-        assert cfg.mode == ShieldMode.HOOK
-        assert cfg.default_profiles == ("dev-standard",)
-        assert cfg.loopback_ports == (GATE_PORT,)
-        assert cfg.audit_enabled
-        assert cfg.state_dir == MOCK_TASK_DIR / "shield"
-        assert cfg.profiles_dir == MOCK_CONFIG_ROOT / "shield" / "profiles"
-
-    @patch(
-        "terok.lib.security.shield.get_global_section",
-        return_value={"profiles": ["custom-a", "custom-b"], "audit": False},
-    )
-    @patch("terok.lib.security.shield.get_gate_server_port", return_value=7777)
-    def test_custom(self, _port: MagicMock, _sec: MagicMock, _runner: MagicMock) -> None:
-        """Custom config values are mapped correctly."""
-        cfg = make_shield(MOCK_TASK_DIR).config
-        assert cfg.default_profiles == ("custom-a", "custom-b")
-        assert cfg.loopback_ports == (7777,)
-        assert not cfg.audit_enabled
-
-    @patch(
-        "terok.lib.security.shield.get_global_section",
-        return_value={"profiles": "single-profile"},
-    )
-    @patch("terok.lib.security.shield.get_gate_server_port", return_value=GATE_PORT)
-    def test_single_profile_string(
-        self, _port: MagicMock, _sec: MagicMock, _runner: MagicMock
-    ) -> None:
-        """A single profile string is normalised to a tuple."""
-        assert make_shield(MOCK_TASK_DIR).config.default_profiles == ("single-profile",)
-
-    @patch("terok.lib.security.shield.get_global_section", return_value={"profiles": 123})
-    @patch("terok.lib.security.shield.get_gate_server_port", return_value=GATE_PORT)
-    def test_invalid_profiles_type(
-        self, _port: MagicMock, _sec: MagicMock, _runner: MagicMock
-    ) -> None:
-        """Non-string/non-list profiles value raises TypeError."""
-        with pytest.raises(TypeError):
-            make_shield(MOCK_TASK_DIR)
-
-
-class TestNftNotFoundReExport:
-    """Verify NftNotFoundError is re-exported from the shield adapter."""
-
-    def test_re_exported(self) -> None:
-        """NftNotFoundError is importable from the shield adapter module."""
-        from terok.lib.security.shield import NftNotFoundError as _Err
-
-        assert _Err is NftNotFoundError
-
-
-class TestShieldStateReExport:
-    """Verify ShieldState is re-exported from the shield adapter."""
-
-    def test_re_exported(self) -> None:
-        """ShieldState is importable from the shield adapter module."""
-        from terok.lib.security.shield import ShieldState as _State
-
-        assert _State is ShieldState
-
-
-class TestDown:
-    """Tests for down() delegation."""
-
-    @patch("terok.lib.security.shield.make_shield")
-    def test_delegates(self, mock_make: MagicMock) -> None:
-        """down calls make_shield(task_dir) and delegates to shield.down."""
-        mock_shield = MagicMock(spec=Shield)
-        mock_make.return_value = mock_shield
-
-        down("my-container", MOCK_TASK_DIR)
-
-        mock_make.assert_called_once_with(MOCK_TASK_DIR)
-        mock_shield.down.assert_called_once_with("my-container")
-
-
-class TestUp:
-    """Tests for up() delegation."""
-
-    @patch("terok.lib.security.shield.make_shield")
-    def test_delegates(self, mock_make: MagicMock) -> None:
-        """up calls make_shield(task_dir) and delegates to shield.up."""
-        mock_shield = MagicMock(spec=Shield)
-        mock_make.return_value = mock_shield
-
-        up("my-container", MOCK_TASK_DIR)
-
-        mock_make.assert_called_once_with(MOCK_TASK_DIR)
-        mock_shield.up.assert_called_once_with("my-container")
-
-
-class TestState:
-    """Tests for state() delegation."""
-
-    @patch("terok.lib.security.shield.make_shield")
-    def test_delegates(self, mock_make: MagicMock) -> None:
-        """state calls make_shield(task_dir) and delegates to shield.state."""
-        mock_shield = MagicMock(spec=Shield)
-        mock_shield.state.return_value = ShieldState.UP
-        mock_make.return_value = mock_shield
-
-        result = state("my-container", MOCK_TASK_DIR)
-
-        mock_make.assert_called_once_with(MOCK_TASK_DIR)
-        mock_shield.state.assert_called_once_with("my-container")
-        assert result == ShieldState.UP
-
-
-class TestPreStart:
-    """Tests for pre_start() delegation."""
-
-    @patch("terok.lib.security.shield.make_shield")
-    def test_delegates(self, mock_make: MagicMock) -> None:
-        """pre_start calls make_shield(task_dir) and delegates to shield.pre_start."""
-        mock_shield = MagicMock(spec=Shield)
-        mock_shield.pre_start.return_value = ["--network", "hook-net"]
-        mock_make.return_value = mock_shield
-
-        result = pre_start("my-container", MOCK_TASK_DIR)
-
-        mock_make.assert_called_once_with(MOCK_TASK_DIR)
-        mock_shield.pre_start.assert_called_once_with("my-container")
-        assert result == ["--network", "hook-net"]
-
-
-class TestStatus:
-    """Tests for status()."""
-
-    @patch("terok.lib.security.shield.get_global_section", return_value={})
-    def test_default_status(self, _sec: MagicMock) -> None:
-        """status() returns expected dict with defaults."""
-        result = status()
-        assert result["mode"] == "hook"
-        assert result["profiles"] == ["dev-standard"]
-        assert result["audit_enabled"]
-
-    @patch(
-        "terok.lib.security.shield.get_global_section",
-        return_value={"profiles": ["custom"], "audit": False},
-    )
-    def test_custom_status(self, _sec: MagicMock) -> None:
-        """status() reflects custom config values."""
-        result = status()
-        assert result["profiles"] == ["custom"]
-        assert not result["audit_enabled"]
-
-
-# ---------------------------------------------------------------------------
-# bypass_firewall_no_protection — DANGEROUS TRANSITIONAL OVERRIDE
-# ---------------------------------------------------------------------------
-
 _BYPASS_PATCH = "terok.lib.security.shield.get_shield_bypass_firewall_no_protection"
 
 
-@patch(_BYPASS_PATCH, return_value=True)
-class TestBypassPreStart:
-    """pre_start returns [] and emits a warning when bypass is active."""
-
-    def test_returns_empty_list(self, _bypass: MagicMock) -> None:
-        """pre_start() returns no podman args when bypass is active."""
-        with warnings.catch_warnings(record=True):
-            warnings.simplefilter("always")
-            result = pre_start("ctr", MOCK_TASK_DIR)
-        assert result == []
-
-    def test_emits_warning(self, _bypass: MagicMock) -> None:
-        """pre_start() emits the bypass warning."""
-        with warnings.catch_warnings(record=True) as caught:
-            warnings.simplefilter("always")
-            pre_start("ctr", MOCK_TASK_DIR)
-        msgs = [str(w.message) for w in caught]
-        assert any(_BYPASS_WARNING in m for m in msgs)
+def collect_warning_messages(func: Callable[[], object]) -> list[str]:
+    """Run *func* and return all emitted warning messages."""
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        func()
+    return [str(item.message) for item in caught]
 
 
-@patch(_BYPASS_PATCH, return_value=True)
-class TestBypassDown:
-    """down() is a no-op when bypass is active."""
-
-    @patch("terok.lib.security.shield.make_shield")
-    def test_does_not_call_shield(self, mock_make: MagicMock, _bypass: MagicMock) -> None:
-        """down() must not construct a Shield when bypass is active."""
-        down("ctr", MOCK_TASK_DIR)
-        mock_make.assert_not_called()
-
-
-@patch(_BYPASS_PATCH, return_value=True)
-class TestBypassUp:
-    """up() is a no-op when bypass is active."""
-
-    @patch("terok.lib.security.shield.make_shield")
-    def test_does_not_call_shield(self, mock_make: MagicMock, _bypass: MagicMock) -> None:
-        """up() must not construct a Shield when bypass is active."""
-        up("ctr", MOCK_TASK_DIR)
-        mock_make.assert_not_called()
+def make_mock_shield(
+    *, shield_state: ShieldState = ShieldState.UP, pre_start_args=None
+) -> MagicMock:
+    """Create a mock ``Shield`` instance with useful defaults."""
+    mock_shield = MagicMock(spec=Shield)
+    mock_shield.state.return_value = shield_state
+    mock_shield.pre_start.return_value = pre_start_args or ["--network", "hook-net"]
+    return mock_shield
 
 
-@patch(_BYPASS_PATCH, return_value=True)
-class TestBypassState:
-    """state() queries real shield even when bypass is active."""
-
-    @patch("terok.lib.security.shield.make_shield")
-    def test_queries_real_state(self, mock_make: MagicMock, _bypass: MagicMock) -> None:
-        """state() delegates to shield even when bypass is set (containers may pre-date bypass)."""
-        mock_shield = MagicMock(spec=Shield)
-        mock_shield.state.return_value = ShieldState.UP
-        mock_make.return_value = mock_shield
-
-        result = state("ctr", MOCK_TASK_DIR)
-        assert result == ShieldState.UP
-        mock_make.assert_called_once_with(MOCK_TASK_DIR)
+def test_state_dir_returns_shield_subdir() -> None:
+    """Per-task shield state lives under ``task_dir/shield``."""
+    assert _state_dir(MOCK_TASK_DIR) == MOCK_TASK_DIR / "shield"
 
 
-@patch(_BYPASS_PATCH, return_value=True)
-class TestBypassStatus:
-    """status() includes bypass_firewall_no_protection flag when active."""
-
-    @patch("terok.lib.security.shield.get_global_section", return_value={})
-    def test_includes_bypass_flag(self, _sec: MagicMock, _bypass: MagicMock) -> None:
-        """status() output must include bypass_firewall_no_protection: True."""
-        result = status()
-        assert result["bypass_firewall_no_protection"]
-
-    @patch("terok.lib.security.shield.get_global_section", return_value={})
-    def test_still_returns_profiles(self, _sec: MagicMock, _bypass: MagicMock) -> None:
-        """status() still returns profile info even when bypassed."""
-        result = status()
-        assert result["mode"] == "hook"
-        assert "profiles" in result
+@pytest.mark.parametrize(
+    ("raw", "expected"),
+    [
+        pytest.param("foo", ("foo",), id="single-string"),
+        pytest.param(["a", "b"], ("a", "b"), id="list"),
+        pytest.param(("x",), ("x",), id="tuple"),
+    ],
+)
+def test_normalize_profiles_success(raw: object, expected: tuple[str, ...]) -> None:
+    """String, list, and tuple profile configs normalize to tuples."""
+    assert _normalize_profiles(raw) == expected
 
 
-@patch(_BYPASS_PATCH, return_value=False)
-class TestNoBypassStatus:
-    """status() omits bypass flag when bypass is not active."""
-
-    @patch("terok.lib.security.shield.get_global_section", return_value={})
-    def test_no_bypass_key(self, _sec: MagicMock, _bypass: MagicMock) -> None:
-        """status() output must NOT contain bypass_firewall_no_protection."""
-        result = status()
-        assert "bypass_firewall_no_protection" not in result
-
-
-# ---------------------------------------------------------------------------
-# check_environment
-# ---------------------------------------------------------------------------
+@pytest.mark.parametrize(
+    "raw",
+    [
+        pytest.param(123, id="invalid-type"),
+        pytest.param(["ok", 42], id="invalid-list-item"),
+    ],
+)
+def test_normalize_profiles_rejects_invalid_values(raw: object) -> None:
+    """Unsupported profile config values raise ``TypeError``."""
+    with pytest.raises(TypeError):
+        _normalize_profiles(raw)
 
 
-class TestCheckEnvironment:
-    """Tests for check_environment()."""
+@patch("terok.lib.security.shield.config_root", return_value=MOCK_CONFIG_ROOT)
+def test_profiles_dir_returns_shield_profiles_subdir(_mock: MagicMock) -> None:
+    """Shared shield profiles live under ``config_root()/shield/profiles``."""
+    assert _profiles_dir() == MOCK_CONFIG_ROOT / "shield" / "profiles"
 
-    @patch("terok.lib.security.shield.make_shield")
-    def test_forwards_result(self, mock_make: MagicMock) -> None:
-        """check_environment delegates to Shield.check_environment."""
-        expected = EnvironmentCheck(ok=True, health="ok", podman_version=(5, 6, 0))
-        mock_shield = MagicMock(spec=Shield)
-        mock_shield.check_environment.return_value = expected
-        mock_make.return_value = mock_shield
 
-        result = check_environment()
+@pytest.mark.parametrize(
+    ("global_section", "expected_profiles", "expected_port", "audit_enabled"),
+    [
+        pytest.param({}, ("dev-standard",), GATE_PORT, True, id="defaults"),
+        pytest.param(
+            {"profiles": ["custom-a", "custom-b"], "audit": False},
+            ("custom-a", "custom-b"),
+            7777,
+            False,
+            id="custom-values",
+        ),
+        pytest.param(
+            {"profiles": "single-profile"},
+            ("single-profile",),
+            GATE_PORT,
+            True,
+            id="single-profile",
+        ),
+    ],
+)
+def test_make_shield_maps_config_to_shield_config(
+    global_section: dict[str, object],
+    expected_profiles: tuple[str, ...],
+    expected_port: int,
+    audit_enabled: bool,
+) -> None:
+    """Global shield config is translated into the per-task ``ShieldConfig``."""
+    with (
+        patch("terok_shield.SubprocessRunner", autospec=True),
+        patch("terok.lib.security.shield.config_root", return_value=MOCK_CONFIG_ROOT),
+        patch("terok.lib.security.shield.get_global_section", return_value=global_section),
+        patch("terok.lib.security.shield.get_gate_server_port", return_value=expected_port),
+    ):
+        shield = make_shield(MOCK_TASK_DIR)
 
+    assert isinstance(shield, Shield)
+    config = shield.config
+    assert config.mode == ShieldMode.HOOK
+    assert config.default_profiles == expected_profiles
+    assert config.loopback_ports == (expected_port,)
+    assert config.audit_enabled is audit_enabled
+    assert config.state_dir == MOCK_TASK_DIR / "shield"
+    assert config.profiles_dir == MOCK_CONFIG_ROOT / "shield" / "profiles"
+
+
+def test_make_shield_rejects_invalid_profiles() -> None:
+    """Invalid ``shield.profiles`` values fail fast."""
+    with (
+        patch("terok_shield.SubprocessRunner", autospec=True),
+        patch("terok.lib.security.shield.get_global_section", return_value={"profiles": 123}),
+        patch("terok.lib.security.shield.get_gate_server_port", return_value=GATE_PORT),
+        pytest.raises(TypeError),
+    ):
+        make_shield(MOCK_TASK_DIR)
+
+
+def test_nft_not_found_is_reexported() -> None:
+    """``NftNotFoundError`` is re-exported from the adapter module."""
+    from terok.lib.security.shield import NftNotFoundError as error_type
+
+    assert error_type is NftNotFoundError
+
+
+def test_shield_state_is_reexported() -> None:
+    """``ShieldState`` is re-exported from the adapter module."""
+    from terok.lib.security.shield import ShieldState as shield_state_type
+
+    assert shield_state_type is ShieldState
+
+
+@pytest.mark.parametrize(
+    ("func", "method_name", "expected"),
+    [
+        pytest.param(down, "down", None, id="down"),
+        pytest.param(up, "up", None, id="up"),
+        pytest.param(state, "state", ShieldState.UP, id="state"),
+        pytest.param(pre_start, "pre_start", ["--network", "hook-net"], id="pre-start"),
+    ],
+)
+@patch("terok.lib.security.shield.make_shield")
+def test_shield_functions_delegate_to_per_task_shield(
+    mock_make: MagicMock,
+    func: Callable[..., object],
+    method_name: str,
+    expected: object,
+) -> None:
+    """The thin wrapper functions delegate to the corresponding ``Shield`` methods."""
+    mock_shield = make_mock_shield()
+    mock_make.return_value = mock_shield
+
+    result = func("my-container", MOCK_TASK_DIR)
+
+    mock_make.assert_called_once_with(MOCK_TASK_DIR)
+    getattr(mock_shield, method_name).assert_called_once_with("my-container")
+    if expected is not None:
         assert result == expected
-        mock_shield.check_environment.assert_called_once()
-
-    @patch(_BYPASS_PATCH, return_value=True)
-    def test_bypass_returns_synthetic(self, _bypass: MagicMock) -> None:
-        """check_environment returns synthetic result when bypass is active."""
-        result = check_environment()
-
-        assert not result.ok
-        assert result.health == "bypass"
-        assert any("bypass" in i for i in result.issues)
 
 
-# ---------------------------------------------------------------------------
-# pre_start catching ShieldNeedsSetup
-# ---------------------------------------------------------------------------
+@patch("terok.lib.security.shield.get_global_section", return_value={})
+def test_status_defaults(_sec: MagicMock) -> None:
+    """Status reflects the default configured shield state."""
+    assert status() == {
+        "mode": "hook",
+        "profiles": ["dev-standard"],
+        "audit_enabled": True,
+    }
 
 
-class TestPreStartShieldNeedsSetup:
-    """pre_start converts ShieldNeedsSetup to SystemExit."""
-
-    @patch("terok.lib.security.shield.make_shield")
-    def test_raises_system_exit(self, mock_make: MagicMock) -> None:
-        """ShieldNeedsSetup becomes SystemExit with setup hint."""
-        mock_shield = MagicMock(spec=Shield)
-        mock_shield.pre_start.side_effect = ShieldNeedsSetup("hooks not installed")
-        mock_make.return_value = mock_shield
-
-        with pytest.raises(SystemExit) as ctx:
-            pre_start("ctr", MOCK_TASK_DIR)
-
-        msg = str(ctx.value)
-        assert "hooks not installed" in msg
-        assert "terokctl shield setup" in msg
+@patch(
+    "terok.lib.security.shield.get_global_section",
+    return_value={"profiles": ["custom"], "audit": False},
+)
+def test_status_custom_config(_sec: MagicMock) -> None:
+    """Status reflects custom configured profiles and audit settings."""
+    assert status() == {
+        "mode": "hook",
+        "profiles": ["custom"],
+        "audit_enabled": False,
+    }
 
 
-# ---------------------------------------------------------------------------
-# run_setup
-# ---------------------------------------------------------------------------
+@pytest.mark.parametrize("func", [down, up], ids=["down", "up"])
+@patch(_BYPASS_PATCH, return_value=True)
+@patch("terok.lib.security.shield.make_shield")
+def test_bypass_makes_down_and_up_noops(
+    mock_make: MagicMock,
+    _bypass: MagicMock,
+    func: Callable[..., object],
+) -> None:
+    """Bypass mode makes the up/down wrapper functions no-ops."""
+    func("ctr", MOCK_TASK_DIR)
+    mock_make.assert_not_called()
 
 
-class TestRunSetup:
-    """Tests for run_setup()."""
-
-    @patch(
-        "terok.lib.security.shield.check_environment",
-        return_value=EnvironmentCheck(hooks="not-installed", needs_setup=True),
+@patch(_BYPASS_PATCH, return_value=True)
+def test_bypass_pre_start_returns_empty_with_warning(_bypass: MagicMock) -> None:
+    """Bypass mode returns no pre-start Podman args and warns loudly."""
+    assert pre_start("ctr", MOCK_TASK_DIR) == []
+    assert any(
+        _BYPASS_WARNING in message
+        for message in collect_warning_messages(lambda: pre_start("ctr", MOCK_TASK_DIR))
     )
-    def test_no_flags_exits_with_usage(self, _env: MagicMock) -> None:
-        """run_setup() without --root or --user raises SystemExit with usage hint."""
-        with pytest.raises(SystemExit) as ctx:
-            run_setup()
-        assert "--root" in str(ctx.value)
-        assert "--user" in str(ctx.value)
-
-    @patch("builtins.print")
-    @patch(
-        "terok.lib.security.shield.check_environment",
-        return_value=EnvironmentCheck(hooks="per-container", podman_version=(5, 8, 0)),
-    )
-    def test_skips_when_per_container(self, _env: MagicMock, mock_print: MagicMock) -> None:
-        """run_setup() prints message and returns when hooks are per-container."""
-        run_setup()
-        printed = " ".join(str(c) for c in mock_print.call_args_list)
-        assert "per-task" in printed.lower()
-
-    @patch("terok.lib.security.shield.setup_hooks_direct")
-    @patch(
-        "terok.lib.security.shield.check_environment",
-        return_value=EnvironmentCheck(hooks="not-installed", needs_setup=True),
-    )
-    def test_user_flag(self, _env: MagicMock, mock_direct: MagicMock) -> None:
-        """run_setup(user=True) passes root=False to setup_hooks_direct."""
-        run_setup(user=True)
-        mock_direct.assert_called_once_with(root=False)
-
-    @patch("terok.lib.security.shield.setup_hooks_direct")
-    @patch(
-        "terok.lib.security.shield.check_environment",
-        return_value=EnvironmentCheck(hooks="not-installed", needs_setup=True),
-    )
-    def test_root_flag(self, _env: MagicMock, mock_direct: MagicMock) -> None:
-        """run_setup(root=True) passes root=True to setup_hooks_direct."""
-        run_setup(root=True)
-        mock_direct.assert_called_once_with(root=True)
 
 
-# ---------------------------------------------------------------------------
-# setup_hooks_direct
-# ---------------------------------------------------------------------------
+@patch(_BYPASS_PATCH, return_value=True)
+@patch("terok.lib.security.shield.make_shield")
+def test_bypass_state_still_queries_real_shield(
+    mock_make: MagicMock,
+    _bypass: MagicMock,
+) -> None:
+    """State lookup still queries the real shield to handle pre-bypass containers."""
+    mock_make.return_value = make_mock_shield(shield_state=ShieldState.UP)
+    assert state("ctr", MOCK_TASK_DIR) == ShieldState.UP
+    mock_make.assert_called_once_with(MOCK_TASK_DIR)
 
 
-class TestSetupHooksDirect:
-    """Tests for setup_hooks_direct()."""
+@pytest.mark.parametrize(
+    ("bypass_enabled", "expected_key"),
+    [
+        pytest.param(True, True, id="bypass-active"),
+        pytest.param(False, False, id="bypass-disabled"),
+    ],
+)
+@patch("terok.lib.security.shield.get_global_section", return_value={})
+def test_status_includes_bypass_flag_only_when_active(
+    _sec: MagicMock,
+    bypass_enabled: bool,
+    expected_key: bool,
+) -> None:
+    """Status output surfaces the dangerous bypass flag only when it is active."""
+    with patch(_BYPASS_PATCH, return_value=bypass_enabled):
+        result = status()
+    assert ("bypass_firewall_no_protection" in result) is expected_key
+    assert result["mode"] == "hook"
+    assert "profiles" in result
 
-    @patch("terok.lib.security.shield.ensure_containers_conf_hooks_dir")
-    @patch("terok.lib.security.shield.setup_global_hooks")
-    def test_user_mode(self, mock_setup: MagicMock, mock_conf: MagicMock) -> None:
-        """User-local installs to USER_HOOKS_DIR and configures containers.conf."""
-        setup_hooks_direct(root=False)
 
-        mock_setup.assert_called_once()
-        # Should NOT use sudo for user mode
-        _, kwargs = mock_setup.call_args
-        assert not kwargs.get("use_sudo", False)
-        mock_conf.assert_called_once()
+@patch("terok.lib.security.shield.make_shield")
+def test_check_environment_forwards_result(mock_make: MagicMock) -> None:
+    """Environment checking delegates to ``Shield.check_environment``."""
+    expected = EnvironmentCheck(ok=True, health="ok", podman_version=(5, 6, 0))
+    mock_shield = make_mock_shield()
+    mock_shield.check_environment.return_value = expected
+    mock_make.return_value = mock_shield
 
-    @patch("terok.lib.security.shield.setup_global_hooks")
-    def test_root_mode(self, mock_setup: MagicMock) -> None:
-        """Root installs to system_hooks_dir with sudo."""
-        setup_hooks_direct(root=True)
+    assert check_environment() == expected
+    mock_shield.check_environment.assert_called_once()
 
-        mock_setup.assert_called_once()
-        _, kwargs = mock_setup.call_args
-        assert kwargs.get("use_sudo", False)
+
+@patch(_BYPASS_PATCH, return_value=True)
+def test_check_environment_bypass_returns_synthetic_result(_bypass: MagicMock) -> None:
+    """Bypass mode surfaces a synthetic degraded environment result."""
+    result = check_environment()
+    assert not result.ok
+    assert result.health == "bypass"
+    assert any("bypass" in issue for issue in result.issues)
+
+
+@patch("terok.lib.security.shield.make_shield")
+def test_pre_start_converts_shield_needs_setup_to_system_exit(mock_make: MagicMock) -> None:
+    """``ShieldNeedsSetup`` is converted into a user-facing setup hint."""
+    mock_shield = make_mock_shield()
+    mock_shield.pre_start.side_effect = ShieldNeedsSetup("hooks not installed")
+    mock_make.return_value = mock_shield
+
+    with pytest.raises(SystemExit, match="terokctl shield setup"):
+        pre_start("ctr", MOCK_TASK_DIR)
+
+
+@pytest.mark.parametrize(
+    ("environment", "kwargs", "expected_call", "expected_message"),
+    [
+        pytest.param(
+            EnvironmentCheck(hooks="not-installed", needs_setup=True),
+            {},
+            None,
+            "--root",
+            id="missing-flags",
+        ),
+        pytest.param(
+            EnvironmentCheck(hooks="per-container", podman_version=(5, 8, 0)),
+            {},
+            None,
+            "per-task",
+            id="per-container-hooks",
+        ),
+        pytest.param(
+            EnvironmentCheck(hooks="not-installed", needs_setup=True),
+            {"user": True},
+            {"root": False},
+            None,
+            id="user-setup",
+        ),
+        pytest.param(
+            EnvironmentCheck(hooks="not-installed", needs_setup=True),
+            {"root": True},
+            {"root": True},
+            None,
+            id="root-setup",
+        ),
+    ],
+)
+def test_run_setup(
+    environment: EnvironmentCheck,
+    kwargs: dict[str, bool],
+    expected_call: dict[str, bool] | None,
+    expected_message: str | None,
+) -> None:
+    """Shield setup handles usage, no-op, user, and root installation paths."""
+    with (
+        patch("terok.lib.security.shield.check_environment", return_value=environment),
+        patch("terok.lib.security.shield.setup_hooks_direct") as mock_direct,
+        patch("builtins.print") as mock_print,
+    ):
+        if expected_call is None and environment.hooks != "per-container":
+            with pytest.raises(SystemExit, match=expected_message or ""):
+                run_setup(**kwargs)
+            return
+
+        run_setup(**kwargs)
+
+    if expected_call is None:
+        printed = " ".join(str(call) for call in mock_print.call_args_list)
+        assert expected_message is not None and expected_message in printed.lower()
+    else:
+        mock_direct.assert_called_once_with(**expected_call)
+
+
+@pytest.mark.parametrize(
+    ("root", "expected_use_sudo", "should_configure_user_hooks"),
+    [
+        pytest.param(False, False, True, id="user-mode"),
+        pytest.param(True, True, False, id="root-mode"),
+    ],
+)
+@patch("terok.lib.security.shield.ensure_containers_conf_hooks_dir")
+@patch("terok.lib.security.shield.setup_global_hooks")
+def test_setup_hooks_direct(
+    mock_setup: MagicMock,
+    mock_conf: MagicMock,
+    root: bool,
+    expected_use_sudo: bool,
+    should_configure_user_hooks: bool,
+) -> None:
+    """Hook installation chooses the correct target and user/root post-processing."""
+    setup_hooks_direct(root=root)
+
+    _, kwargs = mock_setup.call_args
+    assert kwargs.get("use_sudo", False) is expected_use_sudo
+    assert mock_conf.called is should_configure_user_hooks

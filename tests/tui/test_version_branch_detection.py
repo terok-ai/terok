@@ -6,7 +6,9 @@
 from __future__ import annotations
 
 import json
+import subprocess
 import sys
+from contextlib import contextmanager
 from importlib.metadata import version as installed_version
 from unittest import mock
 
@@ -14,19 +16,16 @@ import pytest
 
 
 def test_version_attribute_exists() -> None:
-    """Test that ``__version__`` exists and is a non-empty string."""
+    """The package exports a non-empty ``__version__`` string."""
     import terok
 
-    assert hasattr(terok, "__version__")
     assert isinstance(terok.__version__, str)
     assert terok.__version__
 
 
 def test_version_uses_importlib_metadata() -> None:
-    """Test that version can be retrieved from importlib.metadata."""
-    pkg_version = installed_version("terok")
-    assert isinstance(pkg_version, str)
-    assert pkg_version
+    """The installed distribution exposes a non-empty version string."""
+    assert installed_version("terok")
 
 
 @pytest.mark.parametrize(
@@ -40,7 +39,7 @@ def test_version_uses_importlib_metadata() -> None:
     ],
 )
 def test_base_version(value: str, expected: str) -> None:
-    """``base_version`` strips suffixes but keeps non-semver strings."""
+    """``base_version`` strips suffixes but preserves non-semver inputs."""
     from terok.lib.core.version import base_version
 
     assert base_version(value) == expected
@@ -70,7 +69,7 @@ def test_short_version(value: str, expected: str) -> None:
     ],
 )
 def test_format_version_string(version: str, branch: str | None, expected: str) -> None:
-    """``format_version_string`` appends the branch only when present."""
+    """``format_version_string`` only appends the branch when one is present."""
     from terok.lib.core.version import format_version_string
 
     assert format_version_string(version, branch) == expected
@@ -85,27 +84,35 @@ def test_get_version_info_returns_tuple() -> None:
     assert branch is None or isinstance(branch, str)
 
 
-def test_get_version_info_without_branch_data() -> None:
-    """Git failures should leave branch detection as ``None``."""
-    from terok.lib.core.version import get_version_info
-
+@contextmanager
+def patched_version_detection(
+    *,
+    pep610: str | None,
+    pyproject_exists: bool,
+    git_side_effect=None,
+):
+    """Patch the version-detection environment for one test."""
     with (
-        mock.patch("terok.lib.core.version.subprocess.run", side_effect=FileNotFoundError),
-        mock.patch("terok.lib.core.version._get_pep610_revision", return_value=None),
+        mock.patch("terok.lib.core.version._get_pep610_revision", return_value=pep610),
+        mock.patch("terok.lib.core.version.Path.exists", return_value=pyproject_exists),
+        mock.patch(
+            "terok.lib.core.version.subprocess.run", side_effect=git_side_effect
+        ) as mock_run,
     ):
-        _, branch = get_version_info()
-
-    assert branch is None
+        yield mock_run
 
 
-def _mock_distribution(
-    *, text: str | None = None, side_effect: Exception | None = None
+def distribution_mock(
+    *,
+    text: str | None = None,
+    side_effect: Exception | None = None,
 ) -> mock.Mock:
+    """Build a fake ``importlib.metadata`` distribution object."""
     dist = mock.MagicMock()
-    if side_effect is not None:
-        dist.read_text.side_effect = side_effect
-    else:
+    if side_effect is None:
         dist.read_text.return_value = text
+    else:
+        dist.read_text.side_effect = side_effect
     return dist
 
 
@@ -126,7 +133,9 @@ def _mock_distribution(
         pytest.param({"vcs_info": None}, None, id="null-vcs-info"),
         pytest.param({"vcs_info": "not a dict"}, None, id="non-dict-vcs-info"),
         pytest.param(
-            {"vcs_info": {"requested_revision": 123}}, None, id="requested-revision-number"
+            {"vcs_info": {"requested_revision": 123}},
+            None,
+            id="requested-revision-number",
         ),
         pytest.param(
             {"vcs_info": {"requested_revision": None}}, None, id="requested-revision-null"
@@ -135,9 +144,15 @@ def _mock_distribution(
         pytest.param({"vcs_info": {"requested_revision": ""}}, None, id="requested-revision-empty"),
         pytest.param({"vcs_info": {"commit_id": ""}}, None, id="commit-id-empty"),
         pytest.param(
-            {"vcs_info": {"requested_revision": "   "}}, None, id="requested-revision-whitespace"
+            {"vcs_info": {"requested_revision": "   "}},
+            None,
+            id="requested-revision-whitespace",
         ),
-        pytest.param({"vcs_info": {"commit_id": "  \t\n  "}}, None, id="commit-id-whitespace"),
+        pytest.param(
+            {"vcs_info": {"commit_id": "  \t\n  "}},
+            None,
+            id="commit-id-whitespace",
+        ),
         pytest.param(
             {"vcs_info": {"requested_revision": "  feature/foo  "}},
             "feature/foo",
@@ -146,190 +161,123 @@ def _mock_distribution(
     ],
 )
 def test_get_pep610_revision_from_json(direct_url: dict[str, object], expected: str | None) -> None:
-    """``_get_pep610_revision`` handles valid and invalid JSON payloads."""
+    """``_get_pep610_revision`` handles valid and invalid ``direct_url.json`` payloads."""
     from terok.lib.core.version import _get_pep610_revision
 
-    dist = _mock_distribution(text=json.dumps(direct_url))
-    with mock.patch("terok.lib.core.version.metadata.distribution", return_value=dist):
+    with mock.patch(
+        "terok.lib.core.version.metadata.distribution",
+        return_value=distribution_mock(text=json.dumps(direct_url)),
+    ):
         assert _get_pep610_revision() == expected
 
 
-def test_get_pep610_revision_handles_malformed_json() -> None:
-    """Malformed ``direct_url.json`` should return ``None``."""
-    from terok.lib.core.version import _get_pep610_revision
-
-    dist = _mock_distribution(text="not valid json {")
-    with mock.patch("terok.lib.core.version.metadata.distribution", return_value=dist):
-        assert _get_pep610_revision() is None
-
-
 @pytest.mark.parametrize(
-    "side_effect",
+    "distribution_side_effect",
     [
+        pytest.param("not valid json {", id="malformed-json"),
         pytest.param(FileNotFoundError(), id="file-not-found"),
         pytest.param(PermissionError(), id="permission-error"),
         pytest.param(UnicodeDecodeError("utf-8", b"", 0, 1, "test"), id="unicode-decode-error"),
     ],
 )
-def test_get_pep610_revision_handles_read_errors(side_effect: Exception) -> None:
-    """Read failures should produce ``None`` instead of bubbling up."""
+def test_get_pep610_revision_handles_invalid_data(distribution_side_effect: object) -> None:
+    """Malformed content and read errors both yield ``None``."""
     from terok.lib.core.version import _get_pep610_revision
 
-    dist = _mock_distribution(side_effect=side_effect)
-    with mock.patch("terok.lib.core.version.metadata.distribution", return_value=dist):
+    distribution = (
+        distribution_mock(text=distribution_side_effect)
+        if isinstance(distribution_side_effect, str)
+        else distribution_mock(side_effect=distribution_side_effect)
+    )
+    with mock.patch("terok.lib.core.version.metadata.distribution", return_value=distribution):
         assert _get_pep610_revision() is None
 
 
-def _mock_git_run(
+def mock_git_run(
     *,
     in_repo: bool = True,
     branch: str = "main",
     exact_tag: str | None = None,
 ) -> mock.Mock:
+    """Build a ``subprocess.run`` side effect for git-version detection."""
+
     def _run(*args, **kwargs):
         cmd = args[0]
-        result = mock.MagicMock()
-        result.returncode = 0
-        result.stdout = ""
-
+        result = mock.MagicMock(returncode=0, stdout="")
         if "rev-parse" in cmd:
             result.returncode = 0 if in_repo else 1
             result.stdout = "true\n" if in_repo else ""
         elif "branch" in cmd and "--show-current" in cmd:
             result.stdout = f"{branch}\n"
+        elif "describe" in cmd and "--exact-match" in cmd and exact_tag is None:
+            result.returncode = 1
         elif "describe" in cmd and "--exact-match" in cmd:
-            if exact_tag is None:
-                result.returncode = 1
-            else:
-                result.stdout = f"{exact_tag}\n"
+            result.stdout = f"{exact_tag}\n"
         return result
 
     return _run
 
 
-def test_git_detection_with_branch() -> None:
-    """Development installs should surface the current branch name."""
-    from terok.lib.core.version import get_version_info
-
-    with (
-        mock.patch(
-            "terok.lib.core.version.subprocess.run",
-            side_effect=_mock_git_run(branch="feature/test-branch"),
-        ),
-        mock.patch("terok.lib.core.version._get_pep610_revision", return_value=None),
-        mock.patch("terok.lib.core.version.Path.exists", return_value=True),
-    ):
-        _, branch = get_version_info()
-
-    assert branch == "feature/test-branch"
-
-
-def test_git_detection_suppresses_tagged_release() -> None:
-    """Tagged releases should suppress branch display."""
-    from terok.lib.core.version import get_version_info
-
-    with (
-        mock.patch(
-            "terok.lib.core.version.subprocess.run",
-            side_effect=_mock_git_run(branch="main", exact_tag="v1.2.3"),
-        ),
-        mock.patch("terok.lib.core.version._get_pep610_revision", return_value=None),
-        mock.patch("terok.lib.core.version.Path.exists", return_value=True),
-    ):
-        _, branch = get_version_info()
-
-    assert branch is None
-
-
-def test_git_detection_not_in_git_repository() -> None:
-    """Without a git repo, branch detection should return ``None``."""
-    from terok.lib.core.version import get_version_info
-
-    with (
-        mock.patch(
-            "terok.lib.core.version.subprocess.run",
-            side_effect=_mock_git_run(in_repo=False),
-        ),
-        mock.patch("terok.lib.core.version._get_pep610_revision", return_value=None),
-        mock.patch("terok.lib.core.version.Path.exists", return_value=True),
-    ):
-        _, branch = get_version_info()
-
-    assert branch is None
-
-
-def test_git_detection_no_pyproject() -> None:
-    """Without ``pyproject.toml``, live git detection is skipped entirely."""
-    from terok.lib.core.version import get_version_info
-
-    with (
-        mock.patch("terok.lib.core.version._get_pep610_revision", return_value=None),
-        mock.patch("terok.lib.core.version.Path.exists", return_value=False),
-        mock.patch("terok.lib.core.version.subprocess.run") as mock_run,
-    ):
-        _, branch = get_version_info()
-
-    assert branch is None
-    mock_run.assert_not_called()
-
-
-def test_git_detection_empty_branch_name() -> None:
-    """Detached HEAD state should yield ``None`` for the branch name."""
-    from terok.lib.core.version import get_version_info
-
-    with (
-        mock.patch(
-            "terok.lib.core.version.subprocess.run",
-            side_effect=_mock_git_run(branch=""),
-        ),
-        mock.patch("terok.lib.core.version._get_pep610_revision", return_value=None),
-        mock.patch("terok.lib.core.version.Path.exists", return_value=True),
-    ):
-        _, branch = get_version_info()
-
-    assert branch is None
-
-
 @pytest.mark.parametrize(
-    "side_effect",
+    ("git_side_effect", "pep610", "pyproject_exists", "expected_branch", "expect_git_calls"),
     [
-        pytest.param(__import__("subprocess").TimeoutExpired(cmd="git", timeout=1), id="timeout"),
-        pytest.param(FileNotFoundError("git not found"), id="git-missing"),
+        pytest.param(
+            mock_git_run(branch="feature/test-branch"),
+            None,
+            True,
+            "feature/test-branch",
+            True,
+            id="git-branch",
+        ),
+        pytest.param(
+            mock_git_run(branch="main", exact_tag="v1.2.3"),
+            None,
+            True,
+            None,
+            True,
+            id="tagged-release",
+        ),
+        pytest.param(mock_git_run(in_repo=False), None, True, None, True, id="not-in-repo"),
+        pytest.param(mock_git_run(branch=""), None, True, None, True, id="empty-branch"),
+        pytest.param(FileNotFoundError("git not found"), None, True, None, True, id="git-missing"),
+        pytest.param(
+            subprocess.TimeoutExpired(cmd="git", timeout=1),
+            None,
+            True,
+            None,
+            True,
+            id="git-timeout",
+        ),
+        pytest.param(None, None, False, None, False, id="no-pyproject"),
+        pytest.param(None, "vcs-branch", True, "vcs-branch", False, id="pep610-priority"),
     ],
 )
-def test_git_detection_errors_return_none(side_effect: Exception) -> None:
-    """Operational git errors should be handled gracefully."""
+def test_get_version_info_branch_detection(
+    git_side_effect,
+    pep610: str | None,
+    pyproject_exists: bool,
+    expected_branch: str | None,
+    expect_git_calls: bool,
+) -> None:
+    """Live git branch detection obeys PEP 610, git errors, and pyproject presence."""
     from terok.lib.core.version import get_version_info
 
-    with (
-        mock.patch("terok.lib.core.version.subprocess.run", side_effect=side_effect),
-        mock.patch("terok.lib.core.version._get_pep610_revision", return_value=None),
-        mock.patch("terok.lib.core.version.Path.exists", return_value=True),
-    ):
+    with patched_version_detection(
+        pep610=pep610,
+        pyproject_exists=pyproject_exists,
+        git_side_effect=git_side_effect,
+    ) as mock_run:
         _, branch = get_version_info()
 
-    assert branch is None
+    assert branch == expected_branch
+    if expect_git_calls:
+        assert mock_run.called
+    else:
+        mock_run.assert_not_called()
 
 
-def test_pep610_takes_priority_over_git() -> None:
-    """PEP 610 metadata should win over live git detection."""
-    from terok.lib.core.version import get_version_info
-
-    with (
-        mock.patch("terok.lib.core.version._get_pep610_revision", return_value="vcs-branch"),
-        mock.patch("terok.lib.core.version.Path.exists", return_value=True),
-        mock.patch("terok.lib.core.version.subprocess.run") as mock_run,
-    ):
-        _, branch = get_version_info()
-
-    assert branch == "vcs-branch"
-    mock_run.assert_not_called()
-
-
-def run_cli_version() -> mock.Mock:
+def run_cli_version() -> subprocess.CompletedProcess[str]:
     """Run ``terokctl --version`` with the current interpreter."""
-    import subprocess
-
     return subprocess.run(
         [sys.executable, "-m", "terok.cli.main", "--version"],
         capture_output=True,
@@ -339,7 +287,7 @@ def run_cli_version() -> mock.Mock:
 
 
 def test_cli_version_flag() -> None:
-    """``terokctl --version`` should succeed and print version info."""
+    """``terokctl --version`` succeeds and prints version information."""
     result = run_cli_version()
     assert result.returncode == 0
     assert "terok" in result.stdout
@@ -347,11 +295,8 @@ def test_cli_version_flag() -> None:
 
 
 def test_cli_version_matches_module_version() -> None:
-    """CLI version output should match the module formatter."""
+    """CLI version output matches the module-level formatter."""
     from terok.lib.core.version import format_version_string, get_version_info
 
     version, branch = get_version_info()
-    expected_version_str = format_version_string(version, branch)
-
-    result = run_cli_version()
-    assert expected_version_str in result.stdout
+    assert format_version_string(version, branch) in run_cli_version().stdout

@@ -11,23 +11,14 @@ import pytest
 
 from terok.cli.commands.sickbay import _cmd_sickbay
 from terok.lib.security.gate_server import GateServerStatus
-
-OUTDATED_UNITS_MESSAGE = (
-    "Systemd units are outdated (installed v2, expected v3). "
-    "Run 'terokctl gate-server install' to update."
-)
-
-
-def make_status(mode: str = "none", *, running: bool = False, port: int = 9418) -> GateServerStatus:
-    """Create a gate-server status object for sickbay tests."""
-    return GateServerStatus(mode=mode, running=running, port=port)
+from testgate import OUTDATED_UNITS_MESSAGE, make_gate_server_status
 
 
 @pytest.mark.parametrize(
     ("status", "outdated", "systemd_available", "exit_code", "expected"),
     [
         pytest.param(
-            make_status("systemd", running=True),
+            make_gate_server_status("systemd", running=True),
             None,
             False,
             None,
@@ -35,7 +26,7 @@ def make_status(mode: str = "none", *, running: bool = False, port: int = 9418) 
             id="all-ok",
         ),
         pytest.param(
-            make_status("systemd", running=True),
+            make_gate_server_status("systemd", running=True),
             OUTDATED_UNITS_MESSAGE,
             False,
             1,
@@ -43,7 +34,7 @@ def make_status(mode: str = "none", *, running: bool = False, port: int = 9418) 
             id="outdated-units",
         ),
         pytest.param(
-            make_status("none", running=False),
+            make_gate_server_status("none"),
             None,
             True,
             1,
@@ -51,7 +42,7 @@ def make_status(mode: str = "none", *, running: bool = False, port: int = 9418) 
             id="not-running-with-systemd",
         ),
         pytest.param(
-            make_status("none", running=False),
+            make_gate_server_status("none"),
             None,
             False,
             1,
@@ -59,7 +50,7 @@ def make_status(mode: str = "none", *, running: bool = False, port: int = 9418) 
             id="not-running-without-systemd",
         ),
         pytest.param(
-            make_status("systemd", running=False),
+            make_gate_server_status("systemd"),
             None,
             False,
             2,
