@@ -1,6 +1,6 @@
 # Agent Configuration Compatibility Matrix
 
-Last verified: 2026-03-14. Re-verify quarterly and whenever an agent version
+Last verified: 2026-03-15. Re-verify quarterly and whenever an agent version
 update breaks the existing integration.
 
 Per-agent reference for permission control, instruction delivery, and ACP
@@ -18,7 +18,7 @@ local LLM via OpenCode; Tier-3: Copilot.
 | Vibe | `--agent auto-approve` | `VIBE_AUTO_APPROVE=true` | `auto_approve = true` in TOML | `vibe-acp` (bundled) | `VIBE_AUTO_APPROVE` env var |
 | Blablador | (inherits OpenCode) | `OPENCODE_PERMISSION='{"*":"allow"}'` | `"permission": {"*":"allow"}` in opencode.json | needs wrapper (#410) | `OPENCODE_PERMISSION` env var |
 | OpenCode | — | `OPENCODE_PERMISSION='{"*":"allow"}'` | `"permission": {"*":"allow"}` in opencode.json | `opencode acp` (native) | `OPENCODE_PERMISSION` env var |
-| Codex | `--yolo` | — | `approval_policy` + `sandbox_mode` in config.toml | `codex-acp` (npm) | `/etc/codex/requirements.toml` |
+| Codex | `--yolo` | — | `approval_policy` + `sandbox_mode` in `~/.codex/config.toml` | `codex-acp` (npm) | `--yolo` CLI flag (no env var or managed config) |
 | Copilot | `--yolo` / `--allow-all` | `COPILOT_ALLOW_ALL=true` | — (unstable) | `copilot --acp` (native) | `COPILOT_ALLOW_ALL` env var |
 
 ### Design constraint: shared volumes
@@ -30,17 +30,17 @@ MUST NOT use shared-volume config files.
 
 ### What terok uses
 
-Every agent has a mechanism that is (a) per-container and (b) read
-regardless of launch path (CLI wrapper, ACP, or direct invocation):
+Every agent except Codex has a mechanism that is (a) per-container and
+(b) read regardless of launch path (CLI wrapper, ACP, or direct invocation):
 
 | Agent | Per-container mechanism | Why not the alternative |
 |-------|------------------------|------------------------|
 | Claude | `/etc/claude-code/managed-settings.json` | `~/.claude/` is shared; managed settings have highest precedence |
-| Codex | `/etc/codex/requirements.toml` | `~/.codex/` is shared; requirements have highest precedence |
-| Vibe | `VIBE_AUTO_APPROVE=true` env var | pydantic-settings: env var overrides all config layers |
+| Vibe | `VIBE_AUTO_APPROVE=true` env var | pydantic-settings: env var overrides all config layers (verified) |
 | OpenCode | `OPENCODE_PERMISSION` env var | merged on top of all config layers |
 | Blablador | `OPENCODE_PERMISSION` env var | inherits OpenCode's mechanism |
-| Copilot | `COPILOT_ALLOW_ALL=true` env var | no stable config file mechanism |
+| Copilot | `COPILOT_ALLOW_ALL=true` env var | env for `--allow-all-tools` (tools only, not paths/URLs) |
+| Codex | `--yolo` CLI flag (wrapper only) | no env var, no managed config in v0.114.0; only CLI flags work |
 
 When `TEROK_UNRESTRICTED` is unset: config files are not written and env
 vars are not set; agents use vendor defaults.
@@ -90,10 +90,11 @@ is needed (#410).
 
 ### Codex
 
-`/etc/codex/requirements.toml` has highest precedence (cannot be overridden
-by user config, CLI flags, or `-c` overrides). Read by both CLI and
-`codex-acp`. User config at `~/.codex/config.toml` and project config at
-`.codex/config.toml` are lower precedence.
+No env var or managed config (`/etc/codex/`) for permissions in v0.114.0.
+`~/.codex/config.toml` is a shared volume — unusable for per-task control.
+Only `--yolo` CLI flag works, injected by the shell wrapper. This means
+Codex permissions only apply via CLI wrappers, not ACP. `codex-acp`
+accepts `-c key=value` overrides which could be used at ACP spawn time.
 
 ### Copilot
 

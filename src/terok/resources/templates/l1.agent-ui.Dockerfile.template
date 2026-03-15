@@ -20,8 +20,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 # Pre-create managed config directories for per-task permission mode.
 # init-ssh-and-repo.sh writes config here when TEROK_UNRESTRICTED=1.
-RUN mkdir -p /etc/claude-code /etc/codex /usr/local/share/terok \
-    && chown dev:dev /etc/claude-code /etc/codex
+RUN mkdir -p /etc/claude-code /usr/local/share/terok \
+    && chown dev:dev /etc/claude-code
 COPY scripts/terok-git-identity.sh /usr/local/share/terok/terok-git-identity.sh
 RUN chmod +x /usr/local/share/terok/terok-git-identity.sh
 

@@ -74,7 +74,15 @@ class HeadlessProvider:
 
     Injected into the container env by ``_apply_unrestricted_env()`` when
     ``TEROK_UNRESTRICTED=1``.  Read by agents regardless of launch path.
-    File-based agents (Claude, Codex) use ``/etc/`` config instead.
+    Claude uses ``/etc/claude-code/managed-settings.json`` instead.
+    """
+
+    auto_approve_flags: tuple[str, ...]
+    """CLI flags injected by the shell wrapper when ``TEROK_UNRESTRICTED=1``.
+
+    Only for agents that lack an env var or managed config mechanism
+    (currently Codex only).  Empty for all other agents — their env vars
+    and ``/etc/`` config files handle permissions across all launch paths.
     """
 
     output_format_flags: tuple[str, ...]
@@ -139,6 +147,7 @@ HEADLESS_PROVIDERS: dict[str, HeadlessProvider] = {
         headless_subcommand=None,
         prompt_flag="-p",
         auto_approve_env={},
+        auto_approve_flags=(),
         output_format_flags=("--output-format", "stream-json"),
         model_flag="--model",
         max_turns_flag="--max-turns",
@@ -161,6 +170,7 @@ HEADLESS_PROVIDERS: dict[str, HeadlessProvider] = {
         headless_subcommand="exec",
         prompt_flag="",
         auto_approve_env={},
+        auto_approve_flags=("--yolo",),
         output_format_flags=(),
         model_flag="--model",
         max_turns_flag=None,
@@ -183,6 +193,7 @@ HEADLESS_PROVIDERS: dict[str, HeadlessProvider] = {
         headless_subcommand=None,
         prompt_flag="-p",
         auto_approve_env={"COPILOT_ALLOW_ALL": "true"},
+        auto_approve_flags=(),
         output_format_flags=(),
         model_flag="--model",
         max_turns_flag=None,
@@ -205,6 +216,7 @@ HEADLESS_PROVIDERS: dict[str, HeadlessProvider] = {
         headless_subcommand=None,
         prompt_flag="--prompt",
         auto_approve_env={"VIBE_AUTO_APPROVE": "true"},
+        auto_approve_flags=(),
         output_format_flags=(),
         model_flag="--agent",
         max_turns_flag="--max-turns",
@@ -227,6 +239,7 @@ HEADLESS_PROVIDERS: dict[str, HeadlessProvider] = {
         headless_subcommand="run",
         prompt_flag="",
         auto_approve_env={"OPENCODE_PERMISSION": '{"*":"allow"}'},
+        auto_approve_flags=(),
         output_format_flags=(),
         model_flag=None,
         max_turns_flag=None,
@@ -249,6 +262,7 @@ HEADLESS_PROVIDERS: dict[str, HeadlessProvider] = {
         headless_subcommand="run",
         prompt_flag="",
         auto_approve_env={"OPENCODE_PERMISSION": '{"*":"allow"}'},
+        auto_approve_flags=(),
         output_format_flags=(),
         model_flag="--model",
         max_turns_flag=None,
@@ -632,9 +646,15 @@ def _generate_generic_wrapper(provider: HeadlessProvider, project: ProjectConfig
         "        . /usr/local/share/terok/terok-git-identity.sh",
     ]
 
-    # Permission mode is handled entirely by container-level env vars and
-    # /etc/ config files (written by init-ssh-and-repo.sh).  No CLI flags
-    # or env var exports needed in the wrapper.
+    # Permission mode: most agents use container-level env vars or /etc/
+    # config files.  Codex has no env var or managed config, so it needs
+    # CLI flags injected by the wrapper.
+    if provider.auto_approve_flags:
+        lines.append("    local _approve_args=()")
+        lines.append('    if [[ "${TEROK_UNRESTRICTED:-}" == "1" ]]; then')
+        for flag in provider.auto_approve_flags:
+            lines.append(f"        _approve_args+=({shlex.quote(flag)})")
+        lines.append("    fi")
 
     # OpenCode session plugin setup for opencode/blablador.
     if provider.session_file and provider.name in {"opencode", "blablador"}:
@@ -702,6 +722,8 @@ def _generate_generic_wrapper(provider: HeadlessProvider, project: ProjectConfig
 
     # Build the extra-args expansions that sit between the binary and "$@".
     _extra_expansions: list[str] = []
+    if provider.auto_approve_flags:
+        _extra_expansions.append('"${_approve_args[@]}"')
     if session_path and provider.resume_flag:
         _extra_expansions.append('"${_resume_args[@]}"')
     if provider.name == "codex":

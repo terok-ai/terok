@@ -382,24 +382,28 @@ class GenerateAgentWrapperTests(unittest.TestCase):
             self.assertNotIn("TEROK_SESSION_FILE", wrapper, f"{name} should not set session env")
 
     def test_wrappers_do_not_inject_permission_flags(self) -> None:
-        """No wrapper injects permission flags — env vars and /etc/ config handle it."""
+        """Non-Codex wrappers do not inject permission flags."""
         from terok.lib.containers.agents import _generate_claude_wrapper
 
         project = _make_project()
         for name, p in HEADLESS_PROVIDERS.items():
+            if name == "codex":
+                continue  # Codex is the exception — it needs CLI flags
             claude_fn = _generate_claude_wrapper if name == "claude" else None
             wrapper = generate_agent_wrapper(
                 p, project, has_agents=False, claude_wrapper_fn=claude_fn
             )
             self.assertNotIn("TEROK_UNRESTRICTED", wrapper, f"{name} should not check unrestricted")
             self.assertNotIn("_approve_args", wrapper, f"{name} should not have approve args")
-            self.assertNotIn(
-                "--dangerously-skip-permissions", wrapper, f"{name} should not inject perm flags"
-            )
 
-    def test_codex_no_auto_approve_env(self) -> None:
-        """Codex uses /etc/codex/requirements.toml, not env vars."""
+    def test_codex_wrapper_injects_yolo(self) -> None:
+        """Codex wrapper injects --yolo when TEROK_UNRESTRICTED=1 (no env var alternative)."""
+        project = _make_project()
         p = HEADLESS_PROVIDERS["codex"]
+        wrapper = generate_agent_wrapper(p, project, has_agents=False)
+        self.assertIn("TEROK_UNRESTRICTED", wrapper)
+        self.assertIn("--yolo", wrapper)
+        self.assertEqual(p.auto_approve_flags, ("--yolo",))
         self.assertEqual(p.auto_approve_env, {})
 
     def test_opencode_auto_approve_env(self) -> None:

@@ -210,8 +210,10 @@ Agent-native env vars and config files:
   ├─ VIBE_AUTO_APPROVE=true           (container env)
   ├─ OPENCODE_PERMISSION='{"*":"allow"}'  (container env)
   ├─ COPILOT_ALLOW_ALL=true           (container env)
-  ├─ /etc/claude-code/managed-settings.json  (init script)
-  └─ /etc/codex/requirements.toml     (init script)
+  └─ /etc/claude-code/managed-settings.json  (init script)
+  │
+  ▼  (Codex only — no env var or managed config available)
+Shell wrapper injects --yolo when TEROK_UNRESTRICTED=1
 ```
 
 ### Key decision points
@@ -246,7 +248,8 @@ provider-agnostic: it doesn't need to know *which* flags each agent needs.
 | Host-side env injection | `task_runners.py` → `_apply_unrestricted_env()` | Sets `TEROK_UNRESTRICTED=1` + all `auto_approve_env` vars from `collect_all_auto_approve_env()` |
 | Meta persistence | `task_runners.py` | `meta["unrestricted"]` written to `meta.yml` (headless: always; CLI: on start; web: only on new container creation) |
 | CLI flag wiring | `cli/commands/task.py` | Mutually exclusive `--unrestricted` / `--restricted` mapped to tri-state `bool \| None` |
-| Per-container config files | `init-ssh-and-repo.sh` | Writes `/etc/claude-code/managed-settings.json` and `/etc/codex/requirements.toml` when `TEROK_UNRESTRICTED=1` |
+| Per-container config files | `init-ssh-and-repo.sh` | Writes `/etc/claude-code/managed-settings.json` when `TEROK_UNRESTRICTED=1` |
+| Codex CLI flag | `headless_providers.py` → `_generate_generic_wrapper()` | Wrapper injects `--yolo` when `TEROK_UNRESTRICTED=1` (no env var or managed config in Codex v0.114.0) |
 | Provider env registry | `headless_providers.py` → `HeadlessProvider` dataclass | `auto_approve_env: dict[str, str]` per provider |
 | Status display | `tasks.py` → `task_status()`, `task_detail.py` | Reads `meta["unrestricted"]` and shows "unrestricted" / "restricted" |
 

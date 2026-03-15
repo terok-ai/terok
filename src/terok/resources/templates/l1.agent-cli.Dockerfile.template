@@ -67,7 +67,7 @@ RUN set -eux; \
 # Pre-create managed config directories for per-task permission mode.
 # init-ssh-and-repo.sh writes config here when TEROK_UNRESTRICTED=1.
 # Owned by dev so no sudo is needed at runtime.
-RUN mkdir -p /etc/claude-code /etc/codex && chown dev:dev /etc/claude-code /etc/codex
+RUN mkdir -p /etc/claude-code && chown dev:dev /etc/claude-code
 
 # Copy setup script for codex auth (port forwarding for OAuth callbacks)
 COPY scripts/setup-codex-auth.sh /usr/local/bin/setup-codex-auth.sh
