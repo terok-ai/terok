@@ -25,7 +25,7 @@ SOURCE_MOUNT="/src"
 WORKSPACE_DIR="/workspace"
 PYTHON_VERSION="3.12"
 DEFAULT_MARKER="needs_host_features"
-TEROK_INFO_COMMAND="poetry run terokctl info"
+TEROK_DIAGNOSTIC_COMMAND="poetry run terokctl config"
 
 # Target distros: name -> Containerfile suffix
 declare -A DISTROS=(
@@ -62,10 +62,12 @@ build_image() {
     local name="$1"
     local file="$SCRIPT_DIR/Containerfile.${DISTROS[$name]}"
     local image="$IMAGE_PREFIX:$name"
+    local status
 
     echo "==> Building $image from $file"
     podman build -t "$image" -f "$file" "$REPO_ROOT"
-    return 0
+    status=$?
+    return "$status"
 }
 
 run_tests() {
@@ -74,6 +76,7 @@ run_tests() {
     local image="$IMAGE_PREFIX:$name"
     local ctr_name="$IMAGE_PREFIX-$name"
     local pytest_args="tests/integration/ -v --tb=short"
+    local status
 
     if [[ -n "$marker" ]]; then
         pytest_args="$pytest_args -m '$marker'"
@@ -93,8 +96,6 @@ run_tests() {
             set -e
             echo '--- podman version ---'
             podman --version || echo 'podman not available'
-            echo '--- python version ---'
-            python3 --version
 
             cp -a $SOURCE_MOUNT $WORKSPACE_DIR
             cd $WORKSPACE_DIR
@@ -109,18 +110,26 @@ run_tests() {
                 pip install --quiet --upgrade pip
                 pip install --quiet poetry
             fi
+
+            echo '--- python version ---'
+            python --version
             poetry install --with test --quiet 2>&1 | tail -3
 
             echo ''
             echo '--- running tests ---'
             poetry run pytest $pytest_args
             echo ''
-            echo '--- terokctl info ---'
-            $TEROK_INFO_COMMAND 2>&1 || true
+            echo '--- terokctl config ---'
+            $TEROK_DIAGNOSTIC_COMMAND 2>&1 || true
         "
 
-    echo "==> $name: done"
-    return 0
+    status=$?
+    if [[ $status -eq 0 ]]; then
+        echo "==> $name: done"
+    else
+        echo "==> $name: failed" >&2
+    fi
+    return "$status"
 }
 
 BUILD_ONLY=false
