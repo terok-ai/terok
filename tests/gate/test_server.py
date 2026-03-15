@@ -3,11 +3,17 @@
 
 """Tests for the standalone gate HTTP server."""
 
+from __future__ import annotations
+
 import base64
 import io
 import json
+import os
 import tempfile
+import time
 import unittest.mock
+from collections.abc import Iterator
+from contextlib import contextmanager
 from http.server import BaseHTTPRequestHandler
 from pathlib import Path
 
@@ -24,72 +30,133 @@ from terok.gate.server import (
 )
 from testnet import GATE_PORT, LOCALHOST_PEER
 
+VALID_TOKEN_DATA = {"validtoken": {"project": "proj-a", "task": "1"}}
+SUCCESS_CGI_RESPONSE = b"Status: 200 OK\r\nContent-Type: text/plain\r\n\r\nok"
+
+
+@contextmanager
+def token_store_file(data: object | None = None) -> Iterator[Path]:
+    """Create a temporary tokens.json file and yield its path."""
+    with tempfile.TemporaryDirectory() as td:
+        token_file = Path(td) / "tokens.json"
+        if data is not None:
+            token_file.write_text(data if isinstance(data, str) else json.dumps(data))
+        yield token_file
+
+
+def make_cgi_process(
+    *,
+    stdout: bytes = SUCCESS_CGI_RESPONSE,
+    stderr: bytes = b"",
+    wait_return: int = 0,
+) -> unittest.mock.Mock:
+    """Create a mocked ``git http-backend`` subprocess."""
+    process = unittest.mock.Mock()
+    process.stdin = io.BytesIO()
+    process.stdout = io.BytesIO(stdout)
+    process.stderr = io.BytesIO(stderr)
+    process.wait.return_value = wait_return
+    return process
+
+
+def make_request(
+    path: str,
+    *,
+    token: str | None = None,
+    method: str = "GET",
+    extra_headers: str = "",
+    token_data: dict[str, dict[str, str]] | str | None = None,
+) -> tuple[int, BaseHTTPRequestHandler]:
+    """Build a fake HTTP request and return ``(status_code, handler)``."""
+    with tempfile.TemporaryDirectory() as td:
+        base = Path(td)
+        token_file = base / "tokens.json"
+        token_file.write_text(
+            json.dumps(VALID_TOKEN_DATA if token_data is None else token_data)
+            if not isinstance(token_data, str)
+            else token_data
+        )
+        store = TokenStore(token_file)
+        handler_class = _make_handler_class(base, store)
+
+        headers = "Host: localhost\r\n"
+        if token is not None:
+            creds = base64.b64encode(f"{token}:x".encode()).decode()
+            headers += f"Authorization: Basic {creds}\r\n"
+        headers += extra_headers
+
+        raw_request = f"{method} {path} HTTP/1.1\r\n{headers}\r\n".encode()
+        handler = handler_class.__new__(handler_class)
+        handler.request = None
+        handler.client_address = LOCALHOST_PEER
+        handler.server = type(
+            "FakeServer", (), {"server_name": "localhost", "server_port": GATE_PORT}
+        )()
+        handler.rfile = io.BytesIO(raw_request)
+        handler.wfile = io.BytesIO()
+        handler.raw_requestline = handler.rfile.readline(65537)
+        handler.parse_request()
+
+        responses: list[int] = []
+        original_send_response = handler.send_response
+
+        def capture_response(code: int, *args: object) -> None:
+            responses.append(code)
+            original_send_response(code, *args)
+
+        handler.send_response = capture_response
+        handler.send_error = lambda code, *args: responses.append(code)
+        handler._handle()
+        return (responses[0] if responses else 0), handler
+
 
 class TestTokenStore:
     """Tests for TokenStore."""
 
-    def test_validate_valid_token(self) -> None:
-        with tempfile.TemporaryDirectory() as td:
-            tf = Path(td) / "tokens.json"
-            tf.write_text(json.dumps({"abc123": {"project": "proj-a", "task": "1"}}))
-            store = TokenStore(tf)
-            assert store.validate("abc123") == "proj-a"
-
-    def test_validate_invalid_token(self) -> None:
-        with tempfile.TemporaryDirectory() as td:
-            tf = Path(td) / "tokens.json"
-            tf.write_text(json.dumps({"abc123": {"project": "proj-a", "task": "1"}}))
-            store = TokenStore(tf)
-            assert store.validate("wrong") is None
+    @pytest.mark.parametrize(
+        ("data", "token", "expected"),
+        [
+            (VALID_TOKEN_DATA, "abc123", None),
+            (VALID_TOKEN_DATA, "validtoken", "proj-a"),
+            (["a", "b"], "a", None),
+            ("not json{{{", "any", None),
+        ],
+        ids=["wrong-token", "valid-token", "non-dict-json", "corrupt-json"],
+    )
+    def test_validate_various_inputs(
+        self,
+        data: object,
+        token: str,
+        expected: str | None,
+    ) -> None:
+        with token_store_file(data) as token_file:
+            assert TokenStore(token_file).validate(token) == expected
 
     def test_missing_file_returns_none(self) -> None:
-        store = TokenStore(Path("/nonexistent/tokens.json"))
-        assert store.validate("any") is None
-
-    def test_corrupt_json_returns_none(self) -> None:
-        with tempfile.TemporaryDirectory() as td:
-            tf = Path(td) / "tokens.json"
-            tf.write_text("not json{{{")
-            store = TokenStore(tf)
-            assert store.validate("any") is None
+        assert TokenStore(Path("/nonexistent/tokens.json")).validate("any") is None
 
     def test_mtime_reload(self) -> None:
         """Token store reloads when file mtime changes."""
-        with tempfile.TemporaryDirectory() as td:
-            tf = Path(td) / "tokens.json"
-            tf.write_text(json.dumps({"t1": {"project": "p1", "task": "1"}}))
-            store = TokenStore(tf)
+        with token_store_file({"t1": {"project": "p1", "task": "1"}}) as token_file:
+            store = TokenStore(token_file)
             assert store.validate("t1") == "p1"
 
-            # Overwrite with new token (force different mtime)
-            import os
-            import time
-
             time.sleep(0.05)
-            tf.write_text(json.dumps({"t2": {"project": "p2", "task": "2"}}))
-            # Force mtime change
-            st = tf.stat()
-            os.utime(tf, (st.st_atime, st.st_mtime + 1))
+            token_file.write_text(json.dumps({"t2": {"project": "p2", "task": "2"}}))
+            stat_result = token_file.stat()
+            os.utime(token_file, (stat_result.st_atime, stat_result.st_mtime + 1))
 
             assert store.validate("t1") is None
             assert store.validate("t2") == "p2"
 
     def test_malformed_token_entry_skipped(self) -> None:
         """Token entries with wrong structure are ignored."""
-        with tempfile.TemporaryDirectory() as td:
-            tf = Path(td) / "tokens.json"
-            tf.write_text(json.dumps({"bad": "not-a-dict", "ok": {"project": "p", "task": "1"}}))
-            store = TokenStore(tf)
+        with token_store_file(
+            {"bad": "not-a-dict", "ok": {"project": "p", "task": "1"}}
+        ) as token_file:
+            store = TokenStore(token_file)
             assert store.validate("bad") is None
             assert store.validate("ok") == "p"
-
-    def test_non_dict_json_returns_none(self) -> None:
-        """Non-dict top-level JSON is treated as empty."""
-        with tempfile.TemporaryDirectory() as td:
-            tf = Path(td) / "tokens.json"
-            tf.write_text(json.dumps(["a", "b"]))
-            store = TokenStore(tf)
-            assert store.validate("a") is None
 
 
 class TestValidateTokenData:
@@ -99,117 +166,128 @@ class TestValidateTokenData:
         data = {"t1": {"project": "p", "task": "1"}}
         assert _validate_token_data(data) == data
 
-    def test_non_dict_returns_empty(self) -> None:
-        assert _validate_token_data([1, 2]) == {}
-        assert _validate_token_data("string") == {}
-
-    def test_skips_non_dict_values(self) -> None:
-        data = {"good": {"project": "p", "task": "1"}, "bad": "string"}
-        result = _validate_token_data(data)
-        assert len(result) == 1
-        assert "good" in result
-
-    def test_skips_missing_fields(self) -> None:
-        data = {"no_task": {"project": "p"}, "no_proj": {"task": "1"}}
-        assert _validate_token_data(data) == {}
+    @pytest.mark.parametrize(
+        ("data", "expected"),
+        [
+            ([1, 2], {}),
+            ("string", {}),
+            (
+                {"good": {"project": "p", "task": "1"}, "bad": "string"},
+                {"good": {"project": "p", "task": "1"}},
+            ),
+            ({"no_task": {"project": "p"}, "no_proj": {"task": "1"}}, {}),
+        ],
+        ids=["non-dict-list", "non-dict-string", "skip-non-dict-values", "skip-missing-fields"],
+    )
+    def test_invalid_token_shapes(self, data: object, expected: dict[str, dict[str, str]]) -> None:
+        assert _validate_token_data(data) == expected
 
 
 class TestExtractBasicAuthToken:
     """Tests for _extract_basic_auth_token."""
 
-    def test_valid_basic_auth(self) -> None:
-        creds = base64.b64encode(b"mytoken:password").decode()
-        assert _extract_basic_auth_token(f"Basic {creds}") == "mytoken"
-
-    def test_none_header(self) -> None:
-        assert _extract_basic_auth_token(None) is None
-
-    def test_non_basic_scheme(self) -> None:
-        assert _extract_basic_auth_token("Bearer xyz") is None
-
-    def test_invalid_base64(self) -> None:
-        assert _extract_basic_auth_token("Basic !!!") is None
-
-    def test_no_colon(self) -> None:
-        creds = base64.b64encode(b"nocolon").decode()
-        assert _extract_basic_auth_token(f"Basic {creds}") is None
-
-    def test_empty_username(self) -> None:
-        creds = base64.b64encode(b":password").decode()
-        assert _extract_basic_auth_token(f"Basic {creds}") is None
+    @pytest.mark.parametrize(
+        ("header", "expected"),
+        [
+            (f"Basic {base64.b64encode(b'mytoken:password').decode()}", "mytoken"),
+            (None, None),
+            ("Bearer xyz", None),
+            ("Basic !!!", None),
+            (f"Basic {base64.b64encode(b'nocolon').decode()}", None),
+            (f"Basic {base64.b64encode(b':password').decode()}", None),
+        ],
+        ids=[
+            "valid",
+            "missing",
+            "wrong-scheme",
+            "invalid-base64",
+            "missing-colon",
+            "empty-username",
+        ],
+    )
+    def test_extract_basic_auth_token(self, header: str | None, expected: str | None) -> None:
+        assert _extract_basic_auth_token(header) == expected
 
 
 class TestParseContentLength:
     """Tests for _parse_content_length."""
 
-    def test_valid_length(self) -> None:
-        length, err = _parse_content_length("42")
-        assert length == 42
-        assert err is None
-
-    def test_none_header(self) -> None:
-        length, err = _parse_content_length(None)
-        assert length == 0
-        assert err is None
-
-    def test_negative(self) -> None:
-        _, err = _parse_content_length("-5")
-        assert err is not None
-
-    def test_non_numeric(self) -> None:
-        _, err = _parse_content_length("abc")
-        assert err is not None
+    @pytest.mark.parametrize(
+        ("header", "expected_length", "has_error"),
+        [("42", 42, False), (None, 0, False), ("-5", 0, True), ("abc", 0, True)],
+        ids=["valid", "missing", "negative", "non-numeric"],
+    )
+    def test_parse_content_length(
+        self,
+        header: str | None,
+        expected_length: int,
+        has_error: bool,
+    ) -> None:
+        length, error = _parse_content_length(header)
+        assert length == expected_length
+        assert (error is not None) is has_error
 
 
 class TestParseCgiHeaders:
     """Tests for _parse_cgi_headers."""
 
-    def test_parses_status_and_headers(self) -> None:
-        stdout = io.BytesIO(b"Status: 404 Not Found\r\nContent-Type: text/plain\r\n\r\nbody")
-        status, headers = _parse_cgi_headers(stdout)
-        assert status == 404
-        assert headers == [("Content-Type", "text/plain")]
-
-    def test_defaults_to_200(self) -> None:
-        stdout = io.BytesIO(b"Content-Type: text/html\r\n\r\n")
-        status, _ = _parse_cgi_headers(stdout)
-        assert status == 200
-
-    def test_empty_response(self) -> None:
-        stdout = io.BytesIO(b"\r\n")
-        status, headers = _parse_cgi_headers(stdout)
-        assert status == 200
-        assert headers == []
+    @pytest.mark.parametrize(
+        ("stdout", "expected_status", "expected_headers"),
+        [
+            (
+                b"Status: 404 Not Found\r\nContent-Type: text/plain\r\n\r\nbody",
+                404,
+                [("Content-Type", "text/plain")],
+            ),
+            (b"Content-Type: text/html\r\n\r\n", 200, [("Content-Type", "text/html")]),
+            (b"\r\n", 200, []),
+        ],
+        ids=["status-and-header", "default-200", "empty"],
+    )
+    def test_parse_cgi_headers(
+        self,
+        stdout: bytes,
+        expected_status: int,
+        expected_headers: list[tuple[str, str]],
+    ) -> None:
+        status, headers = _parse_cgi_headers(io.BytesIO(stdout))
+        assert status == expected_status
+        assert headers == expected_headers
 
 
 class TestRouting:
     """Tests for the route regex."""
 
-    def test_info_refs(self) -> None:
-        m = _ROUTE.match("/proj-a.git/info/refs")
-        assert m is not None
-        assert m.group("repo") == "proj-a.git"
-        assert m.group("path") == "/info/refs"
-
-    def test_upload_pack(self) -> None:
-        m = _ROUTE.match("/proj-a.git/git-upload-pack")
-        assert m is not None
-
-    def test_receive_pack(self) -> None:
-        m = _ROUTE.match("/proj-a.git/git-receive-pack")
-        assert m is not None
-
-    def test_head(self) -> None:
-        m = _ROUTE.match("/proj-a.git/HEAD")
-        assert m is not None
-
-    def test_invalid_path_returns_none(self) -> None:
-        assert _ROUTE.match("/proj-a.git/objects/pack/pack-abc.pack") is None
-        assert _ROUTE.match("/some/random/path") is None
-        assert _ROUTE.match("/") is None
-
-    def test_repo_without_git_suffix_fails(self) -> None:
-        assert _ROUTE.match("/proj-a/info/refs") is None
+    @pytest.mark.parametrize(
+        ("path", "should_match"),
+        [
+            ("/proj-a.git/info/refs", True),
+            ("/proj-a.git/git-upload-pack", True),
+            ("/proj-a.git/git-receive-pack", True),
+            ("/proj-a.git/HEAD", True),
+            ("/proj-a.git/objects/pack/pack-abc.pack", False),
+            ("/some/random/path", False),
+            ("/", False),
+            ("/proj-a/info/refs", False),
+        ],
+        ids=[
+            "info-refs",
+            "upload-pack",
+            "receive-pack",
+            "head",
+            "pack-object",
+            "random",
+            "root",
+            "missing-git-suffix",
+        ],
+    )
+    def test_route_matches_expected_paths(self, path: str, should_match: bool) -> None:
+        match = _ROUTE.match(path)
+        assert (match is not None) is should_match
+        if path == "/proj-a.git/info/refs":
+            assert match is not None
+            assert match.group("repo") == "proj-a.git"
+            assert match.group("path") == "/info/refs"
 
 
 class _FakeSocket:
@@ -221,9 +299,7 @@ class _FakeSocket:
 
     def makefile(self, mode: str, buffering: int = -1) -> io.BytesIO:
         """Return a file-like object for reading or writing."""
-        if "r" in mode:
-            return self._input
-        return self._output
+        return self._input if "r" in mode else self._output
 
     def getpeername(self) -> tuple[str, int]:
         """Return a fake peer address."""
@@ -236,192 +312,105 @@ class _FakeSocket:
 class TestAuth:
     """Tests for authentication handling."""
 
-    def _make_request(
-        self,
-        path: str,
-        token: str | None = None,
-        method: str = "GET",
-        extra_headers: str = "",
-    ) -> tuple[int, BaseHTTPRequestHandler]:
-        """Build a fake HTTP request and return (status_code, handler)."""
-        with tempfile.TemporaryDirectory() as td:
-            tf = Path(td) / "tokens.json"
-            tf.write_text(json.dumps({"validtoken": {"project": "proj-a", "task": "1"}}))
-            store = TokenStore(tf)
-            handler_class = _make_handler_class(Path(td), store)
-
-            headers = "Host: localhost\r\n"
-            if token is not None:
-                creds = base64.b64encode(f"{token}:x".encode()).decode()
-                headers += f"Authorization: Basic {creds}\r\n"
-            headers += extra_headers
-
-            raw_request = f"{method} {path} HTTP/1.1\r\n{headers}\r\n".encode()
-
-            # Create a mock handler to capture the response
-            handler = handler_class.__new__(handler_class)
-            handler.request = None
-            handler.client_address = LOCALHOST_PEER
-            handler.server = type(
-                "FakeServer", (), {"server_name": "localhost", "server_port": GATE_PORT}
-            )()
-            handler.rfile = io.BytesIO(raw_request)
-            handler.wfile = io.BytesIO()
-            handler.raw_requestline = handler.rfile.readline(65537)
-            handler.parse_request()
-
-            # Capture send_response calls
-            responses = []
-            original_send_response = handler.send_response
-
-            def capture_response(code, *args):
-                responses.append(code)
-                original_send_response(code, *args)
-
-            handler.send_response = capture_response
-            handler.send_error = lambda code, *args: responses.append(code)
-
-            handler._handle()
-            return responses[0] if responses else 0, handler
-
-    def test_no_auth_returns_401(self) -> None:
-        code, _ = self._make_request("/proj-a.git/info/refs", token=None)
-        assert code == 401
-
-    def test_wrong_token_returns_403(self) -> None:
-        code, _ = self._make_request("/proj-a.git/info/refs", token="wrongtoken")
-        assert code == 403
-
-    def test_wrong_project_returns_403(self) -> None:
-        code, _ = self._make_request("/proj-b.git/info/refs", token="validtoken")
-        assert code == 403
-
-    def test_invalid_path_returns_404(self) -> None:
-        code, _ = self._make_request("/invalid/path", token="validtoken")
-        assert code == 404
+    @pytest.mark.parametrize(
+        ("path", "token", "expected"),
+        [
+            ("/proj-a.git/info/refs", None, 401),
+            ("/proj-a.git/info/refs", "wrongtoken", 403),
+            ("/proj-b.git/info/refs", "validtoken", 403),
+            ("/invalid/path", "validtoken", 404),
+        ],
+        ids=["no-auth", "wrong-token", "wrong-project", "invalid-path"],
+    )
+    def test_auth_failures(self, path: str, token: str | None, expected: int) -> None:
+        code, _handler = make_request(path, token=token)
+        assert code == expected
 
     @unittest.mock.patch("subprocess.Popen")
     def test_valid_auth_delegates_to_cgi(self, mock_popen: unittest.mock.Mock) -> None:
         """Valid token + matching project delegates to git http-backend."""
-        # Mock the subprocess to avoid needing real git
-        mock_proc = unittest.mock.Mock()
-        mock_proc.stdin = io.BytesIO()
-        mock_proc.stdout = io.BytesIO(b"Status: 200 OK\r\nContent-Type: text/plain\r\n\r\nok")
-        mock_proc.stderr = io.BytesIO(b"")
-        mock_proc.wait.return_value = 0
-        mock_popen.return_value = mock_proc
-
-        code, _ = self._make_request(
-            "/proj-a.git/info/refs?service=git-upload-pack", token="validtoken"
+        mock_popen.return_value = make_cgi_process()
+        code, _handler = make_request(
+            "/proj-a.git/info/refs?service=git-upload-pack",
+            token="validtoken",
         )
         assert code == 200
-        mock_popen.assert_called_once()
-        # Verify CGI env includes GIT_PROJECT_ROOT
-        call_kwargs = mock_popen.call_args
-        cgi_env = call_kwargs[1]["env"]
-        assert "GIT_PROJECT_ROOT" in cgi_env
+        cgi_env = mock_popen.call_args.kwargs["env"]
         assert cgi_env["GIT_HTTP_EXPORT_ALL"] == "1"
-        # Defense in depth: hooks disabled
         assert cgi_env["GIT_CONFIG_KEY_0"] == "core.hooksPath"
         assert cgi_env["GIT_CONFIG_VALUE_0"] == "/dev/null"
+        assert "GIT_PROJECT_ROOT" in cgi_env
 
     @unittest.mock.patch("terok.gate.server._logger")
     @unittest.mock.patch("subprocess.Popen")
     def test_cgi_stderr_is_logged(
-        self, mock_popen: unittest.mock.Mock, mock_logger: unittest.mock.Mock
+        self,
+        mock_popen: unittest.mock.Mock,
+        mock_logger: unittest.mock.Mock,
     ) -> None:
         """CGI stderr output is logged via the module logger."""
-        mock_proc = unittest.mock.Mock()
-        mock_proc.stdin = io.BytesIO()
-        mock_proc.stdout = io.BytesIO(b"Status: 200 OK\r\n\r\n")
-        mock_proc.stderr = io.BytesIO(b"warning: something happened")
-        mock_proc.wait.return_value = 0
-        mock_popen.return_value = mock_proc
-
-        code, _ = self._make_request(
-            "/proj-a.git/info/refs?service=git-upload-pack", token="validtoken"
+        mock_popen.return_value = make_cgi_process(stderr=b"warning: something happened")
+        code, _handler = make_request(
+            "/proj-a.git/info/refs?service=git-upload-pack",
+            token="validtoken",
         )
         assert code == 200
         mock_logger.warning.assert_called_once()
-        logged_msg = mock_logger.warning.call_args[0][1]
-        assert "something happened" in logged_msg
+        assert "something happened" in mock_logger.warning.call_args[0][1]
 
-    def test_invalid_content_length_returns_400(self) -> None:
-        """Malformed Content-Length header returns 400."""
-        code, _ = self._make_request(
+    @pytest.mark.parametrize(
+        "extra_headers",
+        ["Content-Length: notanumber\r\n", "Content-Length: -5\r\n"],
+        ids=["invalid-content-length", "negative-content-length"],
+    )
+    def test_invalid_content_length_returns_400(self, extra_headers: str) -> None:
+        code, _handler = make_request(
             "/proj-a.git/git-receive-pack",
             token="validtoken",
             method="POST",
-            extra_headers="Content-Length: notanumber\r\n",
+            extra_headers=extra_headers,
         )
         assert code == 400
 
-    def test_negative_content_length_returns_400(self) -> None:
-        """Negative Content-Length header returns 400."""
-        code, _ = self._make_request(
-            "/proj-a.git/git-receive-pack",
-            token="validtoken",
-            method="POST",
-            extra_headers="Content-Length: -5\r\n",
-        )
-        assert code == 400
-
+    @pytest.mark.parametrize(
+        ("extra_headers", "expected_env"),
+        [
+            (
+                "Content-Encoding: gzip\r\nContent-Length: 0\r\n",
+                {"HTTP_CONTENT_ENCODING": "gzip"},
+            ),
+            (
+                "Git-Protocol: version=2\r\n",
+                {"HTTP_GIT_PROTOCOL": "version=2"},
+            ),
+            ("", {"HTTP_CONTENT_ENCODING": None, "HTTP_GIT_PROTOCOL": None}),
+        ],
+        ids=["content-encoding", "git-protocol", "headers-absent"],
+    )
     @unittest.mock.patch("subprocess.Popen")
-    def test_content_encoding_forwarded(self, mock_popen: unittest.mock.Mock) -> None:
-        """Content-Encoding header is forwarded as HTTP_CONTENT_ENCODING."""
-        mock_proc = unittest.mock.Mock()
-        mock_proc.stdin = io.BytesIO()
-        mock_proc.stdout = io.BytesIO(b"Status: 200 OK\r\n\r\n")
-        mock_proc.stderr = io.BytesIO(b"")
-        mock_proc.wait.return_value = 0
-        mock_popen.return_value = mock_proc
-
-        code, _ = self._make_request(
-            "/proj-a.git/git-upload-pack",
+    def test_optional_headers_forwarding(
+        self,
+        mock_popen: unittest.mock.Mock,
+        extra_headers: str,
+        expected_env: dict[str, str | None],
+    ) -> None:
+        """Optional request headers are forwarded to the CGI env when present."""
+        mock_popen.return_value = make_cgi_process(stdout=b"Status: 200 OK\r\n\r\n")
+        code, _handler = make_request(
+            "/proj-a.git/info/refs?service=git-upload-pack"
+            if "Git-Protocol" in extra_headers or not extra_headers
+            else "/proj-a.git/git-upload-pack",
             token="validtoken",
-            method="POST",
-            extra_headers="Content-Encoding: gzip\r\nContent-Length: 0\r\n",
+            method="POST" if "Content-Length" in extra_headers else "GET",
+            extra_headers=extra_headers,
         )
         assert code == 200
-        cgi_env = mock_popen.call_args[1]["env"]
-        assert cgi_env["HTTP_CONTENT_ENCODING"] == "gzip"
-
-    @unittest.mock.patch("subprocess.Popen")
-    def test_git_protocol_forwarded(self, mock_popen: unittest.mock.Mock) -> None:
-        """Git-Protocol header is forwarded as HTTP_GIT_PROTOCOL."""
-        mock_proc = unittest.mock.Mock()
-        mock_proc.stdin = io.BytesIO()
-        mock_proc.stdout = io.BytesIO(b"Status: 200 OK\r\n\r\n")
-        mock_proc.stderr = io.BytesIO(b"")
-        mock_proc.wait.return_value = 0
-        mock_popen.return_value = mock_proc
-
-        code, _ = self._make_request(
-            "/proj-a.git/info/refs?service=git-upload-pack",
-            token="validtoken",
-            extra_headers="Git-Protocol: version=2\r\n",
-        )
-        assert code == 200
-        cgi_env = mock_popen.call_args[1]["env"]
-        assert cgi_env["HTTP_GIT_PROTOCOL"] == "version=2"
-
-    @unittest.mock.patch("subprocess.Popen")
-    def test_absent_headers_not_in_env(self, mock_popen: unittest.mock.Mock) -> None:
-        """Absent Content-Encoding/Git-Protocol headers are not set in CGI env."""
-        mock_proc = unittest.mock.Mock()
-        mock_proc.stdin = io.BytesIO()
-        mock_proc.stdout = io.BytesIO(b"Status: 200 OK\r\n\r\n")
-        mock_proc.stderr = io.BytesIO(b"")
-        mock_proc.wait.return_value = 0
-        mock_popen.return_value = mock_proc
-
-        code, _ = self._make_request(
-            "/proj-a.git/info/refs?service=git-upload-pack", token="validtoken"
-        )
-        assert code == 200
-        cgi_env = mock_popen.call_args[1]["env"]
-        assert "HTTP_CONTENT_ENCODING" not in cgi_env
-        assert "HTTP_GIT_PROTOCOL" not in cgi_env
+        cgi_env = mock_popen.call_args.kwargs["env"]
+        for key, value in expected_env.items():
+            if value is None:
+                assert key not in cgi_env
+            else:
+                assert cgi_env[key] == value
 
 
 class TestDetach:
@@ -437,7 +426,8 @@ class TestDetach:
 
             with (
                 unittest.mock.patch(
-                    "terok.gate.server._ThreadingHTTPServer", return_value=mock_server
+                    "terok.gate.server._ThreadingHTTPServer",
+                    return_value=mock_server,
                 ),
                 unittest.mock.patch("terok.gate.server.os.fork", return_value=0),
                 unittest.mock.patch("terok.gate.server.signal.signal") as mock_signal,
@@ -448,16 +438,18 @@ class TestDetach:
             ):
                 store = TokenStore(Path(td) / "tokens.json")
                 with pytest.raises(SystemExit):
-                    _serve_daemon(Path(td), store, 9418, None)
+                    _serve_daemon(Path(td), store, GATE_PORT, None)
 
-                mock_setsid.assert_called_once()
-                mock_signal.assert_called_once()
-                mock_server.serve_forever.assert_called_once()
+            mock_setsid.assert_called_once()
+            mock_signal.assert_called_once()
+            mock_server.serve_forever.assert_called_once()
 
     @unittest.mock.patch("terok.gate.server._ThreadingHTTPServer")
     @unittest.mock.patch("terok.gate.server.os.fork", return_value=42)
     def test_parent_writes_pid_file(
-        self, mock_fork: unittest.mock.Mock, mock_server_class: unittest.mock.Mock
+        self,
+        _mock_fork: unittest.mock.Mock,
+        _mock_server_class: unittest.mock.Mock,
     ) -> None:
         """Parent process (fork returns child PID) should write PID file and exit."""
         from terok.gate.server import _serve_daemon
@@ -466,5 +458,5 @@ class TestDetach:
             pid_file = Path(td) / "gate.pid"
             store = TokenStore(Path(td) / "tokens.json")
             with pytest.raises(SystemExit):
-                _serve_daemon(Path(td), store, 9418, pid_file)
+                _serve_daemon(Path(td), store, GATE_PORT, pid_file)
             assert pid_file.read_text() == "42"
