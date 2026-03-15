@@ -32,13 +32,15 @@ def main() -> None:
     """
     try:
         from textual_serve.server import Server
-    except ImportError:
-        print(
-            "terok-web requires the 'textual-serve' package.\n"
-            "Install it with: pip install 'terok[web]'",
-            file=sys.stderr,
-        )
-        sys.exit(1)
+    except ModuleNotFoundError as exc:
+        if exc.name in ("textual_serve", "textual_serve.server"):
+            print(
+                "terok-web requires the 'textual-serve' package.\n"
+                "Install it with: pip install 'terok[web]'",
+                file=sys.stderr,
+            )
+            sys.exit(1)
+        raise
 
     parser = argparse.ArgumentParser(
         prog="terok-web",

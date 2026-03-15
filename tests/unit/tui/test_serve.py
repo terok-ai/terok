@@ -11,7 +11,7 @@ from unittest import mock
 
 import pytest
 
-from terok.tui.serve import _DEFAULT_HOST, _DEFAULT_PORT, _valid_port, main
+from terok.tui.serve import _valid_port, main
 
 
 class TestValidPort:
@@ -33,18 +33,6 @@ class TestValidPort:
         """Non-integer strings raise ArgumentTypeError with descriptive message."""
         with pytest.raises(argparse.ArgumentTypeError, match="must be an integer"):
             _valid_port(value)
-
-
-class TestDefaults:
-    """Tests for default constant values."""
-
-    def test_default_host(self) -> None:
-        """Default host is localhost."""
-        assert _DEFAULT_HOST == "localhost"
-
-    def test_default_port(self) -> None:
-        """Default port is 8566."""
-        assert _DEFAULT_PORT == 8566
 
 
 class TestMain:
@@ -76,7 +64,7 @@ class TestMain:
 
         main()
 
-        mock_server_cls.assert_called_once_with("terok", host=_DEFAULT_HOST, port=_DEFAULT_PORT)
+        mock_server_cls.assert_called_once_with("terok", host="localhost", port=8566)
         mock_server_instance.serve.assert_called_once()
 
     def test_server_created_with_custom_args(self, monkeypatch: pytest.MonkeyPatch) -> None:
