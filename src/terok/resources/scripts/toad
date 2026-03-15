@@ -23,9 +23,19 @@ blablador.helmholtz.de"
 
 # Inject custom agent TOML for Blablador into Toad's package data.
 # Toad only reads agents from its bundled data dir — no user override dir yet.
-TOAD_AGENTS_DIR="${HOME}/.local/share/uv/tools/batrachian-toad/lib/python3.14/site-packages/toad/data/agents"
+# Glob the python version to survive upgrades (e.g. 3.14 → 3.15).
+TOAD_AGENTS_DIR=""
+for _candidate in "${HOME}"/.local/share/uv/tools/batrachian-toad/lib/python*/site-packages/toad/data/agents; do
+  if [[ -d "${_candidate}" ]]; then
+    TOAD_AGENTS_DIR="${_candidate}"
+    break
+  fi
+done
+if [[ -z "${TOAD_AGENTS_DIR}" ]]; then
+  echo "Warning: Toad agents dir not found; Blablador TOML injection skipped" >&2
+fi
 BLABLADOR_TOML="${TOAD_AGENTS_DIR}/blablador.helmholtz.de.toml"
-if [[ -d "${TOAD_AGENTS_DIR}" ]] && [[ ! -f "${BLABLADOR_TOML}" ]]; then
+if [[ -n "${TOAD_AGENTS_DIR}" ]] && [[ ! -f "${BLABLADOR_TOML}" ]]; then
   _toml_tmp=$(mktemp "${BLABLADOR_TOML}.XXXXXX" 2>/dev/null) || true
   if [[ -n "${_toml_tmp}" ]]; then
     if cat > "${_toml_tmp}" << 'TOML_EOF'
