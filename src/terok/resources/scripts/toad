@@ -1,0 +1,45 @@
+#!/usr/bin/env bash
+
+# SPDX-FileCopyrightText: 2026 Jiri Vyskocil
+# SPDX-License-Identifier: Apache-2.0
+
+# Toad launcher wrapper.
+# Seeds launcher.agents into toad.json before exec-ing the real binary.
+# This runs on every invocation so the agent list survives toad's own
+# config writes (which drop keys it doesn't manage internally).
+
+set -euo pipefail
+
+TOAD_CONFIG="${HOME}/.config/toad/toad.json"
+TOAD_REAL="${HOME}/.local/share/uv/tools/batrachian-toad/bin/toad"
+
+# Agents pre-installed in the container image (newline-separated identities).
+LAUNCHER_AGENTS="claude.com
+vibe.mistral.ai
+openai.com
+copilot.github.com
+opencode.ai"
+
+if command -v jq >/dev/null 2>&1; then
+  mkdir -p "$(dirname "${TOAD_CONFIG}")"
+  existing='{}'
+  if [[ -f "${TOAD_CONFIG}" ]]; then
+    raw=$(cat "${TOAD_CONFIG}" 2>/dev/null || true)
+    # Reset to empty object if file is corrupt / not valid JSON.
+    existing=$(printf '%s' "${raw}" | jq -e '.' 2>/dev/null) || existing='{}'
+  fi
+
+  if [[ -z "$(printf '%s' "${existing}" | jq -r '.launcher.agents // empty' 2>/dev/null)" ]]; then
+    updated=$(printf '%s' "${existing}" | jq --arg agents "${LAUNCHER_AGENTS}" \
+      '.launcher.agents = $agents' 2>/dev/null) || true
+    if [[ -n "${updated}" ]]; then
+      tmpfile=$(mktemp "${TOAD_CONFIG}.XXXXXX") || true
+      if [[ -n "${tmpfile}" ]]; then
+        printf '%s\n' "${updated}" > "${tmpfile}" && mv -f "${tmpfile}" "${TOAD_CONFIG}" \
+          || rm -f "${tmpfile}"
+      fi
+    fi
+  fi
+fi
+
+exec "${TOAD_REAL}" "$@"
