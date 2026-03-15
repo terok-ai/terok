@@ -69,6 +69,17 @@ RUN set -eux; \
 # Owned by dev so no sudo is needed at runtime.
 RUN mkdir -p /etc/claude-code && chown dev:dev /etc/claude-code
 
+# === User operations ===
+ENV HOME=/home/dev
+ENV NPM_CONFIG_PREFIX=/home/dev/.npm-packages \
+    PATH=/home/dev/.npm-packages/bin:/home/dev/.local/bin:/home/dev/.opencode/bin:$PATH
+USER dev
+WORKDIR /home/dev
+
+# Cache bust point - changing AGENT_CACHE_BUST invalidates all layers below
+# Used by `terokctl build --agents` to force fresh agent installs
+ARG AGENT_CACHE_BUST=0
+
 # Copy setup script for codex auth (port forwarding for OAuth callbacks)
 COPY scripts/setup-codex-auth.sh /usr/local/bin/setup-codex-auth.sh
 RUN chmod +x /usr/local/bin/setup-codex-auth.sh
@@ -136,17 +147,6 @@ RUN set -eux; \
 
 # Symlink for terok project config (resolved at runtime via mount).
 RUN ln -s /home/dev/.terok/terok-agent.sh /etc/profile.d/zz-terok-project.sh
-
-# === User operations ===
-ENV HOME=/home/dev
-ENV NPM_CONFIG_PREFIX=/home/dev/.npm-packages \
-    PATH=/home/dev/.npm-packages/bin:/home/dev/.local/bin:/home/dev/.opencode/bin:$PATH
-USER dev
-WORKDIR /home/dev
-
-# Cache bust point - changing AGENT_CACHE_BUST invalidates all layers below
-# Used by `terokctl build --agents` to force fresh agent installs
-ARG AGENT_CACHE_BUST=0
 
 # Install AI agent CLIs as dev user
 RUN mkdir -p "$NPM_CONFIG_PREFIX" && npm config set prefix "$NPM_CONFIG_PREFIX"
