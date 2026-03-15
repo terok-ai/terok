@@ -320,6 +320,20 @@ if [[ "${TEROK_UNRESTRICTED:-}" == "1" ]]; then
   fi
 fi
 
+# Pre-populate Toad launcher with agents already installed in the image.
+# Only on first run (shared volume, persists across tasks).
+TOAD_CONFIG="${HOME}/.config/toad/toad.json"
+if [[ ! -f "${TOAD_CONFIG}" ]]; then
+  mkdir -p "$(dirname "${TOAD_CONFIG}")"
+  cat > "${TOAD_CONFIG}" << 'TOAD_EOF'
+{
+    "launcher": {
+        "agents": "claude.com\nvibe.mistral.ai\nopenai.com\ncopilot.github.com\nopencode.ai"
+    }
+}
+TOAD_EOF
+fi
+
 # Signal readiness for host tools that watch initial logs
 echo ">> init complete"
 exec bash
