@@ -48,7 +48,7 @@ class TestMain:
             main()
         captured = capsys.readouterr()
         assert "textual-serve" in captured.err
-        assert "pip install 'terok[web]'" in captured.err
+        assert "pip install textual-serve" in captured.err
 
     def test_server_created_with_defaults(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Server is instantiated with default host and port when no args given."""

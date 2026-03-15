@@ -36,7 +36,7 @@ def main() -> None:
         if exc.name in ("textual_serve", "textual_serve.server"):
             print(
                 "terok-web requires the 'textual-serve' package.\n"
-                "Install it with: pip install 'terok[web]'",
+                "Install it with: pip install textual-serve",
                 file=sys.stderr,
             )
             sys.exit(1)
