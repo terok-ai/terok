@@ -5,6 +5,7 @@
 
 from __future__ import annotations
 
+import argparse
 import sys
 from unittest import mock
 
@@ -23,14 +24,14 @@ class TestValidPort:
 
     @pytest.mark.parametrize("value", ["0", "-1", "65536", "99999"])
     def test_rejects_out_of_range(self, value: str) -> None:
-        """Out-of-range port numbers raise ValueError."""
-        with pytest.raises(ValueError):
+        """Out-of-range port numbers raise ArgumentTypeError with descriptive message."""
+        with pytest.raises(argparse.ArgumentTypeError, match="must be between 1 and 65535"):
             _valid_port(value)
 
     @pytest.mark.parametrize("value", ["abc", "", "12.5"])
     def test_rejects_non_integer(self, value: str) -> None:
-        """Non-integer strings raise ValueError."""
-        with pytest.raises(ValueError):
+        """Non-integer strings raise ArgumentTypeError with descriptive message."""
+        with pytest.raises(argparse.ArgumentTypeError, match="must be an integer"):
             _valid_port(value)
 
 
@@ -49,12 +50,17 @@ class TestDefaults:
 class TestMain:
     """Tests for the main entry point."""
 
-    def test_missing_textual_serve_exits(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        """When textual-serve is not installed, main prints an error and exits."""
+    def test_missing_textual_serve_exits(
+        self, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """When textual-serve is not installed, main prints guidance and exits."""
         monkeypatch.setitem(sys.modules, "textual_serve", None)
         monkeypatch.setitem(sys.modules, "textual_serve.server", None)
         with pytest.raises(SystemExit, match="1"):
             main()
+        captured = capsys.readouterr()
+        assert "textual-serve" in captured.err
+        assert "pip install 'terok[web]'" in captured.err
 
     def test_server_created_with_defaults(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Server is instantiated with default host and port when no args given."""

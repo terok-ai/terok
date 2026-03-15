@@ -3,6 +3,7 @@
 
 """Serve the Terok TUI as a web application via textual-serve."""
 
+import argparse
 import sys
 
 _DEFAULT_HOST = "localhost"
@@ -11,9 +12,14 @@ _DEFAULT_PORT = 8566
 
 def _valid_port(value: str) -> int:
     """Validate that *value* is a valid TCP port number (1–65535)."""
-    port = int(value)
+    try:
+        port = int(value)
+    except ValueError:
+        raise argparse.ArgumentTypeError(f"invalid port value: {value!r} (must be an integer)")
     if port < 1 or port > 65535:
-        raise ValueError
+        raise argparse.ArgumentTypeError(
+            f"invalid port value: {value!r} (must be between 1 and 65535)"
+        )
     return port
 
 
@@ -33,8 +39,6 @@ def main() -> None:
             file=sys.stderr,
         )
         sys.exit(1)
-
-    import argparse
 
     parser = argparse.ArgumentParser(
         prog="terok-web",
