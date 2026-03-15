@@ -1,0 +1,16 @@
+# SPDX-FileCopyrightText: 2026 Jiri Vyskocil
+# SPDX-License-Identifier: Apache-2.0
+
+# Debian 12 (Bookworm) — podman 4.3.1, slirp4netns only
+FROM docker.io/library/debian:12
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    podman slirp4netns nftables uidmap fuse-overlayfs \
+    git curl ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
+# Debian 12 ships Python 3.11 — use uv to get 3.12+
+COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
+RUN uv python install 3.12
+
+WORKDIR /src

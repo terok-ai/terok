@@ -1,0 +1,13 @@
+# SPDX-FileCopyrightText: 2026 Jiri Vyskocil
+# SPDX-License-Identifier: Apache-2.0
+
+# Debian 13 (Trixie) — podman 5.4.x, pasta default
+FROM docker.io/library/debian:trixie
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    podman passt slirp4netns nftables uidmap fuse-overlayfs \
+    python3 python3-pip python3-venv \
+    git curl ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /src

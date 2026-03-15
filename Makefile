@@ -1,4 +1,4 @@
-.PHONY: all lint format test test-unit ruff-report bandit-report sonar-inputs test-integration test-integration-host test-integration-network test-integration-podman test-integration-map ci-map tach security docstrings complexity deadcode reuse check install install-dev docs docs-build clean spdx
+.PHONY: all lint format test test-unit ruff-report bandit-report sonar-inputs test-integration test-integration-host test-integration-network test-integration-podman test-integration-map test-matrix test-matrix-build ci-map tach security docstrings complexity deadcode reuse check install install-dev docs docs-build clean spdx
 
 REPORTS_DIR ?= reports
 COVERAGE_XML ?= $(REPORTS_DIR)/coverage.xml
@@ -69,6 +69,13 @@ test-integration-podman:
 # Generate integration test map (Markdown table grouped by directory)
 test-integration-map:
 	poetry run python docs/test_map.py
+
+# Multi-distro integration test matrix (Debian 12/13, Ubuntu 24.04, Fedora 43)
+test-matrix:
+	./tests/containers/run-matrix.sh
+
+test-matrix-build:
+	./tests/containers/run-matrix.sh --build-only
 
 # Generate CI workflow map (Markdown tables from .github/workflows/*.yml)
 ci-map:

@@ -312,8 +312,14 @@ make test-integration-network  # Network-dependent integration tests
 make test-integration-podman   # Podman-dependent integration tests
 make test-integration          # All integration tests
 make test-integration-map      # Generate docs/test_map.md from pytest collection
+make test-matrix               # Run the cross-distro integration matrix locally
+make test-matrix-build         # Build the matrix container images without running tests
 make ci-map                    # Generate docs/ci_map.md from workflow YAML
 ```
+
+`make test-matrix` requires a host that can run nested Podman containers
+(`--privileged` inside the outer container/VM). It is mainly for manual
+verification on capable developer machines or dedicated CI runners.
 
 **Check module boundaries** if you changed cross-module imports:
 
@@ -347,6 +353,8 @@ make sonar-inputs  # Generate coverage + Ruff + Bandit reports under reports/
 | `make test-integration-podman` | Run podman integration tests | When touching container-dependent flows |
 | `make test-integration` | Run all integration tests | Before opening a PR that changes integration flows |
 | `make test-integration-map` | Generate the integration test map page | After reorganizing integration tests |
+| `make test-matrix` | Run the multi-distro integration matrix locally | Before changing matrix/container compatibility |
+| `make test-matrix-build` | Build the multi-distro matrix images without running tests | When iterating on matrix containerfiles |
 | `make ci-map` | Generate the CI workflow map page | After changing GitHub workflows |
 | `make tach` | Check module boundary rules | After changing imports |
 | `make security` | Run the Bandit SAST scan | Before opening a PR that changes CI/security-sensitive code |
