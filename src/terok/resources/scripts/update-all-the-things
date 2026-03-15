@@ -40,6 +40,12 @@ echo -e "\n=== Update ALL the Things: pipx (mistral-vibe) ===\n" \
 echo -e "\n=== Update ALL the Things: pip (ast-grep-cli) ===\n" \
     && pip install --break-system-packages --upgrade ast-grep-cli
 
+echo -e "\n=== Update ALL the Things: Toad ===\n" \
+    && sudo -u dev uv tool upgrade batrachian-toad
+
+echo -e "\n=== Update ALL the Things: uv ===\n" \
+    && curl -LsSf https://astral.sh/uv/install.sh | env UV_INSTALL_DIR=/usr/local/bin sh
+
 echo -e "\n=== Update ALL the Things: yq ===\n" \
     && ARCH=$(dpkg --print-architecture) \
     && curl -fsSL -o /usr/local/bin/yq \

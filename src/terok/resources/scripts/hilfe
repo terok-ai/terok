@@ -24,6 +24,7 @@ _terok_show_banner() {
     printf '  \033[36mvibe\033[0m      - Mistral Vibe CLI\n'
     printf '  \033[36mblablador\033[0m - OpenCode with Helmholtz Blablador\n'
     printf '  \033[36mopencode\033[0m  - OpenCode CLI\n'
+    printf '  \033[36mtoad\033[0m      - Multi-agent TUI (ACP)\n'
 
     # Login hint (only on first login, not when running `hilfe`)
     if [[ -n "$login" ]]; then

@@ -35,6 +35,10 @@ RUN set -eux; \
 # Installed via pip to avoid /usr/bin/sg name conflict with coreutils sg(1).
 RUN pip install --break-system-packages ast-grep-cli
 
+# uv (Python package manager with built-in Python version management)
+# Used to install Toad with its own Python 3.14 without touching system Python.
+RUN curl -LsSf https://astral.sh/uv/install.sh | env UV_INSTALL_DIR=/usr/local/bin sh
+
 # Install mistral-vibe and mistralai SDK using pipx as root, ensuring PATH is set up
 RUN set -eux; \
     pipx install mistral-vibe; \
@@ -152,9 +156,14 @@ ARG AGENT_CACHE_BUST=0
 RUN mkdir -p "$NPM_CONFIG_PREFIX" && npm config set prefix "$NPM_CONFIG_PREFIX"
 RUN npm install -g @openai/codex
 RUN npm install -g @github/copilot
+RUN npm install -g @zed-industries/claude-code-acp
 RUN curl -fsSL https://claude.ai/install.sh | bash
 RUN curl -fsSL https://opencode.ai/install | bash
 RUN npm cache clean --force
+
+# Toad — universal multi-agent TUI via ACP (requires Python >=3.14)
+# uv downloads a standalone Python 3.14, leaving system Python untouched.
+RUN uv tool install batrachian-toad --python 3.14
 
 WORKDIR /workspace
 # No CMD: reuse init-ssh-and-repo.sh from base image
