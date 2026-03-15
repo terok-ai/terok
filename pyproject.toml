@@ -70,7 +70,7 @@ mkdocs-literate-nav = ">=0.6"
 mkdocs-section-index = ">=0.3"
 
 [tool.pytest.ini_options]
-testpaths = ["tests"]
+testpaths = ["tests/unit", "tests/integration"]
 python_files = ["test_*.py"]
 python_classes = ["Test*", "*Tests"]
 python_functions = ["test_*"]
@@ -79,7 +79,7 @@ markers = [
   "needs_podman: requires podman on PATH",
   "needs_root: requires root for nftables",
   "needs_host_features: real host/filesystem/process integration, no network or podman required",
-  "needs_network: requires outbound network connectivity",
+  "needs_internet: requires outbound network connectivity",
 ]
 
 [tool.poetry.scripts]

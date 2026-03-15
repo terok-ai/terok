@@ -12,7 +12,7 @@ This directory currently hosts two integration layers:
 Environment requirements are expressed via pytest markers:
 
 - ``needs_host_features``: real host/filesystem/process behavior only
-- ``needs_network``: outbound network connectivity required
+- ``needs_internet``: outbound network connectivity required
 - ``needs_podman``: podman must be available on the host
 - ``needs_root``: root-only nftables/shield checks
 """
@@ -22,13 +22,12 @@ from __future__ import annotations
 import json
 import os
 import shutil
-from collections.abc import Iterator
 from pathlib import Path
 
 import pytest
 
-from testfs import CONFIG_ROOT_NAME, HOME_DIR_NAME, STATE_ROOT_NAME, XDG_CONFIG_HOME_NAME
-from testnet import GATE_PORT, TEST_IP
+from tests.testfs import CONFIG_ROOT_NAME, HOME_DIR_NAME, STATE_ROOT_NAME, XDG_CONFIG_HOME_NAME
+from tests.testnet import GATE_PORT, TEST_IP
 
 from .helpers import TerokIntegrationEnv
 
@@ -50,15 +49,6 @@ def _has(binary: str) -> bool:
 git_missing = pytest.mark.skipif(not _has("git"), reason="git not installed")
 podman_missing = pytest.mark.skipif(not _has("podman"), reason="podman not installed")
 skip_if_no_root = pytest.mark.skipif(os.geteuid() != 0, reason="root required")
-
-
-# ── Autouse override for shield tests ─────────────────────
-
-
-@pytest.fixture(autouse=True)
-def _mock_shield_helpers() -> Iterator[None]:
-    """Override root conftest so real shield helpers execute."""
-    yield
 
 
 # ── Mock shield CommandRunner ─────────────────────────────

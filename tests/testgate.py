@@ -6,7 +6,7 @@
 from __future__ import annotations
 
 from terok.lib.security.gate_server import GateServerStatus
-from testnet import GATE_PORT
+from tests.testnet import GATE_PORT
 
 OUTDATED_UNITS_MESSAGE = (
     "Systemd units are outdated (installed v2, expected v3). "

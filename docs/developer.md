@@ -294,12 +294,14 @@ If linting fails, auto-fix with:
 make format    # Auto-fix lint issues and format code
 ```
 
-Tests are written using `unittest` and run with `pytest`.
+Tests are written with `pytest`. The suite is split into `tests/unit/` and
+`tests/integration/`, with shared test-only helpers under `tests/`.
 
 **Run tests before pushing** (or at least before opening a PR):
 
 ```bash
-make test      # Run the fast suite with coverage (excludes integration tests)
+make test       # Alias for make test-unit
+make test-unit  # Run the fast suite with coverage (excludes integration tests)
 ```
 
 Integration tests live under `tests/integration/` and have dedicated targets:
@@ -309,6 +311,7 @@ make test-integration-host     # Filesystem/process workflows, no podman/network
 make test-integration-network  # Network-dependent integration tests
 make test-integration-podman   # Podman-dependent integration tests
 make test-integration          # All integration tests
+make test-integration-map      # Generate docs/test_map.md from pytest collection
 ```
 
 **Check module boundaries** if you changed cross-module imports:
@@ -329,11 +332,13 @@ make check     # Runs lint + test + tach + docstrings + deadcode + reuse
 |---------|-------------|-------------|
 | `make lint` | Check linting and formatting | Before every commit |
 | `make format` | Auto-fix lint issues and format | When lint fails |
-| `make test` | Run the fast test suite with coverage (excludes integration) | Before pushing |
+| `make test` | Alias for `make test-unit` | Before pushing |
+| `make test-unit` | Run the fast suite with coverage (excludes integration) | Before pushing |
 | `make test-integration-host` | Run host-only integration tests | During integration test development |
 | `make test-integration-network` | Run network integration tests | When touching network-dependent flows |
 | `make test-integration-podman` | Run podman integration tests | When touching container-dependent flows |
 | `make test-integration` | Run all integration tests | Before opening a PR that changes integration flows |
+| `make test-integration-map` | Generate the integration test map page | After reorganizing integration tests |
 | `make tach` | Check module boundary rules | After changing imports |
 | `make docstrings` | Check docstring coverage (95% min) | After adding public APIs |
 | `make deadcode` | Detect unused code | Before opening a PR |

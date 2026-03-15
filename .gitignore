@@ -7,6 +7,10 @@ __pycache__/
 /src/codexctl.egg-info/
 /build/
 /site/
+/dist/
+reports/
+.complexipy_cache/
+docs/test_map.md
 
 /.idea
 .coverage

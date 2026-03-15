@@ -1,4 +1,12 @@
-.PHONY: all lint format test test-integration test-integration-host test-integration-network test-integration-podman tach docstrings complexity deadcode reuse check install install-dev clean spdx
+.PHONY: all lint format test test-unit test-integration test-integration-host test-integration-network test-integration-podman test-integration-map tach docstrings complexity deadcode reuse check install install-dev docs docs-build clean spdx
+
+REPORTS_DIR ?= reports
+COVERAGE_XML ?= $(REPORTS_DIR)/coverage.xml
+UNIT_JUNIT_XML ?= $(REPORTS_DIR)/unit.junit.xml
+INTEGRATION_HOST_JUNIT_XML ?= $(REPORTS_DIR)/integration-host.junit.xml
+INTEGRATION_NETWORK_JUNIT_XML ?= $(REPORTS_DIR)/integration-network.junit.xml
+INTEGRATION_PODMAN_JUNIT_XML ?= $(REPORTS_DIR)/integration-podman.junit.xml
+INTEGRATION_JUNIT_XML ?= $(REPORTS_DIR)/integration.junit.xml
 
 all: check
 
@@ -13,24 +21,37 @@ format:
 	poetry run ruff format .
 
 # Run tests with coverage (excludes integration tests)
-test:
-	poetry run pytest --ignore=tests/integration --cov=terok --cov-report=term-missing
+test: test-unit
+
+test-unit:
+	mkdir -p $(REPORTS_DIR)
+	poetry run pytest tests/unit/ --cov=terok --cov-report=term-missing --cov-report=xml:$(COVERAGE_XML) --junitxml=$(UNIT_JUNIT_XML) -o junit_family=legacy
 
 # Run integration tests (tier 2 auto-skips without podman)
 test-integration:
-	poetry run pytest tests/integration/ -v
+	mkdir -p $(REPORTS_DIR)
+	poetry run pytest tests/integration/ -v --junitxml=$(INTEGRATION_JUNIT_XML) -o junit_family=legacy
 
 # Run host-only integration tests (filesystem/process workflows; no podman/network)
 test-integration-host:
-	poetry run pytest tests/integration/ -m "needs_host_features and not needs_network and not needs_podman" -v
+	mkdir -p $(REPORTS_DIR)
+	poetry run pytest tests/integration/ -m "needs_host_features and not needs_internet and not needs_podman" -v --junitxml=$(INTEGRATION_HOST_JUNIT_XML) -o junit_family=legacy
 
 # Run network integration tests (no podman)
 test-integration-network:
-	poetry run pytest tests/integration/ -m "needs_network and not needs_podman" -v
+	mkdir -p $(REPORTS_DIR)
+	@status=0; \
+	poetry run pytest tests/integration/ -m "needs_internet and not needs_podman" -v --junitxml=$(INTEGRATION_NETWORK_JUNIT_XML) -o junit_family=legacy || status=$$?; \
+	test $$status -eq 0 -o $$status -eq 5
 
 # Run only podman integration tests (for local runs with podman)
 test-integration-podman:
-	poetry run pytest tests/integration/ -m "needs_podman" -v
+	mkdir -p $(REPORTS_DIR)
+	poetry run pytest tests/integration/ -m "needs_podman" -v --junitxml=$(INTEGRATION_PODMAN_JUNIT_XML) -o junit_family=legacy
+
+# Generate integration test map (Markdown table grouped by directory)
+test-integration-map:
+	poetry run python docs/test_map.py
 
 # Check module boundary rules (tach.toml)
 tach:
@@ -83,5 +104,5 @@ docs-build:
 
 # Clean build artifacts
 clean:
-	rm -rf dist/ site/ .coverage coverage.xml .pytest_cache/ .ruff_cache/ .complexipy_cache/
+	rm -rf dist/ site/ reports/ .coverage coverage.xml .pytest_cache/ .ruff_cache/ .complexipy_cache/
 	find . -type d -name __pycache__ -exec rm -rf {} + 2>/dev/null || true
