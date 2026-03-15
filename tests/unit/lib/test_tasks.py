@@ -14,7 +14,7 @@ import yaml
 
 from terok.lib.containers.environment import apply_web_env_overrides, build_task_env_and_volumes
 from terok.lib.containers.task_logs import LogViewOptions, task_logs
-from terok.lib.containers.task_runners import task_run_cli, task_run_web
+from terok.lib.containers.task_runners import task_run_cli, task_run_toad, task_run_web
 from terok.lib.containers.tasks import (
     get_workspace_git_diff,
     task_delete,
@@ -668,6 +668,49 @@ class TestTask:
 
             assert sorted(p.name for p in workspace_dir.iterdir()) == [".new-task-marker"]
             assert (ctx.envs_dir / "_claude-config" / "settings.json").is_file()
+
+    def test_task_run_toad_passes_public_url(self) -> None:
+        """task_run_toad must pass --public-url with the host port to toad serve."""
+        project_id = "proj_toad_url"
+        with project_env(
+            f"project:\n  id: {project_id}\n",
+            project_id=project_id,
+            with_config_file=True,
+            clear_env=True,
+        ):
+            task_new(project_id)
+            with (
+                mock_git_config(),
+                unittest.mock.patch(
+                    "terok.lib.containers.task_runners.stream_initial_logs",
+                    return_value=True,
+                ),
+                unittest.mock.patch(
+                    "terok.lib.containers.task_runners.get_container_state",
+                    return_value=None,
+                ),
+                unittest.mock.patch(
+                    "terok.lib.containers.task_runners.is_container_running",
+                    return_value=True,
+                ),
+                unittest.mock.patch(
+                    "terok.lib.containers.task_runners.assign_web_port",
+                    return_value=7861,
+                ),
+                unittest.mock.patch("terok.lib.containers.task_runners.subprocess.run") as run_mock,
+            ):
+                run_mock.return_value = subprocess.CompletedProcess([], 0)
+                task_run_toad(project_id, "1")
+
+            cmd = run_mock.call_args[0][0]
+            # The last element is the bash -lc command string
+            bash_cmd = cmd[-1]
+            assert "--public-url http://127.0.0.1:7861" in bash_cmd
+            assert "-p 8080" in bash_cmd
+
+            # Port forwarding maps host port to container toad port
+            port_idx = cmd.index("-p")
+            assert cmd[port_idx + 1] == "127.0.0.1:7861:8080"
 
     def test_task_run_cli_already_running(self) -> None:
         """task_run_cli prints message and exits when container is already running."""

@@ -667,7 +667,10 @@ def task_run_toad(
 
     task_dir = project.tasks_root / str(task_id)
     toad_cmd = (
-        f"init-ssh-and-repo.sh && toad --serve -H 0.0.0.0 -p {_TOAD_CONTAINER_PORT} /workspace"
+        f"init-ssh-and-repo.sh"
+        f" && toad --serve -H 0.0.0.0 -p {_TOAD_CONTAINER_PORT}"
+        f" --public-url http://{_LOCALHOST}:{port}"
+        f" /workspace"
     )
     _run_container(
         cname=cname,
