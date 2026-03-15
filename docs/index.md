@@ -28,13 +28,8 @@ A tool for managing containerized AI coding agent projects using Podman. Provide
 ### Installation
 
 ```bash
-# Clone and install
-git clone git@github.com:terok-ai/terok.git
-cd terok
-pip install .
-
-# With TUI support
-pip install '.[tui]'
+# Download the latest .whl from the GitHub Releases page, then:
+pipx install ./terok-*.whl
 ```
 
 ### Basic Workflow
