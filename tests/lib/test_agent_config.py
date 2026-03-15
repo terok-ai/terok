@@ -7,6 +7,7 @@ import json
 import os
 import tempfile
 import unittest.mock
+from dataclasses import dataclass
 from pathlib import Path
 
 import pytest
@@ -37,36 +38,177 @@ def _env(
     return env
 
 
+@dataclass(frozen=True)
+class AgentConfigLayout:
+    """Isolated filesystem layout for agent-config resolution tests."""
+
+    base: Path
+    config_root: Path
+    state_root: Path
+    xdg_config_home: Path
+
+
+def make_layout(base: Path) -> AgentConfigLayout:
+    """Build the standard isolated config/state/XDG layout for tests."""
+    return AgentConfigLayout(
+        base=base,
+        config_root=base / "config",
+        state_root=base / "s",
+        xdg_config_home=base / "xdg",
+    )
+
+
+def write_test_project(layout: AgentConfigLayout, project_id: str, body: str | None = None) -> None:
+    """Write a test project config, defaulting to a minimal project definition."""
+    write_project(
+        layout.config_root,
+        project_id,
+        body or f"project:\n  id: {project_id}\n",
+    )
+
+
+def project_presets_dir(layout: AgentConfigLayout, project_id: str) -> Path:
+    """Return the per-project presets directory."""
+    presets_dir = layout.config_root / project_id / "presets"
+    presets_dir.mkdir(parents=True, exist_ok=True)
+    return presets_dir
+
+
+def write_project_preset(
+    layout: AgentConfigLayout,
+    project_id: str,
+    name: str,
+    content: str,
+    *,
+    suffix: str = ".yml",
+) -> Path:
+    """Create a project-scoped preset file."""
+    preset_path = project_presets_dir(layout, project_id) / f"{name}{suffix}"
+    preset_path.write_text(content, encoding="utf-8")
+    return preset_path
+
+
+def global_presets_dir(layout: AgentConfigLayout) -> Path:
+    """Return the global XDG presets directory."""
+    presets_dir = layout.xdg_config_home / "terok" / "presets"
+    presets_dir.mkdir(parents=True, exist_ok=True)
+    return presets_dir
+
+
+def write_global_preset(
+    layout: AgentConfigLayout,
+    name: str,
+    content: str,
+    *,
+    suffix: str = ".yml",
+) -> Path:
+    """Create a global XDG preset file."""
+    preset_path = global_presets_dir(layout) / f"{name}{suffix}"
+    preset_path.write_text(content, encoding="utf-8")
+    return preset_path
+
+
+def _patched_env(
+    layout: AgentConfigLayout,
+    *,
+    global_config: Path | None = None,
+    xdg_config_home: Path | None = None,
+) -> unittest.mock._patch_dict:
+    """Patch TEROK_* and XDG env vars for the given layout."""
+    return unittest.mock.patch.dict(
+        os.environ,
+        _env(
+            layout.config_root,
+            layout.state_root,
+            global_config,
+            xdg_config_home or layout.xdg_config_home,
+        ),
+    )
+
+
+def resolve_test_agent_config(
+    layout: AgentConfigLayout,
+    project_id: str,
+    *,
+    global_config: Path | None = None,
+    preset: str | None = None,
+    cli_overrides: dict[str, object] | None = None,
+) -> dict[str, object]:
+    """Resolve agent config inside the isolated test environment."""
+    with _patched_env(layout, global_config=global_config):
+        with mock_git_config():
+            return resolve_agent_config(project_id, preset=preset, cli_overrides=cli_overrides)
+
+
+def list_test_presets(
+    layout: AgentConfigLayout,
+    project_id: str,
+    *,
+    xdg_config_home: Path | None = None,
+) -> list[object]:
+    """List presets inside the isolated test environment."""
+    with _patched_env(layout, xdg_config_home=xdg_config_home):
+        with mock_git_config():
+            return list_presets(project_id)
+
+
+def load_test_preset(
+    layout: AgentConfigLayout,
+    project_id: str,
+    preset_name: str,
+    *,
+    xdg_config_home: Path | None = None,
+) -> tuple[dict[str, object], Path]:
+    """Load a preset inside the isolated test environment."""
+    with _patched_env(layout, xdg_config_home=xdg_config_home):
+        with mock_git_config():
+            return load_preset(project_id, preset_name)
+
+
+def load_test_project(layout: AgentConfigLayout, project_id: str) -> object:
+    """Load a project inside the isolated test environment."""
+    with _patched_env(layout):
+        with mock_git_config():
+            return load_project(project_id)
+
+
+def build_test_agent_stack(
+    layout: AgentConfigLayout,
+    project_id: str,
+    *,
+    preset: str,
+    xdg_config_home: Path | None = None,
+) -> object:
+    """Build an agent config stack inside the isolated test environment."""
+    with _patched_env(layout, xdg_config_home=xdg_config_home):
+        with mock_git_config():
+            return build_agent_config_stack(project_id, preset=preset)
+
+
 class TestResolveAgentConfig:
     """Tests for resolve_agent_config()."""
 
     def test_empty_config_all_levels(self) -> None:
         """Returns {} when no agent config at any level."""
         with tempfile.TemporaryDirectory() as td:
-            base = Path(td)
-            config_root = base / "config"
-            write_project(config_root, "empty", "project:\n  id: empty\n")
+            layout = make_layout(Path(td))
+            write_test_project(layout, "empty")
 
-            with unittest.mock.patch.dict(os.environ, _env(config_root, base / "s")):
-                with mock_git_config():
-                    result = resolve_agent_config("empty")
+            result = resolve_test_agent_config(layout, "empty")
             assert result == {}
 
     def test_project_only(self) -> None:
         """Project-level agent config is returned when no other levels."""
         with tempfile.TemporaryDirectory() as td:
-            base = Path(td)
-            config_root = base / "config"
-            write_project(
-                config_root,
+            layout = make_layout(Path(td))
+            write_test_project(
+                layout,
                 "proj",
                 "project:\n  id: proj\nagent:\n  model: sonnet\n  subagents:\n"
                 "    - name: a1\n      default: true\n",
             )
 
-            with unittest.mock.patch.dict(os.environ, _env(config_root, base / "s")):
-                with mock_git_config():
-                    result = resolve_agent_config("proj")
+            result = resolve_test_agent_config(layout, "proj")
             assert result["model"] == "sonnet"
             assert len(result["subagents"]) == 1
             assert result["subagents"][0]["name"] == "a1"
@@ -74,121 +216,99 @@ class TestResolveAgentConfig:
     def test_global_provides_defaults(self) -> None:
         """Global agent config provides defaults when project has none."""
         with tempfile.TemporaryDirectory() as td:
-            base = Path(td)
-            config_root = base / "config"
-            write_project(config_root, "proj", "project:\n  id: proj\n")
+            layout = make_layout(Path(td))
+            write_test_project(layout, "proj")
 
-            global_cfg = base / "global.yml"
+            global_cfg = layout.base / "global.yml"
             global_cfg.write_text("agent:\n  model: haiku\n  max_turns: 5\n", encoding="utf-8")
 
-            with unittest.mock.patch.dict(os.environ, _env(config_root, base / "s", global_cfg)):
-                with mock_git_config():
-                    result = resolve_agent_config("proj")
+            result = resolve_test_agent_config(layout, "proj", global_config=global_cfg)
             assert result["model"] == "haiku"
             assert result["max_turns"] == 5
 
     def test_project_overrides_global(self) -> None:
         """Project-level config overrides global defaults."""
         with tempfile.TemporaryDirectory() as td:
-            base = Path(td)
-            config_root = base / "config"
-            write_project(
-                config_root,
+            layout = make_layout(Path(td))
+            write_test_project(
+                layout,
                 "proj",
                 "project:\n  id: proj\nagent:\n  model: opus\n",
             )
 
-            global_cfg = base / "global.yml"
+            global_cfg = layout.base / "global.yml"
             global_cfg.write_text("agent:\n  model: haiku\n  max_turns: 5\n", encoding="utf-8")
 
-            with unittest.mock.patch.dict(os.environ, _env(config_root, base / "s", global_cfg)):
-                with mock_git_config():
-                    result = resolve_agent_config("proj")
+            result = resolve_test_agent_config(layout, "proj", global_config=global_cfg)
             assert result["model"] == "opus"
-            # max_turns inherited from global
             assert result["max_turns"] == 5
 
     def test_preset_override(self) -> None:
         """Preset overrides project config."""
         with tempfile.TemporaryDirectory() as td:
-            base = Path(td)
-            config_root = base / "config"
-            write_project(
-                config_root,
+            layout = make_layout(Path(td))
+            write_test_project(
+                layout,
                 "proj",
                 "project:\n  id: proj\nagent:\n  model: sonnet\n",
             )
 
-            # Create preset
-            presets_dir = config_root / "proj" / "presets"
-            presets_dir.mkdir(parents=True, exist_ok=True)
-            (presets_dir / "fast.yml").write_text("model: haiku\nmax_turns: 3\n", encoding="utf-8")
+            write_project_preset(layout, "proj", "fast", "model: haiku\nmax_turns: 3\n")
 
-            with unittest.mock.patch.dict(os.environ, _env(config_root, base / "s")):
-                with mock_git_config():
-                    result = resolve_agent_config("proj", preset="fast")
+            result = resolve_test_agent_config(layout, "proj", preset="fast")
             assert result["model"] == "haiku"
             assert result["max_turns"] == 3
 
     def test_cli_overrides_all(self) -> None:
         """CLI overrides take highest priority."""
         with tempfile.TemporaryDirectory() as td:
-            base = Path(td)
-            config_root = base / "config"
-            write_project(
-                config_root,
+            layout = make_layout(Path(td))
+            write_test_project(
+                layout,
                 "proj",
                 "project:\n  id: proj\nagent:\n  model: sonnet\n",
             )
 
-            with unittest.mock.patch.dict(os.environ, _env(config_root, base / "s")):
-                with mock_git_config():
-                    result = resolve_agent_config(
-                        "proj", cli_overrides={"model": "opus", "max_turns": 99}
-                    )
+            result = resolve_test_agent_config(
+                layout, "proj", cli_overrides={"model": "opus", "max_turns": 99}
+            )
             assert result["model"] == "opus"
             assert result["max_turns"] == 99
 
     def test_inherit_extends_subagents(self) -> None:
         """Preset with _inherit extends project subagents list."""
         with tempfile.TemporaryDirectory() as td:
-            base = Path(td)
-            config_root = base / "config"
-            write_project(
-                config_root,
+            layout = make_layout(Path(td))
+            write_test_project(
+                layout,
                 "proj",
                 "project:\n  id: proj\nagent:\n  subagents:\n"
                 "    - name: base-agent\n      default: true\n",
             )
 
-            presets_dir = config_root / "proj" / "presets"
-            presets_dir.mkdir(parents=True, exist_ok=True)
-            (presets_dir / "extend.yml").write_text(
+            write_project_preset(
+                layout,
+                "proj",
+                "extend",
                 "subagents:\n  - _inherit\n  - name: extra-agent\n    default: true\n",
-                encoding="utf-8",
             )
 
-            with unittest.mock.patch.dict(os.environ, _env(config_root, base / "s")):
-                with mock_git_config():
-                    result = resolve_agent_config("proj", preset="extend")
+            result = resolve_test_agent_config(layout, "proj", preset="extend")
             names = [s["name"] for s in result["subagents"] if isinstance(s, dict)]
             assert names == ["base-agent", "extra-agent"]
 
     def test_project_config_without_preset(self) -> None:
         """Project agent config resolves correctly without a preset."""
         with tempfile.TemporaryDirectory() as td:
-            base = Path(td)
-            config_root = base / "config"
-            write_project(
-                config_root,
+            layout = make_layout(Path(td))
+            write_test_project(
+                layout,
                 "proj2",
                 "project:\n  id: proj2\nagent:\n  model: sonnet\n"
                 "  subagents:\n    - name: sa1\n      default: true\n",
             )
 
-            with unittest.mock.patch.dict(os.environ, _env(config_root, base / "s")):
-                with mock_git_config():
-                    result = resolve_agent_config("proj2")
+            result = resolve_test_agent_config(layout, "proj2")
             assert result["model"] == "sonnet"
             assert result["subagents"][0]["name"] == "sa1"
 
@@ -199,94 +319,77 @@ class TestPreset:
     def test_list_presets_no_project_or_global(self) -> None:
         """No project/global presets — only bundled presets are returned."""
         with tempfile.TemporaryDirectory() as td:
-            base = Path(td)
-            config_root = base / "config"
-            write_project(config_root, "proj", "project:\n  id: proj\n")
+            layout = make_layout(Path(td))
+            write_test_project(layout, "proj")
 
-            with unittest.mock.patch.dict(os.environ, _env(config_root, base / "s")):
-                with mock_git_config():
-                    result = list_presets("proj")
+            result = list_test_presets(layout, "proj")
             non_bundled = [info for info in result if info.source != "bundled"]
             assert non_bundled == []
-            # Bundled presets are always present
             bundled = [info for info in result if info.source == "bundled"]
             assert len(bundled) > 0
 
     def test_list_presets_found(self) -> None:
         with tempfile.TemporaryDirectory() as td:
-            base = Path(td)
-            config_root = base / "config"
-            write_project(config_root, "proj", "project:\n  id: proj\n")
+            layout = make_layout(Path(td))
+            write_test_project(layout, "proj")
 
-            presets_dir = config_root / "proj" / "presets"
-            presets_dir.mkdir(parents=True, exist_ok=True)
-            (presets_dir / "alpha.yml").write_text("model: haiku\n", encoding="utf-8")
-            (presets_dir / "beta.yaml").write_text("model: sonnet\n", encoding="utf-8")
+            presets_dir = project_presets_dir(layout, "proj")
+            write_project_preset(layout, "proj", "alpha", "model: haiku\n")
+            write_project_preset(layout, "proj", "beta", "model: sonnet\n", suffix=".yaml")
             (presets_dir / "ignore.txt").write_text("not a preset\n", encoding="utf-8")
 
-            with unittest.mock.patch.dict(os.environ, _env(config_root, base / "s")):
-                with mock_git_config():
-                    result = list_presets("proj")
+            result = list_test_presets(layout, "proj")
             project_presets = [info for info in result if info.source == "project"]
             assert [info.name for info in project_presets] == ["alpha", "beta"]
 
     def test_load_preset_not_found(self) -> None:
         with tempfile.TemporaryDirectory() as td:
-            base = Path(td)
-            config_root = base / "config"
-            write_project(config_root, "proj", "project:\n  id: proj\n")
+            layout = make_layout(Path(td))
+            write_test_project(layout, "proj")
 
-            with unittest.mock.patch.dict(os.environ, _env(config_root, base / "s")):
-                with mock_git_config():
-                    with pytest.raises(SystemExit):
-                        load_preset("proj", "nonexistent")
+            with pytest.raises(SystemExit):
+                load_test_preset(layout, "proj", "nonexistent")
 
     def test_load_preset_found(self) -> None:
         with tempfile.TemporaryDirectory() as td:
-            base = Path(td)
-            config_root = base / "config"
-            write_project(config_root, "proj", "project:\n  id: proj\n")
+            layout = make_layout(Path(td))
+            write_test_project(layout, "proj")
 
-            presets_dir = config_root / "proj" / "presets"
-            presets_dir.mkdir(parents=True, exist_ok=True)
-            (presets_dir / "reviewer.yml").write_text(
-                "model: sonnet\nmax_turns: 10\n", encoding="utf-8"
+            preset_path = write_project_preset(
+                layout,
+                "proj",
+                "reviewer",
+                "model: sonnet\nmax_turns: 10\n",
             )
-
-            with unittest.mock.patch.dict(os.environ, _env(config_root, base / "s")):
-                with mock_git_config():
-                    data, path = load_preset("proj", "reviewer")
+            data, path = load_test_preset(layout, "proj", "reviewer")
             assert data["model"] == "sonnet"
             assert data["max_turns"] == 10
-            assert path == presets_dir / "reviewer.yml"
+            assert path == preset_path
 
     def test_load_preset_yaml_extension(self) -> None:
         """Preset with .yaml extension is also found."""
         with tempfile.TemporaryDirectory() as td:
-            base = Path(td)
-            config_root = base / "config"
-            write_project(config_root, "proj", "project:\n  id: proj\n")
+            layout = make_layout(Path(td))
+            write_test_project(layout, "proj")
 
-            presets_dir = config_root / "proj" / "presets"
-            presets_dir.mkdir(parents=True, exist_ok=True)
-            (presets_dir / "alt.yaml").write_text("model: opus\n", encoding="utf-8")
+            preset_path = write_project_preset(
+                layout,
+                "proj",
+                "alt",
+                "model: opus\n",
+                suffix=".yaml",
+            )
 
-            with unittest.mock.patch.dict(os.environ, _env(config_root, base / "s")):
-                with mock_git_config():
-                    data, path = load_preset("proj", "alt")
+            data, path = load_test_preset(layout, "proj", "alt")
             assert data["model"] == "opus"
-            assert path == presets_dir / "alt.yaml"
+            assert path == preset_path
 
     def test_presets_dir_property(self) -> None:
         """Project.presets_dir points to presets/ under project root."""
         with tempfile.TemporaryDirectory() as td:
-            base = Path(td)
-            config_root = base / "config"
-            write_project(config_root, "proj", "project:\n  id: proj\n")
-
-            with unittest.mock.patch.dict(os.environ, _env(config_root, base / "s")):
-                with mock_git_config():
-                    p = load_project("proj")
+            layout = make_layout(Path(td))
+            write_test_project(layout, "proj")
+            p = load_test_project(layout, "proj")
             assert p.presets_dir == p.root / "presets"
 
 
@@ -296,21 +399,18 @@ class TestPresetFileRef:
     def test_preset_resolves_relative_subagent_file(self) -> None:
         """Subagent file: paths in presets are resolved relative to presets dir."""
         with tempfile.TemporaryDirectory() as td:
-            base = Path(td)
-            config_root = base / "config"
-            write_project(config_root, "proj", "project:\n  id: proj\n")
+            layout = make_layout(Path(td))
+            write_test_project(layout, "proj")
 
-            presets_dir = config_root / "proj" / "presets"
-            presets_dir.mkdir(parents=True, exist_ok=True)
-            (presets_dir / "custom.yml").write_text(
+            presets_dir = project_presets_dir(layout, "proj")
+            write_project_preset(
+                layout,
+                "proj",
+                "custom",
                 "subagents:\n  - name: from-file\n    file: ./agents/reviewer.md\n",
-                encoding="utf-8",
             )
 
-            with unittest.mock.patch.dict(os.environ, _env(config_root, base / "s")):
-                with mock_git_config():
-                    data, _path = load_preset("proj", "custom")
-            # File path should be resolved to absolute
+            data, _path = load_test_preset(layout, "proj", "custom")
             resolved = data["subagents"][0]["file"]
             expected = str((presets_dir / "agents" / "reviewer.md").resolve())
             assert resolved == expected
@@ -318,69 +418,38 @@ class TestPresetFileRef:
     def test_global_preset_fallback(self) -> None:
         """load_preset finds a preset in the global presets dir when not in project."""
         with tempfile.TemporaryDirectory() as td:
-            base = Path(td)
-            config_root = base / "config"
-            write_project(config_root, "proj", "project:\n  id: proj\n")
-
-            # Create global preset via XDG_CONFIG_HOME
-            xdg = base / "xdg"
-            global_presets = xdg / "terok" / "presets"
-            global_presets.mkdir(parents=True, exist_ok=True)
-            (global_presets / "shared.yml").write_text(
-                "model: haiku\nmax_turns: 2\n", encoding="utf-8"
-            )
-
-            env = _env(config_root, base / "s", xdg_config_home=xdg)
-            with unittest.mock.patch.dict(os.environ, env):
-                with mock_git_config():
-                    data, path = load_preset("proj", "shared")
+            layout = make_layout(Path(td))
+            write_test_project(layout, "proj")
+            preset_path = write_global_preset(layout, "shared", "model: haiku\nmax_turns: 2\n")
+            data, path = load_test_preset(layout, "proj", "shared")
             assert data["model"] == "haiku"
-            assert path == global_presets / "shared.yml"
+            assert path == preset_path
 
     def test_project_preset_shadows_global(self) -> None:
         """Project preset shadows a global preset with the same name."""
         with tempfile.TemporaryDirectory() as td:
-            base = Path(td)
-            config_root = base / "config"
-            write_project(config_root, "proj", "project:\n  id: proj\n")
-
-            # Create global preset
-            xdg = base / "xdg"
-            global_presets = xdg / "terok" / "presets"
-            global_presets.mkdir(parents=True, exist_ok=True)
-            (global_presets / "fast.yml").write_text("model: haiku\n", encoding="utf-8")
-
-            # Create project preset with same name
-            proj_presets = config_root / "proj" / "presets"
-            proj_presets.mkdir(parents=True, exist_ok=True)
-            (proj_presets / "fast.yml").write_text("model: opus\n", encoding="utf-8")
-
-            env = _env(config_root, base / "s", xdg_config_home=xdg)
-            with unittest.mock.patch.dict(os.environ, env):
-                with mock_git_config():
-                    data, path = load_preset("proj", "fast")
+            layout = make_layout(Path(td))
+            write_test_project(layout, "proj")
+            write_global_preset(layout, "fast", "model: haiku\n")
+            preset_path = write_project_preset(layout, "proj", "fast", "model: opus\n")
+            data, path = load_test_preset(layout, "proj", "fast")
             assert data["model"] == "opus"
-            assert path == proj_presets / "fast.yml"
+            assert path == preset_path
 
     def test_global_preset_file_resolution(self) -> None:
         """Subagent file: paths in global presets resolve relative to global presets dir."""
         with tempfile.TemporaryDirectory() as td:
-            base = Path(td)
-            config_root = base / "config"
-            write_project(config_root, "proj", "project:\n  id: proj\n")
+            layout = make_layout(Path(td))
+            write_test_project(layout, "proj")
 
-            xdg = base / "xdg"
-            global_presets = xdg / "terok" / "presets"
-            global_presets.mkdir(parents=True, exist_ok=True)
-            (global_presets / "with-file.yml").write_text(
+            global_presets = global_presets_dir(layout)
+            write_global_preset(
+                layout,
+                "with-file",
                 "subagents:\n  - name: sa\n    file: ./agents/custom.md\n",
-                encoding="utf-8",
             )
 
-            env = _env(config_root, base / "s", xdg_config_home=xdg)
-            with unittest.mock.patch.dict(os.environ, env):
-                with mock_git_config():
-                    data, _path = load_preset("proj", "with-file")
+            data, _path = load_test_preset(layout, "proj", "with-file")
             resolved = data["subagents"][0]["file"]
             expected = str((global_presets / "agents" / "custom.md").resolve())
             assert resolved == expected
@@ -392,48 +461,22 @@ class TestGlobalPresetList:
     def test_list_presets_includes_global(self) -> None:
         """list_presets returns global and project presets with source labels."""
         with tempfile.TemporaryDirectory() as td:
-            base = Path(td)
-            config_root = base / "config"
-            write_project(config_root, "proj", "project:\n  id: proj\n")
-
-            # Global preset
-            xdg = base / "xdg"
-            global_presets = xdg / "terok" / "presets"
-            global_presets.mkdir(parents=True, exist_ok=True)
-            (global_presets / "shared.yml").write_text("model: haiku\n", encoding="utf-8")
-
-            # Project preset
-            proj_presets = config_root / "proj" / "presets"
-            proj_presets.mkdir(parents=True, exist_ok=True)
-            (proj_presets / "local.yml").write_text("model: opus\n", encoding="utf-8")
-
-            env = _env(config_root, base / "s", xdg_config_home=xdg)
-            with unittest.mock.patch.dict(os.environ, env):
-                with mock_git_config():
-                    result = list_presets("proj")
+            layout = make_layout(Path(td))
+            write_test_project(layout, "proj")
+            write_global_preset(layout, "shared", "model: haiku\n")
+            write_project_preset(layout, "proj", "local", "model: opus\n")
+            result = list_test_presets(layout, "proj")
             non_bundled = {info.name: info.source for info in result if info.source != "bundled"}
             assert non_bundled == {"local": "project", "shared": "global"}
 
     def test_list_presets_project_shadows_global(self) -> None:
         """Project preset with same name replaces global in listing."""
         with tempfile.TemporaryDirectory() as td:
-            base = Path(td)
-            config_root = base / "config"
-            write_project(config_root, "proj", "project:\n  id: proj\n")
-
-            xdg = base / "xdg"
-            global_presets = xdg / "terok" / "presets"
-            global_presets.mkdir(parents=True, exist_ok=True)
-            (global_presets / "fast.yml").write_text("model: haiku\n", encoding="utf-8")
-
-            proj_presets = config_root / "proj" / "presets"
-            proj_presets.mkdir(parents=True, exist_ok=True)
-            (proj_presets / "fast.yml").write_text("model: opus\n", encoding="utf-8")
-
-            env = _env(config_root, base / "s", xdg_config_home=xdg)
-            with unittest.mock.patch.dict(os.environ, env):
-                with mock_git_config():
-                    result = list_presets("proj")
+            layout = make_layout(Path(td))
+            write_test_project(layout, "proj")
+            write_global_preset(layout, "fast", "model: haiku\n")
+            write_project_preset(layout, "proj", "fast", "model: opus\n")
+            result = list_test_presets(layout, "proj")
             non_bundled = [info for info in result if info.source != "bundled"]
             assert len(non_bundled) == 1
             assert non_bundled[0].name == "fast"
@@ -446,36 +489,20 @@ class TestGlobalPresetProvenance:
     def test_global_preset_scope_label(self) -> None:
         """Config stack labels global presets as 'preset (global)'."""
         with tempfile.TemporaryDirectory() as td:
-            base = Path(td)
-            config_root = base / "config"
-            write_project(config_root, "proj", "project:\n  id: proj\n")
-
-            xdg = base / "xdg"
-            global_presets = xdg / "terok" / "presets"
-            global_presets.mkdir(parents=True, exist_ok=True)
-            (global_presets / "shared.yml").write_text("model: haiku\n", encoding="utf-8")
-
-            env = _env(config_root, base / "s", xdg_config_home=xdg)
-            with unittest.mock.patch.dict(os.environ, env):
-                with mock_git_config():
-                    stack = build_agent_config_stack("proj", preset="shared")
+            layout = make_layout(Path(td))
+            write_test_project(layout, "proj")
+            write_global_preset(layout, "shared", "model: haiku\n")
+            stack = build_test_agent_stack(layout, "proj", preset="shared")
             levels = [s.level for s in stack.scopes]
             assert "preset (global)" in levels
 
     def test_project_preset_scope_label(self) -> None:
         """Config stack labels project presets as 'preset (project)'."""
         with tempfile.TemporaryDirectory() as td:
-            base = Path(td)
-            config_root = base / "config"
-            write_project(config_root, "proj", "project:\n  id: proj\n")
-
-            proj_presets = config_root / "proj" / "presets"
-            proj_presets.mkdir(parents=True, exist_ok=True)
-            (proj_presets / "fast.yml").write_text("model: haiku\n", encoding="utf-8")
-
-            with unittest.mock.patch.dict(os.environ, _env(config_root, base / "s")):
-                with mock_git_config():
-                    stack = build_agent_config_stack("proj", preset="fast")
+            layout = make_layout(Path(td))
+            write_test_project(layout, "proj")
+            write_project_preset(layout, "proj", "fast", "model: haiku\n")
+            stack = build_test_agent_stack(layout, "proj", preset="fast")
             levels = [s.level for s in stack.scopes]
             assert "preset (project)" in levels
 
@@ -502,13 +529,9 @@ class TestBundledPreset:
     def test_bundled_presets_discoverable(self) -> None:
         """At least one bundled preset appears in list_presets."""
         with tempfile.TemporaryDirectory() as td:
-            base = Path(td)
-            config_root = base / "config"
-            write_project(config_root, "proj", "project:\n  id: proj\n")
-
-            with unittest.mock.patch.dict(os.environ, _env(config_root, base / "s")):
-                with mock_git_config():
-                    result = list_presets("proj")
+            layout = make_layout(Path(td))
+            write_test_project(layout, "proj")
+            result = list_test_presets(layout, "proj")
             bundled = [info for info in result if info.source == "bundled"]
             assert len(bundled) > 0, "Expected at least one bundled preset"
 
@@ -516,13 +539,9 @@ class TestBundledPreset:
         """Any bundled preset can be loaded via load_preset."""
         name = _any_bundled_name()
         with tempfile.TemporaryDirectory() as td:
-            base = Path(td)
-            config_root = base / "config"
-            write_project(config_root, "proj", "project:\n  id: proj\n")
-
-            with unittest.mock.patch.dict(os.environ, _env(config_root, base / "s")):
-                with mock_git_config():
-                    data, path = load_preset("proj", name)
+            layout = make_layout(Path(td))
+            write_test_project(layout, "proj")
+            data, path = load_test_preset(layout, "proj", name)
             assert isinstance(data, dict)
             assert path.is_file()
 
@@ -530,55 +549,36 @@ class TestBundledPreset:
         """A global preset with the same name as a bundled preset wins."""
         name = _any_bundled_name()
         with tempfile.TemporaryDirectory() as td:
-            base = Path(td)
-            config_root = base / "config"
-            write_project(config_root, "proj", "project:\n  id: proj\n")
-
-            xdg = base / "xdg"
-            global_presets = xdg / "terok" / "presets"
-            global_presets.mkdir(parents=True, exist_ok=True)
-            (global_presets / f"{name}.yml").write_text(
-                "model: opus\nmax_turns: 99\n", encoding="utf-8"
+            layout = make_layout(Path(td))
+            write_test_project(layout, "proj")
+            preset_path = write_global_preset(
+                layout,
+                name,
+                "model: opus\nmax_turns: 99\n",
             )
-
-            env = _env(config_root, base / "s", xdg_config_home=xdg)
-            with unittest.mock.patch.dict(os.environ, env):
-                with mock_git_config():
-                    data, path = load_preset("proj", name)
-            # Global version wins
+            data, path = load_test_preset(layout, "proj", name)
             assert data["model"] == "opus"
             assert data["max_turns"] == 99
-            assert path == global_presets / f"{name}.yml"
+            assert path == preset_path
 
     def test_project_shadows_bundled(self) -> None:
         """A project preset with the same name as a bundled preset wins."""
         name = _any_bundled_name()
         with tempfile.TemporaryDirectory() as td:
-            base = Path(td)
-            config_root = base / "config"
-            write_project(config_root, "proj", "project:\n  id: proj\n")
-
-            proj_presets = config_root / "proj" / "presets"
-            proj_presets.mkdir(parents=True, exist_ok=True)
-            (proj_presets / f"{name}.yml").write_text("model: haiku\n", encoding="utf-8")
-
-            with unittest.mock.patch.dict(os.environ, _env(config_root, base / "s")):
-                with mock_git_config():
-                    data, path = load_preset("proj", name)
+            layout = make_layout(Path(td))
+            write_test_project(layout, "proj")
+            preset_path = write_project_preset(layout, "proj", name, "model: haiku\n")
+            data, path = load_test_preset(layout, "proj", name)
             assert data["model"] == "haiku"
-            assert path == proj_presets / f"{name}.yml"
+            assert path == preset_path
 
     def test_bundled_preset_scope_label(self) -> None:
         """Config stack labels bundled presets as 'preset (bundled)'."""
         name = _any_bundled_name()
         with tempfile.TemporaryDirectory() as td:
-            base = Path(td)
-            config_root = base / "config"
-            write_project(config_root, "proj", "project:\n  id: proj\n")
-
-            with unittest.mock.patch.dict(os.environ, _env(config_root, base / "s")):
-                with mock_git_config():
-                    stack = build_agent_config_stack("proj", preset=name)
+            layout = make_layout(Path(td))
+            write_test_project(layout, "proj")
+            stack = build_test_agent_stack(layout, "proj", preset=name)
             levels = [s.level for s in stack.scopes]
             assert "preset (bundled)" in levels
 
@@ -586,22 +586,12 @@ class TestBundledPreset:
         """Shadowing one bundled preset changes its source; others stay bundled."""
         name = _any_bundled_name()
         with tempfile.TemporaryDirectory() as td:
-            base = Path(td)
-            config_root = base / "config"
-            write_project(config_root, "proj", "project:\n  id: proj\n")
-
-            xdg = base / "xdg"
-            global_presets = xdg / "terok" / "presets"
-            global_presets.mkdir(parents=True, exist_ok=True)
-            (global_presets / f"{name}.yml").write_text("model: opus\n", encoding="utf-8")
-
-            env = _env(config_root, base / "s", xdg_config_home=xdg)
-            with unittest.mock.patch.dict(os.environ, env):
-                with mock_git_config():
-                    result = list_presets("proj")
+            layout = make_layout(Path(td))
+            write_test_project(layout, "proj")
+            write_global_preset(layout, name, "model: opus\n")
+            result = list_test_presets(layout, "proj")
             by_name = {info.name: info.source for info in result}
             assert by_name[name] == "global"
-            # At least one other bundled preset should remain bundled
             remaining_bundled = [n for n, s in by_name.items() if s == "bundled"]
             assert len(remaining_bundled) > 0
 
