@@ -32,7 +32,7 @@ def setup_task_with_mode(
         meta_path = ctx.state_dir / "projects" / project_id / "tasks" / "1.yml"
         meta = yaml_load(meta_path.read_text())
         meta["mode"] = mode
-        meta_path.write_text(yaml_dump(meta))
+        meta_path.write_text(yaml_dump(meta), encoding="utf-8")
 
 
 LOGIN_COMMAND = [

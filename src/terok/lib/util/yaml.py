@@ -45,6 +45,7 @@ def dump(data: Any, *, default_flow_style: bool = False) -> str:
     emitter = _yaml
     if default_flow_style:
         emitter = YAML(typ="rt")
+        emitter.preserve_quotes = True
         emitter.default_flow_style = True
     buf = StringIO()
     emitter.dump(data, buf)
