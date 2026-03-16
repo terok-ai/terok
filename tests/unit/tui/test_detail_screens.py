@@ -330,14 +330,23 @@ class TestRenderHelpers:
             absent,
         )
 
-    def test_render_shield_inactive_stopped_shows_ready(self) -> None:
-        """Stopped containers with INACTIVE shield show 'ready', no warning."""
-        text = render_task_details_text(
-            task_id="99", shield_state="INACTIVE", container_state="exited"
-        )
+    def test_render_shield_inactive_stopped_hooks_ok_shows_ready(self) -> None:
+        """Stopped containers with healthy hooks show 'ready', no warning."""
+        widgets = import_widgets()
+        task = make_task(widgets, task_id="99", shield_state="INACTIVE", container_state="exited")
+        text = str(widgets.render_task_details(task, project_id="proj1", shield_hooks_ok=True))
         assert "ready" in text
         assert "inactive" not in text
         assert "shield-security" not in text
+
+    def test_render_shield_inactive_stopped_hooks_broken_shows_warning(self) -> None:
+        """Stopped containers with broken hooks still show inactive warning."""
+        widgets = import_widgets()
+        task = make_task(widgets, task_id="99", shield_state="INACTIVE", container_state="exited")
+        text = str(widgets.render_task_details(task, project_id="proj1", shield_hooks_ok=False))
+        assert "inactive" in text
+        assert "shield-security" in text
+        assert "ready" not in text
 
     @pytest.mark.parametrize(
         ("overrides", "present", "absent"),

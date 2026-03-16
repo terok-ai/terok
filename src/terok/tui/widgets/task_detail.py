@@ -35,6 +35,7 @@ def render_task_details(
     empty_message: str | None = None,
     css_variables: dict[str, str] | None = None,
     show_workspace: bool = True,
+    shield_hooks_ok: bool | None = None,
 ) -> Text:
     """Render task details as a Rich Text object."""
     if task is None:
@@ -89,10 +90,10 @@ def render_task_details(
         error_color = variables.get("error", "red")
         warning_color = variables.get("warning", "yellow")
 
-        # When the container is stopped, shield rules are naturally absent.
-        # Show "ready" in dim text instead of a scary red "inactive" warning.
         container_live = task.container_state == "running"
-        if task.shield_state == "INACTIVE" and not container_live:
+        # INACTIVE + container not running + hooks healthy → "ready" (no alarm)
+        hooks_ok = shield_hooks_ok is not False  # True or unknown (None)
+        if task.shield_state == "INACTIVE" and not container_live and hooks_ok:
             lines.append(
                 Text.assemble(
                     "Shield:    ",
@@ -158,6 +159,16 @@ class TaskDetails(Static):
             self.current_project_id = None
         else:
             self.current_project_id = self.app.current_project_id if self.app else None
+
+        # Determine shield hook health from the cached project-level env check.
+        hooks_ok: bool | None = None
+        try:
+            shield_env = getattr(self.app, "_last_shield_env", None)
+            if shield_env is not None:
+                hooks_ok = shield_env.health == "ok"
+        except Exception:
+            pass
+
         rendered = render_task_details(
             task,
             self.current_project_id,
@@ -165,5 +176,6 @@ class TaskDetails(Static):
             empty_message,
             _get_css_variables(self),
             show_workspace=False,
+            shield_hooks_ok=hooks_ok,
         )
         content.update(rendered)
