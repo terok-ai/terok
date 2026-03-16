@@ -3,7 +3,12 @@
 
 """Tests for the new task creation and launch workflow (#296 + #446)."""
 
+from __future__ import annotations
+
 import asyncio
+import types
+from collections.abc import Callable
+from typing import Any
 from unittest import mock
 
 import pytest
@@ -231,7 +236,7 @@ class TestTaskLaunchScreen:
 class TestBuildInteractiveAgentCommand:
     """Tests for _build_interactive_agent_command helper."""
 
-    def _import_helper(self):
+    def _import_helper(self) -> Callable[..., str]:
         """Import the helper function from the freshly loaded module."""
         _, app_class = import_app()
         return app_class._start_cli_task_background.__globals__["_build_interactive_agent_command"]
@@ -444,17 +449,17 @@ class TestTaskLaunchScreenCompose:
     """Test that compose() sets the expected border title with the task name."""
 
     @staticmethod
-    def _run_compose(screens_mod, screen):
+    def _run_compose(screens_mod: types.ModuleType, screen: Any) -> Any | None:
         """Exhaust compose() and return the Vertical dialog with border_title.
 
         Patches the stub Vertical's ``__enter__`` to capture the dialog
         instance that ``compose()`` uses via ``with Vertical(...) as dialog:``.
         """
         Vertical = screens_mod.Vertical
-        captured: list = []
+        captured: list[Any] = []
         orig_enter = Vertical.__enter__
 
-        def tracking_enter(self):
+        def tracking_enter(self: Any) -> Any:
             captured.append(self)
             return orig_enter(self)
 
@@ -564,7 +569,8 @@ class TestActionLoginTitle:
 class TestLoginTitle:
     """Tests for the _login_title helper that unifies terminal/tmux titles."""
 
-    def _import_helper(self):
+    def _import_helper(self) -> Callable[[str, str, str], str]:
+        """Import the _login_title helper from the freshly loaded module."""
         _, app_class = import_app()
         return app_class._start_cli_task_background.__globals__["_login_title"]
 
