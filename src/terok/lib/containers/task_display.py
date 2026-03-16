@@ -129,7 +129,11 @@ def effective_status(task: TaskMeta) -> str:
     exit_code = task.exit_code
 
     if cs == "running":
-        return "running"
+        # Only show green ("running") once the task runner has finished
+        # init (mode written to YAML).  While the container is live but
+        # mode is still None the task is starting up — show yellow so
+        # the display progresses monotonically: new → yellow → green.
+        return "running" if mode is not None else "stopped"
 
     if cs is not None:
         # Container exists but is not running
