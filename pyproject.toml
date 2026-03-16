@@ -47,7 +47,7 @@ textual-serve = ">=1.1.0"
 terok-shield = {url = "https://github.com/terok-ai/terok-shield/releases/download/v0.3.0/terok_shield-0.3.0-py3-none-any.whl"}
 
 [tool.poetry.group.dev.dependencies]
-pydevd-pycharm = "261.22158.41"
+pydevd-pycharm = "261.22158.126"
 ruff = ">=0.8"
 markdown-it-py = ">=4.0.0"
 mdit-py-plugins = ">=0.5.0"
