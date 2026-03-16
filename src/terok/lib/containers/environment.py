@@ -215,6 +215,72 @@ def _security_mode_env_and_volumes(
     return env, volumes
 
 
+# ---------- Git identity ----------
+
+
+def resolve_git_identity(
+    agent_name: str,
+    agent_email: str,
+    human_name: str,
+    human_email: str,
+    authorship: str = "agent-human",
+) -> dict[str, str]:
+    """Resolve ``GIT_AUTHOR_*`` and ``GIT_COMMITTER_*`` env vars.
+
+    Mirrors the logic in ``terok-git-identity.sh`` so that the identity
+    is baked into the container environment at launch time.  This makes
+    git commits work for any code path — interactive CLI wrappers, ACP
+    adapters launched by toad, and headless runs — without relying on
+    shell functions that only run in login shells.
+
+    The CLI wrapper functions still call ``_terok_apply_git_identity()``
+    in subshells, which overrides these env vars per invocation.  That
+    gives per-agent identity when multiple agents share a container.
+    """
+    match authorship:
+        case "human-agent":
+            author_name, author_email = human_name, human_email
+            committer_name, committer_email = agent_name, agent_email
+        case "agent":
+            author_name, author_email = agent_name, agent_email
+            committer_name, committer_email = agent_name, agent_email
+        case "human":
+            author_name, author_email = human_name, human_email
+            committer_name, committer_email = human_name, human_email
+        case _:  # agent-human (default)
+            author_name, author_email = agent_name, agent_email
+            committer_name, committer_email = human_name, human_email
+
+    return {
+        "GIT_AUTHOR_NAME": author_name,
+        "GIT_AUTHOR_EMAIL": author_email,
+        "GIT_COMMITTER_NAME": committer_name,
+        "GIT_COMMITTER_EMAIL": committer_email,
+    }
+
+
+def apply_git_identity_env(
+    env: dict[str, str],
+    project: ProjectConfig,
+    agent_name: str = "AI Agent",
+    agent_email: str = "ai-agent@localhost",
+) -> None:
+    """Add ``GIT_AUTHOR_*`` / ``GIT_COMMITTER_*`` to a container env dict.
+
+    Uses the project's authorship policy and human identity together with
+    the given agent identity to resolve the four git env vars.
+    """
+    env.update(
+        resolve_git_identity(
+            agent_name=agent_name,
+            agent_email=agent_email,
+            human_name=project.human_name or "Nobody",
+            human_email=project.human_email or "nobody@localhost",
+            authorship=project.git_authorship,
+        )
+    )
+
+
 # ---------- Main builder ----------
 
 

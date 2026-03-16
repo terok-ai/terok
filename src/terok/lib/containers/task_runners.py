@@ -37,6 +37,7 @@ from ..util.podman import _podman_userns_args
 from .agent_config import resolve_agent_config, resolve_provider_value
 from .agents import AgentConfigSpec, prepare_agent_config_dir
 from .environment import (
+    apply_git_identity_env,
     apply_web_env_overrides,
     build_task_env_and_volumes,
 )
@@ -58,6 +59,7 @@ from .tasks import (
 
 if TYPE_CHECKING:
     from ..core.project_model import ProjectConfig
+    from .headless_providers import HeadlessProvider
 
 _LOCALHOST = "127.0.0.1"
 _TOAD_CONTAINER_PORT = 8080
@@ -192,12 +194,14 @@ def _prepare_agent_config(
     preset: str | None,
     *,
     provider_name: str | None = None,
-) -> Path:
+) -> tuple[Path, HeadlessProvider]:
     """Resolve agent config, instructions, and prepare the agent-config dir.
 
     Shared by CLI and web task runners to avoid duplicating the
     resolve → instructions → prepare sequence.  *provider_name* overrides
     the auto-detected provider (e.g. web backend selection).
+
+    Returns ``(agent_config_dir, resolved_provider)``.
     """
     effective = resolve_agent_config(project_id, preset=preset)
     subagents = list(effective.get("subagents") or [])
@@ -205,7 +209,7 @@ def _prepare_agent_config(
 
     resolved = _get_provider(provider_name, project)
     instr_text = resolve_instructions(effective, resolved.name, project_root=project.root)
-    return prepare_agent_config_dir(
+    config_dir = prepare_agent_config_dir(
         AgentConfigSpec(
             project=project,
             task_id=task_id,
@@ -215,6 +219,7 @@ def _prepare_agent_config(
             instructions=instr_text,
         )
     )
+    return config_dir, resolved
 
 
 _CDI_HINT = (
@@ -398,8 +403,12 @@ def task_run_cli(
     env, volumes = build_task_env_and_volumes(project, task_id)
 
     # Resolve layered agent config (global → project → preset → CLI overrides)
-    agent_config_dir = _prepare_agent_config(project, project_id, task_id, agents, preset)
+    agent_config_dir, resolved = _prepare_agent_config(project, project_id, task_id, agents, preset)
     volumes.append(f"{agent_config_dir}:/home/dev/.terok:Z")
+
+    # Bake git identity into container env so all code paths (CLI wrappers,
+    # ACP adapters via toad, headless) have a working git identity.
+    apply_git_identity_env(env, project, resolved.git_author_name, resolved.git_author_email)
 
     # Resolve unrestricted mode: CLI flag → config → default (True)
     if unrestricted is None:
@@ -485,8 +494,10 @@ def task_run_web(
 
     # Resolve layered agent config (global → project → preset → CLI overrides)
     # Note: backend is a web UI name (codex/claude/copilot), not a headless provider
-    agent_config_dir = _prepare_agent_config(project, project_id, task_id, agents, preset)
+    agent_config_dir, resolved = _prepare_agent_config(project, project_id, task_id, agents, preset)
     volumes.append(f"{agent_config_dir}:/home/dev/.terok:Z")
+
+    apply_git_identity_env(env, project, resolved.git_author_name, resolved.git_author_email)
 
     env = apply_web_env_overrides(env, backend, project.default_agent)
 
@@ -646,8 +657,13 @@ def task_run_toad(
 
     env, volumes = build_task_env_and_volumes(project, task_id)
 
-    agent_config_dir = _prepare_agent_config(project, project_id, task_id, agents, preset)
+    agent_config_dir, resolved = _prepare_agent_config(project, project_id, task_id, agents, preset)
     volumes.append(f"{agent_config_dir}:/home/dev/.terok:Z")
+
+    # Bake git identity — uses the default provider for the project.
+    # Toad hosts multiple agents; the CLI wrapper functions override
+    # per-agent identity at invocation time.
+    apply_git_identity_env(env, project, resolved.git_author_name, resolved.git_author_email)
 
     # Resolve unrestricted mode: CLI flag → config → default (True)
     if unrestricted is None:
@@ -822,6 +838,8 @@ def task_run_headless(request: HeadlessRunRequest) -> str:
 
     # Build env and volumes
     env, volumes = build_task_env_and_volumes(project, task_id)
+
+    apply_git_identity_env(env, project, resolved.git_author_name, resolved.git_author_email)
 
     # Set TEROK_UNRESTRICTED for the wrapper functions inside the container
     if unrestricted:
