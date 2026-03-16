@@ -4,19 +4,22 @@
 """Integration tests for baked-in git identity env vars.
 
 Verifies that the full config stack (git global → terok global → project.yml)
-correctly resolves into GIT_AUTHOR_*/GIT_COMMITTER_* env vars via
-build_task_env_and_volumes + apply_git_identity_env, and that ``git commit``
-inside the container (simulated) would use those values.
+correctly resolves into GIT_AUTHOR_*/GIT_COMMITTER_* env vars through the
+same code path used by production task runners, and that ``git commit``
+inside an isolated workspace picks up the resolved identity.
 
-These tests exercise the real load_project → build_task_env_and_volumes path
-with isolated filesystem state, mocking only the host git config and podman.
+Tests exercise the real load_project → _prepare_agent_config →
+apply_git_identity_env path with isolated filesystem state, mocking only
+the host git config and podman subprocess calls.
 """
 
 from __future__ import annotations
 
+import os
 import subprocess
 import textwrap
 import unittest.mock
+from contextlib import AbstractContextManager
 
 import pytest
 
@@ -69,19 +72,36 @@ _GIT_ENV_KEYS = (
 
 
 def _resolve_env(terok_env: TerokIntegrationEnv, project_id: str = "git-id-test") -> dict[str, str]:
-    """Load a project and return the resolved container env dict.
+    """Load a project and resolve the container env through the real runner path.
 
-    Uses the real load_project → build_task_env_and_volumes path, then applies
-    git identity via the default provider (claude).
+    Mirrors what the production task runners do: load_project →
+    build_task_env_and_volumes → _prepare_agent_config → apply_git_identity_env.
+    The only difference is that we mock ``get_envs_base_dir`` so shared config
+    mounts don't touch the real host, and skip the podman subprocess call.
     """
-    # Import inside helper to keep module-level import lightweight.
     from terok.lib.containers.environment import apply_git_identity_env, build_task_env_and_volumes
-    from terok.lib.containers.headless_providers import get_provider
+    from terok.lib.containers.task_runners import _prepare_agent_config
     from terok.lib.core.projects import load_project
 
     project = load_project(project_id)
-    env, _volumes = build_task_env_and_volumes(project, "1")
-    resolved = get_provider(None, project)
+
+    # Mock envs_base_dir so shared mount dirs are created under the isolated
+    # state root rather than the real host's state dir.
+    envs_base = terok_env.state_root / "envs"
+    envs_base.mkdir(parents=True, exist_ok=True)
+    with unittest.mock.patch(
+        "terok.lib.containers.environment.get_envs_base_dir", return_value=envs_base
+    ):
+        env, _volumes = build_task_env_and_volumes(project, "1")
+
+    # Use the same _prepare_agent_config the runners call to resolve the provider.
+    with unittest.mock.patch(
+        "terok.lib.containers.environment.get_envs_base_dir", return_value=envs_base
+    ):
+        _config_dir, resolved = _prepare_agent_config(
+            project, project_id, "1", agents=None, preset=None
+        )
+
     apply_git_identity_env(env, project, resolved.git_author_name, resolved.git_author_email)
     return env
 
@@ -89,6 +109,21 @@ def _resolve_env(terok_env: TerokIntegrationEnv, project_id: str = "git-id-test"
 def _git_commit_env(env: dict[str, str]) -> dict[str, str]:
     """Extract just the GIT_* identity vars from a container env dict."""
     return {k: v for k, v in env.items() if k in _GIT_ENV_KEYS}
+
+
+def _git_subprocess_env(terok_env: TerokIntegrationEnv, git_env: dict[str, str]) -> dict[str, str]:
+    """Build the subprocess env for git commands from the isolated test env.
+
+    Inherits HOME, XDG_CONFIG_HOME, and PATH from the isolated ``terok_env``
+    so git doesn't pick up the host user's global config.
+    """
+    base = {
+        "HOME": str(terok_env.home_dir),
+        "XDG_CONFIG_HOME": str(terok_env.xdg_config_home),
+        "PATH": os.environ.get("PATH", "/usr/bin:/bin"),
+    }
+    base.update(git_env)
+    return base
 
 
 def _write_global_config(terok_env: TerokIntegrationEnv, yaml_text: str) -> None:
@@ -100,7 +135,9 @@ def _write_global_config(terok_env: TerokIntegrationEnv, yaml_text: str) -> None
     )
 
 
-def _mock_host_git_config(name: str | None = None, email: str | None = None):
+def _mock_host_git_config(
+    name: str | None = None, email: str | None = None
+) -> AbstractContextManager[unittest.mock._patch]:
     """Mock _get_global_git_config to return specific host git identity values."""
 
     def _fake_config(key: str) -> str | None:
@@ -115,7 +152,7 @@ def _mock_host_git_config(name: str | None = None, email: str | None = None):
     )
 
 
-def _mock_no_host_git():
+def _mock_no_host_git() -> AbstractContextManager[unittest.mock._patch]:
     """Mock _get_global_git_config to simulate no host git config."""
     return unittest.mock.patch("terok.lib.core.projects._get_global_git_config", return_value=None)
 
@@ -204,10 +241,9 @@ class TestGitCommitIdentity:
         workspace = terok_env.task_workspace("git-id-test", "1")
         workspace.mkdir(parents=True, exist_ok=True)
 
-        # Run real git commands with the resolved env vars
         run_opts = {
             "cwd": workspace,
-            "env": {**git_env, "PATH": "/usr/bin:/bin"},
+            "env": _git_subprocess_env(terok_env, git_env),
             "check": True,
             "capture_output": True,
             "text": True,
@@ -247,7 +283,7 @@ class TestGitCommitIdentity:
 
         run_opts = {
             "cwd": workspace,
-            "env": {**git_env, "PATH": "/usr/bin:/bin"},
+            "env": _git_subprocess_env(terok_env, git_env),
             "check": True,
             "capture_output": True,
             "text": True,
