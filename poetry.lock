@@ -2522,14 +2522,14 @@ url = "https://github.com/terok-ai/terok-shield/releases/download/v0.3.0/terok_s
 
 [[package]]
 name = "textual"
-version = "8.0.2"
+version = "8.1.1"
 description = "Modern Text User Interface framework"
 optional = false
 python-versions = "<4.0,>=3.9"
 groups = ["main", "dev"]
 files = [
-    {file = "textual-8.0.2-py3-none-any.whl", hash = "sha256:4ceadbe0e8a30eb80f9995000f4d031f711420a31b02da38f3482957b7c50ce4"},
-    {file = "textual-8.0.2.tar.gz", hash = "sha256:7b342f3ee9a5f2f1bd42d7b598cae00ff1275da68536769510db4b7fe8cabf5d"},
+    {file = "textual-8.1.1-py3-none-any.whl", hash = "sha256:6712f96e335cd782e76193dee16b9c8875fe0699d923bc8d3f1228fd23e773a6"},
+    {file = "textual-8.1.1.tar.gz", hash = "sha256:eef0256a6131f06a20ad7576412138c1f30f92ddeedd055953c08d97044bc317"},
 ]
 
 [package.dependencies]
@@ -2988,4 +2988,4 @@ propcache = ">=0.2.1"
 [metadata]
 lock-version = "2.1"
 python-versions = ">=3.12,<4.0"
-content-hash = "5eec3b1b6c0127b48f44e7f40ebf9816fdb42ef56b2973c3f7d710c6459b344d"
+content-hash = "3ab813bf699f36364d2f1e823629a0a69f92671990e8a9b500285fe62896543d"
