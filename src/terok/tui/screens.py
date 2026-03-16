@@ -1180,7 +1180,7 @@ class TaskLaunchScreen(screen.ModalScreen["tuple[str, str, str, str, str, str | 
         container_name: str,
         project_id: str,
         task_id: str,
-        task_name: str = "",
+        task_name: str | None = "",
         default_login: str = "bash",
     ) -> None:
         """Create the launch screen with container context and default agent."""
