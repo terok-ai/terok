@@ -1057,12 +1057,12 @@ class TaskCreateScreen(screen.ModalScreen["tuple[str, str] | None"]):
                 id="create-name-input",
             )
             options = [
-                Option("\\[c] CLI", id="cli"),
-                Option("\\[w] Toad (browser TUI)", id="toad"),
-                Option("\\[A] Autopilot (headless)", id="autopilot"),
+                Option("CLI", id="cli"),
+                Option("Toad (browser TUI)", id="toad"),
+                Option("Autopilot (headless)", id="autopilot"),
             ]
             if is_experimental():
-                options.append(Option("\\[W] Web UI (experimental)", id="web"))
+                options.append(Option("Web UI (experimental)", id="web"))
             yield OptionList(*options, id="create-mode-list")
             with Horizontal(id="create-buttons"):
                 yield Button("Cancel", id="btn-cancel", variant="default")

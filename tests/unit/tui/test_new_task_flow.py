@@ -49,6 +49,63 @@ class TestTaskCreateScreen:
         screen.on_button_pressed(event)
         screen.dismiss.assert_called_once_with(None)
 
+    def test_submit_validates_and_sanitizes_name(self) -> None:
+        screens, _ = import_screens()
+        screen = screens.TaskCreateScreen(default_name="fallback")
+        screen.dismiss = mock.Mock()
+        screen.notify = mock.Mock()
+
+        # Stub query_one to return mock Input with valid name
+        mock_input = mock.Mock()
+        mock_input.value = "  My Task  "
+        screen.query_one = mock.Mock(return_value=mock_input)
+
+        screen._submit("cli")
+        screen.dismiss.assert_called_once()
+        name, mode = screen.dismiss.call_args[0][0]
+        assert mode == "cli"
+        assert name == "my-task"  # sanitized
+
+    def test_submit_rejects_empty_name(self) -> None:
+        screens, _ = import_screens()
+        screen = screens.TaskCreateScreen(default_name="")
+        screen.dismiss = mock.Mock()
+        screen.notify = mock.Mock()
+
+        mock_input = mock.Mock()
+        mock_input.value = ""
+        screen.query_one = mock.Mock(return_value=mock_input)
+
+        screen._submit("cli")
+        screen.dismiss.assert_not_called()
+        screen.notify.assert_called_once()
+
+    def test_submit_falls_back_to_default_name(self) -> None:
+        screens, _ = import_screens()
+        screen = screens.TaskCreateScreen(default_name="fallback-name")
+        screen.dismiss = mock.Mock()
+        screen.notify = mock.Mock()
+
+        mock_input = mock.Mock()
+        mock_input.value = ""
+        screen.query_one = mock.Mock(return_value=mock_input)
+
+        screen._submit("toad")
+        screen.dismiss.assert_called_once()
+        name, mode = screen.dismiss.call_args[0][0]
+        assert name == "fallback-name"
+        assert mode == "toad"
+
+    def test_option_list_selection_submits(self) -> None:
+        screens, _ = import_screens()
+        screen = screens.TaskCreateScreen(default_name="t")
+        screen._submit = mock.Mock()
+
+        event = mock.Mock()
+        event.option_id = "autopilot"
+        screen.on_option_list_option_selected(event)
+        screen._submit.assert_called_once_with("autopilot")
+
 
 # ---------------------------------------------------------------------------
 # TaskLaunchScreen
@@ -93,6 +150,68 @@ class TestTaskLaunchScreen:
         event.button.id = "btn-dismiss"
         screen.on_button_pressed(event)
         screen.dismiss.assert_called_once_with(None)
+
+    def test_do_login_returns_agent_and_prompt(self) -> None:
+        screens, _ = import_screens()
+        screen = screens.TaskLaunchScreen(container_name="c", project_id="p", task_id="1")
+        screen.dismiss = mock.Mock()
+
+        mock_select = mock.Mock()
+        mock_select.value = "claude"
+        mock_input = mock.Mock()
+        mock_input.value = "fix the bug"
+
+        def query_one(selector, cls=None):
+            if "login-agent" in selector:
+                return mock_select
+            return mock_input
+
+        screen.query_one = query_one
+
+        screen._do_login()
+        screen.dismiss.assert_called_once_with(("claude", "fix the bug"))
+
+    def test_do_login_bash_clears_prompt(self) -> None:
+        screens, _ = import_screens()
+        screen = screens.TaskLaunchScreen(container_name="c", project_id="p", task_id="1")
+        screen.dismiss = mock.Mock()
+
+        mock_select = mock.Mock()
+        mock_select.value = "bash"
+        mock_input = mock.Mock()
+        mock_input.value = "should be ignored"
+
+        def query_one(selector, cls=None):
+            if "login-agent" in selector:
+                return mock_select
+            return mock_input
+
+        screen.query_one = query_one
+
+        screen._do_login()
+        screen.dismiss.assert_called_once_with(("bash", None))
+
+    def test_login_button_blocked_when_not_ready(self) -> None:
+        screens, _ = import_screens()
+        screen = screens.TaskLaunchScreen(container_name="c", project_id="p", task_id="1")
+        screen._do_login = mock.Mock()
+
+        assert not screen._container_ready
+
+        # Simulate Enter in the prompt input — should not login
+        event = mock.Mock()
+        screen.on_input_submitted(event)
+        screen._do_login.assert_not_called()
+
+    def test_login_button_allowed_when_ready(self) -> None:
+        screens, _ = import_screens()
+        screen = screens.TaskLaunchScreen(container_name="c", project_id="p", task_id="1")
+        screen._do_login = mock.Mock()
+        screen._container_ready = True
+
+        event = mock.Mock()
+        screen.on_input_submitted(event)
+        screen._do_login.assert_called_once()
 
 
 # ---------------------------------------------------------------------------

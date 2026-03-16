@@ -211,7 +211,11 @@ class TaskActionsMixin:
         pid = self.current_project_id
         if not pid:
             return
-        task_id = task_new(pid, name=name)
+        try:
+            task_id = task_new(pid, name=name)
+        except (SystemExit, Exception) as e:
+            self.notify(f"Failed to create task: {e}")
+            return
         self._focus_task_after_creation(pid, task_id)
         cname = container_name(pid, "cli", task_id)
 
@@ -303,7 +307,11 @@ class TaskActionsMixin:
         pid = self.current_project_id
         if not pid:
             return
-        task_id = task_new(pid, name=name)
+        try:
+            task_id = task_new(pid, name=name)
+        except (SystemExit, Exception) as e:
+            self.notify(f"Failed to create task: {e}")
+            return
         self._focus_task_after_creation(pid, task_id)
 
         self.run_worker(
