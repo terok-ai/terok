@@ -15,6 +15,7 @@ from typing import TYPE_CHECKING
 
 from ..core.config import (
     get_gate_server_port,
+    get_public_host,
     get_shield_bypass_firewall_no_protection,
 )
 from ..core.images import project_cli_image
@@ -323,11 +324,11 @@ def _run_container(
     if "TEROK_UNRESTRICTED" not in env:
         cmd += ["--security-opt", "no-new-privileges"]
 
-    # DANGEROUS TRANSITIONAL OVERRIDE — bypass_firewall_no_protection
-    # Skip the shield entirely and use traditional podman networking so
-    # that the gate server port is forwarded via pasta.  Completely
-    # independent of terok-shield; easy to delete once no longer needed.
     if get_shield_bypass_firewall_no_protection():
+        # DANGEROUS TRANSITIONAL OVERRIDE — bypass_firewall_no_protection
+        # Skip the shield entirely and use traditional podman networking so
+        # that the gate server port is forwarded via pasta.  Completely
+        # independent of terok-shield; easy to delete once no longer needed.
         print(
             "\n!! SHIELD BYPASSED — egress firewall DISABLED "
             f"(shield.bypass_firewall_no_protection is set) !!\n{SHIELD_SECURITY_HINT}\n"
@@ -471,9 +472,11 @@ def task_run_toad(
     cname = container_name(project.id, "toad", task_id)
     container_state = get_container_state(cname)
 
+    pub_host = get_public_host()
+
     if container_state is not None:
         color_enabled = _supports_color()
-        url = f"http://{_LOCALHOST}:{port}/"
+        url = f"http://{pub_host}:{port}/"
         if container_state == "running":
             print(f"Container {_green(cname, color_enabled)} is already running.")
             print(f"Toad: {_blue(url, color_enabled)}")
@@ -506,11 +509,15 @@ def task_run_toad(
         meta["preset"] = preset
     meta_path.write_text(_yaml_dump(meta))
 
+    # Bind address: use 0.0.0.0 when a public host is configured so that
+    # the port is reachable from outside the host (LAN / reverse-proxy).
+    bind_addr = "0.0.0.0" if pub_host != _LOCALHOST else _LOCALHOST
+
     task_dir = project.tasks_root / str(task_id)
     toad_cmd = (
         f"init-ssh-and-repo.sh"
         f" && toad --serve -H 0.0.0.0 -p {_TOAD_CONTAINER_PORT}"
-        f" --public-url http://{_LOCALHOST}:{port}"
+        f" --public-url http://{pub_host}:{port}"
         f" /workspace"
     )
     _run_container(
@@ -520,7 +527,7 @@ def task_run_toad(
         volumes=volumes,
         project=project,
         task_dir=task_dir,
-        extra_args=["-p", f"{_LOCALHOST}:{port}:{_TOAD_CONTAINER_PORT}"],
+        extra_args=["-p", f"{bind_addr}:{port}:{_TOAD_CONTAINER_PORT}"],
         command=["bash", "-lc", toad_cmd],
     )
     _maybe_drop_shield(project, cname, task_dir)
@@ -540,7 +547,7 @@ def task_run_toad(
         raise SystemExit(1)
 
     color_enabled = _supports_color()
-    url = f"http://{_LOCALHOST}:{port}/"
+    url = f"http://{pub_host}:{port}/"
     print(
         f"\n>> Toad is serving."
         f"\n- Name: {_green(cname, color_enabled)}"
@@ -898,7 +905,7 @@ def task_restart(project_id: str, task_id: str) -> None:
         elif mode == "toad":
             port = meta.get("web_port")
             if port:
-                print(f"Toad: http://{_LOCALHOST}:{port}/")
+                print(f"Toad: http://{get_public_host()}:{port}/")
     else:
         # Container doesn't exist - re-run the task
         print(f"Container {cname} not found, re-running task...")
