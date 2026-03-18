@@ -58,11 +58,6 @@ RUN mkdir -p \
     && printf '%s\n' \
         'unqualified-search-registries = ["docker.io"]' \
         > ~/.config/containers/registries.conf \
-    && printf '%s\n' \
-        'hooks:' \
-        '  post_ready: /usr/local/bin/toad-port-forward.sh' \
-        '  post_stop: /usr/local/bin/toad-port-forward.sh' \
-        > ~/.config/terok/config.yml \
     && terokctl completions install --shell bash
 USER root
 
@@ -74,6 +69,10 @@ RUN printf '%s\n' '#!/bin/sh' \
         'for d in /home/podman/.config/terok /home/podman/.local/share/terok /home/podman/.local/share/terok/gate /home/podman/.local/share/containers; do' \
         '    mkdir -p "$d"; chown -R podman:podman "$d"' \
         'done' \
+        'if [ ! -f /home/podman/.config/terok/config.yml ]; then' \
+        '    printf "hooks:\\n  post_ready: /usr/local/bin/toad-port-forward.sh\\n  post_stop: /usr/local/bin/toad-port-forward.sh\\n" > /home/podman/.config/terok/config.yml' \
+        '    chown podman:podman /home/podman/.config/terok/config.yml' \
+        'fi' \
         'if [ $# -gt 0 ]; then exec su -m podman -s /bin/sh -c '"'"'exec "$@"'"'"' sh "$@"; fi' \
         'if [ -z "$TEROK_GATE_ADMIN_TOKEN" ]; then' \
         '    TEROK_GATE_ADMIN_TOKEN=$(python3 -c "import namer; print(namer.generate(separator=\"-\", category=sorted(namer.list_categories())))")' \
