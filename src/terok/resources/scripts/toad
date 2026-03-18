@@ -19,7 +19,8 @@ vibe.mistral.ai
 openai.com
 copilot.github.com
 opencode.ai
-blablador.helmholtz.de"
+blablador.helmholtz.de
+kisski.academiccloud.de"
 
 # Inject custom agent TOML for Blablador into Toad's package data.
 # Toad only reads agents from its bundled data dir — no user override dir yet.
@@ -74,6 +75,51 @@ TOML_EOF
         || { echo "Warning: could not install Blablador agent TOML" >&2; rm -f "${_toml_tmp}"; }
     else
       echo "Warning: failed to write Blablador agent TOML" >&2
+      rm -f "${_toml_tmp}"
+    fi
+  fi
+fi
+
+KISSKI_TOML="${TOAD_AGENTS_DIR}/kisski.academiccloud.de.toml"
+if [[ -n "${TOAD_AGENTS_DIR}" ]] && [[ ! -f "${KISSKI_TOML}" ]]; then
+  _toml_tmp=$(mktemp "${KISSKI_TOML}.XXXXXX" 2>/dev/null) || true
+  if [[ -n "${_toml_tmp}" ]]; then
+    if cat > "${_toml_tmp}" << 'TOML_EOF'
+identity = "kisski.academiccloud.de"
+name = "KISSKI"
+short_name = "kisski"
+url = "https://chat-ai.academiccloud.de/"
+protocol = "acp"
+author_name = "Academic Cloud"
+author_url = "https://academiccloud.de/"
+publisher_name = "terok"
+publisher_url = "https://github.com/terok-ai/terok"
+type = "coding"
+description = "OpenCode with KISSKI — AI services for German academia."
+tags = []
+run_command."*" = "kisski-acp"
+
+help = '''
+# KISSKI
+
+OpenCode powered by KISSKI — AI services hosted at Academic Cloud for
+German research and academia.
+
+Uses the same tools and capabilities as OpenCode, but routes through the
+KISSKI API.
+
+Requires KISSKI_API_KEY to be set.
+'''
+
+[actions."*".install]
+command = "echo 'KISSKI is pre-installed in terok containers.'"
+description = "Already installed"
+TOML_EOF
+    then
+      mv -f "${_toml_tmp}" "${KISSKI_TOML}" 2>/dev/null \
+        || { echo "Warning: could not install KISSKI agent TOML" >&2; rm -f "${_toml_tmp}"; }
+    else
+      echo "Warning: failed to write KISSKI agent TOML" >&2
       rm -f "${_toml_tmp}"
     fi
   fi
