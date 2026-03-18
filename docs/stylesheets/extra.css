@@ -1,0 +1,22 @@
+/* Ubuntu Mono renders smaller than Ubuntu at the same font size. */
+:root {
+  --md-code-font-size: 1em;
+}
+
+.md-typeset code {
+  font-size: 1em !important;
+}
+
+/* Make tabbed content labels look clickable. */
+.tabbed-labels > label {
+  border-bottom: 2px solid transparent;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  font-size: 0.8em;
+}
+
+.tabbed-labels > label:hover,
+.tabbed-labels > label:focus-visible {
+  border-bottom-color: var(--md-accent-fg-color);
+}
