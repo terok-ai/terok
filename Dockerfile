@@ -31,7 +31,11 @@ RUN dnf install -y \
 # ── 2. Install terok from local source tree ──────────────────────
 COPY . /opt/terok-src
 RUN pip install --break-system-packages poetry-dynamic-versioning \
-    && pip install --break-system-packages /opt/terok-src \
+    && cd /opt/terok-src \
+    && git init && git add -A \
+    && git -c user.name=build -c user.email=build@localhost commit -m init \
+    && git tag v0.0.0 \
+    && pip install --break-system-packages . \
     && rm -rf /opt/terok-src
 
 # ── 3. Install toad port-forwarding hook ──────────────────────────
