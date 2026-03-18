@@ -695,6 +695,16 @@ def _task_delete(project: ProjectConfig, task_id: str) -> None:
     except Exception as exc:
         _log_debug(f"task_delete: token revoke failed: {exc}")
 
+    if mode:
+        from .hooks import run_hook
+
+        run_hook(
+            "pre_stop", project.hook_pre_stop,
+            project_id=project.id, task_id=task_id, mode=mode,
+            cname=container_name(project.id, mode, task_id),
+            task_dir=workspace,
+        )
+
     _log_debug("task_delete: calling _stop_task_containers")
     stop_task_containers(project, str(task_id))
     _log_debug("task_delete: _stop_task_containers returned")
@@ -809,6 +819,14 @@ def _task_stop(project: ProjectConfig, task_id: str, *, timeout: int | None = No
         raise SystemExit(f"Task {task_id} container does not exist")
     if state not in ("running", "paused"):
         raise SystemExit(f"Task {task_id} container is not stoppable (state: {state})")
+
+    from .hooks import run_hook
+
+    run_hook(
+        "pre_stop", project.hook_pre_stop,
+        project_id=project.id, task_id=task_id, mode=mode,
+        cname=cname, task_dir=project.tasks_root / str(task_id),
+    )
 
     try:
         subprocess.run(

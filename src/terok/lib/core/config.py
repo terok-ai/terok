@@ -333,6 +333,12 @@ def get_gate_server_suppress_warning() -> bool:
     return _load_validated().gate_server.suppress_systemd_warning
 
 
+def get_global_hooks() -> tuple[str | None, str | None, str | None]:
+    """Return ``(post_start, post_ready, pre_stop)`` from global config hooks."""
+    h = _load_validated().hooks
+    return h.post_start, h.post_ready, h.pre_stop
+
+
 def get_global_agent_config() -> dict[str, Any]:
     """Return the ``agent:`` section from the global config, or ``{}``."""
     return get_global_section("agent")
