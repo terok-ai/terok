@@ -79,9 +79,9 @@ def _all_wrappers(*, project: ProjectConfig | None = None, has_agents: bool = Fa
 class TestHeadlessProviderRegistry:
     """Tests for the HEADLESS_PROVIDERS registry."""
 
-    def test_all_six_providers_exist(self) -> None:
-        """Registry contains exactly the six expected providers."""
-        expected = {"claude", "codex", "copilot", "vibe", "blablador", "opencode"}
+    def test_all_seven_providers_exist(self) -> None:
+        """Registry contains exactly the seven expected providers."""
+        expected = {"claude", "codex", "copilot", "vibe", "blablador", "opencode", "kisski"}
         assert set(HEADLESS_PROVIDERS.keys()) == expected
 
     def test_provider_names_tuple(self) -> None:
@@ -147,6 +147,17 @@ class TestHeadlessProviderRegistry:
                     "headless_subcommand": "run",
                     "resume_flag": "--session",
                     "session_file": "blablador-session.txt",
+                },
+            ),
+            (
+                "kisski",
+                {
+                    "binary": "kisski",
+                    "model_flag": None,
+                    "continue_flag": "--continue",
+                    "headless_subcommand": "run",
+                    "resume_flag": "--session",
+                    "session_file": "kisski-session.txt",
                 },
             ),
             (
@@ -297,7 +308,7 @@ class TestGenerateAgentWrapper:
 
     # Canonical sets of providers by session_file support.
     # Hardcoded so tests fail fast if a provider accidentally gains/loses the field.
-    _SESSION_FILE_PROVIDERS = {"vibe", "opencode", "blablador"}
+    _SESSION_FILE_PROVIDERS = {"vibe", "opencode", "blablador", "kisski"}
     _NO_SESSION_FILE_PROVIDERS = {"codex", "copilot"}  # excludes claude (own wrapper)
 
     def test_session_file_providers(self) -> None:
@@ -333,8 +344,8 @@ class TestGenerateAgentWrapper:
             )
 
     def test_opencode_plugin_setup(self) -> None:
-        """OpenCode and Blablador wrappers set up the session plugin."""
-        for name in ("opencode", "blablador"):
+        """OpenCode, Blablador and KISSKI wrappers set up the session plugin."""
+        for name in ("opencode", "blablador", "kisski"):
             wrapper = _provider_wrapper(name)
             assert "opencode-session-plugin.mjs" in wrapper, f"{name} missing plugin setup"
             assert "terok-session.mjs" in wrapper, f"{name} missing plugin symlink"
@@ -343,6 +354,7 @@ class TestGenerateAgentWrapper:
         ("name", "plugin_dir"),
         [
             ("blablador", ".blablador/opencode/plugins"),
+            ("kisski", ".kisski/opencode/plugins"),
             ("opencode", ".config/opencode/plugins"),
         ],
     )
@@ -384,8 +396,8 @@ class TestGenerateAgentWrapper:
         assert p.auto_approve_flags == ("--yolo",)
 
     def test_opencode_auto_approve_env(self) -> None:
-        """OpenCode and Blablador use OPENCODE_PERMISSION env var with correct payload."""
-        for name in ("opencode", "blablador"):
+        """OpenCode, Blablador and KISSKI use OPENCODE_PERMISSION env var with correct payload."""
+        for name in ("opencode", "blablador", "kisski"):
             p = HEADLESS_PROVIDERS[name]
             assert "OPENCODE_PERMISSION" in p.auto_approve_env, f"{name}"
             assert p.auto_approve_env["OPENCODE_PERMISSION"] == '{"*":"allow"}', (
@@ -415,8 +427,8 @@ class TestGenerateAgentWrapper:
         assert HEADLESS_PROVIDERS["claude"].auto_approve_env == {}
 
     def test_opencode_wrapper_does_not_export_permission_env(self) -> None:
-        """OpenCode/Blablador wrappers rely on container env, not inline exports."""
-        for name in ("opencode", "blablador"):
+        """OpenCode/Blablador/KISSKI wrappers rely on container env, not inline exports."""
+        for name in ("opencode", "blablador", "kisski"):
             wrapper = _provider_wrapper(name)
             assert "OPENCODE_PERMISSION" not in wrapper, f"{name} should not export env vars"
 
