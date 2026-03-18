@@ -135,8 +135,8 @@ class TestRunHook:
             )
             assert mock_run.call_args[1]["timeout"] == 30
 
-    def test_pre_start_no_timeout(self) -> None:
-        """Verify pre_start hooks have no timeout."""
+    def test_pre_start_has_startup_timeout(self) -> None:
+        """Verify pre_start hooks use the startup timeout (120s)."""
         with unittest.mock.patch("terok.lib.containers.hooks.subprocess.run") as mock_run:
             run_hook(
                 "pre_start",
@@ -146,10 +146,10 @@ class TestRunHook:
                 mode="cli",
                 cname="c",
             )
-            assert mock_run.call_args[1]["timeout"] is None
+            assert mock_run.call_args[1]["timeout"] == 120
 
-    def test_post_start_no_timeout(self) -> None:
-        """Verify post_start hooks have no timeout."""
+    def test_post_start_has_startup_timeout(self) -> None:
+        """Verify post_start hooks use the startup timeout (120s)."""
         with unittest.mock.patch("terok.lib.containers.hooks.subprocess.run") as mock_run:
             run_hook(
                 "post_start",
@@ -159,7 +159,7 @@ class TestRunHook:
                 mode="cli",
                 cname="c",
             )
-            assert mock_run.call_args[1]["timeout"] is None
+            assert mock_run.call_args[1]["timeout"] == 120
 
     def test_web_port_passed_to_env(self) -> None:
         """Verify web_port is forwarded to the hook environment."""

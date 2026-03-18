@@ -110,18 +110,24 @@ def _check_unfired_hooks(
             label = f"Task {pid}/{tid}"
             if fix:
                 run_hook(
-                    "post_stop", project.hook_post_stop,
-                    project_id=pid, task_id=tid, mode=mode,
+                    "post_stop",
+                    project.hook_post_stop,
+                    project_id=pid,
+                    task_id=tid,
+                    mode=mode,
                     cname=cname,
                     task_dir=project.tasks_root / str(tid),
                     meta_path=meta_path,
                 )
                 results.append(("ok", label, "post_stop hook reconciled"))
             else:
-                results.append((
-                    "warn", label,
-                    "stopped without post_stop hook — run with --fix to reconcile",
-                ))
+                results.append(
+                    (
+                        "warn",
+                        label,
+                        "stopped without post_stop hook — run with --fix to reconcile",
+                    )
+                )
 
     return results
 

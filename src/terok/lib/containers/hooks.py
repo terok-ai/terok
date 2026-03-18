@@ -20,7 +20,8 @@ from ..util.yaml import dump as _yaml_dump, load as _yaml_load
 
 logger = logging.getLogger(__name__)
 
-_HOOK_TIMEOUT = 30  # seconds for post_stop timeout
+_STARTUP_HOOK_TIMEOUT = 120  # seconds for pre_start / post_start / post_ready
+_STOP_HOOK_TIMEOUT = 30  # seconds for post_stop
 
 #: Hooks that fire during the task lifecycle.
 HOOK_NAMES = ("pre_start", "post_start", "post_ready", "post_stop")
@@ -108,7 +109,7 @@ def run_hook(
 
     logger.debug("hook %s: running %r", hook_name, command)
 
-    timeout = _HOOK_TIMEOUT if hook_name == "post_stop" else None
+    timeout = _STOP_HOOK_TIMEOUT if hook_name == "post_stop" else _STARTUP_HOOK_TIMEOUT
     try:
         result = subprocess.run(
             ["sh", "-c", command],
@@ -123,6 +124,6 @@ def run_hook(
         if result.stderr:
             logger.debug("hook %s stderr: %s", hook_name, result.stderr.rstrip())
     except subprocess.TimeoutExpired:
-        logger.warning("hook %s timed out after %ds", hook_name, _HOOK_TIMEOUT)
+        logger.warning("hook %s timed out after %ds", hook_name, timeout)
     except Exception:
         logger.warning("hook %s failed", hook_name, exc_info=True)
