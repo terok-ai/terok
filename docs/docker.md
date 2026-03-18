@@ -139,7 +139,7 @@ image for manual port forwarding if needed.
 
 ## Architecture
 
-```
+```text
 ┌─ Docker (host) ────────────────────────────────────────────┐
 │  terok-in-docker container                                  │
 │  ├─ terok-web (TUI served on :8566)                        │

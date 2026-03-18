@@ -57,7 +57,7 @@ RUN printf '%s\n' '#!/bin/sh' \
         'for d in /home/podman/.config/terok /home/podman/.local/share/terok /home/podman/.local/share/terok/gate /home/podman/.local/share/containers; do' \
         '    mkdir -p "$d"; chown -R podman:podman "$d"' \
         'done' \
-        'if [ $# -gt 0 ]; then exec su -m podman -s /bin/sh -c "$*"; fi' \
+        'if [ $# -gt 0 ]; then exec su -m podman -s /bin/sh -c '"'"'exec "$@"'"'"' sh "$@"; fi' \
         'if [ -z "$TEROK_GATE_ADMIN_TOKEN" ]; then' \
         '    TEROK_GATE_ADMIN_TOKEN=$(python3 -c "import namer; print(namer.generate(separator=\"-\", category=sorted(namer.list_categories())))")' \
         '    export TEROK_GATE_ADMIN_TOKEN' \
