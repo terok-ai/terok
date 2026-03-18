@@ -1477,7 +1477,7 @@ class TaskDetailsScreen(screen.Screen[str | None]):
             from ..lib.core.config import get_shield_bypass_firewall_no_protection
 
             options.append(Option("shield \\[d]own (bypass)", id="shield_down"))
-            options.append(Option("shield \\[D]own all tasks", id="shield_down_all"))
+            options.append(Option("shield \\[D]own --all (+ private ranges)", id="shield_down_all"))
             if not get_shield_bypass_firewall_no_protection():
                 options.append(Option("\\[s]hield up (deny-all)", id="shield_up"))
 

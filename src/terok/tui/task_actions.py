@@ -707,41 +707,10 @@ class TaskActionsMixin:
         self._action_shield_toggle("up", shield_up)
 
     def _action_shield_down_all(self) -> None:
-        """Drop the shield for all running tasks in the current project."""
+        """Drop the shield with allow_all (also permit private-range traffic)."""
         if self._notify_shield_bypassed():
             return
-        pid = self.current_project_id
-        if not pid:
-            self.notify("No project selected.")
-            return
-
-        from ..lib.containers.tasks import get_tasks
-
-        project = load_project(pid)
-        tasks = get_tasks(pid)
-        running = [t for t in tasks if t.mode and t.container_state == "running"]
-        if not running:
-            self.notify("No running tasks.")
-            return
-
-        for task in running:
-            cname = container_name(pid, task.mode, task.task_id)
-            td = project.tasks_root / str(task.task_id)
-
-            def work(c: str = cname, d: Path = td, t: str = task.task_id) -> tuple:
-                try:
-                    shield_down(c, d)
-                    return pid, t, None
-                except Exception as e:
-                    return pid, t, str(e)
-
-            self.run_worker(
-                work,
-                name=f"shield-action:down:{pid}:{task.task_id}",
-                group="shield-action",
-                thread=True,
-                exit_on_error=False,
-            )
+        self._action_shield_toggle("down", lambda c, d: shield_down(c, d, allow_all=True))
 
     # --- Main-screen task pane shortcuts (c/w/X/D/s) ---
 
