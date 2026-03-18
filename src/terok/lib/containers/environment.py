@@ -17,6 +17,7 @@ from pathlib import Path
 
 from ..core.config import get_envs_base_dir
 from ..core.projects import ProjectConfig
+from ..containers.headless_providers import collect_opencode_provider_env
 from ..security.gate_server import ensure_server_reachable, get_gate_base_path, get_gate_server_port
 from ..util.fs import ensure_dir_writable
 
@@ -243,6 +244,9 @@ def build_task_env_and_volumes(project: ProjectConfig, task_id: str) -> tuple[di
         "HUMAN_GIT_NAME": project.human_name or "Nobody",
         "HUMAN_GIT_EMAIL": project.human_email or "nobody@localhost",
     }
+
+    # Add OpenCode provider environment variables
+    env.update(collect_opencode_provider_env())
 
     volumes: list[str] = [f"{repo_dir}:/workspace:Z"]
     volumes += _shared_volume_mounts(config_dirs)

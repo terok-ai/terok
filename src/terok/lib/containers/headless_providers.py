@@ -38,6 +38,44 @@ if TYPE_CHECKING:
 
 
 @dataclass(frozen=True)
+class OpenCodeProviderConfig:
+    """Immutable descriptor for an OpenCode-based provider wrapper."""
+
+    display_name: str
+    """Human-readable display name (e.g., 'Helmholtz Blablador')."""
+
+    base_url: str
+    """Base URL for the OpenAI-compatible API (e.g., 'https://api.helmholtz-blablador.fz-juelich.de/v1')."""
+
+    preferred_model: str
+    """Preferred model ID (e.g., 'alias-huge')."""
+
+    fallback_model: str
+    """Fallback model ID if preferred is unavailable (e.g., 'alias-code')."""
+
+    env_var_prefix: str
+    """Environment variable prefix for API key (e.g., 'BLABLADOR' → BLABLADOR_API_KEY)."""
+
+    config_dir: str
+    """Configuration directory name (e.g., '.blablador')."""
+
+    auth_key_url: str
+    """URL where users can obtain API keys for documentation."""
+
+    def to_env(self, name: str) -> dict[str, str]:
+        """Return env vars for container injection, keyed by TEROK_OC_{NAME}_*."""
+        prefix = f"TEROK_OC_{name.upper()}_"
+        return {
+            f"{prefix}BASE_URL": self.base_url,
+            f"{prefix}PREFERRED_MODEL": self.preferred_model,
+            f"{prefix}FALLBACK_MODEL": self.fallback_model,
+            f"{prefix}DISPLAY_NAME": self.display_name,
+            f"{prefix}ENV_VAR_PREFIX": self.env_var_prefix,
+            f"{prefix}CONFIG_DIR": self.config_dir,
+        }
+
+
+@dataclass(frozen=True)
 class HeadlessProvider:
     """Describes how to run one AI agent in headless (autopilot) mode."""
 
@@ -132,6 +170,19 @@ class HeadlessProvider:
 
     log_format: str
     """Log format identifier: ``"claude-stream-json"`` or ``"plain"``."""
+
+    opencode_config: OpenCodeProviderConfig | None = None
+    """Configuration for OpenCode-based providers (Blablador, KISSKI, etc.).
+    
+    When set, this provider uses OpenCode with a custom OpenAI-compatible API.
+    The configuration includes API endpoints, model preferences, and provider-specific
+    settings that are injected into the container environment.
+    """
+
+    @property
+    def uses_opencode_instructions(self) -> bool:
+        """Whether the provider uses OpenCode's instruction system."""
+        return self.opencode_config is not None or self.name == "opencode"
 
 
 # ---------------------------------------------------------------------------
@@ -253,6 +304,15 @@ HEADLESS_PROVIDERS: dict[str, HeadlessProvider] = {
         supports_session_hook=False,
         supports_add_dir=False,
         log_format="plain",
+        opencode_config=OpenCodeProviderConfig(
+            display_name="Helmholtz Blablador",
+            base_url="https://api.helmholtz-blablador.fz-juelich.de/v1",
+            preferred_model="alias-huge",
+            fallback_model="alias-code",
+            env_var_prefix="BLABLADOR",
+            config_dir=".blablador",
+            auth_key_url="https://helmholtz-blablador.fz-juelich.de/docs/api-key",
+        ),
     ),
     "kisski": HeadlessProvider(
         name="kisski",
@@ -276,6 +336,15 @@ HEADLESS_PROVIDERS: dict[str, HeadlessProvider] = {
         supports_session_hook=False,
         supports_add_dir=False,
         log_format="plain",
+        opencode_config=OpenCodeProviderConfig(
+            display_name="KISSKI",
+            base_url="https://chat-ai.academiccloud.de/v1",
+            preferred_model="devstral-2-123b-instruct-2512",
+            fallback_model="mistral-large-3-675b-instruct-2512",
+            env_var_prefix="KISSKI",
+            config_dir=".kisski",
+            auth_key_url="https://academiccloud.de/docs/api-key",
+        ),
     ),
     "opencode": HeadlessProvider(
         name="opencode",
@@ -779,3 +848,17 @@ def _generate_generic_wrapper(provider: HeadlessProvider, project: ProjectConfig
     lines.append("}")
 
     return "\n".join(lines) + "\n"
+
+
+def collect_opencode_provider_env() -> dict[str, str]:
+    """Collect environment variables for all OpenCode-based providers.
+
+    Returns a dictionary of environment variables that will be injected into containers
+    to configure OpenCode-based providers. Each provider with opencode_config set
+    contributes variables prefixed with TEROK_OC_{PROVIDER_NAME}_*.
+    """
+    env: dict[str, str] = {}
+    for provider in HEADLESS_PROVIDERS.values():
+        if provider.opencode_config is not None:
+            env.update(provider.opencode_config.to_env(provider.name))
+    return env

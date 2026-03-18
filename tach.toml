@@ -239,7 +239,7 @@ depends_on = ["terok.lib.core.projects", "terok.lib.util.logging_utils", "terok.
 [[modules]]
 path = "terok.lib.containers.environment"
 layer = "services"
-depends_on = ["terok.lib.core.config", "terok.lib.core.projects", "terok.lib.security.gate_server", "terok.lib.security.gate_tokens", "terok.lib.util.fs"]
+depends_on = ["terok.lib.core.config", "terok.lib.core.projects", "terok.lib.security.gate_server", "terok.lib.security.gate_tokens", "terok.lib.util.fs", "terok.lib.containers.headless_providers"]
 
 # Task port allocation
 [[modules]]
@@ -596,7 +596,7 @@ expose = ["parse_md_agent", "prepare_agent_config_dir", "AgentConfigSpec"]
 from = ["terok.lib.containers.agents"]
 
 [[interfaces]]
-expose = ["HeadlessProvider", "HEADLESS_PROVIDERS", "PROVIDER_NAMES", "ProviderConfig", "CLIOverrides", "WrapperConfig", "get_provider", "apply_provider_config", "build_headless_command", "generate_agent_wrapper", "generate_all_wrappers", "collect_all_auto_approve_env"]
+    expose = ["HeadlessProvider", "HEADLESS_PROVIDERS", "PROVIDER_NAMES", "ProviderConfig", "CLIOverrides", "WrapperConfig", "get_provider", "apply_provider_config", "build_headless_command", "generate_agent_wrapper", "generate_all_wrappers", "collect_all_auto_approve_env", "OpenCodeProviderConfig", "collect_opencode_provider_env"]
 from = ["terok.lib.containers.headless_providers"]
 
 [[interfaces]]
