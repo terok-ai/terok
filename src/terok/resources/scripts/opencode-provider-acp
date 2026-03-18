@@ -1,0 +1,22 @@
+#!/usr/bin/env bash
+
+# SPDX-FileCopyrightText: 2026 Jiri Vyskocil
+# SPDX-License-Identifier: Apache-2.0
+
+# Unified ACP wrapper for OpenCode-based providers (Blablador, KISSKI, etc.).
+# Derives the provider name from argv[0] (e.g. blablador-acp → blablador)
+# and points OpenCode's ACP server to the provider-specific config directory.
+
+PROVIDER="${0##*/}"
+PROVIDER="${PROVIDER%-acp}"
+CONFIG_DIR="${PROVIDER}"
+
+# Read config dir from host-injected env var if available, else use convention
+_env_var="TEROK_OC_${PROVIDER^^}_CONFIG_DIR"
+if [ -n "${!_env_var}" ]; then
+    CONFIG_DIR="${!_env_var}"
+else
+    CONFIG_DIR=".${PROVIDER}"
+fi
+
+exec env OPENCODE_CONFIG="$HOME/$CONFIG_DIR/opencode/opencode.json" opencode acp "$@"

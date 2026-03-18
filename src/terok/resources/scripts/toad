@@ -34,96 +34,28 @@ for _candidate in "${HOME}"/.local/share/uv/tools/batrachian-toad/lib/python*/si
   fi
 done
 if [[ -z "${TOAD_AGENTS_DIR}" ]]; then
-  echo "Warning: Toad agents dir not found; Blablador TOML injection skipped" >&2
-fi
-BLABLADOR_TOML="${TOAD_AGENTS_DIR}/blablador.helmholtz.de.toml"
-if [[ -n "${TOAD_AGENTS_DIR}" ]] && [[ ! -f "${BLABLADOR_TOML}" ]]; then
-  _toml_tmp=$(mktemp "${BLABLADOR_TOML}.XXXXXX" 2>/dev/null) || true
-  if [[ -n "${_toml_tmp}" ]]; then
-    if cat > "${_toml_tmp}" << 'TOML_EOF'
-identity = "blablador.helmholtz.de"
-name = "Blablador"
-short_name = "blablador"
-url = "https://helmholtz-blablador.fz-juelich.de/"
-protocol = "acp"
-author_name = "Helmholtz / FZJ"
-author_url = "https://www.fz-juelich.de/"
-publisher_name = "terok"
-publisher_url = "https://github.com/terok-ai/terok"
-type = "coding"
-description = "OpenCode with Helmholtz Blablador — open-source LLMs for German academia."
-tags = []
-run_command."*" = "blablador-acp"
-
-help = '''
-# Blablador
-
-OpenCode powered by Helmholtz Blablador — open-source large language models
-hosted at Forschungszentrum Jülich for the German research community.
-
-Uses the same tools and capabilities as OpenCode, but routes through the
-Blablador API with models like alias-huge and alias-code.
-
-Requires BLABLADOR_API_KEY to be set.
-'''
-
-[actions."*".install]
-command = "echo 'Blablador is pre-installed in terok containers.'"
-description = "Already installed"
-TOML_EOF
-    then
-      mv -f "${_toml_tmp}" "${BLABLADOR_TOML}" 2>/dev/null \
-        || { echo "Warning: could not install Blablador agent TOML" >&2; rm -f "${_toml_tmp}"; }
-    else
-      echo "Warning: failed to write Blablador agent TOML" >&2
-      rm -f "${_toml_tmp}"
-    fi
-  fi
+  echo "Warning: Toad agents dir not found; agent TOML injection skipped" >&2
 fi
 
-KISSKI_TOML="${TOAD_AGENTS_DIR}/kisski.academiccloud.de.toml"
-if [[ -n "${TOAD_AGENTS_DIR}" ]] && [[ ! -f "${KISSKI_TOML}" ]]; then
-  _toml_tmp=$(mktemp "${KISSKI_TOML}.XXXXXX" 2>/dev/null) || true
-  if [[ -n "${_toml_tmp}" ]]; then
-    if cat > "${_toml_tmp}" << 'TOML_EOF'
-identity = "kisski.academiccloud.de"
-name = "KISSKI"
-short_name = "kisski"
-url = "https://chat-ai.academiccloud.de/"
-protocol = "acp"
-author_name = "Academic Cloud"
-author_url = "https://academiccloud.de/"
-publisher_name = "terok"
-publisher_url = "https://github.com/terok-ai/terok"
-type = "coding"
-description = "OpenCode with KISSKI — AI services for German academia."
-tags = []
-run_command."*" = "kisski-acp"
-
-help = '''
-# KISSKI
-
-OpenCode powered by KISSKI — AI services hosted at Academic Cloud for
-German research and academia.
-
-Uses the same tools and capabilities as OpenCode, but routes through the
-KISSKI API.
-
-Requires KISSKI_API_KEY to be set.
-'''
-
-[actions."*".install]
-command = "echo 'KISSKI is pre-installed in terok containers.'"
-description = "Already installed"
-TOML_EOF
-    then
-      mv -f "${_toml_tmp}" "${KISSKI_TOML}" 2>/dev/null \
-        || { echo "Warning: could not install KISSKI agent TOML" >&2; rm -f "${_toml_tmp}"; }
-    else
-      echo "Warning: failed to write KISSKI agent TOML" >&2
-      rm -f "${_toml_tmp}"
+# Inject bundled agent TOML files from /usr/local/share/terok/toad-agents/
+# into Toad's package data directory.  Each .toml file describes an ACP agent.
+TEROK_TOAD_AGENTS="/usr/local/share/terok/toad-agents"
+if [[ -n "${TOAD_AGENTS_DIR}" ]] && [[ -d "${TEROK_TOAD_AGENTS}" ]]; then
+  for _toml_src in "${TEROK_TOAD_AGENTS}"/*.toml; do
+    [[ -f "${_toml_src}" ]] || continue
+    _toml_name="${_toml_src##*/}"
+    _toml_dest="${TOAD_AGENTS_DIR}/${_toml_name}"
+    if [[ ! -f "${_toml_dest}" ]]; then
+      _toml_tmp=$(mktemp "${_toml_dest}.XXXXXX" 2>/dev/null) || continue
+      if cp "${_toml_src}" "${_toml_tmp}" 2>/dev/null; then
+        mv -f "${_toml_tmp}" "${_toml_dest}" 2>/dev/null \
+          || { echo "Warning: could not install ${_toml_name}" >&2; rm -f "${_toml_tmp}"; }
+      else
+        echo "Warning: failed to copy ${_toml_name}" >&2
+        rm -f "${_toml_tmp}"
+      fi
     fi
-  fi
+  done
 fi
 
 if command -v jq >/dev/null 2>&1; then

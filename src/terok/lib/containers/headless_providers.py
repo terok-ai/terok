@@ -311,7 +311,7 @@ HEADLESS_PROVIDERS: dict[str, HeadlessProvider] = {
             fallback_model="alias-code",
             env_var_prefix="BLABLADOR",
             config_dir=".blablador",
-            auth_key_url="https://helmholtz-blablador.fz-juelich.de/docs/api-key",
+            auth_key_url="https://codebase.helmholtz.cloud/-/user_settings/personal_access_tokens",
         ),
     ),
     "kisski": HeadlessProvider(
@@ -343,7 +343,7 @@ HEADLESS_PROVIDERS: dict[str, HeadlessProvider] = {
             fallback_model="mistral-large-3-675b-instruct-2512",
             env_var_prefix="KISSKI",
             config_dir=".kisski",
-            auth_key_url="https://academiccloud.de/docs/api-key",
+            auth_key_url="https://chat-ai.academiccloud.de/",
         ),
     ),
     "opencode": HeadlessProvider(
@@ -525,11 +525,15 @@ def apply_provider_config(
     # --- Instructions ---
     # Claude receives instructions via --append-system-prompt in the wrapper.
     # Codex receives instructions via -c model_instructions_file=... in the wrapper.
-    # OpenCode, Blablador and KISSKI receive instructions via opencode.json `instructions`
+    # OpenCode-based providers receive instructions via opencode.json `instructions`
     # array (injected by prepare_agent_config_dir).
     # Remaining providers get best-effort prompt prepending.
     instructions = overrides.instructions
-    if instructions and provider.name not in {"claude", "codex", "opencode", "blablador", "kisski"}:
+    if (
+        instructions
+        and provider.name not in {"claude", "codex"}
+        and not provider.uses_opencode_instructions
+    ):
         prompt_parts.insert(0, instructions)
 
     return ProviderConfig(
@@ -749,15 +753,12 @@ def _generate_generic_wrapper(provider: HeadlessProvider, project: ProjectConfig
             lines.append(f"        _approve_args+=({shlex.quote(flag)})")
         lines.append("    fi")
 
-    # OpenCode session plugin setup for opencode/blablador/kisski.
-    if provider.session_file and provider.name in {"opencode", "blablador", "kisski"}:
-        plugin_dir = (
-            "$HOME/.kisski/opencode/plugins"
-            if provider.name == "kisski"
-            else "$HOME/.blablador/opencode/plugins"
-            if provider.name == "blablador"
-            else "$HOME/.config/opencode/plugins"
-        )
+    # OpenCode session plugin setup for OpenCode-based providers.
+    if provider.session_file and provider.uses_opencode_instructions:
+        if provider.opencode_config is not None:
+            plugin_dir = f"$HOME/{provider.opencode_config.config_dir}/opencode/plugins"
+        else:
+            plugin_dir = "$HOME/.config/opencode/plugins"
         lines.append("    # Ensure OpenCode session plugin is installed")
         lines.append("    local _plugin_src=/usr/local/share/terok/opencode-session-plugin.mjs")
         lines.append(f"    local _plugin_dir={plugin_dir}")

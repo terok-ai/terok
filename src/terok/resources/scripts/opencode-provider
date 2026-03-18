@@ -352,7 +352,7 @@ def main() -> int:
             if new_models:
                 print(f"New models available: {', '.join(sorted(new_models))}")
             update = _build_provider_update(config, base_url, api_key, model, fetched_models)
-            merged = _merge_provider_config(existing_config or {}, update)
+            merged = _merge_provider_config(existing_config or {}, update, config)
             _write_opencode_config(config, merged)
     elif options_changed or not configured_models:
         # Fetch failed: preserve known models if available

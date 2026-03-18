@@ -284,6 +284,7 @@ depends_on = [
     "terok.lib.core.images",
     "terok.lib.core.projects",
     "terok.lib.util.fs",
+    "terok.lib.containers.headless_providers",
 ]
 
 # SSH key management
@@ -322,17 +323,11 @@ path = "terok.lib.security.shield"
 layer = "services"
 depends_on = ["terok.lib.core.config", "terok.lib.core.paths"]
 
-    # Git gate sync & validation
-    [[modules]]
-    path = "terok.lib.security.git_gate"
-    layer = "services"
-    depends_on = ["terok.lib.core.config", "terok.lib.core.projects"]
-
-    # OpenCode-based provider implementations
-    [[modules]]
-    path = "terok.lib.providers"
-    layer = "services"
-    depends_on = ["terok.lib.core.config", "terok.lib.core.projects"]
+# Git gate sync & validation
+[[modules]]
+path = "terok.lib.security.git_gate"
+layer = "services"
+depends_on = ["terok.lib.core.config", "terok.lib.core.projects"]
 
 #
 # ·· wizards ··  Interactive workflows
@@ -596,7 +591,7 @@ expose = ["parse_md_agent", "prepare_agent_config_dir", "AgentConfigSpec"]
 from = ["terok.lib.containers.agents"]
 
 [[interfaces]]
-    expose = ["HeadlessProvider", "HEADLESS_PROVIDERS", "PROVIDER_NAMES", "ProviderConfig", "CLIOverrides", "WrapperConfig", "get_provider", "apply_provider_config", "build_headless_command", "generate_agent_wrapper", "generate_all_wrappers", "collect_all_auto_approve_env", "OpenCodeProviderConfig", "collect_opencode_provider_env"]
+expose = ["HeadlessProvider", "HEADLESS_PROVIDERS", "PROVIDER_NAMES", "ProviderConfig", "CLIOverrides", "WrapperConfig", "get_provider", "apply_provider_config", "build_headless_command", "generate_agent_wrapper", "generate_all_wrappers", "collect_all_auto_approve_env", "OpenCodeProviderConfig", "collect_opencode_provider_env"]
 from = ["terok.lib.containers.headless_providers"]
 
 [[interfaces]]
@@ -668,25 +663,16 @@ expose = [
 ]
 from = ["terok.lib.security.shield"]
 
-    [[interfaces]]
-    expose = [
-        "GateStalenessInfo",
-        "GateSyncResult",
-        "BranchSyncResult",
-        "CommitInfo",
-        "GitGate",
-        "find_projects_sharing_gate",
-    ]
-    from = ["terok.lib.security.git_gate"]
-
-    # OpenCode provider implementations
-    [[interfaces]]
-    expose = [
-        "OpenCodeProvider",
-        "BlabladorProvider",
-        "KISSKIProvider",
-    ]
-    from = ["terok.lib.providers"]
+[[interfaces]]
+expose = [
+    "GateStalenessInfo",
+    "GateSyncResult",
+    "BranchSyncResult",
+    "CommitInfo",
+    "GitGate",
+    "find_projects_sharing_gate",
+]
+from = ["terok.lib.security.git_gate"]
 
 [[interfaces]]
 expose = ["get_project_state", "is_task_image_old"]
