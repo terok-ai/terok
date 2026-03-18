@@ -134,18 +134,19 @@ class TestMain:
         """Calls os.execvp with the correct ACP agent for each wrapper name."""
         with (
             patch("shutil.which", return_value="/usr/bin/toad"),
-            patch.object(toad_module, "_set_toad_theme"),
+            patch.object(toad_module, "_set_toad_theme") as mock_theme,
             patch("os.execvp") as mock_exec,
             patch("sys.argv", [prog]),
         ):
             toad_module.main()
         mock_exec.assert_called_once_with("/usr/bin/toad", ["/usr/bin/toad", "acp", expected_acp])
+        mock_theme.assert_called_once_with("dracula")
 
     def test_forwards_extra_args(self, toad_module) -> None:
         """Extra CLI args are forwarded to toad."""
         with (
             patch("shutil.which", return_value="/usr/bin/toad"),
-            patch.object(toad_module, "_set_toad_theme"),
+            patch.object(toad_module, "_set_toad_theme") as mock_theme,
             patch("os.execvp") as mock_exec,
             patch("sys.argv", ["blablatoad", "--title", "Test"]),
         ):
@@ -153,6 +154,7 @@ class TestMain:
         mock_exec.assert_called_once_with(
             "/usr/bin/toad", ["/usr/bin/toad", "acp", "blablador-acp", "--title", "Test"]
         )
+        mock_theme.assert_called_once_with("dracula")
 
     def test_unknown_wrapper_exits(self, toad_module) -> None:
         """Unknown wrapper name exits with error."""

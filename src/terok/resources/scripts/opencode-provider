@@ -358,7 +358,7 @@ def main() -> int:
         # Fetch failed: preserve known models if available
         fallback_models = sorted(configured_models) if configured_models else [model]
         update = _build_provider_update(config, base_url, api_key, model, fallback_models)
-        merged = _merge_provider_config(existing_config or {}, update)
+        merged = _merge_provider_config(existing_config or {}, update, config)
         _write_opencode_config(config, merged)
 
     # Launch OpenCode

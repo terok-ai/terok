@@ -10,6 +10,7 @@ import importlib.machinery
 import importlib.util
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 from types import ModuleType
 from unittest.mock import patch
@@ -222,3 +223,21 @@ class TestCLI:
         )
         assert result.returncode == 1
         assert "Unknown provider" in result.stderr
+
+    def test_degraded_first_run_when_fetch_models_returns_none(self) -> None:
+        """First run succeeds even when _fetch_models returns None (API unreachable)."""
+        sys.modules.pop("opencode_provider", None)
+        mod = _load_as_module("blablador")
+        with tempfile.TemporaryDirectory() as td:
+            oc_config = Path(td) / "opencode" / "opencode.json"
+            with (
+                patch.object(mod, "_load_api_key", return_value="fake-key"),
+                patch.object(mod.request, "urlopen", side_effect=mod.error.URLError("unreachable")),
+                patch.object(mod, "_opencode_config_path", return_value=oc_config),
+                patch("subprocess.call", return_value=0),
+                patch("sys.argv", ["blablador"]),
+            ):
+                result = mod.main()
+            assert result == 0
+            assert oc_config.exists()
+        sys.modules.pop("opencode_provider", None)
