@@ -1,5 +1,8 @@
 /* Mermaid subgraph clusters: transparent background so they don't
-   clash with the Material theme's dark/light mode text colors. */
+   clash with the Material theme's dark/light mode text colors.
+   Target with and without .mermaid wrapper — Material for MkDocs
+   renders mermaid SVGs in different wrapper elements. */
+.cluster > rect,
 .mermaid .cluster rect,
 .mermaid .cluster-bg {
   fill: transparent !important;
