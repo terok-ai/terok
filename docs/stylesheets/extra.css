@@ -1,11 +1,9 @@
-/* Mermaid subgraph clusters: transparent background so they don't
-   clash with the Material theme's dark/light mode text colors.
-   Target with and without .mermaid wrapper — Material for MkDocs
-   renders mermaid SVGs in different wrapper elements. */
-.cluster > rect,
-.mermaid .cluster rect,
-.mermaid .cluster-bg {
-  fill: transparent !important;
+/* Mermaid subgraph clusters: transparent background.
+   Material's inline SVG style uses var(--md-default-fg-color--lightest)
+   for .cluster rect fill — overriding the variable is the only way to
+   win against the ID-scoped selectors inside the SVG. */
+[class*="mermaid"] {
+  --md-default-fg-color--lightest: transparent;
 }
 
 /* Ubuntu Mono renders smaller than Ubuntu at the same font size.
