@@ -38,11 +38,6 @@ and how much friction you are willing to tolerate.
 graph LR
     A["<b>Chat Window</b><br/>Copy-paste snippets<br/>Agent sees nothing"] --- B["<b>Restricted Agent</b><br/>Read-only access<br/>No network, no push"] --- C["<b>Gatekept Agent</b><br/>Full workspace<br/>Pushes to gate only"] --- D["<b>Online Agent</b><br/>Full workspace<br/>Pushes to upstream"] --- E["<b>Unrestricted Local</b><br/>Full machine access<br/>Your SSH keys"]
 
-    style A fill:#e8f5e9,stroke:#2e7d32,color:#000
-    style B fill:#e8f5e9,stroke:#2e7d32,color:#000
-    style C fill:#fff9c4,stroke:#f9a825,color:#000
-    style D fill:#fff3e0,stroke:#e65100,color:#000
-    style E fill:#ffebee,stroke:#c62828,color:#000
 ```
 
 | Level | Agent can | Agent cannot | Use case |
@@ -216,9 +211,6 @@ graph LR
     G["Git Gate"] -. "clone seed<br/>(optional)" .-> T
     U -- "sync" --> G
 
-    style T fill:#fff3e0,stroke:#e65100,color:#000
-    style U fill:#e3f2fd,stroke:#1565c0,color:#000
-    style G fill:#f5f5f5,stroke:#9e9e9e,color:#000
 ```
 
 - Container has SSH keys mounted (by default)
@@ -238,9 +230,6 @@ graph LR
     G -. "promote<br/>(human)" .-> U["Upstream<br/>GitHub"]
     U -- "sync (SSH)" --> G
 
-    style T fill:#fff9c4,stroke:#f9a825,color:#000
-    style G fill:#e8f5e9,stroke:#2e7d32,color:#000
-    style U fill:#e3f2fd,stroke:#1565c0,color:#000
 ```
 
 - Container has no SSH keys (by default)
@@ -291,9 +280,6 @@ graph TB
     AGENT_ON -- "push via SSH" --> UPSTREAM
     AGENT_GK -- "push via HTTP" --> GATE
 
-    style ONLINE fill:#fff3e0,stroke:#e65100,color:#000
-    style GATEKEPT fill:#fff9c4,stroke:#f9a825,color:#000
-    style SSH fill:#e8eaf6,stroke:#283593,color:#000
 ```
 
 | Mode | Container has SSH key? | Agent can reach upstream? |
@@ -334,8 +320,6 @@ graph LR
     AGENT -- "✗" --> RANDOM
     AGENT -- "✗" --> INTERNAL
 
-    style ALLOWED fill:#e8f5e9,stroke:#2e7d32,color:#000
-    style BLOCKED fill:#ffebee,stroke:#c62828,color:#000
 ```
 
 | Shield state | Outbound traffic | Audit logging | Risk |
@@ -388,11 +372,6 @@ graph TB
 
     L1 --> L2 --> L3 --> L4 --> L5
 
-    style L1 fill:#e8eaf6,stroke:#283593,color:#000
-    style L2 fill:#e8f5e9,stroke:#2e7d32,color:#000
-    style L3 fill:#fff9c4,stroke:#f9a825,color:#000
-    style L4 fill:#fce4ec,stroke:#880e4f,color:#000
-    style L5 fill:#f3e5f5,stroke:#6a1b9a,color:#000
 ```
 
 | Attack vector | Gate | Shield | Container isolation | Credential scoping |
