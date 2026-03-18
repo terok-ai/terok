@@ -15,8 +15,8 @@ from pathlib import Path
 from urllib import error, request
 
 DEFAULT_BASE_URL = "https://chat-ai.academiccloud.de/v1"
-PREFERRED_MODEL = "alias-huge"
-FALLBACK_MODEL = "alias-code"
+PREFERRED_MODEL = "devstral-2-123b-instruct-2512"
+FALLBACK_MODEL = "mistral-large-3-675b-instruct-2512"
 
 
 def _config_dir() -> Path:
