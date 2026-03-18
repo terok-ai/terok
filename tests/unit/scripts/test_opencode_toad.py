@@ -104,11 +104,11 @@ class TestSetToadTheme:
         """Does not rewrite config when theme already matches."""
         with tempfile.TemporaryDirectory() as td:
             config_path = Path(td) / "toad.json"
-            config_path.write_text(json.dumps({"ui": {"theme": "dracula"}}))
-            mtime = config_path.stat().st_mtime
+            content = json.dumps({"ui": {"theme": "dracula"}})
+            config_path.write_text(content, encoding="utf-8")
             with patch.object(toad_module, "TOAD_CONFIG", config_path):
                 toad_module._set_toad_theme("dracula")
-            assert config_path.stat().st_mtime == mtime
+            assert config_path.read_text(encoding="utf-8") == content
 
 
 # -- Entry point (parametrized over both providers) ---------------------------

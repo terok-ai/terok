@@ -8,6 +8,7 @@ from __future__ import annotations
 import ast
 import importlib.machinery
 import importlib.util
+import os
 import subprocess
 import sys
 import tempfile
@@ -137,6 +138,34 @@ class TestProviderResolution:
             pytest.raises(SystemExit, match="Unknown provider"),
         ):
             mod._resolve_provider_config()
+
+
+# -- Non-dict JSON resilience -------------------------------------------------
+
+
+class TestNonDictJsonResilience:
+    """Ensure the script handles non-object JSON roots gracefully."""
+
+    def test_load_api_key_ignores_array_config(self) -> None:
+        """``config.json`` containing a JSON array returns None."""
+        mod = _load_as_module("blablador")
+        with tempfile.TemporaryDirectory() as td:
+            cfg = Path(td) / "config.json"
+            cfg.write_text("[]", encoding="utf-8")
+            config = {"config_dir": td, "env_var_prefix": "TEST"}
+            with patch.dict("os.environ", {}, clear=False):
+                os.environ.pop("TEST_API_KEY", None)
+                assert mod._load_api_key(config) is None
+
+    def test_load_opencode_config_ignores_array(self) -> None:
+        """``opencode.json`` containing a JSON array returns None."""
+        mod = _load_as_module("blablador")
+        with tempfile.TemporaryDirectory() as td:
+            oc_path = Path(td) / "opencode.json"
+            oc_path.write_text("[]", encoding="utf-8")
+            config = {"config_dir": ".blablador"}
+            with patch.object(mod, "_opencode_config_path", return_value=oc_path):
+                assert mod._load_opencode_config(config) is None
 
 
 # -- Model fetching -----------------------------------------------------------

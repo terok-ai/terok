@@ -94,8 +94,10 @@ def _load_api_key(config: dict[str, str]) -> str | None:
         return None
 
     try:
-        data = json.loads(cfg_path.read_text())
+        data = json.loads(cfg_path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError):
+        return None
+    if not isinstance(data, dict):
         return None
 
     val = data.get("api_key")
@@ -220,9 +222,10 @@ def _load_opencode_config(config: dict[str, str]) -> dict | None:
         return None
 
     try:
-        return json.loads(config_path.read_text(encoding="utf-8"))
+        loaded = json.loads(config_path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError):
         return None
+    return loaded if isinstance(loaded, dict) else None
 
 
 def _get_configured_models(config: dict[str, str], existing_config: dict | None) -> set[str]:
