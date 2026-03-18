@@ -1,4 +1,5 @@
 # SPDX-FileCopyrightText: 2026 Jiri Vyskocil
+# SPDX-FileCopyrightText: 2026 Andreas Knüpfer
 # SPDX-License-Identifier: Apache-2.0
 
 """Headless (autopilot) provider registry for multi-agent support.
