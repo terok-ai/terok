@@ -7,13 +7,31 @@
 #   - Interactive:               via /etc/bash.bashrc
 #   - Login:                     via /etc/profile.d/
 #
-# Guard against double-sourcing (login shells source both profile.d and bashrc).
-[ -n "${_TEROK_ENV_LOADED:-}" ] && return 0
-_TEROK_ENV_LOADED=1
+# Guard against redundant sourcing.  Login shells hit both profile.d and
+# bashrc, and Claude Code's shell-snapshot mechanism may restore env vars
+# without restoring functions (declare -f capture can be incomplete).
+# We therefore check that key functions actually exist before short-
+# circuiting — if a snapshot set the env var but lost the functions,
+# re-sourcing repairs the shell.
+_terok_env_ready() {
+  declare -F _terok_apply_git_identity >/dev/null 2>&1
+}
+_terok_env_ready && return 0
 
 # ── PATH ──────────────────────────────────────────────────────────────────────
 
-export PATH="$HOME/.npm-packages/bin:$HOME/.local/bin:$HOME/.opencode/bin:$PATH"
+# Guard against duplicate PATH prepends on re-source.
+_terok_prepend_path_once() {
+  case ":$PATH:" in
+    *":$1:"*) ;;
+    *) PATH="$1:$PATH" ;;
+  esac
+}
+
+_terok_prepend_path_once "$HOME/.opencode/bin"
+_terok_prepend_path_once "$HOME/.local/bin"
+_terok_prepend_path_once "$HOME/.npm-packages/bin"
+export PATH
 
 # ── Git identity ──────────────────────────────────────────────────────────────
 

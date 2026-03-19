@@ -136,9 +136,9 @@ class TestGitIdentityContainer:
 
     def test_bash_env_sources_terok_env(self, container: str) -> None:
         """Non-interactive ``bash -c`` loads terok-env.sh via BASH_ENV."""
-        result = _bash(container, "echo ${_TEROK_ENV_LOADED:-}")
+        result = _bash(container, "type _terok_apply_git_identity && type _terok_env_ready")
         assert result.returncode == 0
-        assert result.stdout.strip() == "1"
+        assert "function" in result.stdout.lower()
 
     def test_identity_function_available_noninteractive(self, container: str) -> None:
         """``_terok_apply_git_identity`` is available in non-interactive bash."""
