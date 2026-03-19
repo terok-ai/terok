@@ -81,13 +81,14 @@ ARG AGENT_CACHE_BUST=0
 
 # terok scripts — single COPY + distribute (refreshed on agent rebuild)
 COPY scripts/ /tmp/terok-scripts/
+COPY toad-agents/ /usr/local/share/terok/toad-agents/
 RUN set -eux; \
     cp /tmp/terok-scripts/terok-env-git-identity.sh /usr/local/share/terok/; \
     cp /tmp/terok-scripts/terok-env.sh /etc/profile.d/terok-env.sh; \
     cp /tmp/terok-scripts/opencode-session-plugin.mjs /usr/local/share/terok/; \
     cp /tmp/terok-scripts/vibe-model-sync.sh /usr/local/bin/vibe-model-sync; \
-    for f in setup-codex-auth.sh hilfe blablador blablador-acp blablatoad \
-             kisski kisski-acp kisskitoad toad \
+    for f in setup-codex-auth.sh hilfe opencode-provider opencode-provider-acp \
+             opencode-toad toad \
              mistral-model-sync.py allthethings.sh update-all-the-things; do \
         cp "/tmp/terok-scripts/$f" "/usr/local/bin/$f"; \
     done; \
@@ -95,17 +96,20 @@ RUN set -eux; \
         /usr/local/share/terok/terok-env-git-identity.sh \
         /usr/local/bin/setup-codex-auth.sh \
         /usr/local/bin/hilfe \
-        /usr/local/bin/blablador \
-        /usr/local/bin/blablador-acp \
-        /usr/local/bin/blablatoad \
-        /usr/local/bin/kisski \
-        /usr/local/bin/kisski-acp \
-        /usr/local/bin/kisskitoad \
+        /usr/local/bin/opencode-provider \
+        /usr/local/bin/opencode-provider-acp \
+        /usr/local/bin/opencode-toad \
         /usr/local/bin/toad \
         /usr/local/bin/vibe-model-sync \
         /usr/local/bin/mistral-model-sync.py \
         /usr/local/bin/allthethings.sh \
         /usr/local/bin/update-all-the-things; \
+    ln -s opencode-provider /usr/local/bin/blablador; \
+    ln -s opencode-provider /usr/local/bin/kisski; \
+    ln -s opencode-provider-acp /usr/local/bin/blablador-acp; \
+    ln -s opencode-provider-acp /usr/local/bin/kisski-acp; \
+    ln -s opencode-toad /usr/local/bin/blablatoad; \
+    ln -s opencode-toad /usr/local/bin/kisskitoad; \
     rm -rf /tmp/terok-scripts
 
 # Root-level agent installs (need apt/pipx — refreshed on agent rebuild)

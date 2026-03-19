@@ -458,11 +458,17 @@ def prepare_agent_config_dir(spec: AgentConfigSpec) -> Path:
     (agent_config_dir / "instructions.md").write_text(instructions_text, encoding="utf-8")
 
     # Inject instructions path into opencode.json configs on the host so
-    # both opencode and blablador discover them natively (works for both
+    # all OpenCode-based providers discover them natively (works for both
     # interactive and headless modes).
+    from .headless_providers import HEADLESS_PROVIDERS
+
     envs_base = get_envs_base_dir()
     _inject_opencode_instructions(envs_base / "_opencode-config" / "opencode.json")
-    _inject_opencode_instructions(envs_base / "_blablador-config" / "opencode" / "opencode.json")
+    for _p in HEADLESS_PROVIDERS.values():
+        if _p.opencode_config is not None:
+            _inject_opencode_instructions(
+                envs_base / f"_{_p.name}-config" / "opencode" / "opencode.json"
+            )
 
     # Write shell wrapper functions for ALL providers so interactive CLI users
     # can invoke any agent (each provider gets its own shell function).

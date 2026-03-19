@@ -162,47 +162,6 @@ _ALL_PROVIDERS: list[AuthProvider] = [
         ),
     ),
     AuthProvider(
-        name="blablador",
-        label="Blablador",
-        host_dir_name="_blablador-config",
-        container_mount="/home/dev/.blablador",
-        command=_api_key_command(
-            AuthKeyConfig(
-                label="Blablador",
-                key_url="https://codebase.helmholtz.cloud/-/user_settings/personal_access_tokens",
-                env_var="BLABLADOR_API_KEY",
-                config_path="~/.blablador/config.json",
-                printf_template='{"api_key": "%s"}',
-                tool_name="blablador",
-            )
-        ),
-        banner_hint=(
-            "You will be prompted to enter your Blablador API key.\n"
-            "Get your API key at: "
-            "https://codebase.helmholtz.cloud/-/user_settings/personal_access_tokens"
-        ),
-    ),
-    AuthProvider(
-        name="kisski",
-        label="KISSKI",
-        host_dir_name="_kisski-config",
-        container_mount="/home/dev/.kisski",
-        command=_api_key_command(
-            AuthKeyConfig(
-                label="KISSKI",
-                key_url="https://chat-ai.academiccloud.de/",
-                env_var="KISSKI_API_KEY",
-                config_path="~/.kisski/config.json",
-                printf_template='{"api_key": "%s"}',
-                tool_name="kisski",
-            )
-        ),
-        banner_hint=(
-            "You will be prompted to enter your KISSKI API key.\n"
-            "Get your API key at: https://chat-ai.academiccloud.de/"
-        ),
-    ),
-    AuthProvider(
         name="gh",
         label="GitHub CLI",
         host_dir_name="_gh-config",
@@ -231,6 +190,39 @@ for _p in _ALL_PROVIDERS:
     if _p.name in AUTH_PROVIDERS:
         raise RuntimeError(f"Duplicate auth provider name: {_p.name!r}")
     AUTH_PROVIDERS[_p.name] = _p
+
+
+def _register_opencode_auth_providers() -> None:
+    """Dynamically register auth providers for OpenCode-based wrappers."""
+    from terok.lib.containers.headless_providers import HEADLESS_PROVIDERS
+
+    for p in HEADLESS_PROVIDERS.values():
+        if p.opencode_config is None or p.name in AUTH_PROVIDERS:
+            continue
+        oc = p.opencode_config
+        AUTH_PROVIDERS[p.name] = AuthProvider(
+            name=p.name,
+            label=p.label,
+            host_dir_name=f"_{p.name}-config",
+            container_mount=f"/home/dev/{oc.config_dir}",
+            command=_api_key_command(
+                AuthKeyConfig(
+                    label=p.label,
+                    key_url=oc.auth_key_url,
+                    env_var=f"{oc.env_var_prefix}_API_KEY",
+                    config_path=f"~/{oc.config_dir}/config.json",
+                    printf_template='{"api_key": "%s"}',
+                    tool_name=p.name,
+                )
+            ),
+            banner_hint=(
+                f"You will be prompted to enter your {p.label} API key.\n"
+                f"Get your API key at: {oc.auth_key_url}"
+            ),
+        )
+
+
+_register_opencode_auth_providers()
 
 
 # ---------------------------------------------------------------------------

@@ -15,6 +15,7 @@ import os
 from dataclasses import dataclass
 from pathlib import Path
 
+from ..containers.headless_providers import collect_opencode_provider_env
 from ..core.config import get_envs_base_dir
 from ..core.projects import ProjectConfig
 from ..security.gate_server import ensure_server_reachable, get_gate_base_path, get_gate_server_port
@@ -40,12 +41,10 @@ class SharedMount:
     """Mount point inside the container (e.g. ``"/home/dev/.codex"``)."""
 
 
-SHARED_MOUNTS: tuple[SharedMount, ...] = (
+_STATIC_SHARED_MOUNTS: tuple[SharedMount, ...] = (
     SharedMount("codex", "_codex-config", "Codex config", "/home/dev/.codex"),
     SharedMount("claude", "_claude-config", "Claude config", "/home/dev/.claude"),
     SharedMount("vibe", "_vibe-config", "Vibe config", "/home/dev/.vibe"),
-    SharedMount("blablador", "_blablador-config", "Blablador config", "/home/dev/.blablador"),
-    SharedMount("kisski", "_kisski-config", "KISSKI config", "/home/dev/.kisski"),
     SharedMount(
         "opencode_config", "_opencode-config", "OpenCode config", "/home/dev/.config/opencode"
     ),
@@ -57,6 +56,26 @@ SHARED_MOUNTS: tuple[SharedMount, ...] = (
     SharedMount("gh", "_gh-config", "GitHub CLI config", "/home/dev/.config/gh"),
     SharedMount("glab", "_glab-config", "GitLab CLI config", "/home/dev/.config/glab-cli"),
 )
+
+
+def _build_shared_mounts() -> tuple[SharedMount, ...]:
+    """Build complete shared mounts including dynamically generated OpenCode provider mounts."""
+    from ..containers.headless_providers import HEADLESS_PROVIDERS
+
+    dynamic = tuple(
+        SharedMount(
+            p.name,
+            f"_{p.name}-config",
+            f"{p.label} config",
+            f"/home/dev/{p.opencode_config.config_dir}",
+        )
+        for p in HEADLESS_PROVIDERS.values()
+        if p.opencode_config is not None
+    )
+    return _STATIC_SHARED_MOUNTS + dynamic
+
+
+SHARED_MOUNTS: tuple[SharedMount, ...] = _build_shared_mounts()
 
 
 def _ensure_shared_dirs(envs_base: Path) -> dict[str, Path]:
@@ -243,6 +262,9 @@ def build_task_env_and_volumes(project: ProjectConfig, task_id: str) -> tuple[di
         "HUMAN_GIT_NAME": project.human_name or "Nobody",
         "HUMAN_GIT_EMAIL": project.human_email or "nobody@localhost",
     }
+
+    # Add OpenCode provider environment variables
+    env.update(collect_opencode_provider_env())
 
     volumes: list[str] = [f"{repo_dir}:/workspace:Z"]
     volumes += _shared_volume_mounts(config_dirs)
