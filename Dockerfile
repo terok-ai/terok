@@ -25,7 +25,6 @@ RUN dnf install -y \
         python3-devel \
         git \
         nftables \
-        socat \
     && dnf clean all
 
 # ── 2. Install terok from local source tree ──────────────────────
@@ -38,14 +37,7 @@ RUN pip install --break-system-packages poetry-dynamic-versioning \
     && pip install --break-system-packages . \
     && rm -rf /opt/terok-src
 
-# ── 3. Install toad port-forwarding hook ──────────────────────────
-# Rootless Podman's pasta only forwards loopback connections.
-# This hook starts a socat relay on post_ready and kills it on
-# post_stop, making toad reachable from the LAN.
-COPY examples/hooks/toad-port-forward.sh /usr/local/bin/toad-port-forward.sh
-RUN chmod +x /usr/local/bin/toad-port-forward.sh
-
-# ── 4. Prepare terok directories, config, and shell completions ───
+# ── 3. Prepare terok directories and shell completions ────────────
 # Switch to the image's podman user (uid 1000) for all user-space
 # setup — directories are created with correct ownership naturally.
 USER podman
@@ -69,10 +61,6 @@ RUN printf '%s\n' '#!/bin/sh' \
         'for d in /home/podman/.config/terok /home/podman/.local/share/terok /home/podman/.local/share/terok/gate /home/podman/.local/share/containers; do' \
         '    mkdir -p "$d"; chown -R podman:podman "$d"' \
         'done' \
-        'if [ ! -f /home/podman/.config/terok/config.yml ]; then' \
-        '    printf "hooks:\\n  post_ready: /usr/local/bin/toad-port-forward.sh\\n  post_stop: /usr/local/bin/toad-port-forward.sh\\n" > /home/podman/.config/terok/config.yml' \
-        '    chown podman:podman /home/podman/.config/terok/config.yml' \
-        'fi' \
         'if [ $# -gt 0 ]; then exec su -m podman -s /bin/sh -c '"'"'exec "$@"'"'"' sh "$@"; fi' \
         'if [ -z "$TEROK_GATE_ADMIN_TOKEN" ]; then' \
         '    TEROK_GATE_ADMIN_TOKEN=$(python3 -c "import namer; print(namer.generate(separator=\"-\", category=sorted(namer.list_categories())))")' \
@@ -94,6 +82,5 @@ EXPOSE 8566 9418 7860-7880
 
 ENV HOME=/home/podman
 ENV TEROK_GATE_BIND=0.0.0.0
-ENV TEROK_TOAD_BIND=127.0.0.1
 
 ENTRYPOINT ["docker-entrypoint.sh"]

@@ -194,9 +194,7 @@ def test_shield_functions_delegate_to_per_task_shield(
 
     mock_make.assert_called_once_with(MOCK_TASK_DIR)
     if method_name == "down":
-        getattr(mock_shield, method_name).assert_called_once_with(
-            "my-container", allow_all=False
-        )
+        getattr(mock_shield, method_name).assert_called_once_with("my-container", allow_all=False)
     else:
         getattr(mock_shield, method_name).assert_called_once_with("my-container")
     if expected is not None:

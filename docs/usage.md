@@ -885,11 +885,10 @@ terokctl sickbay myproject 3        # check one task
 terokctl sickbay --fix              # auto-reconcile (run missed hooks)
 ```
 
-### Example: toad port forwarding
+### Example: task lifecycle logging
 
-See `examples/hooks/toad-port-forward.sh` for a complete example that uses
-`socat` to forward toad web ports -- useful in Docker-in-Docker deployments
-where rootless Podman's pasta cannot forward non-loopback connections.
+See `examples/hooks/task-notify.sh` for a simple example that logs
+lifecycle events with task context to stderr.
 
 ---
 
