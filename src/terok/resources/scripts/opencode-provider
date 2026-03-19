@@ -183,7 +183,8 @@ def _merge_provider_config(existing: dict, update: dict, config: dict) -> dict:
     if existing_schema and existing_schema != expected_schema:
         print(
             f"Warning: opencode.json has unexpected $schema value "
-            f"{existing_schema!r}, expected {expected_schema!r}. Overwriting."
+            f"{existing_schema!r}, expected {expected_schema!r}. Overwriting.",
+            file=sys.stderr,
         )
     merged["$schema"] = expected_schema
 
@@ -334,12 +335,18 @@ def main() -> int:
     # Determine which model to use
     model = config["preferred_model"]
     if fetched_models and config["preferred_model"] not in fetched_models:
+        fallback = config["fallback_model"]
+        if fallback in fetched_models:
+            model = fallback
+        else:
+            # Both defaults gone — pick the first available model
+            model = fetched_models[0]
         print(
             f"Warning: Preferred model '{config['preferred_model']}' is no longer available.\n"
-            f"Falling back to '{config['fallback_model']}'.\n"
-            "Check for new upstream versions of terok to update the default model."
+            f"Using '{model}'.\n"
+            "Check for new upstream versions of terok to update the default model.",
+            file=sys.stderr,
         )
-        model = config["fallback_model"]
 
     # Update config if needed
     stored_options = _get_configured_options(config, existing_config)
@@ -353,7 +360,7 @@ def main() -> int:
         if needs_update:
             new_models = fetched_set - configured_models
             if new_models:
-                print(f"New models available: {', '.join(sorted(new_models))}")
+                print(f"New models available: {', '.join(sorted(new_models))}", file=sys.stderr)
             update = _build_provider_update(config, base_url, api_key, model, fetched_models)
             merged = _merge_provider_config(existing_config or {}, update, config)
             _write_opencode_config(config, merged)
