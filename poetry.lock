@@ -1349,13 +1349,13 @@ mkdocs = ">=1.2"
 
 [[package]]
 name = "mkdocs-terok"
-version = "0.2.0"
+version = "0.2.2"
 description = "Shared MkDocs documentation generators for terok projects"
 optional = false
 python-versions = ">=3.12,<4.0"
 groups = ["docs"]
 files = [
-    {file = "mkdocs_terok-0.2.0-py3-none-any.whl", hash = "sha256:e56784522fe7feddb22ee2ca8835c874a61e9338499280b79a13f470d590e024"},
+    {file = "mkdocs_terok-0.2.2-py3-none-any.whl", hash = "sha256:42717cc95df894bfcb7a810a9cb559856c857d3fac8050ead0185d3ace6773da"},
 ]
 
 [package.dependencies]
@@ -1363,7 +1363,7 @@ PyYAML = ">=6.0"
 
 [package.source]
 type = "url"
-url = "https://github.com/terok-ai/mkdocs-terok/releases/download/v0.2.0/mkdocs_terok-0.2.0-py3-none-any.whl"
+url = "https://github.com/terok-ai/mkdocs-terok/releases/download/v0.2.2/mkdocs_terok-0.2.2-py3-none-any.whl"
 
 [[package]]
 name = "mkdocstrings"
@@ -2988,4 +2988,4 @@ propcache = ">=0.2.1"
 [metadata]
 lock-version = "2.1"
 python-versions = ">=3.12,<4.0"
-content-hash = "9f1098e58e31e96e7ef99d492bae747bbaa610b75efd4be80df7ea6f1ddeac29"
+content-hash = "2051d233520b291b16c981c7b1d035ce7bfc7ad13a2fa8bbff8d3cf31798dcbf"
