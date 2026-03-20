@@ -7,6 +7,10 @@
 # Sets up per-agent git identity and unrestricted mode before exec-ing
 # the real codex-acp adapter.
 #
+# Instructions: -c model_instructions_file flag points the adapter at
+# /home/dev/.terok/instructions.md (per-task, written by
+# prepare_agent_config_dir on the host).  Same mechanism as the headless wrapper.
+#
 # Unlike other agents, Codex has no env var for approval policy — only
 # the --yolo CLI flag (which doesn't apply to the ACP adapter) or
 # config.toml.  The codex-acp binary accepts -c key=value overrides
@@ -21,6 +25,9 @@ _AGENT_EMAIL="noreply@openai.com"
 _args=()
 if [[ "${TEROK_UNRESTRICTED:-}" == "1" ]]; then
     _args+=(-c approval_policy=never -c sandbox_mode=danger-full-access)
+fi
+if [[ -f /home/dev/.terok/instructions.md ]]; then
+    _args+=(-c 'model_instructions_file="/home/dev/.terok/instructions.md"')
 fi
 
 exec npx @zed-industries/codex-acp "${_args[@]}" "$@"

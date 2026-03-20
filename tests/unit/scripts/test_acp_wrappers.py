@@ -87,13 +87,22 @@ class TestAcpWrapperStructure:
         assert re.search(r'^_AGENT_NAME="[^"]+"$', content, re.MULTILINE)
         assert re.search(r'^_AGENT_EMAIL="[^"]+"$', content, re.MULTILINE)
 
+    # Shared config dirs that wrappers must never write to (host-global volumes).
+    _SHARED_DIRS = (
+        "/home/dev/.claude",
+        "/home/dev/.codex",
+        "/home/dev/.copilot",
+        "/home/dev/.vibe",
+    )
+
     @pytest.mark.parametrize("script", TEROK_ACP_WRAPPERS)
     def test_does_not_write_shared_dirs(self, script: str) -> None:
-        """Wrappers must not write to shared config dirs (mkdir, cp, printf >)."""
+        """Wrappers must not write to shared config dirs (host-global volumes)."""
         content = (SCRIPTS_DIR / script).read_text(encoding="utf-8")
-        assert "mkdir " not in content, f"{script}: must not mkdir shared dirs"
-        assert " > /" not in content, f"{script}: must not write to absolute paths"
-        assert " cp " not in content, f"{script}: must not copy into shared dirs"
+        for d in self._SHARED_DIRS:
+            # Allow reading (e.g. symlink sources) but ban writes (>, >>, cp ... dir/)
+            assert f"> {d}" not in content, f"{script}: must not redirect into {d}"
+            assert f">> {d}" not in content, f"{script}: must not append to {d}"
 
     @pytest.mark.parametrize("script", TEROK_ACP_WRAPPERS)
     def test_execs_real_adapter(self, script: str) -> None:

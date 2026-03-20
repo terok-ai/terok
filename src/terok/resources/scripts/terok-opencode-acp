@@ -7,6 +7,10 @@
 # Sets up per-agent git identity before exec-ing the native opencode
 # acp adapter.
 #
+# Instructions: delivered via "instructions" array in opencode.json pointing
+# to /home/dev/.terok/instructions.md.  Injected on the host by
+# prepare_agent_config_dir → _inject_opencode_instructions.
+#
 # Unrestricted mode: OPENCODE_PERMISSION env var is set at container level
 # by task_runners.py.  opencode reads process.env directly in ACP mode.
 

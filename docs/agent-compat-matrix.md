@@ -53,11 +53,11 @@ the init script re-reads them on every start — no stale state is possible.
 
 | Agent | terok mechanism | ACP notes |
 |-------|----------------|-----------|
-| Claude | `--append-system-prompt` (wrapper) | ACP: `CLAUDE.md` in workspace (read by SDK) |
-| Vibe | `AGENTS.md` / `VIBE.md` in workspace | No CLI flag; file convention only |
+| Claude | `--append-system-prompt` (wrapper) | ACP: same flag via `terok-claude-acp` wrapper |
+| Vibe | `AGENTS.md` / `VIBE.md` in workspace | ACP: per-task `VIBE_HOME` overlay with `AGENTS.md` |
 | OpenCode | `instructions` array in opencode.json | Injected by terok on host |
-| Codex | `AGENTS.md` in workspace | Also: `instructions` in config.toml |
-| Copilot | `AGENTS.md` in workspace | Also: `.github/copilot-instructions.md` |
+| Codex | `-c model_instructions_file` (wrapper) | ACP: same flag via `terok-codex-acp` wrapper |
+| Copilot | `AGENTS.md` in workspace | ACP: `COPILOT_CUSTOM_INSTRUCTIONS_DIRS` (best-effort, upstream unstable) |
 
 ## Agent-Specific Notes
 
