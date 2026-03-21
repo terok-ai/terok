@@ -69,7 +69,7 @@ class TaskList(ListView):
 
     def _format_task_label(self, task: TaskMeta) -> str:
         """Build a human-readable label string for a task list entry."""
-        m_emoji = render_emoji(mode_info(task))
+        m_emoji = render_emoji(mode_info(task.mode))
         s_info = STATUS_DISPLAY.get(task.status, STATUS_DISPLAY["created"])
         s_emoji = render_emoji(s_info)
 

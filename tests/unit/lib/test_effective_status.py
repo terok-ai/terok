@@ -21,13 +21,14 @@ from terok.lib.sandbox.runtime import get_project_container_states
 
 def _task(**kwargs: object) -> TaskMeta:
     """Build a ``TaskMeta`` with sensible defaults overridden by *kwargs*."""
-    defaults = {
+    defaults: dict[str, object] = {
         "task_id": "1",
         "mode": None,
         "workspace": "",
         "web_port": None,
     }
     defaults.update(kwargs)
+    defaults.setdefault("initialized", defaults["mode"] is not None)
     return TaskMeta(**defaults)
 
 
@@ -92,7 +93,7 @@ def test_all_effective_status_values_have_display_info() -> None:
 )
 def test_mode_info_cases(task_kwargs: dict[str, object], emoji: str, label: str) -> None:
     """``mode_info`` resolves direct modes and web backends into display metadata."""
-    info = mode_info(_task(**task_kwargs))
+    info = mode_info(_task(**task_kwargs).mode)
     assert info.emoji == emoji
     assert info.label == label
 

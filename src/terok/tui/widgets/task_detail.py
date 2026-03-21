@@ -44,7 +44,7 @@ def render_task_details(
     accent_style = Style(color=variables.get("primary", "cyan"))
     warning_style = Style(color=variables.get("warning", "yellow"))
 
-    m_info = mode_info(task)
+    m_info = mode_info(task.mode)
     m_emoji = render_emoji(m_info)
     mode_display = m_info.label or "Not assigned (choose CLI or Web mode)"
 

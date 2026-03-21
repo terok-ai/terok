@@ -23,6 +23,7 @@ from ..core.config import state_root
 from ..core.projects import ProjectConfig, load_project
 from ..core.task_display import (
     STATUS_DISPLAY,
+    TaskState,
     effective_status,
     mode_info,
 )
@@ -47,18 +48,19 @@ from ..util.yaml import dump as _yaml_dump, load as _yaml_load
 from .container_exec import container_git_diff
 
 
-@dataclass
-class TaskMeta:
-    """Lightweight metadata snapshot for a single task."""
+@dataclass(kw_only=True)
+class TaskMeta(TaskState):
+    """Lightweight metadata snapshot for a single task.
+
+    Inherits lifecycle fields (``container_state``, ``exit_code``,
+    ``deleting``, ``initialized``) from :class:`~terok.lib.core.task_display.TaskState`.
+    """
 
     task_id: str
     mode: str | None
     workspace: str
     web_port: int | None
     backend: str | None = None
-    container_state: str | None = None
-    exit_code: int | None = None
-    deleting: bool = False
     preset: str | None = None
     name: str = ""
     provider: str | None = None
@@ -201,6 +203,7 @@ def get_task_meta(project_id: str, task_id: str) -> TaskMeta:
         container_state=live_state,
         exit_code=raw.get("exit_code"),
         deleting=bool(raw.get("deleting")),
+        initialized=mode is not None,
         preset=raw.get("preset"),
         name=raw["name"],
         provider=raw.get("provider"),
@@ -428,15 +431,17 @@ def _get_tasks(project_id: str, reverse: bool = False) -> list[TaskMeta]:
                 ws = read_work_status(agent_cfg)
                 ws_status = ws.status
                 ws_message = ws.message
+            mode = meta.get("mode")
             tasks.append(
                 TaskMeta(
                     task_id=tid,
-                    mode=meta.get("mode"),
+                    mode=mode,
                     workspace=meta.get("workspace", ""),
                     web_port=meta.get("web_port"),
                     backend=meta.get("backend"),
                     exit_code=meta.get("exit_code"),
                     deleting=bool(meta.get("deleting")),
+                    initialized=mode is not None,
                     preset=meta.get("preset"),
                     name=meta["name"],
                     provider=meta.get("provider"),
@@ -895,6 +900,7 @@ def task_status(project_id: str, task_id: str) -> None:
         backend=meta.get("backend"),
         exit_code=exit_code,
         deleting=bool(meta.get("deleting")),
+        initialized=mode is not None,
         container_state=cs,
         name=meta["name"],
         provider=meta.get("provider"),
@@ -904,7 +910,7 @@ def task_status(project_id: str, task_id: str) -> None:
     info = STATUS_DISPLAY.get(status, STATUS_DISPLAY["created"])
 
     status_color = {"green": _green, "yellow": _yellow, "red": _red}.get(info.color, _yellow)
-    m = mode_info(task)
+    m = mode_info(task.mode)
     m_emoji = render_emoji(m)
 
     print(f"Task {task_id}:")

@@ -560,6 +560,7 @@ expose = [
     "StatusInfo",
     "ModeInfo",
     "ProjectBadge",
+    "TaskState",
     "STATUS_DISPLAY",
     "MODE_DISPLAY",
     "SECURITY_CLASS_DISPLAY",

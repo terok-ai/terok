@@ -43,14 +43,16 @@ def make_project(**overrides: object) -> mock.Mock:
 
 def make_task(widgets: object, **overrides: object) -> object:
     """Build a TaskMeta with defaults tuned for these tests."""
-    defaults = {
+    defaults: dict[str, object] = {
         "task_id": "1",
         "mode": "cli",
         "workspace": MOCK_WORKSPACE,
         "web_port": None,
         "container_state": "running",
     }
-    return widgets.TaskMeta(**(defaults | overrides))
+    merged = defaults | overrides
+    merged.setdefault("initialized", merged["mode"] is not None)
+    return widgets.TaskMeta(**merged)
 
 
 def make_task_screen(*, has_tasks: bool, mode: str | None = None) -> object:
