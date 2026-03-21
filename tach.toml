@@ -17,20 +17,26 @@ ignore_type_checking_imports = true
 
 # ── Layer Architecture ──────────────────────────────────────────────
 #
-#   presentation   CLI and TUI frontends (can depend on services + core)
-#   services       Domain services / orchestrators (can depend on core)
-#   core           Foundation types, config, and pure utilities
+#   presentation      CLI and TUI frontends
+#   domain            Project/Task aggregates, facade, task CRUD
+#   orchestration     Container lifecycle, env/volumes, Dockerfile, ports
+#   instrumentation   Agent config, providers, instructions, wrappers
+#   sandbox           Shield, gate, SSH, container runtime isolation
+#   core              Foundation types, config, and pure utilities
 #
 layers = [
     "presentation",
-    "services",
+    "domain",
+    "orchestration",
+    "instrumentation",
+    "sandbox",
     "core",
 ]
 
 [external]
 exclude = ["pydevd_pycharm", "pydevd"]
 
-# ── PRESENTATION LAYER ──────────────────────────────────────────────
+# ── PRESENTATION LAYER ────────────────────────────────────────────
 
 # CLI frontend
 [[modules]]
@@ -73,10 +79,15 @@ depends_on = [
     "terok.lib.util.yaml",
 ]
 
+# ── DOMAIN LAYER ──────────────────────────────────────────────────
+#
+# ·· aggregates ··  DDD Project/Task, facade, high-level queries
+#
+
 # Service facade (aggregates shared cross-cutting operations)
 [[modules]]
 path = "terok.lib.facade"
-layer = "services"
+layer = "domain"
 depends_on = [
     "terok.lib.containers.docker",
     "terok.lib.containers.environment",
@@ -95,11 +106,10 @@ depends_on = [
     "terok.lib.task",
 ]
 
-# Rich domain objects (Aggregate Root, Entity)
-
+# Rich domain object: Project (Aggregate Root)
 [[modules]]
 path = "terok.lib.project"
-layer = "services"
+layer = "domain"
 depends_on = [
     "terok.lib.containers.agent_config",
     "terok.lib.containers.docker",
@@ -117,9 +127,10 @@ depends_on = [
     "terok.lib.util.fs",
 ]
 
+# Rich domain object: Task (Entity)
 [[modules]]
 path = "terok.lib.task"
-layer = "services"
+layer = "domain"
 depends_on = [
     "terok.lib.containers.runtime",
     "terok.lib.containers.task_logs",
@@ -128,63 +139,16 @@ depends_on = [
     "terok.lib.core.project_model",
 ]
 
-# ── SERVICES LAYER ──────────────────────────────────────────────────
-#
-# ·· containers ··  Task lifecycle, container runtime, Dockerfiles
-#
-
-# Agent configuration (parsing, filtering, wrapper generation)
-[[modules]]
-path = "terok.lib.containers.agents"
-layer = "services"
-depends_on = ["terok.lib.containers.headless_providers", "terok.lib.core.config", "terok.lib.core.projects", "terok.lib.util.fs", "terok.lib.util.yaml"]
-
-# Headless provider registry (multi-agent autopilot support)
-[[modules]]
-path = "terok.lib.containers.headless_providers"
-layer = "services"
-depends_on = ["terok.lib.containers.agent_config", "terok.lib.core.projects"]
-
-# Agent config resolution (layered merging across scopes)
-[[modules]]
-path = "terok.lib.containers.agent_config"
-layer = "services"
-depends_on = ["terok.lib.util.config_stack", "terok.lib.core.config", "terok.lib.core.projects"]
-
-# Agent instruction resolution (layered merging with bundled defaults)
-[[modules]]
-path = "terok.lib.containers.instructions"
-layer = "services"
-depends_on = ["terok.lib.containers.agent_config"]
-
 # Autopilot container lifecycle (wait, logs)
 [[modules]]
 path = "terok.lib.containers.autopilot"
-layer = "services"
+layer = "domain"
 depends_on = ["terok.lib.containers.tasks"]
-
-# Agent log formatters (Claude stream-json, plain text)
-[[modules]]
-path = "terok.lib.containers.log_format"
-layer = "services"
-depends_on = ["terok.lib.util.ansi"]
-
-# Task display types and status computation
-[[modules]]
-path = "terok.lib.containers.task_display"
-layer = "services"
-depends_on = ["terok.lib.util.yaml"]
-
-# Agent work status reading
-[[modules]]
-path = "terok.lib.containers.work_status"
-layer = "services"
-depends_on = ["terok.lib.util.yaml"]
 
 # Task log viewing and streaming
 [[modules]]
 path = "terok.lib.containers.task_logs"
-layer = "services"
+layer = "domain"
 depends_on = [
     "terok.lib.containers.log_format",
     "terok.lib.containers.runtime",
@@ -193,37 +157,49 @@ depends_on = [
     "terok.lib.util.yaml",
 ]
 
-# Task metadata, lifecycle, and queries
+# Agent log formatters (Claude stream-json, plain text)
 [[modules]]
-path = "terok.lib.containers.tasks"
-layer = "services"
+path = "terok.lib.containers.log_format"
+layer = "domain"
+depends_on = ["terok.lib.util.ansi"]
+
+# Image listing & cleanup
+[[modules]]
+path = "terok.lib.containers.image_cleanup"
+layer = "domain"
+depends_on = ["terok.lib.core.projects"]
+
+# Project infrastructure state (queries podman & filesystem)
+[[modules]]
+path = "terok.lib.containers.project_state"
+layer = "domain"
 depends_on = [
-    "terok.lib.containers.container_exec",
-    "terok.lib.containers.hooks",
-    "terok.lib.containers.runtime",
-    "terok.lib.containers.task_display",
-    "terok.lib.containers.work_status",
+    "terok.lib.containers.docker",
     "terok.lib.core.config",
+    "terok.lib.core.images",
     "terok.lib.core.projects",
-    "terok.lib.security.gate_tokens",
-    "terok.lib.util.ansi",
-    "terok.lib.util.emoji",
-    "terok.lib.util.fs",
-    "terok.lib.util.host_cmd",
-    "terok.lib.util.logging_utils",
-    "terok.lib.util.yaml",
 ]
 
-# Task lifecycle hooks (host-side)
+# Interactive project creation
 [[modules]]
-path = "terok.lib.containers.hooks"
-layer = "services"
-depends_on = ["terok.lib.util.yaml"]
+path = "terok.lib.wizards.new_project"
+layer = "domain"
+depends_on = [
+    "terok.lib.core.config",
+    "terok.ui_utils.editor",
+    "terok.lib.util.fs",
+    "terok.lib.util.template_utils",
+]
+
+# ── ORCHESTRATION LAYER ───────────────────────────────────────────
+#
+# ·· containers ··  Container lifecycle, env/volumes, Dockerfiles
+#
 
 # Task container runners (CLI, headless, toad, restart)
 [[modules]]
 path = "terok.lib.containers.task_runners"
-layer = "services"
+layer = "orchestration"
 depends_on = [
     "terok.lib.containers.agent_config",
     "terok.lib.containers.agents",
@@ -244,61 +220,90 @@ depends_on = [
     "terok.lib.util.yaml",
 ]
 
-# Container-based command execution (sandboxed git via podman exec)
+# Task metadata, lifecycle, and queries
 [[modules]]
-path = "terok.lib.containers.container_exec"
-layer = "services"
-depends_on = ["terok.lib.containers.runtime", "terok.lib.util.logging_utils"]
-
-# Container state, GPU args, log streaming
-[[modules]]
-path = "terok.lib.containers.runtime"
-layer = "services"
-depends_on = ["terok.lib.core.projects", "terok.lib.util.logging_utils", "terok.lib.util.yaml"]
+path = "terok.lib.containers.tasks"
+layer = "orchestration"
+depends_on = [
+    "terok.lib.containers.container_exec",
+    "terok.lib.containers.hooks",
+    "terok.lib.containers.runtime",
+    "terok.lib.containers.task_display",
+    "terok.lib.containers.work_status",
+    "terok.lib.core.config",
+    "terok.lib.core.projects",
+    "terok.lib.security.gate_tokens",
+    "terok.lib.util.ansi",
+    "terok.lib.util.emoji",
+    "terok.lib.util.fs",
+    "terok.lib.util.host_cmd",
+    "terok.lib.util.logging_utils",
+    "terok.lib.util.yaml",
+]
 
 # Task environment & volume mounts
 [[modules]]
 path = "terok.lib.containers.environment"
-layer = "services"
+layer = "orchestration"
 depends_on = ["terok.lib.core.config", "terok.lib.core.projects", "terok.lib.security.gate_server", "terok.lib.security.gate_tokens", "terok.lib.util.fs", "terok.lib.containers.headless_providers", "terok.lib.util.host_cmd"]
-
-# Task port allocation
-[[modules]]
-path = "terok.lib.containers.ports"
-layer = "services"
-depends_on = ["terok.lib.core.config", "terok.lib.util.yaml"]
 
 # Dockerfile generation & image building
 [[modules]]
 path = "terok.lib.containers.docker"
-layer = "services"
+layer = "orchestration"
 depends_on = ["terok.lib.core.config", "terok.lib.core.images", "terok.lib.core.projects", "terok.lib.util.fs"]
 
-# Image listing & cleanup
+# Task port allocation
 [[modules]]
-path = "terok.lib.containers.image_cleanup"
-layer = "services"
-depends_on = ["terok.lib.core.projects"]
+path = "terok.lib.containers.ports"
+layer = "orchestration"
+depends_on = ["terok.lib.core.config", "terok.lib.util.yaml"]
 
-# Project infrastructure state (queries podman & filesystem)
+# Task lifecycle hooks (host-side)
 [[modules]]
-path = "terok.lib.containers.project_state"
-layer = "services"
-depends_on = [
-    "terok.lib.containers.docker",
-    "terok.lib.core.config",
-    "terok.lib.core.images",
-    "terok.lib.core.projects",
-]
+path = "terok.lib.containers.hooks"
+layer = "orchestration"
+depends_on = ["terok.lib.util.yaml"]
 
+# Container-based command execution (sandboxed git via podman exec)
+[[modules]]
+path = "terok.lib.containers.container_exec"
+layer = "orchestration"
+depends_on = ["terok.lib.containers.runtime", "terok.lib.util.logging_utils"]
+
+# ── INSTRUMENTATION LAYER ─────────────────────────────────────────
 #
-# ·· security ··  Auth, SSH, git gate
+# ·· agents ··  Provider registry, instructions, agent wrappers
 #
+
+# Agent configuration (parsing, filtering, wrapper generation)
+[[modules]]
+path = "terok.lib.containers.agents"
+layer = "instrumentation"
+depends_on = ["terok.lib.containers.headless_providers", "terok.lib.core.config", "terok.lib.core.projects", "terok.lib.util.fs", "terok.lib.util.yaml"]
+
+# Headless provider registry (multi-agent autopilot support)
+[[modules]]
+path = "terok.lib.containers.headless_providers"
+layer = "instrumentation"
+depends_on = ["terok.lib.containers.agent_config", "terok.lib.core.projects"]
+
+# Agent config resolution (layered merging across scopes)
+[[modules]]
+path = "terok.lib.containers.agent_config"
+layer = "instrumentation"
+depends_on = ["terok.lib.util.config_stack", "terok.lib.core.config", "terok.lib.core.projects"]
+
+# Agent instruction resolution (layered merging with bundled defaults)
+[[modules]]
+path = "terok.lib.containers.instructions"
+layer = "instrumentation"
+depends_on = ["terok.lib.containers.agent_config"]
 
 # API key authentication workflows
 [[modules]]
 path = "terok.lib.security.auth"
-layer = "services"
+layer = "instrumentation"
 depends_on = [
     "terok.lib.util.podman",
     "terok.lib.core.config",
@@ -308,10 +313,46 @@ depends_on = [
     "terok.lib.containers.headless_providers",
 ]
 
+# ── SANDBOX LAYER ─────────────────────────────────────────────────
+#
+# ·· isolation ··  Container runtime, shield, gate, SSH
+#
+
+# Container state, GPU args, log streaming
+[[modules]]
+path = "terok.lib.containers.runtime"
+layer = "sandbox"
+depends_on = ["terok.lib.core.projects", "terok.lib.util.logging_utils", "terok.lib.util.yaml"]
+
+# Shield egress firewall adapter
+[[modules]]
+path = "terok.lib.security.shield"
+layer = "sandbox"
+depends_on = ["terok.lib.core.config", "terok.lib.core.paths"]
+
+# Gate server lifecycle management
+[[modules]]
+path = "terok.lib.security.gate_server"
+layer = "sandbox"
+depends_on = ["terok.lib.core.config", "terok.lib.core.paths", "terok.lib.security.gate_tokens", "terok.lib.util.template_utils", "terok.gate"]
+
+# Gate token CRUD
+[[modules]]
+path = "terok.lib.security.gate_tokens"
+layer = "sandbox"
+depends_on = ["terok.lib.core.config"]
+
+# Standalone HTTP gate server (zero terok imports)
+[[modules]]
+path = "terok.gate"
+layer = "sandbox"
+depends_on = []
+utility = true
+
 # SSH key management
 [[modules]]
 path = "terok.lib.security.ssh"
-layer = "services"
+layer = "sandbox"
 depends_on = [
     "terok.lib.core.config",
     "terok.lib.core.projects",
@@ -319,53 +360,13 @@ depends_on = [
     "terok.lib.util.template_utils",
 ]
 
-# Gate server lifecycle management
-[[modules]]
-path = "terok.lib.security.gate_server"
-layer = "services"
-depends_on = ["terok.lib.core.config", "terok.lib.core.paths", "terok.lib.security.gate_tokens", "terok.lib.util.template_utils", "terok.gate"]
-
-# Gate token CRUD
-[[modules]]
-path = "terok.lib.security.gate_tokens"
-layer = "services"
-depends_on = ["terok.lib.core.config"]
-
-# Standalone HTTP gate server (zero terok imports)
-[[modules]]
-path = "terok.gate"
-layer = "services"
-depends_on = []
-utility = true
-
-# Shield egress firewall adapter
-[[modules]]
-path = "terok.lib.security.shield"
-layer = "services"
-depends_on = ["terok.lib.core.config", "terok.lib.core.paths"]
-
 # Git gate sync & validation
 [[modules]]
 path = "terok.lib.security.git_gate"
-layer = "services"
+layer = "sandbox"
 depends_on = ["terok.lib.core.config", "terok.lib.core.projects"]
 
-#
-# ·· wizards ··  Interactive workflows
-#
-
-# Interactive project creation
-[[modules]]
-path = "terok.lib.wizards.new_project"
-layer = "services"
-depends_on = [
-    "terok.lib.core.config",
-    "terok.ui_utils.editor",
-    "terok.lib.util.fs",
-    "terok.lib.util.template_utils",
-]
-
-# ── CORE LAYER ──────────────────────────────────────────────────────
+# ── CORE LAYER ────────────────────────────────────────────────────
 #
 # ·· core ··  Foundation types & config
 #
@@ -431,6 +432,18 @@ path = "terok.lib.core.images"
 layer = "core"
 depends_on = []
 
+# Task display types and status computation
+[[modules]]
+path = "terok.lib.containers.task_display"
+layer = "core"
+depends_on = ["terok.lib.util.yaml"]
+
+# Agent work status reading
+[[modules]]
+path = "terok.lib.containers.work_status"
+layer = "core"
+depends_on = ["terok.lib.util.yaml"]
+
 #
 # ·· ui ··  Shared UI helpers (terminal, editor)
 #
@@ -474,7 +487,7 @@ layer = "core"
 depends_on = []
 utility = true
 
-# ANSI color utilities (used by services layer)
+# ANSI color utilities
 [[modules]]
 path = "terok.lib.util.ansi"
 layer = "core"
@@ -516,7 +529,7 @@ layer = "core"
 depends_on = ["terok.lib.util.yaml"]
 utility = true
 
-# ── Interfaces ──────────────────────────────────────────────────────
+# ── Interfaces ────────────────────────────────────────────────────
 
 [[interfaces]]
 expose = [
@@ -755,7 +768,7 @@ expose = [
 ]
 from = ["terok.lib.core.images"]
 
-# Service module interfaces
+# Orchestration module interfaces
 
 [[interfaces]]
 expose = [
@@ -791,6 +804,8 @@ from = ["terok.lib.containers.autopilot"]
 [[interfaces]]
 expose = ["run_wizard", "collect_wizard_inputs", "generate_config"]
 from = ["terok.lib.wizards.new_project"]
+
+# Facade interface (stable boundary for presentation layer)
 
 [[interfaces]]
 expose = [
@@ -868,47 +883,40 @@ from = ["terok.lib.project"]
 expose = ["Task"]
 from = ["terok.lib.task"]
 
-# Host-side subprocess guard interface
+# Utility interfaces
+
 [[interfaces]]
 expose = ["WORKSPACE_DANGEROUS_DIRNAME", "is_in_dangerous_workspace", "assert_not_in_dangerous_workspace"]
 from = ["terok.lib.util.host_cmd"]
 
-# Container-based command execution interface
 [[interfaces]]
 expose = ["container_git_diff"]
 from = ["terok.lib.containers.container_exec"]
 
-# YAML I/O utility interface
 [[interfaces]]
 expose = ["load", "dump", "YAMLError"]
 from = ["terok.lib.util.yaml"]
 
-# Config stack utility interface
 [[interfaces]]
 expose = ["deep_merge", "ConfigScope", "ConfigStack", "load_yaml_scope", "load_json_scope"]
 from = ["terok.lib.util.config_stack"]
 
-# Emoji utility interface
 [[interfaces]]
 expose = ["render_emoji", "set_emoji_enabled", "is_emoji_enabled", "EmojiInfo"]
 from = ["terok.lib.util.emoji"]
 
-# Filesystem utility interface
 [[interfaces]]
 expose = ["ensure_dir", "ensure_dir_writable", "archive_timestamp", "unique_archive_path", "create_archive_dir", "create_archive_file"]
 from = ["terok.lib.util.fs"]
 
-# Port allocation interface
 [[interfaces]]
 expose = ["assign_web_port"]
 from = ["terok.lib.containers.ports"]
 
-# Core path resolution interface
 [[interfaces]]
 expose = ["config_root", "state_root", "runtime_root"]
 from = ["terok.lib.core.paths"]
 
-# Core version interface
 [[interfaces]]
 expose = ["get_version_info", "format_version_string", "base_version", "short_version"]
 from = ["terok.lib.core.version"]
