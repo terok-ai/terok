@@ -16,9 +16,12 @@ terok_shield = pytest.importorskip("terok_shield")
 has_global_hooks = terok_shield.has_global_hooks
 find_hooks_dirs = terok_shield.find_hooks_dirs
 
+from .conftest import hooks_unavailable
+
 pytestmark = [pytest.mark.needs_host_features, pytest.mark.needs_hooks]
 
 
+@hooks_unavailable
 class TestHooksInstalled:
     """Verify global hooks are present after ``terokctl shield setup --user``."""
 
