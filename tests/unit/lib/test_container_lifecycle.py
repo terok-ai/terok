@@ -86,7 +86,7 @@ def test_get_container_state_handles_success_and_errors(
 ) -> None:
     """Container state lookup lowercases successful output and ignores Podman errors."""
     patch_kwargs = {"side_effect": error} if error else {"return_value": output}
-    with patch("terok.lib.sandbox.runtime.subprocess.check_output", **patch_kwargs):
+    with patch("terok_sandbox.runtime.subprocess.check_output", **patch_kwargs):
         assert get_container_state("test-container") == expected
 
 

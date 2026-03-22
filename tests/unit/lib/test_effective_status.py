@@ -179,7 +179,7 @@ def test_get_project_container_states_handles_output_and_errors(
 ) -> None:
     """Project-wide state lookup parses output and degrades cleanly on errors."""
     patch_kwargs = {"side_effect": error} if error else {"return_value": output}
-    with patch("terok.lib.sandbox.runtime.subprocess.check_output", **patch_kwargs):
+    with patch("terok_sandbox.runtime.subprocess.check_output", **patch_kwargs):
         assert get_project_container_states("proj") == expected
 
 

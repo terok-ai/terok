@@ -192,7 +192,7 @@ class TestTaskRunnerShieldIntegration:
 
         task_dir = shield_env.task_dir
         with (
-            patch("terok.lib.sandbox.paths.state_root", return_value=shield_env.state_dir),
+            patch("terok_sandbox.paths.state_root", return_value=shield_env.state_dir),
             patch("os.geteuid", return_value=1000),
             patch("subprocess.run", side_effect=capture_run),
             patch(
@@ -205,7 +205,7 @@ class TestTaskRunnerShieldIntegration:
             ),
             # Inject MockRunner into the Shield created by _make_shield
             patch(
-                "terok.lib.sandbox.shield.make_shield",
+                "terok_sandbox.shield.make_shield",
                 return_value=Shield(
                     ShieldConfig(
                         state_dir=shield_env.state_dir,

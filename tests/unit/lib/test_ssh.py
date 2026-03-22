@@ -48,7 +48,7 @@ class TestSsh:
             with (
                 unittest.mock.patch.dict(os.environ, {"TEROK_CONFIG_DIR": str(config_root)}),
                 mock_git_config(),
-                unittest.mock.patch("terok.lib.sandbox.ssh.subprocess.run") as run_mock,
+                unittest.mock.patch("terok_sandbox.ssh.subprocess.run") as run_mock,
             ):
                 result = make_ssh_manager(load_project(project_id)).init(key_name=key_name)
 
@@ -66,7 +66,7 @@ class TestSsh:
             with (
                 unittest.mock.patch.dict(os.environ, {"TEROK_CONFIG_DIR": str(config_root)}),
                 mock_git_config(),
-                unittest.mock.patch("terok.lib.sandbox.ssh.subprocess.run") as run_mock,
+                unittest.mock.patch("terok_sandbox.ssh.subprocess.run") as run_mock,
                 unittest.mock.patch("builtins.print") as print_mock,
             ):
                 make_ssh_manager(load_project(project_id)).init()
