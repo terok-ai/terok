@@ -290,6 +290,8 @@ def _maybe_drop_shield(project: ProjectConfig, cname: str, task_dir: Path) -> No
     """Best-effort shield drop if ``shield.drop_on_task_start`` is enabled."""
     if not project.shield_drop_on_task_start:
         return
+    if get_shield_bypass_firewall_no_protection():
+        return
     try:
         _shield_down_impl(cname, task_dir)
         audit_path = task_dir / "shield" / "audit.jsonl"

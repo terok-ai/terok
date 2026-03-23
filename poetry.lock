@@ -2505,32 +2505,32 @@ tomli-w = ">=1.0,<2.0"
 
 [[package]]
 name = "terok-sandbox"
-version = "0.0.3"
+version = "0.0.5"
 description = "Hardened Podman container runner with gate server and shield integration"
 optional = false
 python-versions = ">=3.12,<4.0"
 groups = ["main"]
 files = [
-    {file = "terok_sandbox-0.0.3-py3-none-any.whl", hash = "sha256:75331076c292857c858601c668148ce2fdffd2c341d0ebb07d787c4137558b04"},
+    {file = "terok_sandbox-0.0.5-py3-none-any.whl", hash = "sha256:1f70bf88938c107b868f401a8102e57ee9d72f413cfdb111a5d014dd59577ecc"},
 ]
 
 [package.dependencies]
 platformdirs = ">=4.0"
-terok_shield = {url = "https://github.com/terok-ai/terok-shield/releases/download/v0.4.0/terok_shield-0.4.0-py3-none-any.whl"}
+terok_shield = {url = "https://github.com/terok-ai/terok-shield/releases/download/v0.4.1/terok_shield-0.4.1-py3-none-any.whl"}
 
 [package.source]
 type = "url"
-url = "https://github.com/terok-ai/terok-sandbox/releases/download/v0.0.3/terok_sandbox-0.0.3-py3-none-any.whl"
+url = "https://github.com/terok-ai/terok-sandbox/releases/download/v0.0.5/terok_sandbox-0.0.5-py3-none-any.whl"
 
 [[package]]
 name = "terok-shield"
-version = "0.4.0"
+version = "0.4.1"
 description = "nftables-based egress firewalling for Podman containers"
 optional = false
 python-versions = ">=3.12,<4.0"
 groups = ["main"]
 files = [
-    {file = "terok_shield-0.4.0-py3-none-any.whl", hash = "sha256:6e83acff2dd737428db639eaca2e85b252b719a382dd1a5453f33ea144abebee"},
+    {file = "terok_shield-0.4.1-py3-none-any.whl", hash = "sha256:6257cb0e619d3965998dac68e4413580c5c2de5f2136a1f319374c2589fec9c7"},
 ]
 
 [package.dependencies]
@@ -2538,7 +2538,7 @@ PyYAML = ">=6.0"
 
 [package.source]
 type = "url"
-url = "https://github.com/terok-ai/terok-shield/releases/download/v0.4.0/terok_shield-0.4.0-py3-none-any.whl"
+url = "https://github.com/terok-ai/terok-shield/releases/download/v0.4.1/terok_shield-0.4.1-py3-none-any.whl"
 
 [[package]]
 name = "textual"
@@ -3008,4 +3008,4 @@ propcache = ">=0.2.1"
 [metadata]
 lock-version = "2.1"
 python-versions = ">=3.12,<4.0"
-content-hash = "b41be73cf4fad719547d32d67700f888ae78362d2189801f14287ab3c190e09f"
+content-hash = "fcce41b2346fbf740a491113b4d2840f4b55b6dcf127d3fec293106c8594fb64"
