@@ -15,7 +15,6 @@ import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 
-from ..core.config import get_envs_base_dir
 from ..util.fs import ensure_dir, ensure_dir_writable
 from ..util.yaml import load as _yaml_load
 from .headless_providers import WrapperConfig
@@ -397,6 +396,7 @@ class AgentConfigSpec:
     provider: str = "claude"
     instructions: str | None = None
     default_agent: str | None = None
+    envs_base_dir: Path | None = None
 
     def __post_init__(self) -> None:
         """Coerce mutable sequences to tuples for true immutability."""
@@ -462,7 +462,9 @@ def prepare_agent_config_dir(spec: AgentConfigSpec) -> Path:
     # interactive and headless modes).
     from .headless_providers import HEADLESS_PROVIDERS
 
-    envs_base = get_envs_base_dir()
+    envs_base = spec.envs_base_dir
+    if envs_base is None:
+        raise ValueError("envs_base_dir is required in AgentConfigSpec")
     _inject_opencode_instructions(envs_base / "_opencode-config" / "opencode.json")
     for _p in HEADLESS_PROVIDERS.values():
         if _p.opencode_config is not None:
@@ -491,7 +493,7 @@ def prepare_agent_config_dir(spec: AgentConfigSpec) -> Path:
 
     # Write SessionStart hook — only for providers that support it (Claude)
     if resolved.supports_session_hook:
-        shared_claude_dir = get_envs_base_dir() / "_claude-config"
+        shared_claude_dir = envs_base / "_claude-config"
         ensure_dir_writable(shared_claude_dir, "_claude-config")
         _write_session_hook(shared_claude_dir / "settings.json")
 

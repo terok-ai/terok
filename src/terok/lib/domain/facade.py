@@ -72,9 +72,13 @@ from terok_sandbox.shield import (  # noqa: F401 — re-exported public API
 )
 from terok_sandbox.ssh import SSHManager  # noqa: F401 — re-exported public API
 
-from ..core.config import SHIELD_SECURITY_HINT  # noqa: F401 — re-exported for presentation layer
+from ..core.config import (
+    SHIELD_SECURITY_HINT,  # noqa: F401 — re-exported for presentation layer
+    get_envs_base_dir,
+)
+from ..core.images import project_cli_image
 from ..core.projects import load_project
-from ..instrumentation.auth import AUTH_PROVIDERS, AuthProvider, authenticate
+from ..instrumentation.auth import AUTH_PROVIDERS, AuthProvider, authenticate as _authenticate_raw
 from ..orchestration.docker import build_images, generate_dockerfiles
 from ..orchestration.task_runners import (  # noqa: F401 — re-exported public API
     HeadlessRunRequest,
@@ -157,6 +161,20 @@ def maybe_pause_for_ssh_key_registration(project_id: str) -> None:
         print("deploy key (or to your SSH keys) on the git remote.")
         print("=" * 60)
         input("Press Enter once the key is registered... ")
+
+
+def authenticate(project_id: str, provider: str) -> None:
+    """Run the auth flow for *provider*, injecting terok-specific config.
+
+    Thin wrapper around the instrumentation-layer ``authenticate()`` that
+    supplies ``envs_base_dir`` and ``image`` from terok's config/image system.
+    """
+    _authenticate_raw(
+        project_id,
+        provider,
+        envs_base_dir=get_envs_base_dir(),
+        image=project_cli_image(project_id),
+    )
 
 
 __all__ = [

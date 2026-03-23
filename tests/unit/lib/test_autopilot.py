@@ -147,13 +147,7 @@ def prepare_agent_config(
     from terok.lib.instrumentation.agents import AgentConfigSpec, prepare_agent_config_dir
 
     (project.tasks_root / task_id).mkdir(parents=True, exist_ok=True)
-    with (
-        tempfile.TemporaryDirectory() as td,
-        unittest.mock.patch(
-            "terok.lib.instrumentation.agents.get_envs_base_dir",
-            return_value=Path(td),
-        ),
-    ):
+    with tempfile.TemporaryDirectory() as td:
         return prepare_agent_config_dir(
             AgentConfigSpec(
                 project.tasks_root,
@@ -161,6 +155,7 @@ def prepare_agent_config(
                 subagents=[],
                 instructions=instructions,
                 default_agent=project.default_agent,
+                envs_base_dir=Path(td),
             )
         )
 

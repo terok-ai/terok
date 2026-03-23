@@ -17,9 +17,8 @@ from __future__ import annotations
 import shutil
 import subprocess
 from dataclasses import dataclass, field
+from pathlib import Path
 
-from ..core.config import get_envs_base_dir
-from ..core.images import project_cli_image
 from ..util.fs import ensure_dir_writable
 from ..util.podman import _podman_userns_args
 
@@ -251,12 +250,17 @@ def _cleanup_existing_container(container_name: str) -> None:
         )
 
 
-def _run_auth_container(project_id: str, provider: AuthProvider) -> None:
+def _run_auth_container(
+    project_id: str,
+    provider: AuthProvider,
+    *,
+    envs_base_dir: Path,
+    image: str,
+) -> None:
     """Run an auth container for the given provider."""
     _check_podman()
 
-    envs_base = get_envs_base_dir()
-    host_dir = envs_base / provider.host_dir_name
+    host_dir = envs_base_dir / provider.host_dir_name
     ensure_dir_writable(host_dir, f"{provider.label} config")
 
     container_name = f"{project_id}-auth-{provider.name}"
@@ -276,7 +280,7 @@ def _run_auth_container(project_id: str, provider: AuthProvider) -> None:
     cmd[3:3] = userns
     if provider.extra_run_args:
         cmd[3 + len(userns) : 3 + len(userns)] = list(provider.extra_run_args)
-    cmd.append(project_cli_image(project_id))
+    cmd.append(image)
     cmd.extend(provider.command)
 
     # Banner
@@ -305,8 +309,20 @@ def _run_auth_container(project_id: str, provider: AuthProvider) -> None:
         )
 
 
-def authenticate(project_id: str, provider: str) -> None:
+def authenticate(
+    project_id: str,
+    provider: str,
+    *,
+    envs_base_dir: Path,
+    image: str,
+) -> None:
     """Run the auth flow for *provider* against *project_id*.
+
+    Args:
+        project_id: Project identifier (for container naming).
+        provider: Auth provider name (e.g. ``"claude"``).
+        envs_base_dir: Base directory for shared env mounts.
+        image: Container image to use for the auth container.
 
     Raises ``SystemExit`` if the provider name is unknown.
     """
@@ -314,4 +330,4 @@ def authenticate(project_id: str, provider: str) -> None:
     if not info:
         available = ", ".join(AUTH_PROVIDERS)
         raise SystemExit(f"Unknown auth provider: {provider}. Available: {available}")
-    _run_auth_container(project_id, info)
+    _run_auth_container(project_id, info, envs_base_dir=envs_base_dir, image=image)
