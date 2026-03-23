@@ -12,14 +12,14 @@ from collections.abc import Callable
 from pathlib import Path
 
 import pytest
-
-from terok.lib.util.config_stack import (
+from terok_agent.config_stack import (
     ConfigScope,
     ConfigStack,
     deep_merge,
     load_json_scope,
     load_yaml_scope,
 )
+
 from terok.lib.util.yaml import dump as yaml_dump
 from tests.testfs import NONEXISTENT_CONFIG_JSON, NONEXISTENT_CONFIG_YAML
 

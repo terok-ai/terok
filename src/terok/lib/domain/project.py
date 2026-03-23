@@ -48,6 +48,7 @@ import tarfile
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, TypedDict
 
+from terok_agent import HeadlessProvider, get_provider, resolve_instructions
 from terok_sandbox.git_gate import GitGate
 from terok_sandbox.ssh import SSHManager
 
@@ -61,8 +62,6 @@ from ..core.config import (
 from ..core.project_model import ProjectConfig
 from ..core.projects import list_presets, load_project
 from ..instrumentation.agent_config import resolve_agent_config
-from ..instrumentation.headless_providers import HeadlessProvider, get_provider
-from ..instrumentation.instructions import resolve_instructions
 from ..orchestration.docker import build_images, generate_dockerfiles
 from ..orchestration.task_runners import HeadlessRunRequest, task_run_headless
 from ..orchestration.tasks import (

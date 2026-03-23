@@ -33,14 +33,15 @@ from tests.testfs import (
 if TYPE_CHECKING:
     from terok.lib.core.projects import ProjectConfig
 
-from terok.lib.core.projects import load_project
-from terok.lib.instrumentation.agents import (
+from terok_agent.agents import (
     _generate_claude_wrapper,
     _subagents_to_json,
     _write_session_hook,
     parse_md_agent,
 )
-from terok.lib.instrumentation.headless_providers import WrapperConfig
+from terok_agent.headless_providers import WrapperConfig
+
+from terok.lib.core.projects import load_project
 from terok.lib.orchestration.task_runners import (
     HeadlessRunRequest,
     task_followup_headless,
@@ -144,7 +145,7 @@ def prepare_agent_config(
     instructions: str | None = None,
 ) -> Path:
     """Build an agent-config directory for the given task."""
-    from terok.lib.instrumentation.agents import AgentConfigSpec, prepare_agent_config_dir
+    from terok_agent.agents import AgentConfigSpec, prepare_agent_config_dir
 
     (project.tasks_root / task_id).mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory() as td:
@@ -594,7 +595,7 @@ class TestPrepareAgentConfigDir:
             gate_path=FAKE_PROJECT_GATE_DIR,
         )
 
-    @unittest.mock.patch("terok.lib.instrumentation.agents._write_session_hook")
+    @unittest.mock.patch("terok_agent.agents._write_session_hook")
     def test_prepare_agent_config_writes_instructions(
         self,
         _mock_hook: object,
@@ -609,7 +610,7 @@ class TestPrepareAgentConfigDir:
         assert instr_path.is_file()
         assert instr_path.read_text(encoding="utf-8") == "Custom instructions here."
 
-    @unittest.mock.patch("terok.lib.instrumentation.agents._write_session_hook")
+    @unittest.mock.patch("terok_agent.agents._write_session_hook")
     def test_prepare_agent_config_default_instructions_when_none(
         self,
         _mock_hook: object,
@@ -623,7 +624,7 @@ class TestPrepareAgentConfigDir:
         content = instr_path.read_text(encoding="utf-8")
         assert "conventions" in content
 
-    @unittest.mock.patch("terok.lib.instrumentation.agents._write_session_hook")
+    @unittest.mock.patch("terok_agent.agents._write_session_hook")
     def test_wrapper_has_append_system_prompt_when_instructions(
         self,
         _mock_hook: object,

@@ -46,7 +46,6 @@ path = "terok.cli"
 layer = "presentation"
 depends_on = [
     "terok.lib.instrumentation.agent_config",
-    "terok.lib.instrumentation.headless_providers",
     "terok.lib.orchestration.hooks",
     "terok.lib.orchestration.tasks",
     "terok.lib.core.config",
@@ -64,10 +63,7 @@ depends_on = [
 path = "terok.tui"
 layer = "presentation"
 depends_on = [
-    "terok.lib.instrumentation.agents",
     "terok.lib.orchestration.autopilot",
-    "terok.lib.instrumentation.headless_providers",
-    "terok.lib.instrumentation.instructions",
     "terok.lib.core.task_display",
     "terok.lib.orchestration.tasks",
     "terok.lib.core.config",
@@ -97,7 +93,6 @@ depends_on = [
     "terok.lib.orchestration.tasks",
     "terok.lib.core.projects",
     "terok.lib.domain.project",
-    "terok.lib.instrumentation.auth",
     "terok.lib.domain.task",
 ]
 
@@ -108,8 +103,6 @@ layer = "domain"
 depends_on = [
     "terok.lib.instrumentation.agent_config",
     "terok.lib.orchestration.docker",
-    "terok.lib.instrumentation.headless_providers",
-    "terok.lib.instrumentation.instructions",
     "terok.lib.domain.project_state",
     "terok.lib.orchestration.task_runners",
     "terok.lib.orchestration.tasks",
@@ -193,12 +186,9 @@ path = "terok.lib.orchestration.task_runners"
 layer = "orchestration"
 depends_on = [
     "terok.lib.instrumentation.agent_config",
-    "terok.lib.instrumentation.agents",
     "terok.lib.orchestration.container_exec",
     "terok.lib.orchestration.environment",
-    "terok.lib.instrumentation.headless_providers",
     "terok.lib.orchestration.hooks",
-    "terok.lib.instrumentation.instructions",
     "terok.lib.orchestration.ports",
     "terok.lib.orchestration.tasks",
     "terok.lib.core.config",
@@ -206,7 +196,6 @@ depends_on = [
     "terok.lib.core.projects",
     "terok.lib.core.task_display",
     "terok.lib.util.ansi",
-    "terok.lib.util.podman",
     "terok.lib.util.yaml",
 ]
 
@@ -236,7 +225,6 @@ layer = "orchestration"
 depends_on = [
     "terok.lib.core.config",
     "terok.lib.core.projects",
-    "terok.lib.instrumentation.headless_providers",
     "terok.lib.util.fs",
     "terok.lib.util.host_cmd",
 ]
@@ -267,45 +255,16 @@ depends_on = ["terok.lib.util.logging_utils"]
 
 # ── INSTRUMENTATION LAYER ─────────────────────────────────────────
 #
-# ·· agents ··  Provider registry, instructions, agent wrappers
+# NOTE: Most instrumentation modules have been extracted to the external
+# terok-agent package. Only the terok-specific config stack composition
+# (build_agent_config_stack, resolve_agent_config) remains here.
 #
 
-# Agent configuration (parsing, filtering, wrapper generation)
-[[modules]]
-path = "terok.lib.instrumentation.agents"
-layer = "instrumentation"
-depends_on = ["terok.lib.instrumentation.headless_providers", "terok.lib.core.config", "terok.lib.core.projects", "terok.lib.util.fs", "terok.lib.util.yaml"]
-
-# Headless provider registry (multi-agent autopilot support)
-[[modules]]
-path = "terok.lib.instrumentation.headless_providers"
-layer = "instrumentation"
-depends_on = ["terok.lib.instrumentation.agent_config", "terok.lib.core.projects"]
-
-# Agent config resolution (layered merging across scopes)
+# Agent config resolution (terok-specific stack composition)
 [[modules]]
 path = "terok.lib.instrumentation.agent_config"
 layer = "instrumentation"
-depends_on = ["terok.lib.util.config_stack", "terok.lib.core.config", "terok.lib.core.projects"]
-
-# Agent instruction resolution (layered merging with bundled defaults)
-[[modules]]
-path = "terok.lib.instrumentation.instructions"
-layer = "instrumentation"
-depends_on = ["terok.lib.instrumentation.agent_config"]
-
-# API key authentication workflows
-[[modules]]
-path = "terok.lib.instrumentation.auth"
-layer = "instrumentation"
-depends_on = [
-    "terok.lib.util.podman",
-    "terok.lib.core.config",
-    "terok.lib.core.images",
-    "terok.lib.core.projects",
-    "terok.lib.util.fs",
-    "terok.lib.instrumentation.headless_providers",
-]
+depends_on = ["terok.lib.core.config", "terok.lib.core.projects"]
 
 # ── SANDBOX LAYER ─────────────────────────────────────────────────
 #
@@ -373,7 +332,6 @@ depends_on = [
     "terok.lib.core.git_authorship",
     "terok.lib.core.project_model",
     "terok.lib.core.yaml_schema",
-    "terok.lib.util.config_stack",
     "terok.lib.util.yaml",
 ]
 
@@ -416,13 +374,6 @@ utility = true
 #
 # ·· util ··  Pure internal helpers
 #
-
-# Podman user namespace handling
-[[modules]]
-path = "terok.lib.util.podman"
-layer = "core"
-depends_on = []
-utility = true
 
 # Filesystem helpers (mkdir, writable check)
 [[modules]]
@@ -473,12 +424,6 @@ layer = "core"
 depends_on = []
 utility = true
 
-# Generic layered config resolution
-[[modules]]
-path = "terok.lib.util.config_stack"
-layer = "core"
-depends_on = ["terok.lib.util.yaml"]
-utility = true
 
 # ── Interfaces ────────────────────────────────────────────────────
 
@@ -587,24 +532,8 @@ expose = ["task_run_cli", "task_run_toad", "task_run_headless", "task_restart", 
 from = ["terok.lib.orchestration.task_runners"]
 
 [[interfaces]]
-expose = ["parse_md_agent", "prepare_agent_config_dir", "AgentConfigSpec"]
-from = ["terok.lib.instrumentation.agents"]
-
-[[interfaces]]
-expose = ["HeadlessProvider", "HEADLESS_PROVIDERS", "PROVIDER_NAMES", "ProviderConfig", "CLIOverrides", "WrapperConfig", "get_provider", "apply_provider_config", "build_headless_command", "generate_agent_wrapper", "generate_all_wrappers", "collect_all_auto_approve_env", "OpenCodeProviderConfig", "collect_opencode_provider_env"]
-from = ["terok.lib.instrumentation.headless_providers"]
-
-[[interfaces]]
-expose = ["build_agent_config_stack", "resolve_agent_config", "resolve_provider_value"]
+expose = ["build_agent_config_stack", "resolve_agent_config"]
 from = ["terok.lib.instrumentation.agent_config"]
-
-[[interfaces]]
-expose = ["resolve_instructions", "bundled_default_instructions", "has_custom_instructions"]
-from = ["terok.lib.instrumentation.instructions"]
-
-[[interfaces]]
-expose = ["AUTH_PROVIDERS", "AuthProvider", "authenticate"]
-from = ["terok.lib.instrumentation.auth"]
 
 [[interfaces]]
 expose = [
@@ -794,10 +723,6 @@ from = ["terok.lib.orchestration.container_exec"]
 [[interfaces]]
 expose = ["load", "dump", "YAMLError"]
 from = ["terok.lib.util.yaml"]
-
-[[interfaces]]
-expose = ["deep_merge", "ConfigScope", "ConfigStack", "load_yaml_scope", "load_json_scope"]
-from = ["terok.lib.util.config_stack"]
 
 [[interfaces]]
 expose = ["render_emoji", "set_emoji_enabled", "is_emoji_enabled", "EmojiInfo"]

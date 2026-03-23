@@ -15,6 +15,7 @@ import os
 from dataclasses import dataclass
 from pathlib import Path
 
+from terok_agent.headless_providers import collect_opencode_provider_env
 from terok_sandbox.gate_server import (
     ensure_server_reachable,
     get_gate_base_path,
@@ -23,7 +24,6 @@ from terok_sandbox.gate_server import (
 
 from ..core.config import get_envs_base_dir
 from ..core.projects import ProjectConfig
-from ..instrumentation.headless_providers import collect_opencode_provider_env
 from ..util.fs import ensure_dir_writable
 from ..util.host_cmd import WORKSPACE_DANGEROUS_DIRNAME
 
@@ -66,7 +66,7 @@ _STATIC_SHARED_MOUNTS: tuple[SharedMount, ...] = (
 
 def _build_shared_mounts() -> tuple[SharedMount, ...]:
     """Build complete shared mounts including dynamically generated OpenCode provider mounts."""
-    from ..instrumentation.headless_providers import HEADLESS_PROVIDERS
+    from terok_agent.headless_providers import HEADLESS_PROVIDERS
 
     dynamic = tuple(
         SharedMount(

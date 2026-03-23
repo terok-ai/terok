@@ -12,6 +12,13 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from terok_agent import (
+    AgentConfigSpec,
+    prepare_agent_config_dir,
+    resolve_instructions,
+    resolve_provider_value,
+)
+from terok_agent._util import podman_userns_args as _podman_userns_args
 from terok_sandbox.runtime import (
     get_container_state,
     gpu_run_args,
@@ -34,9 +41,7 @@ from ..core.config import (
 from ..core.images import project_cli_image
 from ..core.projects import load_project
 from ..core.task_display import has_gpu
-from ..instrumentation.agent_config import resolve_agent_config, resolve_provider_value
-from ..instrumentation.agents import AgentConfigSpec, prepare_agent_config_dir
-from ..instrumentation.instructions import resolve_instructions
+from ..instrumentation.agent_config import resolve_agent_config
 from ..util.ansi import (
     blue as _blue,
     green as _green,
@@ -44,7 +49,6 @@ from ..util.ansi import (
     supports_color as _supports_color,
     yellow as _yellow,
 )
-from ..util.podman import _podman_userns_args
 from ..util.yaml import dump as _yaml_dump, load as _yaml_load
 from .container_exec import container_git_diff
 from .environment import build_task_env_and_volumes
@@ -132,7 +136,7 @@ def _apply_unrestricted_env(env: dict[str, str]) -> None:
     it is launched (CLI wrapper or ACP).  Setting them at the container
     level provides a single, unified permission mechanism.
     """
-    from ..instrumentation.headless_providers import collect_all_auto_approve_env
+    from terok_agent.headless_providers import collect_all_auto_approve_env
 
     env["TEROK_UNRESTRICTED"] = "1"
     env.update(collect_all_auto_approve_env())
@@ -208,7 +212,7 @@ def _prepare_agent_config(
         preset=preset,
     )
     subagents = list(effective.get("subagents") or [])
-    from ..instrumentation.headless_providers import get_provider as _get_provider
+    from terok_agent.headless_providers import get_provider as _get_provider
 
     resolved = _get_provider(provider_name, default_agent=project.default_agent)
     instr_text = resolve_instructions(effective, resolved.name, project_root=project.root)
@@ -694,7 +698,7 @@ def task_run_headless(request: HeadlessRunRequest) -> str:
 
     Returns the task_id.
     """
-    from ..instrumentation.headless_providers import (
+    from terok_agent.headless_providers import (
         CLIOverrides,
         apply_provider_config,
         build_headless_command,
@@ -894,7 +898,7 @@ def task_followup_headless(
     original ``task_run_headless`` invocation since ``podman start``
     re-executes the same container command.
     """
-    from ..instrumentation.headless_providers import HEADLESS_PROVIDERS
+    from terok_agent.headless_providers import HEADLESS_PROVIDERS
 
     project = load_project(project_id)
     meta, meta_path = load_task_meta(project.id, task_id)

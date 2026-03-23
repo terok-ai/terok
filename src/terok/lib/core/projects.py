@@ -10,8 +10,8 @@ from pathlib import Path
 from typing import Any
 
 from pydantic import ValidationError
+from terok_agent.config_stack import ConfigScope, ConfigStack
 
-from ..util.config_stack import ConfigScope, ConfigStack
 from ..util.yaml import YAMLError, dump as _yaml_dump, load as _yaml_load
 from .config import (
     build_root,

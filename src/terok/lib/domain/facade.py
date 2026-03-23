@@ -29,6 +29,7 @@ used by CLI commands that operate on ``project_id`` strings directly.
 
 from __future__ import annotations
 
+from terok_agent.auth import AUTH_PROVIDERS, AuthProvider, authenticate as _authenticate_raw
 from terok_sandbox.gate_server import (  # noqa: F401 — re-exported public API
     GateServerStatus,
     check_units_outdated,
@@ -78,7 +79,6 @@ from ..core.config import (
 )
 from ..core.images import project_cli_image
 from ..core.projects import load_project
-from ..instrumentation.auth import AUTH_PROVIDERS, AuthProvider, authenticate as _authenticate_raw
 from ..orchestration.docker import build_images, generate_dockerfiles
 from ..orchestration.task_runners import (  # noqa: F401 — re-exported public API
     HeadlessRunRequest,

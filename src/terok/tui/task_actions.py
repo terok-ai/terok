@@ -13,6 +13,8 @@ from collections.abc import Callable
 from contextlib import redirect_stdout
 from pathlib import Path
 
+from terok_agent.agents import parse_md_agent
+
 from ..lib.core.config import get_shield_bypass_firewall_no_protection
 from ..lib.core.projects import load_project
 from ..lib.core.task_display import effective_status
@@ -31,7 +33,6 @@ from ..lib.domain.facade import (
     task_run_toad,
     task_stop,
 )
-from ..lib.instrumentation.agents import parse_md_agent
 from ..lib.orchestration.autopilot import wait_for_container_exit
 from ..lib.orchestration.tasks import (
     container_name,
@@ -256,7 +257,7 @@ class TaskActionsMixin:
         if agent == "bash":
             cmd = base_cmd
         else:
-            from ..lib.instrumentation.headless_providers import HEADLESS_PROVIDERS
+            from terok_agent.headless_providers import HEADLESS_PROVIDERS
 
             provider = HEADLESS_PROVIDERS.get(agent)
             if not provider:
@@ -377,7 +378,7 @@ class TaskActionsMixin:
         agent_name, selected_subagents = result
 
         # Only pass sub-agents if the agent supports them
-        from ..lib.instrumentation.headless_providers import HEADLESS_PROVIDERS
+        from terok_agent.headless_providers import HEADLESS_PROVIDERS
 
         provider = HEADLESS_PROVIDERS.get(agent_name)
         agents = selected_subagents if provider and provider.supports_agents_json else None

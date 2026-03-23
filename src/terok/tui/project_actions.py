@@ -363,14 +363,15 @@ class ProjectActionsMixin:
 
         def work() -> None:
             """Resolve and print the effective instructions."""
+            from terok_agent import resolve_instructions
+
             from ..lib.instrumentation.agent_config import resolve_agent_config
-            from ..lib.instrumentation.instructions import resolve_instructions
 
             project = load_project(pid)
             effective = resolve_agent_config(
                 pid, agent_config=project.agent_config, project_root=project.root
             )
-            from ..lib.instrumentation.headless_providers import get_provider as _get_provider
+            from terok_agent import get_provider as _get_provider
 
             provider = _get_provider(None, default_agent=project.default_agent)
             text = resolve_instructions(effective, provider.name, project_root=project.root)
@@ -402,7 +403,7 @@ class ProjectActionsMixin:
 
         def work() -> None:
             """Print bundled default instructions."""
-            from ..lib.instrumentation.instructions import bundled_default_instructions
+            from terok_agent import bundled_default_instructions
 
             text = bundled_default_instructions()
             print("=== Bundled Default Instructions ===\n")

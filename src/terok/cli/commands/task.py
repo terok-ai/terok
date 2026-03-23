@@ -7,6 +7,8 @@ from __future__ import annotations
 
 import argparse
 
+from terok_agent.headless_providers import PROVIDER_NAMES as _PROVIDER_NAMES
+
 from ...lib.core.config import get_logs_partial_streaming as _get_logs_partial_streaming
 from ...lib.domain.facade import (
     HeadlessRunRequest,
@@ -28,7 +30,6 @@ from ...lib.domain.facade import (
     task_status,
     task_stop,
 )
-from ...lib.instrumentation.headless_providers import PROVIDER_NAMES as _PROVIDER_NAMES
 from ._completers import complete_project_ids as _complete_project_ids, set_completer
 
 

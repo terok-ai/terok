@@ -9,12 +9,12 @@ import tempfile
 from pathlib import Path
 
 import pytest
-
-from terok.lib.instrumentation.instructions import (
+from terok_agent.instructions import (
     bundled_default_instructions,
     has_custom_instructions,
     resolve_instructions,
 )
+
 from tests.testfs import NONEXISTENT_PROJECT_ROOT, WORKSPACE_ROOT
 
 DEFAULT_INSTRUCTIONS = bundled_default_instructions()

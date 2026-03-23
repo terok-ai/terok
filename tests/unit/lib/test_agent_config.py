@@ -12,10 +12,10 @@ from dataclasses import dataclass
 from pathlib import Path
 
 import pytest
+from terok_agent.config_stack import ConfigStack
 
 from terok.lib.core.projects import ProjectConfig, list_presets, load_preset, load_project
 from terok.lib.instrumentation.agent_config import build_agent_config_stack, resolve_agent_config
-from terok.lib.util.config_stack import ConfigStack
 from tests.test_utils import mock_git_config, write_project
 from tests.testfs import CONTAINER_INSTRUCTIONS_PATH
 
@@ -618,7 +618,7 @@ class TestInjectOpencodeInstructions:
 
     def test_creates_file_if_missing(self) -> None:
         """Creates opencode.json with instructions entry and $schema if file does not exist."""
-        from terok.lib.instrumentation.agents import _inject_opencode_instructions
+        from terok_agent.agents import _inject_opencode_instructions
 
         with tempfile.TemporaryDirectory() as td:
             config_path = Path(td) / "opencode.json"
@@ -631,7 +631,7 @@ class TestInjectOpencodeInstructions:
 
     def test_idempotent_when_already_present(self) -> None:
         """Does not duplicate the instructions entry on repeated calls."""
-        from terok.lib.instrumentation.agents import _inject_opencode_instructions
+        from terok_agent.agents import _inject_opencode_instructions
 
         with tempfile.TemporaryDirectory() as td:
             config_path = Path(td) / "opencode.json"
@@ -643,7 +643,7 @@ class TestInjectOpencodeInstructions:
 
     def test_preserves_existing_instructions(self) -> None:
         """Appends to existing instructions list without removing entries."""
-        from terok.lib.instrumentation.agents import _inject_opencode_instructions
+        from terok_agent.agents import _inject_opencode_instructions
 
         with tempfile.TemporaryDirectory() as td:
             config_path = Path(td) / "opencode.json"
@@ -660,7 +660,7 @@ class TestInjectOpencodeInstructions:
 
     def test_preserves_existing_config_keys(self) -> None:
         """Preserves other keys in the opencode.json file."""
-        from terok.lib.instrumentation.agents import _inject_opencode_instructions
+        from terok_agent.agents import _inject_opencode_instructions
 
         with tempfile.TemporaryDirectory() as td:
             config_path = Path(td) / "opencode.json"
@@ -677,7 +677,7 @@ class TestInjectOpencodeInstructions:
 
     def test_creates_parent_directories(self) -> None:
         """Creates parent directories if they do not exist."""
-        from terok.lib.instrumentation.agents import _inject_opencode_instructions
+        from terok_agent.agents import _inject_opencode_instructions
 
         with tempfile.TemporaryDirectory() as td:
             config_path = Path(td) / "nested" / "dir" / "opencode.json"
@@ -690,7 +690,7 @@ class TestInjectOpencodeInstructions:
 
     def test_handles_invalid_json(self) -> None:
         """Overwrites file with valid config if existing JSON is invalid."""
-        from terok.lib.instrumentation.agents import _inject_opencode_instructions
+        from terok_agent.agents import _inject_opencode_instructions
 
         with tempfile.TemporaryDirectory() as td:
             config_path = Path(td) / "opencode.json"
@@ -703,7 +703,7 @@ class TestInjectOpencodeInstructions:
 
     def test_preserves_existing_schema(self) -> None:
         """Does not overwrite $schema if already present in existing config."""
-        from terok.lib.instrumentation.agents import _inject_opencode_instructions
+        from terok_agent.agents import _inject_opencode_instructions
 
         with tempfile.TemporaryDirectory() as td:
             config_path = Path(td) / "opencode.json"
