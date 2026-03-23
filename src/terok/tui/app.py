@@ -40,6 +40,14 @@ if _HAS_TEXTUAL:
     # Import textual and our widgets only when available
     from dataclasses import dataclass
 
+    from terok_sandbox import (
+        EnvironmentCheck,
+        GateServerStatus,
+        GateStalenessInfo,
+        check_environment as _shield_check_environment,
+        get_server_status,
+        state as _shield_state,
+    )
     from textual import on
     from textual.app import App, ComposeResult
     from textual.containers import Horizontal, Vertical
@@ -59,14 +67,8 @@ if _HAS_TEXTUAL:
         short_version as _short_version,
     )
     from ..lib.domain.facade import (
-        EnvironmentCheck,
-        GateServerStatus,
-        GateStalenessInfo,
         get_project_state,
-        get_server_status,
         is_task_image_old,
-        shield_check_environment as _shield_check_environment,
-        shield_state as _shield_state,
     )
     from ..lib.orchestration.tasks import get_tasks
 
@@ -869,7 +871,7 @@ if _HAS_TEXTUAL:
                     parts = (worker.name or "").split(":")
                     action = parts[1] if len(parts) >= 2 else ""
                     if action == "down":
-                        from ..lib.domain.facade import SHIELD_SECURITY_HINT
+                        from ..lib.core.config import SHIELD_SECURITY_HINT
 
                         self.notify(f"Shield dropped for task {task_id}. {SHIELD_SECURITY_HINT}")
                     elif action == "up":

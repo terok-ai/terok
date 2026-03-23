@@ -49,15 +49,15 @@ except Exception:  # pragma: no cover - textual may be a stub module
 
 from rich.style import Style
 from rich.text import Text
-
-from ..lib.core.projects import ProjectConfig
-from ..lib.domain.facade import (
+from terok_sandbox import (
     EnvironmentCheck,
     GateServerStatus,
     GateStalenessInfo,
     check_units_outdated,
     get_gate_base_path,
 )
+
+from ..lib.core.projects import ProjectConfig
 from ..lib.orchestration.tasks import sanitize_task_name, validate_task_name
 from .widgets import TaskMeta, render_project_details, render_project_loading, render_task_details
 
@@ -200,7 +200,7 @@ class GateServerScreen(screen.Screen[str | None]):
 
     def _refresh_status(self) -> None:
         """Re-fetch status and update the display."""
-        from ..lib.domain.facade import get_server_status
+        from terok_sandbox import get_server_status
 
         try:
             self._status = get_server_status()
@@ -444,7 +444,7 @@ class AuthActionsScreen(screen.ModalScreen[str | None]):
 
     def compose(self) -> ComposeResult:
         """Build the numbered list of authentication providers."""
-        from ..lib.domain.facade import AUTH_PROVIDERS
+        from terok_agent import AUTH_PROVIDERS
 
         providers = list(AUTH_PROVIDERS.values())
         options: list[Option | None] = [
@@ -475,7 +475,7 @@ class AuthActionsScreen(screen.ModalScreen[str | None]):
 
     def on_key(self, event: events.Key) -> None:
         """Handle number-key shortcuts (1-9) to select a provider or import."""
-        from ..lib.domain.facade import AUTH_PROVIDERS
+        from terok_agent import AUTH_PROVIDERS
 
         if event.character and event.character.isdigit():
             idx = int(event.character) - 1
@@ -1239,7 +1239,8 @@ class TaskLaunchScreen(screen.ModalScreen["tuple[str, str, str, str, str, str | 
         If the container never appears after many polls, updates the status
         to indicate a likely launch failure so the user can dismiss.
         """
-        from ..lib.domain.facade import get_container_state
+        from terok_sandbox import get_container_state
+
         from ..lib.orchestration.tasks import get_task_meta
 
         self._poll_count += 1
@@ -1689,7 +1690,7 @@ class ShieldScreen(screen.Screen[str | None]):
 
     def _load_shield_info(self) -> None:
         """Fetch shield config (mode, audit, profiles) for display."""
-        from ..lib.domain.facade import shield_status
+        from terok_sandbox import status as shield_status
 
         try:
             self._shield_info = shield_status()
@@ -1730,7 +1731,10 @@ class ShieldScreen(screen.Screen[str | None]):
     @staticmethod
     def _fetch_status() -> tuple[EnvironmentCheck | None, dict | None]:
         """Load environment check and shield config in a thread."""
-        from ..lib.domain.facade import shield_check_environment, shield_status
+        from terok_sandbox import (
+            check_environment as shield_check_environment,
+            status as shield_status,
+        )
 
         env: EnvironmentCheck | None = None
         info: dict | None = None

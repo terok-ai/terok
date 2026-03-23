@@ -39,7 +39,7 @@ from ..core.config import (
 from ..core.images import project_cli_image
 from ..core.projects import load_project
 from ..core.task_display import has_gpu
-from ..instrumentation.agent_config import resolve_agent_config
+from ..domain.agent_config import resolve_agent_config
 from ..util.ansi import (
     blue as _blue,
     green as _green,

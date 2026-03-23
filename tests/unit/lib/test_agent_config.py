@@ -14,7 +14,7 @@ import pytest
 from terok_agent import ConfigStack
 
 from terok.lib.core.projects import ProjectConfig, list_presets, load_preset, load_project
-from terok.lib.instrumentation.agent_config import build_agent_config_stack, resolve_agent_config
+from terok.lib.domain.agent_config import build_agent_config_stack, resolve_agent_config
 from tests.test_utils import mock_git_config, write_project
 
 

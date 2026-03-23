@@ -15,9 +15,8 @@ import argparse
 import sys
 from pathlib import Path
 
+from terok_sandbox import make_shield
 from terok_shield import COMMANDS, ArgDef, CommandDef, ExecError
-
-from ...lib.domain.facade import make_shield
 
 
 def _add_arg(parser: argparse.ArgumentParser, arg: ArgDef) -> None:
@@ -110,7 +109,7 @@ def dispatch(args: argparse.Namespace) -> bool:
 
     # setup is standalone_only and needs subprocess passthrough (no registry handler)
     if cmd_name == "setup":
-        from ...lib.domain.facade import shield_run_setup
+        from terok_sandbox import run_setup as shield_run_setup
 
         shield_run_setup(root=args.root, user=args.user)
         return True

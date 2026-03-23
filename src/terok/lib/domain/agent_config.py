@@ -5,7 +5,7 @@
 
 Builds a :class:`~terok.lib.util.config_stack.ConfigStack` from up to four
 layers and returns a single merged agent-config dict that can be fed directly
-into :func:`~terok.lib.instrumentation.agents.prepare_agent_config_dir`.
+into :func:`~terok_agent.prepare_agent_config_dir`.
 """
 
 from __future__ import annotations
@@ -13,7 +13,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-from terok_agent import ConfigScope, ConfigStack, resolve_provider_value  # noqa: F401 — re-exported
+from terok_agent import ConfigScope, ConfigStack
 
 from terok.lib.core.config import bundled_presets_dir, get_global_agent_config, global_presets_dir
 

@@ -77,7 +77,7 @@ def _cmd_config_show(project_id: str, preset: str | None) -> None:
     import json
 
     from ...lib.core.projects import load_project
-    from ...lib.instrumentation.agent_config import build_agent_config_stack
+    from ...lib.domain.agent_config import build_agent_config_stack
 
     color_enabled = _supports_color()
 

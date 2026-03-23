@@ -14,15 +14,17 @@ from contextlib import redirect_stdout
 from pathlib import Path
 
 from terok_agent import parse_md_agent
+from terok_sandbox import (
+    down as shield_down,
+    get_container_state,
+    up as shield_up,
+)
 
 from ..lib.core.config import get_shield_bypass_firewall_no_protection
 from ..lib.core.projects import load_project
 from ..lib.core.task_display import effective_status
 from ..lib.domain.facade import (
     HeadlessRunRequest,
-    get_container_state,
-    shield_down,
-    shield_up,
     task_delete,
     task_followup_headless,
     task_new,
@@ -697,7 +699,7 @@ class TaskActionsMixin:
         """Warn the user and return ``True`` if the shield bypass is active."""
         if not get_shield_bypass_firewall_no_protection():
             return False
-        from ..lib.domain.facade import SHIELD_SECURITY_HINT
+        from ..lib.core.config import SHIELD_SECURITY_HINT
 
         self.notify(f"Shield unavailable (bypass_firewall_no_protection). {SHIELD_SECURITY_HINT}")
         return True

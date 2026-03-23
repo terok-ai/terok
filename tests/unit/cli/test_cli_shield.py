@@ -264,7 +264,7 @@ def test_dispatch_runtime_error_prints_message(
         pytest.param({"root": False, "user": True}, {"root": False, "user": True}, id="setup-user"),
     ],
 )
-@patch("terok.lib.domain.facade.shield_run_setup")
+@patch("terok_sandbox.run_setup")
 def test_setup_dispatch(
     mock_setup: MagicMock,
     kwargs: dict[str, bool],

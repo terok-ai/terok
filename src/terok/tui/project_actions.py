@@ -14,6 +14,13 @@ import subprocess
 import sys
 from collections.abc import Callable
 
+from terok_sandbox import (
+    install_systemd_units,
+    start_daemon,
+    stop_daemon,
+    uninstall_systemd_units,
+)
+
 from ..lib.core.config import get_envs_base_dir
 from ..lib.core.projects import effective_ssh_key_name, load_project
 from ..lib.domain.facade import (
@@ -22,11 +29,7 @@ from ..lib.domain.facade import (
     delete_project,
     find_projects_sharing_gate,
     generate_dockerfiles,
-    install_systemd_units,
     maybe_pause_for_ssh_key_registration,
-    start_daemon,
-    stop_daemon,
-    uninstall_systemd_units,
 )
 from ..lib.domain.project import make_git_gate, make_ssh_manager
 from .shell_launch import launch_login
@@ -365,7 +368,7 @@ class ProjectActionsMixin:
             """Resolve and print the effective instructions."""
             from terok_agent import resolve_instructions
 
-            from ..lib.instrumentation.agent_config import resolve_agent_config
+            from ..lib.domain.agent_config import resolve_agent_config
 
             project = load_project(pid)
             effective = resolve_agent_config(
@@ -553,7 +556,7 @@ class ProjectActionsMixin:
         """Run hook installation after shield setup modal choice."""
         if result is None:
             return
-        from ..lib.domain.facade import shield_setup_hooks_direct
+        from terok_sandbox import setup_hooks_direct as shield_setup_hooks_direct
 
         await self._run_suspended(
             lambda: shield_setup_hooks_direct(root=result == "root"),

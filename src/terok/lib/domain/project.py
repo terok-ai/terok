@@ -60,7 +60,6 @@ from ..core.config import (
 )
 from ..core.project_model import ProjectConfig
 from ..core.projects import list_presets, load_project
-from ..instrumentation.agent_config import resolve_agent_config
 from ..orchestration.docker import build_images, generate_dockerfiles
 from ..orchestration.task_runners import HeadlessRunRequest, task_run_headless
 from ..orchestration.tasks import (
@@ -72,6 +71,7 @@ from ..orchestration.tasks import (
     task_new,
 )
 from ..util.fs import archive_timestamp, create_archive_file
+from .agent_config import resolve_agent_config
 from .project_state import get_project_state, is_task_image_old
 from .task import Task
 

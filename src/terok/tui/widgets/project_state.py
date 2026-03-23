@@ -9,11 +9,11 @@ from typing import Any
 
 from rich.style import Style
 from rich.text import Text
+from terok_sandbox import EnvironmentCheck, GateServerStatus, GateStalenessInfo
 from textual.widgets import Static
 
 from ...lib.core.projects import ProjectConfig
 from ...lib.core.task_display import GPU_DISPLAY, SECURITY_CLASS_DISPLAY, has_gpu
-from ...lib.domain.facade import EnvironmentCheck, GateServerStatus, GateStalenessInfo
 from ...lib.util.emoji import render_emoji
 from .task_detail import _get_css_variables
 

@@ -7,9 +7,10 @@ from __future__ import annotations
 
 import argparse
 
+from terok_agent import AUTH_PROVIDERS
+
 from ...lib.core.projects import load_project
 from ...lib.domain.facade import (
-    AUTH_PROVIDERS,
     authenticate,
     build_images,
     generate_dockerfiles,

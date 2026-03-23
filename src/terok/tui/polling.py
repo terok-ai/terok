@@ -116,7 +116,7 @@ class PollingMixin:
 
     def _poll_gate_server(self) -> None:
         """Check gate server status in a background worker."""
-        from ..lib.domain.facade import get_server_status
+        from terok_sandbox import get_server_status
 
         self.run_worker(
             get_server_status,
