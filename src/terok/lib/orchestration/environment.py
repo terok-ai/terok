@@ -47,38 +47,20 @@ class SharedMount:
     """Mount point inside the container (e.g. ``"/home/dev/.codex"``)."""
 
 
-_STATIC_SHARED_MOUNTS: tuple[SharedMount, ...] = (
-    SharedMount("codex", "_codex-config", "Codex config", "/home/dev/.codex"),
-    SharedMount("claude", "_claude-config", "Claude config", "/home/dev/.claude"),
-    SharedMount("vibe", "_vibe-config", "Vibe config", "/home/dev/.vibe"),
-    SharedMount(
-        "opencode_config", "_opencode-config", "OpenCode config", "/home/dev/.config/opencode"
-    ),
-    SharedMount(
-        "opencode_data", "_opencode-data", "OpenCode data", "/home/dev/.local/share/opencode"
-    ),
-    SharedMount("opencode_state", "_opencode-state", "OpenCode state", "/home/dev/.local/state"),
-    SharedMount("toad", "_toad-config", "Toad config", "/home/dev/.config/toad"),
-    SharedMount("gh", "_gh-config", "GitHub CLI config", "/home/dev/.config/gh"),
-    SharedMount("glab", "_glab-config", "GitLab CLI config", "/home/dev/.config/glab-cli"),
-)
-
-
 def _build_shared_mounts() -> tuple[SharedMount, ...]:
-    """Build complete shared mounts including dynamically generated OpenCode provider mounts."""
-    from terok_agent import HEADLESS_PROVIDERS
+    """Derive shared mounts from the agent registry.
 
-    dynamic = tuple(
-        SharedMount(
-            p.name,
-            f"_{p.name}-config",
-            f"{p.label} config",
-            f"/home/dev/{p.opencode_config.config_dir}",
-        )
-        for p in HEADLESS_PROVIDERS.values()
-        if p.opencode_config is not None
+    The YAML agent registry is the single source of truth for all shared
+    mounts — auth dirs, OpenCode state dirs, and Toad config.  Each entry's
+    ``auth:`` section and ``mounts:`` section contribute mount definitions,
+    deduplicated by ``host_dir`` in the registry.
+    """
+    from terok_agent.registry import get_registry
+
+    return tuple(
+        SharedMount(m.host_dir, m.host_dir, m.label, m.container_path)
+        for m in get_registry().mounts
     )
-    return _STATIC_SHARED_MOUNTS + dynamic
 
 
 SHARED_MOUNTS: tuple[SharedMount, ...] = _build_shared_mounts()

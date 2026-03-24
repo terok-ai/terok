@@ -44,8 +44,8 @@ rich = ">=13.0"
 platformdirs = ">=4.5.1"
 unique-namer = ">=1.3"
 textual-serve = ">=1.1.0"
-terok-agent = {git = "https://github.com/terok-ai/terok-agent.git", rev = "08ed2237f22fcf0638cdc0773c1072673043af42"}
-terok-sandbox = {url = "https://github.com/terok-ai/terok-sandbox/releases/download/v0.0.6/terok_sandbox-0.0.6-py3-none-any.whl"}
+terok-agent = {git = "https://github.com/terok-ai/terok-agent.git", rev = "9326eab78fd3c5a4da37bee326f9142f5f586872"}
+terok-sandbox = {git = "https://github.com/terok-ai/terok-sandbox.git", rev = "85eb3b2228d8e89ccf11ddef4baef4b921a9896d"}
 
 [tool.poetry.group.dev.dependencies]
 pydevd-pycharm = "261.22158.220"
