@@ -96,6 +96,7 @@ _FIELD_DOCS: dict[str, str] = {
     "shield.audit": "Enable shield audit logging",
     # gate_server
     "gate_server.port": "Gate server listen port",
+    "gate_server.base_path": "Override gate repo directory (default: ``state_root/gate``)",
     "gate_server.suppress_systemd_warning": "Suppress the systemd unit installation suggestion",
 }
 

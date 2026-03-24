@@ -17,6 +17,7 @@ from .config import (
     build_root,
     bundled_presets_dir,
     config_root,
+    gate_base_dir,
     get_global_default_agent,
     get_global_default_login,
     get_global_hooks,
@@ -124,7 +125,7 @@ def _build_project_config(
     sr = state_root()
 
     tasks_root = Path(raw.tasks.root or (sr / "tasks" / pid)).resolve()
-    gate_path = Path(raw.gate.path or (sr / "gate" / f"{pid}.git")).resolve()
+    gate_path = Path(raw.gate.path or (gate_base_dir() / f"{pid}.git")).resolve()
 
     staging_root: Path | None = None
     if sec == "gatekeeping":

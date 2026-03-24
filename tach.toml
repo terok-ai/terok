@@ -550,6 +550,7 @@ from = ["terok.lib.domain.project_state"]
 expose = [
     "config_root",
     "state_root",
+    "gate_base_dir",
     "build_root",
     "deleted_projects_dir",
     "user_projects_root",

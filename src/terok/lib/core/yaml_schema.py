@@ -339,6 +339,7 @@ class RawGateServerSection(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     port: int = 9418
+    base_path: str | None = None
     suppress_systemd_warning: bool = False
 
 

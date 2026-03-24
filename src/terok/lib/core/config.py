@@ -180,6 +180,19 @@ def state_root() -> Path:
     return _resolve_path("TEROK_STATE_DIR", ("paths", "state_root"), _state_root_base)
 
 
+def gate_base_dir() -> Path:
+    """Directory that holds per-project bare gate repos.
+
+    Precedence:
+    - ``gate_server.base_path`` in global config (explicit override).
+    - ``state_root() / "gate"`` (default).
+    """
+    custom = _load_validated().gate_server.base_path
+    if custom:
+        return Path(custom).expanduser().resolve()
+    return state_root() / "gate"
+
+
 def _xdg_config_subdir(subdir: str) -> Path:
     """Return ``$XDG_CONFIG_HOME/terok/<subdir>`` (or ``~/.config/…`` fallback)."""
     xdg = os.environ.get("XDG_CONFIG_HOME")

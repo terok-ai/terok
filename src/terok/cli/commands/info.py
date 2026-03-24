@@ -16,6 +16,7 @@ from ...lib.core.config import (
     build_root as _build_root,
     bundled_presets_dir as _bundled_presets_dir,
     config_root as _config_root,
+    gate_base_dir as _gate_base_dir,
     get_envs_base_dir as _get_envs_base_dir,
     get_ui_base_port as _get_ui_base_port,
     global_config_path as _global_config_path,
@@ -235,6 +236,12 @@ def _print_config() -> None:
     print(
         f"- State root: {_gray(str(sroot), color_enabled)} "
         f"(exists: {_yes_no(sroot_exists, color_enabled)})"
+    )
+    gbase = _gate_base_dir()
+    gbase_exists = gbase.is_dir()
+    print(
+        f"- Gate base dir: {_gray(str(gbase), color_enabled)} "
+        f"(exists: {_yes_no(gbase_exists, color_enabled)})"
     )
     build_root = _build_root()
     print(f"- Build root for generated files: {_gray(str(build_root), color_enabled)}")

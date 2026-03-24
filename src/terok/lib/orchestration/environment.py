@@ -99,24 +99,26 @@ def _shared_volume_mounts(host_dirs: dict[str, Path]) -> list[str]:
     return [f"{host_dirs[m.key]}:{m.container_path}:z" for m in SHARED_MOUNTS]
 
 
-def _gate_url(gate_repo: Path, gate_base: Path, port: int, project_id: str, token: str) -> str:
+def _gate_url(gate_repo: Path, port: int, token: str) -> str:
     """Build the ``http://`` URL for a gate repo served by ``terok-gate``.
 
     The token is embedded as the Basic Auth username in the URL so that git
-    handles authentication natively.  Derives the path relative to the gate
-    base directory so that custom ``gate.path`` settings produce correct URLs.
-    Raises ``SystemExit`` if the gate repo is outside the configured gate base path.
+    handles authentication natively.  Uses the repo directory name as the URL
+    path — the gate server serves repos as direct children of its base path.
+
+    Raises ``SystemExit`` if the repo is not a direct child of the gate base,
+    since the gate server cannot serve repos from arbitrary locations.
     """
-    try:
-        rel = gate_repo.relative_to(gate_base).as_posix()
-    except ValueError as exc:
+    gate_base = get_gate_base_path().resolve()
+    if gate_repo.resolve().parent != gate_base:
         raise SystemExit(
-            f"Gate repo for project '{project_id}' is outside gate base.\n"
-            f"Repo: {gate_repo}\n"
-            f"Gate base: {gate_base}\n"
-            "Adjust gate.path or gate server base path so the repo is servable."
-        ) from exc
-    return f"http://{token}@host.containers.internal:{port}/{rel}"
+            "Configured gate.path is not servable by terok-gate.\n"
+            f"  Gate repo: {gate_repo}\n"
+            f"  Gate base: {gate_base}\n"
+            "Move the repo under the gate base directory, or adjust\n"
+            "gate_server.base_path / paths.state_root in global config."
+        )
+    return f"http://{token}@host.containers.internal:{port}/{gate_repo.name}"
 
 
 def _security_mode_env_and_volumes(
@@ -139,9 +141,8 @@ def _security_mode_env_and_volumes(
             )
         ensure_server_reachable()
         port = get_gate_server_port()
-        gate_base = get_gate_base_path()
         token = create_token(project.id, task_id)
-        gate_url = _gate_url(gate_repo, gate_base, port, project.id, token)
+        gate_url = _gate_url(gate_repo, port, token)
         env["CODE_REPO"] = gate_url
         if project.default_branch:
             env["GIT_BRANCH"] = project.default_branch
@@ -158,9 +159,8 @@ def _security_mode_env_and_volumes(
                 pass  # gate server down; skip CLONE_FROM, fall back to upstream
             else:
                 port = get_gate_server_port()
-                gate_base = get_gate_base_path()
                 token = create_token(project.id, task_id)
-                gate_url = _gate_url(gate_repo, gate_base, port, project.id, token)
+                gate_url = _gate_url(gate_repo, port, token)
                 env["CLONE_FROM"] = gate_url
         if project.upstream_url:
             env["CODE_REPO"] = project.upstream_url
