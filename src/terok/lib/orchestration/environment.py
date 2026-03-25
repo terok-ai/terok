@@ -55,7 +55,7 @@ def _build_shared_mounts() -> tuple[SharedMount, ...]:
     ``auth:`` section and ``mounts:`` section contribute mount definitions,
     deduplicated by ``host_dir`` in the registry.
     """
-    from terok_agent.registry import get_registry
+    from terok_agent import get_registry
 
     return tuple(
         SharedMount(m.host_dir, m.host_dir, m.label, m.container_path)
@@ -241,7 +241,7 @@ def _credential_proxy_env_and_volumes(
     if get_credential_proxy_bypass():
         return {}, []
 
-    from terok_agent.registry import get_registry
+    from terok_agent import get_registry
     from terok_sandbox import CredentialDB, SandboxConfig, ensure_proxy_reachable
 
     cfg = SandboxConfig()
