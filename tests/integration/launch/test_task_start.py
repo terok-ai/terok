@@ -37,6 +37,8 @@ git:
 GLOBAL_CONFIG = f"""
 shield:
   bypass_firewall_no_protection: true
+credential_proxy:
+  bypass_no_secret_protection: true
 ui:
   base_port: {WEB_PORT}
 """

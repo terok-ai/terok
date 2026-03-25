@@ -62,6 +62,7 @@ bandit = ">=1.7"
 
 [tool.poetry.group.test.dependencies]
 pytest = ">=7.0"
+pytest-asyncio = ">=0.24"
 pytest-cov = ">=4.0"
 
 [tool.poetry.group.docs.dependencies]
@@ -85,7 +86,9 @@ markers = [
   "needs_host_features: real host/filesystem/process integration, no network or podman required",
   "needs_internet: requires outbound network connectivity",
   "needs_hooks: requires OCI global hooks installed via terokctl shield setup",
+  "needs_credential_proxy: exercises real credential proxy (DB + proxy daemon)",
 ]
+asyncio_mode = "auto"
 
 [tool.poetry.scripts]
 terokctl = "terok.cli.main:main"
