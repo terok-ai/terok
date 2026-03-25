@@ -317,6 +317,24 @@ def get_task_name_categories() -> list[str] | None:
 SHIELD_SECURITY_HINT = "See: https://terok-ai.github.io/terok/shield-security/"
 
 
+def get_credential_proxy_bypass() -> bool:
+    """Return whether the credential proxy is globally bypassed.
+
+    .. danger::
+
+        When True, real API keys and OAuth tokens are mounted directly into
+        task containers via shared config directories — the same behavior as
+        before the credential proxy was implemented.  Use only for debugging
+        or environments where the proxy cannot run.
+
+    Global config (config.yml)::
+
+        credential_proxy:
+          bypass_no_secret_protection: true
+    """
+    return _load_validated().credential_proxy.bypass_no_secret_protection
+
+
 def get_shield_bypass_firewall_no_protection() -> bool:
     """Return whether the shield firewall is globally bypassed.
 

@@ -333,6 +333,14 @@ class RawShieldGlobalSection(BaseModel):
     audit: bool = True
 
 
+class RawCredentialProxySection(BaseModel):
+    """Global ``credential_proxy:`` section."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    bypass_no_secret_protection: bool = False
+
+
 class RawGateServerSection(BaseModel):
     """Global ``gate_server:`` section."""
 
@@ -367,6 +375,7 @@ class RawGlobalConfig(BaseModel):
     tui: RawTUISection = Field(default_factory=RawTUISection)
     logs: RawLogsSection = Field(default_factory=RawLogsSection)
     shield: RawShieldGlobalSection = Field(default_factory=RawShieldGlobalSection)
+    credential_proxy: RawCredentialProxySection = Field(default_factory=RawCredentialProxySection)
     gate_server: RawGateServerSection = Field(default_factory=RawGateServerSection)
     tasks: RawTasksGlobalSection = Field(default_factory=RawTasksGlobalSection)
     git: RawGlobalGitSection = Field(default_factory=RawGlobalGitSection)
@@ -383,6 +392,7 @@ class RawGlobalConfig(BaseModel):
             "tui",
             "logs",
             "shield",
+            "credential_proxy",
             "gate_server",
             "tasks",
             "git",

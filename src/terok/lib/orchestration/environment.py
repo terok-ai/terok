@@ -221,6 +221,70 @@ def apply_git_identity_env(
     )
 
 
+# ---------- Credential proxy ----------
+
+
+def _credential_proxy_env_and_volumes(
+    project: ProjectConfig, task_id: str
+) -> tuple[dict[str, str], list[str]]:
+    """Return env vars and volumes for the credential proxy.
+
+    When the proxy is running and credentials are stored, injects phantom
+    API key env vars and base URL overrides pointing to the proxy socket,
+    and mounts the socket into the container.
+
+    When bypassed or the proxy isn't running, returns empty — shared mounts
+    carry credentials as before.
+    """
+    from ..core.config import get_credential_proxy_bypass
+
+    if get_credential_proxy_bypass():
+        return {}, []
+
+    from terok_agent.registry import get_registry
+    from terok_sandbox import CredentialDB, SandboxConfig, is_proxy_running
+
+    cfg = SandboxConfig()
+
+    if not is_proxy_running():
+        return {}, []
+
+    db = CredentialDB(cfg.proxy_db_path)
+    try:
+        credential_set = "default"
+        phantom_token = db.create_proxy_token(project.id, task_id, credential_set)
+        stored_providers = set(db.list_credentials(credential_set))
+    finally:
+        db.close()
+
+    if not stored_providers:
+        return {}, []
+
+    env: dict[str, str] = {}
+    volumes: list[str] = []
+
+    # Mount the proxy socket into the container
+    sock_path = cfg.proxy_socket_path
+    if sock_path.exists():
+        volumes.append(f"{sock_path}:/run/terok/credential-proxy.sock")
+
+    # For each provider with a proxy route AND stored credentials,
+    # inject phantom env vars and base URL overrides
+    registry = get_registry()
+    for name, route in registry.proxy_routes.items():
+        if name not in stored_providers:
+            continue
+
+        for env_var in route.phantom_env:
+            env[env_var] = phantom_token
+
+        if route.base_url_env:
+            proxy_base = f"http+unix:///run/terok/credential-proxy.sock/{route.route_prefix}"
+            env[route.base_url_env] = proxy_base
+
+    return env, volumes
+
+
 # ---------- Main builder ----------
 
 
@@ -260,5 +324,10 @@ def build_task_env_and_volumes(project: ProjectConfig, task_id: str) -> tuple[di
     sec_env, sec_volumes = _security_mode_env_and_volumes(project, ssh_host_dir, task_id)
     env.update(sec_env)
     volumes += sec_volumes
+
+    # Credential proxy: inject phantom tokens and base URL overrides
+    proxy_env, proxy_volumes = _credential_proxy_env_and_volumes(project, task_id)
+    env.update(proxy_env)
+    volumes += proxy_volumes
 
     return env, volumes

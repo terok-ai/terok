@@ -576,6 +576,7 @@ expose = [
     "is_experimental",
     "set_experimental",
     "get_global_hooks",
+    "get_credential_proxy_bypass",
     "get_shield_bypass_firewall_no_protection",
     "get_public_host",
     "SHIELD_SECURITY_HINT",

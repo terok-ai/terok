@@ -100,10 +100,11 @@ def main() -> None:
 
     # Mount sub-package command registries under scoped prefixes
     from terok_agent import AGENT_COMMANDS
-    from terok_sandbox import GATE_COMMANDS
+    from terok_sandbox import GATE_COMMANDS, PROXY_COMMANDS
 
     wire_group(sub, "agent", AGENT_COMMANDS, help="Agent container commands")
     wire_group(sub, "gate", GATE_COMMANDS, help="Gate server commands")
+    wire_group(sub, "proxy", PROXY_COMMANDS, help="Credential proxy commands")
 
     # Enable bash completion if argcomplete is present and activated
     if argcomplete is not None:  # pragma: no cover - shell integration
