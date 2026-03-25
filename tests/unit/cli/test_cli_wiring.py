@@ -6,11 +6,36 @@
 from __future__ import annotations
 
 import argparse
+from dataclasses import dataclass
+from typing import Any
 from unittest.mock import patch
 
-from terok_sandbox.commands import ArgDef, CommandDef
-
 from terok.cli.wiring import wire, wire_dispatch, wire_group
+
+# ── Lightweight test doubles matching the ArgProto/CmdProto contracts ────
+
+
+@dataclass(frozen=True)
+class _Arg:
+    """Minimal ArgDef-compatible test double."""
+
+    name: str
+    help: str = ""
+    type: Any = None
+    default: Any = None
+    action: str | None = None
+    dest: str | None = None
+    nargs: int | str | None = None
+
+
+@dataclass(frozen=True)
+class _Cmd:
+    """Minimal CommandDef-compatible test double."""
+
+    name: str
+    help: str = ""
+    handler: Any = None
+    args: tuple[_Arg, ...] = ()
 
 
 def _noop(**kwargs) -> None:
@@ -18,13 +43,13 @@ def _noop(**kwargs) -> None:
 
 
 _TEST_COMMANDS = (
-    CommandDef(
+    _Cmd(
         name="alpha",
         help="Alpha command",
         handler=_noop,
-        args=(ArgDef(name="--count", type=int, default=1, help="count"),),
+        args=(_Arg(name="--count", type=int, default=1, help="count"),),
     ),
-    CommandDef(name="beta", help="Beta command", handler=_noop),
+    _Cmd(name="beta", help="Beta command", handler=_noop),
 )
 
 
@@ -87,11 +112,11 @@ class TestWireDispatch:
             calls.append(kwargs)
 
         cmds = (
-            CommandDef(
+            _Cmd(
                 name="alpha",
                 help="Alpha command",
                 handler=tracking_handler,
-                args=(ArgDef(name="--count", type=int, default=1, help="count"),),
+                args=(_Arg(name="--count", type=int, default=1, help="count"),),
             ),
         )
         parser = argparse.ArgumentParser()

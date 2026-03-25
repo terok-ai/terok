@@ -26,8 +26,8 @@ def test_gate_group_registered() -> None:
     assert args._wired_cmd.name == "status"
 
 
-def test_gate_status_dispatches() -> None:
-    """'gate status' dispatches to the sandbox gate status handler."""
+def test_gate_status_dispatches(capsys) -> None:
+    """'gate status' invokes the handler via wire_dispatch and produces output."""
     import argparse
 
     from terok_sandbox import GATE_COMMANDS
@@ -37,11 +37,12 @@ def test_gate_status_dispatches() -> None:
     wire_group(sub, "gate", GATE_COMMANDS)
 
     args = parser.parse_args(["gate", "status"])
-    # Verify the correct handler is wired — we can't call it without a real
-    # gate server, but we can check it resolves to the right function.
-    from terok_sandbox.commands import _handle_gate_status
+    handled = wire_dispatch(args)
 
-    assert args._wired_cmd.handler is _handle_gate_status
+    assert handled is True
+    out = capsys.readouterr().out
+    assert "Mode:" in out
+    assert "Running:" in out
 
 
 def test_gate_group_help_shown_without_subcommand() -> None:

@@ -3,10 +3,14 @@
 
 """Registry-driven CLI wiring for sub-package command registries.
 
-Mounts :class:`~terok_sandbox.commands.CommandDef` tuples (from terok-sandbox
-and terok-agent) under argparse subparser groups.  Each package exports its
-commands as frozen tuples; this module wires them into terokctl's namespace
-without duplicating argument definitions or handler logic.
+Mounts ``CommandDef`` tuples (from terok-sandbox and terok-agent) under
+argparse subparser groups.  Each package exports its commands as frozen
+tuples; this module wires them into terokctl's namespace without
+duplicating argument definitions or handler logic.
+
+The wiring layer uses structural typing (protocols) so it works with
+any ``CommandDef`` / ``ArgDef`` that exposes the expected attributes —
+no coupling to a specific package's internal module.
 
 Usage::
 
@@ -20,19 +24,39 @@ Usage::
 from __future__ import annotations
 
 import argparse
-from typing import TYPE_CHECKING
-
-if TYPE_CHECKING:
-    from terok_sandbox.commands import ArgDef, CommandDef
+from typing import Any, Protocol, runtime_checkable
 
 
-def _arg_key(arg: ArgDef) -> str:
-    """Derive the Python kwarg name from an :class:`ArgDef`."""
+@runtime_checkable
+class ArgProto(Protocol):
+    """Structural contract for a CLI argument definition."""
+
+    name: str
+    help: str
+    type: Any
+    default: Any
+    action: str | None
+    dest: str | None
+    nargs: int | str | None
+
+
+@runtime_checkable
+class CmdProto(Protocol):
+    """Structural contract for a CLI command definition."""
+
+    name: str
+    help: str
+    handler: Any  # Callable[..., None] | None
+    args: tuple[ArgProto, ...]
+
+
+def _arg_key(arg: ArgProto) -> str:
+    """Derive the Python kwarg name from an argument definition."""
     return arg.dest or arg.name.lstrip("-").replace("-", "_")
 
 
-def wire(sub: argparse._SubParsersAction, cmd: CommandDef) -> None:  # type: ignore[type-arg]
-    """Add a single :class:`CommandDef` to an argparse subparser group."""
+def wire(sub: argparse._SubParsersAction, cmd: CmdProto) -> None:  # type: ignore[type-arg]
+    """Add a single command definition to an argparse subparser group."""
     p = sub.add_parser(cmd.name, help=cmd.help)
     for arg in cmd.args:
         kwargs: dict = {}
@@ -55,11 +79,11 @@ def wire(sub: argparse._SubParsersAction, cmd: CommandDef) -> None:  # type: ign
 def wire_group(
     sub: argparse._SubParsersAction,  # type: ignore[type-arg]
     name: str,
-    commands: tuple[CommandDef, ...],
+    commands: tuple[CmdProto, ...],
     *,
     help: str = "",
 ) -> None:
-    """Mount a tuple of :class:`CommandDef` under a named subparser group.
+    """Mount a tuple of command definitions under a named subparser group.
 
     Creates ``<prog> <name> <subcommand>`` paths for each command in *commands*.
     When the group name is given without a subcommand, prints help.
@@ -83,7 +107,7 @@ def wire_dispatch(args: argparse.Namespace) -> bool:
         group_parser.print_help()
         return True
 
-    cmd: CommandDef | None = getattr(args, "_wired_cmd", None)
+    cmd: CmdProto | None = getattr(args, "_wired_cmd", None)
     if cmd is None or cmd.handler is None:
         return False
 
