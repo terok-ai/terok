@@ -7,7 +7,7 @@ FROM docker.io/library/ubuntu:24.04
 RUN apt-get update && apt-get install -y --no-install-recommends \
     podman slirp4netns passt nftables uidmap fuse-overlayfs \
     python3 python3-pip python3-venv \
-    git curl ca-certificates \
+    git curl ca-certificates dnsutils openssh-client \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /src

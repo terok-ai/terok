@@ -5,7 +5,7 @@
 FROM quay.io/podman/stable:latest
 
 RUN dnf install -y \
-    nftables python3 python3-pip git curl \
+    nftables python3 python3-pip git curl bind-utils openssh-clients \
     && dnf clean all
 
 WORKDIR /src

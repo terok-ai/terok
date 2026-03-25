@@ -7,7 +7,7 @@ FROM registry.fedoraproject.org/fedora:43
 RUN dnf install -y \
     podman passt nftables slirp4netns fuse-overlayfs \
     python3 python3-pip \
-    git curl \
+    git curl bind-utils openssh-clients \
     && dnf clean all
 
 WORKDIR /src
