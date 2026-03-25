@@ -82,41 +82,42 @@ class TestStoryAuthThroughProxy:
         # 3. Start mock upstream
         upstream = TestServer(_make_upstream())
         await upstream.start_server()
-
-        # Rewrite routes with real upstream port
-        routes_path.write_text(
-            json.dumps(
-                {
-                    "vibe": {
-                        "upstream": f"http://127.0.0.1:{upstream.port}",
-                        "auth_header": "Authorization",
-                        "auth_prefix": "Bearer ",
+        try:
+            # Rewrite routes with real upstream port
+            routes_path.write_text(
+                json.dumps(
+                    {
+                        "vibe": {
+                            "upstream": f"http://127.0.0.1:{upstream.port}",
+                            "auth_header": "Authorization",
+                            "auth_prefix": "Bearer ",
+                        }
                     }
-                }
+                )
             )
-        )
 
-        # 4. Start proxy
-        proxy_app = _build_app(str(db_path), str(routes_path))
-        proxy_server = TestServer(proxy_app)
-        await proxy_server.start_server()
+            # 4. Start proxy
+            proxy_app = _build_app(str(db_path), str(routes_path))
+            proxy_server = TestServer(proxy_app)
+            await proxy_server.start_server()
+            try:
+                # 5. Make request with phantom token
+                async with aiohttp.ClientSession() as session:
+                    async with session.post(
+                        f"http://127.0.0.1:{proxy_server.port}/vibe/v1/chat/completions",
+                        headers={"Authorization": f"Bearer {phantom}"},
+                        json={"model": "mistral-small-latest"},
+                    ) as resp:
+                        assert resp.status == 200
+                        body = await resp.json()
 
-        # 5. Make request with phantom token (simulates container agent call)
-        async with aiohttp.ClientSession() as session:
-            async with session.post(
-                f"http://127.0.0.1:{proxy_server.port}/vibe/v1/chat/completions",
-                headers={"Authorization": f"Bearer {phantom}"},
-                json={"model": "mistral-small-latest"},
-            ) as resp:
-                assert resp.status == 200
-                body = await resp.json()
-
-        # 6. Verify: upstream saw the REAL key, not the phantom
-        assert body["auth"] == "Bearer real-mistral-key"
-        assert phantom not in body["auth"]
-
-        await proxy_server.close()
-        await upstream.close()
+                # 6. Verify: upstream saw the REAL key, not the phantom
+                assert body["auth"] == "Bearer real-mistral-key"
+                assert phantom not in body["auth"]
+            finally:
+                await proxy_server.close()
+        finally:
+            await upstream.close()
 
     async def test_oauth_auth_to_proxy_forwarding(self, tmp_path: Path) -> None:
         """OAuth token stored → phantom → proxy → Bearer token in upstream."""
@@ -141,43 +142,44 @@ class TestStoryAuthThroughProxy:
         # 2. Routes with dynamic auth
         upstream = TestServer(_make_upstream())
         await upstream.start_server()
-
-        routes_path = tmp_path / "routes.json"
-        routes_path.write_text(
-            json.dumps(
-                {
-                    "claude": {
-                        "upstream": f"http://127.0.0.1:{upstream.port}",
-                        "auth_header": "dynamic",
+        try:
+            routes_path = tmp_path / "routes.json"
+            routes_path.write_text(
+                json.dumps(
+                    {
+                        "claude": {
+                            "upstream": f"http://127.0.0.1:{upstream.port}",
+                            "auth_header": "dynamic",
+                        }
                     }
-                }
+                )
             )
-        )
 
-        # 3. Proxy
-        proxy_app = _build_app(str(db_path), str(routes_path))
-        proxy_server = TestServer(proxy_app)
-        await proxy_server.start_server()
+            # 3. Proxy
+            proxy_app = _build_app(str(db_path), str(routes_path))
+            proxy_server = TestServer(proxy_app)
+            await proxy_server.start_server()
+            try:
+                # 4. Request
+                async with aiohttp.ClientSession() as session:
+                    async with session.post(
+                        f"http://127.0.0.1:{proxy_server.port}/claude/v1/messages",
+                        headers={
+                            "Authorization": f"Bearer {phantom}",
+                            "anthropic-beta": "oauth-2025-04-20",
+                        },
+                        json={"model": "claude-3-haiku-20240307"},
+                    ) as resp:
+                        assert resp.status == 200
+                        body = await resp.json()
 
-        # 4. Request
-        async with aiohttp.ClientSession() as session:
-            async with session.post(
-                f"http://127.0.0.1:{proxy_server.port}/claude/v1/messages",
-                headers={
-                    "Authorization": f"Bearer {phantom}",
-                    "anthropic-beta": "oauth-2025-04-20",
-                },
-                json={"model": "claude-3-haiku-20240307"},
-            ) as resp:
-                assert resp.status == 200
-                body = await resp.json()
-
-        # OAuth → Authorization: Bearer (not x-api-key)
-        assert body["auth"] == "Bearer sk-ant-oat-real-token"
-        assert body["x_api_key"] == ""
-
-        await proxy_server.close()
-        await upstream.close()
+                # OAuth → Authorization: Bearer (not x-api-key)
+                assert body["auth"] == "Bearer sk-ant-oat-real-token"
+                assert body["x_api_key"] == ""
+            finally:
+                await proxy_server.close()
+        finally:
+            await upstream.close()
 
 
 @pytest.mark.asyncio
@@ -196,38 +198,39 @@ class TestStoryTokenRevocation:
 
         upstream = TestServer(_make_upstream())
         await upstream.start_server()
+        try:
+            routes_path = tmp_path / "routes.json"
+            routes_path.write_text(
+                json.dumps({"vibe": {"upstream": f"http://127.0.0.1:{upstream.port}"}})
+            )
 
-        routes_path = tmp_path / "routes.json"
-        routes_path.write_text(
-            json.dumps({"vibe": {"upstream": f"http://127.0.0.1:{upstream.port}"}})
-        )
+            proxy_app = _build_app(str(db_path), str(routes_path))
+            proxy_server = TestServer(proxy_app)
+            await proxy_server.start_server()
+            try:
+                # Works before revocation
+                async with aiohttp.ClientSession() as session:
+                    async with session.get(
+                        f"http://127.0.0.1:{proxy_server.port}/vibe/v1/models",
+                        headers={"Authorization": f"Bearer {phantom}"},
+                    ) as resp:
+                        assert resp.status == 200
 
-        proxy_app = _build_app(str(db_path), str(routes_path))
-        proxy_server = TestServer(proxy_app)
-        await proxy_server.start_server()
+                # Revoke
+                db.revoke_proxy_tokens("proj", "task-1")
+                db.close()
 
-        # Works before revocation
-        async with aiohttp.ClientSession() as session:
-            async with session.get(
-                f"http://127.0.0.1:{proxy_server.port}/vibe/v1/models",
-                headers={"Authorization": f"Bearer {phantom}"},
-            ) as resp:
-                assert resp.status == 200
-
-        # Revoke
-        db.revoke_proxy_tokens("proj", "task-1")
-        db.close()
-
-        # Rejected after revocation
-        async with aiohttp.ClientSession() as session:
-            async with session.get(
-                f"http://127.0.0.1:{proxy_server.port}/vibe/v1/models",
-                headers={"Authorization": f"Bearer {phantom}"},
-            ) as resp:
-                assert resp.status == 401
-
-        await proxy_server.close()
-        await upstream.close()
+                # Rejected after revocation
+                async with aiohttp.ClientSession() as session:
+                    async with session.get(
+                        f"http://127.0.0.1:{proxy_server.port}/vibe/v1/models",
+                        headers={"Authorization": f"Bearer {phantom}"},
+                    ) as resp:
+                        assert resp.status == 401
+            finally:
+                await proxy_server.close()
+        finally:
+            await upstream.close()
 
 
 class TestStoryEnvWiring:

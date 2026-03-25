@@ -345,11 +345,6 @@ def terok_env(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> TerokIntegrati
 
 # ── Credential proxy ──────────────────────────────────────
 
-_BYPASS_CONFIG = """\
-credential_proxy:
-  bypass_no_secret_protection: true
-"""
-
 
 @pytest.fixture(autouse=True)
 def _bypass_credential_proxy(request: pytest.FixtureRequest) -> Iterator[None]:
