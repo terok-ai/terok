@@ -27,6 +27,7 @@ import subprocess
 import uuid
 from collections.abc import Iterator
 from pathlib import Path
+from unittest.mock import patch
 from urllib.parse import urlsplit
 
 import pytest
@@ -321,6 +322,14 @@ def terok_env(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> TerokIntegrati
     monkeypatch.setenv("TEROK_CONFIG_DIR", str(system_config_root))
     monkeypatch.setenv("TEROK_STATE_DIR", str(state_root))
 
+    # Write default global config with credential proxy bypass — subprocess-based
+    # tests spawn a new CLI process that reads this file.  Tests that need the
+    # proxy opt out via the needs_credential_proxy marker.
+    (system_config_root / "config.yml").write_text(
+        "credential_proxy:\n  bypass_no_secret_protection: true\n",
+        encoding="utf-8",
+    )
+
     env = TerokIntegrationEnv(
         base_dir=tmp_path,
         home_dir=home_dir,
@@ -332,3 +341,27 @@ def terok_env(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> TerokIntegrati
     env.global_presets_root.mkdir(parents=True, exist_ok=True)
     env.system_projects_root.mkdir(parents=True, exist_ok=True)
     return env
+
+
+# ── Credential proxy ──────────────────────────────────────
+
+
+@pytest.fixture(autouse=True)
+def _bypass_credential_proxy(request: pytest.FixtureRequest) -> Iterator[None]:
+    """Bypass the credential proxy unless the test explicitly needs it.
+
+    Tests marked with ``needs_credential_proxy`` opt out of the bypass
+    and exercise the real proxy path.  All other tests get the bypass
+    so they don't need a running proxy daemon.
+
+    For subprocess-based tests (via ``terok_env``), the bypass is written
+    as a config file in the ``terok_env`` fixture itself.
+    """
+    if "needs_credential_proxy" in {m.name for m in request.node.iter_markers()}:
+        yield
+    else:
+        with patch(
+            "terok.lib.core.config.get_credential_proxy_bypass",
+            return_value=True,
+        ):
+            yield
