@@ -14,7 +14,6 @@ from __future__ import annotations
 import argparse
 import sys
 
-from terok_agent import ensure_proxy_routes
 from terok_sandbox import (
     CredentialProxyStatus,
     get_proxy_status,
@@ -53,6 +52,8 @@ def dispatch(args: argparse.Namespace) -> bool:
 
 def _cmd_start() -> None:
     """Generate routes and start the credential proxy daemon."""
+    from terok_agent import ensure_proxy_routes
+
     if is_proxy_running():
         print("Credential proxy is already running.")
         sys.exit(1)

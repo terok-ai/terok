@@ -1056,7 +1056,7 @@ if _HAS_TEXTUAL:
             try:
                 self._last_proxy_status = get_proxy_status()
             except Exception:
-                pass
+                self._last_proxy_status = None
             await self.push_screen(
                 CredentialProxyScreen(self._last_proxy_status),
                 self._on_proxy_action_result,

@@ -71,7 +71,7 @@ class TestProxyDispatch:
         assert "3 configured" in out
 
     @patch("terok.cli.commands.proxy.start_proxy")
-    @patch("terok.cli.commands.proxy.ensure_proxy_routes")
+    @patch("terok_agent.ensure_proxy_routes")
     @patch("terok.cli.commands.proxy.is_proxy_running", return_value=False)
     def test_dispatch_start(self, mock_running, mock_routes, mock_start, capsys) -> None:
         """'proxy start' generates routes and starts the daemon."""

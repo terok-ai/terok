@@ -1118,11 +1118,16 @@ class TestProxyActionDispatch:
         ],
     )
     def test_proxy_action_dispatch_all(self, action: str, handler: str) -> None:
-        """Every proxy action maps to a handler method."""
-        app_mod, _ = import_app()
-        assert app_mod.PROXY_ACTION_HANDLERS[action] == handler
+        """Every proxy action routes through the callback to its handler."""
+        _, app_class = import_app()
+        instance = mock.Mock(spec=app_class)
+        run(app_class._on_proxy_action_result(instance, action))
+        getattr(instance, handler).assert_called_once()
 
     def test_proxy_action_dispatch_none(self) -> None:
-        """Unknown action key is not in the handlers dict."""
-        app_mod, _ = import_app()
-        assert "bogus" not in app_mod.PROXY_ACTION_HANDLERS
+        """None result does not dispatch any handler."""
+        _, app_class = import_app()
+        instance = mock.Mock(spec=app_class)
+        run(app_class._on_proxy_action_result(instance, None))
+        instance._action_proxy_start.assert_not_called()
+        instance._action_proxy_stop.assert_not_called()
