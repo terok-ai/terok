@@ -18,12 +18,9 @@ import sys
 from terok_sandbox import (
     CredentialProxyStatus,
     get_proxy_status,
-    install_proxy_systemd,
     is_proxy_running,
-    is_proxy_systemd_available,
     start_proxy,
     stop_proxy,
-    uninstall_proxy_systemd,
 )
 
 
@@ -69,6 +66,8 @@ def _ensure_routes() -> None:
 
 def _cmd_install() -> None:
     """Install systemd socket activation units."""
+    from terok_sandbox import install_proxy_systemd, is_proxy_systemd_available
+
     if not is_proxy_systemd_available():
         print(
             "Error: systemd user services are not available on this host.\n"
@@ -82,6 +81,8 @@ def _cmd_install() -> None:
 
 def _cmd_uninstall() -> None:
     """Uninstall systemd units."""
+    from terok_sandbox import is_proxy_systemd_available, uninstall_proxy_systemd
+
     if not is_proxy_systemd_available():
         print("Error: systemd user services are not available.\nNothing to uninstall.")
         sys.exit(1)
@@ -121,7 +122,14 @@ def _cmd_status() -> None:
         print(f"Credentials: {', '.join(status.credentials_stored)}")
     else:
         print("Credentials: none stored")
-    if not status.running and status.mode == "none" and is_proxy_systemd_available():
-        print(
-            "\nHint: run 'terokctl credentials install' to set up systemd socket activation."
-        )
+    if not status.running and status.mode == "none":
+        try:
+            from terok_sandbox import is_proxy_systemd_available
+
+            if is_proxy_systemd_available():
+                print(
+                    "\nHint: run 'terokctl credentials install'"
+                    " to set up systemd socket activation."
+                )
+        except ImportError:
+            pass
