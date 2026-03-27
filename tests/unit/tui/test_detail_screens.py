@@ -986,3 +986,182 @@ class TestDeleteTaskResult:
         """Empty task name is preserved through the round-trip."""
         result = self._call_delete(task_name="")
         assert result == ("proj1", "3", "", None)
+
+
+# ---------------------------------------------------------------------------
+# Credential Proxy Screen
+# ---------------------------------------------------------------------------
+
+MOCK_PROXY_SOCKET = MOCK_BASE / "run" / "credential-proxy.sock"
+MOCK_PROXY_DB = MOCK_BASE / "proxy" / "credentials.db"
+MOCK_PROXY_ROUTES = MOCK_BASE / "proxy" / "routes.json"
+
+
+def make_proxy_status(
+    *,
+    running: bool = True,
+    routes_configured: int = 3,
+    credentials_stored: tuple[str, ...] = ("claude", "gh"),
+) -> mock.Mock:
+    """Build a credential proxy status mock with common defaults."""
+    status = mock.Mock()
+    status.running = running
+    status.socket_path = MOCK_PROXY_SOCKET
+    status.db_path = MOCK_PROXY_DB
+    status.routes_path = MOCK_PROXY_ROUTES
+    status.routes_configured = routes_configured
+    status.credentials_stored = credentials_stored
+    return status
+
+
+class TestCredentialProxyScreen:
+    """Tests for the CredentialProxyScreen."""
+
+    def test_proxy_screen_construction(self) -> None:
+        """Screen stores the provided status."""
+        screens, _ = import_screens()
+        status = make_proxy_status()
+        screen = screens.CredentialProxyScreen(status)
+        assert screen._status == status
+
+    def test_proxy_screen_construction_default(self) -> None:
+        """Screen defaults to None status."""
+        screens, _ = import_screens()
+        screen = screens.CredentialProxyScreen()
+        assert screen._status is None
+
+    def test_proxy_screen_dismiss(self) -> None:
+        """action_dismiss sends None result."""
+        screens, _ = import_screens()
+        screen = screens.CredentialProxyScreen()
+        screen.dismiss = mock.Mock()
+        screen.action_dismiss()
+        screen.dismiss.assert_called_once_with(None)
+
+    @pytest.mark.parametrize(
+        ("method_name", "expected"),
+        [
+            pytest.param("action_proxy_start", "proxy_start", id="start"),
+            pytest.param("action_proxy_stop", "proxy_stop", id="stop"),
+        ],
+    )
+    def test_proxy_screen_actions(self, method_name: str, expected: str) -> None:
+        """Action methods dismiss with the expected result string."""
+        screens, _ = import_screens()
+        screen = screens.CredentialProxyScreen()
+        screen.dismiss = mock.Mock()
+        getattr(screen, method_name)()
+        screen.dismiss.assert_called_once_with(expected)
+
+
+class TestRenderProxyStatus:
+    """Tests for the render_proxy_status helper."""
+
+    def test_render_proxy_status_none(self) -> None:
+        """None status renders an 'unknown' message."""
+        screens, _ = import_screens()
+        result = screens.render_proxy_status(None)
+        assert isinstance(result, Text)
+        assert "unknown" in str(result)
+
+    def test_render_proxy_status_running(self) -> None:
+        """Running proxy shows status and credential details."""
+        screens, _ = import_screens()
+        status = make_proxy_status()
+        result = screens.render_proxy_status(status)
+        text_str = str(result)
+        assert "running" in text_str
+        assert "claude" in text_str
+        assert "3 configured" in text_str
+
+    def test_render_proxy_status_stopped(self) -> None:
+        """Stopped proxy shows hint text."""
+        screens, _ = import_screens()
+        status = make_proxy_status(running=False)
+        result = screens.render_proxy_status(status)
+        text_str = str(result)
+        assert "stopped" in text_str
+        assert "actions below" in text_str
+
+    def test_render_proxy_status_no_credentials(self) -> None:
+        """Empty credentials tuple renders 'none stored'."""
+        screens, _ = import_screens()
+        status = make_proxy_status(credentials_stored=())
+        result = screens.render_proxy_status(status)
+        assert "none stored" in str(result)
+
+
+class TestCredentialProxyScreenRefresh:
+    """Tests for proxy screen refresh logic."""
+
+    def test_refresh_status_updates_status(self) -> None:
+        """_refresh_status fetches new status from terok_sandbox."""
+        screens, _ = import_screens()
+        screen = screens.CredentialProxyScreen(make_proxy_status(running=False))
+        detail = mock.Mock()
+        screen.query_one = mock.Mock(return_value=detail)
+        new_status = make_proxy_status(running=True)
+        with mock.patch("terok_sandbox.get_proxy_status", return_value=new_status):
+            screen._refresh_status()
+        assert screen._status is new_status
+        detail.update.assert_called_once()
+
+    def test_refresh_status_handles_exception(self) -> None:
+        """_refresh_status sets status to None on failure."""
+        screens, _ = import_screens()
+        screen = screens.CredentialProxyScreen(make_proxy_status())
+        detail = mock.Mock()
+        screen.query_one = mock.Mock(return_value=detail)
+        with mock.patch("terok_sandbox.get_proxy_status", side_effect=RuntimeError):
+            screen._refresh_status()
+        assert screen._status is None
+
+    def test_proxy_screen_refresh_action(self) -> None:
+        """action_proxy_refresh calls _refresh_status."""
+        screens, _ = import_screens()
+        screen = screens.CredentialProxyScreen()
+        screen._refresh_status = mock.Mock()
+        screen.action_proxy_refresh()
+        screen._refresh_status.assert_called_once()
+
+
+class TestProxyCommandPalette:
+    """Tests for proxy in the command palette."""
+
+    def test_get_system_commands_includes_proxy(self) -> None:
+        """Command palette includes 'Credential Proxy' entry."""
+        from tests.unit.tui.tui_test_helpers import build_textual_stubs
+
+        stubs = build_textual_stubs()
+        _, app_class = import_app(stubs)
+        instance = app_class()
+        with mock.patch.dict(sys.modules, stubs):
+            commands = list(app_class.get_system_commands(instance, screen=mock.Mock()))
+        titles = [cmd.title for cmd in commands]
+        assert "Credential Proxy" in titles
+
+
+class TestProxyActionDispatch:
+    """Tests for proxy action handler dispatch."""
+
+    @pytest.mark.parametrize(
+        ("action", "handler"),
+        [
+            ("proxy_start", "_action_proxy_start"),
+            ("proxy_stop", "_action_proxy_stop"),
+        ],
+    )
+    def test_proxy_action_dispatch_all(self, action: str, handler: str) -> None:
+        """Every proxy action routes through the callback to its handler."""
+        _, app_class = import_app()
+        instance = mock.Mock(spec=app_class)
+        run(app_class._on_proxy_action_result(instance, action))
+        getattr(instance, handler).assert_called_once()
+
+    def test_proxy_action_dispatch_none(self) -> None:
+        """None result does not dispatch any handler."""
+        _, app_class = import_app()
+        instance = mock.Mock(spec=app_class)
+        run(app_class._on_proxy_action_result(instance, None))
+        instance._action_proxy_start.assert_not_called()
+        instance._action_proxy_stop.assert_not_called()

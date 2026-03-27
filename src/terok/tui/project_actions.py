@@ -17,7 +17,9 @@ from collections.abc import Callable
 from terok_sandbox import (
     install_systemd_units,
     start_daemon,
+    start_proxy,
     stop_daemon,
+    stop_proxy,
     uninstall_systemd_units,
 )
 
@@ -561,4 +563,26 @@ class ProjectActionsMixin:
         await self._run_suspended(
             lambda: shield_setup_hooks_direct(root=result == "root"),
             success_msg="Shield hooks installed",
+        )
+
+    # ---------- Credential proxy actions ----------
+
+    async def _action_proxy_start(self) -> None:
+        """Generate routes and start the credential proxy daemon."""
+        from terok_agent import ensure_proxy_routes
+
+        def _start() -> None:
+            ensure_proxy_routes()
+            start_proxy()
+
+        await self._run_suspended(
+            _start,
+            success_msg="Credential proxy started",
+        )
+
+    async def _action_proxy_stop(self) -> None:
+        """Stop the credential proxy daemon."""
+        await self._run_suspended(
+            stop_proxy,
+            success_msg="Credential proxy stopped",
         )

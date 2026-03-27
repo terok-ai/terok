@@ -14,7 +14,7 @@ import argparse
 
 from ..lib.core.config import set_experimental
 from ..lib.core.version import format_version_string, get_version_info
-from .commands import completions, image, info, project, setup, shield, sickbay, task
+from .commands import completions, image, info, project, proxy, setup, shield, sickbay, task
 from .wiring import wire_dispatch, wire_group
 
 # Optional: bash completion via argcomplete
@@ -28,6 +28,7 @@ except ImportError:  # pragma: no cover - optional dep
 _DISPATCHERS = [
     task.dispatch,
     project.dispatch,
+    proxy.dispatch,
     setup.dispatch,
     image.dispatch,
     wire_dispatch,
@@ -91,6 +92,7 @@ def main() -> None:
     # Register subcommands from each module
     task.register(sub)
     project.register(sub)
+    proxy.register(sub)
     setup.register(sub)
     image.register(sub)
     shield.register(sub)
@@ -100,11 +102,10 @@ def main() -> None:
 
     # Mount sub-package command registries under scoped prefixes
     from terok_agent import AGENT_COMMANDS
-    from terok_sandbox import GATE_COMMANDS, PROXY_COMMANDS
+    from terok_sandbox import GATE_COMMANDS
 
     wire_group(sub, "agent", AGENT_COMMANDS, help="Agent container commands")
     wire_group(sub, "gate", GATE_COMMANDS, help="Gate server commands")
-    wire_group(sub, "proxy", PROXY_COMMANDS, help="Credential proxy commands")
 
     # Enable bash completion if argcomplete is present and activated
     if argcomplete is not None:  # pragma: no cover - shell integration

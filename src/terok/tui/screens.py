@@ -50,6 +50,7 @@ except Exception:  # pragma: no cover - textual may be a stub module
 from rich.style import Style
 from rich.text import Text
 from terok_sandbox import (
+    CredentialProxyStatus,
     EnvironmentCheck,
     GateServerStatus,
     GateStalenessInfo,
@@ -1851,3 +1852,137 @@ class ShieldSetupScreen(screen.ModalScreen[str | None]):
     def action_dismiss(self) -> None:
         """Cancel without choosing."""
         self.dismiss(None)
+
+
+# ---------------------------------------------------------------------------
+# Credential Proxy helpers
+# ---------------------------------------------------------------------------
+
+
+def render_proxy_status(status: CredentialProxyStatus | None) -> Text:
+    """Render credential proxy status details as a Rich Text object."""
+    if status is None:
+        return Text("Credential proxy status unknown.")
+
+    ok = Style(color="green")
+    err = Style(color="red")
+    dim = Style(dim=True)
+
+    running_s = Text("running", style=ok) if status.running else Text("stopped", style=err)
+
+    lines: list[Text] = [
+        Text.assemble("Status:      ", running_s),
+        Text(f"Socket:      {status.socket_path}"),
+        Text(f"DB:          {status.db_path}"),
+        Text(f"Routes:      {status.routes_path} ({status.routes_configured} configured)"),
+    ]
+
+    if status.credentials_stored:
+        lines.append(Text(f"Credentials: {', '.join(status.credentials_stored)}"))
+    else:
+        lines.append(Text.assemble("Credentials: ", Text("none stored", style=dim)))
+
+    if not status.running:
+        lines.append(Text(""))
+        lines.append(
+            Text(
+                "The credential proxy injects real API credentials into container\n"
+                "requests without exposing secrets to the container filesystem.\n"
+                "Use the actions below to start it.",
+                style=dim,
+            )
+        )
+
+    return Text("\n").join(lines)
+
+
+# ---------------------------------------------------------------------------
+# Credential Proxy Screen
+# ---------------------------------------------------------------------------
+
+
+class CredentialProxyScreen(screen.Screen[str | None]):
+    """Full-page screen for managing the credential proxy."""
+
+    BINDINGS = [
+        _modal_binding("escape", "dismiss", "Back"),
+        _modal_binding("q", "dismiss", "Back"),
+        _modal_binding("s", "proxy_start", "Start proxy"),
+        _modal_binding("p", "proxy_stop", "Stop proxy"),
+        _modal_binding("r", "proxy_refresh", "Refresh status"),
+    ]
+
+    CSS = (
+        """
+    CredentialProxyScreen {
+        layout: vertical;
+        background: $background;
+    }
+    """
+        + _DETAIL_SCREEN_CSS
+    )
+
+    def __init__(self, status: CredentialProxyStatus | None = None) -> None:
+        """Store proxy status for rendering."""
+        super().__init__()
+        self._status = status
+
+    def compose(self) -> ComposeResult:
+        """Build the detail pane and action list for proxy management."""
+        detail_pane = Static(id="detail-content")
+        detail_pane.border_title = "Credential Proxy"
+        detail_pane.border_subtitle = "Esc to close"
+        yield detail_pane
+
+        yield OptionList(
+            Option("\\[s]tart proxy", id="proxy_start"),
+            Option("sto\\[p] proxy", id="proxy_stop"),
+            None,
+            Option("\\[r]efresh status", id="proxy_refresh"),
+            id="actions-list",
+        )
+
+    def on_mount(self) -> None:
+        """Render proxy status and focus the action list."""
+        self._render_status()
+        actions = self.query_one("#actions-list", OptionList)
+        actions.focus()
+
+    def _render_status(self) -> None:
+        """Update the detail pane with current status."""
+        detail_widget = self.query_one("#detail-content", Static)
+        detail_widget.update(render_proxy_status(self._status))
+
+    def _refresh_status(self) -> None:
+        """Re-fetch status and update the display."""
+        from terok_sandbox import get_proxy_status
+
+        try:
+            self._status = get_proxy_status()
+        except Exception:
+            self._status = None
+        self._render_status()
+
+    def on_option_list_option_selected(self, event: OptionList.OptionSelected) -> None:
+        """Handle action selection from the option list."""
+        option_id = event.option_id
+        if option_id == "proxy_refresh":
+            self._refresh_status()
+        elif option_id:
+            self.dismiss(option_id)
+
+    def action_dismiss(self) -> None:
+        """Close the screen without selecting an action."""
+        self.dismiss(None)
+
+    def action_proxy_start(self) -> None:
+        """Trigger proxy start."""
+        self.dismiss("proxy_start")
+
+    def action_proxy_stop(self) -> None:
+        """Trigger proxy stop."""
+        self.dismiss("proxy_stop")
+
+    def action_proxy_refresh(self) -> None:
+        """Refresh the status display."""
+        self._refresh_status()

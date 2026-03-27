@@ -41,10 +41,12 @@ if _HAS_TEXTUAL:
     from dataclasses import dataclass
 
     from terok_sandbox import (
+        CredentialProxyStatus,
         EnvironmentCheck,
         GateServerStatus,
         GateStalenessInfo,
         check_environment as _shield_check_environment,
+        get_proxy_status,
         get_server_status,
         state as _shield_state,
     )
@@ -87,7 +89,13 @@ if _HAS_TEXTUAL:
     from .clipboard import get_clipboard_helper_status
     from .polling import PollingMixin
     from .project_actions import ProjectActionsMixin
-    from .screens import GateServerScreen, ProjectDetailsScreen, ShieldScreen, TaskDetailsScreen
+    from .screens import (
+        CredentialProxyScreen,
+        GateServerScreen,
+        ProjectDetailsScreen,
+        ShieldScreen,
+        TaskDetailsScreen,
+    )
     from .task_actions import TaskActionsMixin
     from .widgets import (
         ProjectList,
@@ -127,6 +135,11 @@ if _HAS_TEXTUAL:
 
     SHIELD_ACTION_HANDLERS: dict[str, str] = {
         "shield_setup": "_action_shield_setup",
+    }
+
+    PROXY_ACTION_HANDLERS: dict[str, str] = {
+        "proxy_start": "_action_proxy_start",
+        "proxy_stop": "_action_proxy_stop",
     }
 
     TASK_ACTION_HANDLERS: dict[str, str] = {
@@ -248,6 +261,7 @@ if _HAS_TEXTUAL:
             self._last_gate_server_running: bool | None = None
             self._last_gate_server_status: GateServerStatus | None = None
             self._last_shield_env: EnvironmentCheck | None = None
+            self._last_proxy_status: CredentialProxyStatus | None = None
             # Cached state for detail screens
             self._last_project_state: dict | None = None
             self._last_image_old: bool | None = None
@@ -987,7 +1001,7 @@ if _HAS_TEXTUAL:
         # ---------- Command palette ----------
 
         def get_system_commands(self, screen):
-            """Add gate server and shield management to the command palette."""
+            """Add gate, shield, and proxy management to the command palette."""
             from textual.app import SystemCommand
 
             yield from super().get_system_commands(screen)
@@ -1000,6 +1014,11 @@ if _HAS_TEXTUAL:
                 "Shield Status",
                 "View shield environment and install hooks",
                 self.action_show_shield,
+            )
+            yield SystemCommand(
+                "Credential Proxy",
+                "Manage credential proxy status and operations",
+                self.action_show_proxy,
             )
 
         async def action_show_gate_server(self) -> None:
@@ -1029,6 +1048,25 @@ if _HAS_TEXTUAL:
             if not result:
                 return
             handler = SHIELD_ACTION_HANDLERS.get(result)
+            if handler:
+                await getattr(self, handler)()
+
+        async def action_show_proxy(self) -> None:
+            """Open the credential proxy management screen."""
+            try:
+                self._last_proxy_status = get_proxy_status()
+            except Exception:
+                self._last_proxy_status = None
+            await self.push_screen(
+                CredentialProxyScreen(self._last_proxy_status),
+                self._on_proxy_action_result,
+            )
+
+        async def _on_proxy_action_result(self, result: str | None) -> None:
+            """Handle result from proxy screen."""
+            if not result:
+                return
+            handler = PROXY_ACTION_HANDLERS.get(result)
             if handler:
                 await getattr(self, handler)()
 
