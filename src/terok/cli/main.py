@@ -14,7 +14,7 @@ import argparse
 
 from ..lib.core.config import set_experimental
 from ..lib.core.version import format_version_string, get_version_info
-from .commands import completions, image, info, project, proxy, setup, shield, sickbay, task
+from .commands import completions, credentials, image, info, project, setup, shield, sickbay, task
 from .wiring import wire_dispatch, wire_group
 
 # Optional: bash completion via argcomplete
@@ -28,7 +28,7 @@ except ImportError:  # pragma: no cover - optional dep
 _DISPATCHERS = [
     task.dispatch,
     project.dispatch,
-    proxy.dispatch,
+    credentials.dispatch,
     setup.dispatch,
     image.dispatch,
     wire_dispatch,
@@ -92,7 +92,7 @@ def main() -> None:
     # Register subcommands from each module
     task.register(sub)
     project.register(sub)
-    proxy.register(sub)
+    credentials.register(sub)
     setup.register(sub)
     image.register(sub)
     shield.register(sub)

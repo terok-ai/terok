@@ -1868,9 +1868,11 @@ def render_proxy_status(status: CredentialProxyStatus | None) -> Text:
     err = Style(color="red")
     dim = Style(dim=True)
 
+    mode_s = Text(status.mode)
     running_s = Text("running", style=ok) if status.running else Text("stopped", style=err)
 
     lines: list[Text] = [
+        Text.assemble("Mode:        ", mode_s),
         Text.assemble("Status:      ", running_s),
         Text(f"Socket:      {status.socket_path}"),
         Text(f"DB:          {status.db_path}"),
@@ -1888,7 +1890,7 @@ def render_proxy_status(status: CredentialProxyStatus | None) -> Text:
             Text(
                 "The credential proxy injects real API credentials into container\n"
                 "requests without exposing secrets to the container filesystem.\n"
-                "Use the actions below to start it.",
+                "Use the actions below to install or start it.",
                 style=dim,
             )
         )
@@ -1907,8 +1909,10 @@ class CredentialProxyScreen(screen.Screen[str | None]):
     BINDINGS = [
         _modal_binding("escape", "dismiss", "Back"),
         _modal_binding("q", "dismiss", "Back"),
-        _modal_binding("s", "proxy_start", "Start proxy"),
-        _modal_binding("p", "proxy_stop", "Stop proxy"),
+        _modal_binding("i", "proxy_install", "Install systemd socket"),
+        _modal_binding("u", "proxy_uninstall", "Uninstall systemd units"),
+        _modal_binding("s", "proxy_start", "Start daemon"),
+        _modal_binding("p", "proxy_stop", "Stop daemon"),
         _modal_binding("r", "proxy_refresh", "Refresh status"),
     ]
 
@@ -1935,8 +1939,11 @@ class CredentialProxyScreen(screen.Screen[str | None]):
         yield detail_pane
 
         yield OptionList(
-            Option("\\[s]tart proxy", id="proxy_start"),
-            Option("sto\\[p] proxy", id="proxy_stop"),
+            Option("\\[i]nstall systemd socket", id="proxy_install"),
+            Option("\\[u]ninstall systemd units", id="proxy_uninstall"),
+            None,
+            Option("\\[s]tart daemon", id="proxy_start"),
+            Option("sto\\[p] daemon", id="proxy_stop"),
             None,
             Option("\\[r]efresh status", id="proxy_refresh"),
             id="actions-list",
@@ -1975,12 +1982,20 @@ class CredentialProxyScreen(screen.Screen[str | None]):
         """Close the screen without selecting an action."""
         self.dismiss(None)
 
+    def action_proxy_install(self) -> None:
+        """Trigger systemd socket installation."""
+        self.dismiss("proxy_install")
+
+    def action_proxy_uninstall(self) -> None:
+        """Trigger systemd unit uninstallation."""
+        self.dismiss("proxy_uninstall")
+
     def action_proxy_start(self) -> None:
-        """Trigger proxy start."""
+        """Trigger daemon start."""
         self.dismiss("proxy_start")
 
     def action_proxy_stop(self) -> None:
-        """Trigger proxy stop."""
+        """Trigger daemon stop."""
         self.dismiss("proxy_stop")
 
     def action_proxy_refresh(self) -> None:

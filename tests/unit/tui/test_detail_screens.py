@@ -999,12 +999,14 @@ MOCK_PROXY_ROUTES = MOCK_BASE / "proxy" / "routes.json"
 
 def make_proxy_status(
     *,
+    mode: str = "daemon",
     running: bool = True,
     routes_configured: int = 3,
     credentials_stored: tuple[str, ...] = ("claude", "gh"),
 ) -> mock.Mock:
     """Build a credential proxy status mock with common defaults."""
     status = mock.Mock()
+    status.mode = mode
     status.running = running
     status.socket_path = MOCK_PROXY_SOCKET
     status.db_path = MOCK_PROXY_DB
@@ -1041,6 +1043,8 @@ class TestCredentialProxyScreen:
     @pytest.mark.parametrize(
         ("method_name", "expected"),
         [
+            pytest.param("action_proxy_install", "proxy_install", id="install"),
+            pytest.param("action_proxy_uninstall", "proxy_uninstall", id="uninstall"),
             pytest.param("action_proxy_start", "proxy_start", id="start"),
             pytest.param("action_proxy_stop", "proxy_stop", id="stop"),
         ],
@@ -1147,6 +1151,8 @@ class TestProxyActionDispatch:
     @pytest.mark.parametrize(
         ("action", "handler"),
         [
+            ("proxy_install", "_action_proxy_install"),
+            ("proxy_uninstall", "_action_proxy_uninstall"),
             ("proxy_start", "_action_proxy_start"),
             ("proxy_stop", "_action_proxy_stop"),
         ],
@@ -1163,5 +1169,7 @@ class TestProxyActionDispatch:
         _, app_class = import_app()
         instance = mock.Mock(spec=app_class)
         run(app_class._on_proxy_action_result(instance, None))
+        instance._action_proxy_install.assert_not_called()
+        instance._action_proxy_uninstall.assert_not_called()
         instance._action_proxy_start.assert_not_called()
         instance._action_proxy_stop.assert_not_called()

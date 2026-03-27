@@ -138,6 +138,8 @@ if _HAS_TEXTUAL:
     }
 
     PROXY_ACTION_HANDLERS: dict[str, str] = {
+        "proxy_install": "_action_proxy_install",
+        "proxy_uninstall": "_action_proxy_uninstall",
         "proxy_start": "_action_proxy_start",
         "proxy_stop": "_action_proxy_stop",
     }
