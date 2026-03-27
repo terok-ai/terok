@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: 2026 Jiri Vyskocil
 # SPDX-License-Identifier: Apache-2.0
 
-"""Credential proxy management commands: install, start, stop, status.
+"""Credential proxy management: install, uninstall, start, stop, status.
 
 Wraps the terok-sandbox proxy lifecycle with route generation from the
 agent registry — ``terokctl credentials start`` writes ``routes.json``
