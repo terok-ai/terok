@@ -76,17 +76,18 @@ class TestCredentialProxyEnv:
             mock_cfg = mock_cfg_cls.return_value
             mock_cfg.proxy_db_path = db_path
             mock_cfg.proxy_socket_path = sock_path
+            mock_cfg.proxy_port = 18731
 
             env, volumes = _credential_proxy_env_and_volumes(project, "task-1")
 
         # Phantom token should be injected for Claude
         assert "ANTHROPIC_API_KEY" in env
         assert len(env["ANTHROPIC_API_KEY"]) == 32  # hex token
-        # Base URL override
+        # Base URL override — TCP via host.containers.internal
         assert "ANTHROPIC_BASE_URL" in env
-        assert "credential-proxy.sock/claude" in env["ANTHROPIC_BASE_URL"]
-        # Socket mounted
-        assert any("credential-proxy.sock" in v for v in volumes)
+        assert "host.containers.internal:18731/claude" in env["ANTHROPIC_BASE_URL"]
+        # No socket mount (TCP transport)
+        assert volumes == []
 
     @pytest.mark.usefixtures("_enable_proxy")
     def test_only_stored_providers_get_phantom_tokens(self, tmp_path: Path) -> None:
@@ -113,6 +114,7 @@ class TestCredentialProxyEnv:
             mock_cfg = mock_cfg_cls.return_value
             mock_cfg.proxy_db_path = db_path
             mock_cfg.proxy_socket_path = sock_path
+            mock_cfg.proxy_port = 18731
 
             env, _volumes = _credential_proxy_env_and_volumes(project, "task-1")
 

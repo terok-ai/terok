@@ -270,9 +270,7 @@ def _credential_proxy_env_and_volumes(
         for env_var in route.phantom_env:
             env[env_var] = phantom_token
         if route.base_url_env:
-            env[route.base_url_env] = (
-                f"http://host.containers.internal:{port}/{route.route_prefix}"
-            )
+            env[route.base_url_env] = f"http://host.containers.internal:{port}/{route.route_prefix}"
 
     return env, []
 
