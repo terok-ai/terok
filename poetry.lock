@@ -2563,18 +2563,20 @@ description = "Single-agent task runner for hardened Podman containers"
 optional = false
 python-versions = ">=3.12,<4.0"
 groups = ["main"]
-files = [
-    {file = "terok_agent-0.0.12-py3-none-any.whl", hash = "sha256:ccc90efe0e3e7282e5af5bc87addb38ca170850b8be3be14e04fb81f6f01c24b"},
-]
+files = []
+develop = false
 
 [package.dependencies]
 Jinja2 = ">=3.1"
 "ruamel.yaml" = ">=0.18"
-terok_sandbox = {url = "https://github.com/terok-ai/terok-sandbox/releases/download/v0.0.13/terok_sandbox-0.0.13-py3-none-any.whl"}
+terok-sandbox = {git = "https://github.com/sliwowitz/terok-sandbox.git", rev = "d2aa16c"}
+tomli-w = ">=1.0"
 
 [package.source]
-type = "url"
-url = "https://github.com/terok-ai/terok-agent/releases/download/v0.0.12/terok_agent-0.0.12-py3-none-any.whl"
+type = "git"
+url = "https://github.com/sliwowitz/terok-agent.git"
+reference = "f3b9234"
+resolved_reference = "f3b923496b933d0b28db30228165d9ec337268f9"
 
 [[package]]
 name = "terok-sandbox"
@@ -2583,18 +2585,19 @@ description = "Hardened Podman container runner with gate server and shield inte
 optional = false
 python-versions = ">=3.12,<4.0"
 groups = ["main"]
-files = [
-    {file = "terok_sandbox-0.0.13-py3-none-any.whl", hash = "sha256:58b07aa6ec7964f60fa2644ac40d29baaaa1b951866a91e0f29d6f6d7f683f74"},
-]
+files = []
+develop = false
 
 [package.dependencies]
 aiohttp = ">=3.9"
 platformdirs = ">=4.0"
-terok_shield = {url = "https://github.com/terok-ai/terok-shield/releases/download/v0.4.1/terok_shield-0.4.1-py3-none-any.whl"}
+terok-shield = {url = "https://github.com/terok-ai/terok-shield/releases/download/v0.4.1/terok_shield-0.4.1-py3-none-any.whl"}
 
 [package.source]
-type = "url"
-url = "https://github.com/terok-ai/terok-sandbox/releases/download/v0.0.13/terok_sandbox-0.0.13-py3-none-any.whl"
+type = "git"
+url = "https://github.com/sliwowitz/terok-sandbox.git"
+reference = "d2aa16c"
+resolved_reference = "d2aa16c1a0bad30499850e472fe5bc7811d048b1"
 
 [[package]]
 name = "terok-shield"
@@ -2739,7 +2742,7 @@ version = "1.2.0"
 description = "A lil' TOML writer"
 optional = false
 python-versions = ">=3.9"
-groups = ["dev"]
+groups = ["main", "dev"]
 files = [
     {file = "tomli_w-1.2.0-py3-none-any.whl", hash = "sha256:188306098d013b691fcadc011abd66727d3c414c571bb01b1a174ba8c983cf90"},
     {file = "tomli_w-1.2.0.tar.gz", hash = "sha256:2dd14fac5a47c27be9cd4c976af5a12d87fb1f0b4512f81d69cce3b35ae25021"},
@@ -3083,4 +3086,4 @@ propcache = ">=0.2.1"
 [metadata]
 lock-version = "2.1"
 python-versions = ">=3.12,<4.0"
-content-hash = "712c1c33f94c926577691131afe22b1553a0aaadbc9bc2337eb4e3b432f0b7f4"
+content-hash = "38a5546786aea1b9409f10c88658aefa39d9894d8685a9627f68bce5cf24cb9d"

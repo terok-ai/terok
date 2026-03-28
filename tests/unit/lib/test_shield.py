@@ -92,7 +92,7 @@ def test_make_shield_maps_config_to_shield_config(
     config = shield.config
     assert config.mode == ShieldMode.HOOK
     assert config.default_profiles == expected_profiles
-    assert config.loopback_ports == (expected_port,)
+    assert config.loopback_ports == (expected_port, cfg.proxy_port)
     assert config.audit_enabled is audit_enabled
     assert config.state_dir == MOCK_TASK_DIR / "shield"
     assert config.profiles_dir == MOCK_CONFIG_ROOT / "shield" / "profiles"

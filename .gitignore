@@ -17,3 +17,5 @@ docs/ci_map.md
 .coverage
 plans.md
 .claude/settings.local.json
+terok-agent
+terok-sandbox
