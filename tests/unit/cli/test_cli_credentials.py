@@ -45,6 +45,7 @@ class TestCredentialProxyWireGroup:
     def test_credential_proxy_group_registered(self) -> None:
         """terokctl credential-proxy group is parseable."""
         from terok_agent import PROXY_COMMANDS
+
         from terok.cli.wiring import wire_group
 
         parser = argparse.ArgumentParser()
