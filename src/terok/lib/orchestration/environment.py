@@ -242,7 +242,12 @@ def _credential_proxy_env_and_volumes(
         return {}, []
 
     from terok_agent import get_registry
-    from terok_sandbox import CredentialDB, SandboxConfig, ensure_proxy_reachable
+    from terok_sandbox import (
+        CredentialDB,
+        SandboxConfig,
+        ensure_proxy_reachable,
+        get_proxy_port,
+    )
 
     cfg = SandboxConfig()
     ensure_proxy_reachable()
@@ -255,8 +260,8 @@ def _credential_proxy_env_and_volumes(
     finally:
         db.close()
 
+    port = get_proxy_port(cfg)
     env: dict[str, str] = {}
-    volumes: list[str] = [f"{cfg.proxy_socket_path}:/run/terok/credential-proxy.sock:z"]
 
     registry = get_registry()
     for name, route in registry.proxy_routes.items():
@@ -266,10 +271,10 @@ def _credential_proxy_env_and_volumes(
             env[env_var] = phantom_token
         if route.base_url_env:
             env[route.base_url_env] = (
-                f"http+unix:///run/terok/credential-proxy.sock/{route.route_prefix}"
+                f"http://host.containers.internal:{port}/{route.route_prefix}"
             )
 
-    return env, volumes
+    return env, []
 
 
 # ---------- Main builder ----------
