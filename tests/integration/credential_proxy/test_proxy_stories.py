@@ -11,8 +11,6 @@ Stories use real sqlite DBs, real aiohttp proxy servers (via TestServer),
 and real route configs generated from the YAML registry.
 """
 
-from __future__ import annotations
-
 import json
 from pathlib import Path
 from unittest.mock import MagicMock, patch

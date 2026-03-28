@@ -3,8 +3,6 @@
 
 """Tests for the ``terokctl credential-proxy`` CLI and ``credential-proxy-serve``."""
 
-from __future__ import annotations
-
 import argparse
 from unittest.mock import patch
 

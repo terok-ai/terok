@@ -10,8 +10,6 @@ These tests create real sqlite DBs and verify the output matches
 what a task container would receive.
 """
 
-from __future__ import annotations
-
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
