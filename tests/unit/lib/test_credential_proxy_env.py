@@ -167,3 +167,100 @@ class TestCredentialProxyEnv:
         err = capsys.readouterr().err
         assert "WARNING" in err
         assert "claude" in err
+
+    @pytest.mark.usefixtures("_enable_proxy")
+    def test_ssh_agent_token_when_keys_registered(self, tmp_path: Path) -> None:
+        """SSH agent token and port injected when project has keys in ssh-keys.json."""
+        import json
+
+        from terok_sandbox import CredentialDB
+
+        from terok.lib.orchestration.environment import _credential_proxy_env_and_volumes
+
+        db_path = tmp_path / "proxy" / "credentials.db"
+        db = CredentialDB(db_path)
+        db.store_credential("default", "claude", {"type": "api_key", "key": "sk"})
+        db.close()
+
+        keys_json = tmp_path / "ssh-keys.json"
+        keys_json.write_text(
+            json.dumps({"test-project": {"private_key": "/k/id", "public_key": "/k/id.pub"}})
+        )
+
+        project = MagicMock()
+        project.id = "test-project"
+
+        with (
+            patch("terok_sandbox.credential_proxy_lifecycle.is_daemon_running", return_value=True),
+            patch("terok_sandbox.SandboxConfig") as mock_cfg_cls,
+        ):
+            mock_cfg = mock_cfg_cls.return_value
+            mock_cfg.proxy_db_path = db_path
+            mock_cfg.proxy_socket_path = tmp_path / "proxy.sock"
+            mock_cfg.proxy_port = 18731
+            mock_cfg.ssh_keys_json_path = keys_json
+            mock_cfg.ssh_agent_port = 18732
+
+            env, _ = _credential_proxy_env_and_volumes(project, "task-1")
+
+        assert "TEROK_SSH_AGENT_TOKEN" in env
+        assert len(env["TEROK_SSH_AGENT_TOKEN"]) == 32
+        assert env["TEROK_SSH_AGENT_PORT"] == "18732"
+
+    @pytest.mark.usefixtures("_enable_proxy")
+    def test_no_ssh_token_when_no_keys(self, tmp_path: Path) -> None:
+        """No SSH agent env vars when project has no keys registered."""
+        from terok_sandbox import CredentialDB
+
+        from terok.lib.orchestration.environment import _credential_proxy_env_and_volumes
+
+        db_path = tmp_path / "proxy" / "credentials.db"
+        db = CredentialDB(db_path)
+        db.store_credential("default", "claude", {"type": "api_key", "key": "sk"})
+        db.close()
+
+        project = MagicMock()
+        project.id = "no-ssh-project"
+
+        with (
+            patch("terok_sandbox.credential_proxy_lifecycle.is_daemon_running", return_value=True),
+            patch("terok_sandbox.SandboxConfig") as mock_cfg_cls,
+        ):
+            mock_cfg = mock_cfg_cls.return_value
+            mock_cfg.proxy_db_path = db_path
+            mock_cfg.proxy_socket_path = tmp_path / "proxy.sock"
+            mock_cfg.proxy_port = 18731
+            mock_cfg.ssh_keys_json_path = tmp_path / "nonexistent.json"
+
+            env, _ = _credential_proxy_env_and_volumes(project, "task-1")
+
+        assert "TEROK_SSH_AGENT_TOKEN" not in env
+        assert "TEROK_SSH_AGENT_PORT" not in env
+
+
+class TestLoadSshKeysJson:
+    """Verify _load_ssh_keys_json edge cases."""
+
+    def test_missing_file_returns_empty(self, tmp_path: Path) -> None:
+        """Non-existent file returns empty dict."""
+        from terok.lib.orchestration.environment import _load_ssh_keys_json
+
+        assert _load_ssh_keys_json(tmp_path / "nope.json") == {}
+
+    def test_corrupt_json_returns_empty(self, tmp_path: Path) -> None:
+        """Corrupt JSON returns empty dict."""
+        from terok.lib.orchestration.environment import _load_ssh_keys_json
+
+        bad = tmp_path / "bad.json"
+        bad.write_text("{not valid")
+        assert _load_ssh_keys_json(bad) == {}
+
+    def test_valid_json_parsed(self, tmp_path: Path) -> None:
+        """Valid JSON is parsed correctly."""
+        import json
+
+        from terok.lib.orchestration.environment import _load_ssh_keys_json
+
+        kf = tmp_path / "keys.json"
+        kf.write_text(json.dumps({"proj": {"private_key": "/a", "public_key": "/b"}}))
+        assert _load_ssh_keys_json(kf) == {"proj": {"private_key": "/a", "public_key": "/b"}}
