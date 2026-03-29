@@ -118,11 +118,13 @@ def dispatch(args: argparse.Namespace) -> bool:
         )
         return True
     if args.cmd == "ssh-init":
-        make_ssh_manager(load_project(args.project_id)).init(
+        project = load_project(args.project_id)
+        result = make_ssh_manager(project).init(
             key_type=getattr(args, "key_type", "ed25519"),
             key_name=getattr(args, "key_name", None),
             force=getattr(args, "force", False),
         )
+        _register_ssh_key(project.id, result)
         return True
     if args.cmd == "gate-sync":
         res = make_git_gate(load_project(args.project_id)).sync(
@@ -144,12 +146,20 @@ def dispatch(args: argparse.Namespace) -> bool:
     return False
 
 
+def _register_ssh_key(project_id: str, result: dict) -> None:
+    """Register the SSH key in ssh-keys.json for the credential proxy's SSH agent."""
+    from terok_sandbox import SandboxConfig, update_ssh_keys_json
+
+    update_ssh_keys_json(SandboxConfig().ssh_keys_json_path, project_id, result)
+
+
 def cmd_project_init(project_id: str) -> None:
     """Full project setup: ssh-init, generate, build, gate-sync."""
     project = load_project(project_id)
 
     print("==> Initializing SSH...")
-    make_ssh_manager(project).init()
+    result = make_ssh_manager(project).init()
+    _register_ssh_key(project_id, result)
     maybe_pause_for_ssh_key_registration(project_id)
 
     print("==> Generating Dockerfiles...")

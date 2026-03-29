@@ -78,6 +78,7 @@ class TestCredentialProxyEnv:
             mock_cfg.proxy_db_path = db_path
             mock_cfg.proxy_socket_path = sock_path
             mock_cfg.proxy_port = 18731
+            mock_cfg.ssh_keys_json_path = tmp_path / "ssh-keys.json"
 
             env, volumes = _credential_proxy_env_and_volumes(project, "task-1")
 
@@ -116,6 +117,7 @@ class TestCredentialProxyEnv:
             mock_cfg.proxy_db_path = db_path
             mock_cfg.proxy_socket_path = sock_path
             mock_cfg.proxy_port = 18731
+            mock_cfg.ssh_keys_json_path = tmp_path / "ssh-keys.json"
 
             env, _volumes = _credential_proxy_env_and_volumes(project, "task-1")
 
@@ -157,6 +159,7 @@ class TestCredentialProxyEnv:
             mock_cfg.proxy_db_path = db_path
             mock_cfg.proxy_socket_path = tmp_path / "proxy.sock"
             mock_cfg.proxy_port = 18731
+            mock_cfg.ssh_keys_json_path = tmp_path / "ssh-keys.json"
             mock_cfg.effective_envs_dir = tmp_path / "envs"
 
             _credential_proxy_env_and_volumes(project, "task-1")

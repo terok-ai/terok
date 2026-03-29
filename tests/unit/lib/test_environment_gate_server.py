@@ -5,7 +5,6 @@
 
 from __future__ import annotations
 
-from pathlib import Path
 from unittest.mock import patch
 
 import pytest
@@ -13,7 +12,6 @@ import pytest
 from terok.lib.core.projects import ProjectConfig, load_project
 from terok.lib.orchestration.environment import _security_mode_env_and_volumes
 from tests.test_utils import mock_git_config, project_env
-from tests.testfs import FAKE_SSH_DIR
 from tests.testnet import GATE_PORT, gate_repo_url
 
 _GATEKEEPING_YAML = """\
@@ -64,7 +62,7 @@ def resolve_security_env(
         patch("terok_sandbox.create_token", return_value=token),
     ):
         project = load_project(project_id)
-        env, volumes = _security_mode_env_and_volumes(project, Path(ctx.base / "ssh"), "1")
+        env, volumes = _security_mode_env_and_volumes(project, "1")
     return project, env, volumes
 
 
@@ -103,7 +101,7 @@ def test_gatekeeping_missing_gate_raises() -> None:
     with mock_git_config(), project_env(_GATEKEEPING_YAML, project_id="gk-proj", with_gate=False):
         project = load_project("gk-proj")
         with pytest.raises(SystemExit, match="gate-sync"):
-            _security_mode_env_and_volumes(project, FAKE_SSH_DIR, "1")
+            _security_mode_env_and_volumes(project, "1")
 
 
 def test_gatekeeping_server_not_running_raises() -> None:

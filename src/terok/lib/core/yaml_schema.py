@@ -121,8 +121,6 @@ class RawSSHSection(BaseModel):
     key_name: str | None = None
     host_dir: str | None = Field(default=None, description="Host-side SSH directory")
     config_template: str | None = None
-    mount_in_online: bool = True
-    mount_in_gatekeeping: bool = False
 
 
 class RawTasksSection(BaseModel):

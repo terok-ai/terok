@@ -103,7 +103,7 @@ def _gate_url(gate_repo: Path, port: int, token: str) -> str:
 
 
 def _security_mode_env_and_volumes(
-    project: ProjectConfig, ssh_host_dir: Path, task_id: str
+    project: ProjectConfig, task_id: str
 ) -> tuple[dict[str, str], list[str]]:
     """Return env vars and volumes for the project's security mode."""
     from terok_sandbox import create_token
@@ -129,9 +129,6 @@ def _security_mode_env_and_volumes(
             env["GIT_BRANCH"] = project.default_branch
         if project.expose_external_remote and project.upstream_url:
             env["EXTERNAL_REMOTE_URL"] = project.upstream_url
-        if project.ssh_mount_in_gatekeeping and ssh_host_dir.is_dir():
-            ensure_dir_writable(ssh_host_dir, "SSH config")
-            volumes.append(f"{ssh_host_dir}:/home/dev/.ssh:z")
     else:
         if gate_repo.exists():
             try:
@@ -147,9 +144,6 @@ def _security_mode_env_and_volumes(
             env["CODE_REPO"] = project.upstream_url
             if project.default_branch:
                 env["GIT_BRANCH"] = project.default_branch
-        if project.ssh_mount_in_online and ssh_host_dir.is_dir():
-            ensure_dir_writable(ssh_host_dir, "SSH config")
-            volumes.append(f"{ssh_host_dir}:/home/dev/.ssh:z")
 
     return env, volumes
 
@@ -220,6 +214,21 @@ def apply_git_identity_env(
     )
 
 
+# ---------- SSH keys JSON ----------
+
+
+def _load_ssh_keys_json(path: Path) -> dict[str, dict[str, str]]:
+    """Load the SSH key mapping JSON.  Returns empty dict if missing."""
+    import json
+
+    if not path.is_file():
+        return {}
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError):
+        return {}
+
+
 # ---------- Credential proxy ----------
 
 
@@ -246,6 +255,7 @@ def _credential_proxy_env_and_volumes(
         SandboxConfig,
         ensure_proxy_reachable,
         get_proxy_port,
+        get_ssh_agent_port,
     )
 
     cfg = SandboxConfig()
@@ -263,6 +273,13 @@ def _credential_proxy_env_and_volumes(
             name: db.create_proxy_token(project.id, task_id, credential_set, name)
             for name in routed
         }
+
+        # SSH agent: create phantom token if project has keys registered
+        ssh_keys = _load_ssh_keys_json(cfg.ssh_keys_json_path)
+        if project.id in ssh_keys:
+            ssh_token = db.create_proxy_token(project.id, task_id, project.id, "ssh")
+        else:
+            ssh_token = None
     finally:
         db.close()
 
@@ -289,6 +306,10 @@ def _credential_proxy_env_and_volumes(
 
     if routed:
         env["TEROK_PROXY_PORT"] = str(port)
+
+    if ssh_token:
+        env["TEROK_SSH_AGENT_TOKEN"] = ssh_token
+        env["TEROK_SSH_AGENT_PORT"] = str(get_ssh_agent_port(cfg))
 
     # Warn about real credential files in shared mounts that will be visible
     # to the container alongside proxy phantom tokens.
@@ -326,7 +347,6 @@ def build_task_env_and_volumes(project: ProjectConfig, task_id: str) -> tuple[di
 
     envs_base = get_envs_base_dir()
     config_dirs = _ensure_shared_dirs(envs_base)
-    ssh_host_dir = project.ssh_host_dir or (envs_base / f"_ssh-config-{project.id}")
 
     env = {
         "PROJECT_ID": project.id,
@@ -345,7 +365,7 @@ def build_task_env_and_volumes(project: ProjectConfig, task_id: str) -> tuple[di
     volumes: list[str] = [f"{repo_dir}:/workspace:Z"]
     volumes += _shared_volume_mounts(config_dirs)
 
-    sec_env, sec_volumes = _security_mode_env_and_volumes(project, ssh_host_dir, task_id)
+    sec_env, sec_volumes = _security_mode_env_and_volumes(project, task_id)
     env.update(sec_env)
     volumes += sec_volumes
 

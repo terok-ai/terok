@@ -37,11 +37,13 @@ def build_dir(_env: SimpleNamespace, project_id: str) -> Path:
     return target
 
 
-def ssh_dir(env: SimpleNamespace, project_id: str) -> Path:
-    """Create and return the project's SSH config dir."""
-    target = env.envs_dir / f"_ssh-config-{project_id}"
+def ssh_dir(_env: SimpleNamespace, project_id: str) -> Path:
+    """Create and return the project's SSH keys dir."""
+    from terok_sandbox import SandboxConfig
+
+    target = SandboxConfig().ssh_keys_dir / project_id
     target.mkdir(parents=True, exist_ok=True)
-    (target / "config").write_text("# ssh config", encoding="utf-8")
+    (target / "id_ed25519").write_text("# private key", encoding="utf-8")
     return target
 
 

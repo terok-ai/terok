@@ -37,35 +37,6 @@ def _gate_repo_fragment(project_id: str, *, port: int = GATE_PORT) -> str:
     return f"@{CONTAINER_HOSTNAME}:{port}/{project_id}.git"
 
 
-def _assert_volume_mount(volumes: list[str], expected_base: str, expected_suffix: str) -> None:
-    """Assert that a volume mount exists with the correct SELinux suffix.
-
-    Args:
-        volumes: List of volume mount strings
-        expected_base: The base mount string without SELinux suffix
-        expected_suffix: The expected SELinux suffix (e.g., ":Z" or ":z")
-    """
-    expected_full = f"{expected_base}{expected_suffix}"
-
-    # Check if the expected mount exists (may have additional options like ,ro)
-    found = False
-    for volume in volumes:
-        if volume.startswith(expected_full):
-            # Check if it's either exactly the expected full string, or has additional options
-            remaining = volume[len(expected_full) :]
-            if not remaining or remaining.startswith(","):
-                found = True
-                break
-
-    if not found:
-        # For debugging, show what we actually got
-        similar_mounts = [v for v in volumes if expected_base in v]
-        raise AssertionError(
-            f"Expected volume mount '{expected_full}' (or with additional options) not found in volumes. "
-            f"Similar mounts found: {similar_mounts}"
-        )
-
-
 class TestTask:
     """Tests for task lifecycle, listing filters, and task runner environment behavior."""
 
@@ -368,7 +339,7 @@ class TestTask:
     )
     @unittest.mock.patch("terok_sandbox.create_token", return_value="tok" * 10 + "ab")
     def test_build_task_env_gatekeeping_with_ssh(self, *_mocks) -> None:
-        """Gatekeeping mode with mount_in_gatekeeping enabled should mount SSH."""
+        """Gatekeeping mode does not bind-mount SSH (keys go via SSH agent proxy)."""
         project_id = "proj_gatekeeping_ssh"
         with project_env(
             "placeholder",
@@ -376,13 +347,10 @@ class TestTask:
             with_config_file=True,
             with_gate=True,
         ) as ctx:
-            ssh_dir = ctx.base / "ssh"
-            ssh_dir.mkdir(parents=True, exist_ok=True)
-
             write_project(
                 ctx.config_root,
                 project_id,
-                f"project:\n  id: {project_id}\n  security_class: gatekeeping\ngit:\n  default_branch: main\nssh:\n  host_dir: {ssh_dir}\n  mount_in_gatekeeping: true\n",
+                f"project:\n  id: {project_id}\n  security_class: gatekeeping\ngit:\n  default_branch: main\n",
             )
 
             env, volumes = build_task_env_and_volumes(
@@ -393,8 +361,9 @@ class TestTask:
             # Verify gatekeeping behavior: CODE_REPO is http:// URL with token
             assert "http://" in env["CODE_REPO"]
             assert _gate_repo_fragment(project_id) in env["CODE_REPO"]
-            # Verify SSH IS mounted when mount_in_gatekeeping is true
-            _assert_volume_mount(volumes, f"{ssh_dir}:{CONTAINER_SSH_DIR}", ":z")
+            # Verify SSH is NOT mounted (keys are served via SSH agent proxy)
+            ssh_mounts = [v for v in volumes if str(CONTAINER_SSH_DIR) in v]
+            assert ssh_mounts == []
 
     @unittest.mock.patch("terok.lib.orchestration.environment.ensure_server_reachable")
     @unittest.mock.patch(
@@ -410,13 +379,10 @@ class TestTask:
             with_config_file=True,
             with_gate=True,
         ) as ctx:
-            ssh_dir = ctx.base / "ssh"
-            ssh_dir.mkdir(parents=True, exist_ok=True)
-
             write_project(
                 ctx.config_root,
                 project_id,
-                f"project:\n  id: {project_id}\n  security_class: online\ngit:\n  upstream_url: https://example.com/repo.git\n  default_branch: main\nssh:\n  host_dir: {ssh_dir}\n  mount_in_online: true\n",
+                f"project:\n  id: {project_id}\n  security_class: online\ngit:\n  upstream_url: https://example.com/repo.git\n  default_branch: main\n",
             )
 
             env, volumes = build_task_env_and_volumes(load_project(project_id), task_id="8")
@@ -425,7 +391,9 @@ class TestTask:
             assert env["TEROK_GIT_AUTHORSHIP"] == "agent-human"
             assert "http://" in env["CLONE_FROM"]
             assert _gate_repo_fragment(project_id) in env["CLONE_FROM"]
-            _assert_volume_mount(volumes, f"{ssh_dir}:{CONTAINER_SSH_DIR}", ":z")
+            # SSH is NOT bind-mounted (keys are served via SSH agent proxy)
+            ssh_mounts = [v for v in volumes if str(CONTAINER_SSH_DIR) in v]
+            assert ssh_mounts == []
 
     def test_build_task_env_uses_configured_git_authorship(self) -> None:
         """Task containers receive the resolved Git authorship mode."""

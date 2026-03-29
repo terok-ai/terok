@@ -29,7 +29,7 @@ from terok_agent import (
 from ..core.config import build_root
 from ..core.images import project_cli_image, project_dev_image
 from ..core.project_model import ProjectConfig
-from ..core.projects import effective_ssh_key_name, load_project
+from ..core.projects import load_project
 from ..util.fs import ensure_dir
 
 # ---------- helpers ----------
@@ -117,15 +117,12 @@ def _resolve_user_snippet(project: ProjectConfig) -> str:
 def _render_l2(project: ProjectConfig) -> str:
     """Render the L2 (project customisation) Dockerfile.
 
-    L2 only contains the user docker snippet wrapped in USER root/dev.
-    The three env vars previously baked here (CODE_REPO, SSH_KEY_NAME,
-    GIT_BRANCH) are now runtime-only — set by environment.py at container
-    launch time.
+    L2 contains the user docker snippet wrapped in USER root/dev.
+    Runtime env vars (CODE_REPO, GIT_BRANCH) are set by environment.py
+    at container launch time.
     """
     tmpl_pkg = resources.files("terok") / "resources" / "templates"
     template = (tmpl_pkg / "l2.project.Dockerfile.template").read_text()
-
-    ssh_key_name = effective_ssh_key_name(project, key_type="ed25519")
 
     variables = {
         "PROJECT_ID": project.id,
@@ -133,7 +130,6 @@ def _render_l2(project: ProjectConfig) -> str:
         "UPSTREAM_URL": project.upstream_url or "",
         "DEFAULT_BRANCH": project.default_branch or "",
         "BASE_IMAGE": project.docker_base_image,
-        "SSH_KEY_NAME": ssh_key_name,
         "CODE_REPO_DEFAULT": (
             "file:///git-gate/gate.git"
             if project.security_class == "gatekeeping"
