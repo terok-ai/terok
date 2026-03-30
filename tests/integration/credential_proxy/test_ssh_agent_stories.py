@@ -96,13 +96,7 @@ class TestStorySSHAgentSigning:
         # 1. Register key in ssh-keys.json (simulates `terokctl ssh-init`)
         keys_json = tmp_path / "ssh-keys.json"
         keys_json.write_text(
-            json.dumps(
-                {
-                    "testproj": [
-                        {"private_key": str(priv_path), "public_key": str(pub_path)}
-                    ]
-                }
-            )
+            json.dumps({"testproj": [{"private_key": str(priv_path), "public_key": str(pub_path)}]})
         )
 
         # 2. Create phantom token (simulates environment.py at task launch)
