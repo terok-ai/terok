@@ -95,7 +95,9 @@ class TestCheckSshAgent:
         import json
 
         kf = tmp_path / "ssh-keys.json"
-        kf.write_text(json.dumps({"bad": {"private_key": "/gone/id", "public_key": "/gone/id.pub"}}))
+        kf.write_text(
+            json.dumps({"bad": {"private_key": "/gone/id", "public_key": "/gone/id.pub"}})
+        )
         with unittest.mock.patch("terok.cli.commands.sickbay.SandboxConfig") as mock_cfg:
             mock_cfg.return_value.ssh_keys_json_path = kf
             sev, _, detail = _check_ssh_agent()

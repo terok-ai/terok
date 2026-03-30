@@ -224,13 +224,17 @@ def _check_ssh_agent() -> _CheckResult:
     except (json.JSONDecodeError, OSError) as exc:
         return ("error", label, f"cannot read ssh-keys.json — {exc}")
 
+    if not isinstance(mapping, dict):
+        return ("error", label, "ssh-keys.json has invalid schema (expected object)")
+
     if not mapping:
         return ("warn", label, "no projects registered — run 'terokctl ssh-init <project>'")
 
     missing = [
         pid
         for pid, entry in mapping.items()
-        if not Path(entry.get("private_key", "")).is_file()
+        if not isinstance(entry, dict)
+        or not Path(entry.get("private_key", "")).is_file()
         or not Path(entry.get("public_key", "")).is_file()
     ]
     total = len(mapping)
