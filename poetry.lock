@@ -2758,7 +2758,7 @@ tomli-w = ">=1.0,<2.0"
 
 [[package]]
 name = "terok-agent"
-version = "0.0.0.post54.dev0+0dfe529"
+version = "0.0.0.post57.dev0+49795e7"
 description = "Single-agent task runner for hardened Podman containers"
 optional = false
 python-versions = ">=3.12,<4.0"
@@ -2769,18 +2769,18 @@ develop = false
 [package.dependencies]
 Jinja2 = ">=3.1"
 "ruamel.yaml" = ">=0.18"
-terok-sandbox = {git = "https://github.com/sliwowitz/terok-sandbox.git", rev = "89a14c6979a4d6df9f880dbe0c5caf5001491aca"}
+terok-sandbox = {git = "https://github.com/sliwowitz/terok-sandbox.git", rev = "0feb9d7fa0d617e0cf641e6150e86e2e9bd9fe4f"}
 tomli-w = ">=1.0"
 
 [package.source]
 type = "git"
 url = "https://github.com/sliwowitz/terok-agent.git"
-reference = "0dfe52986a1c446baf6e8c5a49d687183b369634"
-resolved_reference = "0dfe52986a1c446baf6e8c5a49d687183b369634"
+reference = "49795e7d49331cdb32400d95538df07218d3b815"
+resolved_reference = "49795e7d49331cdb32400d95538df07218d3b815"
 
 [[package]]
 name = "terok-sandbox"
-version = "0.0.0.post58.dev0+89a14c6"
+version = "0.0.0.post65.dev0+0feb9d7"
 description = "Hardened Podman container runner with gate server and shield integration"
 optional = false
 python-versions = ">=3.12,<4.0"
@@ -2792,31 +2792,32 @@ develop = false
 aiohttp = ">=3.9"
 cryptography = ">=43.0"
 platformdirs = ">=4.0"
-terok-shield = {url = "https://github.com/terok-ai/terok-shield/releases/download/v0.5.0/terok_shield-0.5.0-py3-none-any.whl"}
+terok-shield = {git = "https://github.com/sliwowitz/terok-shield.git", rev = "42e2f87a193a5124b846e7d02478250deb606a43"}
 
 [package.source]
 type = "git"
 url = "https://github.com/sliwowitz/terok-sandbox.git"
-reference = "89a14c6979a4d6df9f880dbe0c5caf5001491aca"
-resolved_reference = "89a14c6979a4d6df9f880dbe0c5caf5001491aca"
+reference = "0feb9d7fa0d617e0cf641e6150e86e2e9bd9fe4f"
+resolved_reference = "0feb9d7fa0d617e0cf641e6150e86e2e9bd9fe4f"
 
 [[package]]
 name = "terok-shield"
-version = "0.5.0"
+version = "0.0.0.post76.dev0+42e2f87"
 description = "nftables-based egress firewalling for Podman containers"
 optional = false
 python-versions = ">=3.12,<4.0"
 groups = ["main"]
-files = [
-    {file = "terok_shield-0.5.0-py3-none-any.whl", hash = "sha256:a57806e346a4cab94baa171f2cc5a815fb1d02cd0360cace4834f67f4a90115e"},
-]
+files = []
+develop = false
 
 [package.dependencies]
 PyYAML = ">=6.0"
 
 [package.source]
-type = "url"
-url = "https://github.com/terok-ai/terok-shield/releases/download/v0.5.0/terok_shield-0.5.0-py3-none-any.whl"
+type = "git"
+url = "https://github.com/sliwowitz/terok-shield.git"
+reference = "42e2f87a193a5124b846e7d02478250deb606a43"
+resolved_reference = "42e2f87a193a5124b846e7d02478250deb606a43"
 
 [[package]]
 name = "textual"
@@ -3287,4 +3288,4 @@ propcache = ">=0.2.1"
 [metadata]
 lock-version = "2.1"
 python-versions = ">=3.12,<4.0"
-content-hash = "ce29a559e0de8e06886755e1dea14805b0be9dcca666a8f1e3548a40d872b182"
+content-hash = "98383575997716376812bfd38628dbec7e556b127f348b328854a3318f74a879"
