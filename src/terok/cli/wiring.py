@@ -38,6 +38,7 @@ class ArgProto(Protocol):
     action: str | None
     dest: str | None
     nargs: int | str | None
+    required: bool
 
 
 @runtime_checkable
@@ -72,6 +73,8 @@ def wire(sub: argparse._SubParsersAction, cmd: CmdProto) -> None:  # type: ignor
             kwargs["dest"] = arg.dest
         if arg.nargs is not None:
             kwargs["nargs"] = arg.nargs
+        if arg.required:
+            kwargs["required"] = arg.required
         p.add_argument(arg.name, **kwargs)
     p.set_defaults(_wired_cmd=cmd)
 

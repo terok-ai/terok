@@ -217,14 +217,15 @@ def apply_git_identity_env(
 # ---------- SSH keys JSON ----------
 
 
-def _load_ssh_keys_json(path: Path) -> dict[str, dict[str, str]]:
-    """Load the SSH key mapping JSON.  Returns empty dict if missing."""
+def _load_ssh_keys_json(path: Path) -> dict[str, list[dict[str, str]]]:
+    """Load the SSH key mapping JSON.  Returns empty dict if missing or malformed."""
     import json
 
     if not path.is_file():
         return {}
     try:
-        return json.loads(path.read_text(encoding="utf-8"))
+        result = json.loads(path.read_text(encoding="utf-8"))
+        return result if isinstance(result, dict) else {}
     except (json.JSONDecodeError, OSError):
         return {}
 
@@ -274,9 +275,12 @@ def _credential_proxy_env_and_volumes(
             for name in routed
         }
 
-        # SSH agent: create phantom token if project has keys registered
+        # SSH agent: create phantom token if project has at least one valid key registered
         ssh_keys = _load_ssh_keys_json(cfg.ssh_keys_json_path)
-        if project.id in ssh_keys:
+        ssh_entry = ssh_keys.get(project.id)
+        if isinstance(ssh_entry, list) and any(
+            e.get("private_key") and e.get("public_key") for e in ssh_entry
+        ):
             ssh_token = db.create_proxy_token(project.id, task_id, project.id, "ssh")
         else:
             ssh_token = None

@@ -9,6 +9,7 @@ bypass fixture and mocking proxy/DB dependencies directly.
 
 from __future__ import annotations
 
+from collections.abc import Iterator
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -17,7 +18,7 @@ from pytest import CaptureFixture
 
 
 @pytest.fixture()
-def _enable_proxy():
+def _enable_proxy() -> Iterator[None]:
     """Override the autouse bypass to test the proxy-enabled path."""
     with (
         patch("terok.lib.core.config.get_credential_proxy_bypass", return_value=False),
@@ -185,7 +186,7 @@ class TestCredentialProxyEnv:
 
         keys_json = tmp_path / "ssh-keys.json"
         keys_json.write_text(
-            json.dumps({"test-project": {"private_key": "/k/id", "public_key": "/k/id.pub"}})
+            json.dumps({"test-project": [{"private_key": "/k/id", "public_key": "/k/id.pub"}]})
         )
 
         project = MagicMock()
@@ -265,3 +266,21 @@ class TestLoadSshKeysJson:
         kf = tmp_path / "keys.json"
         kf.write_text(json.dumps({"proj": {"private_key": "/a", "public_key": "/b"}}))
         assert _load_ssh_keys_json(kf) == {"proj": {"private_key": "/a", "public_key": "/b"}}
+
+    def test_string_payload_returns_empty(self, tmp_path: Path) -> None:
+        """JSON string payload (e.g. a project name) returns empty dict."""
+        from terok.lib.orchestration.environment import _load_ssh_keys_json
+
+        f = tmp_path / "keys.json"
+        f.write_text('"test-project"')
+        assert _load_ssh_keys_json(f) == {}
+
+    def test_list_payload_returns_empty(self, tmp_path: Path) -> None:
+        """JSON list payload returns empty dict."""
+        import json
+
+        from terok.lib.orchestration.environment import _load_ssh_keys_json
+
+        f = tmp_path / "keys.json"
+        f.write_text(json.dumps(["test-project"]))
+        assert _load_ssh_keys_json(f) == {}
