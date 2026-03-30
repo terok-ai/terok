@@ -46,6 +46,7 @@ class TestCredentialProxyEnv:
 
         project = MagicMock()
         with (
+            patch("terok_sandbox.credential_proxy_lifecycle.is_socket_active", return_value=False),
             patch("terok_sandbox.credential_proxy_lifecycle.is_daemon_running", return_value=False),
             pytest.raises(SystemExit, match="not running"),
         ):
