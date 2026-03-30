@@ -98,10 +98,9 @@ class TestStorySSHAgentSigning:
         keys_json.write_text(
             json.dumps(
                 {
-                    "testproj": {
-                        "private_key": str(priv_path),
-                        "public_key": str(pub_path),
-                    }
+                    "testproj": [
+                        {"private_key": str(priv_path), "public_key": str(pub_path)}
+                    ]
                 }
             )
         )
@@ -179,7 +178,7 @@ class TestStorySSHAgentTokenRevocation:
 
         keys_json = tmp_path / "ssh-keys.json"
         keys_json.write_text(
-            json.dumps({"proj": {"private_key": str(priv_path), "public_key": str(pub_path)}})
+            json.dumps({"proj": [{"private_key": str(priv_path), "public_key": str(pub_path)}]})
         )
 
         db_path = tmp_path / "proxy" / "credentials.db"
