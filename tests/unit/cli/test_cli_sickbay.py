@@ -10,7 +10,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 from terok_sandbox import GateServerStatus
 
-from terok.cli.commands.sickbay import _cmd_sickbay
+from terok.cli.commands.sickbay import _check_shield, _cmd_sickbay
 from tests.testgate import OUTDATED_UNITS_MESSAGE, make_gate_server_status
 
 
@@ -85,3 +85,81 @@ def test_cmd_sickbay_reports_health(
     output = capsys.readouterr().out
     for needle in expected:
         assert needle in output
+
+
+@pytest.mark.parametrize(
+    ("health", "setup_hint", "issues", "side_effect", "expected_status", "expected_detail"),
+    [
+        pytest.param(
+            "bypass",
+            "",
+            [],
+            None,
+            "warn",
+            "bypass_firewall_no_protection",
+            id="bypass",
+        ),
+        pytest.param(
+            "stale-hooks",
+            "",
+            [],
+            None,
+            "warn",
+            "hooks outdated",
+            id="stale-hooks",
+        ),
+        pytest.param(
+            "setup-needed",
+            "run 'terokctl shield setup --user'",
+            ["nft not found"],
+            None,
+            "warn",
+            "nft not found",
+            id="setup-needed-with-hint",
+        ),
+        pytest.param(
+            "setup-needed",
+            "",
+            [],
+            None,
+            "warn",
+            "setup needed",
+            id="setup-needed-no-hint",
+        ),
+        pytest.param(
+            None,
+            "",
+            [],
+            RuntimeError("nft binary not found"),
+            "warn",
+            "check failed",
+            id="check-exception",
+        ),
+    ],
+)
+def test_check_shield_states(
+    health: str | None,
+    setup_hint: str,
+    issues: list[str],
+    side_effect: Exception | None,
+    expected_status: str,
+    expected_detail: str,
+) -> None:
+    """_check_shield maps EnvironmentCheck states to the correct severity and message."""
+    mock_ec = MagicMock(
+        health=health,
+        hooks="per-container",
+        dns_tier="dnsmasq",
+        setup_hint=setup_hint,
+        issues=issues,
+    )
+    with patch(
+        "terok.cli.commands.sickbay.check_environment",
+        return_value=mock_ec,
+        side_effect=side_effect,
+    ):
+        status, label, detail = _check_shield()
+
+    assert status == expected_status
+    assert label == "Shield"
+    assert expected_detail in detail
