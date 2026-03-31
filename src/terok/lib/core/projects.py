@@ -115,6 +115,29 @@ def _resolve_ssh_template(raw_template: str | None, root: Path) -> Path | None:
     return p.resolve()
 
 
+def _resolve_shield_config(raw: RawProjectYaml) -> tuple[bool, str]:
+    """Resolve shield settings with project-overrides-global fallback."""
+    drop = (
+        raw.shield.drop_on_task_run
+        if raw.shield.drop_on_task_run is not None
+        else get_shield_drop_on_task_run()
+    )
+    restart = raw.shield.on_task_restart or get_shield_on_task_restart()
+    return drop, restart
+
+
+def _resolve_hooks(raw: RawProjectYaml) -> tuple[str | None, str | None, str | None, str | None]:
+    """Merge project run.hooks over global hook defaults."""
+    g_pre, g_post, g_ready, g_stop = get_global_hooks()
+    h = raw.run.hooks
+    return (
+        h.pre_start or g_pre,
+        h.post_start or g_post,
+        h.post_ready or g_ready,
+        h.post_stop or g_stop,
+    )
+
+
 def _build_project_config(
     raw: RawProjectYaml,
     identity: dict[str, str | None],
@@ -135,18 +158,11 @@ def _build_project_config(
 
     ssh_host_dir = Path(raw.ssh.host_dir).expanduser().resolve() if raw.ssh.host_dir else None
 
-    # Default agent: project → global → None
-    default_agent = raw.default_agent or get_global_default_agent()
-
-    # Default login agent: project → global → None (UI falls back to "bash")
-    default_login = raw.default_login or get_global_default_login()
-
-    # Agent config (stays as dict — semi-structured, _inherit merging)
     agent_cfg = dict(raw.agent)
     _resolve_subagent_files(agent_cfg.get("subagents", []), root)
 
-    # Hooks: project run.hooks overrides global hooks
-    g_pre_start, g_post_start, g_post_ready, g_post_stop = get_global_hooks()
+    shield_drop, shield_restart = _resolve_shield_config(raw)
+    hook_pre, hook_post, hook_ready, hook_stop = _resolve_hooks(raw)
 
     return ProjectConfig(
         id=pid,
@@ -168,21 +184,17 @@ def _build_project_config(
         upstream_polling_interval_minutes=raw.gatekeeping.upstream_polling.interval_minutes,
         auto_sync_enabled=raw.gatekeeping.auto_sync.enabled,
         auto_sync_branches=raw.gatekeeping.auto_sync.branches,
-        default_agent=default_agent,
-        default_login=default_login,
+        default_agent=raw.default_agent or get_global_default_agent(),
+        default_login=raw.default_login or get_global_default_login(),
         agent_config=agent_cfg,
         shutdown_timeout=raw.run.shutdown_timeout,
         task_name_categories=raw.tasks.name_categories,
-        shield_drop_on_task_run=(
-            raw.shield.drop_on_task_run
-            if raw.shield.drop_on_task_run is not None
-            else get_shield_drop_on_task_run()
-        ),
-        shield_on_task_restart=raw.shield.on_task_restart or get_shield_on_task_restart(),
-        hook_pre_start=raw.run.hooks.pre_start or g_pre_start,
-        hook_post_start=raw.run.hooks.post_start or g_post_start,
-        hook_post_ready=raw.run.hooks.post_ready or g_post_ready,
-        hook_post_stop=raw.run.hooks.post_stop or g_post_stop,
+        shield_drop_on_task_run=shield_drop,
+        shield_on_task_restart=shield_restart,
+        hook_pre_start=hook_pre,
+        hook_post_start=hook_post,
+        hook_post_ready=hook_ready,
+        hook_post_stop=hook_stop,
         docker_base_image=raw.docker.base_image,
         docker_snippet_inline=raw.docker.user_snippet_inline,
         docker_snippet_file=raw.docker.user_snippet_file,

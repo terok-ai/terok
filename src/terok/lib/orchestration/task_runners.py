@@ -224,6 +224,33 @@ def _write_desired_shield_state(task_dir: Path, state: str) -> None:
     (task_dir / _DESIRED_SHIELD_STATE_FILENAME).write_text(f"{state}\n")
 
 
+def _restore_shield_state(cname: str, task_dir: Path) -> None:
+    """Restore the persisted shield state on container restart (``retain`` policy)."""
+    desired = _read_desired_shield_state(task_dir)
+    if not desired or not desired.startswith("down"):
+        return
+    try:
+        _shield_down_impl(cname, task_dir, allow_all=(desired == "down_all"))
+    except Exception as exc:
+        import warnings
+
+        warnings.warn(f"shield restore: {exc}", stacklevel=2)
+
+
+def _drop_shield_on_creation(cname: str, task_dir: Path) -> None:
+    """Drop the shield after fresh container creation and persist the state."""
+    try:
+        _shield_down_impl(cname, task_dir)
+        _write_desired_shield_state(task_dir, "down")
+        audit_path = task_dir / "shield" / "audit.jsonl"
+        print(f"Shield dropped (bypass mode). Audit log: {audit_path}")
+        print(SHIELD_SECURITY_HINT)
+    except Exception as exc:
+        import warnings
+
+        warnings.warn(f"shield drop: {exc}", stacklevel=2)
+
+
 def _apply_shield_policy(
     project: ProjectConfig, cname: str, task_dir: Path, *, is_restart: bool
 ) -> None:
@@ -239,14 +266,7 @@ def _apply_shield_policy(
     if is_restart:
         policy = project.shield_on_task_restart
         if policy == "retain":
-            desired = _read_desired_shield_state(task_dir)
-            if desired and desired.startswith("down"):
-                try:
-                    _shield_down_impl(cname, task_dir, allow_all=(desired == "down_all"))
-                except Exception as exc:
-                    import warnings
-
-                    warnings.warn(f"shield restore: {exc}", stacklevel=2)
+            _restore_shield_state(cname, task_dir)
         elif policy == "up":
             pass  # already UP from OCI hook
         else:
@@ -255,18 +275,8 @@ def _apply_shield_policy(
             )
         return
 
-    # Fresh creation
     if project.shield_drop_on_task_run:
-        try:
-            _shield_down_impl(cname, task_dir)
-            _write_desired_shield_state(task_dir, "down")
-            audit_path = task_dir / "shield" / "audit.jsonl"
-            print(f"Shield dropped (bypass mode). Audit log: {audit_path}")
-            print(SHIELD_SECURITY_HINT)
-        except Exception as exc:
-            import warnings
-
-            warnings.warn(f"shield drop: {exc}", stacklevel=2)
+        _drop_shield_on_creation(cname, task_dir)
     else:
         _write_desired_shield_state(task_dir, "up")
 
