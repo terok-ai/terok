@@ -11,7 +11,7 @@ companion modules :mod:`~terok.lib.core.projects` and
 
 from __future__ import annotations
 
-from typing import Annotated, Any, ClassVar
+from typing import Annotated, Any, ClassVar, Literal
 
 from pydantic import BaseModel, BeforeValidator, ConfigDict, Field, field_validator, model_validator
 
@@ -211,11 +211,15 @@ class RawRunSection(BaseModel):
 
 
 class RawShieldProjectSection(BaseModel):
-    """The ``shield:`` section of project.yml."""
+    """The ``shield:`` section of project.yml.
+
+    Both fields default to ``None`` (inherit from global ``config.yml``).
+    """
 
     model_config = ConfigDict(extra="forbid")
 
-    drop_on_task_start: bool = True
+    drop_on_task_run: bool | None = None
+    on_task_restart: Literal["retain", "up"] | None = None
 
 
 class RawDockerSection(BaseModel):
@@ -329,6 +333,8 @@ class RawShieldGlobalSection(BaseModel):
     bypass_firewall_no_protection: bool = False
     profiles: dict[str, Any] | None = None
     audit: bool = True
+    drop_on_task_run: bool = True
+    on_task_restart: Literal["retain", "up"] = "retain"
 
 
 class RawCredentialProxySection(BaseModel):

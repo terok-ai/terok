@@ -22,6 +22,8 @@ from .config import (
     get_global_default_login,
     get_global_hooks,
     get_global_section,
+    get_shield_drop_on_task_run,
+    get_shield_on_task_restart,
     global_presets_dir,
     state_root,
     user_projects_root,
@@ -171,7 +173,12 @@ def _build_project_config(
         agent_config=agent_cfg,
         shutdown_timeout=raw.run.shutdown_timeout,
         task_name_categories=raw.tasks.name_categories,
-        shield_drop_on_task_start=raw.shield.drop_on_task_start,
+        shield_drop_on_task_run=(
+            raw.shield.drop_on_task_run
+            if raw.shield.drop_on_task_run is not None
+            else get_shield_drop_on_task_run()
+        ),
+        shield_on_task_restart=raw.shield.on_task_restart or get_shield_on_task_restart(),
         hook_pre_start=raw.run.hooks.pre_start or g_pre_start,
         hook_post_start=raw.run.hooks.post_start or g_post_start,
         hook_post_ready=raw.run.hooks.post_ready or g_post_ready,

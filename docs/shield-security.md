@@ -22,7 +22,7 @@ This page explains **what you lose** when the shield is weakened or absent.
 ## Shield Down (Bypass Mode)
 
 When the shield is **down** — whether via `terokctl shield down`, the TUI
-toggle, or the `shield.drop_on_task_start` config — the nftables rules switch
+toggle, or the `shield.drop_on_task_run` config — the nftables rules switch
 to allow-all but the OCI hook infrastructure remains in place.  **Audit
 logging continues.**
 

@@ -23,7 +23,8 @@ def project_yaml(
     *,
     security_class: str | None = None,
     authorship: str | None = None,
-    shield_drop_on_task_start: bool | None = None,
+    shield_drop_on_task_run: bool | None = None,
+    shield_on_task_restart: str | None = None,
 ) -> str:
     """Build project YAML for tests with optional sections."""
     lines = ["project:", f"  id: {project_id}"]
@@ -32,8 +33,13 @@ def project_yaml(
     lines += ["git:", "  upstream_url: https://example.com/repo.git"]
     if authorship is not None:
         lines.append(f"  authorship: {authorship}")
-    if shield_drop_on_task_start is not None:
-        lines += ["shield:", f"  drop_on_task_start: {str(shield_drop_on_task_start).lower()}"]
+    shield_lines: list[str] = []
+    if shield_drop_on_task_run is not None:
+        shield_lines.append(f"  drop_on_task_run: {str(shield_drop_on_task_run).lower()}")
+    if shield_on_task_restart is not None:
+        shield_lines.append(f"  on_task_restart: {shield_on_task_restart}")
+    if shield_lines:
+        lines += ["shield:", *shield_lines]
     return "\n".join(lines) + "\n"
 
 
@@ -154,25 +160,48 @@ class TestProject:
             ("proj-shield-default", project_yaml("proj-shield-default"), True),
             (
                 "proj-shield-drop",
-                project_yaml("proj-shield-drop", shield_drop_on_task_start=True),
+                project_yaml("proj-shield-drop", shield_drop_on_task_run=True),
                 True,
             ),
             (
                 "proj-shield-no-drop",
-                project_yaml("proj-shield-no-drop", shield_drop_on_task_start=False),
+                project_yaml("proj-shield-no-drop", shield_drop_on_task_run=False),
                 False,
             ),
         ],
         ids=["default", "enabled", "disabled"],
     )
-    def test_shield_drop_on_task_start(
+    def test_shield_drop_on_task_run(
         self,
         project_id: str,
         yaml_text: str,
         expected: bool,
     ) -> None:
+        """Project-level drop_on_task_run overrides global default."""
         with project_env(yaml_text, project_id=project_id):
-            assert load_project(project_id).shield_drop_on_task_start is expected
+            assert load_project(project_id).shield_drop_on_task_run is expected
+
+    @pytest.mark.parametrize(
+        ("project_id", "yaml_text", "expected"),
+        [
+            ("proj-restart-default", project_yaml("proj-restart-default"), "retain"),
+            (
+                "proj-restart-up",
+                project_yaml("proj-restart-up", shield_on_task_restart="up"),
+                "up",
+            ),
+        ],
+        ids=["default-retain", "explicit-up"],
+    )
+    def test_shield_on_task_restart(
+        self,
+        project_id: str,
+        yaml_text: str,
+        expected: str,
+    ) -> None:
+        """Project-level on_task_restart overrides global default."""
+        with project_env(yaml_text, project_id=project_id):
+            assert load_project(project_id).shield_on_task_restart == expected
 
     def test_get_project_state(self) -> None:
         project_id = "proj3"

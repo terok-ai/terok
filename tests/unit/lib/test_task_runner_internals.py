@@ -3,13 +3,14 @@
 
 """Unit tests for task_runners internal helpers and the _run_container delegation.
 
-Covers the utility functions (_str_to_bool, _podman_start, _maybe_drop_shield)
+Covers the utility functions (_str_to_bool, _podman_start, _apply_shield_policy)
 and the RunSpec delegation path through _run_container.
 """
 
 from __future__ import annotations
 
 import subprocess
+from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -108,40 +109,125 @@ class TestPodmanStart:
             _podman_start("test-ctr")
 
 
-# ── _maybe_drop_shield ───────────────────────────────────
+# ── _apply_shield_policy ─────────────────────────────────
 
 
-class TestMaybeDropShield:
-    """Verify conditional shield drop logic."""
+class TestApplyShieldPolicy:
+    """Verify shield policy logic for creation and restart."""
 
-    def _make_project(self, *, drop: bool = True) -> MagicMock:
-        """Return a mock ProjectConfig with shield_drop_on_task_start set."""
+    def _make_project(self, *, drop: bool = True, on_restart: str = "retain") -> MagicMock:
+        """Return a mock ProjectConfig with shield fields set."""
         p = MagicMock()
-        p.shield_drop_on_task_start = drop
+        p.shield_drop_on_task_run = drop
+        p.shield_on_task_restart = on_restart
         return p
 
-    def test_skips_when_disabled(self) -> None:
-        """No-op when shield_drop_on_task_start is False."""
-        from terok.lib.orchestration.task_runners import _maybe_drop_shield
+    def test_fresh_skips_when_drop_disabled(self, tmp_path: Path) -> None:
+        """No shield_down call when drop_on_task_run is False."""
+        from terok.lib.orchestration.task_runners import _apply_shield_policy
 
         project = self._make_project(drop=False)
-        # Should return without calling shield_down
-        _maybe_drop_shield(project, "ctr", MOCK_TASK_DIR)
+        with patch(
+            "terok.lib.orchestration.task_runners.get_shield_bypass_firewall_no_protection",
+            return_value=False,
+        ):
+            _apply_shield_policy(project, "ctr", tmp_path, is_restart=False)
+        assert (tmp_path / "shield_desired_state").read_text().strip() == "up"
+
+    def test_fresh_drops_and_persists(self, tmp_path: Path) -> None:
+        """Fresh creation with drop=True calls shield_down and writes state."""
+        from terok.lib.orchestration.task_runners import _apply_shield_policy
+
+        project = self._make_project(drop=True)
+        with (
+            patch(
+                "terok.lib.orchestration.task_runners.get_shield_bypass_firewall_no_protection",
+                return_value=False,
+            ),
+            patch("terok.lib.orchestration.task_runners._shield_down_impl") as mock_down,
+        ):
+            _apply_shield_policy(project, "ctr", tmp_path, is_restart=False)
+        mock_down.assert_called_once_with("ctr", tmp_path)
+        assert (tmp_path / "shield_desired_state").read_text().strip() == "down"
 
     def test_skips_when_bypass_active(self) -> None:
         """No-op when shield bypass is globally active."""
-        from terok.lib.orchestration.task_runners import _maybe_drop_shield
+        from terok.lib.orchestration.task_runners import _apply_shield_policy
 
         project = self._make_project(drop=True)
         with patch(
             "terok.lib.orchestration.task_runners.get_shield_bypass_firewall_no_protection",
             return_value=True,
         ):
-            _maybe_drop_shield(project, "ctr", MOCK_TASK_DIR)
+            _apply_shield_policy(project, "ctr", MOCK_TASK_DIR, is_restart=False)
+
+    def test_restart_retain_restores_down(self, tmp_path: Path) -> None:
+        """Restart with retain policy restores a saved 'down' state."""
+        from terok.lib.orchestration.task_runners import _apply_shield_policy
+
+        (tmp_path / "shield_desired_state").write_text("down\n")
+        project = self._make_project(on_restart="retain")
+        with (
+            patch(
+                "terok.lib.orchestration.task_runners.get_shield_bypass_firewall_no_protection",
+                return_value=False,
+            ),
+            patch("terok.lib.orchestration.task_runners._shield_down_impl") as mock_down,
+        ):
+            _apply_shield_policy(project, "ctr", tmp_path, is_restart=True)
+        mock_down.assert_called_once_with("ctr", tmp_path, allow_all=False)
+
+    def test_restart_retain_restores_down_all(self, tmp_path: Path) -> None:
+        """Restart with retain policy restores a saved 'down_all' state."""
+        from terok.lib.orchestration.task_runners import _apply_shield_policy
+
+        (tmp_path / "shield_desired_state").write_text("down_all\n")
+        project = self._make_project(on_restart="retain")
+        with (
+            patch(
+                "terok.lib.orchestration.task_runners.get_shield_bypass_firewall_no_protection",
+                return_value=False,
+            ),
+            patch("terok.lib.orchestration.task_runners._shield_down_impl") as mock_down,
+        ):
+            _apply_shield_policy(project, "ctr", tmp_path, is_restart=True)
+        mock_down.assert_called_once_with("ctr", tmp_path, allow_all=True)
+
+    def test_restart_retain_noop_when_up(self, tmp_path: Path) -> None:
+        """Restart with retain + saved 'up' does nothing (hook already applied UP)."""
+        from terok.lib.orchestration.task_runners import _apply_shield_policy
+
+        (tmp_path / "shield_desired_state").write_text("up\n")
+        project = self._make_project(on_restart="retain")
+        with (
+            patch(
+                "terok.lib.orchestration.task_runners.get_shield_bypass_firewall_no_protection",
+                return_value=False,
+            ),
+            patch("terok.lib.orchestration.task_runners._shield_down_impl") as mock_down,
+        ):
+            _apply_shield_policy(project, "ctr", tmp_path, is_restart=True)
+        mock_down.assert_not_called()
+
+    def test_restart_up_policy_noop(self, tmp_path: Path) -> None:
+        """Restart with 'up' policy never calls shield_down."""
+        from terok.lib.orchestration.task_runners import _apply_shield_policy
+
+        (tmp_path / "shield_desired_state").write_text("down\n")
+        project = self._make_project(on_restart="up")
+        with (
+            patch(
+                "terok.lib.orchestration.task_runners.get_shield_bypass_firewall_no_protection",
+                return_value=False,
+            ),
+            patch("terok.lib.orchestration.task_runners._shield_down_impl") as mock_down,
+        ):
+            _apply_shield_policy(project, "ctr", tmp_path, is_restart=True)
+        mock_down.assert_not_called()
 
     def test_warns_on_failure(self) -> None:
-        """Emits a warning when shield_down raises."""
-        from terok.lib.orchestration.task_runners import _maybe_drop_shield
+        """Emits a warning when shield_down raises during fresh creation."""
+        from terok.lib.orchestration.task_runners import _apply_shield_policy
 
         project = self._make_project(drop=True)
         with (
@@ -153,9 +239,9 @@ class TestMaybeDropShield:
                 "terok.lib.orchestration.task_runners._shield_down_impl",
                 side_effect=RuntimeError("nft missing"),
             ),
-            pytest.warns(match="failed to drop shield"),
+            pytest.warns(match="shield drop"),
         ):
-            _maybe_drop_shield(project, "ctr", MOCK_TASK_DIR)
+            _apply_shield_policy(project, "ctr", MOCK_TASK_DIR, is_restart=False)
 
 
 # ── _run_container ────────────────────────────────────────

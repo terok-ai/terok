@@ -56,7 +56,8 @@ class ProjectConfig(BaseModel):
     agent_config: dict[str, Any] = Field(default_factory=dict)
     shutdown_timeout: int = 10
     task_name_categories: list[str] | None = None
-    shield_drop_on_task_start: bool = True
+    shield_drop_on_task_run: bool = True
+    shield_on_task_restart: str = "retain"
     # Lifecycle hooks (host-side commands)
     hook_pre_start: str | None = None
     hook_post_start: str | None = None

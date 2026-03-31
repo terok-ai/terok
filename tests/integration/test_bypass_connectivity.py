@@ -6,7 +6,7 @@
 Verifies that containers started via the shield bypass path
 (bypass_firewall_no_protection) have working DNS and outbound
 connectivity.  This catches regressions where post-start operations
-(e.g. _maybe_drop_shield) accidentally install blocking nftables rules
+(e.g. _apply_shield_policy) accidentally install blocking nftables rules
 into containers that were never shielded.
 
 Requires podman on the host.  Outbound internet is needed for the
@@ -132,14 +132,14 @@ class TestBypassContainerConnectivity:
     def test_shield_down_does_not_break_connectivity(self, bypass_container: str) -> None:
         """Calling shield_down on a bypass container must not kill networking.
 
-        This is the regression test for the bug where _maybe_drop_shield()
+        This is the regression test for the bug where _apply_shield_policy()
         installed a bypass nftables ruleset with input policy drop into a
         container that was never shielded, blocking all pasta-forwarded
         traffic.
         """
         pytest.importorskip("terok_sandbox")
 
-        # Simulate what _maybe_drop_shield does: call shield.down() on a
+        # Simulate what _apply_shield_policy does: call shield.down() on a
         # container that was started WITHOUT shield pre_start.
         from terok_sandbox import down as shield_down
 

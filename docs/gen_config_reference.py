@@ -69,7 +69,8 @@ _FIELD_DOCS: dict[str, str] = {
     "run.shutdown_timeout": "Seconds to wait before SIGKILL on container stop",
     "run.gpus": 'GPU passthrough: ``true``, ``"all"``, or omit to disable',
     # shield
-    "shield.drop_on_task_start": "Drop shield (bypass firewall) when task container starts",
+    "shield.drop_on_task_run": "Drop shield (bypass firewall) when task container is created",
+    "shield.on_task_restart": "Shield policy on container restart: ``retain`` or ``up``",
     # docker
     "docker.base_image": "Base Docker image for container builds",
     "docker.user_snippet_inline": "Inline Dockerfile snippet injected into the project image",

@@ -31,7 +31,8 @@ class RawProjectYamlTests(unittest.TestCase):
         self.assertIsNone(raw.git.upstream_url)
         self.assertEqual(raw.docker.base_image, "ubuntu:24.04")
         self.assertEqual(raw.run.shutdown_timeout, 10)
-        self.assertTrue(raw.shield.drop_on_task_start)
+        self.assertIsNone(raw.shield.drop_on_task_run)
+        self.assertIsNone(raw.shield.on_task_restart)
 
     def test_full_valid_input(self) -> None:
         """A complete valid project.yml parses correctly."""
@@ -47,7 +48,7 @@ class RawProjectYamlTests(unittest.TestCase):
                 "auto_sync": {"enabled": True, "branches": ["main", "dev"]},
             },
             "run": {"shutdown_timeout": 30, "gpus": "all"},
-            "shield": {"drop_on_task_start": False},
+            "shield": {"drop_on_task_run": False, "on_task_restart": "up"},
             "docker": {"base_image": "nvidia/cuda:12.0", "user_snippet_inline": "RUN echo hi"},
             "default_agent": "claude",
             "agent": {"model": "opus"},
@@ -63,7 +64,8 @@ class RawProjectYamlTests(unittest.TestCase):
         self.assertEqual(raw.gatekeeping.auto_sync.branches, ["main", "dev"])
         self.assertEqual(raw.run.shutdown_timeout, 30)
         self.assertEqual(raw.run.gpus, "all")
-        self.assertFalse(raw.shield.drop_on_task_start)
+        self.assertFalse(raw.shield.drop_on_task_run)
+        self.assertEqual(raw.shield.on_task_restart, "up")
         self.assertEqual(raw.docker.base_image, "nvidia/cuda:12.0")
         self.assertEqual(raw.default_agent, "claude")
 
