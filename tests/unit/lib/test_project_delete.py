@@ -168,9 +168,7 @@ class TestManagedRootGuard:
         monkeypatch.setenv("TEROK_CONFIG_FILE", str(tmp_path / "empty.yml"))
         assert _is_under_terok_root(tmp_path / "xdg" / "terok" / "projects" / "my-proj")
 
-    def test_projects_dir_is_managed(
-        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-    ) -> None:
+    def test_projects_dir_is_managed(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
         """Paths under projects_dir are recognized as managed."""
         from terok.lib.domain.project import _is_under_terok_root
 
@@ -180,9 +178,7 @@ class TestManagedRootGuard:
         monkeypatch.setenv("TEROK_CONFIG_FILE", str(tmp_path / "empty.yml"))
         assert _is_under_terok_root(tmp_path / "cfg" / "projects" / "my-proj")
 
-    def test_build_dir_is_managed(
-        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-    ) -> None:
+    def test_build_dir_is_managed(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
         """Paths under build_dir are recognized as managed."""
         from terok.lib.domain.project import _is_under_terok_root
 
