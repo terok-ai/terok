@@ -10,7 +10,12 @@ from pathlib import Path
 
 import pytest
 
-from terok.cli.commands.sickbay import _check_task_hook, _reconcile_post_stop, _update_worst
+from terok.cli.commands.sickbay import (
+    _check_ssh_agent,
+    _check_task_hook,
+    _reconcile_post_stop,
+    _update_worst,
+)
 from terok.lib.util.yaml import dump as yaml_dump
 
 MOCK_BASE = Path("/tmp/terok-testing")
@@ -46,6 +51,68 @@ class TestUpdateWorst:
 
     def test_warn_stays_warn(self) -> None:
         assert _update_worst("warn", "ok") == "warn"
+
+
+class TestCheckSshAgent:
+    """Verify _check_ssh_agent diagnostics."""
+
+    def test_missing_keys_file(self, tmp_path: Path) -> None:
+        """No ssh-keys.json → warn with ssh-init hint."""
+        with unittest.mock.patch("terok.cli.commands.sickbay.SandboxConfig") as mock_cfg:
+            mock_cfg.return_value.ssh_keys_json_path = tmp_path / "no-such.json"
+            sev, _, detail = _check_ssh_agent()
+        assert sev == "warn"
+        assert "ssh-init" in detail
+
+    def test_empty_keys_file(self, tmp_path: Path) -> None:
+        """Empty mapping → warn with ssh-init hint."""
+        kf = tmp_path / "ssh-keys.json"
+        kf.write_text("{}")
+        with unittest.mock.patch("terok.cli.commands.sickbay.SandboxConfig") as mock_cfg:
+            mock_cfg.return_value.ssh_keys_json_path = kf
+            sev, _, detail = _check_ssh_agent()
+        assert sev == "warn"
+        assert "no projects" in detail
+
+    def test_all_keys_present(self, tmp_path: Path) -> None:
+        """All registered keys exist → ok."""
+        import json
+
+        priv = tmp_path / "id"
+        pub = tmp_path / "id.pub"
+        priv.write_text("key")
+        pub.write_text("pubkey")
+        kf = tmp_path / "ssh-keys.json"
+        kf.write_text(json.dumps({"proj": {"private_key": str(priv), "public_key": str(pub)}}))
+        with unittest.mock.patch("terok.cli.commands.sickbay.SandboxConfig") as mock_cfg:
+            mock_cfg.return_value.ssh_keys_json_path = kf
+            sev, _, detail = _check_ssh_agent()
+        assert sev == "ok"
+        assert "1 project(s)" in detail
+
+    def test_missing_key_files(self, tmp_path: Path) -> None:
+        """Registered keys with missing files → error."""
+        import json
+
+        kf = tmp_path / "ssh-keys.json"
+        kf.write_text(
+            json.dumps({"bad": {"private_key": "/gone/id", "public_key": "/gone/id.pub"}})
+        )
+        with unittest.mock.patch("terok.cli.commands.sickbay.SandboxConfig") as mock_cfg:
+            mock_cfg.return_value.ssh_keys_json_path = kf
+            sev, _, detail = _check_ssh_agent()
+        assert sev == "error"
+        assert "bad" in detail
+        assert "ssh-init" in detail
+
+    def test_corrupt_json(self, tmp_path: Path) -> None:
+        """Corrupt JSON → error."""
+        kf = tmp_path / "ssh-keys.json"
+        kf.write_text("{bad")
+        with unittest.mock.patch("terok.cli.commands.sickbay.SandboxConfig") as mock_cfg:
+            mock_cfg.return_value.ssh_keys_json_path = kf
+            sev, _, _ = _check_ssh_agent()
+        assert sev == "error"
 
 
 class TestCheckTaskHook:

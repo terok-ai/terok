@@ -378,7 +378,12 @@ def _bypass_credential_proxy(request: pytest.FixtureRequest) -> Iterator[None]:
     as a config file in the ``terok_env`` fixture itself.
     """
     if "needs_credential_proxy" in {m.name for m in request.node.iter_markers()}:
-        yield
+        # Tests exercise the proxy path but don't have a real daemon — skip TCP check
+        with patch(
+            "terok_sandbox.credential_proxy_lifecycle._wait_for_tcp_port",
+            return_value=True,
+        ):
+            yield
     else:
         with patch(
             "terok.lib.core.config.get_credential_proxy_bypass",

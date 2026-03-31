@@ -184,17 +184,26 @@ class TestProject:
             for name in ("L0.Dockerfile", "L1.cli.Dockerfile", "L1.ui.Dockerfile", "L2.Dockerfile"):
                 (stage_dir / name).write_text("", encoding="utf-8")
 
-            ssh_dir = env.envs_dir / f"_ssh-config-{project_id}"
+            # Create SSH keys in the managed ssh-keys store (matches SandboxConfig().ssh_keys_dir)
+            sandbox_state = env.base / "sandbox-state"
+            ssh_dir = sandbox_state / "ssh-keys" / project_id
             ssh_dir.mkdir(parents=True, exist_ok=True)
             (ssh_dir / "config").write_text("", encoding="utf-8")
 
             gate_dir = state_root() / "gate" / f"{project_id}.git"
             gate_dir.mkdir(parents=True, exist_ok=True)
 
+            mock_sandbox_cfg = unittest.mock.MagicMock()
+            mock_sandbox_cfg.ssh_keys_dir = sandbox_state / "ssh-keys"
+
             with (
                 unittest.mock.patch("terok.lib.domain.project_state.subprocess.run") as run_mock,
                 unittest.mock.patch(
                     "terok.lib.core.projects._get_global_git_config", return_value=None
+                ),
+                unittest.mock.patch(
+                    "terok.lib.domain.project_state.SandboxConfig",
+                    return_value=mock_sandbox_cfg,
                 ),
             ):
                 run_mock.return_value.returncode = 0

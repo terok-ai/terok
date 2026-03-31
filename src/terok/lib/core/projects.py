@@ -158,8 +158,6 @@ def _build_project_config(
         ssh_key_name=raw.ssh.key_name,
         ssh_host_dir=ssh_host_dir,
         ssh_config_template=_resolve_ssh_template(raw.ssh.config_template, root),
-        ssh_mount_in_online=raw.ssh.mount_in_online,
-        ssh_mount_in_gatekeeping=raw.ssh.mount_in_gatekeeping,
         expose_external_remote=raw.gatekeeping.expose_external_remote,
         human_name=identity.get("human_name") or "Nobody",
         human_email=identity.get("human_email") or "nobody@localhost",

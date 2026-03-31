@@ -5,6 +5,7 @@
 
 from __future__ import annotations
 
+from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -81,9 +82,23 @@ def test_cmd_sickbay_reports_health(
     exit_code: int | None,
     expected: list[str],
     capsys: pytest.CaptureFixture[str],
+    tmp_path: Path,
 ) -> None:
     """Sickbay exits with warning/error codes and prints useful remediation hints."""
+    import json
+
+    # SSH agent check needs a valid ssh-keys.json with an existing key file
+    dummy_key = tmp_path / "id"
+    dummy_key.write_text("k")
+    (tmp_path / "id.pub").write_text("pub")
+    ssh_keys = tmp_path / "ssh-keys.json"
+    ssh_keys.write_text(
+        json.dumps({"p": {"private_key": str(dummy_key), "public_key": str(tmp_path / "id.pub")}})
+    )
+
     mock_ec = MagicMock(health="ok", hooks="per-container", dns_tier="dnsmasq")
+    mock_cfg = MagicMock()
+    mock_cfg.return_value.ssh_keys_json_path = ssh_keys
     with (
         patch("terok.cli.commands.sickbay.get_server_status", return_value=status),
         patch("terok.cli.commands.sickbay.check_units_outdated", return_value=outdated),
@@ -91,6 +106,7 @@ def test_cmd_sickbay_reports_health(
         patch("terok.cli.commands.sickbay.check_environment", return_value=mock_ec),
         patch("terok.cli.commands.sickbay.get_proxy_status", return_value=_make_proxy_status()),
         patch("terok.cli.commands.sickbay.is_proxy_systemd_available", return_value=False),
+        patch("terok.cli.commands.sickbay.SandboxConfig", mock_cfg),
     ):
         if exit_code is None:
             _cmd_sickbay()

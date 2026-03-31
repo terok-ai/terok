@@ -24,6 +24,7 @@ import sys
 from pathlib import Path
 
 from terok_sandbox import (
+    SandboxConfig,
     check_environment,
     check_units_outdated,
     get_container_state,
@@ -207,10 +208,53 @@ def _check_unfired_hooks(
     return results
 
 
+def _check_ssh_agent() -> _CheckResult:
+    """Check SSH agent proxy key registration and file health."""
+    import json
+
+    label = "SSH agent"
+    cfg = SandboxConfig()
+    keys_path = cfg.ssh_keys_json_path
+
+    if not keys_path.is_file():
+        return ("warn", label, "no ssh-keys.json — run 'terokctl ssh-init <project>'")
+
+    try:
+        mapping = json.loads(keys_path.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError) as exc:
+        return ("error", label, f"cannot read ssh-keys.json — {exc}")
+
+    if not isinstance(mapping, dict):
+        return ("error", label, "ssh-keys.json has invalid schema (expected object)")
+
+    if not mapping:
+        return ("warn", label, "no projects registered — run 'terokctl ssh-init <project>'")
+
+    missing = [
+        pid
+        for pid, entry in mapping.items()
+        if not isinstance(entry, dict)
+        or not Path(entry.get("private_key", "")).is_file()
+        or not Path(entry.get("public_key", "")).is_file()
+    ]
+    total = len(mapping)
+    if missing:
+        names = ", ".join(missing[:3])
+        suffix = f" (+{len(missing) - 3} more)" if len(missing) > 3 else ""
+        return (
+            "error",
+            label,
+            f"{len(missing)}/{total} project(s) have missing key files: "
+            f"{names}{suffix} — re-run 'terokctl ssh-init'",
+        )
+    return ("ok", label, f"{total} project(s) registered, all keys present")
+
+
 _GLOBAL_CHECKS = [
     _check_gate_server,
     _check_shield,
     _check_credential_proxy,
+    _check_ssh_agent,
 ]
 
 _STATUS_MARKERS = {

@@ -16,10 +16,11 @@ from tests.testfs import FAKE_GATE_DIR
 def _patch_init_steps[T](func: Callable[..., T]) -> Callable[..., T]:
     """Apply project-init step mocks to a test method.
 
-    Mock args are injected as: mock_ssh_cls, mock_pause, mock_gen, mock_build, mock_gate_cls,
-    mock_load.
+    Mock args are injected as: mock_ssh_cls, mock_register, mock_pause, mock_gen, mock_build,
+    mock_gate_cls, mock_load.
     """
     func = unittest.mock.patch("terok.cli.commands.setup.make_ssh_manager")(func)
+    func = unittest.mock.patch("terok.cli.commands.setup._register_ssh_key")(func)
     func = unittest.mock.patch("terok.cli.commands.setup.maybe_pause_for_ssh_key_registration")(
         func
     )
@@ -43,7 +44,14 @@ class TestProjectInit:
 
     @_patch_init_steps
     def test_cmd_project_init_calls_four_steps(
-        self, mock_ssh_cls, mock_pause, mock_gen, mock_build, mock_gate_cls, mock_load
+        self,
+        mock_ssh_cls,
+        mock_register,
+        mock_pause,
+        mock_gen,
+        mock_build,
+        mock_gate_cls,
+        mock_load,
     ) -> None:
         mock_gate_cls.return_value.sync.return_value = {"success": True, "path": str(FAKE_GATE_DIR)}
 
@@ -52,6 +60,7 @@ class TestProjectInit:
         cmd_project_init("myproj")
 
         mock_ssh_cls.return_value.init.assert_called_once()
+        mock_register.assert_called_once()
         mock_pause.assert_called_once_with("myproj")
         mock_gen.assert_called_once_with("myproj")
         mock_build.assert_called_once_with("myproj")
@@ -59,10 +68,18 @@ class TestProjectInit:
 
     @_patch_init_steps
     def test_cmd_project_init_calls_in_order(
-        self, mock_ssh_cls, mock_pause, mock_gen, mock_build, mock_gate_cls, mock_load
+        self,
+        mock_ssh_cls,
+        mock_register,
+        mock_pause,
+        mock_gen,
+        mock_build,
+        mock_gate_cls,
+        mock_load,
     ) -> None:
         call_order: list[str] = []
         mock_ssh_cls.return_value.init.side_effect = lambda **kw: call_order.append("ssh")
+        mock_register.side_effect = lambda *a, **kw: call_order.append("register")
         mock_pause.side_effect = lambda *a, **kw: call_order.append("pause")
         mock_gen.side_effect = lambda *a, **kw: call_order.append("generate")
         mock_build.side_effect = lambda *a, **kw: call_order.append("build")
@@ -75,11 +92,18 @@ class TestProjectInit:
 
         cmd_project_init("proj1")
 
-        assert call_order == ["ssh", "pause", "generate", "build", "gate"]
+        assert call_order == ["ssh", "register", "pause", "generate", "build", "gate"]
 
     @_patch_init_steps
     def test_cmd_project_init_gate_failure_raises(
-        self, mock_ssh_cls, mock_pause, mock_gen, mock_build, mock_gate_cls, mock_load
+        self,
+        mock_ssh_cls,
+        mock_register,
+        mock_pause,
+        mock_gen,
+        mock_build,
+        mock_gate_cls,
+        mock_load,
     ) -> None:
         mock_gate_cls.return_value.sync.return_value = {
             "success": False,
@@ -117,7 +141,14 @@ class TestSshPause:
 
     @_patch_init_steps
     def test_project_init_continues_after_pause(
-        self, mock_ssh_cls, mock_pause, mock_gen, mock_build, mock_gate_cls, mock_load
+        self,
+        mock_ssh_cls,
+        mock_register,
+        mock_pause,
+        mock_gen,
+        mock_build,
+        mock_gate_cls,
+        mock_load,
     ) -> None:
         mock_gate_cls.return_value.sync.return_value = {"success": True, "path": str(FAKE_GATE_DIR)}
 
@@ -126,6 +157,7 @@ class TestSshPause:
         cmd_project_init("sshproj")
 
         mock_ssh_cls.return_value.init.assert_called_once()
+        mock_register.assert_called_once()
         mock_pause.assert_called_once_with("sshproj")
         mock_gen.assert_called_once_with("sshproj")
         mock_build.assert_called_once_with("sshproj")

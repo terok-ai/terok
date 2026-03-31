@@ -14,7 +14,9 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-from ..core.config import build_root, get_envs_base_dir
+from terok_sandbox import SandboxConfig
+
+from ..core.config import build_root
 from ..core.images import project_cli_image
 from ..core.projects import load_project
 
@@ -119,9 +121,9 @@ def get_project_state(
                             images_old = True
                             break
 
-    # SSH: same resolution logic as init_project_ssh(). Consider SSH
-    # "ready" when the directory and its config file exist.
-    ssh_dir = project.ssh_host_dir or (get_envs_base_dir() / f"_ssh-config-{project.id}")
+    # SSH: consider SSH "ready" when the key directory and its config file exist.
+    # Falls back to the managed ssh-keys store (same as SSHManager / git gate).
+    ssh_dir = project.ssh_host_dir or (SandboxConfig().ssh_keys_dir / project.id)
     ssh_dir = Path(ssh_dir).expanduser().resolve()
     has_ssh = ssh_dir.is_dir() and (ssh_dir / "config").is_file()
 

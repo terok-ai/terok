@@ -43,8 +43,6 @@ class ProjectConfig(BaseModel):
     ssh_key_name: str | None
     ssh_host_dir: Path | None
     ssh_config_template: Path | None = None
-    ssh_mount_in_online: bool = True
-    ssh_mount_in_gatekeeping: bool = False
     expose_external_remote: bool = False
     human_name: str | None = None
     human_email: str | None = None

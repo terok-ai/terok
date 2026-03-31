@@ -260,6 +260,7 @@ class TestStoryEnvWiring:
             mock_cfg = mock_cfg_cls.return_value
             mock_cfg.proxy_db_path = db_path
             mock_cfg.proxy_socket_path = sock_path
+            mock_cfg.ssh_keys_json_path = tmp_path / "ssh-keys.json"
 
             env, volumes = _credential_proxy_env_and_volumes(project, "task-42")
 
