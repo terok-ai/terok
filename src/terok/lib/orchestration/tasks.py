@@ -918,7 +918,7 @@ def task_status(project_id: str, task_id: str) -> None:
         backend=meta.get("backend"),
         exit_code=exit_code,
         deleting=bool(meta.get("deleting")),
-        initialized=mode is not None,
+        initialized="ready_at" in meta,
         container_state=cs,
         name=meta["name"],
         provider=meta.get("provider"),
