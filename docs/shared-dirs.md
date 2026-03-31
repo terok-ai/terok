@@ -21,10 +21,13 @@ When a task starts, terok mounts host directories into the container for workspa
 ## Shared Agent Configuration Directories
 
 These directories are bind-mounted into every task container so that agents and
-tools find their config/credentials on startup.  They are created automatically
+tools find their config on startup.  They are created automatically
 on first task launch.  The base dir defaults to
-`~/.local/share/terok-credentials/envs` (derived from `credentials.dir` in
-`config.yml` or `TEROK_CREDENTIALS_DIR`).
+`~/.local/share/terok-agent/mounts` (override via `TEROK_AGENT_STATE_DIR`).
+
+> **Trust boundary:** Mount directories are intentionally separated from the
+> credentials store (`~/.local/share/terok-credentials/`) since containers have
+> read-write access to mounts and could potentially poison them.
 
 | Host Dir | Container Mount | Purpose |
 |----------|----------------|---------|
@@ -96,13 +99,13 @@ Agent email addresses are GitHub-recognized and display with avatars in commit h
 
 ```text
 /workspace                    ← <state_root>/tasks/<project>/<task>/workspace-dangerous:Z
-/home/dev/.codex              ← <envs_base>/_codex-config:z
-/home/dev/.claude             ← <envs_base>/_claude-config:z
-/home/dev/.vibe               ← <envs_base>/_vibe-config:z
-/home/dev/.blablador          ← <envs_base>/_blablador-config:z
-/home/dev/.config/opencode    ← <envs_base>/_opencode-config:z
-/home/dev/.local/share/opencode ← <envs_base>/_opencode-data:z
-/home/dev/.local/state        ← <envs_base>/_opencode-state:z
+/home/dev/.codex              ← <mounts_dir>/_codex-config:z
+/home/dev/.claude             ← <mounts_dir>/_claude-config:z
+/home/dev/.vibe               ← <mounts_dir>/_vibe-config:z
+/home/dev/.blablador          ← <mounts_dir>/_blablador-config:z
+/home/dev/.config/opencode    ← <mounts_dir>/_opencode-config:z
+/home/dev/.local/share/opencode ← <mounts_dir>/_opencode-data:z
+/home/dev/.local/state        ← <mounts_dir>/_opencode-state:z
 ```
 
 Run `terok config` to see resolved paths on your system.

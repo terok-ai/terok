@@ -188,12 +188,12 @@ def make_git_gate(config: ProjectConfig) -> GitGate:
 
 def make_ssh_manager(config: ProjectConfig) -> SSHManager:
     """Construct an :class:`SSHManager` from a :class:`ProjectConfig` (adapter factory)."""
+    ssh_dir = config.ssh_host_dir or (make_sandbox_config().ssh_keys_dir / config.id)
     return SSHManager(
         project_id=config.id,
-        ssh_host_dir=config.ssh_host_dir,
+        ssh_host_dir=ssh_dir,
         ssh_key_name=config.ssh_key_name,
         ssh_config_template=config.ssh_config_template,
-        envs_base_dir=make_sandbox_config().ssh_keys_dir,
     )
 
 

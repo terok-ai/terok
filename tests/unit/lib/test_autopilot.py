@@ -84,6 +84,7 @@ def runner_env_vars(base: Path, config_file: Path) -> dict[str, str]:
     return {
         "TEROK_CONFIG_DIR": str(base / "config"),
         "TEROK_STATE_DIR": str(base / "state"),
+        "TEROK_AGENT_STATE_DIR": str(base / "agent"),
         "TEROK_CONFIG_FILE": str(config_file),
     }
 
@@ -148,7 +149,7 @@ def prepare_agent_config(
                 subagents=[],
                 instructions=instructions,
                 default_agent=project.default_agent,
-                envs_base_dir=Path(td),
+                mounts_base=Path(td),
             )
         )
 
@@ -355,7 +356,7 @@ class TestTaskRunHeadless:
                 HeadlessRunRequest("proj_hook", "test"),
             )
 
-            settings = base / "envs" / "_claude-config" / "settings.json"
+            settings = base / "agent" / "mounts" / "_claude-config" / "settings.json"
             assert settings.is_file()
             assert "SessionStart" in json.loads(settings.read_text())["hooks"]
 

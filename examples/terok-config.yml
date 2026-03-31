@@ -13,15 +13,14 @@ ui:
   base_port: 7860
 
 credentials:
-  # Shared persistent host directory for credential storage and agent config
-  # mounts.  Contains proxy DB, SSH key mapping, and per-agent config dirs
-  # that are bind-mounted into containers:
-  #   - <dir>/envs/_codex-config    → /home/dev/.codex  (rw)
-  #   - <dir>/envs/_claude-config   → /home/dev/.claude (rw)
-  # SSH keys are NOT mounted — served via the SSH agent proxy.
+  # Host-only credential storage (proxy DB, SSH key mapping, proxy routes).
+  # Never exposed to containers.
   # Default: ~/.local/share/terok-credentials (or /var/lib/terok-credentials if root)
   # Override with TEROK_CREDENTIALS_DIR env var or by editing this file.
   # dir: ~/.local/share/terok-credentials
+  #
+  # Agent config mounts (_claude-config, _codex-config, etc.) are stored
+  # separately under ~/.local/share/terok-agent/mounts/ (TEROK_AGENT_STATE_DIR).
 
 paths:
   # User projects directory (per-user overlays). Each project is a subdirectory

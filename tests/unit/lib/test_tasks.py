@@ -478,7 +478,8 @@ class TestTask:
                 task_run_cli(project_id, "1")
 
             assert sorted(p.name for p in workspace_dir.iterdir()) == [".new-task-marker"]
-            assert (ctx.credentials_dir / "_claude-config" / "settings.json").is_file()
+            agent_mounts = ctx.base / "agent" / "mounts"
+            assert (agent_mounts / "_claude-config" / "settings.json").is_file()
 
     def test_task_run_toad_passes_public_url(self) -> None:
         """task_run_toad must pass --public-url with the host port to toad serve."""

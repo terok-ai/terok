@@ -23,7 +23,7 @@ from terok_sandbox import (
     get_gate_server_port,
 )
 
-from ..core.config import credentials_dir, make_sandbox_config
+from ..core.config import make_sandbox_config
 from ..core.projects import ProjectConfig
 from ..util.fs import ensure_dir_writable
 from ..util.host_cmd import WORKSPACE_DANGEROUS_DIRNAME
@@ -66,11 +66,11 @@ def _build_shared_mounts() -> tuple[SharedMount, ...]:
 SHARED_MOUNTS: tuple[SharedMount, ...] = _build_shared_mounts()
 
 
-def _ensure_shared_dirs(envs_base: Path) -> dict[str, Path]:
+def _ensure_shared_dirs(mounts_base: Path) -> dict[str, Path]:
     """Ensure shared config directories exist and return key→host_path mapping."""
     dirs = {}
     for m in SHARED_MOUNTS:
-        path = envs_base / m.host_dir_suffix
+        path = mounts_base / m.host_dir_suffix
         ensure_dir_writable(path, m.label)
         dirs[m.key] = path
     return dirs
@@ -316,9 +316,9 @@ def _credential_proxy_env_and_volumes(
 
     # Warn about real credential files in shared mounts that will be visible
     # to the container alongside proxy phantom tokens.
-    from terok_agent import scan_leaked_credentials
+    from terok_agent import mounts_dir, scan_leaked_credentials
 
-    leaked = scan_leaked_credentials(cfg.effective_envs_dir)
+    leaked = scan_leaked_credentials(mounts_dir())
     if leaked:
         import sys
 
@@ -348,8 +348,9 @@ def build_task_env_and_volumes(project: ProjectConfig, task_id: str) -> tuple[di
     repo_dir = task_dir / WORKSPACE_DANGEROUS_DIRNAME
     repo_dir.mkdir(parents=True, exist_ok=True)
 
-    credentials_base = credentials_dir()
-    config_dirs = _ensure_shared_dirs(credentials_base)
+    from terok_agent import mounts_dir
+
+    config_dirs = _ensure_shared_dirs(mounts_dir())
 
     env = {
         "PROJECT_ID": project.id,

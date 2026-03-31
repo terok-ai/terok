@@ -14,6 +14,7 @@ from typing import TYPE_CHECKING
 
 from terok_agent import (
     AgentConfigSpec,
+    mounts_dir,
     prepare_agent_config_dir,
     resolve_instructions,
     resolve_provider_value,
@@ -32,7 +33,6 @@ from terok_sandbox import (
 
 from ..core.config import (
     SHIELD_SECURITY_HINT,
-    credentials_dir,
     get_public_host,
     get_shield_bypass_firewall_no_protection,
 )
@@ -157,7 +157,7 @@ def _prepare_agent_config(
             provider=resolved.name,
             instructions=instr_text,
             default_agent=project.default_agent,
-            envs_base_dir=credentials_dir(),
+            mounts_base=mounts_dir(),
         )
     )
 
@@ -746,7 +746,7 @@ def task_run_headless(request: HeadlessRunRequest) -> str:
             provider=resolved.name,
             instructions=instr_text,
             default_agent=project.default_agent,
-            envs_base_dir=credentials_dir(),
+            mounts_base=mounts_dir(),
         )
     )
 

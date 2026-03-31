@@ -58,10 +58,12 @@ def project_env(
 
         write_project(config_root, project_id, yaml_text)
 
+        agent_state_dir = base / "agent"
         env_vars: dict[str, str] = {
             "TEROK_CONFIG_DIR": str(config_base),
             "TEROK_STATE_DIR": str(state_dir),
             "TEROK_CREDENTIALS_DIR": str(credentials_dir),
+            "TEROK_AGENT_STATE_DIR": str(agent_state_dir),
         }
 
         config_file = None
