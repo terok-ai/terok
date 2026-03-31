@@ -36,6 +36,7 @@ make test       # Run full test suite with coverage
 make tach       # Check module boundary rules (tach.toml)
 make docstrings # Check docstring coverage (minimum 95%)
 make reuse      # Check REUSE (SPDX license/copyright) compliance
+make security   # Run bandit SAST scan (no medium/high findings allowed)
 make check      # Run lint + test + tach + docstrings + deadcode + reuse (equivalent to CI)
 ```
 
