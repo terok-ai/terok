@@ -82,7 +82,6 @@ class TerokIntegrationEnv:
                 "XDG_CONFIG_HOME": str(self.xdg_config_home),
                 "TEROK_CONFIG_DIR": str(self.system_config_root),
                 "TEROK_STATE_DIR": str(self.state_root),
-                "TEROK_SANDBOX_STATE_DIR": str(self.state_root),
                 "TEROK_CREDENTIALS_DIR": str(self.credentials_dir),
             }
         )

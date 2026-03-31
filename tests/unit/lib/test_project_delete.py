@@ -108,7 +108,6 @@ def test_delete_project_skips_shared_gate(monkeypatch: pytest.MonkeyPatch, tmp_p
 
     monkeypatch.setenv("TEROK_CONFIG_DIR", str(config_base))
     monkeypatch.setenv("TEROK_STATE_DIR", str(state_dir))
-    monkeypatch.setenv("TEROK_SANDBOX_STATE_DIR", str(state_dir))
     monkeypatch.setenv("TEROK_CONFIG_FILE", str(config_file))
     monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "empty"))
 

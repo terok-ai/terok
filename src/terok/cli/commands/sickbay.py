@@ -24,7 +24,6 @@ import sys
 from pathlib import Path
 
 from terok_sandbox import (
-    SandboxConfig,
     check_environment,
     check_units_outdated,
     get_container_state,
@@ -34,6 +33,7 @@ from terok_sandbox import (
     is_systemd_available,
 )
 
+from ...lib.core.config import make_sandbox_config
 from ...lib.core.project_model import ProjectConfig
 from ...lib.core.projects import list_projects, load_project
 from ...lib.orchestration.hooks import run_hook
@@ -213,7 +213,7 @@ def _check_ssh_agent() -> _CheckResult:
     import json
 
     label = "SSH agent"
-    cfg = SandboxConfig()
+    cfg = make_sandbox_config()
     keys_path = cfg.ssh_keys_json_path
 
     if not keys_path.is_file():

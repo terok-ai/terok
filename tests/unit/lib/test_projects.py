@@ -235,7 +235,7 @@ class TestProject:
                     "terok.lib.core.projects._get_global_git_config", return_value=None
                 ),
                 unittest.mock.patch(
-                    "terok.lib.domain.project_state.SandboxConfig",
+                    "terok.lib.domain.project_state.make_sandbox_config",
                     return_value=mock_sandbox_cfg,
                 ),
             ):

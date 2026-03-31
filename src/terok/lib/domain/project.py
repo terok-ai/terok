@@ -55,6 +55,7 @@ from ..core.config import (
     archive_dir,
     build_dir,
     credentials_dir,
+    make_sandbox_config,
     projects_dir,
     state_dir,
 )
@@ -185,6 +186,7 @@ def make_ssh_manager(config: ProjectConfig) -> SSHManager:
         ssh_host_dir=config.ssh_host_dir,
         ssh_key_name=config.ssh_key_name,
         ssh_config_template=config.ssh_config_template,
+        envs_base_dir=make_sandbox_config().ssh_keys_dir,
     )
 
 
@@ -305,9 +307,7 @@ def delete_project(project_id: str) -> DeleteProjectResult:
             deleted.append(str(d))
 
     # 5. SSH credentials (may be user-configured path)
-    from terok_sandbox import SandboxConfig
-
-    ssh_dir = project.ssh_host_dir or (SandboxConfig().ssh_keys_dir / pid)
+    ssh_dir = project.ssh_host_dir or (make_sandbox_config().ssh_keys_dir / pid)
     _rmtree_managed(ssh_dir, "SSH dir", deleted, skipped)
 
     # 6. Git gate (skip if shared with other projects)

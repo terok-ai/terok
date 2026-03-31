@@ -262,6 +262,22 @@ def credentials_dir() -> Path:
     return _resolve_path("TEROK_CREDENTIALS_DIR", ("credentials", "dir"), _credentials_root_base)
 
 
+def make_sandbox_config() -> "SandboxConfig":  # noqa: F821 — forward ref
+    """Construct a :class:`SandboxConfig` aligned with terok's path resolution.
+
+    Bridges terok's config layer (env vars → config.yml → XDG defaults) to
+    sandbox's plain dataclass so that all sandbox operations use terok's
+    directory namespace rather than sandbox's own standalone defaults.
+    """
+    from terok_sandbox import SandboxConfig
+
+    return SandboxConfig(
+        state_dir=state_dir(),
+        credentials_dir=credentials_dir(),
+        gate_port=get_gate_server_port(),
+    )
+
+
 def get_global_human_name() -> str | None:
     """Return git.human_name from global config, or None if not set."""
     return _load_validated().git.human_name

@@ -60,9 +60,9 @@ class ProjectActionsMixin:
         if not (upstream.startswith("git@") or upstream.startswith("ssh://")):
             return
 
-        from terok_sandbox import SandboxConfig
+        from ..lib.core.config import make_sandbox_config
 
-        ssh_dir = project.ssh_host_dir or (SandboxConfig().ssh_keys_dir / project.id)
+        ssh_dir = project.ssh_host_dir or (make_sandbox_config().ssh_keys_dir / project.id)
         key_name = effective_ssh_key_name(project, key_type="ed25519")
         pub_key_path = ssh_dir / f"{key_name}.pub"
 

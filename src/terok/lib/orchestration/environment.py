@@ -17,12 +17,13 @@ from pathlib import Path
 
 from terok_agent import collect_opencode_provider_env
 from terok_sandbox import (
+    create_token,
     ensure_server_reachable,
     get_gate_base_path,
     get_gate_server_port,
 )
 
-from ..core.config import credentials_dir
+from ..core.config import credentials_dir, make_sandbox_config
 from ..core.projects import ProjectConfig
 from ..util.fs import ensure_dir_writable
 from ..util.host_cmd import WORKSPACE_DANGEROUS_DIRNAME
@@ -80,7 +81,7 @@ def _shared_volume_mounts(host_dirs: dict[str, Path]) -> list[str]:
     return [f"{host_dirs[m.key]}:{m.container_path}:z" for m in SHARED_MOUNTS]
 
 
-def _gate_url(gate_repo: Path, port: int, token: str) -> str:
+def _gate_url(gate_repo: Path, gate_base: Path, port: int, token: str) -> str:
     """Build the ``http://`` URL for a gate repo served by ``terok-gate``.
 
     The token is embedded as the Basic Auth username in the URL so that git
@@ -90,14 +91,13 @@ def _gate_url(gate_repo: Path, port: int, token: str) -> str:
     Raises ``SystemExit`` if the repo is not a direct child of the gate base,
     since the gate server cannot serve repos from arbitrary locations.
     """
-    gate_base = get_gate_base_path().resolve()
-    if gate_repo.resolve().parent != gate_base:
+    if gate_repo.resolve().parent != gate_base.resolve():
         raise SystemExit(
             "Configured gate.path is not servable by terok-gate.\n"
             f"  Gate repo: {gate_repo}\n"
             f"  Gate base: {gate_base}\n"
             "Move the repo under the gate base directory, or adjust\n"
-            "gate_server.base_path / paths.state_root in global config."
+            "gate_server.repos_dir / paths.state_dir in global config."
         )
     return f"http://{token}@host.containers.internal:{port}/{gate_repo.name}"
 
@@ -106,12 +106,12 @@ def _security_mode_env_and_volumes(
     project: ProjectConfig, task_id: str
 ) -> tuple[dict[str, str], list[str]]:
     """Return env vars and volumes for the project's security mode."""
-    from terok_sandbox import create_token
-
+    cfg = make_sandbox_config()
     env: dict[str, str] = {}
     volumes: list[str] = []
 
     gate_repo = project.gate_path
+    gate_base = get_gate_base_path(cfg)
 
     if project.security_class == "gatekeeping":
         if not gate_repo.exists():
@@ -120,10 +120,10 @@ def _security_mode_env_and_volumes(
                 f"Expected at: {gate_repo}\n"
                 f"Run 'terokctl gate-sync {project.id}' to create/update the local mirror."
             )
-        ensure_server_reachable()
-        port = get_gate_server_port()
-        token = create_token(project.id, task_id)
-        gate_url = _gate_url(gate_repo, port, token)
+        ensure_server_reachable(cfg)
+        port = get_gate_server_port(cfg)
+        token = create_token(project.id, task_id, cfg)
+        gate_url = _gate_url(gate_repo, gate_base, port, token)
         env["CODE_REPO"] = gate_url
         if project.default_branch:
             env["GIT_BRANCH"] = project.default_branch
@@ -132,13 +132,13 @@ def _security_mode_env_and_volumes(
     else:
         if gate_repo.exists():
             try:
-                ensure_server_reachable()
+                ensure_server_reachable(cfg)
             except SystemExit:
                 pass  # gate server down; skip CLONE_FROM, fall back to upstream
             else:
-                port = get_gate_server_port()
-                token = create_token(project.id, task_id)
-                gate_url = _gate_url(gate_repo, port, token)
+                port = get_gate_server_port(cfg)
+                token = create_token(project.id, task_id, cfg)
+                gate_url = _gate_url(gate_repo, gate_base, port, token)
                 env["CLONE_FROM"] = gate_url
         if project.upstream_url:
             env["CODE_REPO"] = project.upstream_url
@@ -253,14 +253,13 @@ def _credential_proxy_env_and_volumes(
     from terok_agent import get_roster
     from terok_sandbox import (
         CredentialDB,
-        SandboxConfig,
         ensure_proxy_reachable,
         get_proxy_port,
         get_ssh_agent_port,
     )
 
-    cfg = SandboxConfig()
-    ensure_proxy_reachable()
+    cfg = make_sandbox_config()
+    ensure_proxy_reachable(cfg)
 
     roster = get_roster()
     proxy_routes = roster.proxy_routes

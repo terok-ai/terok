@@ -76,9 +76,9 @@ class TestCredentialProxyEnv:
         with (
             patch("terok_sandbox.credential_proxy_lifecycle.is_daemon_running", return_value=True),
             patch("terok_sandbox.ensure_proxy_reachable"),
-            patch("terok_sandbox.SandboxConfig") as mock_cfg_cls,
+            patch("terok.lib.orchestration.environment.make_sandbox_config") as mock_cfg_fn,
         ):
-            mock_cfg = mock_cfg_cls.return_value
+            mock_cfg = mock_cfg_fn.return_value
             mock_cfg.proxy_db_path = db_path
             mock_cfg.proxy_socket_path = sock_path
             mock_cfg.proxy_port = 18731
@@ -116,9 +116,9 @@ class TestCredentialProxyEnv:
         with (
             patch("terok_sandbox.credential_proxy_lifecycle.is_daemon_running", return_value=True),
             patch("terok_sandbox.ensure_proxy_reachable"),
-            patch("terok_sandbox.SandboxConfig") as mock_cfg_cls,
+            patch("terok.lib.orchestration.environment.make_sandbox_config") as mock_cfg_fn,
         ):
-            mock_cfg = mock_cfg_cls.return_value
+            mock_cfg = mock_cfg_fn.return_value
             mock_cfg.proxy_db_path = db_path
             mock_cfg.proxy_socket_path = sock_path
             mock_cfg.proxy_port = 18731
@@ -159,9 +159,9 @@ class TestCredentialProxyEnv:
         with (
             patch("terok_sandbox.credential_proxy_lifecycle.is_daemon_running", return_value=True),
             patch("terok_sandbox.ensure_proxy_reachable"),
-            patch("terok_sandbox.SandboxConfig") as mock_cfg_cls,
+            patch("terok.lib.orchestration.environment.make_sandbox_config") as mock_cfg_fn,
         ):
-            mock_cfg = mock_cfg_cls.return_value
+            mock_cfg = mock_cfg_fn.return_value
             mock_cfg.proxy_db_path = db_path
             mock_cfg.proxy_socket_path = tmp_path / "proxy.sock"
             mock_cfg.proxy_port = 18731
@@ -199,9 +199,9 @@ class TestCredentialProxyEnv:
         with (
             patch("terok_sandbox.credential_proxy_lifecycle.is_daemon_running", return_value=True),
             patch("terok_sandbox.ensure_proxy_reachable"),
-            patch("terok_sandbox.SandboxConfig") as mock_cfg_cls,
+            patch("terok.lib.orchestration.environment.make_sandbox_config") as mock_cfg_fn,
         ):
-            mock_cfg = mock_cfg_cls.return_value
+            mock_cfg = mock_cfg_fn.return_value
             mock_cfg.proxy_db_path = db_path
             mock_cfg.proxy_socket_path = tmp_path / "proxy.sock"
             mock_cfg.proxy_port = 18731
@@ -232,9 +232,9 @@ class TestCredentialProxyEnv:
         with (
             patch("terok_sandbox.credential_proxy_lifecycle.is_daemon_running", return_value=True),
             patch("terok_sandbox.ensure_proxy_reachable"),
-            patch("terok_sandbox.SandboxConfig") as mock_cfg_cls,
+            patch("terok.lib.orchestration.environment.make_sandbox_config") as mock_cfg_fn,
         ):
-            mock_cfg = mock_cfg_cls.return_value
+            mock_cfg = mock_cfg_fn.return_value
             mock_cfg.proxy_db_path = db_path
             mock_cfg.proxy_socket_path = tmp_path / "proxy.sock"
             mock_cfg.proxy_port = 18731

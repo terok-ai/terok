@@ -14,9 +14,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-from terok_sandbox import SandboxConfig
-
-from ..core.config import build_dir
+from ..core.config import build_dir, make_sandbox_config
 from ..core.images import project_cli_image
 from ..core.projects import load_project
 
@@ -123,7 +121,7 @@ def get_project_state(
 
     # SSH: consider SSH "ready" when the key directory and its config file exist.
     # Falls back to the managed ssh-keys store (same as SSHManager / git gate).
-    ssh_dir = project.ssh_host_dir or (SandboxConfig().ssh_keys_dir / project.id)
+    ssh_dir = project.ssh_host_dir or (make_sandbox_config().ssh_keys_dir / project.id)
     ssh_dir = Path(ssh_dir).expanduser().resolve()
     has_ssh = ssh_dir.is_dir() and (ssh_dir / "config").is_file()
 

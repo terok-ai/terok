@@ -341,7 +341,6 @@ def terok_env(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> TerokIntegrati
     monkeypatch.setenv("XDG_CONFIG_HOME", str(xdg_config_home))
     monkeypatch.setenv("TEROK_CONFIG_DIR", str(system_config_root))
     monkeypatch.setenv("TEROK_STATE_DIR", str(state_root))
-    monkeypatch.setenv("TEROK_SANDBOX_STATE_DIR", str(state_root))
 
     # Write default global config with credential proxy bypass — subprocess-based
     # tests spawn a new CLI process that reads this file.  Tests that need the

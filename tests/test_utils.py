@@ -61,7 +61,6 @@ def project_env(
         env_vars: dict[str, str] = {
             "TEROK_CONFIG_DIR": str(config_base),
             "TEROK_STATE_DIR": str(state_dir),
-            "TEROK_SANDBOX_STATE_DIR": str(state_dir),
             "TEROK_CREDENTIALS_DIR": str(credentials_dir),
         }
 

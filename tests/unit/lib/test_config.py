@@ -401,3 +401,59 @@ def test_load_validated_returns_defaults_on_invalid_schema(
     bad_file.write_text("ui:\n  base_port: not-a-number\n", encoding="utf-8")
     monkeypatch.setenv("TEROK_CONFIG_FILE", str(bad_file))
     assert cfg.get_ui_base_port() == 7860
+
+
+# ---------- make_sandbox_config() factory ----------
+
+
+def test_make_sandbox_config_default(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    """Factory aligns SandboxConfig state_dir with terok's state_dir()."""
+    monkeypatch.setenv("TEROK_STATE_DIR", str(tmp_path / "state"))
+    monkeypatch.setenv("TEROK_CREDENTIALS_DIR", str(tmp_path / "creds"))
+    monkeypatch.setenv("TEROK_CONFIG_FILE", str(write_config(tmp_path, "")))
+    sc = cfg.make_sandbox_config()
+    assert sc.state_dir == (tmp_path / "state").resolve()
+    assert sc.credentials_dir == (tmp_path / "creds").resolve()
+
+
+def test_make_sandbox_config_ssh_keys_dir(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    """Factory's ssh_keys_dir derives from terok's state, not sandbox's."""
+    monkeypatch.setenv("TEROK_STATE_DIR", str(tmp_path / "terok-state"))
+    monkeypatch.setenv("TEROK_CONFIG_FILE", str(write_config(tmp_path, "")))
+    sc = cfg.make_sandbox_config()
+    assert sc.ssh_keys_dir == (tmp_path / "terok-state" / "ssh-keys").resolve()
+
+
+def test_make_sandbox_config_from_config_file(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Factory reads paths from config.yml when no env var is set."""
+    custom_state = tmp_path / "virt" / "state"
+    monkeypatch.delenv("TEROK_STATE_DIR", raising=False)
+    monkeypatch.setenv(
+        "TEROK_CONFIG_FILE",
+        str(write_config(tmp_path, f"paths:\n  state_dir: {custom_state}\n")),
+    )
+    sc = cfg.make_sandbox_config()
+    assert sc.state_dir == custom_state.resolve()
+    assert sc.ssh_keys_dir == (custom_state / "ssh-keys").resolve()
+
+
+def test_make_sandbox_config_gate_port(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    """Factory propagates gate_server.port from global config."""
+    monkeypatch.setenv(
+        "TEROK_CONFIG_FILE",
+        str(write_config(tmp_path, "gate_server:\n  port: 1234\n")),
+    )
+    assert cfg.make_sandbox_config().gate_port == 1234
+
+
+def test_make_sandbox_config_credentials_propagation(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Factory's credential-derived properties use terok's credentials_dir."""
+    monkeypatch.setenv("TEROK_CREDENTIALS_DIR", str(tmp_path / "creds"))
+    monkeypatch.setenv("TEROK_CONFIG_FILE", str(write_config(tmp_path, "")))
+    sc = cfg.make_sandbox_config()
+    assert sc.proxy_db_path == (tmp_path / "creds" / "credentials.db").resolve()
+    assert sc.ssh_keys_json_path == (tmp_path / "creds" / "ssh-keys.json").resolve()
