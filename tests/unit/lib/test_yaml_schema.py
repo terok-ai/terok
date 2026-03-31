@@ -200,6 +200,8 @@ class RawGlobalConfigTests(unittest.TestCase):
         self.assertFalse(cfg.tui.default_tmux)
         self.assertTrue(cfg.logs.partial_streaming)
         self.assertFalse(cfg.shield.bypass_firewall_no_protection)
+        self.assertTrue(cfg.shield.drop_on_task_run)
+        self.assertEqual(cfg.shield.on_task_restart, "retain")
         self.assertEqual(cfg.gate_server.port, 9418)
         self.assertIsNone(cfg.default_agent)
 
@@ -210,7 +212,11 @@ class RawGlobalConfigTests(unittest.TestCase):
                 "ui": {"base_port": 9000},
                 "tui": {"default_tmux": True},
                 "logs": {"partial_streaming": False},
-                "shield": {"bypass_firewall_no_protection": True},
+                "shield": {
+                    "bypass_firewall_no_protection": True,
+                    "drop_on_task_run": False,
+                    "on_task_restart": "up",
+                },
                 "gate_server": {"port": 1234, "suppress_systemd_warning": True},
                 "default_agent": "codex",
             }
@@ -219,6 +225,8 @@ class RawGlobalConfigTests(unittest.TestCase):
         self.assertTrue(cfg.tui.default_tmux)
         self.assertFalse(cfg.logs.partial_streaming)
         self.assertTrue(cfg.shield.bypass_firewall_no_protection)
+        self.assertFalse(cfg.shield.drop_on_task_run)
+        self.assertEqual(cfg.shield.on_task_restart, "up")
         self.assertEqual(cfg.gate_server.port, 1234)
         self.assertTrue(cfg.gate_server.suppress_systemd_warning)
         self.assertEqual(cfg.default_agent, "codex")
@@ -263,6 +271,12 @@ class RawGlobalConfigTests(unittest.TestCase):
             )
         self.assertIn("upstream_url", str(ctx.exception))
 
+    def test_shield_invalid_restart_policy_rejected(self) -> None:
+        """Invalid on_task_restart value raises ValidationError."""
+        with self.assertRaises(ValidationError) as ctx:
+            RawGlobalConfig.model_validate({"shield": {"on_task_restart": "invalid"}})
+        self.assertIn("on_task_restart", str(ctx.exception))
+
     def test_global_hooks_section(self) -> None:
         """Global hooks section parses all four hook fields."""
         cfg = RawGlobalConfig.model_validate(
@@ -305,6 +319,12 @@ class ProjectYamlValidationErrorTests(unittest.TestCase):
         """Wrong type for a scalar field raises ValidationError."""
         with self.assertRaises(ValidationError):
             RawProjectYaml.model_validate({"run": {"shutdown_timeout": "not a number"}})
+
+    def test_project_shield_invalid_restart_policy_rejected(self) -> None:
+        """Invalid on_task_restart in project shield section raises ValidationError."""
+        with self.assertRaises(ValidationError) as ctx:
+            RawProjectYaml.model_validate({"shield": {"on_task_restart": "invalid"}})
+        self.assertIn("on_task_restart", str(ctx.exception))
 
     def test_docker_unknown_key(self) -> None:
         """Typo in docker section key is caught."""
