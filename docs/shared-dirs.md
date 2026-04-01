@@ -6,7 +6,7 @@ When a task starts, terok mounts host directories into the container for workspa
 
 ## Per-Task Workspace
 
-- Host path: `<state_root>/tasks/<project_id>/<task_id>/workspace-dangerous`
+- Host path: `<state_dir>/tasks/<project_id>/<task_id>/workspace-dangerous`
 - Mounted as: `<host_dir>:/workspace:Z`
 - Created automatically when the task runs (permissions `700`).
 - The project repository is cloned or synced here by `init-ssh-and-repo.sh`.

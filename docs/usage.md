@@ -770,18 +770,18 @@ global presets directory. It's shared across all projects.
 
 ```bash
 # Create the directory (first time only)
-mkdir -p ~/.config/terok/presets
+mkdir -p ~/.config/terok/core/presets
 
 # Copy a bundled preset and customize it
 terok config | grep "Bundled presets"   # find the path
-cp <bundled-path>/solo.yml ~/.config/terok/presets/solo.yml
+cp <bundled-path>/solo.yml ~/.config/terok/core/presets/solo.yml
 # Edit to taste — your version now shadows the bundled one
 ```
 
 Or create one from scratch:
 
 ```bash
-cat > ~/.config/terok/presets/quick-review.yml << 'EOF'
+cat > ~/.config/terok/core/presets/quick-review.yml << 'EOF'
 model: sonnet
 max_turns: 10
 subagents:
@@ -802,7 +802,7 @@ Now use it anywhere: `terok run anyproject "Review PR #42" --preset quick-review
 When you use `--preset fast`, terok searches:
 
 1. **Project** — `<project>/presets/fast.yml` (per-project override)
-2. **Global** — `~/.config/terok/presets/fast.yml` (shared across projects)
+2. **Global** — `~/.config/terok/core/presets/fast.yml` (shared across projects)
 3. **Bundled** — shipped with terok (always available)
 
 First match wins. This means a global preset shadows a bundled one with the

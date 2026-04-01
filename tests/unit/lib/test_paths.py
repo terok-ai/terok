@@ -61,12 +61,18 @@ class TestCredentialsRoot:
         )
 
 
-class TestCredentialsSubdir:
-    """Verify the credentials subdir constant."""
+class TestCredentialsUmbrella:
+    """Verify credentials live under the terok/ umbrella."""
 
-    def test_value(self) -> None:
-        """_CREDENTIALS_SUBDIR is 'credentials', distinct from APP_NAME."""
-        assert paths._CREDENTIALS_SUBDIR == "credentials"
+    def test_default_is_under_umbrella(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Default credentials_root() nests under the terok/ umbrella, not a sibling."""
+        monkeypatch.delenv("TEROK_CREDENTIALS_DIR", raising=False)
+        monkeypatch.delenv("XDG_DATA_HOME", raising=False)
+        monkeypatch.setattr(paths, "_is_root", lambda: False)
+        monkeypatch.setattr(paths, "_user_data_dir", None)
+        result = paths.credentials_root()
+        assert result.parent.name == "terok"
+        assert result.name == "credentials"
 
 
 class TestConfigRoot:

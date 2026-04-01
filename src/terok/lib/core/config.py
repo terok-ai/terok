@@ -257,11 +257,11 @@ def get_ui_base_port() -> int:
 def credentials_dir() -> Path:
     """Return the base directory for shared credentials.
 
-    Global config (terok-config.yml):
-      credentials:
-        dir: ~/.local/share/terok-credentials  # or /var/lib/terok-credentials for root
-
-    Default: ``credentials_root()`` from ``terok.lib.paths``.
+    Precedence:
+    - ``TEROK_CREDENTIALS_DIR`` environment variable.
+    - Global config ``credentials.dir``.
+    - ``credentials_root()`` → ``~/.local/share/terok/credentials``
+      (or ``/var/lib/terok/credentials`` for root).
     """
     return _resolve_path("TEROK_CREDENTIALS_DIR", ("credentials", "dir"), _credentials_root_base)
 
