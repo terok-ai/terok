@@ -238,6 +238,26 @@ def _credential_type(cred: dict) -> str:
     return cred.get("type") or "api_key"
 
 
+def ensure_credential_proxy() -> None:
+    """Ensure the credential proxy is reachable (respecting the bypass flag).
+
+    Call this before (re)starting a container that was created with proxy
+    phantom tokens.  After a host reboot the systemd socket may be active
+    but the service idle — this function brings the TCP ports up so
+    containers can connect.
+
+    No-op when the ``bypass_no_secret_protection`` flag is set.
+    """
+    from ..core.config import get_credential_proxy_bypass
+
+    if get_credential_proxy_bypass():
+        return
+
+    from terok_sandbox import ensure_proxy_reachable
+
+    ensure_proxy_reachable(make_sandbox_config())
+
+
 def _credential_proxy_env_and_volumes(
     project: ProjectConfig, task_id: str
 ) -> tuple[dict[str, str], list[str]]:
