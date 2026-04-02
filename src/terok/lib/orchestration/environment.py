@@ -313,7 +313,11 @@ def _credential_proxy_env_and_volumes(
 
         # Auth dimension: select phantom env vars by credential type
         is_oauth = credential_types[name] == "oauth"
-        token_vars = route.oauth_phantom_env if (is_oauth and route.oauth_phantom_env) else route.phantom_env
+        token_vars = (
+            route.oauth_phantom_env
+            if (is_oauth and route.oauth_phantom_env)
+            else route.phantom_env
+        )
         for env_var in token_vars:
             env[env_var] = tokens[name]
 
