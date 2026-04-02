@@ -51,8 +51,12 @@ class TestWarnUser:
 
     def test_never_raises_on_stderr_failure(self) -> None:
         """Exception safety: writing to stderr fails silently."""
+        import io
+
+        broken = io.StringIO()
+        broken.write = lambda _: (_ for _ in ()).throw(OSError("broken pipe"))
         with patch("terok.lib.util.logging_utils.sys") as mock_sys:
-            mock_sys.stderr.write.side_effect = OSError("broken pipe")
+            mock_sys.stderr = broken
             # Must not raise
             warn_user("test", "should not crash")
 
