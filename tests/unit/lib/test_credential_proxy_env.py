@@ -172,15 +172,15 @@ class TestCredentialProxyEnv:
         assert "ANTHROPIC_UNIX_SOCKET" not in env
 
     @pytest.mark.usefixtures("_enable_proxy")
-    def test_legacy_oauth_credential_detected(self, tmp_path: Path) -> None:
-        """Legacy OAuth rows without 'type' field are detected as OAuth."""
+    def test_oauth_missing_roster_support_raises(self, tmp_path: Path) -> None:
+        """OAuth credential with empty oauth_phantom_env raises SystemExit."""
         from terok_sandbox import CredentialDB
 
         from terok.lib.orchestration.environment import _credential_proxy_env_and_volumes
 
         db_path = tmp_path / "proxy" / "credentials.db"
         db = CredentialDB(db_path)
-        db.store_credential("default", "claude", {"access_token": "tok"})
+        db.store_credential("default", "claude", {"type": "oauth", "access_token": "tok"})
         db.close()
 
         sock_path = tmp_path / "proxy.sock"
@@ -188,11 +188,23 @@ class TestCredentialProxyEnv:
         project = MagicMock()
         project.id = "test-project"
 
+        # Build a stripped roster where Claude has no oauth_phantom_env (old agent)
+        from terok_agent import get_roster
+
+        real_roster = get_roster()
+        real_routes = real_roster.proxy_routes
+        stripped_route = MagicMock(wraps=real_routes["claude"])
+        stripped_route.oauth_phantom_env = {}
+        fake_routes = {**real_routes, "claude": stripped_route}
+        fake_roster = MagicMock(wraps=real_roster, proxy_routes=fake_routes)
+
         with (
             patch("terok_sandbox.credential_proxy_lifecycle.is_daemon_running", return_value=True),
             patch("terok_sandbox.ensure_proxy_reachable"),
             patch("terok.lib.orchestration.environment.make_sandbox_config") as mock_cfg_fn,
             patch("terok.lib.core.config.get_credential_proxy_transport", return_value="direct"),
+            patch("terok_agent.get_roster", return_value=fake_roster),
+            pytest.raises(SystemExit, match="oauth_phantom_env"),
         ):
             mock_cfg = mock_cfg_fn.return_value
             mock_cfg.proxy_db_path = db_path
@@ -200,10 +212,7 @@ class TestCredentialProxyEnv:
             mock_cfg.proxy_port = 18731
             mock_cfg.ssh_keys_json_path = tmp_path / "ssh-keys.json"
 
-            env, _ = _credential_proxy_env_and_volumes(project, "task-1")
-
-        assert "CLAUDE_CODE_OAUTH_TOKEN" in env
-        assert "ANTHROPIC_API_KEY" not in env
+            _credential_proxy_env_and_volumes(project, "task-1")
 
     @pytest.mark.usefixtures("_enable_proxy")
     def test_oauth_socket_transport(self, tmp_path: Path) -> None:

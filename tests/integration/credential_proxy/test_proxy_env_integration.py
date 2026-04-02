@@ -117,7 +117,7 @@ class TestProxyEnvIntegration:
                 "terok_sandbox.credential_proxy_lifecycle.is_daemon_running",
                 return_value=False,
             ),
-            pytest.raises(SystemExit, match="not running"),
+            pytest.raises(SystemExit, match="not reachable"),
         ):
             _credential_proxy_env_and_volumes(project, "task-1")
 

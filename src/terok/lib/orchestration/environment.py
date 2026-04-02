@@ -234,11 +234,8 @@ def _load_ssh_keys_json(path: Path) -> dict[str, list[dict[str, str]]]:
 
 
 def _credential_type(cred: dict) -> str:
-    """Determine credential type, handling legacy rows without a ``type`` field."""
-    ctype = cred.get("type", "")
-    if not ctype and "access_token" in cred:
-        return "oauth"
-    return ctype or "api_key"
+    """Return the credential type from the stored ``type`` field."""
+    return cred.get("type") or "api_key"
 
 
 def _credential_proxy_env_and_volumes(
@@ -313,9 +310,15 @@ def _credential_proxy_env_and_volumes(
 
         # Auth dimension: select phantom env vars by credential type
         is_oauth = credential_types[name] == "oauth"
-        token_vars = (
-            route.oauth_phantom_env if (is_oauth and route.oauth_phantom_env) else route.phantom_env
-        )
+        if is_oauth:
+            if not route.oauth_phantom_env:
+                raise SystemExit(
+                    f"OAuth credential stored for '{name}' but agent roster lacks "
+                    f"oauth_phantom_env.\nUpdate terok-agent to a version with OAuth support."
+                )
+            token_vars = route.oauth_phantom_env
+        else:
+            token_vars = route.phantom_env
         for env_var in token_vars:
             env[env_var] = tokens[name]
 
