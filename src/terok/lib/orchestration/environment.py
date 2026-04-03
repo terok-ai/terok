@@ -304,9 +304,15 @@ def _credential_proxy_env_and_volumes(
         tokens: dict[str, str] = {}
         credential_types: dict[str, str] = {}
         for name in routed:
-            tokens[name] = db.create_proxy_token(project.id, task_id, credential_set, name)
             cred = db.load_credential(credential_set, name)
-            credential_types[name] = _credential_type(cred) if cred else "api_key"
+            ctype = _credential_type(cred) if cred else "api_key"
+            credential_types[name] = ctype
+            # Claude OAuth: the static marker in .credentials.json serves as
+            # the access token — no per-task phantom token needed.  The proxy
+            # accepts that marker directly (see credential_proxy.constants).
+            if name == "claude" and ctype == "oauth":
+                continue
+            tokens[name] = db.create_proxy_token(project.id, task_id, credential_set, name)
 
         # SSH agent: create phantom token if project has at least one valid key registered
         ssh_keys = _load_ssh_keys_json(cfg.ssh_keys_json_path)
@@ -328,10 +334,20 @@ def _credential_proxy_env_and_volumes(
         if name not in routed:
             continue
 
+        is_oauth = credential_types[name] == "oauth"
+
+        # Claude OAuth: don't inject CLAUDE_CODE_OAUTH_TOKEN or ANTHROPIC_UNIX_SOCKET.
+        # Claude Code shows "Claude API" when the token source is the env var;
+        # subscription mode requires the token to come from .credentials.json.
+        # The static marker in that file is accepted by the proxy directly.
+        if name == "claude" and is_oauth:
+            if route.base_url_env:
+                env[route.base_url_env] = proxy_base
+            continue
+
         # Auth dimension: select phantom env vars by credential type.
         # Providers with oauth_phantom_env get OAuth-specific env vars;
         # others fall back to phantom_env (same env var for both auth types).
-        is_oauth = credential_types[name] == "oauth"
         token_vars = (
             route.oauth_phantom_env if (is_oauth and route.oauth_phantom_env) else route.phantom_env
         )
@@ -339,9 +355,6 @@ def _credential_proxy_env_and_volumes(
             env[env_var] = tokens[name]
 
         # Transport dimension: socket flag + HTTP base URL.
-        # ANTHROPIC_UNIX_SOCKET is a subscription-mode flag for Claude Code
-        # (its UD() function checks it), but actual HTTP traffic still routes
-        # through ANTHROPIC_BASE_URL — the SDK only uses unix sockets on Bun.
         if use_socket and route.socket_path and route.socket_env:
             env[route.socket_env] = route.socket_path
         if route.base_url_env:
