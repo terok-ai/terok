@@ -12,19 +12,30 @@ The wiring layer uses structural typing (protocols) so it works with
 any ``CommandDef`` / ``ArgDef`` that exposes the expected attributes —
 no coupling to a specific package's internal module.
 
+When *config_factory* is set on a group, the factory is called at
+dispatch time and the result is injected as ``cfg`` into every handler.
+Handlers are accepted if they declare an explicit ``cfg`` parameter or
+accept arbitrary keyword arguments (``**kwargs``).  A ``TypeError`` is
+raised at dispatch time if the handler supports neither.
+
 Usage::
 
     from terok_agent import AGENT_COMMANDS
     from terok_sandbox import GATE_COMMANDS
 
     wire_group(sub, "agent", AGENT_COMMANDS, help="Agent container commands")
-    wire_group(sub, "gate", GATE_COMMANDS, help="Gate server commands")
+    wire_group(
+        sub, "gate", GATE_COMMANDS, help="Gate server commands", config_factory=make_sandbox_config
+    )
 """
 
 from __future__ import annotations
 
 import argparse
+import inspect
 from typing import Any, Protocol, runtime_checkable
+
+_CFG_PARAM = "cfg"
 
 
 @runtime_checkable
@@ -84,17 +95,23 @@ def wire_group(
     commands: tuple[CmdProto, ...],
     *,
     help: str = "",
+    config_factory: Any = None,
 ) -> None:
     """Mount a tuple of command definitions under a named subparser group.
 
     Creates ``<prog> <name> <subcommand>`` paths for each command in *commands*.
     When the group name is given without a subcommand, prints help.
+
+    When *config_factory* is set, ``config_factory()`` is called at dispatch
+    time and the result injected as ``cfg``.  Handlers that declare ``cfg``
+    explicitly or accept ``**kwargs`` are both valid.  A ``TypeError`` is
+    raised at dispatch time if the handler supports neither.
     """
     group = sub.add_parser(name, help=help)
     group_sub = group.add_subparsers(dest=f"{name}_cmd")
     for cmd in commands:
         wire(group_sub, cmd)
-    group.set_defaults(_group_help=group)
+    group.set_defaults(_group_help=group, _config_factory=config_factory)
 
 
 def wire_dispatch(args: argparse.Namespace) -> bool:
@@ -114,5 +131,20 @@ def wire_dispatch(args: argparse.Namespace) -> bool:
         return False
 
     kwargs = {_arg_key(arg): getattr(args, _arg_key(arg), arg.default) for arg in cmd.args}
+
+    factory = getattr(args, "_config_factory", None)
+    if factory is not None:
+        sig = inspect.signature(cmd.handler)
+        has_cfg = _CFG_PARAM in sig.parameters
+        has_var_keyword = any(
+            p.kind == inspect.Parameter.VAR_KEYWORD for p in sig.parameters.values()
+        )
+        if not has_cfg and not has_var_keyword:
+            raise TypeError(
+                f"Handler {cmd.handler.__name__!r} lacks required {_CFG_PARAM!r} "
+                f"parameter but its group has config_factory set"
+            )
+        kwargs[_CFG_PARAM] = factory()
+
     cmd.handler(**kwargs)
     return True

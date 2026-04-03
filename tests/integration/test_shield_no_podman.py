@@ -279,7 +279,7 @@ class TestSandboxRunShieldIntegration:
         self, shield_env: TerokShieldIntegrationEnv, network_mode: str
     ) -> list[str]:
         """Helper: run Sandbox.run with bypass active and given network mode."""
-        from terok_sandbox import RunSpec, Sandbox
+        from terok_sandbox import RunSpec, Sandbox, SandboxConfig
 
         captured_cmd: list[str] = []
 
@@ -294,8 +294,8 @@ class TestSandboxRunShieldIntegration:
             volumes=(),
             command=(),
             task_dir=task_dir,
-            bypass_shield=True,
         )
+        sandbox = Sandbox(config=SandboxConfig(shield_bypass=True))
 
         with (
             patch("os.geteuid", return_value=1000),
@@ -310,7 +310,6 @@ class TestSandboxRunShieldIntegration:
                 side_effect=AssertionError("shield must not be called"),
             ),
         ):
-            sandbox = Sandbox()
             sandbox.run(spec)
 
         return captured_cmd

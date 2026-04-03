@@ -10,6 +10,8 @@ from dataclasses import dataclass
 from typing import Any
 from unittest.mock import patch
 
+import pytest
+
 from terok.cli.wiring import wire, wire_dispatch, wire_group
 
 # ── Lightweight test doubles matching the ArgProto/CmdProto contracts ────
@@ -42,6 +44,10 @@ def _noop(**kwargs) -> None:
     """No-op handler for test commands."""
 
 
+def _noop_with_cfg(*, cfg=None, **kwargs) -> None:
+    """No-op handler that accepts cfg for config-injected groups."""
+
+
 _TEST_COMMANDS = (
     _Cmd(
         name="alpha",
@@ -50,6 +56,16 @@ _TEST_COMMANDS = (
         args=(_Arg(name="--count", type=int, default=1, help="count"),),
     ),
     _Cmd(name="beta", help="Beta command", handler=_noop),
+)
+
+_CFG_COMMANDS = (
+    _Cmd(
+        name="alpha",
+        help="Alpha command",
+        handler=_noop_with_cfg,
+        args=(_Arg(name="--count", type=int, default=1, help="count"),),
+    ),
+    _Cmd(name="beta", help="Beta command", handler=_noop_with_cfg),
 )
 
 
@@ -100,6 +116,63 @@ class TestWireGroup:
         args = parser.parse_args(["test"])
         assert hasattr(args, "_group_help")
 
+    def test_config_factory_injects_at_dispatch(self) -> None:
+        """wire_group(config_factory=...) causes dispatch to inject cfg."""
+        received: list[dict] = []
+
+        def handler(*, cfg=None, count=1) -> None:
+            received.append({"cfg": cfg, "count": count})
+
+        cmds = (
+            _Cmd(
+                name="alpha",
+                handler=handler,
+                args=(_Arg(name="--count", type=int, default=1, help="count"),),
+            ),
+        )
+        parser = argparse.ArgumentParser()
+        sub = parser.add_subparsers(dest="cmd")
+        wire_group(sub, "grp", cmds, config_factory=lambda: "injected")
+
+        args = parser.parse_args(["grp", "alpha", "--count", "3"])
+        wire_dispatch(args)
+
+        assert received == [{"cfg": "injected", "count": 3}]
+
+    def test_no_factory_does_not_inject_cfg(self) -> None:
+        """Without config_factory, handler receives only CLI args."""
+        received: list[dict] = []
+
+        def handler(**kwargs) -> None:
+            received.append(kwargs)
+
+        cmds = (
+            _Cmd(
+                name="alpha",
+                handler=handler,
+                args=(_Arg(name="--count", type=int, default=1, help="count"),),
+            ),
+        )
+        parser = argparse.ArgumentParser()
+        sub = parser.add_subparsers(dest="cmd")
+        wire_group(sub, "grp", cmds)
+
+        args = parser.parse_args(["grp", "alpha", "--count", "2"])
+        wire_dispatch(args)
+
+        assert received == [{"count": 2}]
+        assert "cfg" not in received[0]
+
+    def test_accepts_handlers_without_cfg_at_registration(self) -> None:
+        """wire_group() does not reject handlers at registration time.
+
+        Validation is deferred to dispatch so PRs can be merged independently.
+        """
+        parser = argparse.ArgumentParser()
+        sub = parser.add_subparsers(dest="cmd")
+        wire_group(sub, "grp", _TEST_COMMANDS, config_factory=lambda: None)
+        # No error at registration — validated at dispatch
+
 
 class TestWireDispatch:
     """Verify dispatch integration."""
@@ -146,6 +219,88 @@ class TestWireDispatch:
 
         assert handled is True
         mock_help.assert_called_once()
+
+    def test_injects_cfg_when_factory_set(self) -> None:
+        """wire_dispatch() injects cfg from config_factory into handler kwargs."""
+        received: list[dict] = []
+
+        def tracking_handler(*, cfg=None, count=1) -> None:
+            received.append({"cfg": cfg, "count": count})
+
+        cmds = (
+            _Cmd(
+                name="alpha",
+                handler=tracking_handler,
+                args=(_Arg(name="--count", type=int, default=1, help="count"),),
+            ),
+        )
+        factory = lambda: "injected-config"  # noqa: E731
+
+        parser = argparse.ArgumentParser()
+        sub = parser.add_subparsers(dest="cmd")
+        wire_group(sub, "grp", cmds, config_factory=factory)
+
+        args = parser.parse_args(["grp", "alpha", "--count", "5"])
+        wire_dispatch(args)
+
+        assert received == [{"cfg": "injected-config", "count": 5}]
+
+    def test_no_cfg_without_factory(self) -> None:
+        """wire_dispatch() does not inject cfg when no config_factory is set."""
+        received: list[dict] = []
+
+        def tracking_handler(**kwargs) -> None:
+            received.append(kwargs)
+
+        cmds = (_Cmd(name="alpha", handler=tracking_handler),)
+
+        parser = argparse.ArgumentParser()
+        sub = parser.add_subparsers(dest="cmd")
+        wire_group(sub, "grp", cmds)
+
+        args = parser.parse_args(["grp", "alpha"])
+        wire_dispatch(args)
+
+        assert received == [{}]
+
+    def test_missing_cfg_param_raises_at_dispatch(self) -> None:
+        """wire_dispatch() raises TypeError when handler lacks cfg but factory is set."""
+
+        def no_cfg_handler(*, count: int = 1) -> None:
+            pass
+
+        cmds = (
+            _Cmd(
+                name="alpha",
+                handler=no_cfg_handler,
+                args=(_Arg(name="--count", type=int, default=1, help="count"),),
+            ),
+        )
+        parser = argparse.ArgumentParser()
+        sub = parser.add_subparsers(dest="cmd")
+        wire_group(sub, "grp", cmds, config_factory=lambda: None)
+
+        args = parser.parse_args(["grp", "alpha", "--count", "1"])
+        with pytest.raises(TypeError, match="lacks required.*cfg"):
+            wire_dispatch(args)
+
+    def test_var_keyword_handler_accepted(self) -> None:
+        """Handlers with **kwargs accept cfg injection without explicit param."""
+        received: list[dict] = []
+
+        def kwargs_handler(**kwargs) -> None:
+            received.append(kwargs)
+
+        cmds = (_Cmd(name="alpha", handler=kwargs_handler),)
+
+        parser = argparse.ArgumentParser()
+        sub = parser.add_subparsers(dest="cmd")
+        wire_group(sub, "grp", cmds, config_factory=lambda: "injected")
+
+        args = parser.parse_args(["grp", "alpha"])
+        wire_dispatch(args)
+
+        assert received == [{"cfg": "injected"}]
 
 
 class TestAgentCommandsRegistered:
