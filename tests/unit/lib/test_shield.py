@@ -251,12 +251,12 @@ def test_check_environment_bypass_returns_synthetic_result() -> None:
 
 @patch("terok_sandbox.shield.make_shield")
 def test_pre_start_converts_shield_needs_setup_to_system_exit(mock_make: MagicMock) -> None:
-    """``ShieldNeedsSetup`` is converted into a user-facing setup hint."""
+    """``ShieldNeedsSetup`` is converted into a diagnostic SystemExit."""
     mock_shield = make_mock_shield()
     mock_shield.pre_start.side_effect = ShieldNeedsSetup("hooks not installed")
     mock_make.return_value = mock_shield
 
-    with pytest.raises(SystemExit, match="shield setup"):
+    with pytest.raises(SystemExit, match="hooks not installed"):
         pre_start("ctr", MOCK_TASK_DIR)
 
 
