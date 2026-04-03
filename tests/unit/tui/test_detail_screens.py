@@ -572,19 +572,27 @@ class TestAuthScreenOptions:
         screen.dismiss.assert_called_once_with("import_opencode_config")
 
     def test_auth_screen_number_key_triggers_import(self) -> None:
-        """Verify the number key after last provider selects import option."""
+        """Verify the number key after last provider selects import option.
+
+        The shortcut only exists when the provider count is below 9
+        (single-digit keys 1-9).  When all 9 slots are occupied, the
+        import option has no number shortcut and pressing the next
+        number is a no-op.
+        """
         from terok_agent import AUTH_PROVIDERS
 
         screens, _ = import_screens()
         screen = screens.AuthActionsScreen()
         screen.dismiss = mock.Mock()
 
-        # The import option is at index = len(AUTH_PROVIDERS)
         import_num = len(AUTH_PROVIDERS) + 1
         event = make_key_event(str(import_num))
         event.character = str(import_num)
         screen.on_key(event)
-        screen.dismiss.assert_called_once_with("import_opencode_config")
+        if import_num <= 9:
+            screen.dismiss.assert_called_once_with("import_opencode_config")
+        else:
+            screen.dismiss.assert_not_called()
 
     def test_opencode_config_screen_construction(self) -> None:
         """Verify OpenCodeConfigScreen can be instantiated."""
