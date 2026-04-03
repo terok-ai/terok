@@ -166,7 +166,7 @@ def _read_desired_shield_state(task_dir: Path) -> str | None:
 
 
 def _check_shield_state(task_dir: Path, cname: str) -> _CheckResult | None:
-    """Run the host-side shield state check.  Returns None if no desired state."""
+    """Run the host-side shield state check."""
     desired = _read_desired_shield_state(task_dir)
     if desired is None:
         return ("ok", "Shield state", "no desired state — not managed")
