@@ -1,16 +1,16 @@
 # SPDX-FileCopyrightText: 2026 Jiri Vyskocil
 # SPDX-License-Identifier: Apache-2.0
 
-"""Tests for error-surfacing utilities: warn_user, log_warning, _log_debug, and config error paths.
+"""Tests for error-surfacing utilities and all error-handling branches.
 
-Covers the new ``logging_utils`` module and the ``_load_validated()`` error-handling
-branches in ``config.py`` that surface silent diagnostic failures to operators.
+Covers logging_utils, config._load_validated, config._resolve_path,
+project_state, image_cleanup, ports, and environment warning paths.
 """
 
 from __future__ import annotations
 
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -261,3 +261,261 @@ class TestLoadValidatedErrorPaths:
         captured = capsys.readouterr()
         assert captured.err == ""
         assert result.ui.base_port == 9000
+
+
+# ===========================================================================
+# _resolve_path() error paths
+# ===========================================================================
+
+
+class TestResolvePathFallback:
+    """Tests for ``_resolve_path()`` config key lookup failure logging."""
+
+    @pytest.fixture(autouse=True)
+    def _isolate_log(self, tmp_path: Path) -> None:
+        with patch("terok.lib.core.paths.state_root", return_value=tmp_path):
+            yield
+
+    def test_value_error_falls_back_to_default(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        """ValueError during config key lookup falls back to default path."""
+        # Write a config file with a non-UTF-8-safe path value that triggers ValueError
+        bad_file = write_config(tmp_path, "paths:\n  state_dir: null\n")
+        monkeypatch.setenv("TEROK_CONFIG_FILE", str(bad_file))
+        # _resolve_path should fall back to default without raising
+        result = cfg.state_dir()
+        assert result.is_absolute()
+
+    def test_yaml_error_falls_back_to_default(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        """YAMLError during config key lookup falls back to default path."""
+        bad_file = write_config(tmp_path, ": [broken")
+        monkeypatch.setenv("TEROK_CONFIG_FILE", str(bad_file))
+        result = cfg.state_dir()
+        assert result.is_absolute()
+
+
+# ===========================================================================
+# project_state.py — template comparison and gate commit failures
+# ===========================================================================
+
+
+class TestProjectStateWarnings:
+    """Cover the exception-handling branches in get_project_state()."""
+
+    @pytest.fixture(autouse=True)
+    def _isolate_log(self, tmp_path: Path) -> None:
+        with patch("terok.lib.core.paths.state_root", return_value=tmp_path):
+            yield
+
+    def test_template_comparison_failure_logged(self, tmp_path: Path) -> None:
+        """Template comparison exception is caught and logged."""
+        from terok.lib.domain.project_state import get_project_state
+
+        mock_project = MagicMock()
+        mock_project.id = "test-proj"
+        mock_project.security_class = "online"
+        mock_project.ssh_host_dir = None
+        mock_project.gate_path = tmp_path / "nonexistent-gate"
+
+        # Build dir with Dockerfiles so has_dockerfiles=True
+        stage = tmp_path / "build" / "test-proj"
+        stage.mkdir(parents=True)
+        for name in ("L0.Dockerfile", "L1.cli.Dockerfile", "L2.Dockerfile"):
+            (stage / name).write_text("FROM scratch\n")
+
+        with (
+            patch("terok.lib.domain.project_state.load_project", return_value=mock_project),
+            patch("terok.lib.domain.project_state.build_dir", return_value=tmp_path / "build"),
+            patch(
+                "terok.lib.orchestration.docker.dockerfiles_match_templates",
+                side_effect=RuntimeError("template broken"),
+            ),
+            patch("subprocess.run", side_effect=FileNotFoundError("no podman")),
+            patch("terok.lib.util.logging_utils.log_warning") as mock_warn,
+            patch("terok.lib.domain.project_state.make_sandbox_config") as mock_sbx,
+        ):
+            mock_sbx.return_value.ssh_keys_dir = tmp_path / "ssh-keys"
+            get_project_state("test-proj")
+
+        assert any("Template comparison failed" in str(c) for c in mock_warn.call_args_list)
+
+    def test_gate_commit_failure_logged(self, tmp_path: Path) -> None:
+        """Gate commit lookup exception is caught and logged."""
+        from terok.lib.domain.project_state import get_project_state
+
+        mock_project = MagicMock()
+        mock_project.id = "test-proj"
+        mock_project.security_class = "online"
+        mock_project.ssh_host_dir = None
+        gate_dir = tmp_path / "gate"
+        gate_dir.mkdir()
+        mock_project.gate_path = gate_dir
+
+        def broken_commit(_pid: str) -> None:
+            raise RuntimeError("git broken")
+
+        with (
+            patch("terok.lib.domain.project_state.load_project", return_value=mock_project),
+            patch("terok.lib.domain.project_state.build_dir", return_value=tmp_path / "build"),
+            patch("subprocess.run", side_effect=FileNotFoundError("no podman")),
+            patch("terok.lib.util.logging_utils.log_warning") as mock_warn,
+            patch("terok.lib.domain.project_state.make_sandbox_config") as mock_sbx,
+        ):
+            mock_sbx.return_value.ssh_keys_dir = tmp_path / "ssh-keys"
+            get_project_state("test-proj", gate_commit_provider=broken_commit)
+
+        assert any("Gate commit lookup failed" in str(c) for c in mock_warn.call_args_list)
+
+
+# ===========================================================================
+# image_cleanup.py — project discovery failure
+# ===========================================================================
+
+
+class TestImageCleanupWarning:
+    """Cover _known_project_ids() exception logging."""
+
+    @pytest.fixture(autouse=True)
+    def _isolate_log(self, tmp_path: Path) -> None:
+        with patch("terok.lib.core.paths.state_root", return_value=tmp_path):
+            yield
+
+    def test_project_discovery_failure_logged(self) -> None:
+        """Exception in list_projects() is caught and logged."""
+        from terok.lib.domain.image_cleanup import _known_project_ids
+
+        with (
+            patch(
+                "terok.lib.domain.image_cleanup.list_projects",
+                side_effect=RuntimeError("config broken"),
+            ),
+            patch("terok.lib.util.logging_utils.log_warning") as mock_warn,
+        ):
+            result = _known_project_ids()
+
+        assert result is None
+        mock_warn.assert_called_once()
+        assert "Project discovery failed" in mock_warn.call_args[0][0]
+
+
+# ===========================================================================
+# ports.py — malformed task metadata during port scan
+# ===========================================================================
+
+
+class TestPortScanWarning:
+    """Cover the exception branch in _collect_all_web_ports()."""
+
+    @pytest.fixture(autouse=True)
+    def _isolate_log(self, tmp_path: Path) -> None:
+        with patch("terok.lib.core.paths.state_root", return_value=tmp_path):
+            yield
+
+    def test_malformed_metadata_logged(self, tmp_path: Path) -> None:
+        """Corrupt task YAML is caught and logged during port scan."""
+        from terok.lib.orchestration.ports import _collect_all_web_ports
+
+        # Set up the state directory structure
+        proj_dir = tmp_path / "projects" / "myproj" / "tasks"
+        proj_dir.mkdir(parents=True)
+        (proj_dir / "bad.yml").write_text(": [broken yaml")
+        (proj_dir / "good.yml").write_text("web_port: 8080\n")
+
+        with (
+            patch("terok.lib.orchestration.ports.state_dir", return_value=tmp_path),
+            patch("terok.lib.util.logging_utils.log_warning") as mock_warn,
+        ):
+            ports = _collect_all_web_ports()
+
+        # Good port still collected, bad file warned
+        assert 8080 in ports
+        mock_warn.assert_called_once()
+        assert "port scan" in mock_warn.call_args[0][0].lower()
+
+
+# ===========================================================================
+# environment.py — SSH key loading and gate fallback
+# ===========================================================================
+
+
+class TestEnvironmentWarnings:
+    """Cover SSH key loading and gate server fallback warnings."""
+
+    @pytest.fixture(autouse=True)
+    def _isolate_log(self, tmp_path: Path) -> None:
+        with patch("terok.lib.core.paths.state_root", return_value=tmp_path):
+            yield
+
+    def test_ssh_keys_json_decode_error_warns(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """Malformed JSON in SSH keys file warns and returns empty dict."""
+        from terok.lib.orchestration.environment import _load_ssh_keys_json
+
+        keys_file = tmp_path / "ssh-keys.json"
+        keys_file.write_text("{not valid json")
+        result = _load_ssh_keys_json(keys_file)
+        assert result == {}
+        assert "Malformed SSH keys file" in capsys.readouterr().err
+
+    def test_ssh_keys_os_error_warns(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """Unreadable SSH keys file warns and returns empty dict."""
+        from terok.lib.orchestration.environment import _load_ssh_keys_json
+
+        keys_file = tmp_path / "ssh-keys.json"
+        keys_file.write_text('{"proj": []}')
+        keys_file.chmod(0o000)
+        result = _load_ssh_keys_json(keys_file)
+        keys_file.chmod(0o644)
+        assert result == {}
+        assert "Cannot read SSH keys file" in capsys.readouterr().err
+
+    def test_ssh_keys_missing_file_no_warning(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """Missing SSH keys file returns empty dict without warning."""
+        from terok.lib.orchestration.environment import _load_ssh_keys_json
+
+        result = _load_ssh_keys_json(tmp_path / "nonexistent.json")
+        assert result == {}
+        assert capsys.readouterr().err == ""
+
+    def test_gate_fallback_warns(self, capsys: pytest.CaptureFixture[str]) -> None:
+        """Gate server unreachable triggers a bypass warning on stderr."""
+        from terok.lib.orchestration.environment import _security_mode_env_and_volumes
+
+        mock_project = MagicMock()
+        mock_project.security_class = "online"
+        mock_project.id = "test-proj"
+        mock_project.upstream_url = "https://example.com/repo.git"
+        mock_project.default_branch = "main"
+        mock_project.expose_external_remote = False
+        # gate_path must be a real Path that .exists() works on
+        gate_path = MagicMock()
+        gate_path.exists.return_value = True
+        gate_path.name = "test-proj.git"
+        mock_project.gate_path = gate_path
+
+        with (
+            patch(
+                "terok.lib.orchestration.environment.make_sandbox_config",
+            ),
+            patch(
+                "terok.lib.orchestration.environment.get_gate_base_path",
+                return_value=Path("/fake/gate"),
+            ),
+            patch(
+                "terok.lib.orchestration.environment.ensure_server_reachable",
+                side_effect=SystemExit("unreachable"),
+            ),
+        ):
+            env, _vols = _security_mode_env_and_volumes(mock_project, "task-1")
+
+        err = capsys.readouterr().err
+        assert "Gate server unreachable" in err
+        assert "bypassed" in err.lower()
