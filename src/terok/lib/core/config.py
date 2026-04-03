@@ -171,7 +171,7 @@ def _resolve_path(
             val = section.get(config_key[1])
             if val:
                 return Path(val).expanduser().resolve()
-        except (OSError, KeyError, TypeError, YAMLError) as exc:
+        except (OSError, KeyError, TypeError, ValueError, YAMLError) as exc:
             from ..util.logging_utils import log_warning
 
             log_warning(

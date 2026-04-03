@@ -68,8 +68,7 @@ class TestWarnUser:
 
     def test_also_logs_to_file(self, tmp_path: Path) -> None:
         """warn_user also writes a WARNING line to the log file."""
-        with patch("terok.lib.core.paths.state_root", return_value=tmp_path):
-            warn_user("gate", "Connection refused.")
+        warn_user("gate", "Connection refused.")
         log_file = tmp_path / "terok.log"
         assert log_file.exists()
         content = log_file.read_text(encoding="utf-8")
