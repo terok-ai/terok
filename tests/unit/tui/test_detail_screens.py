@@ -1118,6 +1118,28 @@ class TestRenderProxyStatus:
         assert "stopped" in text_str
         assert "actions below" in text_str
 
+    def test_render_proxy_status_standby(self) -> None:
+        """Systemd socket active but service idle shows standby."""
+        screens, _ = import_screens()
+        status = make_proxy_status(mode="systemd", running=False)
+        with mock.patch("terok_sandbox.is_proxy_socket_active", return_value=True):
+            result = screens.render_proxy_status(status)
+        text_str = str(result)
+        assert "standby" in text_str
+        assert "first connection" in text_str
+        # Standby should not show the "actions below" help text
+        assert "actions below" not in text_str
+
+    def test_render_proxy_status_systemd_stopped(self) -> None:
+        """Systemd socket inactive shows stopped with help text."""
+        screens, _ = import_screens()
+        status = make_proxy_status(mode="systemd", running=False)
+        with mock.patch("terok_sandbox.is_proxy_socket_active", return_value=False):
+            result = screens.render_proxy_status(status)
+        text_str = str(result)
+        assert "stopped" in text_str
+        assert "actions below" in text_str
+
     def test_render_proxy_status_no_credentials(self) -> None:
         """Empty credentials tuple renders 'none stored'."""
         screens, _ = import_screens()

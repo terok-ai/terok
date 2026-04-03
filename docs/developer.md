@@ -180,6 +180,76 @@ See [git-gate-and-security-modes.md](git-gate-and-security-modes.md) for detaile
 
 ---
 
+## Host-Side Service Activation Patterns
+
+terok runs several host-side services that containers reach over TCP
+(Podman cannot securely share Unix sockets into rootless containers).
+These services use **systemd socket activation** so they start on demand
+rather than requiring manual launch, but they follow two distinct
+patterns dictated by their architectures:
+
+### Inetd-style (`Accept=yes`) — Git Gate
+
+The gate handles the git smart-HTTP protocol: each request is
+short-lived, stateless, and independent.  The systemd socket unit
+uses `Accept=yes`, so systemd itself accepts each TCP connection and
+spawns a fresh `terok-gate --inetd` process with the connection on
+stdin.  No persistent daemon, no shared state, no concurrency
+concerns.  "Socket active" genuinely means "serving" — every
+connection is handled immediately.
+
+- **Unit:** `terok-gate.socket` (TCP) + `terok-gate@.service` (instantiated per connection)
+- **When it fits:** stateless, short-lived request handlers with no shared state
+
+### Persistent daemon (`Accept=no`) — Credential Proxy
+
+The credential proxy is a long-running aiohttp reverse-proxy that
+holds an open SQLite credential database, a route table, and an SSH
+agent server on a separate port.  It serves multiple concurrent
+containers simultaneously.  The systemd socket unit uses the default
+`Accept=no`: systemd listens on both the Unix socket and the TCP port,
+and on the **first** connection starts the daemon process, handing it the
+inherited file descriptors.  The daemon then stays running and handles
+all subsequent connections itself.
+
+This means there is a brief startup delay (~1–2 s) on the very first
+container request after a host reboot, after which the proxy is fully
+warm.  The status display reflects this as **standby** (socket active,
+service not yet started) vs **running** (daemon active, TCP ports bound).
+
+- **Unit:** `terok-credential-proxy.socket` (Unix + TCP) + `terok-credential-proxy.service`
+- **When it fits:** stateful daemons with shared resources, concurrent connections, or multiple ports
+
+### Why not unify them?
+
+Forcing the credential proxy into `Accept=yes` would spawn a full
+Python/aiohttp process per HTTP request, cause SQLite contention across
+instances, and orphan the SSH agent port.  Forcing the gate into a
+persistent daemon would add unnecessary complexity for a service whose
+entire protocol is "handle one connection, exit".  Each pattern is the
+natural fit for its workload.
+
+### Why TCP instead of Unix sockets?
+
+Podman cannot securely share a Unix socket from the host into a rootless
+container.  TCP ports on `127.0.0.1` are the pragmatic workaround —
+containers reach the host via `host.containers.internal:<port>`.
+
+This has a real downside: if a port is already occupied, terok would need
+to pick a different one and propagate the new port to every running
+container.  Unix sockets avoid this entirely (a filesystem path has no
+collision risk).  If Podman (or an alternative) ever gains secure socket
+sharing, the transport layer should be swapped — the current TCP binding
+is a bridge, not the target architecture.
+
+### Shield (no socket service)
+
+`terok-shield` does not run a host-side service.  It operates entirely
+via OCI hooks (`prestart`/`poststop`) that configure firewall rules when
+containers start and stop.  No socket activation, no daemon, no TCP port.
+
+---
+
 ## Agent Permission Mode Architecture
 
 > **See also:** [Agent Configuration Compatibility Matrix](agent-compat-matrix.md)
