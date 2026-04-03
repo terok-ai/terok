@@ -279,6 +279,8 @@ class TestSandboxRunShieldIntegration:
         self, shield_env: TerokShieldIntegrationEnv, network_mode: str
     ) -> list[str]:
         """Helper: run Sandbox.run with bypass active and given network mode."""
+        import dataclasses
+
         from terok_sandbox import RunSpec, Sandbox, SandboxConfig
 
         captured_cmd: list[str] = []
@@ -287,16 +289,32 @@ class TestSandboxRunShieldIntegration:
             captured_cmd.extend(cmd)
 
         task_dir = shield_env.task_dir
-        spec = RunSpec(
-            container_name="bypass-test-ctr",
-            image="alpine:latest",
-            env={},
-            volumes=(),
-            command=(),
-            task_dir=task_dir,
-        )
 
-        bypass_cfg = SandboxConfig(shield_bypass=True)
+        # Shield bypass migrated from RunSpec to SandboxConfig.  Detect
+        # which API the installed sandbox provides.
+        spec_fields = {f.name for f in dataclasses.fields(RunSpec)}
+        if "bypass_shield" in spec_fields:
+            spec = RunSpec(
+                container_name="bypass-test-ctr",
+                image="alpine:latest",
+                env={},
+                volumes=(),
+                command=(),
+                task_dir=task_dir,
+                bypass_shield=True,
+            )
+            sandbox = Sandbox()
+        else:
+            spec = RunSpec(
+                container_name="bypass-test-ctr",
+                image="alpine:latest",
+                env={},
+                volumes=(),
+                command=(),
+                task_dir=task_dir,
+            )
+            sandbox = Sandbox(config=SandboxConfig(shield_bypass=True))
+
         with (
             patch("os.geteuid", return_value=1000),
             patch("subprocess.run", side_effect=capture_run),
@@ -310,7 +328,6 @@ class TestSandboxRunShieldIntegration:
                 side_effect=AssertionError("shield must not be called"),
             ),
         ):
-            sandbox = Sandbox(config=bypass_cfg)
             sandbox.run(spec)
 
         return captured_cmd

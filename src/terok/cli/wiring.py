@@ -14,8 +14,8 @@ no coupling to a specific package's internal module.
 
 When *config_factory* is set on a group, the factory is called at
 dispatch time and the result is injected as ``cfg`` into every handler.
-A startup validation pass rejects any handler that lacks a ``cfg``
-parameter — fail-fast, no split-brain.
+The handler is validated on first dispatch — a ``TypeError`` is raised
+if it lacks a ``cfg`` parameter.
 
 Usage::
 
@@ -65,19 +65,6 @@ def _arg_key(arg: ArgProto) -> str:
     return arg.dest or arg.name.lstrip("-").replace("-", "_")
 
 
-def _validate_cfg_signatures(group_name: str, commands: tuple[CmdProto, ...]) -> None:
-    """Fail fast if any handler in a config-injected group lacks a ``cfg`` param."""
-    for cmd in commands:
-        if cmd.handler is None:
-            continue
-        sig = inspect.signature(cmd.handler)
-        if _CFG_PARAM not in sig.parameters:
-            raise TypeError(
-                f"Handler {cmd.handler.__name__} in group {group_name!r} "
-                f"lacks required {_CFG_PARAM!r} parameter (config_factory is set)"
-            )
-
-
 def wire(sub: argparse._SubParsersAction, cmd: CmdProto) -> None:  # type: ignore[type-arg]
     """Add a single command definition to an argparse subparser group."""
     p = sub.add_parser(cmd.name, help=cmd.help)
@@ -114,12 +101,11 @@ def wire_group(
     Creates ``<prog> <name> <subcommand>`` paths for each command in *commands*.
     When the group name is given without a subcommand, prints help.
 
-    When *config_factory* is set, every handler in *commands* must accept a
-    ``cfg`` keyword argument.  At dispatch time, ``config_factory()`` is called
-    and the result injected as ``cfg``.
+    When *config_factory* is set, ``config_factory()`` is called at dispatch
+    time and the result injected as ``cfg``.  The handler is validated on
+    first invocation — a ``TypeError`` is raised if it lacks a ``cfg``
+    parameter.
     """
-    if config_factory is not None:
-        _validate_cfg_signatures(name, commands)
     group = sub.add_parser(name, help=help)
     group_sub = group.add_subparsers(dest=f"{name}_cmd")
     for cmd in commands:
@@ -147,6 +133,12 @@ def wire_dispatch(args: argparse.Namespace) -> bool:
 
     factory = getattr(args, "_config_factory", None)
     if factory is not None:
+        sig = inspect.signature(cmd.handler)
+        if _CFG_PARAM not in sig.parameters:
+            raise TypeError(
+                f"Handler {cmd.handler.__name__!r} lacks required {_CFG_PARAM!r} "
+                f"parameter but its group has config_factory set"
+            )
         kwargs[_CFG_PARAM] = factory()
 
     cmd.handler(**kwargs)

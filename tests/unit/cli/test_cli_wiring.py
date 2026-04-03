@@ -135,12 +135,15 @@ class TestWireGroup:
         args = parser.parse_args(["grp", "alpha"])
         assert getattr(args, "_config_factory", None) is None
 
-    def test_missing_cfg_param_raises_type_error(self) -> None:
-        """wire_group() rejects handlers without cfg when config_factory is set."""
+    def test_accepts_handlers_without_cfg_at_registration(self) -> None:
+        """wire_group() does not reject handlers at registration time.
+
+        Validation is deferred to dispatch so PRs can be merged independently.
+        """
         parser = argparse.ArgumentParser()
         sub = parser.add_subparsers(dest="cmd")
-        with pytest.raises(TypeError, match="lacks required.*cfg"):
-            wire_group(sub, "bad", _TEST_COMMANDS, config_factory=lambda: None)
+        wire_group(sub, "grp", _TEST_COMMANDS, config_factory=lambda: None)
+        # No error at registration — validated at dispatch
 
 
 class TestWireDispatch:
@@ -231,6 +234,17 @@ class TestWireDispatch:
         wire_dispatch(args)
 
         assert received == [{}]
+
+    def test_missing_cfg_param_raises_at_dispatch(self) -> None:
+        """wire_dispatch() raises TypeError when handler lacks cfg but factory is set."""
+        parser = argparse.ArgumentParser()
+        sub = parser.add_subparsers(dest="cmd")
+        # Registration succeeds even though handler has no cfg
+        wire_group(sub, "grp", _TEST_COMMANDS, config_factory=lambda: None)
+
+        args = parser.parse_args(["grp", "alpha", "--count", "1"])
+        with pytest.raises(TypeError, match="lacks required.*cfg"):
+            wire_dispatch(args)
 
 
 class TestAgentCommandsRegistered:
