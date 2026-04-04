@@ -83,6 +83,33 @@ usage() {
     return 0
 }
 
+warn_keyring() {
+    # Warn when the host's containers.conf does not disable kernel keyrings.
+    # Matrix runs cycle many containers and can exhaust the per-user 200-key
+    # quota, causing misleading "Disk quota exceeded" (EDQUOT) from crun.
+    local conf="${CONTAINERS_CONF:-}"
+    if [[ -z "$conf" ]]; then
+        for candidate in "$HOME/.config/containers/containers.conf" \
+                         /etc/containers/containers.conf; do
+            [[ -f "$candidate" ]] && conf="$candidate" && break
+        done
+    fi
+    if [[ -z "$conf" ]] || ! grep -qE '^\s*keyring\s*=\s*false' "$conf" 2>/dev/null; then
+        echo -e "${C_YELLOW}WARNING: kernel keyring is not disabled in containers.conf"
+        echo -e ""
+        echo -e "  Matrix tests create many containers and may exhaust the per-user"
+        echo -e "  keyring quota (200 keys), causing spurious EDQUOT errors."
+        echo -e ""
+        echo -e "  Add to ${C_BOLD}~/.config/containers/containers.conf${C_YELLOW}:"
+        echo -e ""
+        echo -e "    ${C_BOLD}[containers]${C_YELLOW}"
+        echo -e "    ${C_BOLD}keyring = false${C_YELLOW}"
+        echo -e ""
+        echo -e "  See: https://terok-ai.github.io/terok/kernel-keyring/${C_RESET}"
+        echo ""
+    fi
+}
+
 build_image() {
     local name="$1"
     local file="$SCRIPT_DIR/Containerfile.${DISTROS[$name]}"
@@ -237,6 +264,8 @@ for target in "${TARGETS[@]}"; do
         exit 1
     fi
 done
+
+warn_keyring
 
 for target in "${TARGETS[@]}"; do
     build_image "$target"
