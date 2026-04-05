@@ -1,4 +1,5 @@
 # SPDX-FileCopyrightText: 2025 Jiri Vyskocil
+# SPDX-FileCopyrightText: 2026 Jiri Vyskocil
 # SPDX-License-Identifier: Apache-2.0
 
 """Tests for shield CLI commands (registry-driven dispatch)."""
@@ -96,6 +97,36 @@ def shield_parser() -> argparse.ArgumentParser:
             ["shield", "setup", "--user"],
             {"shield_cmd": "setup", "root": False, "user": True},
             id="setup-user",
+        ),
+        pytest.param(
+            ["shield", "watch", "proj", "task1"],
+            {"shield_cmd": "watch", "project_id": "proj", "task_id": "task1"},
+            id="watch",
+        ),
+        pytest.param(
+            ["shield", "interactive", "proj", "task1"],
+            {"shield_cmd": "interactive", "project_id": "proj", "task_id": "task1", "raw": False},
+            id="interactive",
+        ),
+        pytest.param(
+            ["shield", "interactive", "proj", "task1", "--raw"],
+            {"shield_cmd": "interactive", "project_id": "proj", "task_id": "task1", "raw": True},
+            id="interactive-raw",
+        ),
+        pytest.param(
+            ["shield", "dbus-bridge", "proj", "task1"],
+            {"shield_cmd": "dbus-bridge", "project_id": "proj", "task_id": "task1"},
+            id="dbus-bridge",
+        ),
+        pytest.param(
+            ["shield", "logs", "proj", "task1"],
+            {"shield_cmd": "logs", "project_id": "proj", "task_id": "task1", "n": 50},
+            id="logs",
+        ),
+        pytest.param(
+            ["shield", "logs", "proj", "task1", "-n", "10"],
+            {"shield_cmd": "logs", "project_id": "proj", "task_id": "task1", "n": 10},
+            id="logs-custom-n",
         ),
     ],
 )
@@ -274,6 +305,44 @@ def test_setup_dispatch(
     """The setup subcommand delegates to the facade with the parsed flags."""
     assert dispatch(argparse.Namespace(cmd="shield", shield_cmd="setup", **kwargs))
     mock_setup.assert_called_once_with(**expected)
+
+
+@patch("terok_shield.cli.interactive.run_interactive")
+@patch("terok.cli.commands.shield._resolve_task", return_value=("proj-cli-1", MOCK_TASK_DIR_1))
+@patch("terok.cli.commands.shield.make_shield")
+def test_dispatch_interactive(
+    mock_make: MagicMock,
+    _resolve: MagicMock,
+    mock_run: MagicMock,
+) -> None:
+    """``shield interactive`` dispatches to the interactive handler."""
+    mock_shield = MagicMock()
+    mock_shield.config.state_dir = MOCK_TASK_DIR_1 / "shield"
+    mock_make.return_value = mock_shield
+
+    args = argparse.Namespace(
+        cmd="shield", shield_cmd="interactive", project_id="proj", task_id="1", raw=False
+    )
+    assert dispatch(args)
+    mock_run.assert_called_once_with(mock_shield.config.state_dir, "proj-cli-1", raw=False)
+
+
+@patch("terok_shield.cli.watch.run_watch")
+@patch("terok.cli.commands.shield._resolve_task", return_value=("proj-cli-1", MOCK_TASK_DIR_1))
+@patch("terok.cli.commands.shield.make_shield")
+def test_dispatch_watch(
+    mock_make: MagicMock,
+    _resolve: MagicMock,
+    mock_run: MagicMock,
+) -> None:
+    """``shield watch`` dispatches to the watch handler."""
+    mock_shield = MagicMock()
+    mock_shield.config.state_dir = MOCK_TASK_DIR_1 / "shield"
+    mock_make.return_value = mock_shield
+
+    args = argparse.Namespace(cmd="shield", shield_cmd="watch", project_id="proj", task_id="1")
+    assert dispatch(args)
+    mock_run.assert_called_once_with(mock_shield.config.state_dir, "proj-cli-1")
 
 
 @patch("terok.lib.orchestration.tasks.load_task_meta", return_value=({"mode": None}, None))

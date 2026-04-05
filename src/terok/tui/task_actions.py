@@ -716,6 +716,50 @@ class TaskActionsMixin:
             return
         self._action_shield_toggle("down", lambda c, d: shield_down(c, d, allow_all=True))
 
+    async def _action_shield_interactive(self) -> None:
+        """Start shield interactive NFLOG verdict handler (suspended TUI)."""
+        if self._notify_shield_bypassed():
+            return
+        if not self.current_project_id or not self.current_task:
+            self.notify("No task selected.")
+            return
+        pid = self.current_project_id
+        task = self.current_task
+        tid = task.task_id
+
+        def work() -> None:
+            from terok_sandbox import make_shield
+            from terok_shield.cli.interactive import run_interactive
+
+            task_dir = load_project(pid).tasks_root / str(tid)
+            cname = container_name(pid, task.mode or "cli", tid)
+            shield = make_shield(task_dir)
+            run_interactive(shield.config.state_dir, cname)
+
+        await self._run_suspended(work, refresh="tasks")
+
+    async def _action_shield_watch(self) -> None:
+        """Start shield watch event stream (suspended TUI)."""
+        if self._notify_shield_bypassed():
+            return
+        if not self.current_project_id or not self.current_task:
+            self.notify("No task selected.")
+            return
+        pid = self.current_project_id
+        task = self.current_task
+        tid = task.task_id
+
+        def work() -> None:
+            from terok_sandbox import make_shield
+            from terok_shield.cli.watch import run_watch
+
+            task_dir = load_project(pid).tasks_root / str(tid)
+            cname = container_name(pid, task.mode or "cli", tid)
+            shield = make_shield(task_dir)
+            run_watch(shield.config.state_dir, cname)
+
+        await self._run_suspended(work, refresh="tasks")
+
     # --- Main-screen task pane shortcuts (c/w/X/D/s) ---
 
     async def action_run_cli_from_main(self) -> None:
@@ -745,6 +789,14 @@ class TaskActionsMixin:
         if self._notify_shield_bypassed():
             return
         self._action_shield_toggle("up", shield_up)
+
+    async def action_shield_interactive_from_main(self) -> None:
+        """Start shield interactive mode from the main screen."""
+        await self._action_shield_interactive()
+
+    async def action_shield_watch_from_main(self) -> None:
+        """Start shield watch mode from the main screen."""
+        await self._action_shield_watch()
 
     async def action_login_from_main(self) -> None:
         """Login to the selected task from the main screen."""

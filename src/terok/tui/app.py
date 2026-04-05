@@ -160,6 +160,8 @@ if _HAS_TEXTUAL:
         "shield_down": "_action_shield_down",
         "shield_down_all": "_action_shield_down_all",
         "shield_up": "_action_shield_up",
+        "shield_interactive": "_action_shield_interactive",
+        "shield_watch": "_action_shield_watch",
     }
 
     class TerokTUI(PollingMixin, ProjectActionsMixin, TaskActionsMixin, App):

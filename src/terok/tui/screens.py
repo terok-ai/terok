@@ -1500,6 +1500,10 @@ class TaskDetailsScreen(screen.Screen[str | None]):
             options.append(Option("shield \\[D]own --all (+ private ranges)", id="shield_down_all"))
             if not get_shield_bypass_firewall_no_protection():
                 options.append(Option("\\[s]hield up (deny-all)", id="shield_up"))
+            options.append(
+                Option("shield \\[i]nteractive (verdict handler)", id="shield_interactive")
+            )
+            options.append(Option("shield \\[W]atch (event stream)", id="shield_watch"))
 
         yield OptionList(*options, id="actions-list")
 
@@ -1538,9 +1542,10 @@ class TaskDetailsScreen(screen.Screen[str | None]):
             "P": "diff_prev",
             "X": "delete",
             "D": "shield_down_all",
+            "W": "shield_watch",
         }
         if key in shift_map:
-            if key in ("H", "P", "X", "D") and not self._has_tasks:
+            if key in ("H", "P", "X", "D", "W") and not self._has_tasks:
                 return
             self.dismiss(shift_map[key])
             event.stop()
@@ -1563,6 +1568,7 @@ class TaskDetailsScreen(screen.Screen[str | None]):
             "l": "login",
             "u": "followup",
             "n": "rename",
+            "i": "shield_interactive",
             "d": "shield_down",
             "s": "shield_up",
         }

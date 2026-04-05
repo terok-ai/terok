@@ -49,6 +49,8 @@ class TaskList(ListView):
         ("d", "app.shield_down_from_main", "Shield\u2193"),
         ("D", "app.shield_down_all_from_main", "Shield\u2193\u2193"),
         ("s", "app.shield_up_from_main", "Shield\u2191"),
+        ("i", "app.shield_interactive_from_main", "Verdicts"),
+        ("W", "app.shield_watch_from_main", "Watch"),
     ]
 
     class TaskSelected(Message):
