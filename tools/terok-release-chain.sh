@@ -375,11 +375,18 @@ release_repo() {
 
     local merged_sha=""
     if [[ -n "$PR_URL" ]]; then
-        wait_for_checks "$PR_URL" "$gh_repo"
-        log "Merging PR..."
-        gh pr merge "$PR_URL" --squash --delete-branch --admin
-        merged_sha=$(gh pr view "$PR_URL" --repo "$gh_repo" --json mergeCommit --jq '.mergeCommit.oid')
-        success "PR merged (${merged_sha:0:12})."
+        local check_rc=0
+        wait_for_checks "$PR_URL" "$gh_repo" || check_rc=$?
+        if (( check_rc == 2 )); then
+            # PR was merged externally — retrieve the merge commit
+            merged_sha=$(gh pr view "$PR_URL" --repo "$gh_repo" --json mergeCommit --jq '.mergeCommit.oid')
+            success "Using external merge (${merged_sha:0:12})."
+        else
+            log "Merging PR..."
+            gh pr merge "$PR_URL" --squash --delete-branch --admin
+            merged_sha=$(gh pr view "$PR_URL" --repo "$gh_repo" --json mergeCommit --jq '.mergeCommit.oid')
+            success "PR merged (${merged_sha:0:12})."
+        fi
     fi
 
     tag_and_release "$repo_dir" "$gh_repo" "$tag" "$title" "$merged_sha"
@@ -520,9 +527,19 @@ ensure_clone() {
 
 # ── Waiting ────────────────────────────────────────────────────────────────
 
+# Query PR state. Returns OPEN, MERGED, or CLOSED.
+pr_state() {
+    gh pr view "$1" --repo "$2" --json state --jq '.state'
+}
+
 # Poll PR checks until all pass (or fail).
 # Checks may take a few seconds to register after PR creation — empty
 # results within a 30s grace period mean "not started yet", not "none".
+#
+# While waiting, also polls PR state so the script notices if someone
+# merges or closes the PR externally (e.g. stalled third-party check).
+# Returns 0 on success, 2 if externally merged (caller should skip its
+# own merge but continue the release), or dies on close/timeout.
 wait_for_checks() {
     local pr_url="$1" gh_repo="$2"
 
@@ -538,6 +555,20 @@ wait_for_checks() {
     log "Waiting for PR checks (timeout ${CHECK_TIMEOUT}s)..."
     local elapsed=0 timeout="$CHECK_TIMEOUT" grace=30 poll=2 registered=false
     while (( elapsed < timeout )); do
+        # Check if someone merged or closed the PR externally
+        if (( elapsed > 0 && elapsed % 10 == 0 )); then
+            local state
+            state=$(pr_state "$pr_url" "$gh_repo" 2>/dev/null || true)
+            if [[ "$state" == "MERGED" ]]; then
+                printf "\33[2K\r"
+                success "PR was merged externally — continuing."
+                return 2
+            elif [[ "$state" == "CLOSED" ]]; then
+                printf "\33[2K\r"
+                die "PR was closed without merging — aborting."
+            fi
+        fi
+
         local json="" gh_exit=0
         json=$(gh pr checks "$pr_url" --repo "$gh_repo" --json name,bucket 2>/dev/null) \
             && gh_exit=0 || gh_exit=$?
