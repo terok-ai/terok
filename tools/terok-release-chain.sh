@@ -145,8 +145,9 @@ ${BOLD}Options:${RESET}
   ${GREEN}-Y, --yes-all${RESET}           Auto-approve everything incl. risky actions
   ${GREEN}--check-timeout${RESET} SECS    PR check timeout (default: 1800)
   ${GREEN}--skip-checks${RESET}           Merge PRs without waiting for CI
-  ${GREEN}--upgrade-pinned${RESET}        Upgrade outside-chain pins to latest release
-                          (default: keep current pins from master)
+  ${GREEN}--upgrade-pinned${RESET}        When no sibling constrains a dep, upgrade
+                          its pin to the latest release (default: keep
+                          current pins from master)
   ${GREEN}-p, --pretend${RESET}           Dry run — show what would happen
   ${GREEN}-h, --help${RESET}              Show this help
 
@@ -163,7 +164,7 @@ ${BOLD}Examples:${RESET}
   terok-release-chain --version-step minor --version-step-uniform dbus
                                      ${CYAN}# minor bump on every repo${RESET}
   terok-release-chain --upgrade-pinned agent
-                                     ${CYAN}# also upgrade outside-chain pins to latest${RESET}
+                                     ${CYAN}# upgrade unconstrained outside-chain pins${RESET}
   terok-release-chain -n "Comms" dbus terok -p
                                      ${CYAN}# named dry run, PR on terok${RESET}
 USAGE
