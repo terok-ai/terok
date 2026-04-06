@@ -11,6 +11,9 @@
 # Maintains a dedicated clone cache (~/.cache/terok-release/) so it
 # never touches dev working trees.
 #
+# Pretend mode (--pretend) must produce identical output to a real run.
+# Mismatches are bugs. See #629 for planned plan-then-execute rewrite.
+#
 # Usage:
 #   terok-release-chain [options] <start-repo> [<end-repo>]
 
@@ -451,7 +454,18 @@ prepare_repo() {
 
     for dep in $deps_str; do
         local dep_ver="${RELEASED_VERSIONS[$dep]:-}"
-        [[ -n "$dep_ver" ]] && log "Dep update: ${dep} -> v${dep_ver}"
+        if [[ -n "$dep_ver" ]]; then
+            log "Dep update: ${dep} -> v${dep_ver}"
+        else
+            local required pinned
+            required=$(_resolve_required_version "$repo_dir" "$deps_str" "$dep")
+            pinned=$(pinned_dep_version "$repo_dir" "$dep")
+            if [[ "$pinned" != "$required" ]]; then
+                log "Dep stale: ${dep} v${pinned} -> v${required}"
+            else
+                log "Dep unchanged: ${dep}"
+            fi
+        fi
     done
 
     ask "Proceed with dep bump for ${repo}?"
@@ -483,11 +497,50 @@ update_sibling_deps() {
     for dep in $deps_str; do
         local dep_ver="${RELEASED_VERSIONS[$dep]:-}"
         if [[ -z "$dep_ver" ]]; then
-            log "Skipping ${dep} (not released in this run)"
-            continue
+            # Not released in this run — resolve what version the chain needs.
+            # Reads the sibling clone's pyproject.toml.  This is precise even
+            # in pretend mode: unreleased deps' pins are never modified during
+            # the chain, so the clone at upstream/master has the same value
+            # as the real run's modified clone.
+            dep_ver=$(_resolve_required_version "$repo_dir" "$deps_str" "$dep")
+            local pinned
+            pinned=$(pinned_dep_version "$repo_dir" "$dep")
+            if [[ "$pinned" == "$dep_ver" ]]; then
+                log "Dep unchanged: ${dep} (v${dep_ver})"
+                continue
+            fi
+            log "Dep stale: ${dep} v${pinned} -> v${dep_ver} (required by chain)"
         fi
+        verify_wheel_exists "$dep" "$dep_ver"
         update_dep_url "$repo_dir" "$dep" "$dep_ver"
     done
+}
+
+# Find the version of $dep that the chain actually needs.
+#
+# Prefers siblings released in this run (their clone reflects the
+# just-released pyproject.toml), then falls back to any sibling that
+# pins it, then to the latest GitHub release tag.
+_resolve_required_version() {
+    local repo_dir="$1" deps_str="$2" target_dep="$3"
+    local ver=""
+    # Pass 1: prefer a sibling that was released in this run
+    for other in $deps_str; do
+        [[ "$other" == "$target_dep" ]] && continue
+        [[ -n "${RELEASED_VERSIONS[$other]:-}" ]] || continue
+        ver=$(pinned_dep_version "${RELEASE_DIR}/${other}" "$target_dep" 2>/dev/null) || true
+        [[ -n "$ver" ]] && { echo "$ver"; return; }
+    done
+    # Pass 2: any sibling clone that pins it
+    for other in $deps_str; do
+        [[ "$other" == "$target_dep" ]] && continue
+        local other_dir="${RELEASE_DIR}/${other}"
+        [[ -d "$other_dir" ]] || continue
+        ver=$(pinned_dep_version "$other_dir" "$target_dep" 2>/dev/null) || true
+        [[ -n "$ver" ]] && { echo "$ver"; return; }
+    done
+    # No sibling pins it — fall back to latest release
+    latest_release_version "$target_dep"
 }
 
 lock_and_commit() {
@@ -748,6 +801,31 @@ set_version() {
     local repo_dir="$1" new_ver="$2"
     log "Setting version to ${new_ver}"
     run sed -i "s/^version = \".*\"/version = \"${new_ver}\"/" "${repo_dir}/pyproject.toml"
+}
+
+latest_release_version() {
+    local tag
+    tag=$(gh release view --repo "${GH_ORG}/$1" --json tagName --jq '.tagName' 2>/dev/null) \
+        || die "No releases found for $1"
+    echo "${tag#v}"
+}
+
+pinned_dep_version() {
+    local repo_dir="$1" dep_repo="$2"
+    grep "${GH_ORG}/${dep_repo}/releases/download/" "${repo_dir}/pyproject.toml" \
+        | sed 's|.*/download/v\([^/]*\)/.*|\1|'
+}
+
+verify_wheel_exists() {
+    local dep_repo="$1" version="$2"
+    local pkg gh_repo="${GH_ORG}/${dep_repo}"
+    pkg=$(pkg_name "$dep_repo")
+    local expected="${pkg}-${version}-py3-none-any.whl"
+    if $DRY_RUN; then return 0; fi
+    local assets
+    assets=$(gh release view "v${version}" --repo "$gh_repo" --json assets -q '.assets[].name' 2>/dev/null || true)
+    echo "$assets" | grep -qF "$expected" \
+        || die "Wheel ${expected} not found in ${gh_repo} v${version} — release may be incomplete"
 }
 
 update_dep_url() {
