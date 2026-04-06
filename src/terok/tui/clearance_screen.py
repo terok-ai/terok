@@ -54,6 +54,9 @@ _STYLE_DENIED = Style(color="red")
 _STYLE_INFO = Style(color="blue")
 _STYLE_ERROR = Style(color="red", bold=True)
 
+_ID_PENDING = "#pending-list"
+_ID_EVENT_LOG = "#event-log"
+
 # ---------------------------------------------------------------------------
 # Internal messages
 # ---------------------------------------------------------------------------
@@ -163,7 +166,7 @@ class ClearanceScreen(screen.Screen[None]):
         from terok_dbus import CallbackNotifier, EventSubscriber
 
         self._notifier = CallbackNotifier(on_notify=self._on_notify)
-        log = self.query_one("#event-log", RichLog)
+        log = self.query_one(_ID_EVENT_LOG, RichLog)
         try:
             self._subscriber = EventSubscriber(self._notifier)
             await self._subscriber.start()
@@ -185,8 +188,8 @@ class ClearanceScreen(screen.Screen[None]):
     def on__notification_posted(self, message: _NotificationPosted) -> None:
         """Handle notifications from the CallbackNotifier."""
         try:
-            log = self.query_one("#event-log", RichLog)
-            pending_list = self.query_one("#pending-list", ListView)
+            log = self.query_one(_ID_EVENT_LOG, RichLog)
+            pending_list = self.query_one(_ID_PENDING, ListView)
         except NoMatches:
             return
 
@@ -214,7 +217,7 @@ class ClearanceScreen(screen.Screen[None]):
     def _remove_pending_item(self, nid: int) -> None:
         """Remove the ``ListItem`` tagged with the given notification ID."""
         try:
-            pending_list = self.query_one("#pending-list", ListView)
+            pending_list = self.query_one(_ID_PENDING, ListView)
         except NoMatches:
             return
         for idx in range(len(pending_list)):
@@ -238,7 +241,7 @@ class ClearanceScreen(screen.Screen[None]):
         if not self._notifier:
             return
         try:
-            pending_list = self.query_one("#pending-list", ListView)
+            pending_list = self.query_one(_ID_PENDING, ListView)
         except NoMatches:
             return
         item = pending_list.highlighted_child
