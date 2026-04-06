@@ -313,7 +313,9 @@ execute_chain() {
 
 print_summary() {
     local -n _chain=$1 _versions=$2
-    printf "\n${GREEN}${BOLD}All releases complete!${RESET}\n\n"
+    local prefix=""
+    $DRY_RUN && prefix="${YELLOW}[pretend]${RESET} "
+    printf "\n${prefix}${GREEN}${BOLD}All releases complete!${RESET}\n\n"
     for i in "${!_chain[@]}"; do
         local repo="${_chain[$i]}"
         if [[ "$repo" == "$STOP_AT" ]]; then
