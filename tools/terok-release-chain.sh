@@ -395,9 +395,33 @@ release_repo() {
             die "PR was closed without merging — aborting."
         else
             log "Merging PR..."
-            gh pr merge "$PR_URL" --squash --delete-branch --admin
-            merged_sha=$(gh pr view "$PR_URL" --repo "$gh_repo" --json mergeCommit --jq '.mergeCommit.oid')
-            success "PR merged (${merged_sha:0:12})."
+            local merge_err=""
+            merge_err=$(gh pr merge "$PR_URL" --squash --delete-branch --admin 2>&1) \
+                || {
+                    # "Merge already in progress" = someone clicked merge moments ago
+                    if [[ "$merge_err" == *"already in progress"* || "$merge_err" == *"already been merged"* ]]; then
+                        warn "Merge race detected — waiting for merge to land..."
+                        local wait=0
+                        while (( wait < 30 )); do
+                            local rs
+                            rs=$(pr_state "$PR_URL" "$gh_repo" 2>/dev/null || true)
+                            if [[ "$rs" == "MERGED" ]]; then
+                                break
+                            fi
+                            sleep 2
+                            wait=$((wait + 2))
+                        done
+                        [[ "$rs" == "MERGED" ]] || die "PR still not merged after 30s — check GitHub"
+                        merged_sha=$(gh pr view "$PR_URL" --repo "$gh_repo" --json mergeCommit --jq '.mergeCommit.oid')
+                        success "Using concurrent merge (${merged_sha:0:12})."
+                    else
+                        die "gh pr merge failed: ${merge_err}"
+                    fi
+                }
+            if [[ -z "$merged_sha" ]]; then
+                merged_sha=$(gh pr view "$PR_URL" --repo "$gh_repo" --json mergeCommit --jq '.mergeCommit.oid')
+                success "PR merged (${merged_sha:0:12})."
+            fi
         fi
     fi
 

@@ -1,0 +1,4 @@
+reviews:
+  auto_review:
+    labels:
+      - "!automated-release"
