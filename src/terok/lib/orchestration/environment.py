@@ -6,16 +6,16 @@
 
 Translates project configuration and security mode into the environment
 variables and volume mounts that ``podman run`` needs when launching a
-task container.
+task container.  Shared config mounts and base env vars are delegated to
+:func:`terok_agent.assemble_container_env`; this module adds terok-specific
+concerns (gate server, credential proxy with OAuth/socket/SSH support).
 """
 
 from __future__ import annotations
 
 import os
-from dataclasses import dataclass
 from pathlib import Path
 
-from terok_agent import collect_opencode_provider_env
 from terok_sandbox import (
     create_token,
     ensure_server_reachable,
@@ -25,60 +25,7 @@ from terok_sandbox import (
 
 from ..core.config import make_sandbox_config
 from ..core.projects import ProjectConfig
-from ..util.fs import ensure_dir_writable
 from ..util.host_cmd import WORKSPACE_DANGEROUS_DIRNAME
-
-# ---------- Shared config directories ----------
-
-
-@dataclass(frozen=True)
-class SharedMount:
-    """Describes a shared config directory mounted into every task container."""
-
-    key: str
-    """Lookup key (e.g. ``"codex"``)."""
-
-    host_dir_suffix: str
-    """Directory name under ``mounts_dir()`` (e.g. ``"_codex-config"``)."""
-
-    label: str
-    """Human-readable label for writable-check messages (e.g. ``"Codex config"``)."""
-
-    container_path: str
-    """Mount point inside the container (e.g. ``"/home/dev/.codex"``)."""
-
-
-def _build_shared_mounts() -> tuple[SharedMount, ...]:
-    """Derive shared mounts from the agent roster.
-
-    The YAML agent roster is the single source of truth for all shared
-    mounts — auth dirs, OpenCode state dirs, and Toad config.  Each entry's
-    ``auth:`` section and ``mounts:`` section contribute mount definitions,
-    deduplicated by ``host_dir`` in the roster.
-    """
-    from terok_agent import get_roster
-
-    return tuple(
-        SharedMount(m.host_dir, m.host_dir, m.label, m.container_path) for m in get_roster().mounts
-    )
-
-
-SHARED_MOUNTS: tuple[SharedMount, ...] = _build_shared_mounts()
-
-
-def _ensure_shared_dirs(mounts_base: Path) -> dict[str, Path]:
-    """Ensure shared config directories exist and return key→host_path mapping."""
-    dirs = {}
-    for m in SHARED_MOUNTS:
-        path = mounts_base / m.host_dir_suffix
-        ensure_dir_writable(path, m.label)
-        dirs[m.key] = path
-    return dirs
-
-
-def _shared_volume_mounts(host_dirs: dict[str, Path]) -> list[str]:
-    """Return volume mount strings for all shared config directories."""
-    return [f"{host_dirs[m.key]}:{m.container_path}:z" for m in SHARED_MOUNTS]
 
 
 def _gate_url(gate_repo: Path, gate_base: Path, port: int, token: str) -> str:
@@ -414,41 +361,64 @@ def _credential_proxy_env_and_volumes(
 def build_task_env_and_volumes(project: ProjectConfig, task_id: str) -> tuple[dict, list[str]]:
     """Compose environment and volume mounts for a task container.
 
-    - Mount per-task workspace subdir to /workspace (host-explorable).
-    - Mount all shared config dirs from ``SHARED_MOUNTS`` (read-write).
-    - Inject credential proxy and SSH agent proxy env vars.
-    - Provide REPO_ROOT and git info for the init script.
+    Delegates shared config mounts, base env vars, workspace volume, git
+    identity, and OpenCode provider env to
+    :func:`terok_agent.assemble_container_env`, then layers terok-specific
+    concerns: ``PROJECT_ID``, gate server URLs, and the full credential
+    proxy (OAuth, socket transport, SSH agent).
     """
     task_dir = project.tasks_root / str(task_id)
     repo_dir = task_dir / WORKSPACE_DANGEROUS_DIRNAME
     repo_dir.mkdir(parents=True, exist_ok=True)
 
-    from terok_agent import mounts_dir
+    # Pre-resolve gate server URLs → CODE_REPO / CLONE_FROM / GIT_BRANCH
+    sec_env, _sec_volumes = _security_mode_env_and_volumes(project, task_id)
 
-    config_dirs = _ensure_shared_dirs(mounts_dir())
+    # Pre-resolve git identity using terok's authorship logic so the
+    # container has correct GIT_AUTHOR_*/GIT_COMMITTER_* from launch.
+    identity = resolve_git_identity(
+        agent_name="AI Agent",
+        agent_email="ai-agent@localhost",
+        human_name=project.human_name or "Nobody",
+        human_email=project.human_email or "nobody@localhost",
+        authorship=project.git_authorship,
+    )
 
-    env = {
-        "PROJECT_ID": project.id,
-        "TASK_ID": task_id,
-        "REPO_ROOT": "/workspace",
-        "GIT_RESET_MODE": os.environ.get("TEROK_GIT_RESET_MODE", "none"),
-        "TEROK_GIT_AUTHORSHIP": project.git_authorship,
-        "CLAUDE_CONFIG_DIR": "/home/dev/.claude",
-        "HUMAN_GIT_NAME": project.human_name or "Nobody",
-        "HUMAN_GIT_EMAIL": project.human_email or "nobody@localhost",
-    }
+    from terok_agent import ContainerEnvSpec, assemble_container_env, get_roster, mounts_dir
 
-    # Add OpenCode provider environment variables
-    env.update(collect_opencode_provider_env())
+    result = assemble_container_env(
+        ContainerEnvSpec(
+            task_id=task_id,
+            provider_name=project.default_agent or "claude",
+            workspace_host_path=repo_dir,
+            code_repo=sec_env.get("CODE_REPO"),
+            clone_from=sec_env.get("CLONE_FROM"),
+            branch=sec_env.get("GIT_BRANCH"),
+            git_author_name=identity["GIT_AUTHOR_NAME"],
+            git_author_email=identity["GIT_AUTHOR_EMAIL"],
+            git_committer_name=identity["GIT_COMMITTER_NAME"],
+            git_committer_email=identity["GIT_COMMITTER_EMAIL"],
+            authorship=project.git_authorship,
+            human_name=project.human_name or "Nobody",
+            human_email=project.human_email or "nobody@localhost",
+            credential_scope=project.id,
+            unrestricted=False,  # task_runners resolves per-provider config
+            envs_dir=mounts_dir(),
+        ),
+        get_roster(),
+        proxy_bypass=True,  # terok uses richer proxy handling below
+    )
 
-    volumes: list[str] = [f"{repo_dir}:/workspace:Z"]
-    volumes += _shared_volume_mounts(config_dirs)
+    env = dict(result.env)
+    volumes = list(result.volumes)
 
-    sec_env, sec_volumes = _security_mode_env_and_volumes(project, task_id)
-    env.update(sec_env)
-    volumes += sec_volumes
+    # terok-specific env vars not covered by the shared assembly
+    env["PROJECT_ID"] = project.id
+    env["GIT_RESET_MODE"] = os.environ.get("TEROK_GIT_RESET_MODE", "none")
+    if "EXTERNAL_REMOTE_URL" in sec_env:
+        env["EXTERNAL_REMOTE_URL"] = sec_env["EXTERNAL_REMOTE_URL"]
 
-    # Credential proxy: inject phantom tokens and base URL overrides
+    # Credential proxy: full OAuth / socket / SSH support (terok-specific)
     proxy_env, proxy_volumes = _credential_proxy_env_and_volumes(project, task_id)
     env.update(proxy_env)
     volumes += proxy_volumes
