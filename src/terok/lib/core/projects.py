@@ -164,7 +164,10 @@ def _build_project_config(
 
             shared_dir: Path | None = tasks_root / SHARED_DIRNAME
         case str() as s:
-            shared_dir = Path(s).expanduser().resolve()
+            p = Path(s).expanduser()
+            if not p.is_absolute():
+                raise SystemExit(f"shared_dir must be an absolute path, got: {s!r}")
+            shared_dir = p.resolve()
         case _:
             shared_dir = None
 
