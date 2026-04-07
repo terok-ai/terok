@@ -842,8 +842,9 @@ normalise_repo() {
 
 latest_release_version() {
     local tag
-    tag=$(gh release view --repo "${GH_ORG}/$1" --json tagName --jq '.tagName' 2>/dev/null) \
+    tag=$(gh release list --repo "${GH_ORG}/$1" --limit 1 --json tagName --jq '.[0].tagName' 2>/dev/null) \
         || die "No releases found for $1"
+    [[ -n "$tag" ]] || die "No releases found for $1"
     echo "${tag#v}"
 }
 
