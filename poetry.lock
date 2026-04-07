@@ -2804,34 +2804,34 @@ tomli-w = ">=1.0,<2.0"
 
 [[package]]
 name = "terok-agent"
-version = "0.0.45"
+version = "0.0.46"
 description = "Single-agent task runner for hardened Podman containers"
 optional = false
 python-versions = ">=3.12,<4.0"
 groups = ["main"]
 files = [
-    {file = "terok_agent-0.0.45-py3-none-any.whl", hash = "sha256:d0d3c5a40e33ee5d0e29f594646a933a9e75ae19b866102e90cb3aa34ff15377"},
+    {file = "terok_agent-0.0.46-py3-none-any.whl", hash = "sha256:a2610d7a1745dce86b629b7e97300d56f2f4b3d69dfe999b6ef68efa7d54c2d9"},
 ]
 
 [package.dependencies]
 Jinja2 = ">=3.1"
 "ruamel.yaml" = ">=0.18"
-terok_sandbox = {url = "https://github.com/terok-ai/terok-sandbox/releases/download/v0.0.39/terok_sandbox-0.0.39-py3-none-any.whl"}
+terok_sandbox = {url = "https://github.com/terok-ai/terok-sandbox/releases/download/v0.0.40/terok_sandbox-0.0.40-py3-none-any.whl"}
 tomli-w = ">=1.0"
 
 [package.source]
 type = "url"
-url = "https://github.com/terok-ai/terok-agent/releases/download/v0.0.45/terok_agent-0.0.45-py3-none-any.whl"
+url = "https://github.com/terok-ai/terok-agent/releases/download/v0.0.46/terok_agent-0.0.46-py3-none-any.whl"
 
 [[package]]
 name = "terok-dbus"
-version = "0.5.0"
+version = "0.5.4"
 description = "D-Bus desktop notification package for terok"
 optional = false
 python-versions = ">=3.12,<4.0"
 groups = ["main"]
 files = [
-    {file = "terok_dbus-0.5.0-py3-none-any.whl", hash = "sha256:c1a15ec04d867d6dac62ce0740cb4cc8f4dfd3ff11e723ca15edfb47e4fbc633"},
+    {file = "terok_dbus-0.5.4-py3-none-any.whl", hash = "sha256:ec40197c72fb2bf42bfe10f320e462ed2789ce4515b9f13c58a925ffc8386b63"},
 ]
 
 [package.dependencies]
@@ -2839,38 +2839,38 @@ dbus-fast = ">=2.0,<5.0"
 
 [package.source]
 type = "url"
-url = "https://github.com/terok-ai/terok-dbus/releases/download/v0.5.0/terok_dbus-0.5.0-py3-none-any.whl"
+url = "https://github.com/terok-ai/terok-dbus/releases/download/v0.5.4/terok_dbus-0.5.4-py3-none-any.whl"
 
 [[package]]
 name = "terok-sandbox"
-version = "0.0.39"
+version = "0.0.40"
 description = "Hardened Podman container runner with gate server and shield integration"
 optional = false
 python-versions = ">=3.12,<4.0"
 groups = ["main"]
 files = [
-    {file = "terok_sandbox-0.0.39-py3-none-any.whl", hash = "sha256:be13beab6e0d3032d3ac84f53b221bd6c830cbe43d5f5d6eb620e01ced2b2d50"},
+    {file = "terok_sandbox-0.0.40-py3-none-any.whl", hash = "sha256:b198b6a790dd48e36f1205121dd543a46962f263b4841cd5a934652f888019e6"},
 ]
 
 [package.dependencies]
 aiohttp = ">=3.9"
 cryptography = ">=43.0"
 platformdirs = ">=4.0"
-terok_shield = {url = "https://github.com/terok-ai/terok-shield/releases/download/v0.6.8/terok_shield-0.6.8-py3-none-any.whl"}
+terok_shield = {url = "https://github.com/terok-ai/terok-shield/releases/download/v0.6.9/terok_shield-0.6.9-py3-none-any.whl"}
 
 [package.source]
 type = "url"
-url = "https://github.com/terok-ai/terok-sandbox/releases/download/v0.0.39/terok_sandbox-0.0.39-py3-none-any.whl"
+url = "https://github.com/terok-ai/terok-sandbox/releases/download/v0.0.40/terok_sandbox-0.0.40-py3-none-any.whl"
 
 [[package]]
 name = "terok-shield"
-version = "0.6.8"
+version = "0.6.9"
 description = "nftables-based egress firewalling for Podman containers"
 optional = false
 python-versions = ">=3.12,<4.0"
 groups = ["main"]
 files = [
-    {file = "terok_shield-0.6.8-py3-none-any.whl", hash = "sha256:726f23fff3a7ebeff6ce647abb74d6550c0214c37dd23302ce586c6c8aeeda39"},
+    {file = "terok_shield-0.6.9-py3-none-any.whl", hash = "sha256:2413e1a752204db61d4ad1ce20bd448bb6e09674fd0b71740ac5753fe88499ef"},
 ]
 
 [package.dependencies]
@@ -2879,18 +2879,18 @@ PyYAML = ">=6.0"
 
 [package.source]
 type = "url"
-url = "https://github.com/terok-ai/terok-shield/releases/download/v0.6.8/terok_shield-0.6.8-py3-none-any.whl"
+url = "https://github.com/terok-ai/terok-shield/releases/download/v0.6.9/terok_shield-0.6.9-py3-none-any.whl"
 
 [[package]]
 name = "textual"
-version = "8.2.1"
+version = "8.2.3"
 description = "Modern Text User Interface framework"
 optional = false
 python-versions = "<4.0,>=3.9"
 groups = ["main", "dev"]
 files = [
-    {file = "textual-8.2.1-py3-none-any.whl", hash = "sha256:746cbf947a8ca875afc09779ef38cadbc7b9f15ac886a5090f7099fef5ade990"},
-    {file = "textual-8.2.1.tar.gz", hash = "sha256:4176890e9cd5c95dcdd206541b2956b0808e74c8c36381c88db53dcb45237451"},
+    {file = "textual-8.2.3-py3-none-any.whl", hash = "sha256:5008ac581bebf1f6fa0520404261844a231e5715fdbddd10ca73916a3af48ca2"},
+    {file = "textual-8.2.3.tar.gz", hash = "sha256:beea7b86b03b03558a2224f0cc35252e60ef8b0c4353b117b2f40972902d976a"},
 ]
 
 [package.dependencies]
@@ -3350,4 +3350,4 @@ propcache = ">=0.2.1"
 [metadata]
 lock-version = "2.1"
 python-versions = ">=3.12,<4.0"
-content-hash = "92f7ce6b1357cd1ca8d4eca2a2e54f5d6707725157f5c7d3e0c3f519356c2665"
+content-hash = "837dcb260e694b779826a2d775f6258ac90971e369855d435d9c49c0cbd150cc"
