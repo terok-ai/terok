@@ -91,6 +91,7 @@ class TerokIntegrationEnv:
                 "HOME": str(self.home_dir),
                 "XDG_CONFIG_HOME": str(self.xdg_config_home),
                 "TEROK_CONFIG_DIR": str(self.system_config_root),
+                "TEROK_ROOT": str(self.base_dir),
                 "TEROK_STATE_DIR": str(self.state_root),
                 "TEROK_CREDENTIALS_DIR": str(self.credentials_dir),
                 "TEROK_SANDBOX_LIVE_DIR": str(self.sandbox_live_root),
@@ -170,7 +171,7 @@ class TerokIntegrationEnv:
 
     def task_archive_root(self, project_id: str) -> Path:
         """Return the archive root for deleted tasks."""
-        return self.state_root / "projects" / project_id / "archive"
+        return self.base_dir / "archive" / project_id / "tasks"
 
     def gate_path(self, project_id: str) -> Path:
         """Return the host-side gate mirror path for ``project_id``."""
