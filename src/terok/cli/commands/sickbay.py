@@ -214,7 +214,7 @@ def _check_unfired_hooks(
 
 
 def _check_ssh_agent() -> _CheckResult:
-    """Check SSH agent proxy key registration and file health."""
+    """Check SSH agent proxy key registration against known projects."""
     import json
 
     label = "SSH agent"
@@ -232,11 +232,12 @@ def _check_ssh_agent() -> _CheckResult:
     if not isinstance(mapping, dict):
         return ("error", label, "ssh-keys.json has invalid schema (expected object)")
 
-    if not mapping:
-        return ("warn", label, "no projects registered — run 'terok ssh-init <project>'")
+    projects = list_projects()
+    if not projects:
+        return ("ok", label, "no projects configured")
 
-    def _keys_present(entry: object) -> bool:
-        """Check whether all key files in a project entry exist on disk."""
+    def _keys_healthy(entry: object) -> bool:
+        """Check whether all key files in a scope entry exist on disk."""
         keys = entry if isinstance(entry, list) else [entry]
         return all(
             isinstance(k, dict)
@@ -245,18 +246,30 @@ def _check_ssh_agent() -> _CheckResult:
             for k in keys
         )
 
-    missing = [pid for pid, entry in mapping.items() if not _keys_present(entry)]
-    total = len(mapping)
-    if missing:
-        names = ", ".join(missing[:3])
-        suffix = f" (+{len(missing) - 3} more)" if len(missing) > 3 else ""
+    broken = [p.id for p in projects if p.id in mapping and not _keys_healthy(mapping[p.id])]
+    unregistered = [p.id for p in projects if p.id not in mapping]
+    registered = len(projects) - len(broken) - len(unregistered)
+    total = len(projects)
+
+    if broken:
+        names = ", ".join(broken[:3])
+        suffix = f" (+{len(broken) - 3} more)" if len(broken) > 3 else ""
         return (
             "error",
             label,
-            f"{len(missing)}/{total} project(s) have missing key files: "
+            f"{len(broken)}/{total} project(s) have missing key files: "
             f"{names}{suffix} — re-run 'terok ssh-init'",
         )
-    return ("ok", label, f"{total} project(s) registered, all keys present")
+    if unregistered:
+        names = ", ".join(unregistered[:3])
+        suffix = f" (+{len(unregistered) - 3} more)" if len(unregistered) > 3 else ""
+        return (
+            "warn",
+            label,
+            f"{registered}/{total} project(s) have SSH keys — missing: "
+            f"{names}{suffix}. Run 'terok ssh-init <project>'",
+        )
+    return ("ok", label, f"{total}/{total} project(s) have SSH keys")
 
 
 _KEYRING_DOC_URL = "https://terok-ai.github.io/terok/kernel-keyring/"
