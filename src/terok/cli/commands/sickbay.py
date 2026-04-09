@@ -213,8 +213,40 @@ def _check_unfired_hooks(
     return results
 
 
+def _is_key_path(value: object) -> bool:
+    """Check whether a value is a non-empty string pointing to an existing file."""
+    return isinstance(value, str) and bool(value) and Path(value).is_file()
+
+
+def _keys_healthy(entry: object) -> bool:
+    """Check whether all key files in a scope entry exist on disk."""
+    keys = entry if isinstance(entry, list) else [entry]
+    return bool(keys) and all(
+        isinstance(k, dict)
+        and _is_key_path(k.get("private_key"))
+        and _is_key_path(k.get("public_key"))
+        for k in keys
+    )
+
+
+def _sanitize_id(value: str) -> str:
+    """Strip C0/C1 control characters from a project ID for safe terminal output."""
+    import unicodedata
+
+    return "".join(
+        " " if ch in "\n\r\t" else f"\\x{ord(ch):02x}" if unicodedata.category(ch)[0] == "C" else ch
+        for ch in value
+    )
+
+
+def _abbreviate(ids: list[str], limit: int = 3) -> str:
+    """Join project IDs with a '+N more' suffix when the list is long."""
+    suffix = f" (+{len(ids) - limit} more)" if len(ids) > limit else ""
+    return ", ".join(_sanitize_id(i) for i in ids[:limit]) + suffix
+
+
 def _check_ssh_agent() -> _CheckResult:
-    """Check SSH agent proxy key registration and file health."""
+    """Check SSH agent proxy key registration against known projects."""
     import json
 
     label = "SSH agent"
@@ -232,31 +264,30 @@ def _check_ssh_agent() -> _CheckResult:
     if not isinstance(mapping, dict):
         return ("error", label, "ssh-keys.json has invalid schema (expected object)")
 
-    if not mapping:
-        return ("warn", label, "no projects registered — run 'terok ssh-init <project>'")
+    projects = list_projects()
+    if not projects:
+        return ("ok", label, "no projects configured")
 
-    def _keys_present(entry: object) -> bool:
-        """Check whether all key files in a project entry exist on disk."""
-        keys = entry if isinstance(entry, list) else [entry]
-        return all(
-            isinstance(k, dict)
-            and Path(k.get("private_key", "")).is_file()
-            and Path(k.get("public_key", "")).is_file()
-            for k in keys
-        )
+    broken = [p.id for p in projects if p.id in mapping and not _keys_healthy(mapping[p.id])]
+    unregistered = [p.id for p in projects if p.id not in mapping]
+    registered = len(projects) - len(broken) - len(unregistered)
+    total = len(projects)
 
-    missing = [pid for pid, entry in mapping.items() if not _keys_present(entry)]
-    total = len(mapping)
-    if missing:
-        names = ", ".join(missing[:3])
-        suffix = f" (+{len(missing) - 3} more)" if len(missing) > 3 else ""
+    if broken:
         return (
             "error",
             label,
-            f"{len(missing)}/{total} project(s) have missing key files: "
-            f"{names}{suffix} — re-run 'terok ssh-init'",
+            f"{len(broken)}/{total} project(s) have missing key files: "
+            f"{_abbreviate(broken)} — re-run 'terok ssh-init'",
         )
-    return ("ok", label, f"{total} project(s) registered, all keys present")
+    if unregistered:
+        return (
+            "warn",
+            label,
+            f"{registered}/{total} project(s) have SSH keys — missing: "
+            f"{_abbreviate(unregistered)}. Run 'terok ssh-init <project>'",
+        )
+    return ("ok", label, f"{total}/{total} project(s) have SSH keys")
 
 
 _KEYRING_DOC_URL = "https://terok-ai.github.io/terok/kernel-keyring/"
