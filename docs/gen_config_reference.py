@@ -84,7 +84,11 @@ _FIELD_DOCS: dict[str, str] = {
     # credentials
     "credentials.dir": "Shared credentials directory (proxy DB, agent config mounts)",
     # paths
-    "paths.state_dir": "Writable state directory (tasks, caches, builds)",
+    "paths.root": "Umbrella state root shared by all ecosystem packages "
+    "(Podman model — one config, multiple readers)",
+    "paths.state_dir": "**Deprecated** — alias for ``paths.root``, accepted for one release cycle",
+    "paths.sandbox_live_dir": "Container-writable runtime data (tasks, agent mounts). "
+    "For hardened installs, mount the target with ``noexec,nosuid,nodev``",
     "paths.build_dir": "Build artifacts directory (generated Dockerfiles)",
     "paths.user_projects_dir": "User projects directory (per-user project configs)",
     "paths.user_presets_dir": "User presets directory (per-user preset configs)",
@@ -147,7 +151,11 @@ def _generate() -> str:
     buf.write(_MD_RULE)
     buf.write("## config.yml\n\n")
     buf.write(
-        "Global configuration.  Search order:\n\n"
+        "Global configuration shared by all terok ecosystem packages "
+        "(terok, terok-sandbox, terok-agent).  Each package reads only the "
+        "sections it understands — terok validates the full file, while "
+        "lower-level packages silently ignore sections they don't own.\n\n"
+        "Search order:\n\n"
         "1. `$TEROK_CONFIG_FILE` (explicit override)\n"
         "2. `${XDG_CONFIG_HOME:-~/.config}/terok/config.yml`\n"
         "3. `sys.prefix/etc/terok/config.yml`\n"
@@ -177,7 +185,19 @@ def _generate() -> str:
         "    **project.yml** validation is strict: errors produce a clear message and "
         "abort the operation.  **config.yml** validation is lenient: errors are logged "
         "as warnings and the file falls back to defaults, so a typo in global config "
-        "never prevents the TUI or CLI from starting.\n"
+        "never prevents the TUI or CLI from starting.\n\n"
+        "### Multi-reader pattern\n\n"
+        "config.yml follows the "
+        "[Podman model](https://docs.podman.io/en/latest/markdown/podman.1.html"
+        "#configuration-files): "
+        "one config file, multiple readers.\n\n"
+        "| Package | Reads | Validation |\n"
+        "| --- | --- | --- |\n"
+        '| **terok** | All sections | Pydantic `extra="forbid"` — catches typos everywhere |\n'
+        "| **terok-sandbox** | `paths:` only | Raw YAML — ignores unknown top-level keys |\n"
+        "| **terok-agent** | Delegates to sandbox | No direct config file reading |\n\n"
+        "This means sandbox and agent never reject terok-only sections "
+        "(`ui:`, `tui:`, `hooks:`, etc.), while terok catches all typos.\n"
     )
 
     return buf.getvalue()

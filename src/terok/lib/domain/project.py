@@ -100,6 +100,7 @@ def _is_under_terok_root(path: Path) -> bool:
         make_sandbox_config().state_dir,
         credentials_dir(),
         build_dir(),
+        archive_dir(),
     ]
     return any(resolved == root or root in resolved.parents for root in managed_roots)
 
@@ -220,9 +221,12 @@ class DeleteProjectResult(TypedDict):
 def _archive_project(project_id: str) -> str | None:
     """Create a compressed archive of project data before deletion.
 
-    Collects project config, task metadata/archives, and build artifacts
-    into a ``.tar.gz`` file under ``archive_dir()``.  SSH
-    credentials and git gate contents are excluded for security.
+    Collects project config, task metadata, task archives, and build
+    artifacts into a ``.tar.gz`` under ``archive_dir()``.  SSH credentials
+    and git gate contents are excluded for security.
+
+    After a successful tar, the project's task-archive subtree
+    (``archive/<pid>/``) is removed — freeing the project name for reuse.
 
     Returns the archive file path as a string, or ``None`` on failure.
     """
@@ -242,10 +246,15 @@ def _archive_project(project_id: str) -> str | None:
         if project.root.is_dir():
             sources.append(("config", project.root))
 
-        # Task metadata + task archives
+        # Task metadata (core state)
         project_state = state_dir() / "projects" / pid
         if project_state.is_dir():
             sources.append(("state", project_state))
+
+        # Task archives (umbrella archive tree)
+        task_archive_path = archive_root / pid
+        if task_archive_path.is_dir():
+            sources.append(("task-archives", task_archive_path))
 
         # Build artifacts
         build_path = build_dir() / pid
@@ -262,6 +271,18 @@ def _archive_project(project_id: str) -> str | None:
                     if item.is_file():
                         arcname = f"{prefix}/{item.relative_to(src_dir)}"
                         tar.add(str(item), arcname=arcname)
+
+        # Remove the project's task-archive subtree to free the name.
+        # Non-fatal: the tar already succeeded.
+        if task_archive_path.is_dir():
+            try:
+                shutil.rmtree(task_archive_path)
+            except OSError as cleanup_exc:
+                _logger.warning(
+                    "_archive_project: task-archive cleanup failed for %s: %s",
+                    pid,
+                    cleanup_exc,
+                )
 
         _logger.debug("_archive_project: archived %s to %s", pid, archive_path)
         return str(archive_path)
@@ -314,8 +335,8 @@ def delete_project(project_id: str) -> DeleteProjectResult:
     # 2. Remove tasks root (may be user-configured path)
     _rmtree_managed(project.tasks_root, "Tasks root", deleted, skipped)
 
-    # 3-4. Remove state dir and build artifacts (always managed paths)
-    for d in (state_dir() / "projects" / pid, build_dir() / pid):
+    # 3-4. Remove state dir, build artifacts, and any remaining task archives
+    for d in (state_dir() / "projects" / pid, build_dir() / pid, archive_dir() / pid):
         if d.is_dir():
             shutil.rmtree(d)
             deleted.append(str(d))

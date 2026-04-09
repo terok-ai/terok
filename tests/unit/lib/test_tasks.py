@@ -1285,10 +1285,12 @@ class TestTaskArchive:
                 # Task should be deleted
                 assert not meta_path.exists()
 
-                # Archive should exist
-                archive_dir = ctx.state_dir / "projects" / project_id / "archive"
-                assert archive_dir.is_dir()
-                archives = list(archive_dir.iterdir())
+                # Archive should exist under umbrella archive tree
+                from terok.lib.orchestration.tasks import tasks_archive_dir
+
+                archive_root = tasks_archive_dir(project_id)
+                assert archive_root.is_dir()
+                archives = list(archive_root.iterdir())
                 assert len(archives) == 1
 
                 archive_entry = archives[0]
@@ -1314,7 +1316,7 @@ class TestTaskArchive:
         with project_env(
             f"project:\n  id: {project_id}\n",
             project_id=project_id,
-        ) as ctx:
+        ):
             with mock_git_config():
                 task_id = task_new(project_id)
 
@@ -1330,9 +1332,11 @@ class TestTaskArchive:
                 ):
                     task_delete(project_id, task_id)
 
-                archive_dir = ctx.state_dir / "projects" / project_id / "archive"
-                assert archive_dir.is_dir()
-                archives = list(archive_dir.iterdir())
+                from terok.lib.orchestration.tasks import tasks_archive_dir
+
+                archive_root = tasks_archive_dir(project_id)
+                assert archive_root.is_dir()
+                archives = list(archive_root.iterdir())
                 assert len(archives) == 1
 
                 # Should have task.yml but no logs subdir

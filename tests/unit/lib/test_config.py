@@ -222,9 +222,9 @@ def test_build_dir_defaults_under_state(monkeypatch: pytest.MonkeyPatch, tmp_pat
 
 
 def test_archive_dir_at_umbrella_root(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    """``archive_dir()`` lives at the umbrella state root, not under core/."""
+    """``archive_dir()`` lives at the umbrella state root."""
     monkeypatch.setenv("TEROK_ROOT", str(tmp_path))
-    assert cfg.archive_dir() == (tmp_path / "deleted-projects").resolve()
+    assert cfg.archive_dir() == (tmp_path / "archive").resolve()
 
 
 def test_credentials_dir_env_override(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:

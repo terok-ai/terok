@@ -291,15 +291,20 @@ def build_dir() -> Path:
 
 
 def archive_dir() -> Path:
-    """Return the directory for archived deleted projects.
+    """Umbrella archive tree for project and task archives.
 
-    Lives at the umbrella state root (``~/.local/share/terok/deleted-projects``)
-    rather than under ``core/`` — archived projects are a cross-cutting concern
-    that operators may browse directly.
+    All archived data lives under one discoverable location::
+
+        archive/
+            <ts>_<project>.tar.gz     # deleted-project snapshots
+            <project>/tasks/          # task archives (live projects)
+
+    The ``<project>/`` subdirectory is bundled into the project tar and
+    removed on project deletion — freeing the name for reuse.
     """
     from terok_sandbox.paths import umbrella_state_dir
 
-    return umbrella_state_dir("deleted-projects").resolve()
+    return umbrella_state_dir("archive").resolve()
 
 
 def get_ui_base_port() -> int:

@@ -171,6 +171,24 @@ class TestArchiveProject:
             assert archive_path is not None
             assert Path(archive_path).parent == archive_dir()
 
+    def test_archive_bundles_task_archives_and_cleans_up(self) -> None:
+        """Project archive includes task archives and removes the subtree."""
+        pid = "arch-tasks"
+        with project_env(project_yaml(pid), project_id=pid):
+            # Populate task archive entries
+            task_archive_root = archive_dir() / pid / "tasks"
+            task_archive_root.mkdir(parents=True, exist_ok=True)
+            entry = task_archive_root / "20260301T100000Z_1_mytask"
+            entry.mkdir()
+            (entry / "task.yml").write_text("task_id: '1'\nname: mytask\n")
+
+            archive_path = _archive_project(pid)
+            assert archive_path is not None
+            members = archive_member_names(archive_path)
+            assert any("task-archives/" in name for name in members)
+            # Task archive subtree removed after bundling
+            assert not (archive_dir() / pid).is_dir()
+
 
 class TestDeleteProjectArchive:
     """Tests for delete_project() archive integration."""

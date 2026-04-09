@@ -25,7 +25,7 @@ from terok_sandbox import (
     stop_task_containers,
 )
 
-from ..core.config import state_dir
+from ..core.config import archive_dir, state_dir
 from ..core.projects import ProjectConfig, load_project
 from ..core.task_display import (
     STATUS_DISPLAY,
@@ -277,8 +277,14 @@ def tasks_meta_dir(project_id: str) -> Path:
 
 
 def tasks_archive_dir(project_id: str) -> Path:
-    """Return the directory containing archived task data for *project_id*."""
-    return state_dir() / "projects" / project_id / "archive"
+    """Return the directory containing archived task data for *project_id*.
+
+    Lives under the umbrella archive tree (``archive/<pid>/tasks/``) so
+    operators can find all archived data in one location.  On project
+    deletion the entire ``archive/<pid>/`` subtree is bundled into the
+    project snapshot and removed.
+    """
+    return archive_dir() / project_id / "tasks"
 
 
 def update_task_exit_code(project_id: str, task_id: str, exit_code: int | None) -> None:
@@ -647,13 +653,10 @@ def capture_task_logs(project: ProjectConfig | str, task_id: str, mode: str) -> 
 def _archive_task(project: ProjectConfig, task_id: str, meta: dict) -> Path | None:
     """Archive task metadata and logs before deletion.
 
-    Creates an archive entry at
-    ``<state_root>/projects/<project_id>/archive/<timestamp>_<task_id>_<name>/``
-    containing the task metadata YAML and any captured logs.
-
-    The archive directory name uses the archival timestamp as the primary
-    identifier because task numbers and names are not globally unique —
-    they can be reused when tasks are deleted and recreated.
+    Creates an entry at ``archive/<project_id>/tasks/<ts>_<task_id>[_<name>]/``
+    containing the task metadata YAML and any captured logs.  The archival
+    timestamp is the primary identifier because task numbers and names can
+    be reused after deletion.
 
     Returns the archive directory path, or ``None`` if archiving failed.
     """
@@ -750,15 +753,10 @@ def _task_delete(project: ProjectConfig, task_id: str) -> None:
 def task_delete(project_id: str, task_id: str) -> None:
     """Delete a task's workspace, metadata, and any associated containers.
 
-    Before removing the task, captures container logs and archives the task
-    metadata and logs to ``<state_root>/projects/<project_id>/archive/``.
-    The archive directory is named by archival timestamp + task ID + name
-    for unique identification (task numbers and names can be reused).
-
-    This mirrors the behavior used by the TUI when deleting a task, but is
-    exposed here so both CLI and TUI share the same logic. Containers are
-    stopped best-effort via podman using the naming scheme
-    "<project.id>-<mode>-<task_id>".
+    Before removal, captures container logs and archives the task metadata
+    and logs to ``archive/<project_id>/tasks/``.  Containers are stopped
+    best-effort via podman using the ``<project.id>-<mode>-<task_id>``
+    naming scheme.
     """
     _task_delete(load_project(project_id), task_id)
 
