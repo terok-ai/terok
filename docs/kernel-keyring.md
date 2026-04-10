@@ -62,7 +62,7 @@ keyring = false
 ```
 
 !!! tip "Sickbay detection"
-    `terokctl sickbay` warns when keyring creation is not disabled.
+    `terok sickbay` warns when keyring creation is not disabled.
     Run it after installation to verify your setup.
 
 ## References

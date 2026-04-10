@@ -194,7 +194,7 @@ def test_state_dir_via_env(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> N
 
 
 def test_state_dir_via_config(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    """``state_dir()`` honors ``paths.root`` from config as umbrella root."""
+    """``state_dir()`` honors ``paths.root`` from config as namespace root."""
     target = tmp_path / "custom-root"
     monkeypatch.delenv("TEROK_STATE_DIR", raising=False)
     monkeypatch.setenv(
@@ -221,8 +221,8 @@ def test_build_dir_defaults_under_state(monkeypatch: pytest.MonkeyPatch, tmp_pat
     assert cfg.build_dir() == (tmp_path / "build").resolve()
 
 
-def test_archive_dir_at_umbrella_root(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    """``archive_dir()`` lives at the umbrella state root."""
+def test_archive_dir_at_namespace_root(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    """``archive_dir()`` lives at the namespace state root."""
     monkeypatch.setenv("TEROK_ROOT", str(tmp_path))
     assert cfg.archive_dir() == (tmp_path / "archive").resolve()
 
@@ -245,10 +245,10 @@ def test_sandbox_live_dir_via_config(monkeypatch: pytest.MonkeyPatch, tmp_path: 
     assert cfg.sandbox_live_dir() == target.resolve()
 
 
-def test_sandbox_live_dir_defaults_under_umbrella(
+def test_sandbox_live_dir_defaults_under_namespace(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """``sandbox_live_dir()`` defaults to ``umbrella_root/sandbox-live``."""
+    """``sandbox_live_dir()`` defaults to ``namespace_root/sandbox-live``."""
     monkeypatch.delenv("TEROK_SANDBOX_LIVE_DIR", raising=False)
     monkeypatch.setenv("TEROK_ROOT", str(tmp_path))
     monkeypatch.setenv("TEROK_CONFIG_FILE", str(write_config(tmp_path, "")))

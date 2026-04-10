@@ -97,7 +97,7 @@ def runtime_root() -> Path:
 def credentials_root() -> Path:
     """Shared credentials directory used by all terok ecosystem packages.
 
-    Lives under the ``terok/`` umbrella so a single ``rm -rf`` or backup
+    Lives under the ``terok/`` namespace so a single ``rm -rf`` or backup
     captures everything.
 
     Priority: ``TEROK_CREDENTIALS_DIR`` → ``/var/lib/terok/credentials`` (root)

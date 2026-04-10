@@ -63,7 +63,7 @@ def gate_dir(env: SimpleNamespace, _project_id: str) -> Path:
 
 
 def task_archive_subdir(_env: SimpleNamespace, project_id: str) -> Path:
-    """Create and return the project's task archive dir (under umbrella archive)."""
+    """Create and return the project's task archive dir (under namespace archive)."""
     from terok.lib.core.config import archive_dir as cfg_archive_dir
 
     target = cfg_archive_dir() / project_id / "tasks"

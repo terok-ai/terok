@@ -251,7 +251,7 @@ def _archive_project(project_id: str) -> str | None:
         if project_state.is_dir():
             sources.append(("state", project_state))
 
-        # Task archives (umbrella archive tree)
+        # Task archives (namespace archive tree)
         task_archive_path = archive_root / pid
         if task_archive_path.is_dir():
             sources.append(("task-archives", task_archive_path))

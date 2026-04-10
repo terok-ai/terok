@@ -84,7 +84,7 @@ _FIELD_DOCS: dict[str, str] = {
     # credentials
     "credentials.dir": "Shared credentials directory (proxy DB, agent config mounts)",
     # paths
-    "paths.root": "Umbrella state root shared by all ecosystem packages "
+    "paths.root": "Namespace state root shared by all ecosystem packages "
     "(Podman model — one config, multiple readers)",
     "paths.sandbox_live_dir": "Container-writable runtime data (tasks, agent mounts). "
     "For hardened installs, mount the target with ``noexec,nosuid,nodev``",
