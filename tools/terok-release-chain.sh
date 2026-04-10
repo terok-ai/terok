@@ -30,7 +30,7 @@ declare -A DEPS=(
     [terok-shield]="terok-dbus"
     [terok-sandbox]="terok-shield"
     [terok-agent]="terok-sandbox"
-    [terok]="terok-agent terok-sandbox"
+    [terok]="terok-agent terok-sandbox terok-dbus"
 )
 
 # ── Defaults ───────────────────────────────────────────────────────────────
