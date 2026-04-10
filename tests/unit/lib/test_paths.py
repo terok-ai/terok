@@ -61,11 +61,11 @@ class TestCredentialsRoot:
         )
 
 
-class TestCredentialsUmbrella:
-    """Verify credentials live under the terok/ umbrella."""
+class TestCredentialsNamespace:
+    """Verify credentials live under the terok/ namespace."""
 
-    def test_default_is_under_umbrella(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        """Default credentials_root() nests under the terok/ umbrella, not a sibling."""
+    def test_default_is_under_namespace(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Default credentials_root() nests under the terok/ namespace, not a sibling."""
         monkeypatch.delenv("TEROK_CREDENTIALS_DIR", raising=False)
         monkeypatch.delenv("XDG_DATA_HOME", raising=False)
         monkeypatch.setattr(paths, "_is_root", lambda: False)

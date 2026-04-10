@@ -1285,7 +1285,7 @@ class TestTaskArchive:
                 # Task should be deleted
                 assert not meta_path.exists()
 
-                # Archive should exist under umbrella archive tree
+                # Archive should exist under namespace archive tree
                 from terok.lib.orchestration.tasks import tasks_archive_dir
 
                 archive_root = tasks_archive_dir(project_id)

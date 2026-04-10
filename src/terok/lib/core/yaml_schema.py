@@ -309,7 +309,7 @@ class RawCredentialsSection(BaseModel):
 class RawPathsSection(BaseModel):
     """Global ``paths:`` section.
 
-    ``root`` is the umbrella state root read by all ecosystem packages
+    ``root`` is the namespace state root read by all ecosystem packages
     (Podman model).
     """
 

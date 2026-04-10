@@ -279,7 +279,7 @@ def tasks_meta_dir(project_id: str) -> Path:
 def tasks_archive_dir(project_id: str) -> Path:
     """Return the directory containing archived task data for *project_id*.
 
-    Lives under the umbrella archive tree (``archive/<pid>/tasks/``) so
+    Lives under the namespace archive tree (``archive/<pid>/tasks/``) so
     operators can find all archived data in one location.  On project
     deletion the entire ``archive/<pid>/`` subtree is bundled into the
     project snapshot and removed.

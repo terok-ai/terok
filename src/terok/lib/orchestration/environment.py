@@ -212,9 +212,17 @@ def ensure_credential_proxy() -> None:
     if get_credential_proxy_bypass():
         return
 
-    from terok_sandbox import ensure_proxy_reachable
+    from terok_sandbox import ProxyUnreachableError, ensure_proxy_reachable
 
-    ensure_proxy_reachable(make_sandbox_config())
+    try:
+        ensure_proxy_reachable(make_sandbox_config())
+    except ProxyUnreachableError as exc:
+        raise SystemExit(
+            f"{exc}\n\n"
+            "Start it with:\n"
+            "  terok credential-proxy install   (systemd socket activation)\n"
+            "  terok credential-proxy start     (manual daemon)"
+        ) from exc
 
 
 def _credential_proxy_env_and_volumes(
@@ -243,13 +251,22 @@ def _credential_proxy_env_and_volumes(
     from terok_agent import get_roster
     from terok_sandbox import (
         CredentialDB,
+        ProxyUnreachableError,
         ensure_proxy_reachable,
         get_proxy_port,
         get_ssh_agent_port,
     )
 
     cfg = make_sandbox_config()
-    ensure_proxy_reachable(cfg)
+    try:
+        ensure_proxy_reachable(cfg)
+    except ProxyUnreachableError as exc:
+        raise SystemExit(
+            f"{exc}\n\n"
+            "Start it with:\n"
+            "  terok credential-proxy install   (systemd socket activation)\n"
+            "  terok credential-proxy start     (manual daemon)"
+        ) from exc
 
     roster = get_roster()
     proxy_routes = roster.proxy_routes

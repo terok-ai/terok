@@ -50,7 +50,7 @@ RUN mkdir -p \
     && printf '%s\n' \
         'unqualified-search-registries = ["docker.io"]' \
         > ~/.config/containers/registries.conf \
-    && terokctl completions install --shell bash
+    && terok completions install --shell bash
 USER root
 
 # ── 4. Inline entrypoint ──────────────────────────────────────────
@@ -72,7 +72,7 @@ RUN printf '%s\n' '#!/bin/sh' \
         'echo "  git clone http://$TEROK_GATE_ADMIN_TOKEN@localhost:9418/<project>.git"' \
         'echo "══════════════════════════════════════════════════"' \
         'echo ""' \
-        'su -m podman -s /bin/sh -c "terokctl gate-server start"' \
+        'su -m podman -s /bin/sh -c "terok gate start"' \
         'exec su -m podman -s /bin/sh -c "exec terok-web --host 0.0.0.0 --port 8566 ${TEROK_PUBLIC_URL:+--public-url \"$TEROK_PUBLIC_URL\"}"' \
         > /usr/local/bin/docker-entrypoint.sh \
     && chmod +x /usr/local/bin/docker-entrypoint.sh

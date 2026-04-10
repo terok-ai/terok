@@ -191,12 +191,12 @@ def state_dir() -> Path:
 
     Precedence:
     - ``TEROK_STATE_DIR`` environment variable (per-package escape hatch).
-    - Umbrella root (``TEROK_ROOT`` / ``config.yml`` ``paths.root``) + ``core/``.
+    - Namespace root (``TEROK_ROOT`` / ``config.yml`` ``paths.root``) + ``core/``.
     - Platform default (``~/.local/share/terok/core``).
     """
-    from terok_sandbox.paths import umbrella_state_dir
+    from terok_sandbox.paths import namespace_state_dir
 
-    return umbrella_state_dir("core", "TEROK_STATE_DIR").resolve()
+    return namespace_state_dir("core", "TEROK_STATE_DIR").resolve()
 
 
 def sandbox_live_dir() -> Path:
@@ -209,14 +209,14 @@ def sandbox_live_dir() -> Path:
     Precedence:
     - ``TEROK_SANDBOX_LIVE_DIR`` environment variable.
     - Global config ``paths.sandbox_live_dir``.
-    - Umbrella root + ``sandbox-live/``.
+    - Namespace root + ``sandbox-live/``.
     """
-    from terok_sandbox.paths import umbrella_state_dir
+    from terok_sandbox.paths import namespace_state_dir
 
     return _resolve_path(
         "TEROK_SANDBOX_LIVE_DIR",
         ("paths", "sandbox_live_dir"),
-        lambda: umbrella_state_dir("sandbox-live"),
+        lambda: namespace_state_dir("sandbox-live"),
     )
 
 
@@ -296,7 +296,7 @@ def build_dir() -> Path:
 
 
 def archive_dir() -> Path:
-    """Umbrella archive tree for project and task archives.
+    """Namespace archive tree for project and task archives.
 
     All archived data lives under one discoverable location::
 
@@ -307,9 +307,9 @@ def archive_dir() -> Path:
     The ``<project>/`` subdirectory is bundled into the project tar and
     removed on project deletion — freeing the name for reuse.
     """
-    from terok_sandbox.paths import umbrella_state_dir
+    from terok_sandbox.paths import namespace_state_dir
 
-    return umbrella_state_dir("archive").resolve()
+    return namespace_state_dir("archive").resolve()
 
 
 def get_ui_base_port() -> int:
@@ -323,14 +323,14 @@ def credentials_dir() -> Path:
     Precedence:
     - ``TEROK_CREDENTIALS_DIR`` environment variable.
     - Global config ``credentials.dir``.
-    - Umbrella root + ``credentials/`` (honors ``paths.root``).
+    - Namespace root + ``credentials/`` (honors ``paths.root``).
     """
-    from terok_sandbox.paths import umbrella_state_dir
+    from terok_sandbox.paths import namespace_state_dir
 
     return _resolve_path(
         "TEROK_CREDENTIALS_DIR",
         ("credentials", "dir"),
-        lambda: umbrella_state_dir("credentials"),
+        lambda: namespace_state_dir("credentials"),
     )
 
 
