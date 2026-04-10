@@ -62,8 +62,8 @@ class TestSshInit:
         assert config_path.is_file()
         assert stat.S_IMODE(ssh_dir.stat().st_mode) == 0o700
         assert stat.S_IMODE(private_key.stat().st_mode) == 0o600
-        assert stat.S_IMODE(public_key.stat().st_mode) == 0o644
-        assert stat.S_IMODE(config_path.stat().st_mode) == 0o644
+        assert stat.S_IMODE(public_key.stat().st_mode) == 0o600
+        assert stat.S_IMODE(config_path.stat().st_mode) == 0o600
         assert "IdentityFile ~/.ssh/id_ed25519_demo" in config_path.read_text(encoding="utf-8")
 
     @ssh_keygen_missing
