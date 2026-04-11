@@ -380,7 +380,7 @@ def _task_new(project: ProjectConfig, *, name: str | None = None) -> str:
     ws = tasks_root / next_id
     ensure_dir(ws)
 
-    if project.isolation != "sealed":
+    if not project.is_sealed:
         workspace_dir = ws / WORKSPACE_DANGEROUS_DIRNAME
         ensure_dir(workspace_dir)
         workspace_dir.chmod(0o700)

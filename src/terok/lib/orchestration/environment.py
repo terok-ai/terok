@@ -449,21 +449,17 @@ def build_task_env_and_volumes(
     concerns: ``PROJECT_ID``, gate server URLs, and the full credential
     proxy (OAuth, socket transport, SSH agent).
 
-    In **sealed** isolation mode (``project.isolation == "sealed"``), no
+    In **sealed** isolation mode (``project.is_sealed``), no
     host-side workspace directory is created — the container starts empty
     and clones from the gate.
     """
-    sealed = project.isolation == "sealed"
+    sealed = project.is_sealed
 
     task_dir = project.tasks_root / str(task_id)
-    if sealed:
-        # Sealed: no host workspace — container clones from gate
-        task_dir.mkdir(parents=True, exist_ok=True)
-        repo_dir = task_dir / "workspace-placeholder"
-        repo_dir.mkdir(exist_ok=True)
-    else:
+    task_dir.mkdir(parents=True, exist_ok=True)
+    if not sealed:
         repo_dir = task_dir / WORKSPACE_DANGEROUS_DIRNAME
-        repo_dir.mkdir(parents=True, exist_ok=True)
+        repo_dir.mkdir(exist_ok=True)
 
     # Pre-resolve gate server URLs → CODE_REPO / CLONE_FROM / GIT_BRANCH
     sec_env, _sec_volumes = _security_mode_env_and_volumes(project, task_id)
@@ -489,7 +485,7 @@ def build_task_env_and_volumes(
         ContainerEnvSpec(
             task_id=task_id,
             provider_name=project.default_agent or "claude",
-            workspace_host_path=repo_dir,
+            workspace_host_path=task_dir if sealed else repo_dir,
             code_repo=sec_env.get("CODE_REPO"),
             clone_from=sec_env.get("CLONE_FROM"),
             branch=sec_env.get("GIT_BRANCH"),
@@ -510,7 +506,11 @@ def build_task_env_and_volumes(
     )
 
     env = dict(result.env)
-    volumes: list[VolumeSpec] = list(result.volumes)
+    # Sealed mode: strip the workspace volume — the container clones from gate
+    # into its own /workspace, no host-side content to inject.
+    volumes: list[VolumeSpec] = [
+        v for v in result.volumes if not (sealed and v.container_path == "/workspace")
+    ]
 
     # terok-specific env vars not covered by the shared assembly
     env["PROJECT_ID"] = project.id

@@ -347,6 +347,7 @@ class TestRunContainer:
         p.gpu_enabled = False
         p.root = MOCK_TASK_DIR
         p.isolation = "shared"
+        p.is_sealed = False
         return p
 
     def test_builds_runspec_and_delegates(self) -> None:

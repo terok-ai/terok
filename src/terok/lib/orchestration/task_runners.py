@@ -325,7 +325,7 @@ def _run_container(
     podman command assembly (userns, shield/bypass, GPU, env redaction, CDI
     detection) to the sandbox executor.
 
-    In sealed isolation mode (``project.isolation == "sealed"``), the sandbox
+    In sealed isolation mode (``project.is_sealed``), the sandbox
     splits into create → copy → start instead of a single ``podman run -d``.
 
     Args:
@@ -350,7 +350,7 @@ def _run_container(
         gpu_enabled=has_gpu(project),
         extra_args=tuple(extra_args or ()),
         unrestricted="TEROK_UNRESTRICTED" in env,
-        sealed=project.isolation == "sealed",
+        sealed=project.is_sealed,
     )
 
     try:
@@ -948,8 +948,8 @@ def task_followup_headless(
     task_dir = project.tasks_root / str(task_id)
     agent_config_dir = task_dir / "agent-config"
 
-    if project.isolation == "sealed":
-        # Sealed: inject prompt via podman cp into stopped container
+    if project.is_sealed:
+        # Sealed: inject prompt via podman exec into stopped container
         from terok_agent import inject_prompt
 
         inject_prompt(cname, prompt)

@@ -74,6 +74,12 @@ class ProjectConfig(BaseModel):
 
     @computed_field  # type: ignore[prop-decorator]
     @property
+    def is_sealed(self) -> bool:
+        """Whether this project uses sealed isolation (zero bind mounts)."""
+        return self.isolation == "sealed"
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
     def presets_dir(self) -> Path:
         """Directory for preset config files for this project."""
         return self.root / "presets"
