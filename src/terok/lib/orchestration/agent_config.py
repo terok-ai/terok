@@ -13,7 +13,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-from terok_agent import ConfigScope, ConfigStack
+from terok_sandbox import ConfigScope, ConfigStack
 
 from terok.lib.core.config import bundled_presets_dir, get_global_agent_config, user_presets_dir
 

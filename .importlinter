@@ -39,9 +39,11 @@ allowed_importers =
     terok.cli.main
     terok.cli.wiring
     terok.lib.core.config
+    terok.lib.core.projects
     terok.lib.domain.panic
     terok.lib.domain.project
     terok.lib.domain.task_logs
+    terok.lib.orchestration.agent_config
     terok.lib.orchestration.container_doctor
     terok.lib.orchestration.container_exec
     terok.lib.orchestration.environment
@@ -63,10 +65,8 @@ allowed_importers =
     terok.cli.commands.task
     terok.cli.main
     terok.cli.wiring
-    terok.lib.core.projects
     terok.lib.domain.facade
     terok.lib.domain.project
-    terok.lib.orchestration.agent_config
     terok.lib.orchestration.container_doctor
     terok.lib.orchestration.docker
     terok.lib.orchestration.environment
