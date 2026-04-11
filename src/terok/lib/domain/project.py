@@ -183,17 +183,23 @@ def make_git_gate(config: ProjectConfig) -> GitGate:
     Resolves *ssh_host_dir* via :func:`make_sandbox_config` so the gate looks
     in terok's state directory, not sandbox's standalone default.
     """
-    ssh_dir = config.ssh_host_dir or (make_sandbox_config().ssh_keys_dir / config.id)
-    return GitGate(
-        scope=config.id,
-        gate_path=config.gate_path,
-        upstream_url=config.upstream_url,
-        default_branch=config.default_branch,
-        ssh_host_dir=ssh_dir,
-        ssh_key_name=config.ssh_key_name,
-        allow_host_keys=config.ssh_allow_host_keys,
-        validate_gate_fn=validate_gate_upstream_match,
-    )
+    cfg = make_sandbox_config()
+    ssh_dir = config.ssh_host_dir or (cfg.ssh_keys_dir / config.id)
+    # clone_cache_base activates when sibling wheels with clone-cache land.
+    kwargs: dict = {
+        "scope": config.id,
+        "gate_path": config.gate_path,
+        "upstream_url": config.upstream_url,
+        "default_branch": config.default_branch,
+        "ssh_host_dir": ssh_dir,
+        "ssh_key_name": config.ssh_key_name,
+        "allow_host_keys": config.ssh_allow_host_keys,
+        "validate_gate_fn": validate_gate_upstream_match,
+    }
+    cache_base = getattr(cfg, "clone_cache_base_path", None)
+    if cache_base is not None:
+        kwargs["clone_cache_base"] = cache_base
+    return GitGate(**kwargs)
 
 
 def make_ssh_manager(config: ProjectConfig) -> SSHManager:

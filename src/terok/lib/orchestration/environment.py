@@ -372,6 +372,29 @@ def _credential_proxy_env_and_volumes(
     return env, []
 
 
+# ---------- Clone-cache workspace seeding ----------
+
+
+def _seed_workspace_cache(repo_dir: Path, project_id: str, code_repo: str | None) -> None:
+    """Pre-populate *repo_dir* from the clone cache (best-effort).
+
+    Only acts when the workspace has a ``.new-task-marker`` (new task)
+    and no existing ``.git``.  Failures are logged and swallowed — the
+    container falls back to a full ``git clone``.
+    """
+    if (repo_dir / ".git").is_dir() or not (repo_dir / ".new-task-marker").is_file():
+        return
+
+    try:
+        from terok_agent import seed_workspace_from_clone_cache
+    except ImportError:
+        return
+
+    seed_workspace_from_clone_cache(
+        repo_dir, project_id, origin_url=code_repo, cfg=make_sandbox_config()
+    )
+
+
 # ---------- Main builder ----------
 
 
@@ -390,6 +413,11 @@ def build_task_env_and_volumes(project: ProjectConfig, task_id: str) -> tuple[di
 
     # Pre-resolve gate server URLs → CODE_REPO / CLONE_FROM / GIT_BRANCH
     sec_env, _sec_volumes = _security_mode_env_and_volumes(project, task_id)
+
+    # Seed workspace from clone cache (fast-start optimisation).
+    # Only for new tasks (marker present, no .git yet).  The in-container
+    # init script then does fetch+reset instead of a full git clone.
+    _seed_workspace_cache(repo_dir, project.id, sec_env.get("CODE_REPO"))
 
     # Pre-resolve git identity using terok's authorship logic so the
     # container has correct GIT_AUTHOR_*/GIT_COMMITTER_* from launch.
