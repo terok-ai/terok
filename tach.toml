@@ -613,6 +613,8 @@ expose = [
     "is_experimental",
     "set_experimental",
     "get_global_hooks",
+    "get_claude_allow_oauth",
+    "get_claude_expose_oauth_token",
     "get_credential_proxy_bypass",
     "get_credential_proxy_transport",
     "get_shield_bypass_firewall_no_protection",

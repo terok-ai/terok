@@ -398,6 +398,7 @@ class RawGlobalConfig(BaseModel):
     tasks: RawTasksGlobalSection = Field(default_factory=RawTasksGlobalSection)
     git: RawGlobalGitSection = Field(default_factory=RawGlobalGitSection)
     hooks: RawHooksSection = Field(default_factory=RawHooksSection)
+    experimental: bool = False
     default_agent: str | None = None
     default_login: str | None = None
     agent: dict[str, Any] = Field(default_factory=dict)

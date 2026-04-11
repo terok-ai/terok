@@ -228,6 +228,28 @@ def ensure_credential_proxy() -> None:
         ) from exc
 
 
+def _skip_claude_oauth() -> bool:
+    """Return True when Claude OAuth should be excluded from the credential proxy.
+
+    Tier 1 (experimental off or allow_oauth off): skip — the path is broken
+    because Claude Code's hardcoded ``BASE_API_URL`` sends phantom tokens
+    directly to ``api.anthropic.com``.
+
+    Tier 3 (expose_oauth_token): skip — Claude manages ``.credentials.json``
+    directly via the shared mount, no proxy involvement.
+
+    Tier 2 (allow_oauth, not exposed): return False — proxy handles OAuth
+    normally, shield blocks ``api.anthropic.com``.
+    """
+    from ..core.config import get_claude_allow_oauth, get_claude_expose_oauth_token, is_experimental
+
+    if not is_experimental():
+        return True
+    if get_claude_expose_oauth_token():
+        return True
+    return not get_claude_allow_oauth()
+
+
 def _credential_proxy_env_and_volumes(
     project: ProjectConfig, task_id: str
 ) -> tuple[dict[str, str], list[str]]:
@@ -286,10 +308,12 @@ def _credential_proxy_env_and_volumes(
             cred = db.load_credential(credential_set, name)
             ctype = _credential_type(cred) if cred else "api_key"
             credential_types[name] = ctype
-            # Claude OAuth: the static marker in .credentials.json serves as
-            # the access token — no per-task phantom token needed.  The proxy
-            # accepts that marker directly (see credential_proxy.constants).
+            # Claude OAuth: gated by experimental config (see _skip_claude_oauth).
             if name == "claude" and ctype == "oauth":
+                if _skip_claude_oauth():
+                    continue
+                # The static marker in .credentials.json serves as the access
+                # token — no per-task phantom token needed.
                 continue
             tokens[name] = db.create_proxy_token(project.id, task_id, credential_set, name)
 
@@ -315,11 +339,13 @@ def _credential_proxy_env_and_volumes(
 
         is_oauth = credential_types[name] == "oauth"
 
-        # Claude OAuth: don't inject CLAUDE_CODE_OAUTH_TOKEN or ANTHROPIC_UNIX_SOCKET.
-        # Claude Code shows "Claude API" when the token source is the env var;
-        # subscription mode requires the token to come from .credentials.json.
-        # The static marker in that file is accepted by the proxy directly.
+        # Claude OAuth: experimental tiered handling.
+        # - Tier 1 (experimental off): skip entirely — broken path disabled.
+        # - Tier 2 (allow_oauth): proxy prompt API, shield blocks BASE_API_URL.
+        # - Tier 3 (expose_oauth_token): bypass proxy, real .credentials.json.
         if name == "claude" and is_oauth:
+            if _skip_claude_oauth():
+                continue
             if route.base_url_env:
                 env[route.base_url_env] = proxy_base
             continue
@@ -361,6 +387,12 @@ def _credential_proxy_env_and_volumes(
     from terok_agent import scan_leaked_credentials
 
     leaked = scan_leaked_credentials(sandbox_live_mounts_dir())
+    # Tier 3: suppress warning for Claude when expose_oauth_token is active —
+    # real credentials in the shared mount are intentional.
+    from ..core.config import get_claude_expose_oauth_token, is_experimental
+
+    if is_experimental() and get_claude_expose_oauth_token():
+        leaked = [(p, path) for p, path in leaked if p != "claude"]
     if leaked:
         import sys
 

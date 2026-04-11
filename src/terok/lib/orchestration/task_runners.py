@@ -254,6 +254,27 @@ def _drop_shield_on_creation(cname: str, task_dir: Path) -> None:
         warnings.warn(f"shield drop: {exc}", stacklevel=2)
 
 
+def _maybe_deny_anthropic_api(cname: str, task_dir: Path) -> None:
+    """Block ``api.anthropic.com`` when Claude OAuth is proxied (tier 2).
+
+    When the shield is down, deny sets prevent phantom tokens from leaking
+    to Anthropic's hardcoded ``BASE_API_URL`` endpoint.  No-op when the
+    proxy is bypassed for Claude (tier 3) or experimental features are off.
+    """
+    from ..core.config import get_claude_allow_oauth, get_claude_expose_oauth_token, is_experimental
+
+    if not (is_experimental() and get_claude_allow_oauth()):
+        return
+    if get_claude_expose_oauth_token():
+        return
+    try:
+        from terok_sandbox import make_shield
+
+        make_shield(task_dir).deny(cname, "api.anthropic.com")
+    except Exception:  # noqa: BLE001
+        pass  # best-effort, non-fatal
+
+
 def _apply_shield_policy(
     project: ProjectConfig, cname: str, task_dir: Path, *, is_restart: bool
 ) -> None:
@@ -276,12 +297,12 @@ def _apply_shield_policy(
             raise ValueError(
                 f"Unknown shield.on_task_restart value: {policy!r} (expected 'retain' or 'up')"
             )
-        return
-
-    if project.shield_drop_on_task_run:
+    elif project.shield_drop_on_task_run:
         _drop_shield_on_creation(cname, task_dir)
     else:
         _write_desired_shield_state(task_dir, "up")
+
+    _maybe_deny_anthropic_api(cname, task_dir)
 
 
 def _run_container(
