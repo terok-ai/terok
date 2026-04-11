@@ -12,16 +12,21 @@ import subprocess
 from collections.abc import Callable
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from ..core.config import build_dir, make_sandbox_config
 from ..core.images import project_cli_image
 from ..core.projects import load_project
 
+if TYPE_CHECKING:
+    from ..core.project_model import ProjectConfig
+
 
 def get_project_state(
     project_id: str,
     gate_commit_provider: Callable[[str], dict | None] | None = None,
+    *,
+    project: "ProjectConfig | None" = None,
 ) -> dict:
     """Return a summary of per-project infrastructure state.
 
@@ -35,9 +40,14 @@ def get_project_state(
       a ``config`` file.
     - ``gate`` - True if the project's git gate directory exists.
     - ``gate_last_commit`` - Dict with commit info if gate exists, None otherwise.
+
+    Args:
+        project_id: The project to inspect.
+        gate_commit_provider: Optional callback to retrieve the last gate commit.
+        project: Pre-loaded project config; avoids redundant ``load_project``.
     """
 
-    project = load_project(project_id)
+    project = project or load_project(project_id)
 
     # Dockerfiles: look in the same location generate_dockerfiles writes to.
     stage_dir = build_dir() / project.id
@@ -68,15 +78,20 @@ def get_project_state(
     except (FileNotFoundError, OSError, subprocess.TimeoutExpired):
         has_images = False
 
+    rendered: dict[str, str] | None = None
     dockerfiles_old = False
     if has_dockerfiles:
         try:
-            from ..orchestration.docker import dockerfiles_match_templates
+            from ..orchestration.docker import render_all_dockerfiles
         except ImportError:
             dockerfiles_old = False
         else:
             try:
-                dockerfiles_old = not dockerfiles_match_templates(project_id)
+                rendered = render_all_dockerfiles(project)
+                dockerfiles_old = any(
+                    not (stage_dir / name).is_file() or (stage_dir / name).read_text() != expected
+                    for name, expected in rendered.items()
+                )
             except Exception as exc:
                 from ..util.logging_utils import log_warning
 
@@ -95,15 +110,16 @@ def get_project_state(
                 docker_mtime = None
 
             context_hash = None
-            try:
-                from ..orchestration.docker import build_context_hash
+            if rendered:
+                try:
+                    from ..orchestration.docker import build_context_hash_from_rendered
 
-                context_hash = build_context_hash(project_id)
-            except (OSError, ValueError, KeyError, ImportError) as exc:
-                from ..util.logging_utils import _log_debug
+                    context_hash = build_context_hash_from_rendered(project, rendered)
+                except (OSError, ValueError, KeyError, ImportError) as exc:
+                    from ..util.logging_utils import _log_debug
 
-                _log_debug(f"Build context hash failed for {project_id}: {exc}")
-                context_hash = None
+                    _log_debug(f"Build context hash failed for {project_id}: {exc}")
+                    context_hash = None
 
             if docker_mtime is not None or context_hash is not None:
                 docker_dt = (

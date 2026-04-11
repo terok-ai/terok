@@ -330,7 +330,7 @@ class TestProjectStateWarnings:
             patch("terok.lib.domain.project_state.load_project", return_value=mock_project),
             patch("terok.lib.domain.project_state.build_dir", return_value=tmp_path / "build"),
             patch(
-                "terok.lib.orchestration.docker.dockerfiles_match_templates",
+                "terok.lib.orchestration.docker.render_all_dockerfiles",
                 side_effect=RuntimeError("template broken"),
             ),
             patch("subprocess.run", side_effect=FileNotFoundError("no podman")),

@@ -575,6 +575,7 @@ if _HAS_TEXTUAL:
                 state = get_project_state(
                     project_id,
                     gate_commit_provider=lambda _pid, _g=gate: _g.last_commit(),
+                    project=project,
                 )
                 staleness = None
                 if state.get("gate") and project.upstream_url:
