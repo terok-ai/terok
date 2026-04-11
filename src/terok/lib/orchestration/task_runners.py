@@ -949,7 +949,7 @@ def task_followup_headless(
     agent_config_dir = task_dir / "agent-config"
 
     if project.is_sealed:
-        # Sealed: inject prompt via podman exec into stopped container
+        # Sealed: inject prompt via podman cp into stopped container
         from terok_agent import inject_prompt
 
         inject_prompt(cname, prompt)
