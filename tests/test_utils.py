@@ -112,8 +112,9 @@ def make_staleness_info(**overrides: Any) -> GateStalenessInfo:
     return GateStalenessInfo(**defaults)
 
 
-def assert_hex_id(task_id: str) -> None:
+def assert_hex_id(task_id: str | None) -> None:
     """Assert that *task_id* is a valid 8-char hex string."""
+    assert isinstance(task_id, str), f"Expected task ID string, got {task_id!r}"
     assert len(task_id) == 8, f"Expected 8-char hex ID, got {task_id!r}"
     assert all(c in "0123456789abcdef" for c in task_id), f"Not a hex string: {task_id!r}"
 

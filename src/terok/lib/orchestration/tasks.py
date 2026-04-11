@@ -53,6 +53,10 @@ from .container_exec import container_git_diff
 # ---------- Task ID generation ----------
 
 
+_META_GLOB = "*.yml"
+"""Glob pattern for task metadata YAML files."""
+
+
 def _generate_unique_id(existing: set[str]) -> str:
     """Generate a unique 8-char hex task ID not present in *existing*."""
     for _ in range(100):
@@ -72,12 +76,15 @@ def resolve_task_id(project_id: str, prefix: str) -> str:
 
     Raises ``SystemExit`` with an actionable message on zero or multiple matches.
     """
+    if not re.fullmatch(r"[0-9a-f]{1,8}", prefix):
+        raise SystemExit(f"Invalid task ID prefix {prefix!r}; expected 1-8 lowercase hex chars")
+
     meta_dir = tasks_meta_dir(project_id)
     if not meta_dir.is_dir():
         raise SystemExit(f"No tasks found for project {project_id}")
     if (meta_dir / f"{prefix}.yml").is_file():
         return prefix
-    matches = [p.stem for p in meta_dir.glob("*.yml") if p.stem.startswith(prefix)]
+    matches = [p.stem for p in meta_dir.glob(_META_GLOB) if p.stem.startswith(prefix)]
     if len(matches) == 1:
         return matches[0]
     if not matches:
@@ -367,7 +374,7 @@ def _task_new(project: ProjectConfig, *, name: str | None = None) -> str:
     meta_dir = tasks_meta_dir(project.id)
     ensure_dir(meta_dir)
 
-    existing = {p.stem for p in meta_dir.glob("*.yml")}
+    existing = {p.stem for p in meta_dir.glob(_META_GLOB)}
     next_id = _generate_unique_id(existing)
 
     ws = tasks_root / next_id
@@ -471,7 +478,7 @@ def _get_tasks(project_id: str, reverse: bool = False) -> list[TaskMeta]:
         tasks_root = project.tasks_root
     except SystemExit:
         tasks_root = None
-    for f in meta_dir.glob("*.yml"):
+    for f in meta_dir.glob(_META_GLOB):
         try:
             meta = _yaml_load(f.read_text()) or {}
             tid = str(meta.get("task_id", ""))

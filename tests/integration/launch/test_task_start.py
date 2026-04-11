@@ -7,12 +7,14 @@ from __future__ import annotations
 
 import json
 import os
+import re
 from pathlib import Path
 from typing import Any
 
 import pytest
 
 from terok.lib.util.yaml import load as yaml_load
+from tests.test_utils import assert_hex_id
 from tests.testnet import EXAMPLE_UPSTREAM_URL, LOCALHOST, localhost_url
 
 from ..helpers import TerokIntegrationEnv, write_fake_podman
@@ -20,9 +22,6 @@ from ..helpers import TerokIntegrationEnv, write_fake_podman
 pytestmark = pytest.mark.needs_host_features
 
 PROJECT_ID = "demo"
-TASK_ID = "1"
-CLI_CONTAINER = f"{PROJECT_ID}-cli-{TASK_ID}"
-TOAD_CONTAINER = f"{PROJECT_ID}-toad-{TASK_ID}"
 WEB_PORT = 7860
 TOAD_PORT = 8080
 
@@ -77,6 +76,13 @@ def _env_entries(args: list[str]) -> set[str]:
     return {args[index + 1] for index, arg in enumerate(args[:-1]) if arg == "-e"}
 
 
+def _extract_task_id(stdout: str) -> str:
+    """Extract the hex task ID from 'Created task <id> ...' output."""
+    match = re.search(r"Created task ([0-9a-f]{8})", stdout)
+    assert match, f"Could not extract task ID from: {stdout!r}"
+    return match.group(1)
+
+
 class TestLaunchWorkflows:
     """Verify host-only task start/restart flows through the real CLI."""
 
@@ -96,16 +102,19 @@ class TestLaunchWorkflows:
             extra_env=extra_env,
         )
 
-        meta = yaml_load(terok_env.task_meta_path(PROJECT_ID, TASK_ID).read_text(encoding="utf-8"))
+        tid = _extract_task_id(result.stdout)
+        assert_hex_id(tid)
+        cli_container = f"{PROJECT_ID}-cli-{tid}"
+        meta = yaml_load(terok_env.task_meta_path(PROJECT_ID, tid).read_text(encoding="utf-8"))
         state = _load_fake_podman_state(state_path)
-        args = _container_args(state, CLI_CONTAINER)
+        args = _container_args(state, cli_container)
 
-        assert "Created task 1 (fix-login-bug)" in result.stdout
+        assert f"Created task {tid} (fix-login-bug)" in result.stdout
         assert "CLI container is running in the background." in result.stdout
-        assert "Login with: terok login demo 1" in result.stdout
-        assert state["containers"][CLI_CONTAINER]["status"] == "running"
-        assert state["containers"][CLI_CONTAINER]["marker"] == "__CLI_READY__"
-        assert "--name" in args and args[args.index("--name") + 1] == CLI_CONTAINER
+        assert f"Login with: terok login demo {tid}" in result.stdout
+        assert state["containers"][cli_container]["status"] == "running"
+        assert state["containers"][cli_container]["marker"] == "__CLI_READY__"
+        assert "--name" in args and args[args.index("--name") + 1] == cli_container
         assert f"{PROJECT_ID}:l2-cli" in args
         assert "-p" not in args
         assert meta["mode"] == "cli"
@@ -127,13 +136,15 @@ class TestLaunchWorkflows:
             extra_env=extra_env,
         )
 
-        meta = yaml_load(terok_env.task_meta_path(PROJECT_ID, TASK_ID).read_text(encoding="utf-8"))
+        tid = _extract_task_id(result.stdout)
+        toad_container = f"{PROJECT_ID}-toad-{tid}"
+        meta = yaml_load(terok_env.task_meta_path(PROJECT_ID, tid).read_text(encoding="utf-8"))
         state = _load_fake_podman_state(state_path)
-        args = _container_args(state, TOAD_CONTAINER)
+        args = _container_args(state, toad_container)
 
         assert "Toad is serving." in result.stdout
         assert localhost_url(WEB_PORT) in result.stdout
-        assert state["containers"][TOAD_CONTAINER]["marker"] == "Serving http://0.0.0.0:8080"
+        assert state["containers"][toad_container]["marker"] == "Serving http://0.0.0.0:8080"
         assert args[args.index("-p") + 1] == f"{LOCALHOST}:{WEB_PORT}:{TOAD_PORT}"
         assert f"{PROJECT_ID}:l2-cli" in args
         assert "toad --serve -H 0.0.0.0 -p 8080" in args[-1]
@@ -149,17 +160,19 @@ class TestLaunchWorkflows:
         terok_env.write_project(PROJECT_ID, PROJECT_CONFIG)
         state_path, extra_env = _configure_fake_runtime(terok_env, tmp_path)
 
-        terok_env.run_cli("task", "start", PROJECT_ID, extra_env=extra_env)
+        start_result = terok_env.run_cli("task", "start", PROJECT_ID, extra_env=extra_env)
+        tid = _extract_task_id(start_result.stdout)
+        cli_container = f"{PROJECT_ID}-cli-{tid}"
 
         state = _load_fake_podman_state(state_path)
-        state["containers"][CLI_CONTAINER]["status"] = "exited"
+        state["containers"][cli_container]["status"] = "exited"
         state_path.write_text(json.dumps(state, indent=2, sort_keys=True), encoding="utf-8")
 
-        result = terok_env.run_cli("task", "restart", PROJECT_ID, TASK_ID, extra_env=extra_env)
+        result = terok_env.run_cli("task", "restart", PROJECT_ID, tid, extra_env=extra_env)
         restarted = _load_fake_podman_state(state_path)
 
-        assert "Restarting task demo/1 (cli)..." in result.stdout
-        assert "Restarted task 1:" in result.stdout
-        assert "Login with: terok login demo 1" in result.stdout
-        assert restarted["containers"][CLI_CONTAINER]["status"] == "running"
-        assert any(command == ["start", CLI_CONTAINER] for command in restarted["commands"])
+        assert f"Restarting task demo/{tid} (cli)..." in result.stdout
+        assert f"Restarted task {tid}:" in result.stdout
+        assert f"Login with: terok login demo {tid}" in result.stdout
+        assert restarted["containers"][cli_container]["status"] == "running"
+        assert any(command == ["start", cli_container] for command in restarted["commands"])

@@ -5,8 +5,11 @@
 
 from __future__ import annotations
 
+import re
+
 import pytest
 
+from tests.test_utils import assert_hex_id
 from tests.testnet import EXAMPLE_UPSTREAM_URL
 
 from ..helpers import NEW_TASK_MARKER, TerokIntegrationEnv
@@ -22,6 +25,13 @@ git:
 """
 
 
+def _extract_task_id(stdout: str) -> str:
+    """Extract the hex task ID from 'Created task <id> ...' output."""
+    match = re.search(r"Created task ([0-9a-f]{8})", stdout)
+    assert match, f"Could not extract task ID from: {stdout!r}"
+    return match.group(1)
+
+
 class TestTaskLifecycle:
     """Verify task creation, status, rename, and archive flows."""
 
@@ -34,11 +44,13 @@ class TestTaskLifecycle:
         created = terok_env.run_cli("task", "new", "demo", "--name", "Fix Login Bug")
         terok_env.run_cli("task", "new", "demo", "--name", "Docs Sweep")
 
-        workspace = terok_env.task_workspace("demo", "1")
-        assert "Created task 1 (fix-login-bug)" in created.stdout
+        tid = _extract_task_id(created.stdout)
+        assert_hex_id(tid)
+        workspace = terok_env.task_workspace("demo", tid)
+        assert f"Created task {tid} (fix-login-bug)" in created.stdout
         assert workspace.is_dir()
         assert (workspace / NEW_TASK_MARKER).is_file()
-        assert (terok_env.task_dir("demo", "1") / "README.md").is_file()
+        assert (terok_env.task_dir("demo", tid) / "README.md").is_file()
 
         listed = terok_env.run_cli("task", "list", "demo")
         assert "fix-login-bug created" in listed.stdout
@@ -47,21 +59,22 @@ class TestTaskLifecycle:
     def test_task_rename_status_and_archive_delete(self, terok_env: TerokIntegrationEnv) -> None:
         """A task can be renamed, inspected, deleted, and listed from the archive."""
         terok_env.write_project("demo", PROJECT_CONFIG)
-        terok_env.run_cli("task", "new", "demo", "--name", "Draft")
+        created = terok_env.run_cli("task", "new", "demo", "--name", "Draft")
+        tid = _extract_task_id(created.stdout)
 
-        renamed = terok_env.run_cli("task", "rename", "demo", "1", "Ship It")
-        assert "Renamed task 1 to ship-it" in renamed.stdout
+        renamed = terok_env.run_cli("task", "rename", "demo", tid, "Ship It")
+        assert f"Renamed task {tid} to ship-it" in renamed.stdout
 
-        status = terok_env.run_cli("task", "status", "demo", "1")
-        assert "Task 1:" in status.stdout
+        status = terok_env.run_cli("task", "status", "demo", tid)
+        assert f"Task {tid}:" in status.stdout
         assert "Name:            ship-it" in status.stdout
         assert "[created]" in status.stdout
         assert "Mode:" in status.stdout
         assert "not set" in status.stdout
 
-        terok_env.run_cli("task", "delete", "demo", "1")
-        assert not terok_env.task_meta_path("demo", "1").exists()
-        assert not terok_env.task_dir("demo", "1").exists()
+        terok_env.run_cli("task", "delete", "demo", tid)
+        assert not terok_env.task_meta_path("demo", tid).exists()
+        assert not terok_env.task_dir("demo", tid).exists()
 
         archive_root = terok_env.task_archive_root("demo")
         archived_entries = [entry for entry in archive_root.iterdir() if entry.is_dir()]
@@ -69,4 +82,4 @@ class TestTaskLifecycle:
         assert any((entry / "task.yml").is_file() for entry in archived_entries)
 
         archived = terok_env.run_cli("task", "archive", "list", "demo")
-        assert "#1: ship-it" in archived.stdout
+        assert f"#{tid}: ship-it" in archived.stdout
