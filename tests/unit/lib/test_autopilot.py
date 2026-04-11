@@ -19,9 +19,6 @@ from typing import TYPE_CHECKING
 import pytest
 
 from terok.lib.util.yaml import dump as yaml_dump, load as yaml_load
-from tests.testfs import (
-    CONTAINER_TEROK_MOUNT_Z,
-)
 
 if TYPE_CHECKING:
     from terok.lib.core.projects import ProjectConfig
@@ -221,8 +218,8 @@ def run_followup_request(
     return TaskRunnerResult(output=buffer.getvalue(), run_mock=run_mock, wait_mock=wait_mock)
 
 
-def _spec_volumes(result: TaskRunnerResult) -> tuple[str, ...]:
-    """Extract volumes from the RunSpec captured by the sandbox mock."""
+def _spec_volumes(result: TaskRunnerResult) -> tuple:
+    """Extract VolumeSpec tuple from the RunSpec captured by the sandbox mock."""
     return result.last_spec.volumes
 
 
@@ -334,7 +331,10 @@ class TestTaskRunHeadless:
                 write_runner_project(base, "proj_mount"),
                 HeadlessRunRequest("proj_mount", "test prompt"),
             )
-            assert CONTAINER_TEROK_MOUNT_Z in " ".join(result.last_spec.volumes)
+            assert any(
+                v.container_path == "/home/dev/.terok" and v.relabel == "Z"
+                for v in result.last_spec.volumes
+            )
 
     def test_headless_generates_agent_wrapper(self) -> None:
         """task_run_headless generates terok-agent.sh in agent-config dir."""

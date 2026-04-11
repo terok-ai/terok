@@ -32,6 +32,7 @@ class ProjectConfig(BaseModel):
 
     id: str
     security_class: str  # "online" | "gatekeeping"
+    isolation: str = "shared"  # "shared" | "sealed"
     upstream_url: str | None
     default_branch: str | None
     root: Path

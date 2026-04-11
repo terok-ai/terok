@@ -179,6 +179,7 @@ def _build_project_config(
     return ProjectConfig(
         id=pid,
         security_class=sec,
+        isolation=raw.project.isolation,
         upstream_url=raw.git.upstream_url,
         default_branch=raw.git.default_branch or None,
         root=root.resolve(),

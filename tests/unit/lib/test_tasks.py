@@ -321,10 +321,10 @@ class TestTask:
             assert "http://" in env["CODE_REPO"]
             assert _gate_repo_fragment(project_id) in env["CODE_REPO"]
             # No gate volume mount (served via gate server)
-            gate_mounts = [v for v in volumes if "gate" in v.split(":")[0]]
+            gate_mounts = [v for v in volumes if "gate" in str(v.host_path)]
             assert gate_mounts == []
             # Verify SSH is NOT mounted by default in gatekeeping mode
-            ssh_mounts = [v for v in volumes if str(CONTAINER_SSH_DIR) in v]
+            ssh_mounts = [v for v in volumes if str(CONTAINER_SSH_DIR) in v.container_path]
             assert ssh_mounts == []
 
     @unittest.mock.patch("terok.lib.orchestration.environment.ensure_server_reachable")
@@ -357,7 +357,7 @@ class TestTask:
             assert "http://" in env["CODE_REPO"]
             assert _gate_repo_fragment(project_id) in env["CODE_REPO"]
             # Verify SSH is NOT mounted (keys are served via SSH agent proxy)
-            ssh_mounts = [v for v in volumes if str(CONTAINER_SSH_DIR) in v]
+            ssh_mounts = [v for v in volumes if str(CONTAINER_SSH_DIR) in v.container_path]
             assert ssh_mounts == []
 
     @unittest.mock.patch("terok.lib.orchestration.environment.ensure_server_reachable")
@@ -387,7 +387,7 @@ class TestTask:
             assert "http://" in env["CLONE_FROM"]
             assert _gate_repo_fragment(project_id) in env["CLONE_FROM"]
             # SSH is NOT bind-mounted (keys are served via SSH agent proxy)
-            ssh_mounts = [v for v in volumes if str(CONTAINER_SSH_DIR) in v]
+            ssh_mounts = [v for v in volumes if str(CONTAINER_SSH_DIR) in v.container_path]
             assert ssh_mounts == []
 
     def test_build_task_env_uses_configured_git_authorship(self) -> None:

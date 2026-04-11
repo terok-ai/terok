@@ -346,10 +346,14 @@ class TestRunContainer:
         p = MagicMock(spec=ProjectConfig)
         p.gpu_enabled = False
         p.root = MOCK_TASK_DIR
+        p.isolation = "shared"
         return p
 
     def test_builds_runspec_and_delegates(self) -> None:
         """_run_container constructs a RunSpec and calls sandbox.run()."""
+        from terok_sandbox import VolumeSpec
+
+        vol = VolumeSpec(Path("/a"), "/b")
         project = self._make_project()
         with (
             patch("terok.lib.orchestration.task_runners._sandbox") as sandbox_factory,
@@ -359,7 +363,7 @@ class TestRunContainer:
                 cname="test-ctr",
                 image="alpine:latest",
                 env={"FOO": "bar"},
-                volumes=["/a:/b"],
+                volumes=[vol],
                 project=project,
                 task_dir=MOCK_TASK_DIR,
                 command=["bash", "-lc", "echo hi"],
@@ -370,7 +374,7 @@ class TestRunContainer:
         assert spec.container_name == "test-ctr"
         assert spec.image == "alpine:latest"
         assert spec.env == {"FOO": "bar"}
-        assert spec.volumes == ("/a:/b",)
+        assert spec.volumes == (vol,)
         assert spec.command == ("bash", "-lc", "echo hi")
         assert spec.task_dir == MOCK_TASK_DIR
         assert spec.gpu_enabled is False

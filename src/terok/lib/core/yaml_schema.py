@@ -66,6 +66,9 @@ class RawProjectSection(BaseModel):
     id: str | None = None
     name: str | None = Field(default=None, description="Human-readable project name")
     security_class: str = Field(default="online", description="online or gatekeeping")
+    isolation: str = Field(
+        default="shared", description="shared (bind mounts) or sealed (no mounts)"
+    )
 
     @field_validator("id")
     @classmethod
@@ -88,6 +91,15 @@ class RawProjectSection(BaseModel):
         v = v.strip().lower()
         if v not in ("online", "gatekeeping"):
             raise ValueError(f"must be 'online' or 'gatekeeping', got {v!r}")
+        return v
+
+    @field_validator("isolation")
+    @classmethod
+    def _validate_isolation(cls, v: str) -> str:
+        """Normalize and validate the isolation mode enum."""
+        v = v.strip().lower()
+        if v not in ("shared", "sealed"):
+            raise ValueError(f"must be 'shared' or 'sealed', got {v!r}")
         return v
 
 
