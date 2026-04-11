@@ -48,7 +48,7 @@ import tarfile
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, TypedDict
 
-from terok_agent import AgentProvider, get_provider, resolve_instructions
+from terok_agent import get_provider, resolve_instructions
 from terok_sandbox import GitGate, SSHManager
 
 from ..core.config import (
@@ -79,6 +79,8 @@ from .project_state import get_project_state, is_task_image_old
 from .task import Task
 
 if TYPE_CHECKING:
+    from terok_agent import AgentProvider
+
     from ..core.project_model import PresetInfo
 
 _logger = logging.getLogger(__name__)
