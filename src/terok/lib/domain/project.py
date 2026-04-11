@@ -185,21 +185,17 @@ def make_git_gate(config: ProjectConfig) -> GitGate:
     """
     cfg = make_sandbox_config()
     ssh_dir = config.ssh_host_dir or (cfg.ssh_keys_dir / config.id)
-    # clone_cache_base activates when sibling wheels with clone-cache land.
-    kwargs: dict = {
-        "scope": config.id,
-        "gate_path": config.gate_path,
-        "upstream_url": config.upstream_url,
-        "default_branch": config.default_branch,
-        "ssh_host_dir": ssh_dir,
-        "ssh_key_name": config.ssh_key_name,
-        "allow_host_keys": config.ssh_allow_host_keys,
-        "validate_gate_fn": validate_gate_upstream_match,
-    }
-    cache_base = getattr(cfg, "clone_cache_base_path", None)
-    if cache_base is not None:
-        kwargs["clone_cache_base"] = cache_base
-    return GitGate(**kwargs)
+    return GitGate(
+        scope=config.id,
+        gate_path=config.gate_path,
+        upstream_url=config.upstream_url,
+        default_branch=config.default_branch,
+        ssh_host_dir=ssh_dir,
+        ssh_key_name=config.ssh_key_name,
+        allow_host_keys=config.ssh_allow_host_keys,
+        validate_gate_fn=validate_gate_upstream_match,
+        clone_cache_base=cfg.clone_cache_base_path,
+    )
 
 
 def make_ssh_manager(config: ProjectConfig) -> SSHManager:
