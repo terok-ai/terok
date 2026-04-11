@@ -231,23 +231,14 @@ def ensure_credential_proxy() -> None:
 def _skip_claude_oauth() -> bool:
     """Return True when Claude OAuth should be excluded from the credential proxy.
 
-    Tier 1 (experimental off or allow_oauth off): skip — the path is broken
-    because Claude Code's hardcoded ``BASE_API_URL`` sends phantom tokens
-    directly to ``api.anthropic.com``.
-
-    Tier 3 (expose_oauth_token): skip — Claude manages ``.credentials.json``
-    directly via the shared mount, no proxy involvement.
-
-    Tier 2 (allow_oauth, not exposed): return False — proxy handles OAuth
-    normally, shield blocks ``api.anthropic.com``.
+    Only tier 2 (proxy active, not exposed) keeps Claude OAuth in the proxy.
+    Tiers 1 and 3 both skip it — tier 1 because the path is broken
+    (hardcoded ``BASE_API_URL``), tier 3 because Claude manages its own
+    credentials directly.
     """
-    from ..core.config import get_claude_allow_oauth, get_claude_expose_oauth_token, is_experimental
+    from ..core.config import is_claude_oauth_proxied
 
-    if not is_experimental():
-        return True
-    if get_claude_expose_oauth_token():
-        return True
-    return not get_claude_allow_oauth()
+    return not is_claude_oauth_proxied()
 
 
 def _credential_proxy_env_and_volumes(
@@ -308,12 +299,10 @@ def _credential_proxy_env_and_volumes(
             cred = db.load_credential(credential_set, name)
             ctype = _credential_type(cred) if cred else "api_key"
             credential_types[name] = ctype
-            # Claude OAuth: gated by experimental config (see _skip_claude_oauth).
+            # Claude OAuth never needs a per-task phantom token — the static
+            # marker in .credentials.json is accepted by the proxy directly.
+            # Tier gating (skip vs proxy vs expose) happens in the env loop below.
             if name == "claude" and ctype == "oauth":
-                if _skip_claude_oauth():
-                    continue
-                # The static marker in .credentials.json serves as the access
-                # token — no per-task phantom token needed.
                 continue
             tokens[name] = db.create_proxy_token(project.id, task_id, credential_set, name)
 
@@ -339,10 +328,7 @@ def _credential_proxy_env_and_volumes(
 
         is_oauth = credential_types[name] == "oauth"
 
-        # Claude OAuth: experimental tiered handling.
-        # - Tier 1 (experimental off): skip entirely — broken path disabled.
-        # - Tier 2 (allow_oauth): proxy prompt API, shield blocks BASE_API_URL.
-        # - Tier 3 (expose_oauth_token): bypass proxy, real .credentials.json.
+        # Claude OAuth: tier gating (see _skip_claude_oauth / is_claude_oauth_proxied).
         if name == "claude" and is_oauth:
             if _skip_claude_oauth():
                 continue
@@ -391,7 +377,7 @@ def _credential_proxy_env_and_volumes(
     # real credentials in the shared mount are intentional.
     from ..core.config import get_claude_expose_oauth_token, is_experimental
 
-    if is_experimental() and get_claude_expose_oauth_token():
+    if is_experimental() and get_claude_expose_oauth_token():  # tier 3: intentional
         leaked = [(p, path) for p, path in leaked if p != "claude"]
     if leaked:
         import sys

@@ -258,14 +258,11 @@ def _maybe_deny_anthropic_api(cname: str, task_dir: Path) -> None:
     """Block ``api.anthropic.com`` when Claude OAuth is proxied (tier 2).
 
     When the shield is down, deny sets prevent phantom tokens from leaking
-    to Anthropic's hardcoded ``BASE_API_URL`` endpoint.  No-op when the
-    proxy is bypassed for Claude (tier 3) or experimental features are off.
+    to Anthropic's hardcoded ``BASE_API_URL`` endpoint.  No-op for tiers 1/3.
     """
-    from ..core.config import get_claude_allow_oauth, get_claude_expose_oauth_token, is_experimental
+    from ..core.config import is_claude_oauth_proxied
 
-    if not (is_experimental() and get_claude_allow_oauth()):
-        return
-    if get_claude_expose_oauth_token():
+    if not is_claude_oauth_proxied():
         return
     try:
         from terok_sandbox import make_shield
