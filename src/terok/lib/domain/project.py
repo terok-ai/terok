@@ -48,7 +48,7 @@ import tarfile
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, TypedDict
 
-from terok_agent import HeadlessProvider, get_provider, resolve_instructions
+from terok_agent import AgentProvider, get_provider, resolve_instructions
 from terok_sandbox import GitGate, SSHManager
 
 from ..core.config import (
@@ -406,7 +406,7 @@ class AgentManager:
         effective = self.resolve_config(preset=preset)
         return resolve_instructions(effective, provider_name, project_root=self._config.root)
 
-    def get_provider(self, name: str | None = None) -> HeadlessProvider:
+    def get_provider(self, name: str | None = None) -> AgentProvider:
         """Resolve the active headless provider for this project."""
         return get_provider(name, default_agent=self._config.default_agent)
 
@@ -536,7 +536,7 @@ class Project:
 
     def get_state(self) -> dict:
         """Return the project's infrastructure state."""
-        return get_project_state(self._config.id)
+        return get_project_state(self._config.id, project=self._config)
 
     def is_task_image_old(self, task: TaskMeta) -> bool:
         """Check whether the task's container image is outdated."""

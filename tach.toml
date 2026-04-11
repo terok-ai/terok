@@ -559,7 +559,8 @@ expose = [
     "generate_dockerfiles",
     "build_images",
     "build_context_hash",
-    "dockerfiles_match_templates",
+    "build_context_hash_from_rendered",
+    "render_all_dockerfiles",
 ]
 from = ["terok.lib.orchestration.docker"]
 

@@ -873,7 +873,7 @@ def task_followup_headless(
     original ``task_run_headless`` invocation since ``podman start``
     re-executes the same container command.
     """
-    from terok_agent import HEADLESS_PROVIDERS
+    from terok_agent import AGENT_PROVIDERS
 
     project = load_project(project_id)
     meta, meta_path = load_task_meta(project.id, task_id)
@@ -899,7 +899,7 @@ def task_followup_headless(
 
     # Resolve provider from task metadata
     provider_name = meta.get("provider", "claude")
-    resolved = HEADLESS_PROVIDERS.get(provider_name)
+    resolved = AGENT_PROVIDERS.get(provider_name)
     if resolved is None:
         import warnings
 

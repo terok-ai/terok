@@ -815,21 +815,21 @@ class AgentSelectionScreen(screen.ModalScreen[tuple[str, list[str] | None] | Non
         super().__init__()
         self._subagents = subagents or []
 
-        from terok_agent import HEADLESS_PROVIDERS
+        from terok_agent import AGENT_PROVIDERS
 
-        if default_agent in HEADLESS_PROVIDERS:
+        if default_agent in AGENT_PROVIDERS:
             self._default_agent = default_agent
         else:
-            self._default_agent = next(iter(HEADLESS_PROVIDERS))
+            self._default_agent = next(iter(AGENT_PROVIDERS))
         self._selected_agent: str = self._default_agent
 
     def compose(self) -> ComposeResult:
         """Build the agent list, optional sub-agent checkboxes, and buttons."""
-        from terok_agent import HEADLESS_PROVIDERS
+        from terok_agent import AGENT_PROVIDERS
 
         with Vertical(id="agent-dialog") as dialog:
             options = []
-            for i, provider in enumerate(HEADLESS_PROVIDERS.values(), 1):
+            for i, provider in enumerate(AGENT_PROVIDERS.values(), 1):
                 marker = " *" if provider.name == self._default_agent else ""
                 options.append(Option(f"\\[{i}] {provider.label}{marker}", id=provider.name))
             yield OptionList(*options, id="agent-list")
@@ -854,9 +854,9 @@ class AgentSelectionScreen(screen.ModalScreen[tuple[str, list[str] | None] | Non
     def on_mount(self) -> None:
         """Focus the agent list and highlight the default entry."""
         agent_list = self.query_one("#agent-list", OptionList)
-        from terok_agent import HEADLESS_PROVIDERS
+        from terok_agent import AGENT_PROVIDERS
 
-        for idx, name in enumerate(HEADLESS_PROVIDERS):
+        for idx, name in enumerate(AGENT_PROVIDERS):
             if name == self._default_agent:
                 agent_list.highlighted = idx
                 break
@@ -894,11 +894,11 @@ class AgentSelectionScreen(screen.ModalScreen[tuple[str, list[str] | None] | Non
 
     def on_key(self, event: events.Key) -> None:
         """Handle number-key shortcuts (1-9) to select an agent."""
-        from terok_agent import HEADLESS_PROVIDERS
+        from terok_agent import AGENT_PROVIDERS
 
         if event.character and event.character.isdigit():
             idx = int(event.character) - 1
-            providers = list(HEADLESS_PROVIDERS.values())
+            providers = list(AGENT_PROVIDERS.values())
             if 0 <= idx < len(providers):
                 self._selected_agent = providers[idx].name
                 agent_list = self.query_one("#agent-list", OptionList)
@@ -1215,14 +1215,14 @@ class TaskLaunchScreen(screen.ModalScreen["tuple[str, str, str, str, str, str | 
 
     def compose(self) -> ComposeResult:
         """Build status, agent selector, prompt input, and action buttons."""
-        from terok_agent import HEADLESS_PROVIDERS
+        from terok_agent import AGENT_PROVIDERS
 
         with Vertical(id="launch-dialog") as dialog:
             yield Static("Status: Starting container\u2026", id="launch-status")
 
             # Build agent choices: bash + all registered headless providers
             choices: list[tuple[str, str]] = [("bash", "bash")]
-            for p in HEADLESS_PROVIDERS.values():
+            for p in AGENT_PROVIDERS.values():
                 choices.append((p.label, p.name))
 
             # Validate default_login against available choices; fall back to "bash"

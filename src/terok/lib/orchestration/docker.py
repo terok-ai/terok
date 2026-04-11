@@ -147,7 +147,7 @@ def _render_l2(project: ProjectConfig) -> str:
     return template
 
 
-def _render_all_dockerfiles(project: ProjectConfig) -> dict[str, str]:
+def render_all_dockerfiles(project: ProjectConfig) -> dict[str, str]:
     """Render all Dockerfile templates for *project*.
 
     L0 and L1 are rendered by terok-agent; L2 is rendered locally.
@@ -165,11 +165,13 @@ def _render_all_dockerfiles(project: ProjectConfig) -> dict[str, str]:
 # ---------- Build context hash ----------
 
 
-def build_context_hash(project_id: str) -> str:
-    """Compute a SHA-256 digest of the full build context for *project_id*."""
-    project = load_project(project_id)
-    rendered = _render_all_dockerfiles(project)
+def build_context_hash_from_rendered(project: ProjectConfig, rendered: dict[str, str]) -> str:
+    """Compute a SHA-256 digest from pre-rendered Dockerfiles.
 
+    Args:
+        project: The resolved project configuration.
+        rendered: name→content mapping returned by :func:`render_all_dockerfiles`.
+    """
     hasher = hashlib.sha256()
     hasher.update(f"base_image={project.docker_base_image}".encode())
     hasher.update(b"\0")
@@ -184,18 +186,11 @@ def build_context_hash(project_id: str) -> str:
     return hasher.hexdigest()
 
 
-def dockerfiles_match_templates(project_id: str) -> bool:
-    """Return True if generated Dockerfiles match current templates."""
+def build_context_hash(project_id: str) -> str:
+    """Compute a SHA-256 digest of the full build context for *project_id*."""
     project = load_project(project_id)
-    out_dir = build_dir() / project.id
-    rendered = _render_all_dockerfiles(project)
-    for name, expected in rendered.items():
-        path = out_dir / name
-        if not path.is_file():
-            return False
-        if path.read_text() != expected:
-            return False
-    return True
+    rendered = render_all_dockerfiles(project)
+    return build_context_hash_from_rendered(project, rendered)
 
 
 # ---------- Dockerfile generation ----------
@@ -207,7 +202,7 @@ def generate_dockerfiles(project_id: str) -> None:
     out_dir = build_dir() / project.id
     ensure_dir(out_dir)
 
-    rendered = _render_all_dockerfiles(project)
+    rendered = render_all_dockerfiles(project)
     for name, content in rendered.items():
         (out_dir / name).write_text(content)
 
