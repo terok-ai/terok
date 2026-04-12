@@ -19,9 +19,6 @@ from typing import TYPE_CHECKING
 import pytest
 
 from terok.lib.util.yaml import dump as yaml_dump, load as yaml_load
-from tests.testfs import (
-    CONTAINER_TEROK_MOUNT_Z,
-)
 
 if TYPE_CHECKING:
     from terok.lib.core.projects import ProjectConfig
@@ -221,8 +218,8 @@ def run_followup_request(
     return TaskRunnerResult(output=buffer.getvalue(), run_mock=run_mock, wait_mock=wait_mock)
 
 
-def _spec_volumes(result: TaskRunnerResult) -> tuple[str, ...]:
-    """Extract volumes from the RunSpec captured by the sandbox mock."""
+def _spec_volumes(result: TaskRunnerResult) -> tuple:
+    """Extract VolumeSpec tuple from the RunSpec captured by the sandbox mock."""
     return result.last_spec.volumes
 
 
@@ -334,7 +331,10 @@ class TestTaskRunHeadless:
                 write_runner_project(base, "proj_mount"),
                 HeadlessRunRequest("proj_mount", "test prompt"),
             )
-            assert CONTAINER_TEROK_MOUNT_Z in " ".join(result.last_spec.volumes)
+            assert any(
+                v.container_path == "/home/dev/.terok" and v.sharing == "private"
+                for v in result.last_spec.volumes
+            )
 
     def test_headless_generates_agent_wrapper(self) -> None:
         """task_run_headless generates terok-agent.sh in agent-config dir."""
@@ -704,3 +704,57 @@ class TestTaskFollowupHeadless:
                     with pytest.raises(SystemExit) as ctx:
                         task_followup_headless("proj_startfail", task_id, "test")
                     assert "failed to start" in str(ctx.value)
+
+    def test_sealed_followup_uses_inject_prompt(self) -> None:
+        """Sealed projects inject the follow-up prompt via podman cp, not host files."""
+        with tempfile.TemporaryDirectory() as td:
+            base = Path(td)
+
+            config_file = write_runner_project(
+                base, "proj_sealed", extra_yml="  isolation: sealed\n"
+            )
+
+            # Create a completed headless task
+            result = run_headless_request(
+                base,
+                config_file,
+                HeadlessRunRequest("proj_sealed", "initial prompt"),
+            )
+            task_id = result.task_id
+            assert task_id is not None
+
+            with unittest.mock.patch.dict(
+                os.environ, runner_env_vars(base, config_file), clear=True
+            ):
+                with (
+                    mock_git_config(),
+                    unittest.mock.patch(
+                        "terok.lib.orchestration.task_runners.subprocess.run"
+                    ) as run_mock,
+                    unittest.mock.patch(
+                        "terok.lib.orchestration.task_runners.get_container_state",
+                        side_effect=["exited", "running"],
+                    ),
+                    unittest.mock.patch(
+                        "terok.lib.orchestration.task_runners.wait_for_exit", return_value=0
+                    ),
+                    unittest.mock.patch("terok.lib.orchestration.task_runners._print_run_summary"),
+                    unittest.mock.patch("terok_sandbox.Sandbox") as mock_sandbox_cls,
+                ):
+                    run_mock.return_value = subprocess.CompletedProcess([], 0)
+                    buffer = StringIO()
+                    with redirect_stdout(buffer):
+                        task_followup_headless("proj_sealed", task_id, "sealed follow-up")
+
+                    # inject_prompt should have been called via Sandbox.copy_to
+                    mock_sandbox_cls.return_value.copy_to.assert_called_once()
+                    call_args = mock_sandbox_cls.return_value.copy_to.call_args[0]
+                    assert call_args[2] == "/home/dev/.terok/prompt.txt"
+
+                    # prompt.txt on host should NOT have been updated (sealed skips it)
+                    agent_cfg = (
+                        base / "sandbox-live" / "tasks" / "proj_sealed" / task_id / "agent-config"
+                    )
+                    if (agent_cfg / "prompt.txt").exists():
+                        # If file exists, it should still contain the original prompt
+                        assert (agent_cfg / "prompt.txt").read_text() == "initial prompt"

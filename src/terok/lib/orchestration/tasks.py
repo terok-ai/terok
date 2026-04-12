@@ -386,7 +386,8 @@ def _task_new(project: ProjectConfig, *, name: str | None = None) -> str:
     marker_path = workspace_dir / ".new-task-marker"
     marker_path.write_text(
         "# This marker signals that the workspace should be reset to the latest remote HEAD.\n"
-        "# It is created by 'terok task new' and removed by init-ssh-and-repo.sh after reset.\n"
+        "# It is created by 'terok task new' and removed by init-ssh-and-repo.sh"
+        " after reset.\n"
         "# If you see this file in an initialized workspace, something went wrong.\n",
         encoding="utf-8",
     )

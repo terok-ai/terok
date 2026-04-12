@@ -18,6 +18,7 @@ import os
 from pathlib import Path
 
 from terok_sandbox import (
+    VolumeSpec,
     create_token,
     ensure_server_reachable,
     get_gate_base_path,
@@ -437,7 +438,9 @@ def _seed_workspace_cache(repo_dir: Path, project_id: str, code_repo: str | None
 # ---------- Main builder ----------
 
 
-def build_task_env_and_volumes(project: ProjectConfig, task_id: str) -> tuple[dict, list[str]]:
+def build_task_env_and_volumes(
+    project: ProjectConfig, task_id: str
+) -> tuple[dict, list[VolumeSpec]]:
     """Compose environment and volume mounts for a task container.
 
     Delegates shared config mounts, base env vars, workspace volume, git
@@ -445,10 +448,19 @@ def build_task_env_and_volumes(project: ProjectConfig, task_id: str) -> tuple[di
     :func:`terok_agent.assemble_container_env`, then layers terok-specific
     concerns: ``PROJECT_ID``, gate server URLs, and the full credential
     proxy (OAuth, socket transport, SSH agent).
+
+    In **sealed** isolation mode (``project.is_sealed``), volumes are
+    injected via ``podman cp`` instead of bind mounts — the sandbox
+    handles this transparently when ``RunSpec.sealed`` is set.  The
+    workspace is still created and cache-seeded on the host so the
+    container benefits from fast startup in both modes.
     """
+    sealed = project.is_sealed
+
     task_dir = project.tasks_root / str(task_id)
+    task_dir.mkdir(parents=True, exist_ok=True)
     repo_dir = task_dir / WORKSPACE_DANGEROUS_DIRNAME
-    repo_dir.mkdir(parents=True, exist_ok=True)
+    repo_dir.mkdir(exist_ok=True)
 
     # Pre-resolve gate server URLs → CODE_REPO / CLONE_FROM / GIT_BRANCH
     sec_env, _sec_volumes = _security_mode_env_and_volumes(project, task_id)
@@ -456,6 +468,7 @@ def build_task_env_and_volumes(project: ProjectConfig, task_id: str) -> tuple[di
     # Seed workspace from clone cache (fast-start optimisation).
     # Only for new tasks (marker present, no .git yet).  The in-container
     # init script then does fetch+reset instead of a full git clone.
+    # In sealed mode the seeded dir is podman-cp'd into the container.
     _seed_workspace_cache(repo_dir, project.id, sec_env.get("CODE_REPO"))
 
     # Pre-resolve git identity using terok's authorship logic so the
@@ -487,7 +500,7 @@ def build_task_env_and_volumes(project: ProjectConfig, task_id: str) -> tuple[di
             human_email=project.human_email or "nobody@localhost",
             credential_scope=project.id,
             unrestricted=False,  # task_runners resolves per-provider config
-            shared_dir=project.shared_dir,
+            shared_dir=None if sealed else project.shared_dir,
             envs_dir=sandbox_live_mounts_dir(),
         ),
         get_roster(),
@@ -495,7 +508,7 @@ def build_task_env_and_volumes(project: ProjectConfig, task_id: str) -> tuple[di
     )
 
     env = dict(result.env)
-    volumes = list(result.volumes)
+    volumes: list[VolumeSpec] = list(result.volumes)
 
     # terok-specific env vars not covered by the shared assembly
     env["PROJECT_ID"] = project.id
@@ -504,8 +517,7 @@ def build_task_env_and_volumes(project: ProjectConfig, task_id: str) -> tuple[di
         env["EXTERNAL_REMOTE_URL"] = sec_env["EXTERNAL_REMOTE_URL"]
 
     # Credential proxy: full OAuth / socket / SSH support (terok-specific)
-    proxy_env, proxy_volumes = _credential_proxy_env_and_volumes(project, task_id)
+    proxy_env, _proxy_volumes = _credential_proxy_env_and_volumes(project, task_id)
     env.update(proxy_env)
-    volumes += proxy_volumes
 
     return env, volumes

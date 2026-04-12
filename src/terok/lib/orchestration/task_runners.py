@@ -23,6 +23,8 @@ from terok_sandbox import (
     LifecycleHooks,
     RunSpec,
     Sandbox,
+    Sharing,
+    VolumeSpec,
     down as _shield_down_impl,
     get_container_state,
     is_container_running,
@@ -68,6 +70,7 @@ _LOOPBACK_HOSTS = frozenset({"127.0.0.1", "localhost", "::1"})
 _TOAD_CONTAINER_PORT = 8080
 _ANTHROPIC_API_HOST = "api.anthropic.com"
 _FALSE_STRINGS = frozenset({"false", "0", "no", "off"})
+_CONTAINER_TEROK_CONFIG = "/home/dev/.terok"
 
 
 def _str_to_bool(value: object) -> bool:
@@ -310,7 +313,7 @@ def _run_container(
     cname: str,
     image: str,
     env: dict[str, str],
-    volumes: list[str],
+    volumes: list[VolumeSpec],
     project: ProjectConfig,
     task_dir: Path,
     extra_args: list[str] | None = None,
@@ -323,11 +326,14 @@ def _run_container(
     podman command assembly (userns, shield/bypass, GPU, env redaction, CDI
     detection) to the sandbox executor.
 
+    In sealed isolation mode (``project.is_sealed``), the sandbox
+    splits into create → copy → start instead of a single ``podman run -d``.
+
     Args:
         cname: Container name (``--name``).
         image: Container image to run.
         env: Environment variables to pass via ``-e``.
-        volumes: Volume mounts to pass via ``-v``.
+        volumes: Typed volume specs (sandbox decides mount vs inject).
         project: The resolved :class:`ProjectConfig` (used for GPU flag).
         task_dir: Per-task directory (used for per-task shield state).
         extra_args: Additional ``podman run`` flags inserted after the GPU
@@ -345,6 +351,7 @@ def _run_container(
         gpu_enabled=has_gpu(project),
         extra_args=tuple(extra_args or ()),
         unrestricted="TEROK_UNRESTRICTED" in env,
+        sealed=project.is_sealed,
     )
 
     try:
@@ -412,7 +419,7 @@ def task_run_cli(
 
     # Resolve layered agent config (global → project → preset → CLI overrides)
     agent_config_dir = _prepare_agent_config(project, project_id, task_id, agents, preset)
-    volumes.append(f"{agent_config_dir}:/home/dev/.terok:Z")
+    volumes.append(VolumeSpec(agent_config_dir, _CONTAINER_TEROK_CONFIG, sharing=Sharing.PRIVATE))
 
     # Resolve unrestricted mode: CLI flag → config → default (True)
     if unrestricted is None:
@@ -557,7 +564,7 @@ def task_run_toad(
     env, volumes = build_task_env_and_volumes(project, task_id)
 
     agent_config_dir = _prepare_agent_config(project, project_id, task_id, agents, preset)
-    volumes.append(f"{agent_config_dir}:/home/dev/.terok:Z")
+    volumes.append(VolumeSpec(agent_config_dir, _CONTAINER_TEROK_CONFIG, sharing=Sharing.PRIVATE))
 
     # Resolve unrestricted mode: CLI flag → config → default (True)
     if unrestricted is None:
@@ -787,7 +794,7 @@ def task_run_headless(request: HeadlessRunRequest) -> str:
         _apply_unrestricted_env(env)
 
     # Mount agent-config dir to /home/dev/.terok
-    volumes.append(f"{agent_config_dir}:/home/dev/.terok:Z")
+    volumes.append(VolumeSpec(agent_config_dir, _CONTAINER_TEROK_CONFIG, sharing=Sharing.PRIVATE))
 
     # Build headless command via provider registry
     headless_cmd = build_headless_command(
@@ -941,13 +948,20 @@ def task_followup_headless(
     # prompt-history.txt for logging/debugging.
     task_dir = project.tasks_root / str(task_id)
     agent_config_dir = task_dir / "agent-config"
-    prompt_path = agent_config_dir / "prompt.txt"
-    history_path = agent_config_dir / "prompt-history.txt"
-    existing = prompt_path.read_text(encoding="utf-8") if prompt_path.is_file() else ""
-    if existing:
-        with history_path.open("a", encoding="utf-8") as hf:
-            hf.write(f"{existing}\n\n---\n\n")
-    prompt_path.write_text(prompt, encoding="utf-8")
+
+    if project.is_sealed:
+        # Sealed: inject prompt via podman cp into stopped container
+        from terok_agent import inject_prompt
+
+        inject_prompt(cname, prompt)
+    else:
+        prompt_path = agent_config_dir / "prompt.txt"
+        history_path = agent_config_dir / "prompt-history.txt"
+        existing = prompt_path.read_text(encoding="utf-8") if prompt_path.is_file() else ""
+        if existing:
+            with history_path.open("a", encoding="utf-8") as hf:
+                hf.write(f"{existing}\n\n---\n\n")
+        prompt_path.write_text(prompt, encoding="utf-8")
 
     # Ensure the credential proxy is reachable before restarting — after a
     # host reboot the systemd socket may be active but the service idle.

@@ -82,6 +82,11 @@ SECURITY_CLASS_DISPLAY: dict[str, ProjectBadge] = {
     "online": ProjectBadge(emoji="\U0001f310", label="online"),
 }
 
+ISOLATION_DISPLAY: dict[str, ProjectBadge] = {
+    "shared": ProjectBadge(emoji="\U0001f4c2", label="shared"),
+    "sealed": ProjectBadge(emoji="\U0001f512", label="sealed"),
+}
+
 GPU_DISPLAY: dict[bool, ProjectBadge] = {
     True: ProjectBadge(emoji="\U0001f3ae", label="GPU"),
     False: ProjectBadge(emoji="\U0001f4bf", label="CPU"),

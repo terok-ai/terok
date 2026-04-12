@@ -32,6 +32,7 @@ class ProjectConfig(BaseModel):
 
     id: str
     security_class: str  # "online" | "gatekeeping"
+    isolation: str = "shared"  # "shared" | "sealed"
     upstream_url: str | None
     default_branch: str | None
     root: Path
@@ -70,6 +71,12 @@ class ProjectConfig(BaseModel):
     docker_snippet_file: str | None = None
     # Shared task directory (multi-agent IPC)
     shared_dir: Path | None = None
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def is_sealed(self) -> bool:
+        """Whether this project uses sealed isolation (zero bind mounts)."""
+        return self.isolation == "sealed"
 
     @computed_field  # type: ignore[prop-decorator]
     @property
