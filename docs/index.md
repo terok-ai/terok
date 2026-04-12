@@ -44,6 +44,7 @@ Install OCI hooks for the egress firewall, start the host-side services
 
 ```bash
 terok shield setup --user               # install OCI hooks for terok-shield
+terok credential-proxy install          # install systemd socket activation
 terok credential-proxy start            # start the credential proxy daemon
 terok gate start                        # start the git gate server
 terok completions install               # (optional) tab completion
