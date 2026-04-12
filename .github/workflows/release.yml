@@ -26,13 +26,12 @@ jobs:
           python-version: "3.12"
 
       - name: Install Poetry
-        uses: snok/install-poetry@76e04a911780d5b312d89783f7b1cd627778900a # v1
+        uses: snok/install-poetry@76e04a911780d5b312d89783f7b1cd627778900a # v1.4.1
         with:
+          version: "2.3.3"
           virtualenvs-create: true
           virtualenvs-in-project: true
-
-      - name: Install dynamic versioning plugin
-        run: poetry self add "poetry-dynamic-versioning[plugin]"
+          plugins: poetry-dynamic-versioning[plugin]
 
       - name: Cache virtualenv
         id: cached-poetry-dependencies
