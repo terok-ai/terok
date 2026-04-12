@@ -209,9 +209,9 @@ def _build_project_config(
         hook_post_start=hook_post,
         hook_post_ready=hook_ready,
         hook_post_stop=hook_stop,
-        docker_base_image=raw.docker.base_image,
-        docker_snippet_inline=raw.docker.user_snippet_inline,
-        docker_snippet_file=raw.docker.user_snippet_file,
+        base_image=raw.image.base_image,
+        snippet_inline=raw.image.user_snippet_inline,
+        snippet_file=raw.image.user_snippet_file,
         shared_dir=shared_dir,
     )
 

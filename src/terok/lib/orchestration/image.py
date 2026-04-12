@@ -91,37 +91,37 @@ def _tmux_config_hash() -> str:
 
 
 def _resolve_user_snippet(project: ProjectConfig) -> str:
-    """Resolve the docker user snippet from project config (file and/or inline).
+    """Resolve the user snippet from project config (file and/or inline).
 
-    When both ``docker.user_snippet_file`` and ``docker.user_snippet_inline``
+    When both ``image.user_snippet_file`` and ``image.user_snippet_inline``
     are set, the file is included first and the inline block is appended.
 
-    Raises :class:`SystemExit` if ``docker.user_snippet_file`` is configured but
+    Raises :class:`SystemExit` if ``image.user_snippet_file`` is configured but
     the file does not exist or cannot be read.
     """
     parts: list[str] = []
-    if project.docker_snippet_file:
-        us_path = Path(project.docker_snippet_file).expanduser()
+    if project.snippet_file:
+        us_path = Path(project.snippet_file).expanduser()
         if not us_path.is_absolute():
             us_path = project.root / us_path
         if not us_path.is_file():
             raise SystemExit(
-                f"docker.user_snippet_file not found: {us_path}\n"
+                f"image.user_snippet_file not found: {us_path}\n"
                 f"  (configured in project '{project.id}')"
             )
         try:
             parts.append(us_path.read_text(encoding="utf-8"))
         except (OSError, UnicodeError) as exc:
-            raise SystemExit(f"Failed to read docker.user_snippet_file {us_path}: {exc}")
-    if project.docker_snippet_inline and project.docker_snippet_inline.strip():
-        parts.append(project.docker_snippet_inline)
+            raise SystemExit(f"Failed to read image.user_snippet_file {us_path}: {exc}")
+    if project.snippet_inline and project.snippet_inline.strip():
+        parts.append(project.snippet_inline)
     return "\n".join(parts)
 
 
 def _render_l2(project: ProjectConfig) -> str:
     """Render the L2 (project customisation) Dockerfile.
 
-    L2 contains the user docker snippet wrapped in USER root/dev.
+    L2 contains the user image snippet wrapped in USER root/dev.
     Runtime env vars (CODE_REPO, GIT_BRANCH) are set by environment.py
     at container launch time.
     """
@@ -133,7 +133,7 @@ def _render_l2(project: ProjectConfig) -> str:
         "SECURITY_CLASS": project.security_class,
         "UPSTREAM_URL": project.upstream_url or "",
         "DEFAULT_BRANCH": project.default_branch or "",
-        "BASE_IMAGE": project.docker_base_image,
+        "BASE_IMAGE": project.base_image,
         "CODE_REPO_DEFAULT": (
             "file:///git-gate/gate.git"
             if project.security_class == "gatekeeping"
@@ -156,8 +156,8 @@ def render_all_dockerfiles(project: ProjectConfig) -> dict[str, str]:
     from terok_agent.container.build import render_l0, render_l1
 
     return {
-        "L0.Dockerfile": render_l0(project.docker_base_image),
-        "L1.cli.Dockerfile": render_l1(l0_image_tag(project.docker_base_image)),
+        "L0.Dockerfile": render_l0(project.base_image),
+        "L1.cli.Dockerfile": render_l1(l0_image_tag(project.base_image)),
         "L2.Dockerfile": _render_l2(project),
     }
 
@@ -173,7 +173,7 @@ def build_context_hash_from_rendered(project: ProjectConfig, rendered: dict[str,
         rendered: name→content mapping returned by :func:`render_all_dockerfiles`.
     """
     hasher = hashlib.sha256()
-    hasher.update(f"base_image={project.docker_base_image}".encode())
+    hasher.update(f"base_image={project.base_image}".encode())
     hasher.update(b"\0")
     for name in sorted(rendered):
         hasher.update(name.encode("utf-8"))
@@ -249,7 +249,7 @@ def build_images(
     _check_podman_available()
 
     project = load_project(project_id)
-    base_image = project.docker_base_image
+    base_image = project.base_image
     stage_dir = build_dir() / project.id
 
     # Delegate L0+L1 to terok-agent (uses its own temp dir for build context)

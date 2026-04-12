@@ -123,7 +123,7 @@ project:
   id: myproj
   security_class: online        # or "gatekeeping"
 
-docker:
+image:
   base_image: docker.io/library/ubuntu:24.04
 
 git:
@@ -176,7 +176,7 @@ project:
   id: myproj
   security_class: online    # or "gatekeeping" for restricted mode
 
-docker:
+image:
   base_image: docker.io/library/ubuntu:24.04
   user_snippet_file: user.dockerinclude  # optional
 
@@ -186,7 +186,7 @@ git:
   # authorship: human-agent  # optional: author = human, committer = agent
 ```
 
-### Step 3: (Optional) Docker Include Snippet
+### Step 3: (Optional) Image Snippet
 
 Create `~/.config/terok/projects/myproj/user.dockerinclude`:
 ```dockerfile
@@ -963,7 +963,7 @@ run:
 
 Set the base image in `project.yml`:
 ```yaml
-docker:
+image:
   base_image: nvcr.io/nvidia/nvhpc:25.9-devel-cuda13.0-ubuntu24.04
 ```
 

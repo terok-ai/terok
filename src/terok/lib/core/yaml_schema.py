@@ -238,8 +238,8 @@ class RawShieldProjectSection(BaseModel):
     on_task_restart: Literal["retain", "up"] | None = None
 
 
-class RawDockerSection(BaseModel):
-    """The ``docker:`` section of project.yml."""
+class RawImageSection(BaseModel):
+    """The ``image:`` section of project.yml."""
 
     model_config = ConfigDict(extra="forbid")
 
@@ -266,7 +266,7 @@ class RawProjectYaml(BaseModel):
     gatekeeping: RawGatekeepingSection = Field(default_factory=RawGatekeepingSection)
     run: RawRunSection = Field(default_factory=RawRunSection)
     shield: RawShieldProjectSection = Field(default_factory=RawShieldProjectSection)
-    docker: RawDockerSection = Field(default_factory=RawDockerSection)
+    image: RawImageSection = Field(default_factory=RawImageSection)
     default_agent: str | None = None
     default_login: str | None = None
     shared_dir: bool | str | None = Field(
@@ -285,7 +285,7 @@ class RawProjectYaml(BaseModel):
             "gatekeeping",
             "run",
             "shield",
-            "docker",
+            "image",
             "agent",
         }
     )

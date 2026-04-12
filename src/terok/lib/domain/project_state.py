@@ -83,7 +83,7 @@ def get_project_state(
     dockerfiles_old = False
     if has_dockerfiles:
         try:
-            from ..orchestration.docker import render_all_dockerfiles
+            from ..orchestration.image import render_all_dockerfiles
         except ImportError:
             dockerfiles_old = False
         else:
@@ -113,7 +113,7 @@ def get_project_state(
             context_hash = None
             if rendered:
                 try:
-                    from ..orchestration.docker import build_context_hash_from_rendered
+                    from ..orchestration.image import build_context_hash_from_rendered
 
                     context_hash = build_context_hash_from_rendered(project, rendered)
                 except (OSError, ValueError, KeyError, ImportError) as exc:
@@ -278,7 +278,7 @@ def is_task_image_old(project_id: str | None, task: Any) -> bool | None:
         return None
 
     try:
-        from ..orchestration.docker import build_context_hash
+        from ..orchestration.image import build_context_hash
 
         current_hash = build_context_hash(project_id)
     except Exception:

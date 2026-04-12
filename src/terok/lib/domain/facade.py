@@ -35,7 +35,7 @@ from terok_agent import (
 
 from ..core.images import project_cli_image
 from ..core.projects import load_project
-from ..orchestration.docker import build_images, generate_dockerfiles
+from ..orchestration.image import build_images, generate_dockerfiles
 from ..orchestration.task_runners import (  # noqa: F401 — re-exported public API
     HeadlessRunRequest,
     task_followup_headless,
@@ -153,7 +153,7 @@ __all__ = [
     # Rich domain objects
     "Project",
     "Task",
-    # Docker / image management
+    # Image management
     "generate_dockerfiles",
     "build_images",
     # Image listing & cleanup

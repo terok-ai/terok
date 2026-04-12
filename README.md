@@ -16,7 +16,7 @@ A tool for managing containerized AI coding agent projects using Podman. Provide
 |----------|-------------|
 | [Full Usage Guide](docs/usage.md) | Complete user documentation |
 | [Developer Guide](docs/developer.md) | Internal architecture and contributor docs |
-| [Container Layers](docs/container-layers.md) | Docker image architecture |
+| [Container Layers](docs/container-layers.md) | Container image architecture |
 | [Container Lifecycle](docs/container-lifecycle.md) | Container and image lifecycle |
 | [Shared Directories](docs/shared-dirs.md) | Volume mounts and SSH configuration |
 | [Security Modes](docs/git-gate-and-security-modes.md) | Online vs gatekeeping modes |

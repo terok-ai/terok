@@ -8,7 +8,7 @@ terok builds project containers in three logical layers. L0 (dev) and L1 (agent)
 
 ### L0 — Development Base (`terok-l0:<base-tag>`)
 
-- Based on Ubuntu 24.04 by default (override via `docker.base_image`).
+- Based on Ubuntu 24.04 by default (override via `image.base_image`).
 - Installs common tooling (git, openssh-client, ripgrep, vim, etc.).
 - Creates `/workspace` and sets `WORKDIR` to `/workspace`.
 - Creates a `dev` user with passwordless sudo and runs containers as that user.
@@ -44,7 +44,7 @@ The `--agents` flag rebuilds from L0 and passes a unique `AGENT_CACHE_BUST` buil
 
 The `--full-rebuild` flag rebuilds from L0 with `--no-cache` and `--pull=always`, forcing a fresh base-image pull and fresh apt-package layers.
 
-`<base-tag>` is derived from `docker.base_image` (sanitized), e.g. `ubuntu:24.04` becomes `ubuntu-24.04`.
+`<base-tag>` is derived from `image.base_image` (sanitized), e.g. `ubuntu:24.04` becomes `ubuntu-24.04`.
 
 ## Runtime Behavior
 

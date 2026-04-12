@@ -70,10 +70,10 @@ _FIELD_DOCS: dict[str, str] = {
     # shield
     "shield.drop_on_task_run": "Drop shield (bypass firewall) when task container is created",
     "shield.on_task_restart": "Shield policy on container restart: ``retain`` or ``up``",
-    # docker
-    "docker.base_image": "Base Docker image for container builds",
-    "docker.user_snippet_inline": "Inline Dockerfile snippet injected into the project image",
-    "docker.user_snippet_file": "Path to a file containing a Dockerfile snippet",
+    # image
+    "image.base_image": "Base container image for builds",
+    "image.user_snippet_inline": "Inline Dockerfile snippet injected into the project image",
+    "image.user_snippet_file": "Path to a file containing a Dockerfile snippet",
     # shared dir
     "shared_dir": "Shared directory for multi-agent IPC (``true`` = auto-create under tasks root, or absolute path)",
     # top-level

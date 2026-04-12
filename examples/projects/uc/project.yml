@@ -7,7 +7,7 @@ git:
   upstream_url: "https://gitlab.com/electric-sheep/ultimate-container.git"
   default_branch: "main"
 
-docker:
+image:
   base_image: "ubuntu:24.04"
   user_snippet_file: "user.dockerinclude"
 
@@ -32,5 +32,5 @@ run:
   # Enable GPU passthrough for this project (per-project only). Default is disabled.
   # Accepts boolean true or string "all" to enable; omitted/false disables.
   # Note: GPU-enabled projects typically require a CUDA/NVIDIA-capable base image.
-  # Configure under docker.base_image accordingly.
+  # Configure under image.base_image accordingly.
   # gpus: all

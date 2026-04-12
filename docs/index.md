@@ -17,7 +17,7 @@ provisioning.
 - **Multi-Agent Teams**: Run multiple specialized sub-agents in a single task
 - **Task Lifecycle**: Create, run, stop, restart, follow up, and archive tasks
 - **Security Modes**: Online and gatekeeping modes for different trust levels
-- **Container Layers**: Efficient three-layer Docker image architecture (L0/L1/L2)
+- **Container Layers**: Efficient three-layer container image architecture (L0/L1/L2)
 - **Hardened Runtime**: Defence-in-depth via [terok-sandbox](https://github.com/terok-ai/terok-sandbox) — egress firewall, gated git access, SSH isolation, GPU passthrough
 - **Agent Instructions**: Layered, inheritable instruction system delivered to every task
 - **Interactive TUI**: Full-featured Textual interface with project/task management, log viewing, and login sessions
@@ -96,7 +96,7 @@ per-project in `<project>/presets/`. See the
 
 - [Concepts](concepts.md) — Architecture, security model, and design rationale
 - [User Guide](usage.md) — Complete user documentation
-- [Container Layers](container-layers.md) — Docker image architecture
+- [Container Layers](container-layers.md) — Container image architecture
 - [Container Lifecycle](container-lifecycle.md) — Container and image lifecycle
 - [Shared Directories](shared-dirs.md) — Volume mounts and SSH configuration
 - [Security Modes](git-gate-and-security-modes.md) — Online vs gatekeeping modes

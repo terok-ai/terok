@@ -10,7 +10,7 @@ git:
   upstream_url: "{{UPSTREAM_URL}}"
   default_branch: "{{DEFAULT_BRANCH}}"
 
-docker:
+image:
   base_image: "ubuntu:24.04"
   # Optional: extra Dockerfile commands injected into the project image.
   # Use user_snippet_file to point to an external .dockerinclude file.

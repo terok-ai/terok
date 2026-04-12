@@ -66,12 +66,12 @@ def _prompt_template() -> int | None:
     return None
 
 
-def _prompt_docker_snippet() -> str:
-    """Optionally open an editor for a custom Docker snippet.
+def _prompt_image_snippet() -> str:
+    """Optionally open an editor for a custom image snippet.
 
     Returns the snippet text (may be empty if the user skips or the file is empty).
     """
-    answer = input("\nAdd a custom Docker snippet? [y/N]: ").strip().lower()
+    answer = input("\nAdd a custom image snippet? [y/N]: ").strip().lower()
     if answer not in ("y", "yes"):
         return ""
 
@@ -146,8 +146,8 @@ def collect_wizard_inputs() -> dict | None:
         # Default branch (empty = use remote's default branch)
         default_branch = _prompt("Default branch (empty → remote default)")
 
-        # Docker snippet
-        user_snippet = _prompt_docker_snippet()
+        # Image snippet
+        user_snippet = _prompt_image_snippet()
 
         return {
             "template_index": template_idx,

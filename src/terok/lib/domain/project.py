@@ -64,7 +64,7 @@ from ..core.config import (
 from ..core.project_model import ProjectConfig
 from ..core.projects import list_presets, load_project
 from ..orchestration.agent_config import resolve_agent_config
-from ..orchestration.docker import build_images, generate_dockerfiles
+from ..orchestration.image import build_images, generate_dockerfiles
 from ..orchestration.task_runners import HeadlessRunRequest, task_run_headless
 from ..orchestration.tasks import (
     TaskMeta,

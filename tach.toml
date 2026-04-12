@@ -98,7 +98,7 @@ depends_on = [
 path = "terok.lib.domain.facade"
 layer = "domain"
 depends_on = [
-    "terok.lib.orchestration.docker",
+    "terok.lib.orchestration.image",
     "terok.lib.orchestration.environment",
     "terok.lib.domain.image_cleanup",
     "terok.lib.domain.project_state",
@@ -116,7 +116,7 @@ path = "terok.lib.domain.project"
 layer = "domain"
 depends_on = [
     "terok.lib.orchestration.agent_config",
-    "terok.lib.orchestration.docker",
+    "terok.lib.orchestration.image",
     "terok.lib.domain.project_state",
     "terok.lib.orchestration.task_runners",
     "terok.lib.orchestration.tasks",
@@ -188,7 +188,7 @@ depends_on = ["terok.lib.core.config", "terok.lib.core.projects"]
 path = "terok.lib.domain.project_state"
 layer = "domain"
 depends_on = [
-    "terok.lib.orchestration.docker",
+    "terok.lib.orchestration.image",
     "terok.lib.core.config",
     "terok.lib.core.images",
     "terok.lib.core.projects",
@@ -262,7 +262,7 @@ depends_on = [
 
 # Dockerfile generation & image building
 [[modules]]
-path = "terok.lib.orchestration.docker"
+path = "terok.lib.orchestration.image"
 layer = "orchestration"
 depends_on = ["terok.lib.core.config", "terok.lib.core.images", "terok.lib.core.projects", "terok.lib.util.fs"]
 
@@ -577,7 +577,7 @@ expose = [
     "build_context_hash_from_rendered",
     "render_all_dockerfiles",
 ]
-from = ["terok.lib.orchestration.docker"]
+from = ["terok.lib.orchestration.image"]
 
 [[interfaces]]
 expose = ["list_images", "find_orphaned_images", "cleanup_images", "ImageInfo", "CleanupResult"]

@@ -10,7 +10,7 @@ git:
   upstream_url: "git@github.com:sliwowitz/alpaka3.git"
   default_branch: "dev"
 
-docker:
+image:
   # GPU-capable base image (NVIDIA HPC SDK, CUDA 13, Ubuntu 24.04)
   base_image: "nvcr.io/nvidia/nvhpc:25.9-devel-cuda13.0-ubuntu24.04"
   # This is executed when building the L2 project image

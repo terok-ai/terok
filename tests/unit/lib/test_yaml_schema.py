@@ -29,7 +29,7 @@ class RawProjectYamlTests(unittest.TestCase):
         raw = RawProjectYaml.model_validate({})
         self.assertEqual(raw.project.security_class, "online")
         self.assertIsNone(raw.git.upstream_url)
-        self.assertEqual(raw.docker.base_image, "ubuntu:24.04")
+        self.assertEqual(raw.image.base_image, "ubuntu:24.04")
         self.assertEqual(raw.run.shutdown_timeout, 10)
         self.assertIsNone(raw.shield.drop_on_task_run)
         self.assertIsNone(raw.shield.on_task_restart)
@@ -49,7 +49,7 @@ class RawProjectYamlTests(unittest.TestCase):
             },
             "run": {"shutdown_timeout": 30, "gpus": "all"},
             "shield": {"drop_on_task_run": False, "on_task_restart": "up"},
-            "docker": {"base_image": "nvidia/cuda:12.0", "user_snippet_inline": "RUN echo hi"},
+            "image": {"base_image": "nvidia/cuda:12.0", "user_snippet_inline": "RUN echo hi"},
             "default_agent": "claude",
             "agent": {"model": "opus"},
         }
@@ -66,7 +66,7 @@ class RawProjectYamlTests(unittest.TestCase):
         self.assertEqual(raw.run.gpus, "all")
         self.assertFalse(raw.shield.drop_on_task_run)
         self.assertEqual(raw.shield.on_task_restart, "up")
-        self.assertEqual(raw.docker.base_image, "nvidia/cuda:12.0")
+        self.assertEqual(raw.image.base_image, "nvidia/cuda:12.0")
         self.assertEqual(raw.default_agent, "claude")
 
     def test_unknown_key_rejected(self) -> None:
@@ -362,10 +362,10 @@ class ProjectYamlValidationErrorTests(unittest.TestCase):
             RawProjectYaml.model_validate({"shield": {"on_task_restart": "invalid"}})
         self.assertIn("on_task_restart", str(ctx.exception))
 
-    def test_docker_unknown_key(self) -> None:
-        """Typo in docker section key is caught."""
+    def test_image_unknown_key(self) -> None:
+        """Typo in image section key is caught."""
         with self.assertRaises(ValidationError) as ctx:
-            RawProjectYaml.model_validate({"docker": {"base_imagee": "ubuntu:24.04"}})
+            RawProjectYaml.model_validate({"image": {"base_imagee": "ubuntu:24.04"}})
         self.assertIn("base_imagee", str(ctx.exception))
 
 

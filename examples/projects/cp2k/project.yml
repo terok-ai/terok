@@ -7,7 +7,7 @@ git:
   upstream_url: "https://github.com/cp2k/cp2k.git"
   default_branch: "master"
 
-docker:
+image:
   base_image: "nvcr.io/nvidia/nvhpc:25.11-devel-cuda13.0-ubuntu24.04"
   user_snippet_inline: |
     RUN apt-get update && apt-get install -y --no-install-recommends \

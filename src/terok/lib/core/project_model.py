@@ -65,10 +65,10 @@ class ProjectConfig(BaseModel):
     hook_post_start: str | None = None
     hook_post_ready: str | None = None
     hook_post_stop: str | None = None
-    # Docker configuration (flattened from docker: section)
-    docker_base_image: str = "ubuntu:24.04"
-    docker_snippet_inline: str | None = None
-    docker_snippet_file: str | None = None
+    # Image configuration (flattened from image: section)
+    base_image: str = "ubuntu:24.04"
+    snippet_inline: str | None = None
+    snippet_file: str | None = None
     # Shared task directory (multi-agent IPC)
     shared_dir: Path | None = None
 
