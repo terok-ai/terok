@@ -60,9 +60,10 @@ terok build myproj
 # 4. (Optional) Set up SSH for private repos
 terok ssh-init myproj
 
-# 5. Create and run a task
-terok task new myproj
-terok task run-cli myproj 1    # CLI mode
+# 5. Run a task
+terok task start myproj                # CLI agent (default)
+terok task start myproj --toad         # Toad multi-agent TUI (browser access)
+terok login myproj a3                  # Attach to running task by hex ID prefix
 ```
 
 ### Headless Agent Runs (Autopilot)
@@ -98,11 +99,13 @@ per-project in `<project>/presets/`. See the
 - [User Guide](usage.md) — Complete user documentation
 - [Container Layers](container-layers.md) — Container image architecture
 - [Container Lifecycle](container-lifecycle.md) — Container and image lifecycle
-- [Shared Directories](shared-dirs.md) — Volume mounts and SSH configuration
+- [Shared Directories](shared-dirs.md) — Volume mounts and credential proxy
 - [Security Modes](git-gate-and-security-modes.md) — Online vs gatekeeping modes
-- [Login Design](login-design.md) — Login session architecture
-- [Developer Guide](developer.md) — Architecture and contributing
+- [Shield](shield-security.md) — Egress firewall (terok-shield)
 - [Agent Compatibility Matrix](agent-compat-matrix.md) — Per-agent feature support
+- [Login Design](login-design.md) — Login session architecture
+- [Docker](docker.md) — Running terok inside Docker (experimental)
+- [Developer Guide](developer.md) — Architecture and contributing
 - [API Reference](reference/) — Auto-generated API documentation
 
 ## License

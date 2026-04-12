@@ -80,7 +80,7 @@ _FIELD_DOCS: dict[str, str] = {
     "default_agent": "Default agent provider (e.g. ``claude``, ``codex``)",
     "agent": "Agent configuration dict (model, subagents, MCP servers, etc.)",
     # global config — ui
-    "ui.base_port": "Base port for web UI task containers",
+    "ui.base_port": "Base port for Toad and other browser-accessible task containers",
     # credentials
     "credentials.dir": "Shared credentials directory (proxy DB, agent config mounts)",
     # paths
@@ -101,7 +101,7 @@ _FIELD_DOCS: dict[str, str] = {
     "shield.audit": "Enable shield audit logging",
     # gate_server
     "gate_server.port": "Gate server listen port",
-    "gate_server.base_path": "Override gate repo directory (default: ``state_root/gate``)",
+    "gate_server.repos_dir": "Override gate repo directory (default: ``state_dir/gate``)",
     "gate_server.suppress_systemd_warning": "Suppress the systemd unit installation suggestion",
 }
 
