@@ -70,6 +70,7 @@ _LOOPBACK_HOSTS = frozenset({"127.0.0.1", "localhost", "::1"})
 _TOAD_CONTAINER_PORT = 8080
 _ANTHROPIC_API_HOST = "api.anthropic.com"
 _FALSE_STRINGS = frozenset({"false", "0", "no", "off"})
+_CONTAINER_TEROK_CONFIG = "/home/dev/.terok"
 
 
 def _str_to_bool(value: object) -> bool:
@@ -418,7 +419,7 @@ def task_run_cli(
 
     # Resolve layered agent config (global → project → preset → CLI overrides)
     agent_config_dir = _prepare_agent_config(project, project_id, task_id, agents, preset)
-    volumes.append(VolumeSpec(agent_config_dir, "/home/dev/.terok", sharing=Sharing.PRIVATE))
+    volumes.append(VolumeSpec(agent_config_dir, _CONTAINER_TEROK_CONFIG, sharing=Sharing.PRIVATE))
 
     # Resolve unrestricted mode: CLI flag → config → default (True)
     if unrestricted is None:
@@ -563,7 +564,7 @@ def task_run_toad(
     env, volumes = build_task_env_and_volumes(project, task_id)
 
     agent_config_dir = _prepare_agent_config(project, project_id, task_id, agents, preset)
-    volumes.append(VolumeSpec(agent_config_dir, "/home/dev/.terok", sharing=Sharing.PRIVATE))
+    volumes.append(VolumeSpec(agent_config_dir, _CONTAINER_TEROK_CONFIG, sharing=Sharing.PRIVATE))
 
     # Resolve unrestricted mode: CLI flag → config → default (True)
     if unrestricted is None:
@@ -793,7 +794,7 @@ def task_run_headless(request: HeadlessRunRequest) -> str:
         _apply_unrestricted_env(env)
 
     # Mount agent-config dir to /home/dev/.terok
-    volumes.append(VolumeSpec(agent_config_dir, "/home/dev/.terok", sharing=Sharing.PRIVATE))
+    volumes.append(VolumeSpec(agent_config_dir, _CONTAINER_TEROK_CONFIG, sharing=Sharing.PRIVATE))
 
     # Build headless command via provider registry
     headless_cmd = build_headless_command(

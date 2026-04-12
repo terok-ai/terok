@@ -515,6 +515,47 @@ class TestRunContainer:
         spec = sandbox_factory.return_value.run.call_args[0][0]
         assert spec.command == ()
 
+    def test_sealed_flag_propagated(self) -> None:
+        """sealed=True when project.is_sealed is True."""
+        project = self._make_project()
+        project.isolation = "sealed"
+        project.is_sealed = True
+
+        with (
+            patch("terok.lib.orchestration.task_runners._sandbox") as sandbox_factory,
+            patch("terok.lib.orchestration.task_runners.has_gpu", return_value=False),
+        ):
+            _run_container(
+                cname="sealed-ctr",
+                image="alpine:latest",
+                env={},
+                volumes=[],
+                project=project,
+                task_dir=MOCK_TASK_DIR,
+            )
+
+        spec = sandbox_factory.return_value.run.call_args[0][0]
+        assert spec.sealed is True
+
+    def test_shared_flag_default(self) -> None:
+        """sealed=False when project uses default shared isolation."""
+        project = self._make_project()
+        with (
+            patch("terok.lib.orchestration.task_runners._sandbox") as sandbox_factory,
+            patch("terok.lib.orchestration.task_runners.has_gpu", return_value=False),
+        ):
+            _run_container(
+                cname="shared-ctr",
+                image="alpine:latest",
+                env={},
+                volumes=[],
+                project=project,
+                task_dir=MOCK_TASK_DIR,
+            )
+
+        spec = sandbox_factory.return_value.run.call_args[0][0]
+        assert spec.sealed is False
+
 
 # ── _apply_unrestricted_env ───────────────────────────────
 

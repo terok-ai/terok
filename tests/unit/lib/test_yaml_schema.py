@@ -122,6 +122,36 @@ class SecurityClassValidationTests(unittest.TestCase):
         self.assertIn("hybrid", str(ctx.exception))
 
 
+class IsolationValidationTests(unittest.TestCase):
+    """Tests for the isolation field validator."""
+
+    def test_valid_shared(self) -> None:
+        """'shared' is accepted as default isolation mode."""
+        s = RawProjectSection.model_validate({"isolation": "shared"})
+        self.assertEqual(s.isolation, "shared")
+
+    def test_valid_sealed(self) -> None:
+        """'sealed' is accepted."""
+        s = RawProjectSection.model_validate({"isolation": "sealed"})
+        self.assertEqual(s.isolation, "sealed")
+
+    def test_case_insensitive(self) -> None:
+        """Isolation mode is normalized to lowercase."""
+        s = RawProjectSection.model_validate({"isolation": "  Sealed  "})
+        self.assertEqual(s.isolation, "sealed")
+
+    def test_invalid_value(self) -> None:
+        """Invalid isolation mode raises ValidationError."""
+        with self.assertRaises(ValidationError) as ctx:
+            RawProjectSection.model_validate({"isolation": "hardened"})
+        self.assertIn("hardened", str(ctx.exception))
+
+    def test_default_is_shared(self) -> None:
+        """Omitting isolation defaults to 'shared'."""
+        s = RawProjectSection.model_validate({})
+        self.assertEqual(s.isolation, "shared")
+
+
 class ProjectIdValidationTests(unittest.TestCase):
     """Tests for the project.id field validator."""
 
