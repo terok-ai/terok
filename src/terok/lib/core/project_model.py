@@ -57,6 +57,10 @@ class ProjectConfig(BaseModel):
     default_login: str | None = None
     agent_config: dict[str, Any] = Field(default_factory=dict)
     shutdown_timeout: int = 10
+    memory_limit: str | None = None
+    """Podman ``--memory`` limit from ``run.memory`` in project.yml."""
+    cpu_limit: str | None = None
+    """Podman ``--cpus`` limit from ``run.cpus`` in project.yml."""
     task_name_categories: list[str] | None = None
     shield_drop_on_task_run: bool = True
     shield_on_task_restart: str = "retain"

@@ -213,6 +213,8 @@ class RawRunSection(BaseModel):
 
     shutdown_timeout: int = 10
     gpus: str | bool | None = None
+    memory: str | None = None
+    cpus: str | None = None
     hooks: RawHooksSection = Field(default_factory=RawHooksSection)
 
     @model_validator(mode="before")

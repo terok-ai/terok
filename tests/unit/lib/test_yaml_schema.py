@@ -342,6 +342,18 @@ class RawGlobalConfigTests(unittest.TestCase):
         raw = RawProjectYaml.model_validate({"run": {"hooks": None}})
         self.assertIsNone(raw.run.hooks.pre_start)
 
+    def test_run_memory_and_cpus_parsed(self) -> None:
+        """Memory and CPU limits are parsed from run: section."""
+        raw = RawProjectYaml.model_validate({"run": {"memory": "8g", "cpus": "4.0"}})
+        self.assertEqual(raw.run.memory, "8g")
+        self.assertEqual(raw.run.cpus, "4.0")
+
+    def test_run_memory_and_cpus_default_none(self) -> None:
+        """Memory and CPU limits default to None."""
+        raw = RawProjectYaml.model_validate({})
+        self.assertIsNone(raw.run.memory)
+        self.assertIsNone(raw.run.cpus)
+
 
 class ProjectYamlValidationErrorTests(unittest.TestCase):
     """Tests for user-facing error messages from load_project() with bad YAML."""

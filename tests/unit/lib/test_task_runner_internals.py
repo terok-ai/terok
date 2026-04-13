@@ -348,6 +348,8 @@ class TestRunContainer:
         p.root = MOCK_TASK_DIR
         p.isolation = "shared"
         p.is_sealed = False
+        p.memory_limit = None
+        p.cpu_limit = None
         return p
 
     def test_builds_runspec_and_delegates(self) -> None:
@@ -440,6 +442,50 @@ class TestRunContainer:
         spec = sandbox_factory.return_value.run.call_args[0][0]
         assert spec.extra_args == ("-p", "8080:80")
         assert spec.command == ("bash", "-lc", "toad --serve")
+
+    def test_resource_limits_from_project(self) -> None:
+        """memory_limit and cpu_limit flow from ProjectConfig to RunSpec."""
+        project = self._make_project()
+        project.memory_limit = "4g"
+        project.cpu_limit = "2.0"
+        with (
+            patch("terok.lib.orchestration.task_runners._sandbox") as sandbox_factory,
+            patch("terok.lib.orchestration.task_runners.has_gpu", return_value=False),
+        ):
+            _run_container(
+                cname="rl-ctr",
+                image="alpine:latest",
+                env={},
+                volumes=[],
+                project=project,
+                task_dir=MOCK_TASK_DIR,
+            )
+
+        spec = sandbox_factory.return_value.run.call_args[0][0]
+        assert spec.memory_limit == "4g"
+        assert spec.cpu_limit == "2.0"
+
+    def test_resource_limits_default_none(self) -> None:
+        """Resource limits are None when project has no limits set."""
+        project = self._make_project()
+        project.memory_limit = None
+        project.cpu_limit = None
+        with (
+            patch("terok.lib.orchestration.task_runners._sandbox") as sandbox_factory,
+            patch("terok.lib.orchestration.task_runners.has_gpu", return_value=False),
+        ):
+            _run_container(
+                cname="ctr",
+                image="alpine:latest",
+                env={},
+                volumes=[],
+                project=project,
+                task_dir=MOCK_TASK_DIR,
+            )
+
+        spec = sandbox_factory.return_value.run.call_args[0][0]
+        assert spec.memory_limit is None
+        assert spec.cpu_limit is None
 
     def test_gpu_config_error_becomes_system_exit(self) -> None:
         """GpuConfigError from sandbox.run() is surfaced as SystemExit."""

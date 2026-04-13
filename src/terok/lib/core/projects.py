@@ -202,6 +202,8 @@ def _build_project_config(
         default_login=raw.default_login or get_global_default_login(),
         agent_config=agent_cfg,
         shutdown_timeout=raw.run.shutdown_timeout,
+        memory_limit=raw.run.memory,
+        cpu_limit=raw.run.cpus,
         task_name_categories=raw.tasks.name_categories,
         shield_drop_on_task_run=shield_drop,
         shield_on_task_restart=shield_restart,

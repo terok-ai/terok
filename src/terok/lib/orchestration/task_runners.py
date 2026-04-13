@@ -350,6 +350,8 @@ def _run_container(
         command=tuple(command or ()),
         task_dir=task_dir,
         gpu_enabled=has_gpu(project),
+        memory_limit=project.memory_limit,
+        cpu_limit=project.cpu_limit,
         extra_args=tuple(extra_args or ()),
         unrestricted="TEROK_UNRESTRICTED" in env,
         sealed=project.is_sealed,
