@@ -40,6 +40,7 @@ allowed_importers =
     terok.cli.wiring
     terok.lib.core.config
     terok.lib.core.projects
+    terok.lib.domain.facade
     terok.lib.domain.panic
     terok.lib.domain.project
     terok.lib.domain.storage

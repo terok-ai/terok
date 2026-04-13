@@ -102,6 +102,23 @@ jobs:
       - name: Run SAST scan
         run: bandit -r src/terok/ -ll
 
+  lint-imports:
+    if: github.repository == 'terok-ai/terok'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Install tools
+        run: pip install -r .github/requirements-ci.txt
+
+      - name: Check cross-package import boundaries
+        run: lint-imports
+
   # Keep host-only integration tests in CI, but outside the Sonar-producing workflow.
   # That keeps the Sonar path fast while still exercising Linux host features on PRs.
   integration-tests-host:
