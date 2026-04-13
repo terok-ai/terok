@@ -129,13 +129,11 @@ jobs:
           path: .venv
           key: venv-${{ runner.os }}-py${{ steps.setup-python.outputs.python-version }}-lint-imports-${{ hashFiles('**/pyproject.toml', '**/poetry.lock') }}
 
-      - name: Install project and tools
-        run: |
-          poetry install --no-interaction
-          pip install -r .github/requirements-ci.txt
+      - name: Install project
+        run: poetry install --no-interaction
 
       - name: Check cross-package import boundaries
-        run: lint-imports
+        run: poetry run lint-imports
 
   # Keep host-only integration tests in CI, but outside the Sonar-producing workflow.
   # That keeps the Sonar path fast while still exercising Linux host features on PRs.
