@@ -354,6 +354,12 @@ class RawGlobalConfigTests(unittest.TestCase):
         self.assertIsNone(raw.run.memory)
         self.assertIsNone(raw.run.cpus)
 
+    def test_run_blank_memory_normalised_to_none(self) -> None:
+        """Empty or whitespace-only memory/cpus values become None."""
+        raw = RawProjectYaml.model_validate({"run": {"memory": "", "cpus": "  "}})
+        self.assertIsNone(raw.run.memory)
+        self.assertIsNone(raw.run.cpus)
+
 
 class ProjectYamlValidationErrorTests(unittest.TestCase):
     """Tests for user-facing error messages from load_project() with bad YAML."""

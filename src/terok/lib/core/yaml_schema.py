@@ -217,6 +217,14 @@ class RawRunSection(BaseModel):
     cpus: str | None = None
     hooks: RawHooksSection = Field(default_factory=RawHooksSection)
 
+    @field_validator("memory", "cpus", mode="before")
+    @classmethod
+    def _blank_to_none(cls, v: Any) -> str | None:
+        """Normalise empty / whitespace-only strings to ``None``."""
+        if isinstance(v, str) and not v.strip():
+            return None
+        return v
+
     @model_validator(mode="before")
     @classmethod
     def _coerce_none_subsections(cls, data: Any) -> Any:
