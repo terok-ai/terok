@@ -657,3 +657,191 @@ def test_is_claude_oauth_not_exposed_by_default(
         str(write_config(tmp_path, "agent:\n  claude:\n    expose_oauth_token: true\n")),
     )
     assert cfg.is_claude_oauth_exposed() is False
+
+
+# ---------- Layered config merging ----------
+
+
+class TestLayeredConfig:
+    """Tests for system + user config deep-merge via ConfigStack."""
+
+    def _write_layers(self, tmp_path: Path, system: str, user: str) -> tuple[Path, Path]:
+        """Write system and user config files and return their paths."""
+        sys_dir = tmp_path / "etc" / "terok"
+        sys_dir.mkdir(parents=True)
+        sys_cfg = sys_dir / "config.yml"
+        sys_cfg.write_text(system, encoding="utf-8")
+
+        usr_dir = tmp_path / "user" / "terok"
+        usr_dir.mkdir(parents=True)
+        usr_cfg = usr_dir / "config.yml"
+        usr_cfg.write_text(user, encoding="utf-8")
+        return sys_cfg, usr_cfg
+
+    def test_user_overrides_system_at_leaf(self, tmp_path: Path) -> None:
+        """User config overrides system defaults at the leaf level."""
+        sys_cfg, usr_cfg = self._write_layers(
+            tmp_path,
+            system="ui:\n  base_port: 7860\ngate_server:\n  port: 9418\n",
+            user="gate_server:\n  port: 1234\n",
+        )
+        from unittest.mock import patch
+
+        with patch.object(
+            cfg,
+            "_config_layers",
+            return_value=[
+                ("system", sys_cfg),
+                ("user", usr_cfg),
+            ],
+        ):
+            result = cfg._load_validated()
+            assert result.ui.base_port == 7860  # inherited from system
+            assert result.gate_server.port == 1234  # overridden by user
+
+    def test_system_only_when_no_user_file(self, tmp_path: Path) -> None:
+        """System config is used when user config file does not exist."""
+        sys_dir = tmp_path / "etc" / "terok"
+        sys_dir.mkdir(parents=True)
+        sys_cfg = sys_dir / "config.yml"
+        sys_cfg.write_text("ui:\n  base_port: 9999\n", encoding="utf-8")
+        missing_usr = tmp_path / "missing.yml"
+        from unittest.mock import patch
+
+        with patch.object(
+            cfg,
+            "_config_layers",
+            return_value=[
+                ("system", sys_cfg),
+                ("user", missing_usr),
+            ],
+        ):
+            assert cfg._load_validated().ui.base_port == 9999
+
+    def test_user_can_delete_via_null(self, tmp_path: Path) -> None:
+        """User can remove a system key by setting it to null."""
+        sys_cfg, usr_cfg = self._write_layers(
+            tmp_path,
+            system="git:\n  human_name: Admin\n  human_email: admin@co\n",
+            user="git:\n  human_name: null\n",
+        )
+        from unittest.mock import patch
+
+        with patch.object(
+            cfg,
+            "_config_layers",
+            return_value=[
+                ("system", sys_cfg),
+                ("user", usr_cfg),
+            ],
+        ):
+            result = cfg._load_validated()
+            assert result.git.human_name is None  # deleted by user
+            assert result.git.human_email == "admin@co"  # inherited
+
+    def test_malformed_layer_skipped(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """A malformed layer is skipped with a warning; other layers apply."""
+        sys_dir = tmp_path / "etc" / "terok"
+        sys_dir.mkdir(parents=True)
+        bad_sys = sys_dir / "config.yml"
+        bad_sys.write_text("not: {valid: yaml: {{{\n", encoding="utf-8")
+
+        usr_dir = tmp_path / "user" / "terok"
+        usr_dir.mkdir(parents=True)
+        good_usr = usr_dir / "config.yml"
+        good_usr.write_text("ui:\n  base_port: 5555\n", encoding="utf-8")
+
+        from unittest.mock import patch as mock_patch
+
+        with mock_patch.object(
+            cfg,
+            "_config_layers",
+            return_value=[
+                ("system", bad_sys),
+                ("user", good_usr),
+            ],
+        ):
+            result = cfg._load_validated()
+            assert result.ui.base_port == 5555
+            captured = capsys.readouterr()
+            assert "Malformed YAML" in captured.err
+
+    def test_load_global_config_merges(self, tmp_path: Path) -> None:
+        """``load_global_config()`` also merges layers."""
+        sys_cfg, usr_cfg = self._write_layers(
+            tmp_path,
+            system="ui:\n  base_port: 7860\n",
+            user="gate_server:\n  port: 2222\n",
+        )
+        from unittest.mock import patch
+
+        with patch.object(
+            cfg,
+            "_config_layers",
+            return_value=[
+                ("system", sys_cfg),
+                ("user", usr_cfg),
+            ],
+        ):
+            merged = cfg.load_global_config()
+            assert merged["ui"]["base_port"] == 7860
+            assert merged["gate_server"]["port"] == 2222
+
+    def test_non_dict_yaml_skipped_with_warning(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """A config file that parses to a non-dict is skipped with a warning."""
+        bad = tmp_path / "list.yml"
+        bad.write_text("- item1\n- item2\n", encoding="utf-8")
+        good = tmp_path / "good.yml"
+        good.write_text("ui:\n  base_port: 4444\n", encoding="utf-8")
+        from unittest.mock import patch
+
+        with patch.object(
+            cfg,
+            "_config_layers",
+            return_value=[("bad", bad), ("good", good)],
+        ):
+            result = cfg._load_validated()
+            assert result.ui.base_port == 4444
+            captured = capsys.readouterr()
+            assert "expected mapping" in captured.err
+
+    def test_load_global_config_cache_hit(self, tmp_path: Path) -> None:
+        """Second call to ``load_global_config()`` returns the cached result."""
+        sys_cfg, usr_cfg = self._write_layers(
+            tmp_path,
+            system="ui:\n  base_port: 7860\n",
+            user="gate_server:\n  port: 3333\n",
+        )
+        from unittest.mock import patch
+
+        with patch.object(
+            cfg,
+            "_config_layers",
+            return_value=[("system", sys_cfg), ("user", usr_cfg)],
+        ):
+            first = cfg.load_global_config()
+            second = cfg.load_global_config()
+            assert first is second
+            assert first["gate_server"]["port"] == 3333
+
+    def test_config_layers_env_override_bypasses_layering(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        """``TEROK_CONFIG_FILE`` returns a single-element layer list."""
+        override = tmp_path / "override.yml"
+        monkeypatch.setenv("TEROK_CONFIG_FILE", str(override))
+        layers = cfg._config_layers()
+        assert len(layers) == 1
+        assert layers[0][0] == "override"
+
+    def test_config_layers_default_order(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Without env override, layers go system → prefix → user."""
+        monkeypatch.delenv("TEROK_CONFIG_FILE", raising=False)
+        layers = cfg._config_layers()
+        labels = [label for label, _ in layers]
+        assert labels[0] == "system"
+        assert labels[-1] == "user"

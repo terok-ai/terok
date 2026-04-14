@@ -45,58 +45,94 @@ def projects_dir() -> Path:
     return _config_root_base().resolve() / "projects"
 
 
-def global_config_search_paths() -> list[Path]:
-    """Return the ordered list of paths that will be checked for global config.
+def _config_layers() -> list[tuple[str, Path]]:
+    """Ordered config layers for merging (lowest → highest priority).
 
-    Behavior matches global_config_path():
-    - If TEROK_CONFIG_FILE is set, only that single path is considered.
-    - Otherwise, check in order:
-        1) ${XDG_CONFIG_HOME:-~/.config}/terok/config.yml
-        2) sys.prefix/etc/terok/config.yml
-        3) /etc/terok/config.yml
+    ``TEROK_CONFIG_FILE`` → single override (no layering).
+    Otherwise: ``/etc/terok`` → ``sys.prefix/etc/terok`` → ``~/.config/terok``.
     """
     env_file = os.environ.get("TEROK_CONFIG_FILE")
     if env_file:
-        return [Path(env_file).expanduser().resolve()]
+        return [("override", Path(env_file).expanduser().resolve())]
 
+    etc_cfg = Path("/etc/terok/config.yml")
+    sp_cfg = Path(sys.prefix) / "etc" / "terok" / "config.yml"
     xdg_home = os.environ.get("XDG_CONFIG_HOME")
     user_cfg = (Path(xdg_home) if xdg_home else Path.home() / ".config") / "terok" / "config.yml"
-    sp_cfg = Path(sys.prefix) / "etc" / "terok" / "config.yml"
-    etc_cfg = Path("/etc/terok/config.yml")
-    return [user_cfg, sp_cfg, etc_cfg]
+
+    layers: list[tuple[str, Path]] = [("system", etc_cfg)]
+    if sp_cfg.resolve() != etc_cfg.resolve():
+        layers.append(("prefix", sp_cfg))
+    layers.append(("user", user_cfg))
+    return layers
+
+
+def global_config_search_paths() -> list[Path]:
+    """Config file merge order (lowest → highest priority).
+
+    When ``TEROK_CONFIG_FILE`` is set, returns only that single path.
+    Otherwise: ``/etc/terok`` → ``sys.prefix/etc/terok`` → ``~/.config/terok``.
+    """
+    return [path for _, path in _config_layers()]
 
 
 def global_config_path() -> Path:
-    """Global config file path (resolved based on search paths).
+    """User-editable global config file path.
 
-    Resolution order (first existing wins, except explicit override is returned even
-    if missing to make intent visible to the user):
-    - TEROK_CONFIG_FILE env (returned as-is)
-    - ${XDG_CONFIG_HOME:-~/.config}/terok/config.yml (user override)
-    - sys.prefix/etc/terok/config.yml (pip wheels)
-    - /etc/terok/config.yml (system default)
-    If none exist, return the last path (/etc/terok/config.yml).
+    Returns the highest-priority writable config location — the file the
+    user would edit to customise their setup.  Used for locating sibling
+    files (e.g. ``instructions.md``) in the user's config directory.
+
+    When ``TEROK_CONFIG_FILE`` is set, returns that path directly.
+    Otherwise, returns ``~/.config/terok/config.yml`` (or XDG equivalent).
     """
-    candidates = global_config_search_paths()
-    # If TEROK_CONFIG_FILE is set, candidates has a single element and we
-    # want to return it even if it doesn't exist.
-    if len(candidates) == 1:
-        return candidates[0]
-
-    for c in candidates:
-        if c.is_file():
-            return c.resolve()
-    return candidates[-1]
+    env_file = os.environ.get("TEROK_CONFIG_FILE")
+    if env_file:
+        return Path(env_file).expanduser().resolve()
+    xdg_home = os.environ.get("XDG_CONFIG_HOME")
+    return (Path(xdg_home) if xdg_home else Path.home() / ".config") / "terok" / "config.yml"
 
 
 # ---------- Global config (cached) ----------
 
 
 _validated_config_cache: RawGlobalConfig | None = None
+_raw_config_cache: dict[str, Any] | None = None
+
+
+def _build_config_stack():
+    """Build a :class:`ConfigStack` from all existing config layer files.
+
+    Loads each layer independently; unreadable or malformed files are
+    skipped with a stderr warning so the remaining layers still apply.
+    """
+    from terok_sandbox import ConfigScope, ConfigStack
+
+    from ..util.logging_utils import warn_user
+
+    stack = ConfigStack()
+    for label, path in _config_layers():
+        if not path.is_file():
+            continue
+        try:
+            raw = _yaml_load(path.read_text(encoding="utf-8")) or {}
+        except (OSError, UnicodeDecodeError) as exc:
+            warn_user("config", f"Cannot read {path}: {exc}. Skipping layer.")
+            continue
+        except YAMLError as exc:
+            warn_user("config", f"Malformed YAML in {path}: {exc}. Skipping layer.")
+            continue
+        if not isinstance(raw, dict):
+            warn_user(
+                "config", f"{path}: expected mapping, got {type(raw).__name__}. Skipping layer."
+            )
+            continue
+        stack.push(ConfigScope(label, path, raw))
+    return stack
 
 
 def _load_validated() -> RawGlobalConfig:
-    """Load and validate the global config, returning a typed model (cached).
+    """Merge all config layers, validate, and return a typed model (cached).
 
     Warnings are emitted once on first load; subsequent calls return the
     cached result without re-parsing or re-warning.
@@ -105,39 +141,33 @@ def _load_validated() -> RawGlobalConfig:
     if _validated_config_cache is not None:
         return _validated_config_cache
 
-    from ..util.logging_utils import warn_user
+    stack = _build_config_stack()
+    merged = stack.resolve()
+    if not merged:
+        _validated_config_cache = RawGlobalConfig()
+        return _validated_config_cache
 
-    cfg_path = global_config_path()
-    if not cfg_path.is_file():
-        _validated_config_cache = RawGlobalConfig()
-        return _validated_config_cache
     try:
-        raw = _yaml_load(cfg_path.read_text(encoding="utf-8")) or {}
-    except (OSError, UnicodeDecodeError) as exc:
-        warn_user("config", f"Cannot read {cfg_path}: {exc}. Using defaults.")
-        _validated_config_cache = RawGlobalConfig()
-        return _validated_config_cache
-    except YAMLError as exc:
-        warn_user("config", f"Malformed YAML in {cfg_path}: {exc}. Using defaults.")
-        _validated_config_cache = RawGlobalConfig()
-        return _validated_config_cache
-    try:
-        _validated_config_cache = RawGlobalConfig.model_validate(raw)
+        _validated_config_cache = RawGlobalConfig.model_validate(merged)
     except ValidationError as exc:
+        from ..util.logging_utils import warn_user
+
+        sources = ", ".join(str(s.source) for s in stack.scopes if s.data)
         field_errors = "; ".join(
             f"{'.'.join(str(part) for part in e['loc'])}: {e['msg']}" for e in exc.errors()[:3]
         )
-        warn_user("config", f"Invalid config {cfg_path}: {field_errors}. Using defaults.")
+        warn_user("config", f"Invalid config ({sources}): {field_errors}. Using defaults.")
         _validated_config_cache = RawGlobalConfig()
     return _validated_config_cache
 
 
 def load_global_config() -> dict[str, Any]:
-    """Load and return the global terok configuration as a dict."""
-    cfg_path = global_config_path()
-    if not cfg_path.is_file():
-        return {}
-    return _yaml_load(cfg_path.read_text()) or {}
+    """Load and return the merged global terok configuration as a dict."""
+    global _raw_config_cache  # noqa: PLW0603
+    if _raw_config_cache is not None:
+        return _raw_config_cache
+    _raw_config_cache = _build_config_stack().resolve()
+    return _raw_config_cache
 
 
 def get_global_section(key: str) -> dict[str, Any]:

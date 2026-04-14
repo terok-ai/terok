@@ -23,9 +23,11 @@ def _reset_config_caches() -> Iterator[None]:
 
     _sandbox_paths._config_paths_cache = None
     _config._validated_config_cache = None
+    _config._raw_config_cache = None
     yield
     _sandbox_paths._config_paths_cache = None
     _config._validated_config_cache = None
+    _config._raw_config_cache = None
 
 
 @pytest.fixture(autouse=True)

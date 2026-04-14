@@ -329,6 +329,14 @@ def shielded_container(_pull_image: None, real_shield: Shield) -> Iterator[str]:
 @pytest.fixture
 def terok_env(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> TerokIntegrationEnv:
     """Return an isolated terok config/state environment for a test."""
+    import terok_sandbox.paths as _sandbox_paths
+
+    import terok.lib.core.config as _config
+
+    _sandbox_paths._config_paths_cache = None
+    _config._validated_config_cache = None
+    _config._raw_config_cache = None
+
     home_dir = tmp_path / HOME_DIR_NAME
     xdg_config_home = tmp_path / XDG_CONFIG_HOME_NAME
     system_config_root = tmp_path / CONFIG_ROOT_NAME

@@ -145,7 +145,7 @@ def _print_config() -> None:
     )
     paths = _global_config_search_paths()
     if paths:
-        print("- Global config search order:")
+        print("- Config merge order (lowest → highest priority):")
         for p in paths:
             exists = Path(p).is_file()
             print(f"  • {_gray(str(p), color_enabled)} (exists: {_yes_no(exists, color_enabled)})")
