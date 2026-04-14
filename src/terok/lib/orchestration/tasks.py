@@ -804,6 +804,14 @@ def _task_delete(project: ProjectConfig, task_id: str) -> TaskDeleteResult:
             _log_debug(f"task_delete: metadata removal failed: {exc}")
             warnings.append(f"Metadata removal failed: {exc}")
 
+    _log_debug("task_delete: releasing web port")
+    try:
+        from .ports import release_web_port
+
+        release_web_port(project.id, task_id)
+    except Exception as exc:  # noqa: BLE001 — best-effort cleanup
+        _log_debug(f"task_delete: web port release failed: {exc}")
+
     _log_debug("task_delete: finished")
     return TaskDeleteResult(task_id=task_id, warnings=warnings)
 
@@ -913,6 +921,13 @@ def _task_stop(project: ProjectConfig, task_id: str, *, timeout: int | None = No
         raise SystemExit("podman not found; please install podman")
     except subprocess.CalledProcessError as e:
         raise SystemExit(f"Failed to stop container: {e}")
+
+    try:
+        from .ports import release_web_port
+
+        release_web_port(project.id, task_id)
+    except Exception:  # noqa: BLE001 — best-effort; container is already stopped
+        pass
 
     from .hooks import run_hook
 

@@ -49,6 +49,7 @@ allowed_importers =
     terok.lib.orchestration.container_doctor
     terok.lib.orchestration.container_exec
     terok.lib.orchestration.environment
+    terok.lib.orchestration.ports
     terok.lib.orchestration.task_runners
     terok.lib.orchestration.tasks
     terok.tui.app

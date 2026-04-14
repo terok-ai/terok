@@ -17,6 +17,7 @@ from pathlib import Path
 import pytest
 from terok_sandbox import (
     GateServerStatus,
+    SandboxConfig,
     check_units_outdated,
     ensure_server_reachable,
     get_server_status,
@@ -27,19 +28,12 @@ from terok_sandbox import (
     stop_daemon,
     uninstall_systemd_units,
 )
-from terok_sandbox.gate.lifecycle import (
-    _UNIT_VERSION,
-    _installed_unit_version,
-    _is_managed_server,
-    is_socket_active,
-    is_socket_installed,
-)
+from terok_sandbox.gate.lifecycle import _UNIT_VERSION, GateServerManager
 
-from tests.testfs import FAKE_GATE_DIR, FAKE_STATE_DIR, NONEXISTENT_DIR
+from tests.testfs import FAKE_GATE_DIR, NONEXISTENT_DIR
 from tests.testnet import GATE_PORT, LOCALHOST
 
 GATE_BASE_PATH = FAKE_GATE_DIR
-STATE_ROOT_PATH = FAKE_STATE_DIR
 MISSING_PATH = NONEXISTENT_DIR
 SYSTEMD_SOCKET = "terok-gate.socket"
 SYSTEMD_SERVICE = "terok-gate@.service"
@@ -59,35 +53,58 @@ def make_run_result(*, returncode: int, stdout: str = "") -> unittest.mock.Mock:
 
 
 @contextmanager
+def patched_config(cfg: SandboxConfig) -> Iterator[None]:
+    """Patch ``SandboxConfig`` construction in lifecycle so the manager uses *cfg*."""
+    with unittest.mock.patch("terok_sandbox.gate.lifecycle.SandboxConfig", return_value=cfg):
+        yield
+
+
+@contextmanager
 def patched_unit_dir(files: dict[str, str] | None = None) -> Iterator[Path]:
     """Create a temporary systemd unit dir and patch gate-server to use it."""
     with tempfile.TemporaryDirectory() as td:
         unit_dir = Path(td)
         for name, content in (files or {}).items():
             (unit_dir / name).write_text(content)
-        with unittest.mock.patch(
-            "terok_sandbox.gate.lifecycle._systemd_unit_dir",
+        with unittest.mock.patch.object(
+            GateServerManager,
+            "_systemd_unit_dir",
             return_value=unit_dir,
         ):
             yield unit_dir
 
 
+def _test_config(
+    state_dir: Path = GATE_BASE_PATH.parent,
+    runtime_dir: Path | None = None,
+) -> SandboxConfig:
+    """Build a ``SandboxConfig`` with deterministic test paths and ports.
+
+    Defaults ``state_dir`` to ``GATE_BASE_PATH.parent`` so that
+    ``cfg.gate_base_path`` (= ``state_dir / "gate"``) matches ``GATE_BASE_PATH``.
+    """
+    return SandboxConfig(
+        state_dir=state_dir,
+        runtime_dir=runtime_dir or state_dir,
+        gate_port=GATE_PORT,
+        proxy_port=GATE_PORT + 1,
+        ssh_agent_port=GATE_PORT + 2,
+    )
+
+
 @contextmanager
 def patched_install_env(unit_dir: Path) -> Iterator[None]:
     """Patch the standard paths used by install/uninstall/start tests."""
+    cfg = _test_config()
     with (
-        unittest.mock.patch(
-            "terok_sandbox.gate.lifecycle._systemd_unit_dir",
+        unittest.mock.patch.object(
+            GateServerManager,
+            "_systemd_unit_dir",
             return_value=unit_dir,
         ),
-        unittest.mock.patch("terok_sandbox.gate.lifecycle._get_port", return_value=GATE_PORT),
         unittest.mock.patch(
-            "terok_sandbox.gate.lifecycle._get_gate_base_path",
-            return_value=GATE_BASE_PATH,
-        ),
-        unittest.mock.patch(
-            "terok_sandbox.config._state_root",
-            return_value=STATE_ROOT_PATH,
+            "terok_sandbox.gate.lifecycle.SandboxConfig",
+            return_value=cfg,
         ),
     ):
         yield
@@ -96,20 +113,11 @@ def patched_install_env(unit_dir: Path) -> Iterator[None]:
 @contextmanager
 def patched_daemon_paths(base: Path) -> Iterator[Path]:
     """Patch daemon-related runtime paths under a temp directory."""
-    pid_file = base / "gate-server.pid"
-    with (
-        unittest.mock.patch(
-            "terok_sandbox.gate.lifecycle._get_gate_base_path",
-            return_value=base / "gate",
-        ),
-        unittest.mock.patch(
-            "terok_sandbox.gate.lifecycle._pid_file",
-            return_value=pid_file,
-        ),
-        unittest.mock.patch(
-            "terok_sandbox.config._state_root",
-            return_value=base,
-        ),
+    cfg = _test_config(state_dir=base, runtime_dir=base)
+    pid_file = cfg.pid_file_path
+    with unittest.mock.patch(
+        "terok_sandbox.gate.lifecycle.SandboxConfig",
+        return_value=cfg,
     ):
         yield pid_file
 
@@ -170,15 +178,16 @@ class TestSocketInstalled:
     """Tests for socket unit file detection."""
 
     def test_socket_not_installed(self) -> None:
-        with unittest.mock.patch(
-            "terok_sandbox.gate.lifecycle._systemd_unit_dir",
+        with unittest.mock.patch.object(
+            GateServerManager,
+            "_systemd_unit_dir",
             return_value=MISSING_PATH,
         ):
-            assert not is_socket_installed()
+            assert not GateServerManager().is_socket_installed()
 
     def test_socket_installed(self) -> None:
         with patched_unit_dir({SYSTEMD_SOCKET: "[Socket]\n"}):
-            assert is_socket_installed()
+            assert GateServerManager().is_socket_installed()
 
 
 class TestSocketActive:
@@ -198,11 +207,11 @@ class TestSocketActive:
         expected: bool,
     ) -> None:
         mock_run.return_value = make_run_result(returncode=returncode, stdout=stdout)
-        assert is_socket_active() is expected
+        assert GateServerManager().is_socket_active() is expected
 
     @unittest.mock.patch("subprocess.run", side_effect=FileNotFoundError)
     def test_socket_inactive_without_systemctl(self, _mock: unittest.mock.Mock) -> None:
-        assert not is_socket_active()
+        assert not GateServerManager().is_socket_active()
 
 
 class TestInstallUninstall:
@@ -251,7 +260,7 @@ class TestInstallUninstall:
         mock_run.return_value = make_run_result(returncode=0)
         with patched_unit_dir(unit_file_contents()):
             uninstall_systemd_units()
-            assert not is_socket_installed()
+            assert not GateServerManager().is_socket_installed()
 
 
 class TestDaemon:
@@ -282,10 +291,8 @@ class TestDaemon:
                     start_daemon(port=9999)
 
     def test_stop_daemon_no_pidfile(self) -> None:
-        with unittest.mock.patch(
-            "terok_sandbox.gate.lifecycle._pid_file",
-            return_value=MISSING_PATH / "pid",
-        ):
+        cfg = _test_config(state_dir=MISSING_PATH, runtime_dir=MISSING_PATH)
+        with patched_config(cfg):
             stop_daemon()
 
     @pytest.mark.parametrize(
@@ -297,13 +304,12 @@ class TestDaemon:
         """Stop removes PID files and only kills managed daemons."""
         with tempfile.TemporaryDirectory() as td:
             pid_file = write_pid_file(Path(td))
+            cfg = _test_config(state_dir=Path(td), runtime_dir=Path(td))
             with (
-                unittest.mock.patch(
-                    "terok_sandbox.gate.lifecycle._pid_file",
-                    return_value=pid_file,
-                ),
-                unittest.mock.patch(
-                    "terok_sandbox.gate.lifecycle._is_managed_server",
+                patched_config(cfg),
+                unittest.mock.patch.object(
+                    GateServerManager,
+                    "_is_managed_server",
                     return_value=managed,
                 ),
                 unittest.mock.patch("os.kill") as mock_kill,
@@ -319,10 +325,8 @@ class TestIsDaemonRunning:
     """Tests for is_daemon_running."""
 
     def test_no_pidfile(self) -> None:
-        with unittest.mock.patch(
-            "terok_sandbox.gate.lifecycle._pid_file",
-            return_value=MISSING_PATH / "pid",
-        ):
+        cfg = _test_config(state_dir=MISSING_PATH, runtime_dir=MISSING_PATH)
+        with patched_config(cfg):
             assert not is_daemon_running()
 
     @pytest.mark.parametrize(
@@ -342,14 +346,13 @@ class TestIsDaemonRunning:
         expected: bool,
     ) -> None:
         with tempfile.TemporaryDirectory() as td:
-            pid_file = write_pid_file(Path(td), pid)
+            write_pid_file(Path(td), pid)
+            cfg = _test_config(state_dir=Path(td), runtime_dir=Path(td))
             patches = [
-                unittest.mock.patch(
-                    "terok_sandbox.gate.lifecycle._pid_file",
-                    return_value=pid_file,
-                ),
-                unittest.mock.patch(
-                    "terok_sandbox.gate.lifecycle._is_managed_server",
+                patched_config(cfg),
+                unittest.mock.patch.object(
+                    GateServerManager,
+                    "_is_managed_server",
                     return_value=managed,
                 ),
                 unittest.mock.patch("os.kill", side_effect=kill_side_effect),
@@ -365,33 +368,34 @@ class TestIsManagedServer:
     """Tests for _is_managed_server."""
 
     def test_no_proc_entry(self) -> None:
-        assert not _is_managed_server(999999999)
+        assert not GateServerManager()._is_managed_server(999999999)
 
     def test_current_process_is_not_gate_server(self) -> None:
-        assert not _is_managed_server(os.getpid())
+        assert not GateServerManager()._is_managed_server(os.getpid())
 
     def _check_cmdline(self, cmdline: bytes, pid_file: Path | None = None) -> bool:
         """Write *cmdline* to a temp file and call ``_is_managed_server``."""
         with tempfile.TemporaryDirectory() as td:
             fake_cmdline = Path(td) / "cmdline"
             fake_cmdline.write_bytes(cmdline)
-            patches = [
+            patches: list[contextlib.AbstractContextManager[object]] = [
                 unittest.mock.patch(
                     "terok_sandbox.gate.lifecycle.Path",
                     return_value=fake_cmdline,
                 ),
             ]
             if pid_file is not None:
+                cfg = _test_config(runtime_dir=pid_file.parent)
                 patches.append(
                     unittest.mock.patch(
-                        "terok_sandbox.gate.lifecycle._pid_file",
-                        return_value=pid_file,
+                        "terok_sandbox.gate.lifecycle.SandboxConfig",
+                        return_value=cfg,
                     )
                 )
             with contextlib.ExitStack() as stack:
                 for patcher in patches:
                     stack.enter_context(patcher)
-                return _is_managed_server(12345)
+                return GateServerManager()._is_managed_server(12345)
 
     def test_matches_managed_server(self) -> None:
         pid_file = Path("/run/user/1000/terok/gate-server.pid")
@@ -445,20 +449,27 @@ class TestGetServerStatus:
         daemon_running: bool,
         expected: GateServerStatus,
     ) -> None:
+        cfg = _test_config()
         with (
-            unittest.mock.patch(
-                "terok_sandbox.gate.lifecycle.is_socket_installed",
+            unittest.mock.patch.object(
+                GateServerManager,
+                "is_socket_installed",
                 return_value=socket_installed,
             ),
-            unittest.mock.patch(
-                "terok_sandbox.gate.lifecycle.is_socket_active",
+            unittest.mock.patch.object(
+                GateServerManager,
+                "is_socket_active",
                 return_value=socket_active,
             ),
-            unittest.mock.patch(
-                "terok_sandbox.gate.lifecycle.is_daemon_running",
+            unittest.mock.patch.object(
+                GateServerManager,
+                "is_daemon_running",
                 return_value=daemon_running,
             ),
-            unittest.mock.patch("terok_sandbox.gate.lifecycle._get_port", return_value=GATE_PORT),
+            unittest.mock.patch(
+                "terok_sandbox.gate.lifecycle.SandboxConfig",
+                return_value=cfg,
+            ),
         ):
             assert get_server_status() == expected
 
@@ -493,16 +504,19 @@ class TestEnsureServerReachable:
         error_match: str | None,
     ) -> None:
         with (
-            unittest.mock.patch(
-                "terok_sandbox.gate.lifecycle.get_server_status",
+            unittest.mock.patch.object(
+                GateServerManager,
+                "get_status",
                 return_value=status,
             ),
-            unittest.mock.patch(
-                "terok_sandbox.gate.lifecycle.is_systemd_available",
+            unittest.mock.patch.object(
+                GateServerManager,
+                "is_systemd_available",
                 return_value=systemd_available,
             ),
-            unittest.mock.patch(
-                "terok_sandbox.gate.lifecycle._installed_unit_version",
+            unittest.mock.patch.object(
+                GateServerManager,
+                "_installed_unit_version",
                 return_value=unit_version,
             ),
         ):
@@ -517,11 +531,12 @@ class TestInstalledUnitVersion:
     """Tests for _installed_unit_version."""
 
     def test_no_file(self) -> None:
-        with unittest.mock.patch(
-            "terok_sandbox.gate.lifecycle._systemd_unit_dir",
+        with unittest.mock.patch.object(
+            GateServerManager,
+            "_systemd_unit_dir",
             return_value=MISSING_PATH,
         ):
-            assert _installed_unit_version() is None
+            assert GateServerManager()._installed_unit_version() is None
 
     @pytest.mark.parametrize(
         ("files", "expected"),
@@ -533,7 +548,7 @@ class TestInstalledUnitVersion:
     )
     def test_reads_version_from_socket(self, files: dict[str, str], expected: int | None) -> None:
         with patched_unit_dir(files):
-            assert _installed_unit_version() is expected
+            assert GateServerManager()._installed_unit_version() is expected
 
 
 class TestCheckUnitsOutdated:
@@ -556,12 +571,14 @@ class TestCheckUnitsOutdated:
         expected: str | None,
     ) -> None:
         with (
-            unittest.mock.patch(
-                "terok_sandbox.gate.lifecycle.is_socket_installed",
+            unittest.mock.patch.object(
+                GateServerManager,
+                "is_socket_installed",
                 return_value=socket_installed,
             ),
-            unittest.mock.patch(
-                "terok_sandbox.gate.lifecycle._installed_unit_version",
+            unittest.mock.patch.object(
+                GateServerManager,
+                "_installed_unit_version",
                 return_value=version,
             ),
         ):

@@ -6,9 +6,14 @@
 Auto-mocks sandbox, shield, and credential proxy helpers so existing tests
 do not require a real OCI hook, nftables, podman, proxy daemon, or root
 privileges.
+
+The ``_isolate_port_registry`` fixture ensures that the file-based port
+registry never writes to the real ``/tmp/terok-ports/`` or persists claims
+to ``~/.local/share/terok/sandbox/``.
 """
 
 from collections.abc import Iterator
+from pathlib import Path
 from unittest.mock import patch
 
 import pytest
@@ -21,13 +26,31 @@ def _reset_config_caches() -> Iterator[None]:
 
     import terok.lib.core.config as _config
 
-    _sandbox_paths._config_paths_cache = None
+    _sandbox_paths._config_section_cache.clear()
     _config._validated_config_cache = None
     _config._raw_config_cache = None
     yield
-    _sandbox_paths._config_paths_cache = None
+    _sandbox_paths._config_section_cache.clear()
     _config._validated_config_cache = None
     _config._raw_config_cache = None
+
+
+@pytest.fixture(autouse=True)
+def _isolate_port_registry(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Redirect port registry to tmp dirs so tests never touch the real FS.
+
+    Patches the shared claims directory and suppresses per-user backup
+    writes so that tests never touch ``/tmp/terok-ports/`` or the real
+    state directory.
+    """
+    import terok_sandbox.port_registry as _reg
+
+    registry = tmp_path / "terok-ports"
+    registry.mkdir()
+    monkeypatch.setattr(_reg._default, "registry_dir", registry)
+    monkeypatch.setattr(_reg, "_save_ports", lambda _sd, _p: None)
+    monkeypatch.setenv("TEROK_PORT_REGISTRY_DIR", str(registry))
+    _reg.reset_cache()
 
 
 @pytest.fixture(autouse=True)

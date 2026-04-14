@@ -17,7 +17,6 @@ from ...lib.core.config import (
     bundled_presets_dir as _bundled_presets_dir,
     credentials_dir as _credentials_dir,
     gate_repos_dir as _gate_repos_dir,
-    get_ui_base_port as _get_ui_base_port,
     global_config_path as _global_config_path,
     global_config_search_paths as _global_config_search_paths,
     projects_dir as _projects_dir,
@@ -149,8 +148,6 @@ def _print_config() -> None:
         for p in paths:
             exists = Path(p).is_file()
             print(f"  • {_gray(str(p), color_enabled)} (exists: {_yes_no(exists, color_enabled)})")
-    print(f"- Web base port: {_get_ui_base_port()}")
-
     # Credentials dir
     try:
         print(f"- Credentials dir: {_gray(str(_credentials_dir()), color_enabled)}")

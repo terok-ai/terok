@@ -10,6 +10,7 @@ from collections.abc import Callable, Iterator
 from pathlib import Path
 
 import pytest
+from terok_sandbox import port_registry as reg
 
 from terok.lib.core import config as cfg
 
@@ -45,7 +46,7 @@ def test_global_config_path_prefers_xdg(
     monkeypatch.delenv("TEROK_CONFIG_FILE", raising=False)
     config_file = tmp_path / "terok" / "config.yml"
     config_file.parent.mkdir(parents=True, exist_ok=True)
-    config_file.write_text("ui:\n  base_port: 7000\n", encoding="utf-8")
+    config_file.write_text("gate_server:\n  port: 7000\n", encoding="utf-8")
     monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
     assert cfg.global_config_path() == config_file.resolve()
 
@@ -62,7 +63,7 @@ def test_global_config_path_prefers_xdg(
         ),
         (
             "TEROK_CONFIG_FILE",
-            "ui:\n  base_port: 8123\ncredentials:\n  dir: {path}\n",
+            "credentials:\n  dir: {path}\n",
             cfg.credentials_dir,
             "envs",
         ),
@@ -85,14 +86,6 @@ def test_path_resolution(
             env_var, str(write_config(tmp_path, config_text.format(path=expected_path)))
         )
     assert resolver() == expected_path.resolve()
-
-
-def test_ui_base_port_is_read_from_global_config(
-    monkeypatch: pytest.MonkeyPatch,
-    tmp_path: Path,
-) -> None:
-    monkeypatch.setenv("TEROK_CONFIG_FILE", str(write_config(tmp_path, "ui:\n  base_port: 8123\n")))
-    assert cfg.get_ui_base_port() == 8123
 
 
 @pytest.mark.parametrize(
@@ -398,10 +391,57 @@ def test_get_credential_proxy_bypass(monkeypatch: pytest.MonkeyPatch, tmp_path: 
     assert cfg.get_credential_proxy_bypass() is True
 
 
-def test_get_gate_server_port_default(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    """``get_gate_server_port()`` defaults to 9418."""
+def test_get_gate_server_port_default_none(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    """``get_gate_server_port()`` defaults to None (auto-allocate)."""
     monkeypatch.setenv("TEROK_CONFIG_FILE", str(write_config(tmp_path, "")))
-    assert cfg.get_gate_server_port() == 9418
+    assert cfg.get_gate_server_port() is None
+
+
+def test_get_gate_server_port_explicit(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    """``get_gate_server_port()`` returns explicit port from config."""
+    monkeypatch.setenv(
+        "TEROK_CONFIG_FILE",
+        str(write_config(tmp_path, "gate_server:\n  port: 9500\n")),
+    )
+    assert cfg.get_gate_server_port() == 9500
+
+
+def test_get_credential_proxy_port_default_none(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """``get_credential_proxy_port()`` defaults to None (auto-allocate)."""
+    monkeypatch.setenv("TEROK_CONFIG_FILE", str(write_config(tmp_path, "")))
+    assert cfg.get_credential_proxy_port() is None
+
+
+def test_get_credential_proxy_port_explicit(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """``get_credential_proxy_port()`` returns explicit port from config."""
+    monkeypatch.setenv(
+        "TEROK_CONFIG_FILE",
+        str(write_config(tmp_path, "credential_proxy:\n  port: 19000\n")),
+    )
+    assert cfg.get_credential_proxy_port() == 19000
+
+
+def test_get_credential_proxy_ssh_agent_port_default_none(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """``get_credential_proxy_ssh_agent_port()`` defaults to None (auto-allocate)."""
+    monkeypatch.setenv("TEROK_CONFIG_FILE", str(write_config(tmp_path, "")))
+    assert cfg.get_credential_proxy_ssh_agent_port() is None
+
+
+def test_get_credential_proxy_ssh_agent_port_explicit(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """``get_credential_proxy_ssh_agent_port()`` returns explicit port from config."""
+    monkeypatch.setenv(
+        "TEROK_CONFIG_FILE",
+        str(write_config(tmp_path, "credential_proxy:\n  ssh_agent_port: 19001\n")),
+    )
+    assert cfg.get_credential_proxy_ssh_agent_port() == 19001
 
 
 def test_get_gate_server_suppress_warning(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
@@ -424,7 +464,7 @@ def test_load_validated_returns_defaults_on_malformed_yaml(
     bad_file.write_text("not: {valid: yaml: broken", encoding="utf-8")
     monkeypatch.setenv("TEROK_CONFIG_FILE", str(bad_file))
     # Should not raise — falls back to defaults
-    assert cfg.get_ui_base_port() == 7860
+    assert cfg.get_gate_server_port() is None
 
 
 def test_load_validated_returns_defaults_on_invalid_schema(
@@ -432,9 +472,9 @@ def test_load_validated_returns_defaults_on_invalid_schema(
 ) -> None:
     """``_load_validated()`` returns defaults when config has invalid schema."""
     bad_file = tmp_path / "config.yml"
-    bad_file.write_text("ui:\n  base_port: not-a-number\n", encoding="utf-8")
+    bad_file.write_text("gate_server:\n  port: not-a-number\n", encoding="utf-8")
     monkeypatch.setenv("TEROK_CONFIG_FILE", str(bad_file))
-    assert cfg.get_ui_base_port() == 7860
+    assert cfg.get_gate_server_port() is None
 
 
 # ---------- make_sandbox_config() factory ----------
@@ -474,12 +514,49 @@ def test_make_sandbox_config_from_config_file(
 
 
 def test_make_sandbox_config_gate_port(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    """Factory propagates gate_server.port from global config."""
+    """Factory propagates explicit gate_server.port from global config."""
     monkeypatch.setenv(
         "TEROK_CONFIG_FILE",
         str(write_config(tmp_path, "gate_server:\n  port: 1234\n")),
     )
     assert cfg.make_sandbox_config().gate_port == 1234
+
+
+def test_make_sandbox_config_proxy_port(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    """Factory propagates explicit credential_proxy.port from global config."""
+    monkeypatch.setenv(
+        "TEROK_CONFIG_FILE",
+        str(write_config(tmp_path, "credential_proxy:\n  port: 19000\n")),
+    )
+    assert cfg.make_sandbox_config().proxy_port == 19000
+
+
+def test_make_sandbox_config_ssh_agent_port(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Factory propagates explicit credential_proxy.ssh_agent_port from global config."""
+    monkeypatch.setenv(
+        "TEROK_CONFIG_FILE",
+        str(write_config(tmp_path, "credential_proxy:\n  ssh_agent_port: 19001\n")),
+    )
+    assert cfg.make_sandbox_config().ssh_agent_port == 19001
+
+
+def test_make_sandbox_config_auto_allocates_ports(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Factory auto-allocates distinct ports and reuses them on second call."""
+    monkeypatch.setenv("TEROK_CONFIG_FILE", str(write_config(tmp_path, "")))
+    sc = cfg.make_sandbox_config()
+    ports = {sc.gate_port, sc.proxy_port, sc.ssh_agent_port}
+    assert len(ports) == 3, "Auto-allocated ports must be distinct"
+    for p in ports:
+        assert p in reg.PORT_RANGE, f"Port {p} outside expected range"
+
+    sc2 = cfg.make_sandbox_config()
+    assert sc2.gate_port == sc.gate_port
+    assert sc2.proxy_port == sc.proxy_port
+    assert sc2.ssh_agent_port == sc.ssh_agent_port
 
 
 def test_make_sandbox_config_credentials_propagation(
@@ -682,7 +759,7 @@ class TestLayeredConfig:
         """User config overrides system defaults at the leaf level."""
         sys_cfg, usr_cfg = self._write_layers(
             tmp_path,
-            system="ui:\n  base_port: 7860\ngate_server:\n  port: 9418\n",
+            system="gate_server:\n  port: 9418\ntui:\n  default_tmux: true\n",
             user="gate_server:\n  port: 1234\n",
         )
         from unittest.mock import patch
@@ -696,7 +773,7 @@ class TestLayeredConfig:
             ],
         ):
             result = cfg._load_validated()
-            assert result.ui.base_port == 7860  # inherited from system
+            assert result.tui.default_tmux is True  # inherited from system
             assert result.gate_server.port == 1234  # overridden by user
 
     def test_system_only_when_no_user_file(self, tmp_path: Path) -> None:
@@ -704,7 +781,7 @@ class TestLayeredConfig:
         sys_dir = tmp_path / "etc" / "terok"
         sys_dir.mkdir(parents=True)
         sys_cfg = sys_dir / "config.yml"
-        sys_cfg.write_text("ui:\n  base_port: 9999\n", encoding="utf-8")
+        sys_cfg.write_text("gate_server:\n  port: 9999\n", encoding="utf-8")
         missing_usr = tmp_path / "missing.yml"
         from unittest.mock import patch
 
@@ -716,7 +793,7 @@ class TestLayeredConfig:
                 ("user", missing_usr),
             ],
         ):
-            assert cfg._load_validated().ui.base_port == 9999
+            assert cfg._load_validated().gate_server.port == 9999
 
     def test_user_can_delete_via_null(self, tmp_path: Path) -> None:
         """User can remove a system key by setting it to null."""
@@ -751,7 +828,7 @@ class TestLayeredConfig:
         usr_dir = tmp_path / "user" / "terok"
         usr_dir.mkdir(parents=True)
         good_usr = usr_dir / "config.yml"
-        good_usr.write_text("ui:\n  base_port: 5555\n", encoding="utf-8")
+        good_usr.write_text("gate_server:\n  port: 5555\n", encoding="utf-8")
 
         from unittest.mock import patch as mock_patch
 
@@ -764,7 +841,7 @@ class TestLayeredConfig:
             ],
         ):
             result = cfg._load_validated()
-            assert result.ui.base_port == 5555
+            assert result.gate_server.port == 5555
             captured = capsys.readouterr()
             assert "Malformed YAML" in captured.err
 
@@ -772,7 +849,7 @@ class TestLayeredConfig:
         """``load_global_config()`` also merges layers."""
         sys_cfg, usr_cfg = self._write_layers(
             tmp_path,
-            system="ui:\n  base_port: 7860\n",
+            system="tui:\n  default_tmux: true\n",
             user="gate_server:\n  port: 2222\n",
         )
         from unittest.mock import patch
@@ -786,7 +863,7 @@ class TestLayeredConfig:
             ],
         ):
             merged = cfg.load_global_config()
-            assert merged["ui"]["base_port"] == 7860
+            assert merged["tui"]["default_tmux"] is True
             assert merged["gate_server"]["port"] == 2222
 
     def test_non_dict_yaml_skipped_with_warning(
@@ -796,7 +873,7 @@ class TestLayeredConfig:
         bad = tmp_path / "list.yml"
         bad.write_text("- item1\n- item2\n", encoding="utf-8")
         good = tmp_path / "good.yml"
-        good.write_text("ui:\n  base_port: 4444\n", encoding="utf-8")
+        good.write_text("gate_server:\n  port: 4444\n", encoding="utf-8")
         from unittest.mock import patch
 
         with patch.object(
@@ -805,7 +882,7 @@ class TestLayeredConfig:
             return_value=[("bad", bad), ("good", good)],
         ):
             result = cfg._load_validated()
-            assert result.ui.base_port == 4444
+            assert result.gate_server.port == 4444
             captured = capsys.readouterr()
             assert "expected mapping" in captured.err
 
@@ -813,7 +890,7 @@ class TestLayeredConfig:
         """Second call to ``load_global_config()`` returns the cached result."""
         sys_cfg, usr_cfg = self._write_layers(
             tmp_path,
-            system="ui:\n  base_port: 7860\n",
+            system="tui:\n  default_tmux: true\n",
             user="gate_server:\n  port: 3333\n",
         )
         from unittest.mock import patch

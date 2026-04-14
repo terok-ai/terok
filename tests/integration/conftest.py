@@ -323,6 +323,22 @@ def shielded_container(_pull_image: None, real_shield: Shield) -> Iterator[str]:
         _podman_rm(name)
 
 
+# ── Port registry isolation ───────────────────────────────
+
+
+@pytest.fixture(autouse=True)
+def _isolate_port_registry(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Redirect port registry to per-test tmp dir for both in-process and subprocess."""
+    import terok_sandbox.port_registry as _reg
+
+    registry = tmp_path / "terok-ports"
+    registry.mkdir()
+    monkeypatch.setattr(_reg._default, "registry_dir", registry)
+    monkeypatch.setattr(_reg, "_save_ports", lambda _sd, _p: None)
+    monkeypatch.setenv("TEROK_PORT_REGISTRY_DIR", str(registry))
+    _reg._default.reset()
+
+
 # ── Isolated terok CLI environment ────────────────────────
 
 
@@ -333,7 +349,7 @@ def terok_env(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> TerokIntegrati
 
     import terok.lib.core.config as _config
 
-    _sandbox_paths._config_paths_cache = None
+    _sandbox_paths._config_section_cache.clear()
     _config._validated_config_cache = None
     _config._raw_config_cache = None
 

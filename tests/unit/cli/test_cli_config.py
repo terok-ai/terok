@@ -15,14 +15,11 @@ import pytest
 
 from tests.testcli import run_cli
 
-TEST_UI_BASE_PORT = 7777
-"""UI base port baked into the temporary config layout for config CLI tests."""
-
 
 def make_config_layout(tmp_path: Path) -> SimpleNamespace:
     """Create a filesystem layout used by the ``terok config`` tests."""
     global_cfg = tmp_path / "global.yml"
-    global_cfg.write_text(f"ui:\n  base_port: {TEST_UI_BASE_PORT}\n", encoding="utf-8")
+    global_cfg.write_text("gate_server:\n  port: 9418\n", encoding="utf-8")
 
     user_root = tmp_path / "user-projects"
     system_root = tmp_path / "system-projects"
@@ -78,9 +75,6 @@ def patch_config_command(layout: SimpleNamespace) -> Iterator[None]:
                 "terok.cli.commands.info._global_config_search_paths",
                 return_value=[layout.global_cfg],
             )
-        )
-        stack.enter_context(
-            patch("terok.cli.commands.info._get_ui_base_port", return_value=TEST_UI_BASE_PORT)
         )
         stack.enter_context(
             patch("terok.cli.commands.info._credentials_dir", return_value=layout.envs_root)

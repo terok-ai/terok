@@ -323,7 +323,7 @@ def write_fake_podman(bin_dir: Path, state_path: Path) -> Path:
                 joined = " ".join(args)
                 if "toad --serve" in joined:
                     return "Serving http://0.0.0.0:8080"
-                if any(":7860" in arg for arg in args):
+                if any(arg == "-p" for arg in args):
                     return "Terok Web UI started"
                 return "__CLI_READY__"
 

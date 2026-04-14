@@ -237,6 +237,7 @@ layer = "orchestration"
 depends_on = [
     "terok.lib.orchestration.container_exec",
     "terok.lib.orchestration.hooks",
+    "terok.lib.orchestration.ports",
     "terok.lib.core.task_display",
     "terok.lib.core.work_status",
     "terok.lib.core.config",
@@ -266,11 +267,11 @@ path = "terok.lib.orchestration.image"
 layer = "orchestration"
 depends_on = ["terok.lib.core.config", "terok.lib.core.images", "terok.lib.core.projects", "terok.lib.util.fs"]
 
-# Task port allocation
+# Task port allocation (delegates to terok-sandbox port registry)
 [[modules]]
 path = "terok.lib.orchestration.ports"
 layer = "orchestration"
-depends_on = ["terok.lib.core.config", "terok.lib.util.yaml"]
+depends_on = []
 
 # Task lifecycle hooks (host-side)
 [[modules]]
@@ -615,7 +616,6 @@ expose = [
     "bundled_presets_dir",
     "credentials_dir",
     "get_logs_partial_streaming",
-    "get_ui_base_port",
     "get_tui_default_tmux",
     "get_global_human_name",
     "get_global_human_email",
@@ -639,6 +639,8 @@ expose = [
     "is_claude_oauth_exposed",
     "get_credential_proxy_bypass",
     "get_credential_proxy_transport",
+    "get_credential_proxy_port",
+    "get_credential_proxy_ssh_agent_port",
     "get_shield_bypass_firewall_no_protection",
     "get_shield_drop_on_task_run",
     "get_shield_on_task_restart",
@@ -761,7 +763,7 @@ expose = ["ensure_dir", "ensure_dir_writable", "archive_timestamp", "unique_arch
 from = ["terok.lib.util.fs"]
 
 [[interfaces]]
-expose = ["assign_web_port"]
+expose = ["assign_web_port", "release_web_port"]
 from = ["terok.lib.orchestration.ports"]
 
 [[interfaces]]

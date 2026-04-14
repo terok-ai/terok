@@ -525,20 +525,25 @@ def task_run_toad(
     project = load_project(project_id)
     meta, meta_path = load_task_meta(project.id, task_id, "toad")
 
-    port = meta.get("web_port")
-    if not isinstance(port, int):
-        port = assign_web_port()
-        meta["web_port"] = port
-
     cname = container_name(project.id, "toad", task_id)
     container_state = get_container_state(cname)
 
     pub_host = get_public_host()
 
     if container_state is not None:
+        # Existing container — reuse its saved port (can't change the mapping).
+        saved_port = meta.get("web_port")
+        if not isinstance(saved_port, int):
+            raise SystemExit(f"Existing toad container {cname} has no saved web_port in metadata.")
+        actual = assign_web_port(project.id, task_id, preferred=saved_port)
+        if actual != saved_port:
+            raise SystemExit(
+                f"Port {saved_port} for {project.id}/{task_id} is no longer available "
+                f"(got {actual}).  Re-create the task to use the new port."
+            )
         ensure_credential_proxy()
         color_enabled = _supports_color()
-        url = f"http://{pub_host}:{port}/"
+        url = f"http://{pub_host}:{saved_port}/"
         if container_state == "running":
             print(f"Container {_green(cname, color_enabled)} is already running.")
             print(f"Toad: {_blue(url, color_enabled)}")
@@ -554,7 +559,7 @@ def task_run_toad(
             task_id=task_id,
             mode="toad",
             cname=cname,
-            web_port=port,
+            web_port=saved_port,
             task_dir=task_dir,
             meta_path=meta_path,
         )
@@ -562,6 +567,10 @@ def task_run_toad(
         print("Container started.")
         print(f"Toad: {_blue(url, color_enabled)}")
         return
+
+    # New container — allocate a fresh port.
+    port = assign_web_port(project.id, task_id)
+    meta["web_port"] = port
 
     env, volumes = build_task_env_and_volumes(project, task_id)
 
@@ -1066,6 +1075,14 @@ def task_restart(project_id: str, task_id: str) -> None:
 
     if container_state is not None:
         # Container exists (stopped/exited, or just stopped above) - start it
+        web_port = meta.get("web_port")
+        if isinstance(web_port, int):
+            actual = assign_web_port(project.id, task_id, preferred=web_port)
+            if actual != web_port:
+                raise SystemExit(
+                    f"Port {web_port} for {project.id}/{task_id} is no longer available "
+                    f"(got {actual}).  Re-create the task to use the new port."
+                )
         task_dir = project.tasks_root / str(task_id)
         _podman_start(cname)
         _assert_running(cname)

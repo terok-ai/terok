@@ -22,7 +22,6 @@ from ..helpers import TerokIntegrationEnv, write_fake_podman
 pytestmark = pytest.mark.needs_host_features
 
 PROJECT_ID = "demo"
-WEB_PORT = 7860
 TOAD_PORT = 8080
 
 PROJECT_CONFIG = f"""
@@ -33,13 +32,11 @@ git:
   upstream_url: {EXAMPLE_UPSTREAM_URL}
 """
 
-GLOBAL_CONFIG = f"""
+GLOBAL_CONFIG = """
 shield:
   bypass_firewall_no_protection: true
 credential_proxy:
   bypass_no_secret_protection: true
-ui:
-  base_port: {WEB_PORT}
 """
 
 
@@ -81,6 +78,13 @@ def _extract_task_id(stdout: str) -> str:
     match = re.search(r"Created task ([0-9a-f]{8})", stdout)
     assert match, f"Could not extract task ID from: {stdout!r}"
     return match.group(1)
+
+
+def _extract_web_port(stdout: str) -> int:
+    """Extract the dynamically allocated web port from '- URL:  http://...:PORT/' output."""
+    match = re.search(r"URL:\s+http://[\d.]+:(\d+)/", stdout)
+    assert match, f"Could not extract web port from: {stdout!r}"
+    return int(match.group(1))
 
 
 class TestLaunchWorkflows:
@@ -137,20 +141,21 @@ class TestLaunchWorkflows:
         )
 
         tid = _extract_task_id(result.stdout)
+        web_port = _extract_web_port(result.stdout)
         toad_container = f"{PROJECT_ID}-toad-{tid}"
         meta = yaml_load(terok_env.task_meta_path(PROJECT_ID, tid).read_text(encoding="utf-8"))
         state = _load_fake_podman_state(state_path)
         args = _container_args(state, toad_container)
 
         assert "Toad is serving." in result.stdout
-        assert localhost_url(WEB_PORT) in result.stdout
+        assert localhost_url(web_port) in result.stdout
         assert state["containers"][toad_container]["marker"] == "Serving http://0.0.0.0:8080"
-        assert args[args.index("-p") + 1] == f"{LOCALHOST}:{WEB_PORT}:{TOAD_PORT}"
+        assert args[args.index("-p") + 1] == f"{LOCALHOST}:{web_port}:{TOAD_PORT}"
         assert f"{PROJECT_ID}:l2-cli" in args
         assert "toad --serve -H 0.0.0.0 -p 8080" in args[-1]
-        assert f"--public-url {localhost_url(WEB_PORT).rstrip('/')}" in args[-1]
+        assert f"--public-url {localhost_url(web_port).rstrip('/')}" in args[-1]
         assert meta["mode"] == "toad"
-        assert meta["web_port"] == WEB_PORT
+        assert meta["web_port"] == web_port
         assert meta["unrestricted"] is True
 
     def test_task_restart_starts_existing_stopped_container(

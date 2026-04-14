@@ -181,8 +181,8 @@ class TestLoadValidatedErrorPaths:
         assert "Malformed YAML" in captured.err
         assert str(bad_file) in captured.err
         # Returns defaults
-        assert result.ui.base_port == 7860
-        assert result.gate_server.port == 9418
+        assert result.gate_server.port is None
+        assert result.tui.default_tmux is False
 
     def test_invalid_schema_warns_with_field_errors_and_returns_defaults(
         self,
@@ -191,15 +191,15 @@ class TestLoadValidatedErrorPaths:
         capsys: pytest.CaptureFixture[str],
     ) -> None:
         """Schema validation error shows field-level errors on stderr."""
-        bad_file = write_config(tmp_path, "ui:\n  base_port: not-a-number\n")
+        bad_file = write_config(tmp_path, "gate_server:\n  port: not-a-number\n")
         monkeypatch.setenv("TEROK_CONFIG_FILE", str(bad_file))
         result = cfg._load_validated()
         captured = capsys.readouterr()
         assert "Warning [config]:" in captured.err
         assert "Invalid config" in captured.err
-        assert "base_port" in captured.err
+        assert "port" in captured.err
         # Returns defaults
-        assert result.ui.base_port == 7860
+        assert result.gate_server.port is None
 
     def test_unknown_key_warns_with_field_errors(
         self,
@@ -208,14 +208,14 @@ class TestLoadValidatedErrorPaths:
         capsys: pytest.CaptureFixture[str],
     ) -> None:
         """extra=forbid catches typos and surfaces them via warn_user."""
-        bad_file = write_config(tmp_path, "uii:\n  base_port: 7860\n")
+        bad_file = write_config(tmp_path, "tuii:\n  default_tmux: true\n")
         monkeypatch.setenv("TEROK_CONFIG_FILE", str(bad_file))
         result = cfg._load_validated()
         captured = capsys.readouterr()
         assert "Warning [config]:" in captured.err
         assert "Invalid config" in captured.err
         # Returns defaults
-        assert result.ui.base_port == 7860
+        assert result.tui.default_tmux is False
 
     def test_missing_file_returns_defaults_no_warning(
         self,
@@ -229,7 +229,7 @@ class TestLoadValidatedErrorPaths:
         result = cfg._load_validated()
         captured = capsys.readouterr()
         assert captured.err == ""
-        assert result.ui.base_port == 7860
+        assert result.gate_server.port is None
 
     def test_unreadable_file_warns_and_returns_defaults(
         self,
@@ -238,7 +238,7 @@ class TestLoadValidatedErrorPaths:
         capsys: pytest.CaptureFixture[str],
     ) -> None:
         """OSError (e.g. permission denied) triggers a warning."""
-        cfg_file = write_config(tmp_path, "ui:\n  base_port: 9000\n")
+        cfg_file = write_config(tmp_path, "gate_server:\n  port: 9000\n")
         monkeypatch.setenv("TEROK_CONFIG_FILE", str(cfg_file))
         # Patch read_text on the Path object to simulate permission error
         with patch.object(Path, "read_text", side_effect=OSError("Permission denied")):
@@ -246,7 +246,7 @@ class TestLoadValidatedErrorPaths:
         captured = capsys.readouterr()
         assert "Warning [config]:" in captured.err
         assert "Cannot read" in captured.err
-        assert result.ui.base_port == 7860
+        assert result.gate_server.port is None
 
     def test_valid_config_no_warning(
         self,
@@ -255,12 +255,12 @@ class TestLoadValidatedErrorPaths:
         capsys: pytest.CaptureFixture[str],
     ) -> None:
         """Valid config produces no warnings on stderr."""
-        good_file = write_config(tmp_path, "ui:\n  base_port: 9000\n")
+        good_file = write_config(tmp_path, "gate_server:\n  port: 9000\n")
         monkeypatch.setenv("TEROK_CONFIG_FILE", str(good_file))
         result = cfg._load_validated()
         captured = capsys.readouterr()
         assert captured.err == ""
-        assert result.ui.base_port == 9000
+        assert result.gate_server.port == 9000
 
 
 # ===========================================================================
@@ -399,41 +399,6 @@ class TestImageCleanupWarning:
         assert result is None
         mock_warn.assert_called_once()
         assert "Project discovery failed" in mock_warn.call_args[0][0]
-
-
-# ===========================================================================
-# ports.py — malformed task metadata during port scan
-# ===========================================================================
-
-
-class TestPortScanWarning:
-    """Cover the exception branch in _collect_all_web_ports()."""
-
-    @pytest.fixture(autouse=True)
-    def _isolate_log(self, tmp_path: Path) -> None:
-        with patch("terok.lib.core.paths.state_root", return_value=tmp_path):
-            yield
-
-    def test_malformed_metadata_logged(self, tmp_path: Path) -> None:
-        """Corrupt task YAML is caught and logged during port scan."""
-        from terok.lib.orchestration.ports import _collect_all_web_ports
-
-        # Set up the state directory structure
-        proj_dir = tmp_path / "projects" / "myproj" / "tasks"
-        proj_dir.mkdir(parents=True)
-        (proj_dir / "bad.yml").write_text(": [broken yaml")
-        (proj_dir / "good.yml").write_text("web_port: 8080\n")
-
-        with (
-            patch("terok.lib.orchestration.ports.state_dir", return_value=tmp_path),
-            patch("terok.lib.util.logging_utils.log_warning") as mock_warn,
-        ):
-            ports = _collect_all_web_ports()
-
-        # Good port still collected, bad file warned
-        assert 8080 in ports
-        mock_warn.assert_called_once()
-        assert "port scan" in mock_warn.call_args[0][0].lower()
 
 
 # ===========================================================================

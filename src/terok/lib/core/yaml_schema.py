@@ -380,17 +380,6 @@ class RawProjectYaml(BaseModel):
 # ---------------------------------------------------------------------------
 
 
-class RawUISection(BaseModel):
-    """Global ``ui:`` section."""
-
-    model_config = ConfigDict(extra="forbid")
-
-    base_port: int = Field(
-        default=7860,
-        description="Base port for Toad and other browser-accessible task containers",
-    )
-
-
 class RawCredentialsSection(BaseModel):
     """Global ``credentials:`` section."""
 
@@ -433,6 +422,9 @@ class RawPathsSection(BaseModel):
     )
     user_presets_dir: str | None = Field(
         default=None, description="User presets directory (per-user preset configs)"
+    )
+    port_registry_dir: str | None = Field(
+        default=None, description="Shared port registry directory for multi-user isolation"
     )
 
 
@@ -479,6 +471,8 @@ class RawCredentialProxySection(BaseModel):
 
     bypass_no_secret_protection: bool = False
     transport: Literal["direct", "socket"] = "socket"
+    port: int | None = Field(default=None, ge=1, le=65535)
+    ssh_agent_port: int | None = Field(default=None, ge=1, le=65535)
 
 
 class RawGateServerSection(BaseModel):
@@ -486,7 +480,7 @@ class RawGateServerSection(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    port: int = Field(default=9418, description="Gate server listen port")
+    port: int | None = Field(default=None, ge=1, le=65535, description="Gate server listen port")
     repos_dir: str | None = Field(
         default=None,
         description="Override gate repo directory (default: ``state_dir/gate``)",
@@ -507,6 +501,21 @@ class RawTasksGlobalSection(BaseModel):
     )
 
 
+class RawNetworkSection(BaseModel):
+    """Global ``network:`` section — port range and future network settings."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    port_range_start: int = Field(default=18700, ge=1024, le=65535)
+    port_range_end: int = Field(default=32700, ge=1024, le=65535)
+
+    @model_validator(mode="after")
+    def _check_port_range(self) -> RawNetworkSection:
+        if self.port_range_start > self.port_range_end:
+            raise ValueError("port_range_start must be <= port_range_end")
+        return self
+
+
 # ---------------------------------------------------------------------------
 # Top-level global config YAML
 # ---------------------------------------------------------------------------
@@ -517,7 +526,6 @@ class RawGlobalConfig(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    ui: RawUISection = Field(default_factory=RawUISection)
     credentials: RawCredentialsSection = Field(default_factory=RawCredentialsSection)
     paths: RawPathsSection = Field(default_factory=RawPathsSection)
     tui: RawTUISection = Field(default_factory=RawTUISection)
@@ -525,6 +533,7 @@ class RawGlobalConfig(BaseModel):
     shield: RawShieldGlobalSection = Field(default_factory=RawShieldGlobalSection)
     credential_proxy: RawCredentialProxySection = Field(default_factory=RawCredentialProxySection)
     gate_server: RawGateServerSection = Field(default_factory=RawGateServerSection)
+    network: RawNetworkSection = Field(default_factory=RawNetworkSection)
     tasks: RawTasksGlobalSection = Field(default_factory=RawTasksGlobalSection)
     git: RawGlobalGitSection = Field(default_factory=RawGlobalGitSection)
     hooks: RawHooksSection = Field(default_factory=RawHooksSection)
@@ -535,7 +544,6 @@ class RawGlobalConfig(BaseModel):
 
     _SECTION_KEYS: ClassVar[frozenset[str]] = frozenset(
         {
-            "ui",
             "credentials",
             "paths",
             "tui",
@@ -543,6 +551,7 @@ class RawGlobalConfig(BaseModel):
             "shield",
             "credential_proxy",
             "gate_server",
+            "network",
             "tasks",
             "git",
             "hooks",
