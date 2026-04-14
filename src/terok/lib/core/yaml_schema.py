@@ -63,9 +63,14 @@ class RawProjectSection(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    id: str | None = None
-    name: str | None = Field(default=None, description="Human-readable project name")
-    security_class: str = Field(default="online", description="online or gatekeeping")
+    id: str | None = Field(
+        default=None, description="Unique project identifier (lowercase, ``[a-z0-9_-]``)"
+    )
+    name: str | None = Field(default=None, description="Human-readable project name (display only)")
+    security_class: str = Field(
+        default="online",
+        description="Security mode: ``online`` (direct push) or ``gatekeeping`` (gated mirror)",
+    )
     isolation: str = Field(
         default="shared", description="shared (bind mounts) or sealed (no mounts)"
     )
@@ -108,11 +113,25 @@ class RawGitSection(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    upstream_url: str | None = None
-    default_branch: str | None = None
-    human_name: str | None = None
-    human_email: str | None = None
-    authorship: str | None = None
+    upstream_url: str | None = Field(
+        default=None, description="Repository URL to clone into task containers"
+    )
+    default_branch: str | None = Field(
+        default=None, description="Default branch name (e.g. ``main``)"
+    )
+    human_name: str | None = Field(
+        default=None, description="Human name for git committer identity"
+    )
+    human_email: str | None = Field(
+        default=None, description="Human email for git committer identity"
+    )
+    authorship: str | None = Field(
+        default=None,
+        description=(
+            "How agent/human map to git author/committer."
+            " Values: ``agent-human``, ``human-agent``, ``agent``, ``human``"
+        ),
+    )
 
 
 class RawGlobalGitSection(BaseModel):
@@ -120,9 +139,19 @@ class RawGlobalGitSection(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    human_name: str | None = None
-    human_email: str | None = None
-    authorship: str | None = None
+    human_name: str | None = Field(
+        default=None, description="Human name for git committer identity"
+    )
+    human_email: str | None = Field(
+        default=None, description="Human email for git committer identity"
+    )
+    authorship: str | None = Field(
+        default=None,
+        description=(
+            "How agent/human map to git author/committer."
+            " Values: ``agent-human``, ``human-agent``, ``agent``, ``human``"
+        ),
+    )
 
 
 class RawSSHSection(BaseModel):
@@ -130,9 +159,20 @@ class RawSSHSection(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    key_name: str | None = None
-    host_dir: str | None = Field(default=None, description="Host-side SSH directory")
-    config_template: str | None = None
+    key_name: str | None = Field(
+        default=None, description="SSH key filename (default: ``id_ed25519_<project_id>``)"
+    )
+    host_dir: str | None = Field(
+        default=None,
+        description="Host directory for SSH key storage (keys served via SSH agent proxy, not mounted)",
+    )
+    config_template: str | None = Field(
+        default=None,
+        description=(
+            "Path to an SSH config template file"
+            " (supports ``{{IDENTITY_FILE}}``, ``{{KEY_NAME}}``, ``{{PROJECT_ID}}``)"
+        ),
+    )
     allow_host_keys: bool = Field(
         default=False,
         description="Allow fallback to ~/.ssh host keys for gate operations",
@@ -144,8 +184,11 @@ class RawTasksSection(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    root: str | None = None
-    name_categories: NameCategories = None
+    root: str | None = Field(default=None, description="Override task workspace root directory")
+    name_categories: NameCategories = Field(
+        default=None,
+        description="Word categories for auto-generated task names (string or list of strings)",
+    )
 
 
 class RawGateSection(BaseModel):
@@ -153,7 +196,7 @@ class RawGateSection(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    path: str | None = None
+    path: str | None = Field(default=None, description="Override git gate (mirror) path")
 
 
 class RawUpstreamPolling(BaseModel):
@@ -161,8 +204,8 @@ class RawUpstreamPolling(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    enabled: bool = True
-    interval_minutes: int = 5
+    enabled: bool = Field(default=True, description="Poll upstream for new commits")
+    interval_minutes: int = Field(default=5, description="Polling interval in minutes")
 
 
 class RawAutoSync(BaseModel):
@@ -170,8 +213,8 @@ class RawAutoSync(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    enabled: bool = False
-    branches: list[str] = Field(default_factory=list)
+    enabled: bool = Field(default=False, description="Auto-sync branches from upstream to gate")
+    branches: list[str] = Field(default_factory=list, description="Branch names to auto-sync")
 
 
 class RawGatekeepingSection(BaseModel):
@@ -179,8 +222,13 @@ class RawGatekeepingSection(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    staging_root: str | None = None
-    expose_external_remote: bool = False
+    staging_root: str | None = Field(
+        default=None, description="Staging directory for gatekeeping builds"
+    )
+    expose_external_remote: bool = Field(
+        default=False,
+        description="Add upstream URL as ``external`` remote in gatekeeping containers",
+    )
     upstream_polling: RawUpstreamPolling = Field(default_factory=RawUpstreamPolling)
     auto_sync: RawAutoSync = Field(default_factory=RawAutoSync)
 
@@ -211,8 +259,13 @@ class RawRunSection(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    shutdown_timeout: int = 10
-    gpus: str | bool | None = None
+    shutdown_timeout: int = Field(
+        default=10, description="Seconds to wait before SIGKILL on container stop"
+    )
+    gpus: str | bool | None = Field(
+        default=None,
+        description='GPU passthrough: ``true``, ``"all"``, or omit to disable',
+    )
     memory: str | None = None
     cpus: str | None = None
     hooks: RawHooksSection = Field(default_factory=RawHooksSection)
@@ -244,8 +297,14 @@ class RawShieldProjectSection(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    drop_on_task_run: bool | None = None
-    on_task_restart: Literal["retain", "up"] | None = None
+    drop_on_task_run: bool | None = Field(
+        default=None,
+        description="Drop shield (bypass firewall) when task container is created",
+    )
+    on_task_restart: Literal["retain", "up"] | None = Field(
+        default=None,
+        description="Shield policy on container restart: ``retain`` or ``up``",
+    )
 
 
 class RawImageSection(BaseModel):
@@ -253,9 +312,13 @@ class RawImageSection(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    base_image: str = "ubuntu:24.04"
-    user_snippet_inline: str | None = None
-    user_snippet_file: str | None = None
+    base_image: str = Field(default="ubuntu:24.04", description="Base container image for builds")
+    user_snippet_inline: str | None = Field(
+        default=None, description="Inline Dockerfile snippet injected into the project image"
+    )
+    user_snippet_file: str | None = Field(
+        default=None, description="Path to a file containing a Dockerfile snippet"
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -277,13 +340,18 @@ class RawProjectYaml(BaseModel):
     run: RawRunSection = Field(default_factory=RawRunSection)
     shield: RawShieldProjectSection = Field(default_factory=RawShieldProjectSection)
     image: RawImageSection = Field(default_factory=RawImageSection)
-    default_agent: str | None = None
+    default_agent: str | None = Field(
+        default=None, description="Default agent provider (e.g. ``claude``, ``codex``)"
+    )
     default_login: str | None = None
     shared_dir: bool | str | None = Field(
         default=None,
-        description="Shared directory for multi-agent IPC (true = auto, or absolute path)",
+        description="Shared directory for multi-agent IPC (``true`` = auto-create under tasks root, or absolute path)",
     )
-    agent: dict[str, Any] = Field(default_factory=dict)
+    agent: dict[str, Any] = Field(
+        default_factory=dict,
+        description="Agent configuration dict (model, subagents, MCP servers, etc.)",
+    )
 
     _SECTION_KEYS: ClassVar[frozenset[str]] = frozenset(
         {
@@ -317,7 +385,10 @@ class RawUISection(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    base_port: int = 7860
+    base_port: int = Field(
+        default=7860,
+        description="Base port for Toad and other browser-accessible task containers",
+    )
 
 
 class RawCredentialsSection(BaseModel):
@@ -325,7 +396,10 @@ class RawCredentialsSection(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    dir: str | None = None
+    dir: str | None = Field(
+        default=None,
+        description="Shared credentials directory (proxy DB, agent config mounts)",
+    )
 
 
 class RawPathsSection(BaseModel):
@@ -337,11 +411,29 @@ class RawPathsSection(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    root: str | None = None
-    build_dir: str | None = None
-    sandbox_live_dir: str | None = None
-    user_projects_dir: str | None = None
-    user_presets_dir: str | None = None
+    root: str | None = Field(
+        default=None,
+        description=(
+            "Namespace state root shared by all ecosystem packages"
+            " (Podman model — one config, multiple readers)"
+        ),
+    )
+    build_dir: str | None = Field(
+        default=None, description="Build artifacts directory (generated Dockerfiles)"
+    )
+    sandbox_live_dir: str | None = Field(
+        default=None,
+        description=(
+            "Container-writable runtime data (tasks, agent mounts)."
+            " For hardened installs, mount the target with ``noexec,nosuid,nodev``"
+        ),
+    )
+    user_projects_dir: str | None = Field(
+        default=None, description="User projects directory (per-user project configs)"
+    )
+    user_presets_dir: str | None = Field(
+        default=None, description="User presets directory (per-user preset configs)"
+    )
 
 
 class RawTUISection(BaseModel):
@@ -349,7 +441,9 @@ class RawTUISection(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    default_tmux: bool = False
+    default_tmux: bool = Field(
+        default=False, description="Default to tmux mode when launching the TUI"
+    )
 
 
 class RawLogsSection(BaseModel):
@@ -357,7 +451,9 @@ class RawLogsSection(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    partial_streaming: bool = True
+    partial_streaming: bool = Field(
+        default=True, description="Enable typewriter-effect streaming for log viewing"
+    )
 
 
 class RawShieldGlobalSection(BaseModel):
@@ -365,9 +461,13 @@ class RawShieldGlobalSection(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    bypass_firewall_no_protection: bool = False
-    profiles: dict[str, Any] | None = None
-    audit: bool = True
+    bypass_firewall_no_protection: bool = Field(
+        default=False, description="**Dangerous**: disable egress firewall entirely"
+    )
+    profiles: dict[str, Any] | None = Field(
+        default=None, description="Named shield profiles for per-project firewall rules"
+    )
+    audit: bool = Field(default=True, description="Enable shield audit logging")
     drop_on_task_run: bool = True
     on_task_restart: Literal["retain", "up"] = "retain"
 
@@ -386,9 +486,14 @@ class RawGateServerSection(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    port: int = 9418
-    repos_dir: str | None = None
-    suppress_systemd_warning: bool = False
+    port: int = Field(default=9418, description="Gate server listen port")
+    repos_dir: str | None = Field(
+        default=None,
+        description="Override gate repo directory (default: ``state_dir/gate``)",
+    )
+    suppress_systemd_warning: bool = Field(
+        default=False, description="Suppress the systemd unit installation suggestion"
+    )
 
 
 class RawTasksGlobalSection(BaseModel):
@@ -396,7 +501,10 @@ class RawTasksGlobalSection(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    name_categories: NameCategories = None
+    name_categories: NameCategories = Field(
+        default=None,
+        description="Word categories for auto-generated task names (string or list of strings)",
+    )
 
 
 # ---------------------------------------------------------------------------

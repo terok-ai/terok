@@ -10,9 +10,10 @@ Runs during ``mkdocs build`` via the mkdocs-gen-files plugin.  Introspects
 - Per-section Markdown tables with field name, type, default, and description
 - A full annotated YAML example for each config file
 
-The Pydantic models are the **single source of truth** — if a field exists in
-the schema, it appears in the docs automatically.  Table and YAML rendering
-is delegated to ``mkdocs_terok.config_reference``.
+Every ``Field(description=...)`` in the Pydantic models is the **single source
+of truth** — if a field exists in the schema, it appears in the docs
+automatically.  Table and YAML rendering is delegated to
+``mkdocs_terok.config_reference``.
 """
 
 from __future__ import annotations
@@ -30,81 +31,6 @@ from terok.lib.core.yaml_schema import RawGlobalConfig, RawProjectYaml
 
 _MD_RULE = "---\n\n"
 """Markdown horizontal rule with trailing blank line."""
-
-# ---------------------------------------------------------------------------
-# Human-friendly descriptions for fields that lack Field(description=...).
-# Key format: "section.field" (dot-separated YAML path).
-# ---------------------------------------------------------------------------
-
-_FIELD_DOCS: dict[str, str] = {
-    # project.yml — project section
-    "project.id": "Unique project identifier (lowercase, ``[a-z0-9_-]``)",
-    "project.name": "Human-readable project name (display only)",
-    "project.security_class": "Security mode: ``online`` (direct push) or ``gatekeeping`` (gated mirror)",
-    # git
-    "git.upstream_url": "Repository URL to clone into task containers",
-    "git.default_branch": "Default branch name (e.g. ``main``)",
-    "git.human_name": "Human name for git committer identity",
-    "git.human_email": "Human email for git committer identity",
-    "git.authorship": "How agent/human map to git author/committer. Values: ``agent-human``, ``human-agent``, ``agent``, ``human``",
-    # ssh
-    "ssh.key_name": "SSH key filename (default: ``id_ed25519_<project_id>``)",
-    "ssh.host_dir": "Host directory for SSH key storage (keys served via SSH agent proxy, not mounted)",
-    "ssh.config_template": "Path to an SSH config template file (supports ``{{IDENTITY_FILE}}``, ``{{KEY_NAME}}``, ``{{PROJECT_ID}}``)",
-    "ssh.allow_host_keys": "Allow fallback to ``~/.ssh`` host keys for gate operations (default: ``false``)",
-    # tasks
-    "tasks.root": "Override task workspace root directory",
-    "tasks.name_categories": "Word categories for auto-generated task names (string or list of strings)",
-    # gate
-    "gate.path": "Override git gate (mirror) path",
-    # gatekeeping
-    "gatekeeping.staging_root": "Staging directory for gatekeeping builds",
-    "gatekeeping.expose_external_remote": "Add upstream URL as ``external`` remote in gatekeeping containers",
-    "gatekeeping.upstream_polling.enabled": "Poll upstream for new commits",
-    "gatekeeping.upstream_polling.interval_minutes": "Polling interval in minutes",
-    "gatekeeping.auto_sync.enabled": "Auto-sync branches from upstream to gate",
-    "gatekeeping.auto_sync.branches": "Branch names to auto-sync",
-    # run
-    "run.shutdown_timeout": "Seconds to wait before SIGKILL on container stop",
-    "run.gpus": 'GPU passthrough: ``true``, ``"all"``, or omit to disable',
-    # shield
-    "shield.drop_on_task_run": "Drop shield (bypass firewall) when task container is created",
-    "shield.on_task_restart": "Shield policy on container restart: ``retain`` or ``up``",
-    # image
-    "image.base_image": "Base container image for builds",
-    "image.user_snippet_inline": "Inline Dockerfile snippet injected into the project image",
-    "image.user_snippet_file": "Path to a file containing a Dockerfile snippet",
-    # shared dir
-    "shared_dir": "Shared directory for multi-agent IPC (``true`` = auto-create under tasks root, or absolute path)",
-    # top-level
-    "default_agent": "Default agent provider (e.g. ``claude``, ``codex``)",
-    "agent": "Agent configuration dict (model, subagents, MCP servers, etc.)",
-    # global config — ui
-    "ui.base_port": "Base port for Toad and other browser-accessible task containers",
-    # credentials
-    "credentials.dir": "Shared credentials directory (proxy DB, agent config mounts)",
-    # paths
-    "paths.root": "Namespace state root shared by all ecosystem packages "
-    "(Podman model — one config, multiple readers)",
-    "paths.sandbox_live_dir": "Container-writable runtime data (tasks, agent mounts). "
-    "For hardened installs, mount the target with ``noexec,nosuid,nodev``",
-    "paths.build_dir": "Build artifacts directory (generated Dockerfiles)",
-    "paths.user_projects_dir": "User projects directory (per-user project configs)",
-    "paths.user_presets_dir": "User presets directory (per-user preset configs)",
-    # tui
-    "tui.default_tmux": "Default to tmux mode when launching the TUI",
-    # logs
-    "logs.partial_streaming": "Enable typewriter-effect streaming for log viewing",
-    # shield (global)
-    "shield.bypass_firewall_no_protection": "**Dangerous**: disable egress firewall entirely",
-    "shield.profiles": "Named shield profiles for per-project firewall rules",
-    "shield.audit": "Enable shield audit logging",
-    # gate_server
-    "gate_server.port": "Gate server listen port",
-    "gate_server.repos_dir": "Override gate repo directory (default: ``state_dir/gate``)",
-    "gate_server.suppress_systemd_warning": "Suppress the systemd unit installation suggestion",
-}
-
 
 # ---------------------------------------------------------------------------
 # Main: assemble the page
@@ -139,11 +65,11 @@ def _generate() -> str:
         "in config.yml) or the system config root.\n\n"
     )
 
-    buf.write(render_model_tables(RawProjectYaml, field_docs=_FIELD_DOCS))
+    buf.write(render_model_tables(RawProjectYaml))
 
     buf.write("### Full example\n\n")
     buf.write('```yaml title="project.yml"\n')
-    buf.write(render_yaml_example(RawProjectYaml, field_docs=_FIELD_DOCS))
+    buf.write(render_yaml_example(RawProjectYaml))
     buf.write("```\n\n")
 
     # --- config.yml ---
@@ -161,11 +87,11 @@ def _generate() -> str:
         "4. `/etc/terok/config.yml`\n\n"
     )
 
-    buf.write(render_model_tables(RawGlobalConfig, field_docs=_FIELD_DOCS))
+    buf.write(render_model_tables(RawGlobalConfig))
 
     buf.write("### Full example\n\n")
     buf.write('```yaml title="config.yml"\n')
-    buf.write(render_yaml_example(RawGlobalConfig, field_docs=_FIELD_DOCS))
+    buf.write(render_yaml_example(RawGlobalConfig))
     buf.write("```\n\n")
 
     # --- Validation ---
