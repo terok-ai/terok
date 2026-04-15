@@ -4,7 +4,7 @@
 """Infrastructure setup commands: global bootstrap plus per-project init.
 
 ``terok setup`` — non-interactive, idempotent global bootstrap that installs
-shield hooks, credential proxy, and gate server (user-local, no root).
+shield hooks, vault, and gate server (user-local, no root).
 
 Per-project commands (generate, build, ssh-init, gate-sync, auth) live
 alongside for backward compatibility.
@@ -42,10 +42,10 @@ def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) ->
     # setup (global bootstrap)
     p_setup = subparsers.add_parser(
         "setup",
-        help="Global bootstrap: install shield, credential proxy, and gate server",
+        help="Global bootstrap: install shield, vault, and gate server",
         description=(
             "Non-interactive, idempotent host-level setup.  Installs mandatory "
-            "services (shield hooks, credential proxy, gate server) to user-local "
+            "services (shield hooks, vault, gate server) to user-local "
             "directories — no root needed.  Safe to re-run."
         ),
     )
@@ -264,16 +264,16 @@ def _ensure_shield(*, check_only: bool, color: bool) -> bool:
     return False
 
 
-def _ensure_proxy(*, check_only: bool, color: bool) -> bool:
-    """Install credential proxy and verify it is reachable.  Returns True on success."""
+def _ensure_vault(*, check_only: bool, color: bool) -> bool:
+    """Install vault and verify it is reachable.  Returns True on success."""
     from terok_sandbox import (
-        ProxyUnreachableError,
-        ensure_proxy_reachable,
-        get_proxy_status,
-        install_proxy_systemd,
-        is_proxy_socket_active,
-        stop_proxy,
-        uninstall_proxy_systemd,
+        VaultUnreachableError,
+        ensure_vault_reachable,
+        get_vault_status,
+        install_vault_systemd,
+        is_vault_socket_active,
+        stop_vault,
+        uninstall_vault_systemd,
     )
 
     from ...lib.core.config import make_sandbox_config
@@ -283,23 +283,23 @@ def _ensure_proxy(*, check_only: bool, color: bool) -> bool:
     if check_only:
         # Check-only: just probe reachability
         try:
-            ensure_proxy_reachable(cfg)
-            mode = get_proxy_status().mode or "active"
-            print(f"  Credential proxy {_status_label(True, color)} ({mode}, reachable)")
+            ensure_vault_reachable(cfg)
+            mode = get_vault_status().mode or "active"
+            print(f"  Vault            {_status_label(True, color)} ({mode}, reachable)")
             return True
-        except (ProxyUnreachableError, SystemExit):
-            installed = is_proxy_socket_active()
+        except (VaultUnreachableError, SystemExit):
+            installed = is_vault_socket_active()
             state = "installed but NOT reachable" if installed else "not installed"
-            print(f"  Credential proxy {_status_label(False, color)} ({state})")
+            print(f"  Vault            {_status_label(False, color)} ({state})")
             return False
 
     # Clean reinstall: stop → uninstall → install → verify reachability
     try:
-        stop_proxy(cfg=cfg)
+        stop_vault(cfg=cfg)
     except Exception:  # noqa: BLE001 — best-effort, may not be running
         pass
     try:
-        uninstall_proxy_systemd(cfg=cfg)
+        uninstall_vault_systemd(cfg=cfg)
     except Exception:  # noqa: BLE001 — best-effort, may not be installed
         pass
 
@@ -308,24 +308,24 @@ def _ensure_proxy(*, check_only: bool, color: bool) -> bool:
     transport = get_services_mode()
 
     try:
-        from terok_executor import ensure_proxy_routes
+        from terok_executor import ensure_vault_routes
 
-        ensure_proxy_routes(cfg=cfg)
-        install_proxy_systemd(cfg=cfg, transport=transport)
+        ensure_vault_routes(cfg=cfg)
+        install_vault_systemd(cfg=cfg, transport=transport)
     except Exception as exc:  # noqa: BLE001 — best-effort
-        print(f"  Credential proxy {_status_label(False, color)} (install failed: {exc})")
+        print(f"  Vault            {_status_label(False, color)} (install failed: {exc})")
         return False
 
     # Verify actual TCP reachability (triggers systemd start)
     try:
-        ensure_proxy_reachable(cfg)
-        mode = get_proxy_status().mode or "active"
-        print(f"  Credential proxy {_status_label(True, color)} ({mode}, reachable)")
+        ensure_vault_reachable(cfg)
+        mode = get_vault_status().mode or "active"
+        print(f"  Vault            {_status_label(True, color)} ({mode}, reachable)")
         return True
-    except (ProxyUnreachableError, SystemExit) as exc:
-        print(f"  Credential proxy {_status_label(False, color)} (installed but NOT reachable)")
+    except (VaultUnreachableError, SystemExit) as exc:
+        print(f"  Vault            {_status_label(False, color)} (installed but NOT reachable)")
         print(f"                   {exc}")
-        print("                   Check: journalctl --user -u terok-credential-proxy")
+        print("                   Check: journalctl --user -u terok-vault")
         return False
 
 
@@ -461,7 +461,7 @@ def _check_selinux_policy(*, color: bool) -> bool:
 
 
 def cmd_setup(*, check_only: bool = False) -> None:
-    """Global bootstrap: install shield, credential proxy, and gate server.
+    """Global bootstrap: install shield, vault, and gate server.
 
     Non-interactive and idempotent — safe to re-run.  Installs to user-local
     directories (no root needed).  With ``--check``, only reports status.
@@ -483,12 +483,16 @@ def cmd_setup(*, check_only: bool = False) -> None:
     # Step 3: Services
     print(bold("Services:", color))
     shield_ok = _ensure_shield(check_only=check_only, color=color)
-    proxy_ok = _ensure_proxy(check_only=check_only, color=color)
+
+    # Step 3: Vault
+    vault_ok = _ensure_vault(check_only=check_only, color=color)
+
+    # Step 4: Gate server
     gate_ok = _ensure_gate(check_only=check_only, color=color)
     print()
 
     # Summary + next steps
-    all_ok = binaries_ok and shield_ok and proxy_ok and gate_ok and selinux_ok
+    all_ok = binaries_ok and shield_ok and vault_ok and gate_ok and selinux_ok
     if all_ok:
         print(bold("Setup complete.", color))
     elif not binaries_ok:

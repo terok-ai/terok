@@ -42,12 +42,12 @@ pipx install ./terok-*.whl
 ### One-time setup
 
 Install OCI hooks for the egress firewall, start the host-side services
-(credential proxy and git gate), and optionally add shell completions:
+(vault and git gate), and optionally add shell completions:
 
 ```bash
 terok shield setup --user               # install OCI hooks for terok-shield
-terok credential-proxy install          # install systemd socket activation
-terok credential-proxy start            # start the credential proxy daemon
+terok vault install                     # install systemd socket activation
+terok vault start                       # start the vault daemon
 terok gate start                        # start the git gate server
 terok completions install               # (optional) tab completion
 ```
@@ -109,7 +109,7 @@ per-project in `<project>/presets/`. See the
 - [User Guide](usage.md) — Complete user documentation
 - [Container Layers](container-layers.md) — Container image architecture
 - [Container Lifecycle](container-lifecycle.md) — Container and image lifecycle
-- [Shared Directories](shared-dirs.md) — Volume mounts and credential proxy
+- [Shared Directories](shared-dirs.md) — Volume mounts and vault
 - [Security Modes](git-gate-and-security-modes.md) — Online vs gatekeeping modes
 - [Shield](shield-security.md) — Egress firewall (terok-shield)
 - [Agent Compatibility Matrix](agent-compat-matrix.md) — Per-agent feature support

@@ -43,14 +43,14 @@ on first task launch.  The base dir defaults to
 
 All shared dirs use `:z` (shared SELinux label); the workspace uses `:Z` (private label).
 
-> **Note:** SSH keys are **not** mounted into containers.  The credential
-> proxy's SSH agent serves keys over TCP — private keys never enter the
+> **Note:** SSH keys are **not** mounted into containers.  The vault's
+> SSH signer serves keys over TCP — private keys never enter the
 > container.  See `terok ssh-init` for key generation.
 
 ## SSH Key Management
 
 SSH keys are generated and stored on the **host only** — they are served to
-containers via the credential proxy's SSH agent (TCP-based, phantom-token
+containers via the vault's SSH signer (TCP-based, phantom-token
 authenticated).  Public HTTPS repos don't need SSH setup at all.
 
 ### Setup
@@ -60,7 +60,7 @@ terok ssh-init <project_id> [--key-type ed25519|rsa] [--key-name NAME] [--force]
 ```
 
 This generates an ed25519 keypair stored at `<state_dir>/ssh-keys/<project_id>/`
-and registers it in `ssh-keys.json` for the SSH agent proxy.
+and registers it in `ssh-keys.json` for the vault SSH signer.
 
 Use the printed `.pub` key to register a deploy key on your Git host.
 
@@ -74,9 +74,9 @@ ssh:
 
 Supported tokens: `{{IDENTITY_FILE}}`, `{{KEY_NAME}}`, `{{PROJECT_ID}}`
 
-## Credential Proxy
+## Vault
 
-The credential proxy holds real API keys and OAuth tokens on the host
+The vault holds real API keys and OAuth tokens on the host
 and injects **phantom tokens** into containers.  When a container makes
 an API call, the proxy intercepts the phantom token and swaps it for the
 real credential — the actual secret never enters any container.

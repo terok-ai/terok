@@ -5,6 +5,7 @@
 
 import getpass
 import os
+import warnings
 from pathlib import Path
 
 try:
@@ -17,7 +18,7 @@ except ImportError:  # optional dependency
 
 
 APP_NAME = "terok"
-_CREDENTIALS_SUBDIR = "credentials"
+_VAULT_SUBDIR = "vault"
 
 
 def _is_root() -> bool:
@@ -94,23 +95,32 @@ def runtime_root() -> Path:
     return Path.home() / ".cache" / APP_NAME
 
 
-def credentials_root() -> Path:
-    """Shared credentials directory used by all terok ecosystem packages.
+def vault_root() -> Path:
+    """Shared vault directory used by all terok ecosystem packages.
 
+    Houses token broker DB, SSH signer keys, and agent config mounts.
     Lives under the ``terok/`` namespace so a single ``rm -rf`` or backup
     captures everything.
 
-    Priority: ``TEROK_CREDENTIALS_DIR`` → ``/var/lib/terok/credentials`` (root)
-    → XDG data dir.
+    Priority: ``TEROK_VAULT_DIR`` → ``TEROK_CREDENTIALS_DIR`` (deprecated
+    fallback) → ``/var/lib/terok/vault`` (root) → XDG data dir.
     """
-    env = os.getenv("TEROK_CREDENTIALS_DIR")
+    env = os.getenv("TEROK_VAULT_DIR")
     if env:
         return Path(env).expanduser()
+    legacy_env = os.getenv("TEROK_CREDENTIALS_DIR")
+    if legacy_env:
+        warnings.warn(
+            "TEROK_CREDENTIALS_DIR is deprecated; use TEROK_VAULT_DIR instead",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        return Path(legacy_env).expanduser()
     if _is_root():
-        return Path("/var/lib") / APP_NAME / _CREDENTIALS_SUBDIR
+        return Path("/var/lib") / APP_NAME / _VAULT_SUBDIR
     if _user_data_dir is not None:
-        return Path(_user_data_dir(APP_NAME)) / _CREDENTIALS_SUBDIR
+        return Path(_user_data_dir(APP_NAME)) / _VAULT_SUBDIR
     xdg = os.getenv("XDG_DATA_HOME")
     if xdg:
-        return Path(xdg) / APP_NAME / _CREDENTIALS_SUBDIR
-    return Path.home() / ".local" / "share" / APP_NAME / _CREDENTIALS_SUBDIR
+        return Path(xdg) / APP_NAME / _VAULT_SUBDIR
+    return Path.home() / ".local" / "share" / APP_NAME / _VAULT_SUBDIR

@@ -35,7 +35,7 @@ git:
 GLOBAL_CONFIG = """
 shield:
   bypass_firewall_no_protection: true
-credential_proxy:
+vault:
   bypass_no_secret_protection: true
 """
 

@@ -487,14 +487,15 @@ class RawServicesSection(BaseModel):
     mode: Literal["tcp", "socket"] = "tcp"
 
 
-class RawCredentialProxySection(BaseModel):
-    """Global ``credential_proxy:`` section."""
+class RawVaultSection(BaseModel):
+    """Global ``vault:`` section (token broker + SSH signer)."""
 
     model_config = ConfigDict(extra="forbid")
 
     bypass_no_secret_protection: bool = False
+    transport: Literal["direct", "socket"] = "direct"
     port: int | None = Field(default=None, ge=1, le=65535)
-    ssh_agent_port: int | None = Field(default=None, ge=1, le=65535)
+    ssh_signer_port: int | None = Field(default=None, ge=1, le=65535)
 
 
 class RawGateServerSection(BaseModel):
@@ -554,7 +555,7 @@ class RawGlobalConfig(BaseModel):
     logs: RawLogsSection = Field(default_factory=RawLogsSection)
     shield: RawShieldGlobalSection = Field(default_factory=RawShieldGlobalSection)
     services: RawServicesSection = Field(default_factory=RawServicesSection)
-    credential_proxy: RawCredentialProxySection = Field(default_factory=RawCredentialProxySection)
+    vault: RawVaultSection = Field(default_factory=RawVaultSection)
     gate_server: RawGateServerSection = Field(default_factory=RawGateServerSection)
     network: RawNetworkSection = Field(default_factory=RawNetworkSection)
     tasks: RawTasksGlobalSection = Field(default_factory=RawTasksGlobalSection)
@@ -574,7 +575,7 @@ class RawGlobalConfig(BaseModel):
             "logs",
             "shield",
             "services",
-            "credential_proxy",
+            "vault",
             "gate_server",
             "network",
             "tasks",

@@ -18,7 +18,7 @@ from terok.lib.domain.panic import (
 from tests.testfs import FAKE_PROJECT_TASKS_ROOT
 
 _SHIELD = "terok.lib.domain.panic._raise_shield"
-_PROXY = "terok.lib.domain.panic._stop_proxy"
+_PROXY = "terok.lib.domain.panic._stop_vault"
 _GATE = "terok.lib.domain.panic._stop_gate"
 _BYPASS = "terok.lib.domain.panic.get_shield_bypass_firewall_no_protection"
 _DISCOVER = "terok.lib.domain.panic._discover_targets"
@@ -127,7 +127,7 @@ class TestExecutePanic:
         r = execute_panic()
 
         assert r.shields_raised == [t[3]]
-        assert r.proxy_stopped and r.gate_stopped
+        assert r.vault_stopped and r.gate_stopped
         assert not r.has_errors
 
     @patch(_LOCK)
@@ -278,24 +278,24 @@ class TestRaiseShield:
         assert "nft failed" in err
 
 
-class TestStopProxy:
-    """Tests for _stop_proxy."""
+class TestStopVault:
+    """Tests for _stop_vault."""
 
-    @patch("terok_sandbox.stop_proxy")
+    @patch("terok_sandbox.stop_vault")
     def test_success(self, mock_stop):
-        """Proxy stop succeeds."""
-        from terok.lib.domain.panic import _stop_proxy
+        """Vault stop succeeds."""
+        from terok.lib.domain.panic import _stop_vault
 
-        ok, err = _stop_proxy()
+        ok, err = _stop_vault()
         assert ok and err is None
 
-    @patch("terok_sandbox.stop_proxy", side_effect=Exception("no proxy"))
+    @patch("terok_sandbox.stop_vault", side_effect=Exception("no vault"))
     def test_failure(self, _):
-        """Proxy stop failure returns error."""
-        from terok.lib.domain.panic import _stop_proxy
+        """Vault stop failure returns error."""
+        from terok.lib.domain.panic import _stop_vault
 
-        ok, err = _stop_proxy()
-        assert not ok and "no proxy" in err
+        ok, err = _stop_vault()
+        assert not ok and "no vault" in err
 
 
 class TestStopGate:
@@ -347,25 +347,25 @@ class TestFormatReport:
     def test_clean(self):
         """No errors."""
         r = PanicResult(
-            shields_raised=["c1"], proxy_stopped=True, gate_stopped=True, total_running=1
+            shields_raised=["c1"], vault_stopped=True, gate_stopped=True, total_running=1
         )
         assert "FAILED" not in format_panic_report(r)
 
     def test_errors(self):
         """Failures shown."""
-        r = PanicResult(shield_errors=[("c1", "fail")], proxy_error="down", total_running=1)
+        r = PanicResult(shield_errors=[("c1", "fail")], vault_error="down", total_running=1)
         report = format_panic_report(r)
         assert "FAILED" in report and "fail" in report
 
     def test_bypass(self):
         """Bypass flagged."""
-        r = PanicResult(shield_bypassed=True, proxy_stopped=True, gate_stopped=True)
+        r = PanicResult(shield_bypassed=True, vault_stopped=True, gate_stopped=True)
         assert "BYPASSED" in format_panic_report(r)
 
     def test_container_stop_errors(self):
         """Container stop errors appear in report."""
         r = PanicResult(
-            proxy_stopped=True,
+            vault_stopped=True,
             gate_stopped=True,
             container_stop_errors=[("c1", "timeout")],
             total_running=1,
@@ -375,7 +375,7 @@ class TestFormatReport:
 
     def test_gate_error_in_report(self):
         """Gate error appears in error section."""
-        r = PanicResult(proxy_stopped=True, gate_error="port in use", total_running=0)
+        r = PanicResult(vault_stopped=True, gate_error="port in use", total_running=0)
         report = format_panic_report(r)
         assert "gate: port in use" in report
 
@@ -383,7 +383,7 @@ class TestFormatReport:
         """Stopped container count shown."""
         r = PanicResult(
             shields_raised=["c1"],
-            proxy_stopped=True,
+            vault_stopped=True,
             gate_stopped=True,
             containers_stopped=["c1", "c2"],
             total_running=2,

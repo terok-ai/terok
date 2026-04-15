@@ -61,7 +61,7 @@ Agent pushes are **directed to the gate** rather than upstream:
 ### Options
 
 **SSH agent access** (when SSH key is registered via `terok ssh-init`):
-The SSH agent proxy is available even in gatekeeping mode. Useful for repos with private submodules. Ensure the key has no write access to upstream — otherwise the agent could push to upstream despite the gate configuration.
+The vault's SSH signer is available even in gatekeeping mode. Useful for repos with private submodules. Ensure the key has no write access to upstream — otherwise the agent could push to upstream despite the gate configuration.
 
 **External remote** (`gatekeeping.expose_external_remote: true`):
 Add the upstream URL as a remote named `external` in the container's git config. This is "relaxed gatekeeping" — the agent can see and interact with upstream, but `origin` still points to the gate. Use this when the agent needs to pull from upstream but you still want pushes to go through human review via the gate.

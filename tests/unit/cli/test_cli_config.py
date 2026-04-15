@@ -77,7 +77,7 @@ def patch_config_command(layout: SimpleNamespace) -> Iterator[None]:
             )
         )
         stack.enter_context(
-            patch("terok.cli.commands.info._credentials_dir", return_value=layout.envs_root)
+            patch("terok.cli.commands.info._vault_dir", return_value=layout.envs_root)
         )
         stack.enter_context(
             patch("terok.cli.commands.info._user_projects_dir", return_value=layout.user_root)
@@ -109,7 +109,7 @@ def run_import(file_path: Path, envs_root: Path) -> None:
     config_file.write_text(f"credentials:\n  dir: {envs_root}\n", encoding="utf-8")
     with patch.dict(
         os.environ,
-        {"TEROK_CONFIG_FILE": str(config_file), "TEROK_CREDENTIALS_DIR": str(envs_root)},
+        {"TEROK_CONFIG_FILE": str(config_file), "TEROK_VAULT_DIR": str(envs_root)},
     ):
         run_cli("config", "import-opencode", str(file_path))
 

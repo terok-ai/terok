@@ -15,14 +15,14 @@ import sys
 from collections.abc import Callable
 
 from terok_sandbox import (
-    install_proxy_systemd,
     install_systemd_units,
+    install_vault_systemd,
     start_daemon,
-    start_proxy,
+    start_vault,
     stop_daemon,
-    stop_proxy,
-    uninstall_proxy_systemd,
+    stop_vault,
     uninstall_systemd_units,
+    uninstall_vault_systemd,
 )
 
 from ..lib.core.projects import effective_ssh_key_name, load_project, resolve_ssh_host_dir
@@ -590,50 +590,50 @@ class ProjectActionsMixin:
             success_msg="Shield hooks installed",
         )
 
-    # ---------- Credential proxy actions ----------
+    # ---------- Vault actions ----------
 
-    async def _action_proxy_install(self) -> None:
-        """Install systemd socket activation for the credential proxy."""
-        from terok_executor import ensure_proxy_routes
+    async def _action_vault_install(self) -> None:
+        """Install systemd socket activation for the vault."""
+        from terok_executor import ensure_vault_routes
 
         from ..lib.core.config import make_sandbox_config
 
         def _install() -> None:
-            ensure_proxy_routes(cfg=make_sandbox_config())
-            install_proxy_systemd(cfg=make_sandbox_config())
+            ensure_vault_routes(cfg=make_sandbox_config())
+            install_vault_systemd(cfg=make_sandbox_config())
 
         await self._run_suspended(
             _install,
-            success_msg="Credential proxy systemd socket installed",
+            success_msg="Vault systemd socket installed",
         )
 
-    async def _action_proxy_uninstall(self) -> None:
-        """Uninstall credential proxy systemd units."""
+    async def _action_vault_uninstall(self) -> None:
+        """Uninstall vault systemd units."""
         from ..lib.core.config import make_sandbox_config
 
         await self._run_suspended(
-            lambda: uninstall_proxy_systemd(cfg=make_sandbox_config()),
-            success_msg="Credential proxy systemd units removed",
+            lambda: uninstall_vault_systemd(cfg=make_sandbox_config()),
+            success_msg="Vault systemd units removed",
         )
 
-    async def _action_proxy_start(self) -> None:
-        """Generate routes and start the credential proxy daemon."""
-        from terok_executor import ensure_proxy_routes
+    async def _action_vault_start(self) -> None:
+        """Generate routes and start the vault daemon."""
+        from terok_executor import ensure_vault_routes
 
         from ..lib.core.config import make_sandbox_config
 
         def _start() -> None:
-            ensure_proxy_routes(cfg=make_sandbox_config())
-            start_proxy(cfg=make_sandbox_config())
+            ensure_vault_routes(cfg=make_sandbox_config())
+            start_vault(cfg=make_sandbox_config())
 
         await self._run_suspended(
             _start,
-            success_msg="Credential proxy started",
+            success_msg="Vault started",
         )
 
-    async def _action_proxy_stop(self) -> None:
-        """Stop the credential proxy daemon."""
+    async def _action_vault_stop(self) -> None:
+        """Stop the vault daemon."""
         await self._run_suspended(
-            stop_proxy,
-            success_msg="Credential proxy stopped",
+            stop_vault,
+            success_msg="Vault stopped",
         )

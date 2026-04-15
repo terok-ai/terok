@@ -55,7 +55,7 @@ def _isolate_port_registry(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> N
 
 @pytest.fixture(autouse=True)
 def _mock_infrastructure() -> Iterator[None]:
-    """Replace Sandbox.run, shield down, and credential proxy with no-ops."""
+    """Replace Sandbox.run, shield down, and vault with no-ops."""
     with (
         patch(
             "terok.lib.orchestration.task_runners._sandbox",
@@ -64,7 +64,7 @@ def _mock_infrastructure() -> Iterator[None]:
             "terok.lib.orchestration.task_runners._shield_down_impl",
         ),
         patch(
-            "terok.lib.core.config.get_credential_proxy_bypass",
+            "terok.lib.core.config.get_vault_bypass",
             return_value=True,
         ),
     ):

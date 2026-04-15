@@ -15,7 +15,6 @@ from pathlib import Path
 from ...lib.core.config import (
     build_dir as _build_dir,
     bundled_presets_dir as _bundled_presets_dir,
-    credentials_dir as _credentials_dir,
     gate_repos_dir as _gate_repos_dir,
     global_config_path as _global_config_path,
     global_config_search_paths as _global_config_search_paths,
@@ -23,6 +22,7 @@ from ...lib.core.config import (
     state_dir as _state_dir,
     user_presets_dir as _user_presets_dir,
     user_projects_dir as _user_projects_dir,
+    vault_dir as _vault_dir,
 )
 from ...lib.core.projects import list_projects
 from ...ui_utils.terminal import (
@@ -122,7 +122,7 @@ def _cmd_import_opencode(file_path: str) -> None:
     if not isinstance(data, dict):
         raise SystemExit("Invalid OpenCode config: expected a JSON object")
 
-    dest_dir = _credentials_dir() / "_opencode-config"
+    dest_dir = _vault_dir() / "_opencode-config"
     dest_dir.mkdir(parents=True, exist_ok=True)
     dest = dest_dir / "opencode.json"
     shutil.copy2(str(src), str(dest))
@@ -148,11 +148,11 @@ def _print_config() -> None:
         for p in paths:
             exists = Path(p).is_file()
             print(f"  • {_gray(str(p), color_enabled)} (exists: {_yes_no(exists, color_enabled)})")
-    # Credentials dir
+    # Vault dir
     try:
-        print(f"- Credentials dir: {_gray(str(_credentials_dir()), color_enabled)}")
+        print(f"- Vault dir: {_gray(str(_vault_dir()), color_enabled)}")
     except OSError as e:
-        print(f"- Credentials dir: error: {e}")
+        print(f"- Vault dir: error: {e}")
 
     uproj = _user_projects_dir()
     sproj = _projects_dir()
@@ -264,7 +264,7 @@ def _print_config() -> None:
     for var in (
         "TEROK_CONFIG_FILE",
         "TEROK_CONFIG_DIR",
-        "TEROK_CREDENTIALS_DIR",
+        "TEROK_VAULT_DIR",
         "TEROK_STATE_DIR",
         "TEROK_RUNTIME_DIR",
         "XDG_DATA_HOME",

@@ -12,29 +12,29 @@ import pytest
 from terok_sandbox import GateServerStatus
 
 from terok.cli.commands.sickbay import (
-    _check_credential_proxy,
     _check_keyring,
     _check_shield,
+    _check_vault,
     _cmd_sickbay,
     _find_containers_conf,
 )
 from tests.testfs import MOCK_BASE
 from tests.testgate import OUTDATED_UNITS_MESSAGE, make_gate_server_status
 
-MOCK_PROXY_SOCKET = MOCK_BASE / "run" / "credential-proxy.sock"
-MOCK_PROXY_DB = MOCK_BASE / "proxy" / "credentials.db"
+MOCK_VAULT_SOCKET = MOCK_BASE / "run" / "vault.sock"
+MOCK_VAULT_DB = MOCK_BASE / "vault" / "credentials.db"
 
 
-def _make_proxy_status(
+def _make_vault_status(
     *, running: bool = True, mode: str = "systemd", transport: str | None = "tcp"
 ) -> MagicMock:
-    """Return a mock CredentialProxyStatus."""
+    """Return a mock VaultStatus."""
     s = MagicMock()
     s.running = running
     s.mode = mode
     s.transport = transport
-    s.socket_path = MOCK_PROXY_SOCKET
-    s.db_path = MOCK_PROXY_DB
+    s.socket_path = MOCK_VAULT_SOCKET
+    s.db_path = MOCK_VAULT_DB
     s.credentials_stored = ["claude", "gh"]
     return s
 
@@ -117,8 +117,8 @@ def test_cmd_sickbay_reports_health(
         patch("terok.cli.commands.sickbay.check_units_outdated", return_value=outdated),
         patch("terok.cli.commands.sickbay.is_systemd_available", return_value=systemd_available),
         patch("terok.cli.commands.sickbay.check_environment", return_value=mock_ec),
-        patch("terok.cli.commands.sickbay.get_proxy_status", return_value=_make_proxy_status()),
-        patch("terok.cli.commands.sickbay.is_proxy_systemd_available", return_value=False),
+        patch("terok.cli.commands.sickbay.get_vault_status", return_value=_make_vault_status()),
+        patch("terok.cli.commands.sickbay.is_vault_systemd_available", return_value=False),
         patch("terok.cli.commands.sickbay.get_services_mode", return_value="tcp"),
         patch("terok.cli.commands.sickbay.make_sandbox_config", mock_cfg),
         patch("terok.cli.commands.sickbay._find_containers_conf", return_value=keyring_conf),
@@ -272,7 +272,7 @@ def test_check_shield_states(
         ),
     ],
 )
-def test_check_credential_proxy_states(
+def test_check_vault_states(
     running: bool,
     mode: str,
     systemd_avail: bool,
@@ -280,22 +280,22 @@ def test_check_credential_proxy_states(
     expected_status: str,
     expected_detail: str,
 ) -> None:
-    """_check_credential_proxy maps proxy states to the correct severity and message."""
+    """_check_vault maps vault states to the correct severity and message."""
     with (
         patch(
-            "terok.cli.commands.sickbay.get_proxy_status",
-            return_value=_make_proxy_status(running=running, mode=mode),
+            "terok.cli.commands.sickbay.get_vault_status",
+            return_value=_make_vault_status(running=running, mode=mode),
             side_effect=side_effect,
         ),
         patch(
-            "terok.cli.commands.sickbay.is_proxy_systemd_available",
+            "terok.cli.commands.sickbay.is_vault_systemd_available",
             return_value=systemd_avail,
         ),
     ):
-        status, label, detail = _check_credential_proxy()
+        status, label, detail = _check_vault()
 
     assert status == expected_status
-    assert label == "Credential proxy"
+    assert label == "Vault"
     assert expected_detail in detail
 
 

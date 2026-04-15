@@ -64,7 +64,7 @@ def test_global_config_path_prefers_xdg(
         (
             "TEROK_CONFIG_FILE",
             "credentials:\n  dir: {path}\n",
-            cfg.credentials_dir,
+            cfg.vault_dir,
             "envs",
         ),
     ],
@@ -254,34 +254,34 @@ def test_sandbox_live_mounts_dir(monkeypatch: pytest.MonkeyPatch, tmp_path: Path
     assert cfg.sandbox_live_mounts_dir() == (tmp_path / "live" / "mounts").resolve()
 
 
-def test_credentials_dir_env_override(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    """``credentials_dir()`` prioritizes TEROK_CREDENTIALS_DIR env var."""
+def test_vault_dir_env_override(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    """``vault_dir()`` prioritizes TEROK_VAULT_DIR env var."""
     target = tmp_path / "creds"
-    monkeypatch.setenv("TEROK_CREDENTIALS_DIR", str(target))
-    assert cfg.credentials_dir() == target.resolve()
+    monkeypatch.setenv("TEROK_VAULT_DIR", str(target))
+    assert cfg.vault_dir() == target.resolve()
 
 
-def test_credentials_dir_config_override(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    """``credentials_dir()`` reads ``credentials.dir`` from config when no env var."""
+def test_vault_dir_config_override(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    """``vault_dir()`` reads ``credentials.dir`` from config when no env var."""
     target = tmp_path / "config-creds"
-    monkeypatch.delenv("TEROK_CREDENTIALS_DIR", raising=False)
+    monkeypatch.delenv("TEROK_VAULT_DIR", raising=False)
     monkeypatch.setenv(
         "TEROK_CONFIG_FILE",
         str(write_config(tmp_path, f"credentials:\n  dir: {target}\n")),
     )
-    assert cfg.credentials_dir() == target.resolve()
+    assert cfg.vault_dir() == target.resolve()
 
 
-def test_credentials_dir_env_beats_config(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    """Env var wins over config file for ``credentials_dir()``."""
+def test_vault_dir_env_beats_config(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    """Env var wins over config file for ``vault_dir()``."""
     env_target = tmp_path / "env-creds"
     cfg_target = tmp_path / "cfg-creds"
-    monkeypatch.setenv("TEROK_CREDENTIALS_DIR", str(env_target))
+    monkeypatch.setenv("TEROK_VAULT_DIR", str(env_target))
     monkeypatch.setenv(
         "TEROK_CONFIG_FILE",
         str(write_config(tmp_path, f"credentials:\n  dir: {cfg_target}\n")),
     )
-    assert cfg.credentials_dir() == env_target.resolve()
+    assert cfg.vault_dir() == env_target.resolve()
 
 
 def test_gate_repos_dir_default(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
@@ -382,13 +382,13 @@ def test_get_logs_partial_streaming_disabled(
     assert cfg.get_logs_partial_streaming() is False
 
 
-def test_get_credential_proxy_bypass(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    """``get_credential_proxy_bypass()`` reads from config."""
+def test_get_vault_bypass(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    """``get_vault_bypass()`` reads from config."""
     monkeypatch.setenv(
         "TEROK_CONFIG_FILE",
-        str(write_config(tmp_path, "credential_proxy:\n  bypass_no_secret_protection: true\n")),
+        str(write_config(tmp_path, "vault:\n  bypass_no_secret_protection: true\n")),
     )
-    assert cfg.get_credential_proxy_bypass() is True
+    assert cfg.get_vault_bypass() is True
 
 
 def test_get_gate_server_port_default_none(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
@@ -406,42 +406,42 @@ def test_get_gate_server_port_explicit(monkeypatch: pytest.MonkeyPatch, tmp_path
     assert cfg.get_gate_server_port() == 9500
 
 
-def test_get_credential_proxy_port_default_none(
+def test_get_vault_token_broker_port_default_none(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """``get_credential_proxy_port()`` defaults to None (auto-allocate)."""
+    """``get_vault_token_broker_port()`` defaults to None (auto-allocate)."""
     monkeypatch.setenv("TEROK_CONFIG_FILE", str(write_config(tmp_path, "")))
-    assert cfg.get_credential_proxy_port() is None
+    assert cfg.get_vault_token_broker_port() is None
 
 
-def test_get_credential_proxy_port_explicit(
+def test_get_vault_token_broker_port_explicit(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """``get_credential_proxy_port()`` returns explicit port from config."""
+    """``get_vault_token_broker_port()`` returns explicit port from config."""
     monkeypatch.setenv(
         "TEROK_CONFIG_FILE",
-        str(write_config(tmp_path, "credential_proxy:\n  port: 19000\n")),
+        str(write_config(tmp_path, "vault:\n  port: 19000\n")),
     )
-    assert cfg.get_credential_proxy_port() == 19000
+    assert cfg.get_vault_token_broker_port() == 19000
 
 
-def test_get_credential_proxy_ssh_agent_port_default_none(
+def test_get_vault_ssh_signer_port_default_none(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """``get_credential_proxy_ssh_agent_port()`` defaults to None (auto-allocate)."""
+    """``get_vault_ssh_signer_port()`` defaults to None (auto-allocate)."""
     monkeypatch.setenv("TEROK_CONFIG_FILE", str(write_config(tmp_path, "")))
-    assert cfg.get_credential_proxy_ssh_agent_port() is None
+    assert cfg.get_vault_ssh_signer_port() is None
 
 
-def test_get_credential_proxy_ssh_agent_port_explicit(
+def test_get_vault_ssh_signer_port_explicit(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """``get_credential_proxy_ssh_agent_port()`` returns explicit port from config."""
+    """``get_vault_ssh_signer_port()`` returns explicit port from config."""
     monkeypatch.setenv(
         "TEROK_CONFIG_FILE",
-        str(write_config(tmp_path, "credential_proxy:\n  ssh_agent_port: 19001\n")),
+        str(write_config(tmp_path, "vault:\n  ssh_signer_port: 19001\n")),
     )
-    assert cfg.get_credential_proxy_ssh_agent_port() == 19001
+    assert cfg.get_vault_ssh_signer_port() == 19001
 
 
 def test_get_gate_server_suppress_warning(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
@@ -484,11 +484,11 @@ def test_make_sandbox_config_default(monkeypatch: pytest.MonkeyPatch, tmp_path: 
     """Factory uses sandbox's own state_dir (not terok's)."""
     sandbox_state = tmp_path / "sandbox-state"
     monkeypatch.setenv("TEROK_SANDBOX_STATE_DIR", str(sandbox_state))
-    monkeypatch.setenv("TEROK_CREDENTIALS_DIR", str(tmp_path / "creds"))
+    monkeypatch.setenv("TEROK_VAULT_DIR", str(tmp_path / "creds"))
     monkeypatch.setenv("TEROK_CONFIG_FILE", str(write_config(tmp_path, "")))
     sc = cfg.make_sandbox_config()
     assert sc.state_dir == sandbox_state
-    assert sc.credentials_dir == (tmp_path / "creds").resolve()
+    assert sc.vault_dir == (tmp_path / "creds").resolve()
 
 
 def test_make_sandbox_config_ssh_keys_dir(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
@@ -503,14 +503,14 @@ def test_make_sandbox_config_ssh_keys_dir(monkeypatch: pytest.MonkeyPatch, tmp_p
 def test_make_sandbox_config_from_config_file(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """Factory propagates credentials_dir from config.yml."""
+    """Factory propagates vault_dir from config.yml."""
     target = tmp_path / "cfg-creds"
     monkeypatch.setenv(
         "TEROK_CONFIG_FILE",
         str(write_config(tmp_path, f"credentials:\n  dir: {target}\n")),
     )
     sc = cfg.make_sandbox_config()
-    assert sc.credentials_dir == target.resolve()
+    assert sc.vault_dir == target.resolve()
 
 
 def test_make_sandbox_config_gate_port(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
@@ -522,24 +522,26 @@ def test_make_sandbox_config_gate_port(monkeypatch: pytest.MonkeyPatch, tmp_path
     assert cfg.make_sandbox_config().gate_port == 1234
 
 
-def test_make_sandbox_config_proxy_port(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    """Factory propagates explicit credential_proxy.port from global config."""
-    monkeypatch.setenv(
-        "TEROK_CONFIG_FILE",
-        str(write_config(tmp_path, "credential_proxy:\n  port: 19000\n")),
-    )
-    assert cfg.make_sandbox_config().proxy_port == 19000
-
-
-def test_make_sandbox_config_ssh_agent_port(
+def test_make_sandbox_config_token_broker_port(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """Factory propagates explicit credential_proxy.ssh_agent_port from global config."""
+    """Factory propagates explicit vault.port from global config."""
     monkeypatch.setenv(
         "TEROK_CONFIG_FILE",
-        str(write_config(tmp_path, "credential_proxy:\n  ssh_agent_port: 19001\n")),
+        str(write_config(tmp_path, "vault:\n  port: 19000\n")),
     )
-    assert cfg.make_sandbox_config().ssh_agent_port == 19001
+    assert cfg.make_sandbox_config().token_broker_port == 19000
+
+
+def test_make_sandbox_config_ssh_signer_port(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Factory propagates explicit vault.ssh_signer_port from global config."""
+    monkeypatch.setenv(
+        "TEROK_CONFIG_FILE",
+        str(write_config(tmp_path, "vault:\n  ssh_signer_port: 19001\n")),
+    )
+    assert cfg.make_sandbox_config().ssh_signer_port == 19001
 
 
 def test_make_sandbox_config_auto_allocates_ports(
@@ -548,25 +550,25 @@ def test_make_sandbox_config_auto_allocates_ports(
     """Factory auto-allocates distinct ports and reuses them on second call."""
     monkeypatch.setenv("TEROK_CONFIG_FILE", str(write_config(tmp_path, "")))
     sc = cfg.make_sandbox_config()
-    ports = {sc.gate_port, sc.proxy_port, sc.ssh_agent_port}
+    ports = {sc.gate_port, sc.token_broker_port, sc.ssh_signer_port}
     assert len(ports) == 3, "Auto-allocated ports must be distinct"
     for p in ports:
         assert p in reg.PORT_RANGE, f"Port {p} outside expected range"
 
     sc2 = cfg.make_sandbox_config()
     assert sc2.gate_port == sc.gate_port
-    assert sc2.proxy_port == sc.proxy_port
-    assert sc2.ssh_agent_port == sc.ssh_agent_port
+    assert sc2.token_broker_port == sc.token_broker_port
+    assert sc2.ssh_signer_port == sc.ssh_signer_port
 
 
 def test_make_sandbox_config_credentials_propagation(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """Factory's credential-derived properties use terok's credentials_dir."""
-    monkeypatch.setenv("TEROK_CREDENTIALS_DIR", str(tmp_path / "creds"))
+    """Factory's credential-derived properties use terok's vault_dir."""
+    monkeypatch.setenv("TEROK_VAULT_DIR", str(tmp_path / "creds"))
     monkeypatch.setenv("TEROK_CONFIG_FILE", str(write_config(tmp_path, "")))
     sc = cfg.make_sandbox_config()
-    assert sc.proxy_db_path == (tmp_path / "creds" / "credentials.db").resolve()
+    assert sc.db_path == (tmp_path / "creds" / "credentials.db").resolve()
     assert sc.ssh_keys_json_path == (tmp_path / "creds" / "ssh-keys.json").resolve()
 
 

@@ -41,13 +41,13 @@ if _HAS_TEXTUAL:
     from dataclasses import dataclass
 
     from terok_sandbox import (
-        CredentialProxyStatus,
         EnvironmentCheck,
         GateServerStatus,
         GateStalenessInfo,
+        VaultStatus,
         check_environment as _shield_check_environment,
-        get_proxy_status,
         get_server_status,
+        get_vault_status,
         state as _shield_state,
     )
     from textual import on
@@ -91,11 +91,11 @@ if _HAS_TEXTUAL:
     from .project_actions import ProjectActionsMixin
     from .screens import (
         ConfirmDestructiveScreen,
-        CredentialProxyScreen,
         GateServerScreen,
         ProjectDetailsScreen,
         ShieldScreen,
         TaskDetailsScreen,
+        VaultScreen,
     )
     from .task_actions import TaskActionsMixin
     from .widgets import (
@@ -139,11 +139,11 @@ if _HAS_TEXTUAL:
         "shield_setup": "_action_shield_setup",
     }
 
-    PROXY_ACTION_HANDLERS: dict[str, str] = {
-        "proxy_install": "_action_proxy_install",
-        "proxy_uninstall": "_action_proxy_uninstall",
-        "proxy_start": "_action_proxy_start",
-        "proxy_stop": "_action_proxy_stop",
+    VAULT_ACTION_HANDLERS: dict[str, str] = {
+        "vault_install": "_action_vault_install",
+        "vault_uninstall": "_action_vault_uninstall",
+        "vault_start": "_action_vault_start",
+        "vault_stop": "_action_vault_stop",
     }
 
     TASK_ACTION_HANDLERS: dict[str, str] = {
@@ -269,7 +269,7 @@ if _HAS_TEXTUAL:
             self._last_gate_server_running: bool | None = None
             self._last_gate_server_status: GateServerStatus | None = None
             self._last_shield_env: EnvironmentCheck | None = None
-            self._last_proxy_status: CredentialProxyStatus | None = None
+            self._last_vault_status: VaultStatus | None = None
             # Cached state for detail screens
             self._last_project_state: dict | None = None
             self._last_image_old: bool | None = None
@@ -344,6 +344,21 @@ if _HAS_TEXTUAL:
             except Exception:
                 # call_after_refresh may not exist on very old Textual; in
                 # that case we simply skip this extra logging.
+                pass
+
+            # Vault migration warning
+            try:
+                from terok_sandbox.paths import namespace_state_dir
+
+                old_creds = namespace_state_dir("credentials")
+                if old_creds.is_dir():
+                    self.notify(
+                        "Legacy credentials/ directory detected. "
+                        "Run 'terok setup' to migrate to vault/.",
+                        severity="warning",
+                        timeout=15,
+                    )
+            except Exception:
                 pass
 
             # Startup gate server health check
@@ -1121,13 +1136,13 @@ if _HAS_TEXTUAL:
                 self.action_show_shield,
             )
             yield SystemCommand(
-                "Credential Proxy",
-                "Manage credential proxy status and operations",
-                self.action_show_proxy,
+                "Vault",
+                "Manage vault status and operations",
+                self.action_show_vault,
             )
             yield SystemCommand(
                 "PANIC — Emergency Kill Switch",
-                "Cut all resource access immediately (shields, proxy, gate)",
+                "Cut all resource access immediately (shields, vault, gate)",
                 self.action_panic,
             )
             yield SystemCommand(
@@ -1166,22 +1181,22 @@ if _HAS_TEXTUAL:
             if handler:
                 await getattr(self, handler)()
 
-        async def action_show_proxy(self) -> None:
-            """Open the credential proxy management screen."""
+        async def action_show_vault(self) -> None:
+            """Open the vault management screen."""
             try:
-                self._last_proxy_status = get_proxy_status()
+                self._last_vault_status = get_vault_status()
             except Exception:
-                self._last_proxy_status = None
+                self._last_vault_status = None
             await self.push_screen(
-                CredentialProxyScreen(self._last_proxy_status),
-                self._on_proxy_action_result,
+                VaultScreen(self._last_vault_status),
+                self._on_vault_action_result,
             )
 
-        async def _on_proxy_action_result(self, result: str | None) -> None:
-            """Handle result from proxy screen."""
+        async def _on_vault_action_result(self, result: str | None) -> None:
+            """Handle result from vault screen."""
             if not result:
                 return
-            handler = PROXY_ACTION_HANDLERS.get(result)
+            handler = VAULT_ACTION_HANDLERS.get(result)
             if handler:
                 await getattr(self, handler)()
 

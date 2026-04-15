@@ -53,7 +53,7 @@ def project_env(
         config_base = base / "config"
         config_root = config_base / "projects"
         state_dir = base / "state"
-        credentials_dir = base / "credentials"
+        vault_dir = base / "vault"
         config_root.mkdir(parents=True, exist_ok=True)
 
         write_project(config_root, project_id, yaml_text)
@@ -65,7 +65,7 @@ def project_env(
             "TEROK_CONFIG_DIR": str(config_base),
             "TEROK_ROOT": str(base),
             "TEROK_STATE_DIR": str(state_dir),
-            "TEROK_CREDENTIALS_DIR": str(credentials_dir),
+            "TEROK_VAULT_DIR": str(vault_dir),
             "TEROK_EXECUTOR_STATE_DIR": str(agent_state_dir),
             "TEROK_SANDBOX_LIVE_DIR": str(sandbox_live),
             "TEROK_SANDBOX_STATE_DIR": str(sandbox_state),
@@ -74,7 +74,7 @@ def project_env(
         config_file = None
         if with_config_file:
             config_file = base / "config.yml"
-            config_file.write_text(f"credentials:\n  dir: {credentials_dir}\n", encoding="utf-8")
+            config_file.write_text(f"credentials:\n  dir: {vault_dir}\n", encoding="utf-8")
             env_vars["TEROK_CONFIG_FILE"] = str(config_file)
 
         gate_dir = None
@@ -90,7 +90,7 @@ def project_env(
                 base=base,
                 config_root=config_root,
                 state_dir=state_dir,
-                credentials_dir=credentials_dir,
+                vault_dir=vault_dir,
                 config_file=config_file,
                 gate_dir=gate_dir,
             )
