@@ -437,7 +437,13 @@ class TestGetServerStatus:
             (True, False, False, None, make_status("systemd", running=False)),
             (True, False, True, "tcp", make_status("daemon", running=True, transport="tcp")),
             (False, False, True, "tcp", make_status("daemon", running=True, transport="tcp")),
-            (False, False, False, "socket", make_status("daemon", running=True, transport="socket")),
+            (
+                False,
+                False,
+                False,
+                "socket",
+                make_status("daemon", running=True, transport="socket"),
+            ),
         ],
         ids=[
             "no-server",
