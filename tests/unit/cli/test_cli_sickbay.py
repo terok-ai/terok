@@ -25,11 +25,14 @@ MOCK_PROXY_SOCKET = MOCK_BASE / "run" / "credential-proxy.sock"
 MOCK_PROXY_DB = MOCK_BASE / "proxy" / "credentials.db"
 
 
-def _make_proxy_status(*, running: bool = True, mode: str = "systemd") -> MagicMock:
+def _make_proxy_status(
+    *, running: bool = True, mode: str = "systemd", transport: str | None = "tcp"
+) -> MagicMock:
     """Return a mock CredentialProxyStatus."""
     s = MagicMock()
     s.running = running
     s.mode = mode
+    s.transport = transport
     s.socket_path = MOCK_PROXY_SOCKET
     s.db_path = MOCK_PROXY_DB
     s.credentials_stored = ["claude", "gh"]
@@ -40,7 +43,7 @@ def _make_proxy_status(*, running: bool = True, mode: str = "systemd") -> MagicM
     ("status", "outdated", "systemd_available", "exit_code", "expected"),
     [
         pytest.param(
-            make_gate_server_status("systemd", running=True),
+            make_gate_server_status("systemd", running=True, transport="tcp"),
             None,
             False,
             None,
@@ -116,6 +119,7 @@ def test_cmd_sickbay_reports_health(
         patch("terok.cli.commands.sickbay.check_environment", return_value=mock_ec),
         patch("terok.cli.commands.sickbay.get_proxy_status", return_value=_make_proxy_status()),
         patch("terok.cli.commands.sickbay.is_proxy_systemd_available", return_value=False),
+        patch("terok.cli.commands.sickbay.get_services_mode", return_value="tcp"),
         patch("terok.cli.commands.sickbay.make_sandbox_config", mock_cfg),
         patch("terok.cli.commands.sickbay._find_containers_conf", return_value=keyring_conf),
     ):

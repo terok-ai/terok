@@ -3080,7 +3080,7 @@ tomli-w = ">=1.0"
 type = "git"
 url = "https://github.com/sliwowitz/terok-executor.git"
 reference = "feat/socket-transport"
-resolved_reference = "9cef0234d2071f21b00a9a48317143f3390309e9"
+resolved_reference = "c10a1e21ce43e1763850a79ef194e70a6886a11a"
 
 [[package]]
 name = "terok-sandbox"
@@ -3102,7 +3102,7 @@ terok-shield = {url = "https://github.com/terok-ai/terok-shield/releases/downloa
 type = "git"
 url = "https://github.com/sliwowitz/terok-sandbox.git"
 reference = "feat/socket-transport"
-resolved_reference = "0abda65d70067ac4a3cddf467699d94d7fee93b2"
+resolved_reference = "546ebdb9261789424944fde42def5e167b4b80f9"
 
 [[package]]
 name = "terok-shield"

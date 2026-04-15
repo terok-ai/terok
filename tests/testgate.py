@@ -17,6 +17,7 @@ def make_gate_server_status(
     *,
     running: bool = False,
     port: int = GATE_PORT,
+    transport: str | None = None,
 ) -> GateServerStatus:
     """Create a ``GateServerStatus`` with the common test defaults."""
-    return GateServerStatus(mode=mode, running=running, port=port)
+    return GateServerStatus(mode=mode, running=running, port=port, transport=transport)

@@ -41,10 +41,14 @@ VERSION_STAMP = f"# terok-gate-version: {_UNIT_VERSION}"
 
 
 def make_status(
-    mode: str = "none", *, running: bool = False, port: int = GATE_PORT
+    mode: str = "none",
+    *,
+    running: bool = False,
+    port: int = GATE_PORT,
+    transport: str | None = None,
 ) -> GateServerStatus:
     """Create a gate-server status object for tests."""
-    return GateServerStatus(mode=mode, running=running, port=port)
+    return GateServerStatus(mode=mode, running=running, port=port, transport=transport)
 
 
 def make_run_result(*, returncode: int, stdout: str = "") -> unittest.mock.Mock:
@@ -148,7 +152,7 @@ class TestUnitVersion:
     """Tests for _UNIT_VERSION."""
 
     def test_unit_version_is_current(self) -> None:
-        assert _UNIT_VERSION == 6
+        assert _UNIT_VERSION == 7
 
 
 class TestSystemdDetection:
@@ -426,13 +430,13 @@ class TestGetServerStatus:
     """Tests for get_server_status."""
 
     @pytest.mark.parametrize(
-        ("socket_installed", "socket_active", "daemon_running", "expected"),
+        ("socket_installed", "socket_active", "daemon_running", "transport", "expected"),
         [
-            (False, False, False, make_status("none", running=False)),
-            (True, True, False, make_status("systemd", running=True)),
-            (True, False, False, make_status("systemd", running=False)),
-            (True, False, True, make_status("daemon", running=True)),
-            (False, False, True, make_status("daemon", running=True)),
+            (False, False, False, None, make_status("none", running=False)),
+            (True, True, False, "tcp", make_status("systemd", running=True, transport="tcp")),
+            (True, False, False, None, make_status("systemd", running=False)),
+            (True, False, True, "tcp", make_status("daemon", running=True, transport="tcp")),
+            (False, False, True, "tcp", make_status("daemon", running=True, transport="tcp")),
         ],
         ids=[
             "no-server",
@@ -447,6 +451,7 @@ class TestGetServerStatus:
         socket_installed: bool,
         socket_active: bool,
         daemon_running: bool,
+        transport: str | None,
         expected: GateServerStatus,
     ) -> None:
         cfg = _test_config()
@@ -465,6 +470,11 @@ class TestGetServerStatus:
                 GateServerManager,
                 "is_daemon_running",
                 return_value=daemon_running,
+            ),
+            unittest.mock.patch.object(
+                GateServerManager,
+                "_detect_transport",
+                return_value=transport,
             ),
             unittest.mock.patch(
                 "terok_sandbox.gate.lifecycle.SandboxConfig",
