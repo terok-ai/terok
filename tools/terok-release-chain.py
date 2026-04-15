@@ -27,6 +27,7 @@ import os
 import re
 import subprocess
 import time
+import urllib.request
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from enum import StrEnum
@@ -461,26 +462,46 @@ def squash_merge(pr_url: str, gh_repo: str) -> str:
     return sha
 
 
+def _wheel_downloadable(url: str) -> bool:
+    """HEAD-check the actual wheel download URL to confirm CDN propagation."""
+    req = urllib.request.Request(url, method="HEAD")  # noqa: S310 — GitHub release URL
+    try:
+        with urllib.request.urlopen(req, timeout=10) as resp:  # noqa: S310
+            return resp.status == 200  # noqa: PLR2004
+    except (urllib.error.HTTPError, urllib.error.URLError, TimeoutError):
+        return False
+
+
 def wait_for_wheel(repo: str, version: str, org: str, timeout: int = 300):
-    """Poll release assets until the wheel appears."""
+    """Poll release assets until the wheel is downloadable.
+
+    Two-phase check: the GitHub API reports the asset name first, but the
+    actual download URL may 404 briefly while the CDN propagates.  We
+    confirm both before proceeding.
+    """
     expected = wheel_filename(repo, version)
+    url = wheel_url(org, repo, version)
     console.print(f"Waiting for {expected}...")
+    api_ready = False
     for _elapsed in range(0, timeout, 5):
-        r = sh(
-            "gh",
-            "release",
-            "view",
-            f"v{version}",
-            "--repo",
-            f"{org}/{repo}",
-            "--json",
-            "assets",
-            "-q",
-            ".assets[].name",
-            capture=True,
-            check=False,
-        )
-        if expected in (r.stdout or ""):
+        if not api_ready:
+            r = sh(
+                "gh",
+                "release",
+                "view",
+                f"v{version}",
+                "--repo",
+                f"{org}/{repo}",
+                "--json",
+                "assets",
+                "-q",
+                ".assets[].name",
+                capture=True,
+                check=False,
+            )
+            if expected in (r.stdout or ""):
+                api_ready = True
+        if api_ready and _wheel_downloadable(url):
             console.print("[green]Wheel available![/]")
             return
         time.sleep(5)

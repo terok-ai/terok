@@ -778,6 +778,7 @@ wait_for_wheel() {
     pkg=$(pkg_name "$repo")
     local expected="${pkg}-${version}-py3-none-any.whl"
     local gh_repo="${GH_ORG}/${repo}"
+    local url="https://github.com/${GH_ORG}/${repo}/releases/download/v${version}/${expected}"
 
     if $DRY_RUN; then
         printf "  ${YELLOW}[pretend]${RESET} Would wait for %s in %s v%s\n" "$expected" "$gh_repo" "$version"
@@ -785,16 +786,20 @@ wait_for_wheel() {
     fi
 
     log "Waiting for wheel ${expected}..."
-    local elapsed=0 poll=10
+    local elapsed=0 poll=10 api_ready=false
     while (( elapsed < WHEEL_TIMEOUT )); do
-        if (( elapsed % poll == 0 )); then
+        if ! $api_ready && (( elapsed % poll == 0 )); then
             local assets
             assets=$(gh release view "v${version}" --repo "$gh_repo" --json assets -q '.assets[].name' 2>/dev/null || true)
             if echo "$assets" | grep -qF "$expected"; then
-                printf "\33[2K\r"
-                success "Wheel ${expected} is available!"
-                return 0
+                api_ready=true
             fi
+        fi
+        # API says asset exists — confirm CDN has propagated the actual file
+        if $api_ready && curl -sfIo /dev/null --max-time 10 "$url" 2>/dev/null; then
+            printf "\33[2K\r"
+            success "Wheel ${expected} is available!"
+            return 0
         fi
         printf "  ... waiting (%ds/%ds)\r" "$elapsed" "$WHEEL_TIMEOUT"
         sleep 1
