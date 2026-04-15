@@ -12,6 +12,7 @@ import pytest
 
 from terok.cli.commands.sickbay import (
     _check_credential_proxy,
+    _check_gate_server,
     _check_ssh_agent,
     _check_task_hook,
     _reconcile_post_stop,
@@ -328,19 +329,43 @@ class TestCheckCredentialProxy:
             "running": False,
             "healthy": False,
             "credentials_stored": (),
+            "transport": None,
         }
         defaults.update(overrides)
         return unittest.mock.MagicMock(**defaults)
 
     def test_running_shows_ok(self) -> None:
-        """Service active → ok with credential count."""
-        status = self._make_status(mode="systemd", running=True, credentials_stored=("claude",))
-        with unittest.mock.patch(
-            "terok.cli.commands.sickbay.get_proxy_status", return_value=status
+        """Service active → ok with credential count and transport."""
+        status = self._make_status(
+            mode="systemd", running=True, credentials_stored=("claude",), transport="tcp"
+        )
+        with (
+            unittest.mock.patch(
+                "terok.cli.commands.sickbay.get_proxy_status", return_value=status
+            ),
+            unittest.mock.patch("terok.cli.commands.sickbay.get_services_mode", return_value="tcp"),
         ):
             sev, _, detail = _check_credential_proxy()
         assert sev == "ok"
         assert "1 credential(s)" in detail
+        assert "tcp" in detail
+
+    def test_transport_mismatch_warns(self) -> None:
+        """Running on TCP when config says socket → warn."""
+        status = self._make_status(
+            mode="systemd", running=True, credentials_stored=("claude",), transport="tcp"
+        )
+        with (
+            unittest.mock.patch(
+                "terok.cli.commands.sickbay.get_proxy_status", return_value=status
+            ),
+            unittest.mock.patch(
+                "terok.cli.commands.sickbay.get_services_mode", return_value="socket"
+            ),
+        ):
+            sev, _, detail = _check_credential_proxy()
+        assert sev == "warn"
+        assert "services.mode: socket" in detail
 
     def test_systemd_socket_active_service_idle(self) -> None:
         """Socket active but service idle → ok with standby message."""
@@ -403,3 +428,47 @@ class TestCheckCredentialProxy:
             sev, _, detail = _check_credential_proxy()
         assert sev == "warn"
         assert "oops" in detail
+
+
+class TestCheckGateServerTransport:
+    """Verify gate server transport mismatch detection."""
+
+    def test_tcp_mode_tcp_transport_ok(self) -> None:
+        """TCP mode with TCP transport → ok."""
+        status = unittest.mock.MagicMock(
+            mode="systemd", running=True, port=9418, transport="tcp"
+        )
+        with (
+            unittest.mock.patch("terok.cli.commands.sickbay.make_sandbox_config"),
+            unittest.mock.patch(
+                "terok.cli.commands.sickbay.get_server_status", return_value=status
+            ),
+            unittest.mock.patch(
+                "terok.cli.commands.sickbay.check_units_outdated", return_value=None
+            ),
+            unittest.mock.patch("terok.cli.commands.sickbay.get_services_mode", return_value="tcp"),
+        ):
+            sev, _, detail = _check_gate_server()
+        assert sev == "ok"
+        assert "tcp" in detail
+
+    def test_socket_mode_tcp_transport_warns(self) -> None:
+        """Socket mode configured but gate running on TCP → warn."""
+        status = unittest.mock.MagicMock(
+            mode="systemd", running=True, port=9418, transport="tcp"
+        )
+        with (
+            unittest.mock.patch("terok.cli.commands.sickbay.make_sandbox_config"),
+            unittest.mock.patch(
+                "terok.cli.commands.sickbay.get_server_status", return_value=status
+            ),
+            unittest.mock.patch(
+                "terok.cli.commands.sickbay.check_units_outdated", return_value=None
+            ),
+            unittest.mock.patch(
+                "terok.cli.commands.sickbay.get_services_mode", return_value="socket"
+            ),
+        ):
+            sev, _, detail = _check_gate_server()
+        assert sev == "warn"
+        assert "services.mode: socket" in detail

@@ -36,7 +36,7 @@ from terok_sandbox import (
     is_systemd_available,
 )
 
-from ...lib.core.config import make_sandbox_config
+from ...lib.core.config import get_services_mode, make_sandbox_config
 from ...lib.core.project_model import ProjectConfig
 from ...lib.core.projects import list_projects, load_project
 from ...lib.orchestration.container_doctor import run_container_doctor
@@ -72,12 +72,20 @@ def _check_gate_server() -> _CheckResult:
     """Check gate server status."""
     cfg = make_sandbox_config()
     status = get_server_status(cfg)
+    configured = get_services_mode()
     label = "Gate server"
     if status.running:
         outdated = check_units_outdated(cfg)
         if outdated:
             return ("warn", label, f"{outdated} Run 'terok gate start' to update.")
-        return ("ok", label, f"{status.mode}, port {status.port}")
+        detail = f"{status.mode}, {status.transport or 'tcp'}"
+        if configured != (status.transport or "tcp"):
+            return (
+                "warn",
+                label,
+                f"{detail} — config says services.mode: {configured}",
+            )
+        return ("ok", label, detail)
     if status.mode == "systemd":
         return ("error", label, "socket installed but not active")
     if is_systemd_available():
@@ -113,8 +121,16 @@ def _check_credential_proxy() -> _CheckResult:
     except Exception as exc:  # noqa: BLE001
         return ("warn", label, f"check failed — {exc}")
     if status.running:
+        configured = get_services_mode()
         creds = len(status.credentials_stored) if status.credentials_stored else 0
-        return ("ok", label, f"{status.mode}, {creds} credential(s) stored")
+        detail = f"{status.mode}, {status.transport or 'tcp'}, {creds} credential(s) stored"
+        if configured != (status.transport or "tcp"):
+            return (
+                "warn",
+                label,
+                f"{detail} — config says services.mode: {configured}",
+            )
+        return ("ok", label, detail)
     if status.mode == "systemd":
         if is_proxy_socket_active():
             return ("ok", label, "systemd, socket active — service starts on first connection")
