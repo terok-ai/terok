@@ -328,14 +328,11 @@ def _ensure_gate(*, check_only: bool, color: bool) -> bool:
 
     if check_only:
         status = get_server_status(cfg)
-        if status.running:
-            print(f"  Gate server      {_status_label(True, color)} ({status.mode}, running)")
-            return True
-        if status.mode == "systemd":
-            # Socket installed but not yet activated — try to reach it
+        if status.running or status.mode == "systemd":
+            # Unit exists (running or socket-activated) — probe TCP to be sure
             try:
                 ensure_server_reachable(cfg)
-                print(f"  Gate server      {_status_label(True, color)} (systemd, reachable)")
+                print(f"  Gate server      {_status_label(True, color)} ({status.mode}, reachable)")
                 return True
             except SystemExit:
                 print(
