@@ -266,6 +266,7 @@ def get_task_meta(project_id: str, task_id: str) -> TaskMeta:
         unrestricted=raw.get("unrestricted"),
         work_status=ws_status,
         work_message=ws_message,
+        created_at=raw.get("created_at"),
     )
 
 
@@ -1001,6 +1002,7 @@ def task_status(project_id: str, task_id: str) -> None:
         name=meta["name"],
         provider=meta.get("provider"),
         unrestricted=meta.get("unrestricted"),
+        created_at=meta.get("created_at"),
     )
     status = effective_status(task)
     info = STATUS_DISPLAY.get(status, STATUS_DISPLAY["created"])

@@ -8,7 +8,7 @@ import re
 import subprocess
 import unittest.mock
 from contextlib import redirect_stdout
-from datetime import datetime
+from datetime import datetime, timedelta
 from io import StringIO
 from pathlib import Path
 
@@ -129,7 +129,9 @@ class TestTask:
             meta = yaml_load(meta_path.read_text())
 
             assert "created_at" in meta
-            datetime.fromisoformat(meta["created_at"])  # parses → valid ISO 8601
+            parsed = datetime.fromisoformat(meta["created_at"])
+            assert parsed.tzinfo is not None, "created_at must be timezone-aware"
+            assert parsed.utcoffset() == timedelta(0), "created_at must be UTC"
 
             [task] = [t for t in get_tasks(project_id) if t.task_id == tid]
             assert task.created_at == meta["created_at"]
