@@ -444,7 +444,11 @@ def _check_selinux_policy() -> _CheckResult:
             "and containers will be denied even with the policy installed. "
             "Fix: sudo dnf install libselinux",
         )
-    return ("ok", label, "terok_socket_t installed, binding functional")
+    return (
+        "ok",
+        label,
+        f"terok_socket_t installed, binding functional (installer: {selinux_install_script()})",
+    )
 
 
 _GLOBAL_CHECKS = [

@@ -428,6 +428,8 @@ def _check_selinux_policy(*, color: bool) -> None:
         print(f"                   Fix: {bold('sudo dnf install libselinux', color)}")
     else:
         print(f"  terok_socket_t   {_status_label(True, color)} (policy installed)")
+        print(f"                   Installer: {selinux_install_script()}")
+    print()
 
 
 def cmd_setup(*, check_only: bool = False) -> None:
@@ -445,18 +447,16 @@ def cmd_setup(*, check_only: bool = False) -> None:
     binaries_ok = _check_host_binaries(color)
     print()
 
-    # Step 2: Shield hooks
+    # Step 2: SELinux prereq (prints only on enforcing hosts in socket mode;
+    # surfaced *before* service install so the fix hint isn't buried below
+    # multi-line install output the user has to scroll past).
+    _check_selinux_policy(color=color)
+
+    # Step 3: Services
     print(bold("Services:", color))
     shield_ok = _ensure_shield(check_only=check_only, color=color)
-
-    # Step 3: Credential proxy
     proxy_ok = _ensure_proxy(check_only=check_only, color=color)
-
-    # Step 4: Gate server
     gate_ok = _ensure_gate(check_only=check_only, color=color)
-
-    # Step 5: SELinux policy (informational only — requires separate sudo command)
-    _check_selinux_policy(color=color)
     print()
 
     # Summary + next steps
