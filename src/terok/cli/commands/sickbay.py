@@ -395,12 +395,71 @@ def _check_containers(
     return results
 
 
+def _check_selinux_policy() -> _CheckResult:
+    """Render ``check_selinux_status`` as a sickbay check result tuple.
+
+    The decision tree (tcp vs socket, enforcing vs permissive, policy
+    installed, libselinux loadable) lives in
+    :func:`terok_sandbox.check_selinux_status` so sickbay and
+    ``terok setup`` share one source of truth; this function only
+    translates the structured result into sickbay's output shape.
+    """
+    from terok_sandbox import (
+        SelinuxStatus,
+        check_selinux_status,
+        selinux_install_command,
+        selinux_install_script,
+    )
+
+    label = "SELinux policy"
+    result = check_selinux_status(services_mode=get_services_mode())
+
+    match result.status:
+        case SelinuxStatus.NOT_APPLICABLE_TCP_MODE:
+            return ("ok", label, "not needed (services.mode: tcp)")
+        case SelinuxStatus.NOT_APPLICABLE_PERMISSIVE:
+            return ("ok", label, "not needed (SELinux not enforcing)")
+        case SelinuxStatus.POLICY_MISSING:
+            install_cmd = selinux_install_command()
+            if result.missing_policy_tools:
+                tools = ", ".join(result.missing_policy_tools)
+                return (
+                    "warn",
+                    label,
+                    f"terok_socket_t NOT installed; policy tools missing ({tools}). "
+                    "Fix: sudo dnf install selinux-policy-devel policycoreutils, "
+                    f"then {install_cmd}",
+                )
+            return (
+                "warn",
+                label,
+                "terok_socket_t NOT installed — containers cannot connect to sockets. "
+                f"Fix: {install_cmd}",
+            )
+        case SelinuxStatus.LIBSELINUX_MISSING:
+            return (
+                "warn",
+                label,
+                "libselinux.so.1 not loadable — sockets will bind as unconfined_t "
+                "and containers will be denied even with the policy installed. "
+                "Fix: sudo dnf install libselinux",
+            )
+        case SelinuxStatus.OK:
+            return (
+                "ok",
+                label,
+                "terok_socket_t installed, binding functional "
+                f"(installer: {selinux_install_script()})",
+            )
+
+
 _GLOBAL_CHECKS = [
     _check_gate_server,
     _check_shield,
     _check_credential_proxy,
     _check_ssh_agent,
     _check_keyring,
+    _check_selinux_policy,
 ]
 
 _STATUS_MARKERS = {

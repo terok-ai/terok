@@ -4,7 +4,9 @@
 """Project discovery, loading, and preset management."""
 
 import logging
+import re
 import subprocess
+import sys
 from pathlib import Path
 from typing import Any
 
@@ -348,15 +350,41 @@ def list_projects() -> list[ProjectConfig]:
 
     projects: list[ProjectConfig] = []
     for pid in sorted(ids):
-        # load_project will automatically prefer user over system config
+        # ``_parse_project_yaml`` wraps every config error (bad YAML,
+        # schema drift, filesystem issues) in ``SystemExit`` with a
+        # human-readable message — that's the one exception type
+        # ``load_project`` can surface here.  Skip + surface it so the
+        # broken project is visible (silently hiding turns "No projects
+        # found" into a mystery for users upgrading across schema
+        # renames).  Genuinely unexpected exceptions propagate.
         try:
             projects.append(load_project(pid))
-        except (SystemExit, Exception):
-            # if a project is broken (malformed YAML, missing fields, etc.),
-            # skip it rather than crashing the listing or the TUI
-            logger.debug("Skipping broken project '%s'", pid, exc_info=True)
+        except SystemExit as exc:
+            msg = _sanitize_for_tty(str(exc))
+            # Log records are one-line structured entries; a message
+            # carrying embedded newlines would split across records and
+            # could be read as injected log lines.  stderr print keeps
+            # newlines so pydantic's multi-line validation output is
+            # readable on the console.
+            logger.warning("Skipping broken project '%s': %s", pid, msg.replace("\n", "\\n"))
+            print(f"warning: skipping broken project '{pid}': {msg}", file=sys.stderr)
             continue
     return projects
+
+
+_CONTROL_CHARS = re.compile(r"[\x00-\x08\x0b-\x1f\x7f-\x9f]")
+"""C0/C1 control characters except TAB (``\t``) and LF (``\n``).
+
+ANSI escape sequences start with ESC (``\x1b``) and are caught here.
+Error messages from pydantic / YAMLError can include attacker-supplied
+bytes from project config files; blanking these prevents log-spoofing
+and terminal-escape injection when messages hit an interactive stderr.
+"""
+
+
+def _sanitize_for_tty(s: str) -> str:
+    """Strip control/escape chars so attacker-supplied bytes can't spoof TTY output."""
+    return _CONTROL_CHARS.sub("?", s)
 
 
 def _validated_global_git_section() -> dict[str, Any]:

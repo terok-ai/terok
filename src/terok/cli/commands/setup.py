@@ -381,6 +381,71 @@ def _ensure_gate(*, check_only: bool, color: bool) -> bool:
         return False
 
 
+def _check_selinux_policy(*, color: bool) -> bool:
+    """Print SELinux prereq status and return whether it's satisfied.
+
+    ``True`` means containers will be able to reach service sockets
+    (either because socket mode isn't in use, SELinux isn't enforcing,
+    or the policy + libselinux are both ready).  ``False`` means the
+    user must run a remediation step (install ``selinux-policy-devel``,
+    ``sudo bash install_policy.sh``, or ``dnf install libselinux``)
+    before task containers will work — ``cmd_setup`` propagates that
+    into a non-zero exit so the setup run fails loudly, matching the
+    runtime AVC-denial reality.
+
+    The decision tree is shared with ``terok sickbay`` via
+    :func:`terok_sandbox.check_selinux_status`; this function only
+    renders it as printed setup output.
+    """
+    from terok_sandbox import (
+        SelinuxStatus,
+        check_selinux_status,
+        selinux_install_command,
+        selinux_install_script,
+    )
+
+    from ...lib.core.config import get_services_mode
+
+    result = check_selinux_status(services_mode=get_services_mode())
+    if result.status in (
+        SelinuxStatus.NOT_APPLICABLE_TCP_MODE,
+        SelinuxStatus.NOT_APPLICABLE_PERMISSIVE,
+    ):
+        return True
+
+    install_cmd = selinux_install_command()
+    print()
+    print(bold("SELinux:", color))
+    match result.status:
+        case SelinuxStatus.POLICY_MISSING:
+            print(f"  terok_socket_t   {_warn_label(color)} (policy NOT installed)")
+            if result.missing_policy_tools:
+                tools = ", ".join(result.missing_policy_tools)
+                print(f"                   Policy tools missing: {tools}")
+                print(
+                    f"                   Fix: "
+                    f"{bold('sudo dnf install selinux-policy-devel policycoreutils', color)}, "
+                    f"then {bold(install_cmd, color)}"
+                )
+            else:
+                print("                   Containers cannot connect to service sockets.")
+                print(f"                   Fix: {bold(install_cmd, color)}")
+            print()
+            return False
+        case SelinuxStatus.LIBSELINUX_MISSING:
+            print(f"  terok_socket_t   {_warn_label(color)} (libselinux.so.1 not loadable)")
+            print("                   Sockets will bind as unconfined_t — containers denied.")
+            print(f"                   Fix: {bold('sudo dnf install libselinux', color)}")
+            print()
+            return False
+        case SelinuxStatus.OK:
+            print(f"  terok_socket_t   {_status_label(True, color)} (policy installed)")
+            print(f"                   Installer: {selinux_install_script()}")
+            print()
+            return True
+    return True  # pragma: no cover — exhaustive above; defensive fallthrough for new enum members
+
+
 def cmd_setup(*, check_only: bool = False) -> None:
     """Global bootstrap: install shield, credential proxy, and gate server.
 
@@ -396,23 +461,34 @@ def cmd_setup(*, check_only: bool = False) -> None:
     binaries_ok = _check_host_binaries(color)
     print()
 
-    # Step 2: Shield hooks
+    # Step 2: SELinux prereq (prints only on enforcing hosts in socket mode;
+    # surfaced *before* service install so the fix hint isn't buried below
+    # multi-line install output the user has to scroll past).
+    selinux_ok = _check_selinux_policy(color=color)
+
+    # Step 3: Services
     print(bold("Services:", color))
     shield_ok = _ensure_shield(check_only=check_only, color=color)
-
-    # Step 3: Credential proxy
     proxy_ok = _ensure_proxy(check_only=check_only, color=color)
-
-    # Step 4: Gate server
     gate_ok = _ensure_gate(check_only=check_only, color=color)
     print()
 
     # Summary + next steps
-    all_ok = binaries_ok and shield_ok and proxy_ok and gate_ok
+    all_ok = binaries_ok and shield_ok and proxy_ok and gate_ok and selinux_ok
     if all_ok:
         print(bold("Setup complete.", color))
     elif not binaries_ok:
         print(bold(red("Missing mandatory binaries — install them first.", color), color))
+    elif not selinux_ok:
+        print(
+            bold(
+                yellow(
+                    "SELinux prerequisites unmet — task containers will fail until fixed.",
+                    color,
+                ),
+                color,
+            )
+        )
     else:
         print(bold(yellow("Some services could not be installed (see above).", color), color))
 
@@ -425,7 +501,7 @@ def cmd_setup(*, check_only: bool = False) -> None:
 
     if not binaries_ok:
         sys.exit(2)
-    if not (shield_ok and proxy_ok and gate_ok):
+    if not all_ok:
         sys.exit(1)
 
 

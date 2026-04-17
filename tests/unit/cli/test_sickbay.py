@@ -9,10 +9,12 @@ import unittest.mock
 from pathlib import Path
 
 import pytest
+from terok_sandbox import SelinuxCheckResult, SelinuxStatus
 
 from terok.cli.commands.sickbay import (
     _check_credential_proxy,
     _check_gate_server,
+    _check_selinux_policy,
     _check_ssh_agent,
     _check_task_hook,
     _reconcile_post_stop,
@@ -464,3 +466,73 @@ class TestCheckGateServerTransport:
             sev, _, detail = _check_gate_server()
         assert sev == "warn"
         assert "services.mode: socket" in detail
+
+
+class TestCheckSelinuxPolicy:
+    """Verify the five branches of the SELinux policy sickbay check.
+
+    The decision tree itself lives in
+    :func:`terok_sandbox.check_selinux_status` (exercised separately in
+    terok-sandbox's ``test_selinux.py``).  Here we patch that helper
+    with pre-built :class:`SelinuxCheckResult` values and verify the
+    sickbay-side *rendering* — tuple severity, label, detail text.
+    """
+
+    @staticmethod
+    def _run(result: SelinuxCheckResult) -> tuple[str, str, str]:
+        """Execute ``_check_selinux_policy`` with ``check_selinux_status`` mocked."""
+        with unittest.mock.patch("terok_sandbox.check_selinux_status", return_value=result):
+            return _check_selinux_policy()
+
+    def test_not_needed_in_tcp_mode(self) -> None:
+        """``services.mode: tcp`` renders as ok."""
+
+        sev, _, detail = self._run(SelinuxCheckResult(SelinuxStatus.NOT_APPLICABLE_TCP_MODE))
+        assert sev == "ok"
+        assert "services.mode: tcp" in detail
+
+    def test_not_needed_when_selinux_permissive(self) -> None:
+        """Socket mode on a permissive host renders as ok."""
+
+        sev, _, detail = self._run(SelinuxCheckResult(SelinuxStatus.NOT_APPLICABLE_PERMISSIVE))
+        assert sev == "ok"
+        assert "not enforcing" in detail
+
+    def test_warn_when_policy_missing(self) -> None:
+        """Policy-missing renders as warn with install hint."""
+
+        sev, _, detail = self._run(SelinuxCheckResult(SelinuxStatus.POLICY_MISSING))
+        assert sev == "warn"
+        assert "terok_socket_t NOT installed" in detail
+        assert "sudo bash" in detail
+        assert "install_policy.sh" in detail
+
+    def test_warn_also_names_missing_tools(self) -> None:
+        """Policy-missing + missing tools renders the dnf-install prerequisite."""
+
+        sev, _, detail = self._run(
+            SelinuxCheckResult(
+                SelinuxStatus.POLICY_MISSING,
+                missing_policy_tools=("checkmodule", "semodule_package"),
+            )
+        )
+        assert sev == "warn"
+        assert "policy tools missing" in detail
+        assert "checkmodule" in detail
+        assert "selinux-policy-devel" in detail
+
+    def test_warn_when_libselinux_unloadable(self) -> None:
+        """Libselinux-missing renders as warn naming the silent-fail vector."""
+
+        sev, _, detail = self._run(SelinuxCheckResult(SelinuxStatus.LIBSELINUX_MISSING))
+        assert sev == "warn"
+        assert "libselinux.so.1" in detail
+        assert "unconfined_t" in detail
+
+    def test_ok_when_everything_ready(self) -> None:
+        """OK renders with the installer path for future reinstall/debug."""
+
+        sev, _, detail = self._run(SelinuxCheckResult(SelinuxStatus.OK))
+        assert sev == "ok"
+        assert "terok_socket_t installed" in detail
+        assert "install_policy.sh" in detail

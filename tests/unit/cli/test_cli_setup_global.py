@@ -8,10 +8,11 @@ from __future__ import annotations
 from unittest.mock import MagicMock, patch
 
 import pytest
-from terok_sandbox import ProxyUnreachableError
+from terok_sandbox import ProxyUnreachableError, SelinuxCheckResult, SelinuxStatus
 
 from terok.cli.commands.setup import (
     _check_host_binaries,
+    _check_selinux_policy,
     _ensure_gate,
     _ensure_proxy,
     _ensure_shield,
@@ -460,3 +461,105 @@ def test_cmd_setup_service_failure_exits_1(
     """Service installation failure → exit code 1."""
     with pytest.raises(SystemExit, match="1"):
         cmd_setup(check_only=False)
+
+
+# ── SELinux prereq check ───────────────────────────────────────────────
+
+
+def _run_selinux_check(
+    capsys: pytest.CaptureFixture, result: SelinuxCheckResult
+) -> tuple[bool, str]:
+    """Run ``_check_selinux_policy`` with ``check_selinux_status`` mocked.
+
+    The decision tree itself is tested separately in terok-sandbox's
+    ``test_selinux.py``.  Here we pin the setup-side rendering: what
+    the user sees and whether the function's return flows into
+    ``cmd_setup``'s non-zero exit.
+    """
+    with patch("terok_sandbox.check_selinux_status", return_value=result):
+        ok = _check_selinux_policy(color=False)
+    return ok, capsys.readouterr().out
+
+
+class TestSelinuxPrereqPrint:
+    """Verify the printed SELinux block in ``terok setup`` plus its return value."""
+
+    def test_silent_in_tcp_mode(self, capsys: pytest.CaptureFixture) -> None:
+        """TCP mode emits nothing and returns ok."""
+
+        ok, out = _run_selinux_check(
+            capsys, SelinuxCheckResult(SelinuxStatus.NOT_APPLICABLE_TCP_MODE)
+        )
+        assert out == ""
+        assert ok is True
+
+    def test_silent_when_not_enforcing(self, capsys: pytest.CaptureFixture) -> None:
+        """Permissive host emits nothing and returns ok."""
+
+        ok, out = _run_selinux_check(
+            capsys, SelinuxCheckResult(SelinuxStatus.NOT_APPLICABLE_PERMISSIVE)
+        )
+        assert out == ""
+        assert ok is True
+
+    def test_warns_when_policy_missing(self, capsys: pytest.CaptureFixture) -> None:
+        """Policy-missing prints the sudo-bash fix hint and returns False."""
+
+        ok, out = _run_selinux_check(capsys, SelinuxCheckResult(SelinuxStatus.POLICY_MISSING))
+        assert "SELinux:" in out
+        assert "policy NOT installed" in out
+        assert "install_policy.sh" in out
+        assert ok is False
+
+    def test_warns_with_missing_tools_hint(self, capsys: pytest.CaptureFixture) -> None:
+        """Missing tools → include the dnf install prerequisite, return False."""
+
+        ok, out = _run_selinux_check(
+            capsys,
+            SelinuxCheckResult(SelinuxStatus.POLICY_MISSING, missing_policy_tools=("checkmodule",)),
+        )
+        assert "Policy tools missing: checkmodule" in out
+        assert "selinux-policy-devel" in out
+        assert "install_policy.sh" in out
+        assert ok is False
+
+    def test_warns_when_libselinux_unloadable(self, capsys: pytest.CaptureFixture) -> None:
+        """Libselinux-missing prints the silent-fail hint and returns False."""
+
+        ok, out = _run_selinux_check(capsys, SelinuxCheckResult(SelinuxStatus.LIBSELINUX_MISSING))
+        assert "libselinux.so.1 not loadable" in out
+        assert "unconfined_t" in out
+        assert ok is False
+
+    def test_ok_exposes_installer_path(self, capsys: pytest.CaptureFixture) -> None:
+        """Happy path surfaces the installer path and returns True."""
+
+        ok, out = _run_selinux_check(capsys, SelinuxCheckResult(SelinuxStatus.OK))
+        assert "policy installed" in out
+        assert "install_policy.sh" in out
+        assert ok is True
+
+
+@patch("terok_sandbox.check_selinux_status")
+@patch("terok.cli.commands.setup._ensure_gate", return_value=True)
+@patch("terok.cli.commands.setup._ensure_proxy", return_value=True)
+@patch("terok.cli.commands.setup._ensure_shield", return_value=True)
+@patch("terok.cli.commands.setup._check_host_binaries", return_value=True)
+def test_cmd_setup_selinux_missing_exits_1(
+    _bins: MagicMock,
+    _shield: MagicMock,
+    _proxy: MagicMock,
+    _gate: MagicMock,
+    mock_status: MagicMock,
+) -> None:
+    """Services install OK but policy missing in socket mode → exit 1.
+
+    Pins the contract that an unmet SELinux prerequisite is treated as
+    a setup failure: a task container launched now would fail with AVC
+    denials, so the setup run should too.
+    """
+
+    mock_status.return_value = SelinuxCheckResult(SelinuxStatus.POLICY_MISSING)
+    with pytest.raises(SystemExit) as exc:
+        cmd_setup(check_only=False)
+    assert exc.value.code == 1

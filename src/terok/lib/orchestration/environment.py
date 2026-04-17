@@ -34,6 +34,14 @@ _logger = logging.getLogger(__name__)
 _CONTAINER_RUNTIME_DIR = "/run/terok"
 """Container-side mount point — must match :data:`terok_sandbox.CONTAINER_RUNTIME_DIR`."""
 
+_CONTAINER_GATE_PORT = 9418
+"""Loopback TCP port the container-side socat bridge listens on in socket mode.
+
+Must match the hardcoded ``TCP-LISTEN:9418`` in ``ensure-bridges.sh`` — that
+bridge forwards to the mounted host ``gate-server.sock``, so the CODE_REPO /
+CLONE_FROM URL the container sees is ``http://localhost:9418/<repo>``.
+"""
+
 
 def _gate_url(
     gate_repo: Path, gate_base: Path, port: int, token: str, *, use_socket: bool = False
@@ -76,6 +84,10 @@ def _security_mode_env_and_volumes(
 
     gate_repo = project.gate_path
     gate_base = get_gate_base_path(cfg)
+    # In socket mode the container reaches the gate via an in-container
+    # socat bridge that listens on a fixed port (see ensure-bridges.sh);
+    # in TCP mode the container reaches the host's gate server directly.
+    gate_port = _CONTAINER_GATE_PORT if use_socket else get_gate_server_port(cfg)
 
     if project.security_class == "gatekeeping":
         if not gate_repo.exists():
@@ -85,9 +97,8 @@ def _security_mode_env_and_volumes(
                 f"Run 'terok gate-sync {project.id}' to create/update the local mirror."
             )
         ensure_server_reachable(cfg)
-        port = get_gate_server_port(cfg)
         token = create_token(project.id, task_id, cfg)
-        gate_url = _gate_url(gate_repo, gate_base, port, token, use_socket=use_socket)
+        gate_url = _gate_url(gate_repo, gate_base, gate_port, token, use_socket=use_socket)
         env["CODE_REPO"] = gate_url
         if project.default_branch:
             env["GIT_BRANCH"] = project.default_branch
@@ -106,9 +117,8 @@ def _security_mode_env_and_volumes(
                     "This is safe — online mode does not require the gate.",
                 )
             else:
-                port = get_gate_server_port(cfg)
                 token = create_token(project.id, task_id, cfg)
-                gate_url = _gate_url(gate_repo, gate_base, port, token, use_socket=use_socket)
+                gate_url = _gate_url(gate_repo, gate_base, gate_port, token, use_socket=use_socket)
                 env["CLONE_FROM"] = gate_url
         if project.upstream_url:
             env["CODE_REPO"] = project.upstream_url

@@ -155,6 +155,42 @@ class TestProject:
         assert len(projects) == 1
         assert projects[0].id == "good"
 
+    def test_list_projects_sanitizes_control_chars_in_stderr(
+        self, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """Error messages stripped of ANSI/control bytes to prevent TTY-escape spoofing."""
+        with tempfile.TemporaryDirectory() as td:
+            base = Path(td)
+            config_base = base / "config"
+            projects_root = config_base / "projects"
+            # A healthy project proves the broken one was skipped (not
+            # that list_projects crashed outright).
+            write_project(
+                projects_root,
+                "good",
+                "project:\n  id: good\ngit:\n  upstream_url: https://example.com/good.git\n",
+            )
+            # YAML with a string value containing ANSI escape sequences and
+            # a null byte — the parser may surface these unchanged in its
+            # error message if the config is otherwise malformed.
+            write_project(
+                projects_root,
+                "evil",
+                'project:\n  id: evil\n  foo: "\x1b[31mPWNED\x1b[0m\x00" broken\n',
+            )
+            with unittest.mock.patch.dict(
+                os.environ,
+                {"TEROK_CONFIG_DIR": str(config_base), "XDG_CONFIG_HOME": str(base / "empty")},
+            ):
+                result = list_projects()
+        # Skip-and-continue: 'evil' is dropped, 'good' survives.
+        ids = {p.id for p in result}
+        assert ids == {"good"}
+        err = capsys.readouterr().err
+        assert "warning: skipping broken project 'evil'" in err
+        assert "\x1b" not in err
+        assert "\x00" not in err
+
     def test_load_project_malformed_yaml(self) -> None:
         malformed = "project:\n  id: bad-yaml\n  foo: [invalid yaml\n"
         with project_env(malformed, project_id="bad-yaml"):
