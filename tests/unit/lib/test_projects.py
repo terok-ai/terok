@@ -376,8 +376,26 @@ class TestShareSshKeyRegistration:
 
         assert "beta" not in json.loads(keys_path.read_text())
 
-    def test_list_entry_copies_first_key(self, tmp_path: Path) -> None:
-        """When source has multiple keys, the first is shared with the new scope."""
+    def test_list_entry_copies_all_keys(self, tmp_path: Path) -> None:
+        """All of source's keys (GitHub + GitLab, etc.) are shared with the new scope."""
+        import json
+
+        from terok.lib.domain.facade import _share_ssh_key_registration
+
+        keys_path = tmp_path / "ssh-keys.json"
+        source_keys = [
+            {"private_key": "/k/a1", "public_key": "/k/a1.pub"},
+            {"private_key": "/k/a2", "public_key": "/k/a2.pub"},
+        ]
+        keys_path.write_text(json.dumps({"alpha": source_keys}))
+        with self._patch_sandbox_config(keys_path):
+            _share_ssh_key_registration("alpha", "beta")
+
+        mapping = json.loads(keys_path.read_text())
+        assert mapping["beta"] == source_keys
+
+    def test_list_entry_skips_malformed_keys(self, tmp_path: Path) -> None:
+        """Entries missing ``private_key``/``public_key`` are skipped; valid ones still share."""
         import json
 
         from terok.lib.domain.facade import _share_ssh_key_registration
@@ -388,7 +406,9 @@ class TestShareSshKeyRegistration:
                 {
                     "alpha": [
                         {"private_key": "/k/a1", "public_key": "/k/a1.pub"},
-                        {"private_key": "/k/a2", "public_key": "/k/a2.pub"},
+                        {"private_key": "/k/a2"},  # missing public_key
+                        "not-a-dict",
+                        {"private_key": "/k/a3", "public_key": "/k/a3.pub"},
                     ]
                 }
             )
@@ -397,4 +417,7 @@ class TestShareSshKeyRegistration:
             _share_ssh_key_registration("alpha", "beta")
 
         mapping = json.loads(keys_path.read_text())
-        assert mapping["beta"] == [{"private_key": "/k/a1", "public_key": "/k/a1.pub"}]
+        assert mapping["beta"] == [
+            {"private_key": "/k/a1", "public_key": "/k/a1.pub"},
+            {"private_key": "/k/a3", "public_key": "/k/a3.pub"},
+        ]
