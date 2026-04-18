@@ -3,9 +3,9 @@
 
 """Emergency panic — immediately cut all resource access across all projects.
 
-Two-phase sequence: Phase 1 raises shields, stops the credential proxy
-and gate server — all in parallel, all reversible.  Phase 2 optionally
-stops the containers themselves (slow on some platforms, so user-prompted).
+Two-phase sequence: Phase 1 raises shields, stops the vault and gate
+server — all in parallel, all reversible.  Phase 2 optionally stops
+the containers themselves (slow on some platforms, so user-prompted).
 
 Token revocation is deliberately excluded — it is irreversible and
 shields + stopped services already cut access.
@@ -47,8 +47,8 @@ class PanicResult:
 
     shields_raised: list[str] = field(default_factory=list)
     shield_errors: list[tuple[str, str]] = field(default_factory=list)
-    proxy_stopped: bool = False
-    proxy_error: str | None = None
+    vault_stopped: bool = False
+    vault_error: str | None = None
     gate_stopped: bool = False
     gate_error: str | None = None
     containers_stopped: list[str] = field(default_factory=list)
@@ -60,7 +60,7 @@ class PanicResult:
     def has_errors(self) -> bool:
         """Return whether any operation failed."""
         return bool(
-            self.shield_errors or self.proxy_error or self.gate_error or self.container_stop_errors
+            self.shield_errors or self.vault_error or self.gate_error or self.container_stop_errors
         )
 
 
@@ -70,7 +70,7 @@ def execute_panic(
 ) -> PanicResult:
     """Execute the full panic sequence.
 
-    Discovers every running container, then raises shields, stops proxy
+    Discovers every running container, then raises shields, stops vault
     and gate — all in parallel.  If *stop_containers*, also stops the
     containers afterwards.
     """
@@ -109,7 +109,7 @@ def format_panic_report(result: PanicResult) -> str:
     lines = [
         f"Containers found: {result.total_running}",
         _format_shield_status(result),
-        f"Proxy: {'stopped' if result.proxy_stopped else 'FAILED'}",
+        f"Vault: {'stopped' if result.vault_stopped else 'FAILED'}",
         f"Gate:  {'stopped' if result.gate_stopped else 'FAILED'}",
     ]
 
@@ -128,7 +128,7 @@ def format_panic_report(result: PanicResult) -> str:
 
 
 def _phase1_lockdown(result: PanicResult, targets: list[_Target]) -> None:
-    """Run Phase 1: shields + proxy/gate stop in parallel."""
+    """Run Phase 1: shields + vault/gate stop in parallel."""
     with ThreadPoolExecutor(max_workers=max(len(targets) + 2, 4)) as pool:
         futs: dict = {}
 
@@ -136,7 +136,7 @@ def _phase1_lockdown(result: PanicResult, targets: list[_Target]) -> None:
             for t in targets:
                 futs[pool.submit(_raise_shield, t)] = ("shield", t[3])
 
-        futs[pool.submit(_stop_proxy)] = ("proxy", "")
+        futs[pool.submit(_stop_vault)] = ("vault", "")
         futs[pool.submit(_stop_gate)] = ("gate", "")
 
         for fut in as_completed(futs):
@@ -156,8 +156,8 @@ def _collect_phase1_result(result: PanicResult, kind: str, label: str, fut) -> N
         (result.shield_errors if err else result.shields_raised).append(
             (cname, err) if err else cname
         )
-    elif kind == "proxy":
-        result.proxy_stopped, result.proxy_error = res
+    elif kind == "vault":
+        result.vault_stopped, result.vault_error = res
     else:
         result.gate_stopped, result.gate_error = res
 
@@ -175,8 +175,8 @@ def _format_shield_status(result: PanicResult) -> str:
 def _format_errors(result: PanicResult) -> list[str]:
     """Collect all error lines for the panic report."""
     lines = [f"  shield {cname}: {err}" for cname, err in result.shield_errors]
-    if result.proxy_error:
-        lines.append(f"  proxy: {result.proxy_error}")
+    if result.vault_error:
+        lines.append(f"  vault: {result.vault_error}")
     if result.gate_error:
         lines.append(f"  gate: {result.gate_error}")
     lines += [f"  stop {cname}: {err}" for cname, err in result.container_stop_errors]
@@ -221,12 +221,12 @@ def _raise_shield(target: _Target) -> tuple[str, str | None]:
         return cname, str(exc)
 
 
-def _stop_proxy() -> tuple[bool, str | None]:
-    """Stop the credential proxy daemon."""
-    from terok_sandbox import stop_proxy
+def _stop_vault() -> tuple[bool, str | None]:
+    """Stop the vault daemon."""
+    from terok_sandbox import stop_vault
 
     try:
-        stop_proxy()
+        stop_vault()
         return True, None
     except Exception as exc:
         return False, str(exc)

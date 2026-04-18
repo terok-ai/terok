@@ -12,11 +12,11 @@ ui:
   # from this base if the port is busy).
   base_port: 7860
 
-credentials:
+vault:
   # Host-only credential storage (proxy DB, SSH key mapping, proxy routes).
   # Never exposed to containers.
   # Default: ~/.local/share/terok-credentials (or /var/lib/terok-credentials if root)
-  # Override with TEROK_CREDENTIALS_DIR env var or by editing this file.
+  # Override with TEROK_VAULT_DIR env var or by editing this file.
   # dir: ~/.local/share/terok-credentials
   #
   # Agent config mounts (_claude-config, _codex-config, etc.) are stored
@@ -86,14 +86,14 @@ tui:
 # Agent-specific configuration
 # agent:
 #   claude:
-#     # Allow Claude Code OAuth through the credential proxy.
+#     # Allow Claude Code OAuth through the vault.
 #     # Default false — Claude OAuth is skipped because its hardcoded BASE_API_URL
 #     # sends phantom tokens directly to api.anthropic.com (which rejects them).
-#     # When true + experimental, the proxy handles OAuth normally and the shield
+#     # When true + experimental, the vault handles OAuth normally and the shield
 #     # blocks api.anthropic.com to prevent phantom token leaks.
 #     # allow_oauth: false
 #     #
-#     # Bypass the credential proxy for Claude and expose the real OAuth token
+#     # Bypass the vault for Claude and expose the real OAuth token
 #     # via the shared .credentials.json mount. Claude manages its own refresh.
 #     # Shield must allow api.anthropic.com and platform.claude.com.
 #     # expose_oauth_token: false

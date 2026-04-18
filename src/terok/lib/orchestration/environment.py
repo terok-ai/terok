@@ -8,7 +8,7 @@ Translates project configuration and security mode into the environment
 variables and volume mounts that ``podman run`` needs when launching a
 task container.  Shared config mounts and base env vars are delegated to
 :func:`terok_executor.assemble_container_env`; this module adds terok-specific
-concerns (gate server, credential proxy with OAuth/socket/SSH support).
+concerns (gate server, vault with OAuth/socket/SSH support).
 """
 
 from __future__ import annotations
@@ -198,34 +198,34 @@ def apply_git_identity_env(
     )
 
 
-# ---------- Credential proxy ----------
+# ---------- Vault ----------
 
 
-def ensure_credential_proxy() -> None:
-    """Ensure the credential proxy is reachable (respecting the bypass flag).
+def ensure_vault() -> None:
+    """Ensure the vault is reachable (respecting the bypass flag).
 
-    Call this before (re)starting a container that was created with proxy
+    Call this before (re)starting a container that was created with vault
     phantom tokens.  After a host reboot the systemd socket may be active
     but the service idle — this function brings the TCP ports up so
     containers can connect.
 
     No-op when the ``bypass_no_secret_protection`` flag is set.
     """
-    from ..core.config import get_credential_proxy_bypass
+    from ..core.config import get_vault_bypass
 
-    if get_credential_proxy_bypass():
+    if get_vault_bypass():
         return
 
-    from terok_sandbox import ProxyUnreachableError, ensure_proxy_reachable
+    from terok_sandbox import VaultUnreachableError, ensure_vault_reachable
 
     try:
-        ensure_proxy_reachable(make_sandbox_config())
-    except ProxyUnreachableError as exc:
+        ensure_vault_reachable(make_sandbox_config())
+    except VaultUnreachableError as exc:
         raise SystemExit(
             f"{exc}\n\n"
             "Start it with:\n"
-            "  terok credential-proxy install   (systemd socket activation)\n"
-            "  terok credential-proxy start     (manual daemon)"
+            "  terok vault install   (systemd socket activation)\n"
+            "  terok vault start     (manual daemon)"
         ) from exc
 
 
@@ -281,7 +281,7 @@ def _warn_leaked_credentials() -> None:
             + bold(
                 yellow(
                     "  WARNING: Claude OAuth token is EXPOSED to all task containers.\n"
-                    "  The credential proxy does NOT protect this token — it is mounted\n"
+                    "  The vault does NOT protect this token — it is mounted\n"
                     "  directly via .credentials.json in the shared config directory.\n"
                     "  Every task container managed by terok can read the real token.\n",
                     color,
@@ -339,8 +339,8 @@ def build_task_env_and_volumes(
     Delegates shared config mounts, base env vars, workspace volume, git
     identity, and OpenCode provider env to
     :func:`terok_executor.assemble_container_env`, then layers terok-specific
-    concerns: ``PROJECT_ID``, gate server URLs, and the full credential
-    proxy (OAuth, socket transport, SSH agent).
+    concerns: ``PROJECT_ID``, gate server URLs, and the full vault
+    (OAuth, socket transport, SSH agent).
 
     In **sealed** isolation mode (``project.is_sealed``), volumes are
     injected via ``podman cp`` instead of bind mounts — the sandbox
@@ -355,7 +355,7 @@ def build_task_env_and_volumes(
     repo_dir = task_dir / WORKSPACE_DANGEROUS_DIRNAME
     repo_dir.mkdir(exist_ok=True)
 
-    from ..core.config import get_credential_proxy_bypass, get_services_mode
+    from ..core.config import get_services_mode, get_vault_bypass, get_vault_transport
 
     cfg = make_sandbox_config()
     use_socket = get_services_mode() == "socket"
@@ -383,13 +383,11 @@ def build_task_env_and_volumes(
 
     from terok_executor import ContainerEnvSpec, assemble_container_env, get_roster
 
-    # Map services.mode to executor's proxy_transport vocabulary
-    proxy_transport = "socket" if use_socket else "direct"
-
-    # Proxy: bypass → no proxy at all; otherwise ensure it's up before assembly
-    proxy_bypass = get_credential_proxy_bypass()
-    if not proxy_bypass:
-        ensure_credential_proxy()
+    # Vault: bypass → no vault at all; otherwise ensure it's up before assembly
+    vault_bypass = get_vault_bypass()
+    if not vault_bypass:
+        ensure_vault()
+    vault_transport = get_vault_transport()
 
     result = assemble_container_env(
         ContainerEnvSpec(
@@ -407,15 +405,15 @@ def build_task_env_and_volumes(
             human_name=project.human_name or "Nobody",
             human_email=project.human_email or "nobody@localhost",
             credential_scope=project.id,
-            proxy_transport=proxy_transport,
-            proxy_required=not proxy_bypass,
+            vault_transport=vault_transport,
+            vault_required=not vault_bypass,
             unrestricted=False,  # task_runners resolves per-provider config
             shared_dir=None if sealed else project.shared_dir,
             envs_dir=sandbox_live_mounts_dir(),
         ),
         get_roster(),
         # bypass → skip proxy entirely (no tokens, no check)
-        caller_manages_proxy=proxy_bypass,
+        caller_manages_vault=vault_bypass,
     )
 
     env = dict(result.env)
@@ -436,7 +434,7 @@ def build_task_env_and_volumes(
         volumes.append(VolumeSpec(cfg.runtime_dir, _CONTAINER_RUNTIME_DIR, sharing=Sharing.SHARED))
 
     # Claude OAuth overrides + leaked-cred scan with exposed-token filtering
-    if not proxy_bypass:
+    if not vault_bypass:
         _apply_claude_oauth_overrides(env)
         _warn_leaked_credentials()
 

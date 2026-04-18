@@ -98,7 +98,7 @@ def derive_project(source_id: str, new_id: str) -> Project:
 
     The derived project shares the source's git-gate mirror and SSH keypair.
     If the source already has an ``ssh-keys.json`` entry, the same key files
-    are registered under the new scope so the credential proxy can serve the
+    are registered under the new scope so the vault can serve the
     derived project without further setup.
     """
     _derive_project(source_id, new_id)
@@ -134,7 +134,7 @@ def _share_ssh_key_registration(source_id: str, new_id: str) -> None:
 
 
 def register_ssh_key(project_id: str, init_result: dict) -> None:
-    """Register an SSH key in ``ssh-keys.json`` for the credential proxy's SSH agent.
+    """Register an SSH key in ``ssh-keys.json`` for the vault's SSH signer.
 
     Call this after :meth:`SSHManager.init` with the returned result dict.
     """

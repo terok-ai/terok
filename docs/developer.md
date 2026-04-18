@@ -28,7 +28,7 @@ facade.get_project("myproj")  →  Project          (Aggregate Root)
 | `ProjectConfig` | `lib.core.project_model` | Value Object | Configuration dataclass loaded from `project.yml`. No behavior. |
 | `TaskMeta` | `lib.containers.tasks` | Value Object | Task metadata snapshot (ID, mode, status, workspace path). |
 | `GitGate` | `terok_sandbox.git_gate` | Repository + Gateway | Manages the bare git mirror; wraps git CLI. |
-| `SSHManager` | `terok_sandbox.ssh` | Service | Generates SSH keypairs and config; keys served via SSH agent proxy. |
+| `SSHManager` | `terok_sandbox.ssh` | Service | Generates SSH keypairs and config; keys served via vault SSH signer. |
 | `AgentManager` | `lib.project` | Strategy + Config Stack | Resolves layered agent configuration and provider selection. |
 
 ### Design Principles
@@ -131,7 +131,7 @@ When a task container starts, terok mounts:
 | `/home/dev/.config/gh` | `<mounts_dir>/_gh-config` | GitHub CLI config |
 | `/home/dev/.config/glab-cli` | `<mounts_dir>/_glab-config` | GitLab CLI config |
 
-SSH keys are **not** mounted — the credential proxy's SSH agent serves them over TCP.
+SSH keys are **not** mounted — the vault's SSH signer serves them over TCP.
 
 See [shared-dirs.md](shared-dirs.md) for detailed documentation.
 
@@ -201,11 +201,11 @@ connection is handled immediately.
 - **Unit:** `terok-gate.socket` (TCP) + `terok-gate@.service` (instantiated per connection)
 - **When it fits:** stateless, short-lived request handlers with no shared state
 
-### Persistent daemon (`Accept=no`) — Credential Proxy
+### Persistent daemon (`Accept=no`) — Vault
 
-The credential proxy is a long-running aiohttp reverse-proxy that
+The vault is a long-running aiohttp reverse-proxy that
 holds an open SQLite credential database, a route table, and an SSH
-agent server on a separate port.  It serves multiple concurrent
+signer server on a separate port.  It serves multiple concurrent
 containers simultaneously.  The systemd socket unit uses the default
 `Accept=no`: systemd listens on both the Unix socket and the TCP port,
 and on the **first** connection starts the daemon process, handing it the
@@ -213,18 +213,18 @@ inherited file descriptors.  The daemon then stays running and handles
 all subsequent connections itself.
 
 This means there is a brief startup delay (~1–2 s) on the very first
-container request after a host reboot, after which the proxy is fully
+container request after a host reboot, after which the vault is fully
 warm.  The status display reflects this as **standby** (socket active,
 service not yet started) vs **running** (daemon active, TCP ports bound).
 
-- **Unit:** `terok-credential-proxy.socket` (Unix + TCP) + `terok-credential-proxy.service`
+- **Unit:** `terok-vault.socket` (Unix + TCP) + `terok-vault.service`
 - **When it fits:** stateful daemons with shared resources, concurrent connections, or multiple ports
 
 ### Why not unify them?
 
-Forcing the credential proxy into `Accept=yes` would spawn a full
+Forcing the vault into `Accept=yes` would spawn a full
 Python/aiohttp process per HTTP request, cause SQLite contention across
-instances, and orphan the SSH agent port.  Forcing the gate into a
+instances, and orphan the SSH signer port.  Forcing the gate into a
 persistent daemon would add unnecessary complexity for a service whose
 entire protocol is "handle one connection, exit".  Each pattern is the
 natural fit for its workload.

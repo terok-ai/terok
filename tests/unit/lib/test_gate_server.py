@@ -91,8 +91,8 @@ def _test_config(
         state_dir=state_dir,
         runtime_dir=runtime_dir or state_dir,
         gate_port=GATE_PORT,
-        proxy_port=GATE_PORT + 1,
-        ssh_agent_port=GATE_PORT + 2,
+        token_broker_port=GATE_PORT + 1,
+        ssh_signer_port=GATE_PORT + 2,
     )
 
 

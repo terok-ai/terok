@@ -113,21 +113,21 @@ class TestPortDriftCheck:
     """Port drift detection for re-allocated ports."""
 
     def test_ok_when_ports_match(self) -> None:
-        check = _port_drift_check("TEROK_PROXY_PORT", "Proxy", 18700)
+        check = _port_drift_check("TEROK_TOKEN_BROKER_PORT", "Proxy", 18700)
         assert check.evaluate(0, "18700\n", "").severity == "ok"
 
     def test_error_when_ports_differ(self) -> None:
-        check = _port_drift_check("TEROK_PROXY_PORT", "Proxy", 18700)
+        check = _port_drift_check("TEROK_TOKEN_BROKER_PORT", "Proxy", 18700)
         verdict = check.evaluate(0, "18731\n", "")
         assert verdict.severity == "error"
         assert "re-allocated" in verdict.detail
 
     def test_ok_when_env_not_set(self) -> None:
-        check = _port_drift_check("TEROK_PROXY_PORT", "Proxy", 18700)
+        check = _port_drift_check("TEROK_TOKEN_BROKER_PORT", "Proxy", 18700)
         assert check.evaluate(1, "", "").severity == "ok"
 
     def test_warn_when_env_not_numeric(self) -> None:
-        check = _port_drift_check("TEROK_PROXY_PORT", "Proxy", 18700)
+        check = _port_drift_check("TEROK_TOKEN_BROKER_PORT", "Proxy", 18700)
         assert check.evaluate(0, "not-a-number\n", "").severity == "warn"
 
 
@@ -194,8 +194,8 @@ class TestRunContainerDoctor:
     @patch("terok.lib.orchestration.container_doctor.get_roster")
     @patch("terok.lib.orchestration.container_doctor._read_desired_shield_state")
     @patch("terok.lib.orchestration.container_doctor.load_project")
-    @patch("terok.lib.orchestration.container_doctor.get_ssh_agent_port")
-    @patch("terok.lib.orchestration.container_doctor.get_proxy_port")
+    @patch("terok.lib.orchestration.container_doctor.get_ssh_signer_port")
+    @patch("terok.lib.orchestration.container_doctor.get_token_broker_port")
     @patch("terok.lib.orchestration.container_doctor.make_sandbox_config")
     @patch("terok.lib.orchestration.container_doctor.get_container_state")
     @patch("terok.lib.orchestration.container_doctor.load_task_meta")
@@ -206,7 +206,7 @@ class TestRunContainerDoctor:
         mock_load_meta: MagicMock,
         mock_state: MagicMock,
         mock_sandbox_cfg: MagicMock,
-        mock_proxy_port: MagicMock,
+        mock_broker_port: MagicMock,
         mock_ssh_port: MagicMock,
         mock_load_project: MagicMock,
         mock_shield_state: MagicMock,
@@ -223,7 +223,7 @@ class TestRunContainerDoctor:
         mock_load_meta.return_value = ({"mode": "cli"}, tmp_path / "42.yml")
         mock_state.return_value = "running"
         mock_sandbox_cfg.return_value = MagicMock()
-        mock_proxy_port.return_value = 8080
+        mock_broker_port.return_value = 8080
         mock_ssh_port.return_value = 2222
         mock_shield_state.return_value = None
         mock_roster.return_value = MagicMock()
@@ -262,8 +262,8 @@ class TestRunContainerDoctor:
     @patch("terok.lib.orchestration.container_doctor.get_roster")
     @patch("terok.lib.orchestration.container_doctor._read_desired_shield_state")
     @patch("terok.lib.orchestration.container_doctor.load_project")
-    @patch("terok.lib.orchestration.container_doctor.get_ssh_agent_port")
-    @patch("terok.lib.orchestration.container_doctor.get_proxy_port")
+    @patch("terok.lib.orchestration.container_doctor.get_ssh_signer_port")
+    @patch("terok.lib.orchestration.container_doctor.get_token_broker_port")
     @patch("terok.lib.orchestration.container_doctor.make_sandbox_config")
     @patch("terok.lib.orchestration.container_doctor.get_container_state")
     @patch("terok.lib.orchestration.container_doctor.load_task_meta")
@@ -274,7 +274,7 @@ class TestRunContainerDoctor:
         mock_load_meta: MagicMock,
         mock_state: MagicMock,
         mock_sandbox_cfg: MagicMock,
-        mock_proxy_port: MagicMock,
+        mock_broker_port: MagicMock,
         mock_ssh_port: MagicMock,
         mock_load_project: MagicMock,
         mock_shield_state: MagicMock,
@@ -291,7 +291,7 @@ class TestRunContainerDoctor:
         mock_load_meta.return_value = ({"mode": "cli"}, tmp_path / "42.yml")
         mock_state.return_value = "running"
         mock_sandbox_cfg.return_value = MagicMock()
-        mock_proxy_port.return_value = 8080
+        mock_broker_port.return_value = 8080
         mock_ssh_port.return_value = 2222
         mock_shield_state.return_value = None
         mock_roster.return_value = MagicMock()
@@ -338,8 +338,8 @@ class TestRunContainerDoctor:
     @patch("terok.lib.orchestration.container_doctor.get_roster")
     @patch("terok.lib.orchestration.container_doctor._read_desired_shield_state")
     @patch("terok.lib.orchestration.container_doctor.load_project")
-    @patch("terok.lib.orchestration.container_doctor.get_ssh_agent_port")
-    @patch("terok.lib.orchestration.container_doctor.get_proxy_port")
+    @patch("terok.lib.orchestration.container_doctor.get_ssh_signer_port")
+    @patch("terok.lib.orchestration.container_doctor.get_token_broker_port")
     @patch("terok.lib.orchestration.container_doctor.make_sandbox_config")
     @patch("terok.lib.orchestration.container_doctor.get_container_state")
     @patch("terok.lib.orchestration.container_doctor.load_task_meta")
@@ -350,7 +350,7 @@ class TestRunContainerDoctor:
         mock_load_meta: MagicMock,
         mock_state: MagicMock,
         mock_sandbox_cfg: MagicMock,
-        mock_proxy_port: MagicMock,
+        mock_broker_port: MagicMock,
         mock_ssh_port: MagicMock,
         mock_load_project: MagicMock,
         mock_shield_state: MagicMock,
@@ -367,7 +367,7 @@ class TestRunContainerDoctor:
         mock_load_meta.return_value = ({"mode": "cli"}, tmp_path / "42.yml")
         mock_state.return_value = "running"
         mock_sandbox_cfg.return_value = MagicMock()
-        mock_proxy_port.return_value = 8080
+        mock_broker_port.return_value = 8080
         mock_ssh_port.return_value = 2222
         mock_shield_state.return_value = None
         mock_roster.return_value = MagicMock()

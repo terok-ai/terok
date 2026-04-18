@@ -8,21 +8,21 @@ from __future__ import annotations
 from unittest.mock import MagicMock, patch
 
 import pytest
-from terok_sandbox import ProxyUnreachableError, SelinuxCheckResult, SelinuxStatus
+from terok_sandbox import SelinuxCheckResult, SelinuxStatus, VaultUnreachableError
 
 from terok.cli.commands.setup import (
     _check_host_binaries,
     _check_selinux_policy,
     _ensure_gate,
-    _ensure_proxy,
     _ensure_shield,
+    _ensure_vault,
     cmd_setup,
 )
 from tests.testfs import FAKE_CREDENTIALS_DIR, MOCK_BASE
 from tests.testgate import make_gate_server_status
 
-MOCK_PROXY_SOCKET = MOCK_BASE / "run" / "credential-proxy.sock"
-MOCK_PROXY_DB = FAKE_CREDENTIALS_DIR / "credentials.db"
+MOCK_VAULT_SOCKET = MOCK_BASE / "run" / "vault.sock"
+MOCK_VAULT_DB = FAKE_CREDENTIALS_DIR / "credentials.db"
 
 # ── Host binary checks ──────────────────────────────────────────────────
 
@@ -134,65 +134,65 @@ def test_shield_bypass_active(mock_env: MagicMock, capsys: pytest.CaptureFixture
     assert "bypass" in out
 
 
-# ── Credential proxy ────────────────────────────────────────────────────
+# ── Vault ──────────────────────────────────────────────────────────────
 
 
-def _make_proxy_status(*, running: bool = True, mode: str = "systemd") -> MagicMock:
+def _make_vault_status(*, running: bool = True, mode: str = "systemd") -> MagicMock:
     s = MagicMock()
     s.running = running
     s.mode = mode
     return s
 
 
-@patch("terok_sandbox.get_proxy_status")
-@patch("terok_sandbox.ensure_proxy_reachable")
-@patch("terok_sandbox.is_proxy_socket_active", return_value=True)
-def test_proxy_check_reachable(
+@patch("terok_sandbox.get_vault_status")
+@patch("terok_sandbox.ensure_vault_reachable")
+@patch("terok_sandbox.is_vault_socket_active", return_value=True)
+def test_vault_check_reachable(
     _sock: MagicMock, _reach: MagicMock, mock_status: MagicMock, capsys: pytest.CaptureFixture
 ) -> None:
-    """check_only mode: proxy reachable → ok."""
-    mock_status.return_value = _make_proxy_status(running=True)
-    assert _ensure_proxy(check_only=True, color=False) is True
+    """check_only mode: vault reachable → ok."""
+    mock_status.return_value = _make_vault_status(running=True)
+    assert _ensure_vault(check_only=True, color=False) is True
     out = capsys.readouterr().out
     assert "reachable" in out
 
 
 @patch(
-    "terok_sandbox.ensure_proxy_reachable",
-    side_effect=ProxyUnreachableError(socket_path=MOCK_PROXY_SOCKET, db_path=MOCK_PROXY_DB),
+    "terok_sandbox.ensure_vault_reachable",
+    side_effect=VaultUnreachableError(socket_path=MOCK_VAULT_SOCKET, db_path=MOCK_VAULT_DB),
 )
-@patch("terok_sandbox.is_proxy_socket_active", return_value=True)
-def test_proxy_check_unreachable(
+@patch("terok_sandbox.is_vault_socket_active", return_value=True)
+def test_vault_check_unreachable(
     _sock: MagicMock, _reach: MagicMock, capsys: pytest.CaptureFixture
 ) -> None:
-    """check_only mode: proxy installed but unreachable → FAIL."""
-    assert _ensure_proxy(check_only=True, color=False) is False
+    """check_only mode: vault installed but unreachable → FAIL."""
+    assert _ensure_vault(check_only=True, color=False) is False
     out = capsys.readouterr().out
     assert "NOT reachable" in out
 
 
 @patch(
-    "terok_sandbox.ensure_proxy_reachable",
-    side_effect=ProxyUnreachableError(socket_path=MOCK_PROXY_SOCKET, db_path=MOCK_PROXY_DB),
+    "terok_sandbox.ensure_vault_reachable",
+    side_effect=VaultUnreachableError(socket_path=MOCK_VAULT_SOCKET, db_path=MOCK_VAULT_DB),
 )
-@patch("terok_sandbox.is_proxy_socket_active", return_value=False)
-def test_proxy_check_not_installed(
+@patch("terok_sandbox.is_vault_socket_active", return_value=False)
+def test_vault_check_not_installed(
     _sock: MagicMock, _reach: MagicMock, capsys: pytest.CaptureFixture
 ) -> None:
-    """check_only mode: proxy not even installed → reports 'not installed'."""
-    assert _ensure_proxy(check_only=True, color=False) is False
+    """check_only mode: vault not even installed → reports 'not installed'."""
+    assert _ensure_vault(check_only=True, color=False) is False
     out = capsys.readouterr().out
     assert "not installed" in out
 
 
-@patch("terok_sandbox.get_proxy_status")
-@patch("terok_sandbox.ensure_proxy_reachable")
-@patch("terok_sandbox.install_proxy_systemd")
-@patch("terok_executor.ensure_proxy_routes")
+@patch("terok_sandbox.get_vault_status")
+@patch("terok_sandbox.ensure_vault_reachable")
+@patch("terok_sandbox.install_vault_systemd")
+@patch("terok_executor.ensure_vault_routes")
 @patch("terok.lib.core.config.make_sandbox_config")
-@patch("terok_sandbox.uninstall_proxy_systemd")
-@patch("terok_sandbox.stop_proxy")
-def test_proxy_reinstall_and_verify(
+@patch("terok_sandbox.uninstall_vault_systemd")
+@patch("terok_sandbox.stop_vault")
+def test_vault_reinstall_and_verify(
     _stop: MagicMock,
     _uninstall: MagicMock,
     _cfg: MagicMock,
@@ -202,20 +202,20 @@ def test_proxy_reinstall_and_verify(
     mock_status: MagicMock,
 ) -> None:
     """Install mode: clean reinstall → verify reachable → ok."""
-    mock_status.return_value = _make_proxy_status(running=True)
-    assert _ensure_proxy(check_only=False, color=False) is True
+    mock_status.return_value = _make_vault_status(running=True)
+    assert _ensure_vault(check_only=False, color=False) is True
     _stop.assert_called_once()
     _uninstall.assert_called_once()
     _install.assert_called_once()
     _reach.assert_called_once()
 
 
-@patch("terok_sandbox.install_proxy_systemd", side_effect=RuntimeError("install boom"))
-@patch("terok_executor.ensure_proxy_routes")
+@patch("terok_sandbox.install_vault_systemd", side_effect=RuntimeError("install boom"))
+@patch("terok_executor.ensure_vault_routes")
 @patch("terok.lib.core.config.make_sandbox_config")
-@patch("terok_sandbox.uninstall_proxy_systemd")
-@patch("terok_sandbox.stop_proxy")
-def test_proxy_install_fails(
+@patch("terok_sandbox.uninstall_vault_systemd")
+@patch("terok_sandbox.stop_vault")
+def test_vault_install_fails(
     _stop: MagicMock,
     _uninstall: MagicMock,
     _cfg: MagicMock,
@@ -224,21 +224,21 @@ def test_proxy_install_fails(
     capsys: pytest.CaptureFixture,
 ) -> None:
     """Install mode: install raises → returns False."""
-    assert _ensure_proxy(check_only=False, color=False) is False
+    assert _ensure_vault(check_only=False, color=False) is False
     out = capsys.readouterr().out
     assert "install failed" in out
 
 
 @patch(
-    "terok_sandbox.ensure_proxy_reachable",
-    side_effect=ProxyUnreachableError(socket_path=MOCK_PROXY_SOCKET, db_path=MOCK_PROXY_DB),
+    "terok_sandbox.ensure_vault_reachable",
+    side_effect=VaultUnreachableError(socket_path=MOCK_VAULT_SOCKET, db_path=MOCK_VAULT_DB),
 )
-@patch("terok_sandbox.install_proxy_systemd")
-@patch("terok_executor.ensure_proxy_routes")
+@patch("terok_sandbox.install_vault_systemd")
+@patch("terok_executor.ensure_vault_routes")
 @patch("terok.lib.core.config.make_sandbox_config")
-@patch("terok_sandbox.uninstall_proxy_systemd")
-@patch("terok_sandbox.stop_proxy")
-def test_proxy_installed_but_unreachable(
+@patch("terok_sandbox.uninstall_vault_systemd")
+@patch("terok_sandbox.stop_vault")
+def test_vault_installed_but_unreachable(
     _stop: MagicMock,
     _uninstall: MagicMock,
     _cfg: MagicMock,
@@ -248,7 +248,7 @@ def test_proxy_installed_but_unreachable(
     capsys: pytest.CaptureFixture,
 ) -> None:
     """Install mode: installed ok but TCP probe fails → returns False with journal hint."""
-    assert _ensure_proxy(check_only=False, color=False) is False
+    assert _ensure_vault(check_only=False, color=False) is False
     out = capsys.readouterr().out
     assert "NOT reachable" in out
     assert "journalctl" in out
@@ -422,7 +422,7 @@ def test_gate_no_systemd_skips(
 
 
 @patch("terok.cli.commands.setup._ensure_gate", return_value=True)
-@patch("terok.cli.commands.setup._ensure_proxy", return_value=True)
+@patch("terok.cli.commands.setup._ensure_vault", return_value=True)
 @patch("terok.cli.commands.setup._ensure_shield", return_value=True)
 @patch("terok.cli.commands.setup._check_host_binaries", return_value=True)
 def test_cmd_setup_all_ok(
@@ -440,7 +440,7 @@ def test_cmd_setup_all_ok(
 
 
 @patch("terok.cli.commands.setup._ensure_gate", return_value=True)
-@patch("terok.cli.commands.setup._ensure_proxy", return_value=True)
+@patch("terok.cli.commands.setup._ensure_vault", return_value=True)
 @patch("terok.cli.commands.setup._ensure_shield", return_value=True)
 @patch("terok.cli.commands.setup._check_host_binaries", return_value=False)
 def test_cmd_setup_missing_binary_exits_2(
@@ -452,7 +452,7 @@ def test_cmd_setup_missing_binary_exits_2(
 
 
 @patch("terok.cli.commands.setup._ensure_gate", return_value=False)
-@patch("terok.cli.commands.setup._ensure_proxy", return_value=True)
+@patch("terok.cli.commands.setup._ensure_vault", return_value=True)
 @patch("terok.cli.commands.setup._ensure_shield", return_value=True)
 @patch("terok.cli.commands.setup._check_host_binaries", return_value=True)
 def test_cmd_setup_service_failure_exits_1(
@@ -542,13 +542,13 @@ class TestSelinuxPrereqPrint:
 
 @patch("terok_sandbox.check_selinux_status")
 @patch("terok.cli.commands.setup._ensure_gate", return_value=True)
-@patch("terok.cli.commands.setup._ensure_proxy", return_value=True)
+@patch("terok.cli.commands.setup._ensure_vault", return_value=True)
 @patch("terok.cli.commands.setup._ensure_shield", return_value=True)
 @patch("terok.cli.commands.setup._check_host_binaries", return_value=True)
 def test_cmd_setup_selinux_missing_exits_1(
     _bins: MagicMock,
     _shield: MagicMock,
-    _proxy: MagicMock,
+    _vault: MagicMock,
     _gate: MagicMock,
     mock_status: MagicMock,
 ) -> None:

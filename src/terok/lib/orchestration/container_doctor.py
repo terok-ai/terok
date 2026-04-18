@@ -21,8 +21,8 @@ from urllib.parse import urlparse, urlunparse
 from terok_executor import agent_doctor_checks, get_roster
 from terok_sandbox import (
     get_container_state,
-    get_proxy_port,
-    get_ssh_agent_port,
+    get_ssh_signer_port,
+    get_token_broker_port,
     make_shield,
     sandbox_exec,
 )
@@ -176,8 +176,8 @@ def _port_drift_check(env_var: str, label: str, expected: int) -> DoctorCheck:
 def _terok_doctor_checks(
     project_id: str,
     gate_port: int,
-    proxy_port: int,
-    ssh_agent_port: int,
+    token_broker_port: int,
+    ssh_signer_port: int,
 ) -> list[DoctorCheck]:
     """Build terok-level health checks from project config."""
     project = load_project(project_id)
@@ -193,8 +193,12 @@ def _terok_doctor_checks(
     checks.append(_git_identity_check(human_name, human_email, "email"))
 
     checks.append(_git_remote_check(project.security_class, gate_port))
-    checks.append(_port_drift_check("TEROK_PROXY_PORT", "Proxy port drift", proxy_port))
-    checks.append(_port_drift_check("TEROK_SSH_AGENT_PORT", "SSH agent port drift", ssh_agent_port))
+    checks.append(
+        _port_drift_check("TEROK_TOKEN_BROKER_PORT", "Token broker port drift", token_broker_port)
+    )
+    checks.append(
+        _port_drift_check("TEROK_SSH_SIGNER_PORT", "SSH signer port drift", ssh_signer_port)
+    )
 
     return checks
 
@@ -246,20 +250,22 @@ def _collect_all_checks(
 ) -> list[DoctorCheck]:
     """Gather health checks from sandbox, agent, and terok layers."""
     cfg = make_sandbox_config()
-    proxy_port = get_proxy_port(cfg)
-    ssh_agent_port = get_ssh_agent_port(cfg)
+    token_broker_port = get_token_broker_port(cfg)
+    ssh_signer_port = get_ssh_signer_port(cfg)
     desired_shield = _read_desired_shield_state(task_dir)
 
     checks: list[DoctorCheck] = []
     checks.extend(
         sandbox_doctor_checks(
-            proxy_port=proxy_port,
-            ssh_agent_port=ssh_agent_port,
+            token_broker_port=token_broker_port,
+            ssh_signer_port=ssh_signer_port,
             desired_shield_state=desired_shield,
         )
     )
-    checks.extend(agent_doctor_checks(get_roster(), proxy_port=proxy_port))
-    checks.extend(_terok_doctor_checks(project_id, cfg.gate_port, proxy_port, ssh_agent_port))
+    checks.extend(agent_doctor_checks(get_roster(), token_broker_port=token_broker_port))
+    checks.extend(
+        _terok_doctor_checks(project_id, cfg.gate_port, token_broker_port, ssh_signer_port)
+    )
     return checks
 
 

@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: 2026 Jiri Vyskocil
 # SPDX-License-Identifier: Apache-2.0
 
-"""Tests for the ``terok credential-proxy`` CLI and ``credential-proxy-serve``."""
+"""Tests for the ``terok vault`` CLI and ``vault-serve``."""
 
 import argparse
 import sys
@@ -10,19 +10,19 @@ from unittest.mock import MagicMock, patch
 from terok.cli.commands.credentials import dispatch, register
 
 
-class TestCredentialProxyServeRegister:
-    """Verify credential-proxy-serve registration."""
+class TestVaultServeRegister:
+    """Verify vault-serve registration."""
 
     def test_serve_registered(self) -> None:
-        """credential-proxy-serve is parseable as a top-level command."""
+        """vault-serve is parseable as a top-level command."""
         parser = argparse.ArgumentParser()
         sub = parser.add_subparsers(dest="cmd")
         register(sub)
-        args = parser.parse_args(["credential-proxy-serve"])
-        assert args.cmd == "credential-proxy-serve"
+        args = parser.parse_args(["vault-serve"])
+        assert args.cmd == "vault-serve"
 
 
-class TestCredentialProxyServeDispatch:
+class TestVaultServeDispatch:
     """Verify serve dispatch routing."""
 
     def test_dispatch_ignores_other_commands(self) -> None:
@@ -32,42 +32,42 @@ class TestCredentialProxyServeDispatch:
 
     @patch("terok.cli.commands.credentials._cmd_serve")
     def test_dispatch_serve(self, mock_serve: MagicMock) -> None:
-        """credential-proxy-serve dispatches to _cmd_serve."""
-        args = argparse.Namespace(cmd="credential-proxy-serve")
+        """vault-serve dispatches to _cmd_serve."""
+        args = argparse.Namespace(cmd="vault-serve")
         assert dispatch(args) is True
         mock_serve.assert_called_once_with(args)
 
-    @patch("terok_sandbox.credentials.proxy.server.main")
+    @patch("terok_sandbox.vault.token_broker.main")
     def test_serve_passes_through_to_server_main(self, mock_main: MagicMock) -> None:
         """_cmd_serve strips argv prefix and delegates to server.main()."""
         captured_argv: list[str] = []
         mock_main.side_effect = lambda: captured_argv.extend(sys.argv)
 
         original_argv = sys.argv[:]
-        sys.argv = ["terok", "credential-proxy-serve", "--log-level", "DEBUG"]
+        sys.argv = ["terok", "vault-serve", "--log-level", "DEBUG"]
         try:
-            args = argparse.Namespace(cmd="credential-proxy-serve")
+            args = argparse.Namespace(cmd="vault-serve")
             dispatch(args)
         finally:
             sys.argv = original_argv
 
         mock_main.assert_called_once()
-        assert captured_argv == ["terok-credential-proxy-serve", "--log-level", "DEBUG"]
+        assert captured_argv == ["terok-vault-serve", "--log-level", "DEBUG"]
         assert sys.argv == original_argv  # restored after call
 
 
-class TestCredentialProxyWireGroup:
-    """Verify credential-proxy commands are mounted via wire_group."""
+class TestVaultWireGroup:
+    """Verify vault commands are mounted via wire_group."""
 
-    def test_credential_proxy_group_registered(self) -> None:
-        """terok credential-proxy group is parseable."""
-        from terok_executor import PROXY_COMMANDS
+    def test_vault_group_registered(self) -> None:
+        """terok vault group is parseable."""
+        from terok_executor import VAULT_COMMANDS
 
         from terok.cli.wiring import wire_group
 
         parser = argparse.ArgumentParser()
         sub = parser.add_subparsers(dest="cmd")
-        wire_group(sub, "credential-proxy", PROXY_COMMANDS, help="test")
+        wire_group(sub, "vault", VAULT_COMMANDS, help="test")
         for cmd in ("start", "stop", "status", "install", "uninstall", "routes"):
-            args = parser.parse_args(["credential-proxy", cmd])
-            assert args.cmd == "credential-proxy"
+            args = parser.parse_args(["vault", cmd])
+            assert args.cmd == "vault"

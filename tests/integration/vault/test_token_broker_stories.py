@@ -1,25 +1,26 @@
 # SPDX-FileCopyrightText: 2026 Jiri Vyskocil
 # SPDX-License-Identifier: Apache-2.0
 
-"""End-to-end story tests for the credential proxy pipeline.
+"""End-to-end story tests for the vault token broker pipeline.
 
-Each story exercises a complete user workflow: auth → DB → proxy → env.
+Each story exercises a complete user workflow: auth → DB → vault → env.
 These tests run in the matrix runner's disposable containers where a
-real proxy daemon can be started.
+real vault daemon can be started.
 
-Stories use real sqlite DBs, real aiohttp proxy servers (via TestServer),
+Stories use real sqlite DBs, real aiohttp vault servers (via TestServer),
 and real route configs generated from the YAML roster.
 """
 
 import json
 from pathlib import Path
+from unittest.mock import MagicMock, patch
 
 import pytest
 from aiohttp import web
 from aiohttp.test_utils import TestServer
 from terok_sandbox import CredentialDB
 
-pytestmark = pytest.mark.needs_credential_proxy
+pytestmark = pytest.mark.needs_vault
 
 
 # ── Mock upstream ─────────────────────────────────────────
@@ -228,3 +229,47 @@ class TestStoryTokenRevocation:
                 await proxy_server.close()
         finally:
             await upstream.close()
+
+
+class TestStoryEnvWiring:
+    """Story: environment builder produces correct container env."""
+
+    def test_full_env_assembly(self, tmp_path: Path) -> None:
+        """build_task_env_and_volumes includes vault env when vault is running."""
+        from terok.lib.orchestration.environment import _vault_env_and_volumes
+
+        db_path = tmp_path / "proxy" / "credentials.db"
+        db = CredentialDB(db_path)
+        db.store_credential("default", "claude", {"type": "api_key", "key": "sk"})
+        db.store_credential("default", "gh", {"type": "oauth_token", "token": "ghp"})
+        db.close()
+
+        sock_path = tmp_path / "proxy.sock"
+        sock_path.touch()
+
+        project = MagicMock()
+        project.id = "myproject"
+
+        with (
+            patch(
+                "terok_sandbox.credentials.lifecycle.is_daemon_running",
+                return_value=True,
+            ),
+            patch("terok_sandbox.ensure_vault_reachable"),
+            patch("terok.lib.orchestration.environment.make_sandbox_config") as mock_cfg_fn,
+            patch("terok.lib.core.config.get_vault_transport", return_value="direct"),
+        ):
+            mock_cfg = mock_cfg_fn.return_value
+            mock_cfg.db_path = db_path
+            mock_cfg.vault_socket_path = sock_path
+            mock_cfg.token_broker_port = 18731
+            mock_cfg.ssh_keys_json_path = tmp_path / "ssh-keys.json"
+
+            env, volumes = _vault_env_and_volumes(project, "task-42")
+
+        # All stored providers get phantom tokens
+        assert "ANTHROPIC_API_KEY" in env
+        assert env["ANTHROPIC_API_KEY"].startswith("terok-p-")
+        assert "ANTHROPIC_BASE_URL" in env
+        # TCP transport — no socket mount needed
+        assert volumes == []

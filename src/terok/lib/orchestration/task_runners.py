@@ -54,7 +54,7 @@ from ..util.ansi import (
 from ..util.yaml import dump as _yaml_dump, load as _yaml_load
 from .agent_config import resolve_agent_config
 from .container_exec import container_git_diff
-from .environment import build_task_env_and_volumes, ensure_credential_proxy
+from .environment import build_task_env_and_volumes, ensure_vault
 from .hooks import run_hook
 from .ports import assign_web_port
 from .tasks import (
@@ -390,7 +390,7 @@ def task_run_cli(
 
     # If container already exists, handle it
     if container_state is not None:
-        ensure_credential_proxy()
+        ensure_vault()
         color_enabled = _supports_color()
         if container_state == "running":
             print(f"Container {_green(cname, color_enabled)} is already running.")
@@ -543,7 +543,7 @@ def task_run_toad(
                 f"Port {saved_port} for {project.id}/{task_id} is no longer available "
                 f"(got {actual}).  Re-create the task to use the new port."
             )
-        ensure_credential_proxy()
+        ensure_vault()
         color_enabled = _supports_color()
         url = f"http://{pub_host}:{saved_port}/"
         if container_state == "running":
@@ -977,9 +977,9 @@ def task_followup_headless(
                 hf.write(f"{existing}\n\n---\n\n")
         prompt_path.write_text(prompt, encoding="utf-8")
 
-    # Ensure the credential proxy is reachable before restarting — after a
+    # Ensure the vault is reachable before restarting — after a
     # host reboot the systemd socket may be active but the service idle.
-    ensure_credential_proxy()
+    ensure_vault()
 
     # Restart the existing container (re-runs the original bash command,
     # which reads prompt.txt and session files from the volume)
@@ -1050,7 +1050,7 @@ def task_restart(project_id: str, task_id: str) -> None:
     container_state = get_container_state(cname)
 
     print(f"Restarting task {project_id}/{task_id} ({mode})...")
-    ensure_credential_proxy()
+    ensure_vault()
 
     if container_state == "running":
         # Container is running - stop it first, then start it again

@@ -3,7 +3,7 @@
 
 """Emergency panic command — cut all resource access immediately.
 
-Raises shields on every running container, stops the credential proxy
+Raises shields on every running container, stops the vault
 and gate server.  Optionally stops the containers themselves (which
 can be slow on some platforms).  All actions are reversible.
 
@@ -62,7 +62,7 @@ def _cmd_clear() -> None:
         clear_panic_lock()
         print("Panic state cleared.")
         print("Note: shields are still raised and services remain stopped.")
-        print("Restart services manually: terok gate start / terok credential-proxy start")
+        print("Restart services manually: terok gate start / terok vault start")
     else:
         print("No panic state to clear.")
 

@@ -366,11 +366,11 @@ def terok_env(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> TerokIntegrati
     monkeypatch.setenv("TEROK_CONFIG_DIR", str(system_config_root))
     monkeypatch.setenv("TEROK_STATE_DIR", str(state_root))
 
-    # Write default global config with credential proxy bypass — subprocess-based
+    # Write default global config with vault bypass — subprocess-based
     # tests spawn a new CLI process that reads this file.  Tests that need the
-    # proxy opt out via the needs_credential_proxy marker.
+    # vault opt out via the needs_vault marker.
     (system_config_root / "config.yml").write_text(
-        "credential_proxy:\n  bypass_no_secret_protection: true\n",
+        "vault:\n  bypass_no_secret_protection: true\n",
         encoding="utf-8",
     )
 
@@ -384,8 +384,8 @@ def terok_env(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> TerokIntegrati
     env.user_projects_root.mkdir(parents=True, exist_ok=True)
     env.global_presets_root.mkdir(parents=True, exist_ok=True)
     env.system_projects_root.mkdir(parents=True, exist_ok=True)
-    env.credentials_dir.mkdir(parents=True, exist_ok=True)
-    monkeypatch.setenv("TEROK_CREDENTIALS_DIR", str(env.credentials_dir))
+    env.vault_dir.mkdir(parents=True, exist_ok=True)
+    monkeypatch.setenv("TEROK_VAULT_DIR", str(env.vault_dir))
     agent_state = tmp_path / "agent-state"
     agent_state.mkdir(parents=True, exist_ok=True)
     monkeypatch.setenv("TEROK_EXECUTOR_STATE_DIR", str(agent_state))
@@ -398,36 +398,38 @@ def terok_env(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> TerokIntegrati
     return env
 
 
-# ── Credential proxy ──────────────────────────────────────
+# ── Vault ────────────────────────────────────────────────
 
 
 @pytest.fixture(autouse=True)
-def _bypass_credential_proxy(request: pytest.FixtureRequest) -> Iterator[None]:
-    """Bypass the credential proxy unless the test explicitly needs it.
+def _bypass_vault(request: pytest.FixtureRequest) -> Iterator[None]:
+    """Bypass the vault unless the test explicitly needs it.
 
-    Tests marked with ``needs_credential_proxy`` opt out of the bypass
-    and exercise the real proxy path.  All other tests get the bypass
-    so they don't need a running proxy daemon.
+    Tests marked with ``needs_vault`` opt out of the bypass
+    and exercise the real vault path.  All other tests get the bypass
+    so they don't need a running vault daemon.
 
     For subprocess-based tests (via ``terok_env``), the bypass is written
     as a config file in the ``terok_env`` fixture itself.
     """
-    if "needs_credential_proxy" in {m.name for m in request.node.iter_markers()}:
-        # Tests exercise the proxy path but don't have a real daemon —
+    if "needs_vault" in {m.name for m in request.node.iter_markers()}:
+        # Tests exercise the vault path but don't have a real daemon —
         # bypass reachability probes (socket + TCP health).
         with (
             patch.object(
-                __import__(
-                    "terok_sandbox.credentials.lifecycle", fromlist=["CredentialProxyManager"]
-                ).CredentialProxyManager,
+                __import__("terok_sandbox.vault.lifecycle", fromlist=["VaultManager"]).VaultManager,
                 "_wait_for_unix_socket",
+                return_value=True,
+            ),
+            patch(
+                "terok_sandbox.vault.lifecycle.VaultManager._wait_for_ready",
                 return_value=True,
             ),
         ):
             yield
     else:
         with patch(
-            "terok.lib.core.config.get_credential_proxy_bypass",
+            "terok.lib.core.config.get_vault_bypass",
             return_value=True,
         ):
             yield

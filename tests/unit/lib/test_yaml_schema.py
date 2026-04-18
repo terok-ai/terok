@@ -268,8 +268,8 @@ class RawGlobalConfigTests(unittest.TestCase):
         """Port fields reject values outside 1–65535."""
         for section, field in [
             ("gate_server", "port"),
-            ("credential_proxy", "port"),
-            ("credential_proxy", "ssh_agent_port"),
+            ("vault", "port"),
+            ("vault", "ssh_signer_port"),
         ]:
             for bad in (0, -1, 65536, 100000):
                 with self.assertRaises(ValidationError, msg=f"{section}.{field}={bad}"):
@@ -280,12 +280,12 @@ class RawGlobalConfigTests(unittest.TestCase):
         cfg = RawGlobalConfig.model_validate(
             {
                 "gate_server": {"port": 9418},
-                "credential_proxy": {"port": 1, "ssh_agent_port": 65535},
+                "vault": {"port": 1, "ssh_signer_port": 65535},
             }
         )
         self.assertEqual(cfg.gate_server.port, 9418)
-        self.assertEqual(cfg.credential_proxy.port, 1)
-        self.assertEqual(cfg.credential_proxy.ssh_agent_port, 65535)
+        self.assertEqual(cfg.vault.port, 1)
+        self.assertEqual(cfg.vault.ssh_signer_port, 65535)
 
     def test_unknown_key_rejected(self) -> None:
         """Unknown top-level key raises ValidationError."""

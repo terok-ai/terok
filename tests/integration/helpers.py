@@ -57,8 +57,8 @@ class TerokIntegrationEnv:
         return self.xdg_config_home / "terok" / "presets"
 
     @property
-    def credentials_dir(self) -> Path:
-        """Return the isolated credentials directory."""
+    def vault_dir(self) -> Path:
+        """Return the isolated vault directory."""
         return self.base_dir / "credentials"
 
     @property
@@ -93,7 +93,7 @@ class TerokIntegrationEnv:
                 "TEROK_CONFIG_DIR": str(self.system_config_root),
                 "TEROK_ROOT": str(self.base_dir),
                 "TEROK_STATE_DIR": str(self.state_root),
-                "TEROK_CREDENTIALS_DIR": str(self.credentials_dir),
+                "TEROK_VAULT_DIR": str(self.vault_dir),
                 "TEROK_SANDBOX_LIVE_DIR": str(self.sandbox_live_root),
                 "TEROK_SANDBOX_STATE_DIR": str(self.sandbox_state_root),
             }

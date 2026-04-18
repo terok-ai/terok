@@ -25,7 +25,7 @@ proxying.
 | [Developer Guide](docs/developer.md) | Internal architecture and contributor docs |
 | [Container Layers](docs/container-layers.md) | Container image architecture |
 | [Container Lifecycle](docs/container-lifecycle.md) | Container and image lifecycle |
-| [Shared Directories](docs/shared-dirs.md) | Volume mounts and credential proxy |
+| [Shared Directories](docs/shared-dirs.md) | Volume mounts and vault |
 | [Security Modes](docs/git-gate-and-security-modes.md) | Online vs gatekeeping modes |
 | [Shield](docs/shield-security.md) | Egress firewall (terok-shield) |
 | [Agent Compatibility](docs/agent-compat-matrix.md) | Per-agent feature support matrix |
@@ -53,12 +53,12 @@ pipx install ./terok-*.whl
 ### One-time setup
 
 Install OCI hooks for the egress firewall, start the host-side services
-(credential proxy and git gate), and optionally add shell completions:
+(vault and git gate), and optionally add shell completions:
 
 ```bash
 terok shield setup --user               # install OCI hooks for terok-shield
-terok credential-proxy install          # install systemd socket activation
-terok credential-proxy start            # start the credential proxy daemon
+terok vault install                     # install systemd socket activation
+terok vault start                       # start the vault daemon
 terok gate start                        # start the git gate server
 terok completions install               # (optional) tab completion
 ```
@@ -161,7 +161,7 @@ Per-project overrides live in `project.yml` under `image:` — `base_image`, `fa
 | `TEROK_CONFIG_FILE` | Global config file path |
 | `TEROK_ROOT` | Shared namespace root for all ecosystem packages |
 | `TEROK_STATE_DIR` | Host-only state (builds, metadata) |
-| `TEROK_CREDENTIALS_DIR` | Credential proxy store (proxy DB, routes, key registry) |
+| `TEROK_VAULT_DIR` | Vault store (vault database, routes, key registry) |
 
 ## Requirements
 

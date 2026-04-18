@@ -1,10 +1,10 @@
 # SPDX-FileCopyrightText: 2026 Jiri Vyskocil
 # SPDX-License-Identifier: Apache-2.0
 
-"""End-to-end story tests for the SSH agent proxy.
+"""End-to-end story tests for the SSH signer.
 
 Each story exercises a complete user workflow: generate SSH keys → register
-in ssh-keys.json → start SSH agent server → connect with phantom token →
+in ssh-keys.json → start SSH signer server → connect with phantom token →
 list identities → sign data → verify signature.
 
 Stories use real sqlite DBs, real asyncio TCP servers, real ed25519 keys,
@@ -18,6 +18,7 @@ import base64
 import json
 import struct
 from pathlib import Path
+from unittest.mock import MagicMock, patch
 
 import pytest
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
@@ -28,17 +29,17 @@ from cryptography.hazmat.primitives.serialization import (
     PublicFormat,
 )
 from terok_sandbox import CredentialDB
-from terok_sandbox.credentials.proxy.ssh_agent import (
+from terok_sandbox.vault.ssh_signer import (
     SSH_AGENT_IDENTITIES_ANSWER,
     SSH_AGENT_SIGN_RESPONSE,
     SSH_AGENTC_REQUEST_IDENTITIES,
     SSH_AGENTC_SIGN_REQUEST,
     _pack_string,
     _unpack_string,
-    start_ssh_agent_server,
+    start_ssh_signer,
 )
 
-pytestmark = pytest.mark.needs_credential_proxy
+pytestmark = pytest.mark.needs_vault
 
 
 # ── Helpers ──────────────────────────────────────────────
@@ -83,8 +84,8 @@ async def _recv(reader: asyncio.StreamReader) -> tuple[int, bytes]:
 
 
 @pytest.mark.asyncio
-class TestStorySSHAgentSigning:
-    """Story: container signs git data via SSH agent proxy using host-side keys."""
+class TestStorySSHSignerSigning:
+    """Story: container signs git data via SSH signer using host-side keys."""
 
     async def test_full_sign_flow(self, tmp_path: Path) -> None:
         """ssh-init → register key → agent server → identity → sign → verify."""
@@ -101,11 +102,11 @@ class TestStorySSHAgentSigning:
         # 2. Create phantom token (simulates environment.py at task launch)
         db_path = tmp_path / "proxy" / "credentials.db"
         db = CredentialDB(db_path)
-        phantom = db.create_proxy_token("testproj", "task-1", "testproj", "ssh")
+        phantom = db.create_token("testproj", "task-1", "testproj", "ssh")
         db.close()
 
         # 3. Start SSH agent server (simulates credential proxy daemon)
-        server = await start_ssh_agent_server(str(db_path), str(keys_json), "127.0.0.1", 0)
+        server = await start_ssh_signer(str(db_path), str(keys_json), "127.0.0.1", 0)
         port = server.sockets[0].getsockname()[1]
         try:
             # 4. Connect with phantom token (simulates socat bridge from container)
@@ -160,11 +161,11 @@ class TestStorySSHAgentSigning:
 
 
 @pytest.mark.asyncio
-class TestStorySSHAgentTokenRevocation:
-    """Story: task ends, phantom token revoked, SSH agent rejects."""
+class TestStorySSHSignerTokenRevocation:
+    """Story: task ends, phantom token revoked, SSH signer rejects."""
 
     async def test_revoked_token_rejected(self, tmp_path: Path) -> None:
-        """After token revocation, the SSH agent closes the connection."""
+        """After token revocation, the SSH signer closes the connection."""
         ssh_dir = tmp_path / "ssh-keys" / "proj"
         ssh_dir.mkdir(parents=True)
         priv_path, pub_path, _ = _generate_test_keypair(ssh_dir)
@@ -176,9 +177,9 @@ class TestStorySSHAgentTokenRevocation:
 
         db_path = tmp_path / "proxy" / "credentials.db"
         db = CredentialDB(db_path)
-        phantom = db.create_proxy_token("proj", "task-1", "proj", "ssh")
+        phantom = db.create_token("proj", "task-1", "proj", "ssh")
 
-        server = await start_ssh_agent_server(str(db_path), str(keys_json), "127.0.0.1", 0)
+        server = await start_ssh_signer(str(db_path), str(keys_json), "127.0.0.1", 0)
         port = server.sockets[0].getsockname()[1]
         try:
             # Works before revocation
@@ -192,7 +193,7 @@ class TestStorySSHAgentTokenRevocation:
             await writer.wait_closed()
 
             # Revoke all tokens for this task
-            db.revoke_proxy_tokens("proj", "task-1")
+            db.revoke_tokens("proj", "task-1")
             db.close()
 
             # Rejected after revocation — server closes connection
@@ -208,3 +209,90 @@ class TestStorySSHAgentTokenRevocation:
         finally:
             server.close()
             await server.wait_closed()
+
+
+class TestStorySSHSignerEnvWiring:
+    """Story: environment builder wires SSH signer env vars into containers."""
+
+    def test_ssh_signer_env_vars_injected(self, tmp_path: Path) -> None:
+        """When project has SSH keys, phantom token and port are in container env."""
+        from terok.lib.orchestration.environment import _vault_env_and_volumes
+
+        # Set up DB with a regular credential (so proxy path is exercised)
+        db_path = tmp_path / "proxy" / "credentials.db"
+        db = CredentialDB(db_path)
+        db.store_credential("default", "claude", {"type": "api_key", "key": "sk"})
+        db.close()
+
+        # Write ssh-keys.json with the project's key registered (list format)
+        keys_json = tmp_path / "ssh-keys.json"
+        keys_json.write_text(
+            json.dumps({"myproj": [{"private_key": "/keys/id", "public_key": "/keys/id.pub"}]})
+        )
+
+        sock_path = tmp_path / "proxy.sock"
+        sock_path.touch()
+
+        project = MagicMock()
+        project.id = "myproj"
+
+        with (
+            patch(
+                "terok_sandbox.credentials.lifecycle.is_daemon_running",
+                return_value=True,
+            ),
+            patch("terok_sandbox.ensure_vault_reachable"),
+            patch("terok.lib.orchestration.environment.make_sandbox_config") as mock_cfg_fn,
+            patch("terok.lib.core.config.get_vault_transport", return_value="direct"),
+        ):
+            mock_cfg = mock_cfg_fn.return_value
+            mock_cfg.db_path = db_path
+            mock_cfg.vault_socket_path = sock_path
+            mock_cfg.token_broker_port = 18731
+            mock_cfg.ssh_keys_json_path = keys_json
+            mock_cfg.ssh_signer_port = 18732
+
+            env, _ = _vault_env_and_volumes(project, "task-1")
+
+        # SSH signer token should be injected
+        assert "TEROK_SSH_SIGNER_TOKEN" in env
+        assert env["TEROK_SSH_SIGNER_TOKEN"].startswith("terok-p-")
+        assert env["TEROK_SSH_SIGNER_PORT"] == "18732"
+        # Regular vault vars also present
+        assert "ANTHROPIC_API_KEY" in env
+
+    def test_no_ssh_keys_no_ssh_env(self, tmp_path: Path) -> None:
+        """When project has no SSH keys, no SSH signer env vars are set."""
+        from terok.lib.orchestration.environment import _vault_env_and_volumes
+
+        db_path = tmp_path / "proxy" / "credentials.db"
+        db = CredentialDB(db_path)
+        db.store_credential("default", "claude", {"type": "api_key", "key": "sk"})
+        db.close()
+
+        sock_path = tmp_path / "proxy.sock"
+        sock_path.touch()
+
+        project = MagicMock()
+        project.id = "no-ssh-project"
+
+        with (
+            patch(
+                "terok_sandbox.credentials.lifecycle.is_daemon_running",
+                return_value=True,
+            ),
+            patch("terok_sandbox.ensure_vault_reachable"),
+            patch("terok.lib.orchestration.environment.make_sandbox_config") as mock_cfg_fn,
+            patch("terok.lib.core.config.get_vault_transport", return_value="direct"),
+        ):
+            mock_cfg = mock_cfg_fn.return_value
+            mock_cfg.db_path = db_path
+            mock_cfg.vault_socket_path = sock_path
+            mock_cfg.token_broker_port = 18731
+            mock_cfg.ssh_keys_json_path = tmp_path / "ssh-keys.json"  # doesn't exist
+            mock_cfg.ssh_signer_port = 18732
+
+            env, _ = _vault_env_and_volumes(project, "task-1")
+
+        assert "TEROK_SSH_SIGNER_TOKEN" not in env
+        assert "TEROK_SSH_SIGNER_PORT" not in env

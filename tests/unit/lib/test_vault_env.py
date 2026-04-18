@@ -1,9 +1,9 @@
 # SPDX-FileCopyrightText: 2026 Jiri Vyskocil
 # SPDX-License-Identifier: Apache-2.0
 
-"""Tests for terok-specific credential proxy overrides.
+"""Tests for terok-specific vault overrides.
 
-Generic proxy plumbing (phantom tokens, socket transport, SSH agent) is
+Generic vault plumbing (phantom tokens, socket transport, SSH signer) is
 tested in terok-executor (test_env_builder.py).  These tests cover the
 terok-only Claude OAuth mode overrides and leaked-credential scan with
 exposed-token filtering.
@@ -29,7 +29,7 @@ class TestClaudeOAuthOverrides:
             "CLAUDE_CODE_OAUTH_TOKEN": "terok-p-abc",
             "ANTHROPIC_BASE_URL": "http://host.containers.internal:18731",
             "ANTHROPIC_UNIX_SOCKET": "/tmp/terok-claude-proxy.sock",
-            "TEROK_PROXY_PORT": "18731",
+            "TEROK_TOKEN_BROKER_PORT": "18731",
         }
         with patch("terok.lib.core.config.is_claude_oauth_proxied", return_value=True):
             _apply_claude_oauth_overrides(env)
@@ -38,7 +38,7 @@ class TestClaudeOAuthOverrides:
         assert "ANTHROPIC_BASE_URL" in env
         # Socket and proxy port are unrelated to Claude tier — untouched
         assert "ANTHROPIC_UNIX_SOCKET" in env
-        assert "TEROK_PROXY_PORT" in env
+        assert "TEROK_TOKEN_BROKER_PORT" in env
 
     def test_skipped_removes_all_claude_vars(self) -> None:
         """Claude OAuth skipped (default) → remove all Claude proxy env vars."""
@@ -48,7 +48,7 @@ class TestClaudeOAuthOverrides:
             "CLAUDE_CODE_OAUTH_TOKEN": "terok-p-abc",
             "ANTHROPIC_BASE_URL": "http://host.containers.internal:18731",
             "ANTHROPIC_UNIX_SOCKET": "/tmp/terok-claude-proxy.sock",
-            "TEROK_PROXY_PORT": "18731",
+            "TEROK_TOKEN_BROKER_PORT": "18731",
             "MISTRAL_API_KEY": "terok-p-vibe",
         }
         with patch("terok.lib.core.config.is_claude_oauth_proxied", return_value=False):
@@ -59,7 +59,7 @@ class TestClaudeOAuthOverrides:
         assert "ANTHROPIC_UNIX_SOCKET" not in env
         # Non-Claude vars untouched
         assert "MISTRAL_API_KEY" in env
-        assert "TEROK_PROXY_PORT" in env
+        assert "TEROK_TOKEN_BROKER_PORT" in env
 
     def test_noop_when_no_claude_oauth(self) -> None:
         """No-op when executor didn't inject Claude OAuth token (API key or no Claude)."""

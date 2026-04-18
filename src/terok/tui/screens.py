@@ -50,10 +50,10 @@ except Exception:  # pragma: no cover - textual may be a stub module
 from rich.style import Style
 from rich.text import Text
 from terok_sandbox import (
-    CredentialProxyStatus,
     EnvironmentCheck,
     GateServerStatus,
     GateStalenessInfo,
+    VaultStatus,
     check_units_outdated,
     get_gate_base_path,
     is_systemd_available,
@@ -607,7 +607,7 @@ class OpenCodeConfigScreen(screen.ModalScreen[str | None]):
         import shutil
         from pathlib import Path
 
-        from ..lib.core.config import credentials_dir
+        from ..lib.core.config import vault_dir
 
         inp = self.query_one("#opencode-config-input", Input)
         raw = inp.value.strip()
@@ -630,7 +630,7 @@ class OpenCodeConfigScreen(screen.ModalScreen[str | None]):
             return
 
         try:
-            dest_dir = credentials_dir() / "_opencode-config"
+            dest_dir = vault_dir() / "_opencode-config"
             dest_dir.mkdir(parents=True, exist_ok=True)
             dest = dest_dir / "opencode.json"
             shutil.copy2(str(src), str(dest))
@@ -1928,11 +1928,11 @@ class ShieldSetupScreen(screen.ModalScreen[str | None]):
 
 
 # ---------------------------------------------------------------------------
-# Credential Proxy helpers
+# Vault helpers
 # ---------------------------------------------------------------------------
 
 
-def _format_credentials_typed(status: CredentialProxyStatus) -> str:
+def _format_credentials_typed(status: VaultStatus) -> str:
     """Format stored credentials as ``name (type), ...`` for status display."""
     try:
         from terok_sandbox import CredentialDB
@@ -1951,10 +1951,10 @@ def _format_credentials_typed(status: CredentialProxyStatus) -> str:
         return ", ".join(status.credentials_stored)
 
 
-def render_proxy_status(status: CredentialProxyStatus | None) -> Text:
-    """Render credential proxy status details as a Rich Text object."""
+def render_vault_status(status: VaultStatus | None) -> Text:
+    """Render vault status details as a Rich Text object."""
     if status is None:
-        return Text("Credential proxy status unknown.")
+        return Text("Vault status unknown.")
 
     ok = Style(color="green")
     warn = Style(color="yellow")
@@ -1966,9 +1966,9 @@ def render_proxy_status(status: CredentialProxyStatus | None) -> Text:
     if status.running:
         running_s = Text("running", style=ok)
     elif status.mode == "systemd":
-        from terok_sandbox import is_proxy_socket_active
+        from terok_sandbox import is_vault_socket_active
 
-        if is_proxy_socket_active():
+        if is_vault_socket_active():
             running_s = Text("standby (starts on first connection)", style=warn)
             standby = True
         else:
@@ -1993,8 +1993,8 @@ def render_proxy_status(status: CredentialProxyStatus | None) -> Text:
         lines.append(Text(""))
         lines.append(
             Text(
-                "The credential proxy injects real API credentials into container\n"
-                "requests without exposing secrets to the container filesystem.\n"
+                "The vault injects real API credentials into container requests\n"
+                "without exposing secrets to the container filesystem.\n"
                 "Use the actions below to install or start it.",
                 style=dim,
             )
@@ -2004,26 +2004,26 @@ def render_proxy_status(status: CredentialProxyStatus | None) -> Text:
 
 
 # ---------------------------------------------------------------------------
-# Credential Proxy Screen
+# Vault Screen
 # ---------------------------------------------------------------------------
 
 
-class CredentialProxyScreen(screen.Screen[str | None]):
-    """Full-page screen for managing the credential proxy."""
+class VaultScreen(screen.Screen[str | None]):
+    """Full-page screen for managing the vault."""
 
     BINDINGS = [
         _modal_binding("escape", "dismiss", "Back"),
         _modal_binding("q", "dismiss", "Back"),
-        _modal_binding("i", "proxy_install", "Install systemd socket"),
-        _modal_binding("u", "proxy_uninstall", "Uninstall systemd units"),
-        _modal_binding("s", "proxy_start", "Start daemon"),
-        _modal_binding("p", "proxy_stop", "Stop daemon"),
-        _modal_binding("r", "proxy_refresh", "Refresh status"),
+        _modal_binding("i", "vault_install", "Install systemd socket"),
+        _modal_binding("u", "vault_uninstall", "Uninstall systemd units"),
+        _modal_binding("s", "vault_start", "Start daemon"),
+        _modal_binding("p", "vault_stop", "Stop daemon"),
+        _modal_binding("r", "vault_refresh", "Refresh status"),
     ]
 
     CSS = (
         """
-    CredentialProxyScreen {
+    VaultScreen {
         layout: vertical;
         background: $background;
     }
@@ -2031,33 +2031,33 @@ class CredentialProxyScreen(screen.Screen[str | None]):
         + _DETAIL_SCREEN_CSS
     )
 
-    def __init__(self, status: CredentialProxyStatus | None = None) -> None:
-        """Store proxy status for rendering."""
+    def __init__(self, status: VaultStatus | None = None) -> None:
+        """Store vault status for rendering."""
         super().__init__()
         self._status = status
 
     def compose(self) -> ComposeResult:
-        """Build the detail pane and action list for proxy management."""
+        """Build the detail pane and action list for vault management."""
         detail_pane = Static(id="detail-content")
-        detail_pane.border_title = "Credential Proxy"
+        detail_pane.border_title = "Vault"
         detail_pane.border_subtitle = "Esc to close"
         yield detail_pane
 
         yield OptionList(
-            Option("\\[i]nstall systemd socket", id="proxy_install"),
-            Option("\\[u]ninstall systemd units", id="proxy_uninstall"),
+            Option("\\[i]nstall systemd socket", id="vault_install"),
+            Option("\\[u]ninstall systemd units", id="vault_uninstall"),
             None,
-            Option("\\[s]tart daemon", id="proxy_start"),
-            Option("sto\\[p] daemon", id="proxy_stop"),
+            Option("\\[s]tart daemon", id="vault_start"),
+            Option("sto\\[p] daemon", id="vault_stop"),
             None,
-            Option("\\[r]efresh status", id="proxy_refresh"),
+            Option("\\[r]efresh status", id="vault_refresh"),
             id="actions-list",
         )
 
-    _SYSTEMD_OPTIONS = frozenset({"proxy_install", "proxy_uninstall"})
+    _SYSTEMD_OPTIONS = frozenset({"vault_install", "vault_uninstall"})
 
     def on_mount(self) -> None:
-        """Render proxy status and focus the action list."""
+        """Render vault status and focus the action list."""
         self._render_status()
         actions = self.query_one("#actions-list", OptionList)
         if not is_systemd_available():
@@ -2067,25 +2067,25 @@ class CredentialProxyScreen(screen.Screen[str | None]):
     def _render_status(self) -> None:
         """Update the detail pane with current status."""
         detail_widget = self.query_one("#detail-content", Static)
-        detail_widget.update(render_proxy_status(self._status))
+        detail_widget.update(render_vault_status(self._status))
 
     def _refresh_status(self) -> None:
         """Re-fetch status and update the display."""
-        from terok_sandbox import get_proxy_status
+        from terok_sandbox import get_vault_status
 
         try:
-            self._status = get_proxy_status()
+            self._status = get_vault_status()
         except Exception as exc:
             from ..lib.util.logging_utils import log_warning
 
-            log_warning(f"Credential proxy status refresh failed: {exc}")
+            log_warning(f"Vault status refresh failed: {exc}")
             self._status = None
         self._render_status()
 
     def on_option_list_option_selected(self, event: OptionList.OptionSelected) -> None:
         """Handle action selection from the option list."""
         option_id = event.option_id
-        if option_id == "proxy_refresh":
+        if option_id == "vault_refresh":
             self._refresh_status()
         elif option_id:
             self.dismiss(option_id)
@@ -2094,22 +2094,22 @@ class CredentialProxyScreen(screen.Screen[str | None]):
         """Close the screen without selecting an action."""
         self.dismiss(None)
 
-    def action_proxy_install(self) -> None:
+    def action_vault_install(self) -> None:
         """Trigger systemd socket installation."""
-        self.dismiss("proxy_install")
+        self.dismiss("vault_install")
 
-    def action_proxy_uninstall(self) -> None:
+    def action_vault_uninstall(self) -> None:
         """Trigger systemd unit uninstallation."""
-        self.dismiss("proxy_uninstall")
+        self.dismiss("vault_uninstall")
 
-    def action_proxy_start(self) -> None:
+    def action_vault_start(self) -> None:
         """Trigger daemon start."""
-        self.dismiss("proxy_start")
+        self.dismiss("vault_start")
 
-    def action_proxy_stop(self) -> None:
+    def action_vault_stop(self) -> None:
         """Trigger daemon stop."""
-        self.dismiss("proxy_stop")
+        self.dismiss("vault_stop")
 
-    def action_proxy_refresh(self) -> None:
+    def action_vault_refresh(self) -> None:
         """Refresh the status display."""
         self._refresh_status()

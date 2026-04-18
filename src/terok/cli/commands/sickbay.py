@@ -29,11 +29,11 @@ from terok_sandbox import (
     check_environment,
     check_units_outdated,
     get_container_state,
-    get_proxy_status,
     get_server_status,
-    is_proxy_socket_active,
-    is_proxy_systemd_available,
+    get_vault_status,
     is_systemd_available,
+    is_vault_socket_active,
+    is_vault_systemd_available,
 )
 
 from ...lib.core.config import get_services_mode, make_sandbox_config
@@ -113,11 +113,11 @@ def _check_shield() -> _CheckResult:
     return ("ok", label, f"active ({ec.hooks}, {dns} DNS)")
 
 
-def _check_credential_proxy() -> _CheckResult:
-    """Check credential proxy status."""
-    label = "Credential proxy"
+def _check_vault() -> _CheckResult:
+    """Check vault status."""
+    label = "Vault"
     try:
-        status = get_proxy_status()
+        status = get_vault_status()
     except Exception as exc:  # noqa: BLE001
         return ("warn", label, f"check failed — {exc}")
     if status.running:
@@ -132,16 +132,16 @@ def _check_credential_proxy() -> _CheckResult:
             )
         return ("ok", label, detail)
     if status.mode == "systemd":
-        if is_proxy_socket_active():
+        if is_vault_socket_active():
             return ("ok", label, "systemd, socket active — service starts on first connection")
         return (
             "error",
             label,
-            "socket installed but not active — run 'terok credentials start'",
+            "socket installed but not active — run 'terok vault start'",
         )
-    if is_proxy_systemd_available():
-        return ("warn", label, "not running — run 'terok credentials install'")
-    return ("warn", label, "not running — run 'terok credentials start'")
+    if is_vault_systemd_available():
+        return ("warn", label, "not running — run 'terok vault install'")
+    return ("warn", label, "not running — run 'terok vault start'")
 
 
 def _check_task_hook(
@@ -261,11 +261,11 @@ def _abbreviate(ids: list[str], limit: int = 3) -> str:
     return ", ".join(_sanitize_id(i) for i in ids[:limit]) + suffix
 
 
-def _check_ssh_agent() -> _CheckResult:
-    """Check SSH agent proxy key registration against known projects."""
+def _check_ssh_signer() -> _CheckResult:
+    """Check SSH signer key registration against known projects."""
     import json
 
-    label = "SSH agent"
+    label = "SSH signer"
     cfg = make_sandbox_config()
     keys_path = cfg.ssh_keys_json_path
 
@@ -453,11 +453,39 @@ def _check_selinux_policy() -> _CheckResult:
             )
 
 
+def _check_vault_migration() -> _CheckResult:
+    """Check for leftover pre-vault credentials directory."""
+    label = "Vault migration"
+    try:
+        from terok_sandbox.paths import namespace_state_dir
+
+        old_dir = namespace_state_dir("credentials")
+        new_dir = namespace_state_dir("vault")
+        if old_dir.is_dir() and not new_dir.is_dir():
+            return (
+                "warn",
+                label,
+                f"legacy credentials/ dir exists at {old_dir} — "
+                "run 'python3 tools/terok-migrate-vault.py' to migrate to vault/",
+            )
+        if old_dir.is_dir() and new_dir.is_dir():
+            return (
+                "info",
+                label,
+                f"legacy credentials/ dir still present at {old_dir} — "
+                "safe to remove after verifying vault/ works",
+            )
+    except Exception as exc:  # noqa: BLE001
+        return ("warn", label, f"check failed — {exc}")
+    return ("ok", label, "no legacy directory")
+
+
 _GLOBAL_CHECKS = [
     _check_gate_server,
     _check_shield,
-    _check_credential_proxy,
-    _check_ssh_agent,
+    _check_vault,
+    _check_vault_migration,
+    _check_ssh_signer,
     _check_keyring,
     _check_selinux_policy,
 ]

@@ -50,7 +50,7 @@ class TestCmdClear:
         mock_clear.assert_called_once()
         out = capsys.readouterr().out
         assert "Panic state cleared" in out
-        assert "terok credential-proxy start" in out
+        assert "terok vault start" in out
 
     @patch("terok.cli.commands.panic.is_panicked", return_value=False)
     def test_noop_when_not_panicked(self, _is, capsys):
@@ -66,7 +66,7 @@ class TestCmdPanic:
     @patch("terok.cli.commands.panic.format_panic_report", return_value="report")
     def test_success_no_running(self, _fmt, mock_exec, capsys):
         """Clean panic with no running containers exits 0."""
-        mock_exec.return_value = PanicResult(proxy_stopped=True, gate_stopped=True)
+        mock_exec.return_value = PanicResult(vault_stopped=True, gate_stopped=True)
         _cmd_panic(stop=False)
         out = capsys.readouterr().out
         assert "report" in out
@@ -75,7 +75,7 @@ class TestCmdPanic:
     @patch("terok.cli.commands.panic.format_panic_report", return_value="report")
     def test_exits_1_on_errors(self, _fmt, mock_exec):
         """Exits 1 when has_errors is True."""
-        mock_exec.return_value = PanicResult(proxy_error="fail")
+        mock_exec.return_value = PanicResult(vault_error="fail")
         with pytest.raises(SystemExit, match="1"):
             _cmd_panic(stop=False)
 
@@ -85,7 +85,7 @@ class TestCmdPanic:
     @patch("terok.cli.commands.panic._stop_remaining")
     def test_prompts_stop_on_running(self, mock_stop, _inp, _fmt, mock_exec, capsys):
         """Prompts to stop containers when some are running."""
-        mock_exec.return_value = PanicResult(proxy_stopped=True, gate_stopped=True, total_running=2)
+        mock_exec.return_value = PanicResult(vault_stopped=True, gate_stopped=True, total_running=2)
         _cmd_panic(stop=False)
         mock_stop.assert_called_once()
 
@@ -95,7 +95,7 @@ class TestCmdPanic:
     @patch("terok.cli.commands.panic._stop_remaining")
     def test_skips_stop_on_decline(self, mock_stop, _inp, _fmt, mock_exec, capsys):
         """Does not stop containers when user declines."""
-        mock_exec.return_value = PanicResult(proxy_stopped=True, gate_stopped=True, total_running=2)
+        mock_exec.return_value = PanicResult(vault_stopped=True, gate_stopped=True, total_running=2)
         _cmd_panic(stop=False)
         mock_stop.assert_not_called()
 
@@ -105,7 +105,7 @@ class TestCmdPanic:
     @patch("terok.cli.commands.panic._stop_remaining")
     def test_handles_eof_on_prompt(self, mock_stop, _inp, _fmt, mock_exec, capsys):
         """Handles EOF on stop prompt gracefully."""
-        mock_exec.return_value = PanicResult(proxy_stopped=True, gate_stopped=True, total_running=1)
+        mock_exec.return_value = PanicResult(vault_stopped=True, gate_stopped=True, total_running=1)
         _cmd_panic(stop=False)
         mock_stop.assert_not_called()
 

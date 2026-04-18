@@ -106,7 +106,7 @@ def main() -> None:
     panic.register(sub)
     task.register(sub)
     project.register(sub)
-    credentials.register(sub)  # credential-proxy-serve (standalone)
+    credentials.register(sub)  # vault-serve (standalone)
     setup.register(sub)
     image.register(sub)
     storage.register(sub)
@@ -120,7 +120,7 @@ def main() -> None:
     # Mount sub-package command registries under scoped prefixes.
     # Groups that touch SandboxConfig paths receive config_factory so the
     # wiring layer injects terok's make_sandbox_config() as ``cfg``.
-    from terok_executor import AGENT_COMMANDS, PROXY_COMMANDS as AGENT_PROXY_COMMANDS
+    from terok_executor import AGENT_COMMANDS, VAULT_COMMANDS as AGENT_VAULT_COMMANDS
     from terok_sandbox import GATE_COMMANDS, SSH_COMMANDS
 
     from ..lib.core.config import make_sandbox_config
@@ -135,9 +135,9 @@ def main() -> None:
     )
     wire_group(
         sub,
-        "credential-proxy",
-        AGENT_PROXY_COMMANDS,
-        help="Credential proxy commands",
+        "vault",
+        AGENT_VAULT_COMMANDS,
+        help="Vault commands",
         config_factory=make_sandbox_config,
     )
     wire_group(

@@ -345,20 +345,32 @@ def archive_dir() -> Path:
     return namespace_state_dir("archive").resolve()
 
 
-def credentials_dir() -> Path:
-    """Return the base directory for shared credentials.
+def vault_dir() -> Path:
+    """Return the base directory for the vault (token broker DB, SSH signer keys).
 
     Precedence:
-    - ``TEROK_CREDENTIALS_DIR`` environment variable.
+    - ``TEROK_VAULT_DIR`` environment variable (``TEROK_CREDENTIALS_DIR``
+      accepted as deprecated fallback).
     - Global config ``credentials.dir``.
-    - Namespace root + ``credentials/`` (honors ``paths.root``).
+    - Namespace root + ``vault/`` (honors ``paths.root``).
     """
+    import warnings
+
     from terok_sandbox.paths import namespace_state_dir
 
+    env = "TEROK_VAULT_DIR"
+    if not os.environ.get(env) and os.environ.get("TEROK_CREDENTIALS_DIR"):
+        warnings.warn(
+            "TEROK_CREDENTIALS_DIR is deprecated; use TEROK_VAULT_DIR instead",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        env = "TEROK_CREDENTIALS_DIR"
+
     return _resolve_path(
-        "TEROK_CREDENTIALS_DIR",
+        env,
         ("credentials", "dir"),
-        lambda: namespace_state_dir("credentials"),
+        lambda: namespace_state_dir("vault"),
     )
 
 
@@ -379,10 +391,10 @@ def make_sandbox_config() -> "SandboxConfig":  # noqa: F821 — forward ref
     from terok_sandbox import SandboxConfig
 
     return SandboxConfig(
-        credentials_dir=credentials_dir(),
+        vault_dir=vault_dir(),
         gate_port=get_gate_server_port(),
-        proxy_port=get_credential_proxy_port(),
-        ssh_agent_port=get_credential_proxy_ssh_agent_port(),
+        token_broker_port=get_vault_token_broker_port(),
+        ssh_signer_port=get_vault_ssh_signer_port(),
         shield_bypass=get_shield_bypass_firewall_no_protection(),
         shield_audit=get_shield_audit(),
     )
@@ -447,22 +459,22 @@ def get_task_name_categories() -> list[str] | None:
 SHIELD_SECURITY_HINT = "See: https://terok-ai.github.io/terok/shield-security/"
 
 
-def get_credential_proxy_bypass() -> bool:
-    """Return whether the credential proxy is globally bypassed.
+def get_vault_bypass() -> bool:
+    """Return whether the vault is globally bypassed.
 
     .. danger::
 
         When True, real API keys and OAuth tokens are mounted directly into
         task containers via shared config directories — the same behavior as
-        before the credential proxy was implemented.  Use only for debugging
-        or environments where the proxy cannot run.
+        before the vault was implemented.  Use only for debugging or
+        environments where the vault cannot run.
 
     Global config (config.yml)::
 
-        credential_proxy:
+        vault:
           bypass_no_secret_protection: true
     """
-    return _load_validated().credential_proxy.bypass_no_secret_protection
+    return _load_validated().vault.bypass_no_secret_protection
 
 
 def get_services_mode() -> ServicesMode:
@@ -476,26 +488,37 @@ def get_services_mode() -> ServicesMode:
     return _load_validated().services.mode
 
 
-def get_credential_proxy_port() -> int | None:
-    """Return the explicit credential proxy port, or ``None`` for auto-allocation.
+def get_vault_transport() -> str:
+    """Return the vault transport mode (``"direct"`` or ``"socket"``).
 
     Global config (config.yml)::
 
-        credential_proxy:
+        vault:
+          transport: socket   # or "direct"
+    """
+    return _load_validated().vault.transport
+
+
+def get_vault_token_broker_port() -> int | None:
+    """Return the explicit vault token-broker port, or ``None`` for auto-allocation.
+
+    Global config (config.yml)::
+
+        vault:
           port: 18700   # omit for auto-allocation
     """
-    return _load_validated().credential_proxy.port
+    return _load_validated().vault.port
 
 
-def get_credential_proxy_ssh_agent_port() -> int | None:
-    """Return the explicit SSH agent proxy port, or ``None`` for auto-allocation.
+def get_vault_ssh_signer_port() -> int | None:
+    """Return the explicit vault SSH-signer port, or ``None`` for auto-allocation.
 
     Global config (config.yml)::
 
-        credential_proxy:
-          ssh_agent_port: 18701   # omit for auto-allocation
+        vault:
+          ssh_signer_port: 18701   # omit for auto-allocation
     """
-    return _load_validated().credential_proxy.ssh_agent_port
+    return _load_validated().vault.ssh_signer_port
 
 
 def get_shield_bypass_firewall_no_protection() -> bool:
@@ -589,7 +612,7 @@ def _claude_agent_config() -> dict:
 def get_claude_allow_oauth() -> bool:
     """Return ``agent.claude.allow_oauth`` from global config (default False).
 
-    When True (and experimental is enabled), the credential proxy handles
+    When True (and experimental is enabled), the vault handles
     Claude OAuth credentials normally.  The shield blocks
     ``api.anthropic.com`` to prevent phantom token leaks to Claude Code's
     hardcoded ``BASE_API_URL``.
@@ -606,7 +629,7 @@ def get_claude_allow_oauth() -> bool:
 def get_claude_expose_oauth_token() -> bool:
     """Return ``agent.claude.expose_oauth_token`` from global config (default False).
 
-    When True (and experimental is enabled), the credential proxy is
+    When True (and experimental is enabled), the vault is
     bypassed for Claude entirely.  The real ``.credentials.json`` in the
     shared mount is exposed to the container, and Claude Code manages its
     own token refresh.  Shield must allow ``api.anthropic.com`` and

@@ -12,11 +12,12 @@ import pytest
 from terok_sandbox import SelinuxCheckResult, SelinuxStatus
 
 from terok.cli.commands.sickbay import (
-    _check_credential_proxy,
     _check_gate_server,
     _check_selinux_policy,
-    _check_ssh_agent,
+    _check_ssh_signer,
     _check_task_hook,
+    _check_vault,
+    _check_vault_migration,
     _reconcile_post_stop,
     _update_worst,
 )
@@ -57,8 +58,8 @@ class TestUpdateWorst:
         assert _update_worst("warn", "ok") == "warn"
 
 
-class TestCheckSshAgent:
-    """Verify _check_ssh_agent diagnostics (project-aware)."""
+class TestCheckSshSigner:
+    """Verify _check_ssh_signer diagnostics (project-aware)."""
 
     @staticmethod
     def _mock_project(pid: str) -> unittest.mock.MagicMock:
@@ -70,7 +71,7 @@ class TestCheckSshAgent:
         """No ssh-keys.json → warn with ssh-init hint."""
         with unittest.mock.patch("terok.cli.commands.sickbay.make_sandbox_config") as mock_cfg:
             mock_cfg.return_value.ssh_keys_json_path = tmp_path / "no-such.json"
-            sev, _, detail = _check_ssh_agent()
+            sev, _, detail = _check_ssh_signer()
         assert sev == "warn"
         assert "ssh-init" in detail
 
@@ -83,7 +84,7 @@ class TestCheckSshAgent:
             unittest.mock.patch("terok.cli.commands.sickbay.list_projects", return_value=[]),
         ):
             mock_cfg.return_value.ssh_keys_json_path = kf
-            sev, _, detail = _check_ssh_agent()
+            sev, _, detail = _check_ssh_signer()
         assert sev == "ok"
         assert "no projects" in detail
 
@@ -105,7 +106,7 @@ class TestCheckSshAgent:
             ),
         ):
             mock_cfg.return_value.ssh_keys_json_path = kf
-            sev, _, detail = _check_ssh_agent()
+            sev, _, detail = _check_ssh_signer()
         assert sev == "ok"
         assert "1/1" in detail
 
@@ -125,7 +126,7 @@ class TestCheckSshAgent:
             ),
         ):
             mock_cfg.return_value.ssh_keys_json_path = kf
-            sev, _, detail = _check_ssh_agent()
+            sev, _, detail = _check_ssh_signer()
         assert sev == "error"
         assert "bad" in detail
         assert "ssh-init" in detail
@@ -142,7 +143,7 @@ class TestCheckSshAgent:
             ),
         ):
             mock_cfg.return_value.ssh_keys_json_path = kf
-            sev, _, detail = _check_ssh_agent()
+            sev, _, detail = _check_ssh_signer()
         assert sev == "warn"
         assert "myproj" in detail
         assert "0/1" in detail
@@ -172,7 +173,7 @@ class TestCheckSshAgent:
             ),
         ):
             mock_cfg.return_value.ssh_keys_json_path = kf
-            sev, _, detail = _check_ssh_agent()
+            sev, _, detail = _check_ssh_signer()
         assert sev == "ok"
         assert "1/1" in detail
 
@@ -190,7 +191,7 @@ class TestCheckSshAgent:
             ),
         ):
             mock_cfg.return_value.ssh_keys_json_path = kf
-            sev, _, detail = _check_ssh_agent()
+            sev, _, detail = _check_ssh_signer()
         assert sev == "error"
         assert "proj" in detail
         assert "missing key files" in detail
@@ -201,7 +202,7 @@ class TestCheckSshAgent:
         kf.write_text("{bad")
         with unittest.mock.patch("terok.cli.commands.sickbay.make_sandbox_config") as mock_cfg:
             mock_cfg.return_value.ssh_keys_json_path = kf
-            sev, _, _ = _check_ssh_agent()
+            sev, _, _ = _check_ssh_signer()
         assert sev == "error"
 
 
@@ -321,11 +322,11 @@ class TestReconcilePostStop:
             assert "boom" in result[2]
 
 
-class TestCheckCredentialProxy:
-    """Verify _check_credential_proxy three-state display."""
+class TestCheckVault:
+    """Verify _check_vault three-state display."""
 
     def _make_status(self, **overrides: object) -> unittest.mock.MagicMock:
-        """Build a mock CredentialProxyStatus with defaults."""
+        """Build a mock VaultStatus with defaults."""
         defaults = {
             "mode": "none",
             "running": False,
@@ -342,10 +343,10 @@ class TestCheckCredentialProxy:
             mode="systemd", running=True, credentials_stored=("claude",), transport="tcp"
         )
         with (
-            unittest.mock.patch("terok.cli.commands.sickbay.get_proxy_status", return_value=status),
+            unittest.mock.patch("terok.cli.commands.sickbay.get_vault_status", return_value=status),
             unittest.mock.patch("terok.cli.commands.sickbay.get_services_mode", return_value="tcp"),
         ):
-            sev, _, detail = _check_credential_proxy()
+            sev, _, detail = _check_vault()
         assert sev == "ok"
         assert "1 credential(s)" in detail
         assert "tcp" in detail
@@ -356,12 +357,12 @@ class TestCheckCredentialProxy:
             mode="systemd", running=True, credentials_stored=("claude",), transport="tcp"
         )
         with (
-            unittest.mock.patch("terok.cli.commands.sickbay.get_proxy_status", return_value=status),
+            unittest.mock.patch("terok.cli.commands.sickbay.get_vault_status", return_value=status),
             unittest.mock.patch(
                 "terok.cli.commands.sickbay.get_services_mode", return_value="socket"
             ),
         ):
-            sev, _, detail = _check_credential_proxy()
+            sev, _, detail = _check_vault()
         assert sev == "warn"
         assert "services.mode: socket" in detail
 
@@ -369,12 +370,12 @@ class TestCheckCredentialProxy:
         """Socket active but service idle → ok with standby message."""
         status = self._make_status(mode="systemd", running=False)
         with (
-            unittest.mock.patch("terok.cli.commands.sickbay.get_proxy_status", return_value=status),
+            unittest.mock.patch("terok.cli.commands.sickbay.get_vault_status", return_value=status),
             unittest.mock.patch(
-                "terok.cli.commands.sickbay.is_proxy_socket_active", return_value=True
+                "terok.cli.commands.sickbay.is_vault_socket_active", return_value=True
             ),
         ):
-            sev, _, detail = _check_credential_proxy()
+            sev, _, detail = _check_vault()
         assert sev == "ok"
         assert "starts on first connection" in detail
 
@@ -382,12 +383,12 @@ class TestCheckCredentialProxy:
         """Socket installed but inactive → error."""
         status = self._make_status(mode="systemd", running=False)
         with (
-            unittest.mock.patch("terok.cli.commands.sickbay.get_proxy_status", return_value=status),
+            unittest.mock.patch("terok.cli.commands.sickbay.get_vault_status", return_value=status),
             unittest.mock.patch(
-                "terok.cli.commands.sickbay.is_proxy_socket_active", return_value=False
+                "terok.cli.commands.sickbay.is_vault_socket_active", return_value=False
             ),
         ):
-            sev, _, detail = _check_credential_proxy()
+            sev, _, detail = _check_vault()
         assert sev == "error"
         assert "not active" in detail
 
@@ -395,12 +396,12 @@ class TestCheckCredentialProxy:
         """No proxy, systemd available → warn with install hint."""
         status = self._make_status(mode="none", running=False)
         with (
-            unittest.mock.patch("terok.cli.commands.sickbay.get_proxy_status", return_value=status),
+            unittest.mock.patch("terok.cli.commands.sickbay.get_vault_status", return_value=status),
             unittest.mock.patch(
-                "terok.cli.commands.sickbay.is_proxy_systemd_available", return_value=True
+                "terok.cli.commands.sickbay.is_vault_systemd_available", return_value=True
             ),
         ):
-            sev, _, detail = _check_credential_proxy()
+            sev, _, detail = _check_vault()
         assert sev == "warn"
         assert "install" in detail
 
@@ -408,22 +409,22 @@ class TestCheckCredentialProxy:
         """No proxy, no systemd → warn with start hint."""
         status = self._make_status(mode="none", running=False)
         with (
-            unittest.mock.patch("terok.cli.commands.sickbay.get_proxy_status", return_value=status),
+            unittest.mock.patch("terok.cli.commands.sickbay.get_vault_status", return_value=status),
             unittest.mock.patch(
-                "terok.cli.commands.sickbay.is_proxy_systemd_available", return_value=False
+                "terok.cli.commands.sickbay.is_vault_systemd_available", return_value=False
             ),
         ):
-            sev, _, detail = _check_credential_proxy()
+            sev, _, detail = _check_vault()
         assert sev == "warn"
         assert "start" in detail
 
     def test_exception_returns_warn(self) -> None:
         """Exception during status check → warn."""
         with unittest.mock.patch(
-            "terok.cli.commands.sickbay.get_proxy_status",
+            "terok.cli.commands.sickbay.get_vault_status",
             side_effect=RuntimeError("oops"),
         ):
-            sev, _, detail = _check_credential_proxy()
+            sev, _, detail = _check_vault()
         assert sev == "warn"
         assert "oops" in detail
 
@@ -536,3 +537,61 @@ class TestCheckSelinuxPolicy:
         assert sev == "ok"
         assert "terok_socket_t installed" in detail
         assert "install_policy.sh" in detail
+
+
+class TestCheckVaultMigration:
+    """``_check_vault_migration`` detects a lingering pre-vault ``credentials/`` dir."""
+
+    def test_ok_when_no_legacy_dir(self, tmp_path: Path) -> None:
+        """No legacy ``credentials/`` dir → ok."""
+
+        def fake_ns(name: str) -> Path:
+            return tmp_path / name  # neither exists
+
+        with unittest.mock.patch("terok_sandbox.paths.namespace_state_dir", side_effect=fake_ns):
+            sev, label, detail = _check_vault_migration()
+        assert sev == "ok"
+        assert label == "Vault migration"
+        assert "no legacy" in detail
+
+    def test_warn_when_only_legacy_exists(self, tmp_path: Path) -> None:
+        """Legacy dir without new vault dir → warn pointing at the migration script."""
+        legacy = tmp_path / "credentials"
+        legacy.mkdir()  # exists
+        vault = tmp_path / "vault"  # does not exist
+
+        def fake_ns(name: str) -> Path:
+            return legacy if name == "credentials" else vault
+
+        with unittest.mock.patch("terok_sandbox.paths.namespace_state_dir", side_effect=fake_ns):
+            sev, _, detail = _check_vault_migration()
+        assert sev == "warn"
+        assert str(legacy) in detail
+        assert "terok-migrate-vault.py" in detail
+
+    def test_info_when_both_exist(self, tmp_path: Path) -> None:
+        """Both dirs present → info (migration ran but old dir survived for safety)."""
+        legacy = tmp_path / "credentials"
+        legacy.mkdir()
+        vault = tmp_path / "vault"
+        vault.mkdir()
+
+        def fake_ns(name: str) -> Path:
+            return legacy if name == "credentials" else vault
+
+        with unittest.mock.patch("terok_sandbox.paths.namespace_state_dir", side_effect=fake_ns):
+            sev, _, detail = _check_vault_migration()
+        assert sev == "info"
+        assert "still present" in detail
+        assert "safe to remove" in detail
+
+    def test_warn_when_probe_raises(self) -> None:
+        """An exception inside the probe is surfaced as a warn result."""
+        with unittest.mock.patch(
+            "terok_sandbox.paths.namespace_state_dir",
+            side_effect=RuntimeError("boom"),
+        ):
+            sev, label, detail = _check_vault_migration()
+        assert sev == "warn"
+        assert label == "Vault migration"
+        assert "boom" in detail

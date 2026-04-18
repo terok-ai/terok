@@ -54,12 +54,12 @@ from terok_sandbox import GitGate, SSHManager
 from ..core.config import (
     archive_dir,
     build_dir,
-    credentials_dir,
     make_sandbox_config,
     projects_dir,
     sandbox_live_dir,
     state_dir,
     user_projects_dir,
+    vault_dir,
 )
 from ..core.project_model import ProjectConfig
 from ..core.projects import list_presets, load_project, resolve_ssh_host_dir
@@ -100,7 +100,7 @@ def _is_under_terok_root(path: Path) -> bool:
         state_dir(),
         sandbox_live_dir(),
         make_sandbox_config().state_dir,
-        credentials_dir(),
+        vault_dir(),
         build_dir(),
         archive_dir(),
     ]
