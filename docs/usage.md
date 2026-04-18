@@ -160,7 +160,7 @@ install.  The steps below show the equivalent CLI workflow.
 
 - Podman installed and working
 - OpenSSH client tools (ssh, ssh-keygen) for private Git over SSH
-- tmux (optional, for `terok --tmux` and persistent container sessions)
+- tmux (optional, for `terok-tui --tmux` and persistent container sessions)
 
 ### Step 1: Create Project Directory
 
@@ -341,7 +341,7 @@ method automatically:
 #### Running the TUI under tmux (recommended)
 
 ```bash
-terok --tmux
+terok-tui --tmux
 ```
 
 This wraps the TUI in a managed tmux session with a blue status bar showing

@@ -66,7 +66,7 @@ def main() -> None:
     )
     args = parser.parse_args()
 
-    server = Server("terok", host=args.host, port=args.port, public_url=args.public_url)
+    server = Server("terok-tui", host=args.host, port=args.port, public_url=args.public_url)
     server.serve()
 
 

@@ -1238,7 +1238,7 @@ if _HAS_TEXTUAL:
             print(
                 "Error: tmux is not installed.\n"
                 "Install it (e.g. 'apt install tmux' or 'brew install tmux') "
-                "and try again,\nor run 'terok' without --tmux.",
+                "and try again,\nor run 'terok-tui' without --tmux.",
                 file=sys.stderr,
             )
             sys.exit(1)
@@ -1260,7 +1260,7 @@ if _HAS_TEXTUAL:
                     "new-session",
                     "-s",
                     "terok",
-                    "terok",
+                    "terok-tui",
                 ],
             )
 

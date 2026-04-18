@@ -66,7 +66,7 @@ class TestMain:
         main()
 
         mock_server_cls.assert_called_once_with(
-            "terok", host="localhost", port=8566, public_url=None
+            "terok-tui", host="localhost", port=8566, public_url=None
         )
         mock_server_instance.serve.assert_called_once()
 
@@ -84,5 +84,7 @@ class TestMain:
 
         main()
 
-        mock_server_cls.assert_called_once_with("terok", host="0.0.0.0", port=9000, public_url=None)
+        mock_server_cls.assert_called_once_with(
+            "terok-tui", host="0.0.0.0", port=9000, public_url=None
+        )
         mock_server_instance.serve.assert_called_once()
