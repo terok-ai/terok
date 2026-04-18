@@ -107,12 +107,12 @@ def derive_project(source_id: str, new_id: str) -> Project:
 
 
 def _share_ssh_key_registration(source_id: str, new_id: str) -> None:
-    """Register the source's SSH key under *new_id* in ``ssh-keys.json``.
+    """Register all of the source's SSH keys under *new_id* in ``ssh-keys.json``.
 
-    Silent no-op when the source has no registered key yet — ``project-init``
-    on the derived project will populate both scopes once the key exists on
-    disk.  For sources with multiple keys the first is shared; that is enough
-    for the common single-remote sibling use case.
+    Silent no-op when the source has no registered keys yet — ``project-init``
+    on the derived project will populate both scopes once the keys exist on
+    disk.  Every usable key (GitHub + GitLab + …) is shared so the sibling
+    can reach the same remotes as the source.
     """
     from ..core.config import make_sandbox_config
 
@@ -123,18 +123,9 @@ def _share_ssh_key_registration(source_id: str, new_id: str) -> None:
 
     raw = mapping.get(source_id)
     source_entries = raw if isinstance(raw, list) else [raw]
-    shareable_key = next(
-        (
-            k
-            for k in source_entries
-            if isinstance(k, dict) and {"private_key", "public_key"} <= k.keys()
-        ),
-        None,
-    )
-    if shareable_key is None:
-        return
-
-    register_ssh_key(new_id, shareable_key)
+    for key_entry in source_entries:
+        if isinstance(key_entry, dict) and {"private_key", "public_key"} <= key_entry.keys():
+            register_ssh_key(new_id, key_entry)
 
 
 # ---------------------------------------------------------------------------
