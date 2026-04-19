@@ -58,7 +58,7 @@ def _mock_infrastructure() -> Iterator[None]:
     """Replace Sandbox.run, shield down, and vault with no-ops."""
     with (
         patch(
-            "terok.lib.orchestration.task_runners._sandbox",
+            "terok.lib.orchestration.task_runners._agent_runner",
         ),
         patch(
             "terok.lib.orchestration.task_runners._shield_down_impl",

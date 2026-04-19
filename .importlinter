@@ -72,6 +72,7 @@ allowed_importers =
     terok.lib.domain.facade
     terok.lib.domain.project
     terok.lib.domain.storage
+    terok.lib.orchestration.autopilot
     terok.lib.orchestration.container_doctor
     terok.lib.orchestration.environment
     terok.lib.orchestration.image

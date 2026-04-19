@@ -126,3 +126,31 @@ def make_mock_http_response(data: dict[str, object]) -> unittest.mock.Mock:
     mock_response.__enter__ = unittest.mock.Mock(return_value=mock_response)
     mock_response.__exit__ = unittest.mock.Mock(return_value=False)
     return mock_response
+
+
+def captured_runspec(agent_runner_mock: unittest.mock.Mock) -> Any:
+    """Reconstruct the ``RunSpec`` from the last recorded ``launch_prepared`` call.
+
+    Tests patch ``task_runners._agent_runner`` to observe what terok hands to
+    the executor.  ``AgentRunner.launch_prepared`` takes the same fields that
+    used to appear on the ``RunSpec`` directly — this helper rebuilds a
+    ``RunSpec`` from the captured kwargs so existing spec-level assertions
+    continue to read naturally.
+    """
+    from terok_sandbox import RunSpec
+
+    kwargs = agent_runner_mock.return_value.launch_prepared.call_args.kwargs
+    return RunSpec(
+        container_name=kwargs["name"],
+        image=kwargs["image"],
+        env=kwargs["env"],
+        volumes=tuple(kwargs["volumes"]),
+        command=tuple(kwargs["command"]),
+        task_dir=kwargs["task_dir"],
+        gpu_enabled=kwargs.get("gpu", False),
+        memory_limit=kwargs.get("memory"),
+        cpu_limit=kwargs.get("cpus"),
+        extra_args=tuple(kwargs.get("extra_args") or ()),
+        unrestricted=kwargs.get("unrestricted", True),
+        sealed=kwargs.get("sealed", False),
+    )

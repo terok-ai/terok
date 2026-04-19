@@ -14,12 +14,14 @@ from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
+from terok_executor import BuildError
 
 from terok.lib.orchestration.task_runners import (
     _apply_unrestricted_env,
     _run_container,
     _str_to_bool,
 )
+from tests.test_utils import captured_runspec
 from tests.testfs import MOCK_TASK_DIR
 
 # ── _str_to_bool ─────────────────────────────────────────
@@ -360,7 +362,7 @@ class TestRunContainer:
         vol = VolumeSpec(Path("/a"), "/b")
         project = self._make_project()
         with (
-            patch("terok.lib.orchestration.task_runners._sandbox") as sandbox_factory,
+            patch("terok.lib.orchestration.task_runners._agent_runner") as sandbox_factory,
             patch("terok.lib.orchestration.task_runners.has_gpu", return_value=False),
         ):
             _run_container(
@@ -373,8 +375,8 @@ class TestRunContainer:
                 command=["bash", "-lc", "echo hi"],
             )
 
-        sandbox_factory.return_value.run.assert_called_once()
-        spec = sandbox_factory.return_value.run.call_args[0][0]
+        sandbox_factory.return_value.launch_prepared.assert_called_once()
+        spec = captured_runspec(sandbox_factory)
         assert spec.container_name == "test-ctr"
         assert spec.image == "alpine:latest"
         assert spec.env == {"FOO": "bar"}
@@ -388,7 +390,7 @@ class TestRunContainer:
         """unrestricted is True when TEROK_UNRESTRICTED is in env."""
         project = self._make_project()
         with (
-            patch("terok.lib.orchestration.task_runners._sandbox") as sandbox_factory,
+            patch("terok.lib.orchestration.task_runners._agent_runner") as sandbox_factory,
             patch("terok.lib.orchestration.task_runners.has_gpu", return_value=False),
         ):
             _run_container(
@@ -400,14 +402,14 @@ class TestRunContainer:
                 task_dir=MOCK_TASK_DIR,
             )
 
-        spec = sandbox_factory.return_value.run.call_args[0][0]
+        spec = captured_runspec(sandbox_factory)
         assert spec.unrestricted is True
 
     def test_gpu_flag_from_project(self) -> None:
         """gpu_enabled is derived from has_gpu(project)."""
         project = self._make_project()
         with (
-            patch("terok.lib.orchestration.task_runners._sandbox") as sandbox_factory,
+            patch("terok.lib.orchestration.task_runners._agent_runner") as sandbox_factory,
             patch("terok.lib.orchestration.task_runners.has_gpu", return_value=True),
         ):
             _run_container(
@@ -419,14 +421,14 @@ class TestRunContainer:
                 task_dir=MOCK_TASK_DIR,
             )
 
-        spec = sandbox_factory.return_value.run.call_args[0][0]
+        spec = captured_runspec(sandbox_factory)
         assert spec.gpu_enabled is True
 
     def test_extra_args_and_command(self) -> None:
         """extra_args and command are converted to tuples in RunSpec."""
         project = self._make_project()
         with (
-            patch("terok.lib.orchestration.task_runners._sandbox") as sandbox_factory,
+            patch("terok.lib.orchestration.task_runners._agent_runner") as sandbox_factory,
             patch("terok.lib.orchestration.task_runners.has_gpu", return_value=False),
         ):
             _run_container(
@@ -440,7 +442,7 @@ class TestRunContainer:
                 command=["bash", "-lc", "toad --serve"],
             )
 
-        spec = sandbox_factory.return_value.run.call_args[0][0]
+        spec = captured_runspec(sandbox_factory)
         assert spec.extra_args == ("-p", "8080:80")
         assert spec.command == ("bash", "-lc", "toad --serve")
 
@@ -450,7 +452,7 @@ class TestRunContainer:
         project.memory_limit = "4g"
         project.cpu_limit = "2.0"
         with (
-            patch("terok.lib.orchestration.task_runners._sandbox") as sandbox_factory,
+            patch("terok.lib.orchestration.task_runners._agent_runner") as sandbox_factory,
             patch("terok.lib.orchestration.task_runners.has_gpu", return_value=False),
         ):
             _run_container(
@@ -462,7 +464,7 @@ class TestRunContainer:
                 task_dir=MOCK_TASK_DIR,
             )
 
-        spec = sandbox_factory.return_value.run.call_args[0][0]
+        spec = captured_runspec(sandbox_factory)
         assert spec.memory_limit == "4g"
         assert spec.cpu_limit == "2.0"
 
@@ -472,7 +474,7 @@ class TestRunContainer:
         project.memory_limit = None
         project.cpu_limit = None
         with (
-            patch("terok.lib.orchestration.task_runners._sandbox") as sandbox_factory,
+            patch("terok.lib.orchestration.task_runners._agent_runner") as sandbox_factory,
             patch("terok.lib.orchestration.task_runners.has_gpu", return_value=False),
         ):
             _run_container(
@@ -484,28 +486,59 @@ class TestRunContainer:
                 task_dir=MOCK_TASK_DIR,
             )
 
-        spec = sandbox_factory.return_value.run.call_args[0][0]
+        spec = captured_runspec(sandbox_factory)
         assert spec.memory_limit is None
         assert spec.cpu_limit is None
 
-    def test_gpu_config_error_becomes_system_exit(self) -> None:
-        """GpuConfigError from sandbox.run() is surfaced as SystemExit."""
-        from terok_sandbox import GpuConfigError
+    def test_launch_build_error_becomes_system_exit(self) -> None:
+        """BuildError from AgentRunner.launch_prepared() is surfaced as SystemExit.
 
+        AgentRunner translates GpuConfigError from the sandbox into BuildError
+        so terok's orchestration layer sees one failure type for a failed
+        container launch.
+        """
         project = self._make_project()
         with (
-            patch("terok.lib.orchestration.task_runners._sandbox") as sandbox_factory,
+            patch("terok.lib.orchestration.task_runners._agent_runner") as sandbox_factory,
             patch(
                 "terok.lib.orchestration.task_runners.get_shield_bypass_firewall_no_protection",
                 return_value=False,
             ),
             patch("terok.lib.orchestration.task_runners.has_gpu", return_value=True),
         ):
-            sandbox_factory.return_value.run.side_effect = GpuConfigError("CDI broken")
+            sandbox_factory.return_value.launch_prepared.side_effect = BuildError("CDI broken")
             with pytest.raises(SystemExit, match="CDI broken"):
                 _run_container(
                     cname="gpu-ctr",
                     image="nvidia:latest",
+                    env={},
+                    volumes=[],
+                    project=project,
+                    task_dir=MOCK_TASK_DIR,
+                )
+
+    def test_missing_podman_becomes_system_exit(self) -> None:
+        """FileNotFoundError from the executor boundary surfaces as a
+        user-friendly SystemExit — matching the pattern in _podman_start,
+        so any path through the sandbox that lets FileNotFoundError leak
+        is caught here instead of crashing with a bare traceback.
+        """
+        project = self._make_project()
+        with (
+            patch("terok.lib.orchestration.task_runners._agent_runner") as sandbox_factory,
+            patch(
+                "terok.lib.orchestration.task_runners.get_shield_bypass_firewall_no_protection",
+                return_value=False,
+            ),
+            patch("terok.lib.orchestration.task_runners.has_gpu", return_value=False),
+        ):
+            sandbox_factory.return_value.launch_prepared.side_effect = FileNotFoundError(
+                "[Errno 2] No such file or directory: 'podman'"
+            )
+            with pytest.raises(SystemExit, match="podman not found"):
+                _run_container(
+                    cname="ctr",
+                    image="img",
                     env={},
                     volumes=[],
                     project=project,
@@ -519,7 +552,7 @@ class TestRunContainer:
         hooks = LifecycleHooks(pre_start=lambda: None)
         project = self._make_project()
         with (
-            patch("terok.lib.orchestration.task_runners._sandbox") as sandbox_factory,
+            patch("terok.lib.orchestration.task_runners._agent_runner") as sandbox_factory,
             patch(
                 "terok.lib.orchestration.task_runners.get_shield_bypass_firewall_no_protection",
                 return_value=False,
@@ -536,13 +569,13 @@ class TestRunContainer:
                 hooks=hooks,
             )
 
-        assert sandbox_factory.return_value.run.call_args.kwargs["hooks"] is hooks
+        assert sandbox_factory.return_value.launch_prepared.call_args.kwargs["hooks"] is hooks
 
     def test_none_command_becomes_empty_tuple(self) -> None:
         """command=None results in an empty tuple in the RunSpec."""
         project = self._make_project()
         with (
-            patch("terok.lib.orchestration.task_runners._sandbox") as sandbox_factory,
+            patch("terok.lib.orchestration.task_runners._agent_runner") as sandbox_factory,
             patch(
                 "terok.lib.orchestration.task_runners.get_shield_bypass_firewall_no_protection",
                 return_value=False,
@@ -559,7 +592,7 @@ class TestRunContainer:
                 command=None,
             )
 
-        spec = sandbox_factory.return_value.run.call_args[0][0]
+        spec = captured_runspec(sandbox_factory)
         assert spec.command == ()
 
     def test_sealed_flag_propagated(self) -> None:
@@ -569,7 +602,7 @@ class TestRunContainer:
         project.is_sealed = True
 
         with (
-            patch("terok.lib.orchestration.task_runners._sandbox") as sandbox_factory,
+            patch("terok.lib.orchestration.task_runners._agent_runner") as sandbox_factory,
             patch("terok.lib.orchestration.task_runners.has_gpu", return_value=False),
         ):
             _run_container(
@@ -581,14 +614,14 @@ class TestRunContainer:
                 task_dir=MOCK_TASK_DIR,
             )
 
-        spec = sandbox_factory.return_value.run.call_args[0][0]
+        spec = captured_runspec(sandbox_factory)
         assert spec.sealed is True
 
     def test_shared_flag_default(self) -> None:
         """sealed=False when project uses default shared isolation."""
         project = self._make_project()
         with (
-            patch("terok.lib.orchestration.task_runners._sandbox") as sandbox_factory,
+            patch("terok.lib.orchestration.task_runners._agent_runner") as sandbox_factory,
             patch("terok.lib.orchestration.task_runners.has_gpu", return_value=False),
         ):
             _run_container(
@@ -600,7 +633,7 @@ class TestRunContainer:
                 task_dir=MOCK_TASK_DIR,
             )
 
-        spec = sandbox_factory.return_value.run.call_args[0][0]
+        spec = captured_runspec(sandbox_factory)
         assert spec.sealed is False
 
     def test_nested_containers_adds_selinux_and_fuse_flags(self) -> None:
@@ -608,7 +641,7 @@ class TestRunContainer:
         project = self._make_project()
         project.nested_containers = True
         with (
-            patch("terok.lib.orchestration.task_runners._sandbox") as sandbox_factory,
+            patch("terok.lib.orchestration.task_runners._agent_runner") as sandbox_factory,
             patch("terok.lib.orchestration.task_runners.has_gpu", return_value=False),
         ):
             _run_container(
@@ -621,7 +654,7 @@ class TestRunContainer:
                 extra_args=["-p", "127.0.0.1:8080:8080"],
             )
 
-        spec = sandbox_factory.return_value.run.call_args[0][0]
+        spec = captured_runspec(sandbox_factory)
         # Caller-supplied flags come first, project-derived flags append.
         assert "--security-opt" in spec.extra_args
         assert "label=nested" in spec.extra_args
@@ -634,7 +667,7 @@ class TestRunContainer:
         """run.nested_containers=false (default) leaves extra_args untouched."""
         project = self._make_project()  # nested_containers defaults False
         with (
-            patch("terok.lib.orchestration.task_runners._sandbox") as sandbox_factory,
+            patch("terok.lib.orchestration.task_runners._agent_runner") as sandbox_factory,
             patch("terok.lib.orchestration.task_runners.has_gpu", return_value=False),
         ):
             _run_container(
@@ -646,7 +679,7 @@ class TestRunContainer:
                 task_dir=MOCK_TASK_DIR,
             )
 
-        spec = sandbox_factory.return_value.run.call_args[0][0]
+        spec = captured_runspec(sandbox_factory)
         assert "label=nested" not in spec.extra_args
         assert "/dev/fuse" not in spec.extra_args
 

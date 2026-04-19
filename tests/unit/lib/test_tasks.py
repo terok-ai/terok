@@ -33,6 +33,7 @@ from terok.tui.clipboard import (
 )
 from tests.test_utils import (
     assert_hex_id,
+    captured_runspec,
     mock_git_config,
     parse_meta_value,
     project_env,
@@ -527,12 +528,12 @@ class TestTask:
                     return_value=7861,
                 ),
                 unittest.mock.patch(
-                    "terok.lib.orchestration.task_runners._sandbox"
+                    "terok.lib.orchestration.task_runners._agent_runner"
                 ) as sandbox_factory,
             ):
                 task_run_toad(project_id, tid)
 
-            spec = sandbox_factory.return_value.run.call_args[0][0]
+            spec = captured_runspec(sandbox_factory)
             bash_cmd = spec.command[-1]
             assert "--public-url http://127.0.0.1:7861" in bash_cmd
             assert "-p 8080" in bash_cmd
@@ -574,12 +575,12 @@ class TestTask:
                     return_value=7862,
                 ),
                 unittest.mock.patch(
-                    "terok.lib.orchestration.task_runners._sandbox"
+                    "terok.lib.orchestration.task_runners._agent_runner"
                 ) as sandbox_factory,
             ):
                 task_run_toad(project_id, tid)
 
-            spec = sandbox_factory.return_value.run.call_args[0][0]
+            spec = captured_runspec(sandbox_factory)
             bash_cmd = spec.command[-1]
             assert "--public-url http://myserver:7862" in bash_cmd
 

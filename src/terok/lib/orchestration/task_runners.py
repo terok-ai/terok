@@ -13,14 +13,14 @@ from typing import TYPE_CHECKING
 
 from terok_executor import (
     AgentConfigSpec,
+    AgentRunner,
+    BuildError,
     prepare_agent_config_dir,
     resolve_instructions,
     resolve_provider_value,
 )
 from terok_sandbox import (
-    GpuConfigError,
     LifecycleHooks,
-    RunSpec,
     Sandbox,
     Sharing,
     VolumeSpec,
@@ -322,14 +322,13 @@ def _run_container(
     command: list[str] | None = None,
     hooks: LifecycleHooks | None = None,
 ) -> None:
-    """Launch a detached container via :meth:`Sandbox.run`.
+    """Launch a detached task container via the executor's public API.
 
-    Constructs a :class:`RunSpec` from the given parameters and delegates all
-    podman command assembly (userns, shield/bypass, GPU, env redaction, CDI
-    detection) to the sandbox executor.
-
-    In sealed isolation mode (``project.is_sealed``), the sandbox
-    splits into create → copy → start instead of a single ``podman run -d``.
+    Delegates all podman command assembly (userns, shield/bypass, GPU,
+    env redaction, CDI detection) to :meth:`AgentRunner.launch_prepared`,
+    which in turn drives the sandbox.  In sealed isolation mode
+    (``project.is_sealed``), the sandbox splits into create → copy → start
+    instead of a single ``podman run -d``.
 
     Args:
         cname: Container name (``--name``).
@@ -344,30 +343,31 @@ def _run_container(
         hooks: Optional lifecycle callbacks fired around the launch.
     """
     merged_args = list(extra_args or ()) + _project_runtime_flags(project)
-    spec = RunSpec(
-        container_name=cname,
-        image=image,
-        env=env,
-        volumes=tuple(volumes),
-        command=tuple(command or ()),
-        task_dir=task_dir,
-        gpu_enabled=has_gpu(project),
-        memory_limit=project.memory_limit,
-        cpu_limit=project.cpu_limit,
-        extra_args=tuple(merged_args),
-        unrestricted="TEROK_UNRESTRICTED" in env,
-        sealed=project.is_sealed,
-    )
-
     try:
-        _sandbox().run(spec, hooks=hooks)
-    except GpuConfigError as exc:
+        _agent_runner().launch_prepared(
+            env=env,
+            volumes=volumes,
+            image=image,
+            command=list(command or ()),
+            name=cname,
+            task_dir=task_dir,
+            gpu=has_gpu(project),
+            memory=project.memory_limit,
+            cpus=project.cpu_limit,
+            unrestricted="TEROK_UNRESTRICTED" in env,
+            sealed=project.is_sealed,
+            hooks=hooks,
+            extra_args=merged_args,
+        )
+    except FileNotFoundError as exc:
+        raise SystemExit(f"podman not found; please install podman ({exc})") from exc
+    except BuildError as exc:
         raise SystemExit(str(exc)) from exc
 
 
-def _sandbox() -> Sandbox:
-    """Return a :class:`Sandbox` with terok's bridged config."""
-    return Sandbox(make_sandbox_config())
+def _agent_runner() -> AgentRunner:
+    """Return an :class:`AgentRunner` bound to terok's bridged sandbox config."""
+    return AgentRunner(sandbox=Sandbox(make_sandbox_config()))
 
 
 def _project_runtime_flags(project: ProjectConfig) -> list[str]:

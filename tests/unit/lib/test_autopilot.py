@@ -21,6 +21,8 @@ import pytest
 from terok.lib.util.yaml import dump as yaml_dump, load as yaml_load
 
 if TYPE_CHECKING:
+    from terok_sandbox import RunSpec
+
     from terok.lib.core.projects import ProjectConfig
 
 
@@ -30,7 +32,7 @@ from terok.lib.orchestration.task_runners import (
     task_followup_headless,
     task_run_headless,
 )
-from tests.test_utils import assert_hex_id, mock_git_config, write_project
+from tests.test_utils import assert_hex_id, captured_runspec, mock_git_config, write_project
 
 
 @dataclass
@@ -43,9 +45,12 @@ class TaskRunnerResult:
     task_id: str | None = None
 
     @property
-    def last_spec(self):
-        """Return the last RunSpec passed to sandbox.run()."""
-        return self.run_mock.return_value.run.call_args[0][0]
+    def last_spec(self) -> RunSpec:
+        """Return the ``RunSpec`` reconstructed from the most recent
+        ``AgentRunner.launch_prepared(...)`` call captured by the mocked
+        ``_agent_runner`` factory, rebuilt via
+        :func:`tests.test_utils.captured_runspec`."""
+        return captured_runspec(self.run_mock)
 
 
 def make_project_config(
@@ -168,7 +173,9 @@ def run_headless_request(
     with unittest.mock.patch.dict(os.environ, runner_env_vars(base, config_file), clear=True):
         with (
             mock_git_config(),
-            unittest.mock.patch("terok.lib.orchestration.task_runners._sandbox") as sandbox_factory,
+            unittest.mock.patch(
+                "terok.lib.orchestration.task_runners._agent_runner"
+            ) as sandbox_factory,
             unittest.mock.patch(
                 "terok.lib.orchestration.task_runners.wait_for_exit", return_value=0
             ) as wait_mock,
