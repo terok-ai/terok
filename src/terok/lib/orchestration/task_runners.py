@@ -1054,8 +1054,8 @@ def task_restart(project_id: str, task_id: str) -> None:
         Headless (mode ``"run"``) tasks cannot be auto-restarted because they
         require the original prompt and context.  Attempting to restart a
         headless task whose container no longer exists will raise ``SystemExit``.
-        Re-run headless tasks manually via ``terok run`` with the original
-        prompt instead.
+        Re-run headless tasks manually via ``terok task run`` with the
+        original prompt instead.
     """
     project = load_project(project_id)
     meta, meta_path = load_task_meta(project.id, task_id)
@@ -1136,7 +1136,7 @@ def task_restart(project_id: str, task_id: str) -> None:
         elif mode == "run":
             raise SystemExit(
                 f"Headless task {task_id} cannot be auto-restarted when its container "
-                "is missing. Re-run it via 'terok run' with the original prompt."
+                "is missing. Re-run it via 'terok task run' with the original prompt."
             )
         else:
             raise SystemExit(f"Unknown mode '{mode}' for task {task_id}")

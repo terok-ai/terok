@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: 2026 Jiri Vyskocil
 # SPDX-License-Identifier: Apache-2.0
 
-"""Tests for autopilot CLI commands: ``terok run``."""
+"""Tests for autopilot CLI commands: ``terok task run``."""
 
 from __future__ import annotations
 
@@ -16,9 +16,9 @@ from tests.testfs import NONEXISTENT_MARKDOWN_PATH
 
 
 def capture_headless_request(*argv: str) -> HeadlessRunRequest:
-    """Run ``terok run`` and return the forwarded headless request."""
+    """Run ``terok task run`` and return the forwarded headless request."""
     with patch("terok.cli.commands.task.task_run_headless") as mock_run:
-        run_cli(*argv)
+        run_cli("task", "run", *argv)
 
     mock_run.assert_called_once()
     request = mock_run.call_args.args[0]
@@ -38,9 +38,8 @@ def assert_cli_exit(*argv: str, code: int | None = None, message: str | None = N
 
 
 def test_run_dispatches_to_task_run_headless() -> None:
-    """The top-level ``run`` command builds the expected headless request."""
+    """``terok task run`` builds the expected headless request."""
     request = capture_headless_request(
-        "run",
         "myproject",
         "Fix the auth bug",
         "--model",
@@ -68,15 +67,15 @@ def test_run_dispatches_to_task_run_headless() -> None:
 @pytest.mark.parametrize(
     ("argv", "code", "message"),
     [
-        pytest.param(("run",), 2, None, id="missing-project-and-prompt"),
+        pytest.param(("task", "run"), 2, None, id="missing-project-and-prompt"),
         pytest.param(
-            ("run", "myproject", "test", "--provider", "invalid"),
+            ("task", "run", "myproject", "test", "--provider", "invalid"),
             2,
             None,
             id="bad-provider",
         ),
         pytest.param(
-            ("run", "myproject", "test", "--instructions", str(NONEXISTENT_MARKDOWN_PATH)),
+            ("task", "run", "myproject", "test", "--instructions", str(NONEXISTENT_MARKDOWN_PATH)),
             None,
             "not found",
             id="missing-instructions-file",
@@ -118,10 +117,7 @@ def test_run_forwards_optional_flags(
     expected: object,
 ) -> None:
     """Optional autopilot flags are forwarded into the headless request."""
-    assert (
-        getattr(capture_headless_request("run", "myproject", "test", *extra_args), field)
-        == expected
-    )
+    assert getattr(capture_headless_request("myproject", "test", *extra_args), field) == expected
 
 
 def test_run_with_instructions_flag(tmp_path: Path) -> None:
@@ -130,7 +126,6 @@ def test_run_with_instructions_flag(tmp_path: Path) -> None:
     instructions_path.write_text("Custom agent instructions here.", encoding="utf-8")
 
     request = capture_headless_request(
-        "run",
         "myproject",
         "test",
         "--instructions",

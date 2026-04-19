@@ -94,46 +94,44 @@ def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) ->
     p_login = subparsers.add_parser("login", help="Open interactive shell in a running container")
     _add_project_task_args(p_login)
 
-    # run (headless autopilot, top-level shortcut — replaces run-claude)
-    p_run = subparsers.add_parser(
-        "run", help="Run an agent headlessly in a new task (autopilot mode)"
-    )
-    _add_project_arg(p_run, help="Project ID")
-    p_run.add_argument("prompt", help="Task prompt for the agent")
-    p_run.add_argument(
+    # task subcommand group
+    p_task = subparsers.add_parser("task", help="Manage tasks")
+    tsub = p_task.add_subparsers(dest="task_cmd", required=True)
+
+    # task run (headless autopilot — replaces former top-level `run`)
+    t_run = tsub.add_parser("run", help="Run an agent headlessly in a new task (autopilot mode)")
+    _add_project_arg(t_run, help="Project ID")
+    t_run.add_argument("prompt", help="Task prompt for the agent")
+    t_run.add_argument(
         "--provider",
         choices=list(_PROVIDER_NAMES),
         default=None,
         help="Agent provider (default: from project/global config, or claude)",
     )
-    p_run.add_argument("--config", dest="agent_config", help="Path to agent config YAML file")
-    p_run.add_argument("--preset", help="Name of a preset to apply (global or project-level)")
-    p_run.add_argument("--model", help="Model override (provider-specific)")
-    p_run.add_argument("--max-turns", type=int, help="Maximum agent turns")
-    p_run.add_argument("--timeout", type=int, help="Maximum runtime in seconds")
-    p_run.add_argument(
+    t_run.add_argument("--config", dest="agent_config", help="Path to agent config YAML file")
+    t_run.add_argument("--preset", help="Name of a preset to apply (global or project-level)")
+    t_run.add_argument("--model", help="Model override (provider-specific)")
+    t_run.add_argument("--max-turns", type=int, help="Maximum agent turns")
+    t_run.add_argument("--timeout", type=int, help="Maximum runtime in seconds")
+    t_run.add_argument(
         "--no-follow",
         action="store_true",
         help="Detach after starting (don't stream output)",
     )
-    p_run.add_argument(
+    t_run.add_argument(
         "--agent",
         dest="selected_agents",
         action="append",
         default=None,
         help="Include a non-default agent by name (repeatable, Claude only)",
     )
-    p_run.add_argument("--name", help="Human-readable task name (slug-style, e.g. fix-auth-bug)")
-    p_run.add_argument(
+    t_run.add_argument("--name", help="Human-readable task name (slug-style, e.g. fix-auth-bug)")
+    t_run.add_argument(
         "--instructions",
         metavar="FILE",
         help="Path to instructions file (overrides config stack)",
     )
-    _add_restriction_flags(p_run)
-
-    # task subcommand group
-    p_task = subparsers.add_parser("task", help="Manage tasks")
-    tsub = p_task.add_subparsers(dest="task_cmd", required=True)
+    _add_restriction_flags(t_run)
 
     t_new = tsub.add_parser("new", help="Create a new task")
     _add_project_arg(t_new)
@@ -276,52 +274,57 @@ def dispatch(args: argparse.Namespace) -> bool:
         tid = resolve_task_id(args.project_id, args.task_id)
         task_login(args.project_id, tid)
         return True
-    if args.cmd == "run":
-        # Read instructions file if provided via --instructions
-        instructions_text = None
-        instructions_path = getattr(args, "instructions", None)
-        if instructions_path:
-            from pathlib import Path
-
-            ipath = Path(instructions_path)
-            if not ipath.is_file():
-                raise SystemExit(f"Instructions file not found: {instructions_path}")
-            try:
-                instructions_text = ipath.read_text(encoding="utf-8")
-            except UnicodeDecodeError as exc:
-                raise SystemExit(
-                    f"Instructions file must be UTF-8 text: {instructions_path}"
-                ) from exc
-            except OSError as exc:
-                raise SystemExit(
-                    f"Failed to read instructions file {instructions_path}: {exc}"
-                ) from exc
-
-        task_run_headless(
-            HeadlessRunRequest(
-                project_id=args.project_id,
-                prompt=args.prompt,
-                config_path=getattr(args, "agent_config", None),
-                model=getattr(args, "model", None),
-                max_turns=getattr(args, "max_turns", None),
-                timeout=getattr(args, "timeout", None),
-                follow=not getattr(args, "no_follow", False),
-                agents=getattr(args, "selected_agents", None),
-                preset=getattr(args, "preset", None),
-                name=getattr(args, "name", None),
-                provider=getattr(args, "provider", None),
-                instructions=instructions_text,
-                unrestricted=_resolve_unrestricted(args),
-            )
-        )
-        return True
     if args.cmd == "task":
         return _dispatch_task_sub(args)
     return False
 
 
+def _cmd_task_run(args: argparse.Namespace) -> None:
+    """Handle ``terok task run`` (headless autopilot)."""
+    instructions_text = None
+    instructions_path = getattr(args, "instructions", None)
+    if instructions_path:
+        from pathlib import Path
+
+        ipath = Path(instructions_path)
+        if not ipath.is_file():
+            raise SystemExit(f"Instructions file not found: {instructions_path}")
+        try:
+            instructions_text = ipath.read_text(encoding="utf-8")
+        except UnicodeDecodeError as exc:
+            raise SystemExit(f"Instructions file must be UTF-8 text: {instructions_path}") from exc
+        except OSError as exc:
+            raise SystemExit(
+                f"Failed to read instructions file {instructions_path}: {exc}"
+            ) from exc
+
+    task_run_headless(
+        HeadlessRunRequest(
+            project_id=args.project_id,
+            prompt=args.prompt,
+            config_path=getattr(args, "agent_config", None),
+            model=getattr(args, "model", None),
+            max_turns=getattr(args, "max_turns", None),
+            timeout=getattr(args, "timeout", None),
+            follow=not getattr(args, "no_follow", False),
+            agents=getattr(args, "selected_agents", None),
+            preset=getattr(args, "preset", None),
+            name=getattr(args, "name", None),
+            provider=getattr(args, "provider", None),
+            instructions=instructions_text,
+            unrestricted=_resolve_unrestricted(args),
+        )
+    )
+
+
 def _dispatch_task_sub(args: argparse.Namespace) -> bool:
     """Dispatch ``task <subcommand>`` to the right handler."""
+    # `task run` — autopilot — must resolve before we try ``resolve_task_id``
+    # (it creates a new task and takes no ``task_id``).
+    if args.task_cmd == "run":
+        _cmd_task_run(args)
+        return True
+
     pid = args.project_id
     tid = resolve_task_id(pid, args.task_id) if hasattr(args, "task_id") else ""
     if args.task_cmd == "new":
