@@ -100,7 +100,7 @@ def main(prog: str = "terok") -> None:
             f"  1. Bootstrap:  {prog} setup                       (install host services)\n"
             f"  2. Auth:       {prog} auth claude <project>       (authenticate agents)\n"
             f"  3. Project:    {prog} project wizard              (create a project)\n"
-            f"  4. Work:       {prog} task start <project_id>     (new CLI task)\n"
+            f"  4. Work:       {prog} task run <project_id>       (new CLI task)\n"
             f"  5. Login:      {prog} login <project_id> <task_id>\n"
             "\n"
             "Standalone agent (no project):\n"
@@ -137,7 +137,9 @@ def main(prog: str = "terok") -> None:
     setup.register(sub)
     auth.register(sub)
     project.register(sub)
-    task.register(sub)  # adds the ``task`` group and the flat ``login`` shortcut
+    task.register(
+        sub, prog=prog
+    )  # task group + flat ``login`` shortcut; ``prog`` gates terokctl-only verbs
     image.register(sub)
     clearance.register(sub)
     sickbay.register(sub)
@@ -190,8 +192,11 @@ def main(prog: str = "terok") -> None:
     dbus.register(sub)
     completions.register(sub)
 
-    # TUI launcher — delegates to terok-tui entry point (dispatched before argparse)
-    sub.add_parser("tui", help="Launch the Textual TUI")
+    # TUI launcher — only on the human-facing ``terok`` binary.  ``terokctl``
+    # is the scripting surface; launching an interactive TUI from there is
+    # never useful and just clutters the help listing.
+    if prog == "terok":
+        sub.add_parser("tui", help="Launch the Textual TUI")
 
     # Enable bash completion if argcomplete is present and activated
     if argcomplete is not None:  # pragma: no cover - shell integration
@@ -202,7 +207,9 @@ def main(prog: str = "terok") -> None:
 
     # Fast-path: ``terok tui [args...]`` bypasses argparse and execs terok-tui.
     # This avoids argparse rejecting TUI-specific flags like --tmux.
-    if len(sys.argv) >= 2 and sys.argv[1] == "tui":
+    # Gated on prog="terok" so ``terokctl tui`` falls through to argparse
+    # (which will error — tui is not registered on the scripting surface).
+    if prog == "terok" and len(sys.argv) >= 2 and sys.argv[1] == "tui":
         import os
 
         os.execlp("terok-tui", "terok-tui", *sys.argv[2:])

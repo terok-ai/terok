@@ -210,28 +210,28 @@ class TestSshPause:
         mock_gate_cls.return_value.sync.assert_called_once()
 
 
-class TestTaskStart:
-    """Tests for task-start and related shorthand commands."""
+class TestTaskRunInteractive:
+    """``task run --mode cli|toad`` creates a new task and invokes the runner."""
 
     @pytest.mark.parametrize(
         ("argv", "task_id", "runner_path", "expected_call"),
         [
             (
-                ["terok", "task", "start", "proj1"],
+                ["terok", "task", "run", "proj1"],
                 "42",
                 "terok.cli.commands.task.task_run_cli",
                 ("proj1", "42", {"agents": None, "preset": None, "unrestricted": None}),
             ),
             (
-                ["terok", "task", "start", "proj1", "--toad"],
+                ["terok", "task", "run", "proj1", "--mode", "toad"],
                 "10",
                 "terok.cli.commands.task.task_run_toad",
                 ("proj1", "10", {"agents": None, "preset": None, "unrestricted": None}),
             ),
         ],
-        ids=["cli-mode", "toad-mode"],
+        ids=["default-cli-mode", "toad-mode"],
     )
-    def test_task_start_dispatch(
+    def test_task_run_interactive_dispatch(
         self,
         argv: list[str],
         task_id: str,

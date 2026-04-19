@@ -1,12 +1,13 @@
 # SPDX-FileCopyrightText: 2026 Jiri Vyskocil
 # SPDX-License-Identifier: Apache-2.0
 
-"""Task management commands: new, list, run-cli, start, etc."""
+"""Task management commands: list, run, stop, restart, etc."""
 
 from __future__ import annotations
 
 import argparse
 import sys
+from typing import Any
 
 from terok_executor import PROVIDER_NAMES as _PROVIDER_NAMES
 
@@ -88,56 +89,122 @@ def _resolve_unrestricted(args: argparse.Namespace) -> bool | None:
     return None
 
 
-def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
+def register(
+    subparsers: argparse._SubParsersAction[argparse.ArgumentParser],
+    *,
+    prog: str = "terok",
+) -> None:
     """Register task-related subcommands.
+
+    *prog* gates the scripting-only verbs (``task new``, ``task attach``) to
+    the ``terokctl`` surface.  The human-facing ``terok`` binary exposes
+    only the unified ``task run`` that creates+runs in one step.
 
     Note on ordering: the ``task`` group is added *before* the flat
     ``login`` shortcut so ``--help`` reads ``task`` → ``login``, matching
     the mental model of "task management, with login as a quick way to
     attach."
     """
+    is_ctl = prog == "terokctl"
+
     # task subcommand group
     p_task = subparsers.add_parser("task", help="Manage tasks")
     tsub = p_task.add_subparsers(dest="task_cmd", required=True)
 
-    # task run (headless autopilot — replaces former top-level `run`)
-    t_run = tsub.add_parser("run", help="Run an agent headlessly in a new task (autopilot mode)")
+    # Unified ``task run <project>`` — creates a new task and runs it in the
+    # chosen mode.  CLI (interactive) is the default; ``--mode headless``
+    # runs autopilot (requires ``--prompt``); ``--mode toad`` starts the
+    # Toad multi-agent TUI (browser access).
+    t_run = tsub.add_parser(
+        "run",
+        help="Create a new task and run it (mode selects the runtime)",
+    )
     _add_project_arg(t_run, help="Project ID")
-    t_run.add_argument("prompt", help="Task prompt for the agent")
     t_run.add_argument(
-        "--provider",
-        choices=list(_PROVIDER_NAMES),
+        "--mode",
+        choices=("cli", "toad", "headless"),
+        default="cli",
+        help="Runtime mode: cli (interactive, default), toad (browser TUI), headless (autopilot)",
+    )
+    t_run.add_argument(
+        "--prompt",
         default=None,
-        help="Agent provider (default: from project/global config, or claude)",
+        help="Agent prompt — required when --mode=headless, ignored otherwise",
     )
-    t_run.add_argument("--config", dest="agent_config", help="Path to agent config YAML file")
-    t_run.add_argument("--preset", help="Name of a preset to apply (global or project-level)")
-    t_run.add_argument("--model", help="Model override (provider-specific)")
-    t_run.add_argument("--max-turns", type=int, help="Maximum agent turns")
-    t_run.add_argument("--timeout", type=int, help="Maximum runtime in seconds")
-    t_run.add_argument(
-        "--no-follow",
-        action="store_true",
-        help="Detach after starting (don't stream output)",
-    )
+    # Common flags (meaningful in all modes)
     t_run.add_argument(
         "--agent",
         dest="selected_agents",
         action="append",
         default=None,
-        help="Include a non-default agent by name (repeatable, Claude only)",
+        help="Include a non-default agent by name (repeatable)",
     )
+    t_run.add_argument("--preset", help="Name of a preset to apply (global or project-level)")
     t_run.add_argument("--name", help="Human-readable task name (slug-style, e.g. fix-auth-bug)")
+    _add_restriction_flags(t_run)
+    # Headless-only flags (silently ignored in cli/toad modes)
+    t_run.add_argument(
+        "--provider",
+        choices=list(_PROVIDER_NAMES),
+        default=None,
+        help="Agent provider (headless only; default: from project/global config, or claude)",
+    )
+    t_run.add_argument(
+        "--config",
+        dest="agent_config",
+        help="Path to agent config YAML file (headless only)",
+    )
+    t_run.add_argument("--model", help="Model override (headless only; provider-specific)")
+    t_run.add_argument("--max-turns", type=int, help="Maximum agent turns (headless only)")
+    t_run.add_argument("--timeout", type=int, help="Maximum runtime in seconds (headless only)")
+    t_run.add_argument(
+        "--no-follow",
+        action="store_true",
+        help="Detach after starting, don't stream output (headless only)",
+    )
     t_run.add_argument(
         "--instructions",
         metavar="FILE",
-        help="Path to instructions file (overrides config stack)",
+        help="Path to instructions file (headless only; overrides config stack)",
     )
-    _add_restriction_flags(t_run)
 
-    t_new = tsub.add_parser("new", help="Create a new task")
-    _add_project_arg(t_new)
-    t_new.add_argument("--name", help="Human-readable task name (slug-style, e.g. fix-auth-bug)")
+    # ---- Scripting-only (terokctl) ----------------------------------------
+    # ``task new`` creates metadata + workspace but does not start a
+    # container.  Only useful as a building block for automation — humans
+    # always want ``task run``.
+    if is_ctl:
+        t_new = tsub.add_parser(
+            "new",
+            help="Create task metadata + workspace without running it (scripting)",
+        )
+        _add_project_arg(t_new)
+        t_new.add_argument(
+            "--name", help="Human-readable task name (slug-style, e.g. fix-auth-bug)"
+        )
+
+        # ``task attach`` runs an existing task in CLI or Toad mode.
+        t_attach = tsub.add_parser(
+            "attach",
+            help="Run an existing task in the chosen interactive mode (scripting)",
+        )
+        _add_project_task_args(t_attach)
+        t_attach.add_argument(
+            "--mode",
+            choices=("cli", "toad"),
+            default="cli",
+            help="Runtime mode: cli (default) or toad",
+        )
+        t_attach.add_argument(
+            "--agent",
+            dest="selected_agents",
+            action="append",
+            default=None,
+            help="Include a non-default agent by name (repeatable)",
+        )
+        t_attach.add_argument(
+            "--preset", help="Name of a preset to apply (global or project-level)"
+        )
+        _add_restriction_flags(t_attach)
 
     t_list = tsub.add_parser("list", help="List tasks")
     _add_project_arg(t_list)
@@ -157,30 +224,6 @@ def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) ->
         help="Filter by agent preset name",
     )
 
-    t_run_cli = tsub.add_parser("run-cli", help="Run task in CLI (codex agent) mode")
-    _add_project_task_args(t_run_cli)
-    t_run_cli.add_argument(
-        "--agent",
-        dest="selected_agents",
-        action="append",
-        default=None,
-        help="Include a non-default agent by name (repeatable)",
-    )
-    t_run_cli.add_argument("--preset", help="Name of a preset to apply (global or project-level)")
-    _add_restriction_flags(t_run_cli)
-
-    t_run_toad = tsub.add_parser("run-toad", help="Run Toad multi-agent TUI (browser access)")
-    _add_project_task_args(t_run_toad)
-    t_run_toad.add_argument(
-        "--agent",
-        dest="selected_agents",
-        action="append",
-        default=None,
-        help="Include a non-default agent by name (repeatable)",
-    )
-    t_run_toad.add_argument("--preset", help="Name of a preset to apply (global or project-level)")
-    _add_restriction_flags(t_run_toad)
-
     t_delete = tsub.add_parser("delete", help="Delete a task and its containers")
     _add_project_task_args(t_delete)
 
@@ -193,7 +236,10 @@ def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) ->
         help="Seconds before SIGKILL (overrides project run.shutdown_timeout, default 10)",
     )
 
-    t_restart = tsub.add_parser("restart", help="Restart a stopped task or re-run if gone")
+    t_restart = tsub.add_parser(
+        "restart",
+        help="Restart a task's container (stop if running, then start)",
+    )
     _add_project_task_args(t_restart)
 
     t_followup = tsub.add_parser(
@@ -206,27 +252,6 @@ def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) ->
         action="store_true",
         help="Detach after starting (don't stream output)",
     )
-
-    t_start = tsub.add_parser(
-        "start",
-        help="Create a new task and immediately run it (default: CLI mode)",
-    )
-    _add_project_arg(t_start)
-    t_start.add_argument(
-        "--toad",
-        action="store_true",
-        help="Start Toad multi-agent TUI (browser access)",
-    )
-    t_start.add_argument(
-        "--agent",
-        dest="selected_agents",
-        action="append",
-        default=None,
-        help="Include a non-default agent by name (repeatable)",
-    )
-    t_start.add_argument("--preset", help="Name of a preset to apply (global or project-level)")
-    t_start.add_argument("--name", help="Human-readable task name (slug-style, e.g. fix-auth-bug)")
-    _add_restriction_flags(t_start)
 
     t_rename = tsub.add_parser("rename", help="Rename a task")
     _add_project_task_args(t_rename)
@@ -287,28 +312,41 @@ def dispatch(args: argparse.Namespace) -> bool:
 
 
 def _cmd_task_run(args: argparse.Namespace) -> None:
-    """Handle ``terok task run`` (headless autopilot)."""
-    instructions_text = None
-    instructions_path = getattr(args, "instructions", None)
-    if instructions_path:
-        from pathlib import Path
+    """Handle ``terok task run`` — create a task and run it in the chosen mode."""
+    mode = getattr(args, "mode", "cli")
+    if mode == "headless":
+        _cmd_task_run_headless(args)
+    elif mode == "toad":
+        _cmd_task_run_interactive(args, runner=task_run_toad)
+    else:  # mode == "cli"
+        _cmd_task_run_interactive(args, runner=task_run_cli)
 
-        ipath = Path(instructions_path)
-        if not ipath.is_file():
-            raise SystemExit(f"Instructions file not found: {instructions_path}")
-        try:
-            instructions_text = ipath.read_text(encoding="utf-8")
-        except UnicodeDecodeError as exc:
-            raise SystemExit(f"Instructions file must be UTF-8 text: {instructions_path}") from exc
-        except OSError as exc:
-            raise SystemExit(
-                f"Failed to read instructions file {instructions_path}: {exc}"
-            ) from exc
+
+def _cmd_task_run_interactive(args: argparse.Namespace, *, runner: Any) -> None:
+    """Create + run for interactive modes (cli, toad)."""
+    pid = args.project_id
+    tid = task_new(pid, name=getattr(args, "name", None))
+    runner(
+        pid,
+        tid,
+        agents=getattr(args, "selected_agents", None),
+        preset=getattr(args, "preset", None),
+        unrestricted=_resolve_unrestricted(args),
+    )
+
+
+def _cmd_task_run_headless(args: argparse.Namespace) -> None:
+    """Autopilot path: create a task and run it headlessly against the prompt."""
+    prompt = getattr(args, "prompt", None)
+    if not prompt:
+        raise SystemExit("--prompt is required when --mode=headless")
+
+    instructions_text = _read_instructions(getattr(args, "instructions", None))
 
     task_run_headless(
         HeadlessRunRequest(
             project_id=args.project_id,
-            prompt=args.prompt,
+            prompt=prompt,
             config_path=getattr(args, "agent_config", None),
             model=getattr(args, "model", None),
             max_turns=getattr(args, "max_turns", None),
@@ -324,35 +362,48 @@ def _cmd_task_run(args: argparse.Namespace) -> None:
     )
 
 
+def _read_instructions(instructions_path: str | None) -> str | None:
+    """Load an instructions file or return None; raises SystemExit on IO errors."""
+    if not instructions_path:
+        return None
+    from pathlib import Path
+
+    ipath = Path(instructions_path)
+    if not ipath.is_file():
+        raise SystemExit(f"Instructions file not found: {instructions_path}")
+    try:
+        return ipath.read_text(encoding="utf-8")
+    except UnicodeDecodeError as exc:
+        raise SystemExit(f"Instructions file must be UTF-8 text: {instructions_path}") from exc
+    except OSError as exc:
+        raise SystemExit(f"Failed to read instructions file {instructions_path}: {exc}") from exc
+
+
 def _dispatch_task_sub(args: argparse.Namespace) -> bool:
     """Dispatch ``task <subcommand>`` to the right handler."""
-    # `task run` — autopilot — must resolve before we try ``resolve_task_id``
-    # (it creates a new task and takes no ``task_id``).
+    # ``task run`` creates a new task (no task_id to resolve yet).
     if args.task_cmd == "run":
         _cmd_task_run(args)
         return True
 
+    # ``task new`` (terokctl scripting surface) — same: no task_id yet.
+    if args.task_cmd == "new":
+        task_new(args.project_id, name=getattr(args, "name", None))
+        return True
+
     pid = args.project_id
     tid = resolve_task_id(pid, args.task_id) if hasattr(args, "task_id") else ""
-    if args.task_cmd == "new":
-        task_new(pid, name=getattr(args, "name", None))
-    elif args.task_cmd == "list":
+    if args.task_cmd == "list":
         task_list(
             pid,
             status=getattr(args, "filter_status", None),
             mode=getattr(args, "filter_mode", None),
             agent=getattr(args, "filter_agent", None),
         )
-    elif args.task_cmd == "run-cli":
-        task_run_cli(
-            pid,
-            tid,
-            agents=getattr(args, "selected_agents", None),
-            preset=getattr(args, "preset", None),
-            unrestricted=_resolve_unrestricted(args),
-        )
-    elif args.task_cmd == "run-toad":
-        task_run_toad(
+    elif args.task_cmd == "attach":
+        # terokctl-only: run an existing task in the chosen interactive mode.
+        runner = task_run_toad if getattr(args, "mode", "cli") == "toad" else task_run_cli
+        runner(
             pid,
             tid,
             agents=getattr(args, "selected_agents", None),
@@ -378,15 +429,6 @@ def _dispatch_task_sub(args: argparse.Namespace) -> bool:
             args.prompt,
             follow=not getattr(args, "no_follow", False),
         )
-    elif args.task_cmd == "start":
-        task_id = task_new(pid, name=getattr(args, "name", None))
-        selected = getattr(args, "selected_agents", None)
-        preset = getattr(args, "preset", None)
-        restriction = _resolve_unrestricted(args)
-        if getattr(args, "toad", False):
-            task_run_toad(pid, task_id, agents=selected, preset=preset, unrestricted=restriction)
-        else:
-            task_run_cli(pid, task_id, agents=selected, preset=preset, unrestricted=restriction)
     elif args.task_cmd == "rename":
         task_rename(pid, tid, args.name)
     elif args.task_cmd == "status":
