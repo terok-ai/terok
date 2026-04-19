@@ -17,6 +17,7 @@ from terok.cli.commands.project import (
     _cmd_project_delete,
     _cmd_project_derive,
     _cmd_project_list,
+    cmd_project_init,
     dispatch,
 )
 
@@ -120,8 +121,9 @@ def test_dispatch_routes_to_handler(
         assert dispatch(args) is True
 
     if expected_kwargs.get("needs_init_fn"):
-        # wizard injects `init_fn=cmd_project_init` — just verify it's kwarg-passed
-        assert "init_fn" in mock.call_args.kwargs
+        # wizard injects `init_fn=cmd_project_init` — pin identity so a
+        # refactor that loses the wizard→init linkage fails loudly.
+        assert mock.call_args.kwargs.get("init_fn") is cmd_project_init
     elif expected_kwargs.get("positional_is_args"):
         # _cmd_* handlers that take the full Namespace
         mock.assert_called_once_with(args)
@@ -135,14 +137,17 @@ def test_dispatch_routes_to_handler(
 def test_dispatch_auth_combines_two_calls() -> None:
     """``project auth`` checks agent installation then authenticates."""
     args = argparse.Namespace(cmd="project", project_cmd="auth", project_id="p1", provider="claude")
+    fake_project = SimpleNamespace(id="p1")
     with (
-        patch("terok.cli.commands.project.load_project", return_value=SimpleNamespace(id="p1")),
+        patch("terok.cli.commands.project.load_project", return_value=fake_project),
         patch("terok.cli.commands.project.require_agent_installed") as mock_check,
         patch("terok.cli.commands.project.authenticate") as mock_auth,
     ):
         assert dispatch(args) is True
 
-    mock_check.assert_called_once()
+    # ``require_agent_installed`` receives the *loaded* project object
+    # (not the raw project_id) and the noun label used for error messages.
+    mock_check.assert_called_once_with(fake_project, "claude", noun="Provider")
     mock_auth.assert_called_once_with("p1", "claude")
 
 

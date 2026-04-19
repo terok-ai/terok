@@ -72,7 +72,12 @@ def test_cmd_cleanup_outputs_expected(
 
 
 class TestImageDispatch:
-    """The ``image`` group routes list/cleanup/usage subcommands correctly."""
+    """The ``image`` group routes list, cleanup, and usage subcommands correctly.
+
+    (``usage`` dispatch is also exercised through its render pipelines in
+    ``test_cli_image_usage.py``; the minimal routing check lives here so all
+    three match-arms are visible in one place.)
+    """
 
     def test_ignores_non_image(self) -> None:
         """Dispatch returns False for commands outside the image group."""
@@ -114,3 +119,16 @@ class TestImageDispatch:
         with patch("terok.cli.commands.image._cmd_cleanup") as mock:
             assert dispatch(args) is True
         mock.assert_called_once_with(dry_run=True)
+
+    def test_usage_forwards_project_and_json_flags(self) -> None:
+        """``image usage --project X --json`` routes to the usage helper."""
+        import argparse
+
+        from terok.cli.commands.image import dispatch
+
+        args = argparse.Namespace(
+            cmd="image", image_cmd="usage", project="myproj", json_output=True
+        )
+        with patch("terok.cli.commands.image._cmd_usage") as mock:
+            assert dispatch(args) is True
+        mock.assert_called_once_with(project_id="myproj", json_output=True)
