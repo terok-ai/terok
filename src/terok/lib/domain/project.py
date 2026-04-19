@@ -62,7 +62,7 @@ from ..core.config import (
     vault_dir,
 )
 from ..core.project_model import ProjectConfig
-from ..core.projects import list_presets, load_project, resolve_ssh_host_dir
+from ..core.projects import list_presets, load_project
 from ..orchestration.agent_config import resolve_agent_config
 from ..orchestration.image import build_images, generate_dockerfiles
 from ..orchestration.task_runners import HeadlessRunRequest, task_run_headless
@@ -176,34 +176,33 @@ def validate_gate_upstream_match(project_id: str) -> None:
             )
 
 
-def make_git_gate(config: ProjectConfig) -> GitGate:
+def make_git_gate(config: ProjectConfig, *, use_personal_ssh: bool | None = None) -> GitGate:
     """Construct a :class:`GitGate` from a :class:`ProjectConfig` (adapter factory).
 
     Injects ``validate_gate_upstream_match`` as the gate validation callback.
-    Resolves *ssh_host_dir* via :func:`make_sandbox_config` so the gate looks
-    in terok's state directory, not sandbox's standalone default.
+    The ``use_personal_ssh`` flag resolves per-invocation override (e.g.
+    ``terok gate-sync --use-personal-ssh``) > per-project YAML
+    (``ssh.use_personal``) > default ``False``.
     """
+    effective = use_personal_ssh if use_personal_ssh is not None else config.ssh_use_personal
     return GitGate(
         scope=config.id,
         gate_path=config.gate_path,
         upstream_url=config.upstream_url,
         default_branch=config.default_branch,
-        ssh_host_dir=resolve_ssh_host_dir(config),
-        ssh_key_name=config.ssh_key_name,
-        allow_host_keys=config.ssh_allow_host_keys,
+        use_personal_ssh=effective,
         validate_gate_fn=validate_gate_upstream_match,
         clone_cache_base=make_sandbox_config().clone_cache_base_path,
     )
 
 
 def make_ssh_manager(config: ProjectConfig) -> SSHManager:
-    """Construct an :class:`SSHManager` from a :class:`ProjectConfig` (adapter factory)."""
-    return SSHManager(
-        scope=config.id,
-        ssh_host_dir=resolve_ssh_host_dir(config),
-        ssh_key_name=config.ssh_key_name,
-        ssh_config_template=config.ssh_config_template,
-    )
+    """Return an :class:`SSHManager` for *config* that owns its vault DB.
+
+    Use it as a context manager (``with make_ssh_manager(cfg) as m: ...``);
+    the DB connection closes on exit.
+    """
+    return SSHManager.open(scope=config.id, db_path=make_sandbox_config().db_path)
 
 
 # ---------------------------------------------------------------------------
@@ -292,12 +291,22 @@ def _archive_project(project_id: str) -> str | None:
         return None
 
 
+def _unassign_vault_ssh_keys(scope: str, deleted: list[str]) -> None:
+    """Drop every SSH-key assignment for *scope*; record the count in *deleted*."""
+    from .vault import vault_db
+
+    with vault_db() as db:
+        count = db.unassign_all_ssh_keys(scope)
+    if count:
+        deleted.append(f"{count} SSH key assignment(s) for scope {scope!r}")
+
+
 def _rmtree_managed(path: Path, label: str, deleted: list[str], skipped: list[str]) -> None:
     """Remove a directory if it exists under a Terok-managed root.
 
-    A safety guard: user-configurable paths (``ssh.host_dir``, ``gate_path``,
-    ``staging_root``) might point outside managed storage — in that case the
-    directory is skipped rather than deleted.
+    A safety guard: user-configurable paths (``gate_path``, ``staging_root``)
+    might point outside managed storage — in that case the directory is
+    skipped rather than deleted.
     """
     if not path.is_dir():
         return
@@ -342,8 +351,8 @@ def delete_project(project_id: str) -> DeleteProjectResult:
             shutil.rmtree(d)
             deleted.append(str(d))
 
-    # 5. SSH credentials (may be user-configured path)
-    _rmtree_managed(resolve_ssh_host_dir(project), "SSH dir", deleted, skipped)
+    # 5. SSH credentials — unassign from vault; orphan keys cascade-delete.
+    _unassign_vault_ssh_keys(pid, deleted)
 
     # 6. Git gate (skip if shared with other projects)
     sharing = find_projects_sharing_gate(project.gate_path, exclude_project=pid)

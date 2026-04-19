@@ -59,7 +59,7 @@ class TestUpdateWorst:
 
 
 class TestCheckSshSigner:
-    """Verify _check_ssh_signer diagnostics (project-aware)."""
+    """Verify ``_check_ssh_signer`` diagnostics against the DB-backed vault."""
 
     @staticmethod
     def _mock_project(pid: str) -> unittest.mock.MagicMock:
@@ -67,143 +67,82 @@ class TestCheckSshSigner:
         p.id = pid
         return p
 
-    def test_missing_keys_file(self, tmp_path: Path) -> None:
-        """No ssh-keys.json → warn with ssh-init hint."""
-        with unittest.mock.patch("terok.cli.commands.sickbay.make_sandbox_config") as mock_cfg:
-            mock_cfg.return_value.ssh_keys_json_path = tmp_path / "no-such.json"
-            sev, _, detail = _check_ssh_signer()
-        assert sev == "warn"
-        assert "ssh-init" in detail
+    def _patch_vault(self, assigned_scopes: list[str]):
+        """Patch ``CredentialDB`` to report the given assigned scopes."""
+        db = unittest.mock.MagicMock()
+        db.list_scopes_with_ssh_keys.return_value = assigned_scopes
+        return unittest.mock.patch("terok_sandbox.CredentialDB", return_value=db)
 
-    def test_no_projects(self, tmp_path: Path) -> None:
+    def test_no_projects(self) -> None:
         """No projects configured → ok (nothing to check)."""
-        kf = tmp_path / "ssh-keys.json"
-        kf.write_text("{}")
         with (
-            unittest.mock.patch("terok.cli.commands.sickbay.make_sandbox_config") as mock_cfg,
+            unittest.mock.patch("terok.cli.commands.sickbay.make_sandbox_config"),
             unittest.mock.patch("terok.cli.commands.sickbay.list_projects", return_value=[]),
+            self._patch_vault([]),
         ):
-            mock_cfg.return_value.ssh_keys_json_path = kf
             sev, _, detail = _check_ssh_signer()
         assert sev == "ok"
         assert "no projects" in detail
 
-    def test_all_keys_present(self, tmp_path: Path) -> None:
-        """All projects have healthy keys → ok."""
-        import json
-
-        priv = tmp_path / "id"
-        pub = tmp_path / "id.pub"
-        priv.write_text("key")
-        pub.write_text("pubkey")
-        kf = tmp_path / "ssh-keys.json"
-        kf.write_text(json.dumps({"proj": {"private_key": str(priv), "public_key": str(pub)}}))
+    def test_all_projects_have_keys(self) -> None:
+        """Every project has an assignment → ok, N/N."""
         with (
-            unittest.mock.patch("terok.cli.commands.sickbay.make_sandbox_config") as mock_cfg,
+            unittest.mock.patch("terok.cli.commands.sickbay.make_sandbox_config"),
             unittest.mock.patch(
                 "terok.cli.commands.sickbay.list_projects",
                 return_value=[self._mock_project("proj")],
             ),
+            self._patch_vault(["proj"]),
         ):
-            mock_cfg.return_value.ssh_keys_json_path = kf
             sev, _, detail = _check_ssh_signer()
         assert sev == "ok"
         assert "1/1" in detail
 
-    def test_missing_key_files(self, tmp_path: Path) -> None:
-        """Project keys with missing files → error."""
-        import json
-
-        kf = tmp_path / "ssh-keys.json"
-        kf.write_text(
-            json.dumps({"bad": {"private_key": "/gone/id", "public_key": "/gone/id.pub"}})
-        )
+    def test_unregistered_project(self) -> None:
+        """Project with no assignment → warn, naming the scope."""
         with (
-            unittest.mock.patch("terok.cli.commands.sickbay.make_sandbox_config") as mock_cfg,
-            unittest.mock.patch(
-                "terok.cli.commands.sickbay.list_projects",
-                return_value=[self._mock_project("bad")],
-            ),
-        ):
-            mock_cfg.return_value.ssh_keys_json_path = kf
-            sev, _, detail = _check_ssh_signer()
-        assert sev == "error"
-        assert "bad" in detail
-        assert "ssh-init" in detail
-
-    def test_unregistered_project(self, tmp_path: Path) -> None:
-        """Project exists but has no keys → warn with name."""
-        kf = tmp_path / "ssh-keys.json"
-        kf.write_text("{}")
-        with (
-            unittest.mock.patch("terok.cli.commands.sickbay.make_sandbox_config") as mock_cfg,
+            unittest.mock.patch("terok.cli.commands.sickbay.make_sandbox_config"),
             unittest.mock.patch(
                 "terok.cli.commands.sickbay.list_projects",
                 return_value=[self._mock_project("myproj")],
             ),
+            self._patch_vault([]),
         ):
-            mock_cfg.return_value.ssh_keys_json_path = kf
             sev, _, detail = _check_ssh_signer()
         assert sev == "warn"
         assert "myproj" in detail
         assert "0/1" in detail
 
-    def test_custom_scopes_ignored(self, tmp_path: Path) -> None:
-        """Non-project scopes in ssh-keys.json don't affect project check."""
-        import json
-
-        priv = tmp_path / "id"
-        pub = tmp_path / "id.pub"
-        priv.write_text("key")
-        pub.write_text("pubkey")
-        kf = tmp_path / "ssh-keys.json"
-        kf.write_text(
-            json.dumps(
-                {
-                    "proj": {"private_key": str(priv), "public_key": str(pub)},
-                    "custom-scope": {"private_key": "/gone", "public_key": "/gone"},
-                }
-            )
-        )
+    def test_custom_scopes_ignored(self) -> None:
+        """Non-project scopes with keys don't cover the project's absence."""
         with (
-            unittest.mock.patch("terok.cli.commands.sickbay.make_sandbox_config") as mock_cfg,
+            unittest.mock.patch("terok.cli.commands.sickbay.make_sandbox_config"),
             unittest.mock.patch(
                 "terok.cli.commands.sickbay.list_projects",
                 return_value=[self._mock_project("proj")],
             ),
+            self._patch_vault(["custom-scope"]),
         ):
-            mock_cfg.return_value.ssh_keys_json_path = kf
             sev, _, detail = _check_ssh_signer()
-        assert sev == "ok"
-        assert "1/1" in detail
-
-    def test_empty_key_list_not_healthy(self, tmp_path: Path) -> None:
-        """Project with an empty key list is not treated as healthy."""
-        import json
-
-        kf = tmp_path / "ssh-keys.json"
-        kf.write_text(json.dumps({"proj": []}))
-        with (
-            unittest.mock.patch("terok.cli.commands.sickbay.make_sandbox_config") as mock_cfg,
-            unittest.mock.patch(
-                "terok.cli.commands.sickbay.list_projects",
-                return_value=[self._mock_project("proj")],
-            ),
-        ):
-            mock_cfg.return_value.ssh_keys_json_path = kf
-            sev, _, detail = _check_ssh_signer()
-        assert sev == "error"
+        assert sev == "warn"
         assert "proj" in detail
-        assert "missing key files" in detail
 
-    def test_corrupt_json(self, tmp_path: Path) -> None:
-        """Corrupt JSON → error."""
-        kf = tmp_path / "ssh-keys.json"
-        kf.write_text("{bad")
-        with unittest.mock.patch("terok.cli.commands.sickbay.make_sandbox_config") as mock_cfg:
-            mock_cfg.return_value.ssh_keys_json_path = kf
-            sev, _, _ = _check_ssh_signer()
-        assert sev == "error"
+    def test_vault_failure_degrades_to_warning(self) -> None:
+        """A vault that refuses to open surfaces as a ``warn``, not a crash."""
+        with (
+            unittest.mock.patch("terok.cli.commands.sickbay.make_sandbox_config"),
+            unittest.mock.patch(
+                "terok.cli.commands.sickbay.list_projects",
+                return_value=[self._mock_project("proj")],
+            ),
+            unittest.mock.patch(
+                "terok_sandbox.CredentialDB", side_effect=RuntimeError("db locked")
+            ),
+        ):
+            sev, _, detail = _check_ssh_signer()
+        assert sev == "warn"
+        assert "unreachable" in detail
+        assert "db locked" in detail
 
 
 class TestCheckTaskHook:

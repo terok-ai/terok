@@ -15,7 +15,6 @@ from terok.lib.core.yaml_schema import (
 from tests.testfs import (
     MOCK_BASE,
     MOCK_GATE_PATH,
-    MOCK_SSH_HOST_DIR,
     MOCK_STAGING_ROOT,
     MOCK_TASKS_ROOT,
 )
@@ -39,7 +38,7 @@ class RawProjectYamlTests(unittest.TestCase):
         data = {
             "project": {"id": "myproj", "security_class": "gatekeeping"},
             "git": {"upstream_url": "https://example.com/repo.git", "default_branch": "main"},
-            "ssh": {"key_name": "id_ed25519_myproj", "host_dir": MOCK_SSH_HOST_DIR},
+            "ssh": {"use_personal": True},
             "tasks": {"root": MOCK_TASKS_ROOT},
             "gate": {"path": MOCK_GATE_PATH},
             "gatekeeping": {
@@ -57,7 +56,7 @@ class RawProjectYamlTests(unittest.TestCase):
         self.assertEqual(raw.project.id, "myproj")
         self.assertEqual(raw.project.security_class, "gatekeeping")
         self.assertEqual(raw.git.upstream_url, "https://example.com/repo.git")
-        self.assertEqual(raw.ssh.key_name, "id_ed25519_myproj")
+        self.assertTrue(raw.ssh.use_personal)
         self.assertFalse(raw.gatekeeping.upstream_polling.enabled)
         self.assertEqual(raw.gatekeeping.upstream_polling.interval_minutes, 10)
         self.assertTrue(raw.gatekeeping.auto_sync.enabled)
@@ -86,7 +85,7 @@ class RawProjectYamlTests(unittest.TestCase):
         raw = RawProjectYaml.model_validate({"project": None, "git": None, "ssh": None})
         self.assertEqual(raw.project.security_class, "online")
         self.assertIsNone(raw.git.upstream_url)
-        self.assertIsNone(raw.ssh.key_name)
+        self.assertFalse(raw.ssh.use_personal)
 
     def test_none_subsection_coerced_to_empty(self) -> None:
         """Nested None sub-sections (e.g. upstream_polling: null) get defaults."""

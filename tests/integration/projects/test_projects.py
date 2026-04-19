@@ -24,7 +24,7 @@ git:
   upstream_url: {TEST_UPSTREAM_URL}
   default_branch: main
 ssh:
-  key_name: id_alpha
+  use_personal: false
 agent:
   provider: codex
 """
@@ -42,9 +42,9 @@ git:
   upstream_url: {TEST_UPSTREAM_URL}
   default_branch: main  # pinned to main
 
-# SSH keys for container access
+# SSH policy (vault-only by default)
 ssh:
-  key_name: id_alpha  # custom key
+  use_personal: false  # stick with the vault-managed key
 
 # Agent section (will be cleared on derive)
 agent:
@@ -79,7 +79,12 @@ class TestProjects:
     def test_project_derive_preserves_infra_and_clears_agent(
         self, terok_env: TerokIntegrationEnv
     ) -> None:
-        """``project-derive`` pins shared gate+SSH paths and clears ``agent:``."""
+        """``project-derive`` pins the shared gate path and clears ``agent:``.
+
+        SSH keys are shared through the vault DB's assignments table, not
+        through filesystem-level YAML pins, so the derived YAML carries
+        only the ``gate.path`` pin.
+        """
         terok_env.write_project("alpha", SOURCE_PROJECT)
 
         result = terok_env.run_cli("project", "derive", "alpha", "beta")
@@ -94,12 +99,8 @@ class TestProjects:
         assert "agent" not in derived
         assert derived["git"]["upstream_url"] == TEST_UPSTREAM_URL
 
-        # Shared infra is pinned to source's resolved paths so the derived
-        # project points at the same gate mirror and SSH keypair.
+        # Gate path pinned to the source's mirror.
         assert derived["gate"]["path"] == str(terok_env.gate_path("alpha"))
-        expected_ssh_dir = terok_env.sandbox_state_root / "ssh-keys" / "alpha"
-        assert derived["ssh"]["host_dir"] == str(expected_ssh_dir)
-        assert derived["ssh"]["key_name"] == "id_alpha"
 
         listed = terok_env.run_cli("project", "list")
         assert "- alpha [online]" in listed.stdout
@@ -144,19 +145,19 @@ class TestProjects:
         # ── Structural correctness (same as the non-commented test) ──
         assert derived["project"]["id"] == "derived"
         assert derived["git"]["upstream_url"] == TEST_UPSTREAM_URL
-        assert derived["ssh"]["key_name"] == "id_alpha"
+        assert derived["ssh"]["use_personal"] is False
         assert "agent" not in derived  # cleared by derive
 
         # ── Comment preservation (the raison d'être of ruamel.yaml) ──
         # Block comments above sections
         assert "# === Project identity ===" in raw
         assert "# --- Git configuration ---" in raw
-        assert "# SSH keys for container access" in raw
+        assert "# SSH policy (vault-only by default)" in raw
 
         # Inline comments on values
         assert "# keep this online for dev" in raw
         assert "# pinned to main" in raw
-        assert "# custom key" in raw
+        assert "# stick with the vault-managed key" in raw
 
         # The agent section and its associated comments should be gone
         assert re.search(r"(?m)^\s*agent\s*:", raw) is None

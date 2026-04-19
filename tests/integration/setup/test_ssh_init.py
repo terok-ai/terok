@@ -1,15 +1,12 @@
 # SPDX-FileCopyrightText: 2026 Jiri Vyskocil
 # SPDX-License-Identifier: Apache-2.0
 
-"""Integration tests for SSH bootstrap workflows."""
+"""Integration tests for SSH bootstrap workflows (vault DB-backed)."""
 
 from __future__ import annotations
 
-import stat
-
 import pytest
 
-from ..conftest import ssh_keygen_missing
 from ..helpers import TerokIntegrationEnv
 
 pytestmark = pytest.mark.needs_host_features
@@ -22,25 +19,16 @@ git:
   upstream_url: https://example.com/{project_id}.git
 """
 
-CUSTOM_HOST_DIR_TEMPLATE = """
-project:
-  id: {project_id}
-  security_class: gatekeeping
-git:
-  upstream_url: https://example.com/{project_id}.git
-ssh:
-  host_dir: {host_dir}
-"""
-
 
 class TestSshInit:
-    """Verify SSH bootstrap behavior through the real CLI."""
+    """Verify ``project ssh-init`` provisions a vault-backed key via the real CLI."""
 
-    @ssh_keygen_missing
-    def test_ssh_init_creates_default_keypair_and_config(
-        self, terok_env: TerokIntegrationEnv
-    ) -> None:
-        """``ssh-init`` writes the default per-project env mount directory."""
+    def test_ssh_init_is_additive(self, terok_env: TerokIntegrationEnv) -> None:
+        """Re-running ``ssh-init`` on the same scope adds a second key.
+
+        ``ssh-init`` is additive by default — each call produces a fresh
+        keypair alongside any existing ones.  Only ``--force`` rotates.
+        """
         terok_env.write_project(
             "demo",
             PROJECT_TEMPLATE.format(project_id="demo"),
@@ -49,38 +37,49 @@ class TestSshInit:
         first = terok_env.run_cli("project", "ssh-init", "demo")
         second = terok_env.run_cli("project", "ssh-init", "demo")
 
-        ssh_dir = terok_env.sandbox_state_root / "ssh-keys" / "demo"
-        private_key = ssh_dir / "id_ed25519_demo"
-        public_key = ssh_dir / "id_ed25519_demo.pub"
-        config_path = ssh_dir / "config"
+        fp1 = _extract_fingerprint(first.stdout)
+        fp2 = _extract_fingerprint(second.stdout)
+        assert fp1 is not None and fp2 is not None
+        assert fp1 != fp2  # two independent keys
 
-        assert "SSH directory initialized:" in first.stdout
-        assert "SSH directory initialized:" in second.stdout
-        assert ssh_dir.is_dir()
-        assert private_key.is_file()
-        assert public_key.is_file()
-        assert config_path.is_file()
-        assert stat.S_IMODE(ssh_dir.stat().st_mode) == 0o700
-        assert stat.S_IMODE(private_key.stat().st_mode) == 0o600
-        assert stat.S_IMODE(public_key.stat().st_mode) == 0o600
-        assert stat.S_IMODE(config_path.stat().st_mode) == 0o600
-        assert "IdentityFile ~/.ssh/id_ed25519_demo" in config_path.read_text(encoding="utf-8")
+        # The second key gets a ``tk-side:`` comment so only the first
+        # remains tk-main for the signer's promotion heuristic.
+        assert "tk-main:demo" in first.stdout
+        assert "tk-side:demo" in second.stdout
 
-    @ssh_keygen_missing
-    def test_ssh_init_respects_custom_host_dir_and_key_name(
-        self, terok_env: TerokIntegrationEnv
-    ) -> None:
-        """``ssh-init`` respects explicit ``ssh.host_dir`` and ``--key-name``."""
-        custom_dir = terok_env.base_dir / "custom-ssh"
+    def test_ssh_init_rotation_picks_new_key(self, terok_env: TerokIntegrationEnv) -> None:
+        """``--force`` rotates: scope ends up with a fresh key, distinct fingerprint."""
         terok_env.write_project(
-            "custom",
-            CUSTOM_HOST_DIR_TEMPLATE.format(project_id="custom", host_dir=custom_dir),
+            "rot",
+            PROJECT_TEMPLATE.format(project_id="rot"),
         )
 
-        result = terok_env.run_cli("project", "ssh-init", "custom", "--key-name", "id_custom")
+        initial = terok_env.run_cli("project", "ssh-init", "rot")
+        rotated = terok_env.run_cli("project", "ssh-init", "rot", "--force")
 
-        assert "SSH directory initialized:" in result.stdout
-        assert (custom_dir / "id_custom").is_file()
-        assert (custom_dir / "id_custom.pub").is_file()
-        config_text = (custom_dir / "config").read_text(encoding="utf-8")
-        assert "IdentityFile ~/.ssh/id_custom" in config_text
+        fp_initial = _extract_fingerprint(initial.stdout)
+        fp_rotated = _extract_fingerprint(rotated.stdout)
+        assert fp_initial is not None and fp_rotated is not None
+        assert fp_initial != fp_rotated
+
+    def test_ssh_init_respects_comment(self, terok_env: TerokIntegrationEnv) -> None:
+        """``--comment`` lands verbatim in the printed public key line."""
+        terok_env.write_project(
+            "commented",
+            PROJECT_TEMPLATE.format(project_id="commented"),
+        )
+
+        result = terok_env.run_cli(
+            "project", "ssh-init", "commented", "--comment", "deploy-key-for-commented"
+        )
+
+        assert "deploy-key-for-commented" in result.stdout
+        assert "ssh-ed25519 " in result.stdout
+
+
+def _extract_fingerprint(stdout: str) -> str | None:
+    """Pick out the ``SHA256:<hex>`` digest from the CLI summary."""
+    for line in stdout.splitlines():
+        if "fingerprint" in line.lower() and "SHA256:" in line:
+            return line.split("SHA256:", 1)[1].strip()
+    return None

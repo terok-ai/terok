@@ -3,11 +3,20 @@
 # SPDX-FileCopyrightText: 2026 Jiri Vyskocil
 # SPDX-License-Identifier: Apache-2.0
 
-"""Migrate terok 0.7 credentials layout to 0.8 vault layout.
+"""Migrate legacy terok state to the current vault layout.
 
-Moves the default credentials directory to the new vault location and
-removes obsolete systemd units.  Only handles the default XDG path —
-all known users use the default.
+Two independent steps, each idempotent and safe to re-run:
+
+1. **0.7 → 0.8 vault rename.**  Move ``~/.local/share/terok/credentials/`` to
+   ``~/.local/share/terok/vault/`` and remove the obsolete
+   ``terok-credential-proxy`` systemd units.
+2. **0.7.4 → 0.8 SSH-keys-to-DB.**  Walk the per-scope SSH keypairs under
+   ``<sandbox-state-dir>/ssh-keys/`` and import them into
+   ``<vault-dir>/credentials.db``.  The old directory is renamed to
+   ``ssh-keys.migrated`` so nothing is destroyed; the obsolete
+   ``vault/ssh-keys.json`` sidecar is removed.
+
+Only the default XDG paths are handled — all known users use the default.
 
 Usage::
 
@@ -53,7 +62,6 @@ def _remove_old_systemd_units() -> list[str]:
     if not socket_file.is_file() and not service_file.is_file():
         return actions
 
-    # Stop and disable the old socket
     subprocess.run(
         ["systemctl", "--user", "disable", "--now", _OLD_SOCKET_UNIT],
         check=False,
@@ -77,46 +85,116 @@ def _remove_old_systemd_units() -> list[str]:
     return actions
 
 
-def main() -> int:
-    """Run the migration."""
-    parent = _default_vault_parent()
+def _rename_credentials_to_vault(parent: Path) -> list[str]:
+    """Rename the legacy ``credentials/`` dir to ``vault/`` when applicable."""
     old_dir = parent / "credentials"
     new_dir = parent / "vault"
+    if not old_dir.is_dir():
+        return []
+    if new_dir.is_dir():
+        raise SystemExit(f"Both {old_dir} and {new_dir} exist — merge manually, then re-run.")
+    shutil.move(str(old_dir), str(new_dir))
+    return [f"Moved {old_dir} → {new_dir}"]
 
-    print("terok 0.7 → 0.8 vault migration")
-    print(f"  Old: {old_dir}")
-    print(f"  New: {new_dir}")
+
+def _default_sandbox_state_dir() -> Path:
+    """Return the default sandbox state directory ( ~/.local/share/terok/sandbox )."""
+    return _default_vault_parent() / "sandbox"
+
+
+def _import_ssh_keys_to_db(state_dir: Path, vault_dir: Path) -> list[str]:
+    """Import every on-disk scope keypair into ``vault/credentials.db``.
+
+    No-op when the legacy ``ssh-keys/`` directory is absent.  On success,
+    the directory is renamed to ``ssh-keys.migrated`` so a botched run
+    can be retried without touching the source material.
+    """
+    legacy_dir = state_dir / "ssh-keys"
+    if not legacy_dir.is_dir() or not any(legacy_dir.iterdir()):
+        return []
+
+    try:
+        from terok_sandbox import CredentialDB, import_ssh_keypair
+    except ImportError as exc:
+        raise SystemExit(
+            f"terok-sandbox is not importable ({exc}) — upgrade the package first, "
+            "then re-run this script."
+        )
+
+    vault_dir.mkdir(parents=True, exist_ok=True)
+    db = CredentialDB(vault_dir / "credentials.db")
+    actions: list[str] = []
+    try:
+        for scope_dir in sorted(p for p in legacy_dir.iterdir() if p.is_dir()):
+            scope = scope_dir.name
+            for pub in sorted(scope_dir.glob("*.pub")):
+                priv = pub.with_suffix("")
+                if not priv.is_file():
+                    continue
+                try:
+                    result = import_ssh_keypair(db, scope, priv, pub_path=pub)
+                except Exception as exc:  # noqa: BLE001 — surface, don't abort the loop
+                    actions.append(f"[skip] {scope}/{priv.name}: {exc}")
+                    continue
+                state = "already in DB" if result.already_present else "imported"
+                actions.append(f"[ ok ] {scope}/{priv.name}: {state}")
+    finally:
+        db.close()
+
+    archived = legacy_dir.with_suffix(".migrated")
+    legacy_dir.rename(archived)
+    actions.append(f"Archived {legacy_dir} → {archived}")
+
+    json_sidecar = vault_dir / "ssh-keys.json"
+    if json_sidecar.is_file():
+        json_sidecar.unlink()
+        actions.append(f"Removed obsolete {json_sidecar}")
+    return actions
+
+
+def main() -> int:
+    """Run every migration step that applies to this install."""
+    parent = _default_vault_parent()
+    vault_dir = parent / "vault"
+    state_dir = _default_sandbox_state_dir()
+
+    print("terok state migration")
+    print(f"  Data parent:       {parent}")
+    print(f"  Sandbox state dir: {state_dir}")
     print()
 
-    # Check old env var
     if os.getenv("TEROK_CREDENTIALS_DIR"):
         print(
             "WARNING: TEROK_CREDENTIALS_DIR is set in your environment.\n"
             "         Rename it to TEROK_VAULT_DIR in your shell profile.\n"
         )
 
-    if not old_dir.is_dir():
-        print("Nothing to migrate — old credentials directory does not exist.")
+    did_anything = False
+
+    rename_actions = _rename_credentials_to_vault(parent)
+    for action in rename_actions:
+        print(action)
+    if rename_actions:
+        did_anything = True
+        for action in _remove_old_systemd_units():
+            print(f"  {action}")
+
+    ssh_actions = _import_ssh_keys_to_db(state_dir, vault_dir)
+    if ssh_actions:
+        did_anything = True
+        print()
+        print("SSH keys → credential DB:")
+        for action in ssh_actions:
+            print(f"  {action}")
+
+    if not did_anything:
+        print("Nothing to migrate — install is already on the current layout.")
         return 0
-
-    if new_dir.is_dir():
-        print(f"ERROR: New directory already exists: {new_dir}")
-        print("       Remove it or merge manually, then re-run.")
-        return 1
-
-    # Move the directory
-    shutil.move(str(old_dir), str(new_dir))
-    print(f"Moved {old_dir} → {new_dir}")
-
-    # Remove old systemd units
-    actions = _remove_old_systemd_units()
-    for action in actions:
-        print(f"  {action}")
 
     print()
     print("Migration complete. Next steps:")
-    print("  1. Run 'terok vault install' to set up new systemd units")
-    print("  2. Run 'terok vault start' to start the vault")
+    print("  1. Run 'terok vault install' to set up / refresh systemd units")
+    print("  2. Run 'terok vault start' to (re)start the vault")
     if os.getenv("TEROK_CREDENTIALS_DIR"):
         print("  3. Update TEROK_CREDENTIALS_DIR → TEROK_VAULT_DIR in your shell profile")
     return 0

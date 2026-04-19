@@ -159,23 +159,13 @@ class RawSSHSection(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    key_name: str | None = Field(
-        default=None, description="SSH key filename (default: ``id_ed25519_<project_id>``)"
-    )
-    host_dir: str | None = Field(
-        default=None,
-        description="Host directory for SSH key storage (keys served via SSH agent proxy, not mounted)",
-    )
-    config_template: str | None = Field(
-        default=None,
-        description=(
-            "Path to an SSH config template file"
-            " (supports ``{{IDENTITY_FILE}}``, ``{{KEY_NAME}}``, ``{{PROJECT_ID}}``)"
-        ),
-    )
-    allow_host_keys: bool = Field(
+    use_personal: bool = Field(
         default=False,
-        description="Allow fallback to ~/.ssh host keys for gate operations",
+        description=(
+            "Opt in to the user's ``~/.ssh`` keys for host-side ``gate-sync``. "
+            "Default ``false`` — terok uses only its vault-managed key. "
+            "See also the per-invocation override ``--use-personal-ssh``."
+        ),
     )
 
 

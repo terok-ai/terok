@@ -285,18 +285,10 @@ class TestProject:
             for name in ("L0.Dockerfile", "L1.cli.Dockerfile", "L1.ui.Dockerfile", "L2.Dockerfile"):
                 (stage_dir / name).write_text("", encoding="utf-8")
 
-            # Create SSH keys in the managed ssh-keys store (matches SandboxConfig().ssh_keys_dir)
-            sandbox_state = env.base / "sandbox-state"
-            ssh_dir = sandbox_state / "ssh-keys" / project_id
-            ssh_dir.mkdir(parents=True, exist_ok=True)
-            (ssh_dir / "config").write_text("", encoding="utf-8")
-
             gate_dir = make_sandbox_config().gate_base_path / f"{project_id}.git"
             gate_dir.mkdir(parents=True, exist_ok=True)
 
-            mock_sandbox_cfg = unittest.mock.MagicMock()
-            mock_sandbox_cfg.ssh_keys_dir = sandbox_state / "ssh-keys"
-
+            # SSH "ready" check now hits the vault DB — stub the probe directly.
             with (
                 unittest.mock.patch(
                     "terok.lib.domain.project_state.image_exists", return_value=True
@@ -305,11 +297,12 @@ class TestProject:
                     "terok.lib.core.projects._get_global_git_config", return_value=None
                 ),
                 unittest.mock.patch(
-                    "terok.lib.core.projects.make_sandbox_config",
-                    return_value=mock_sandbox_cfg,
+                    "terok.lib.domain.project_state._scope_has_vault_key",
+                    return_value=True,
                 ),
             ):
                 state = get_project_state(project_id, gate_commit_provider=lambda _pid: None)
+            _ = env  # silence unused; tmp-env drives config resolution
 
         assert state == {
             "dockerfiles": True,
@@ -323,101 +316,41 @@ class TestProject:
         }
 
 
-class TestShareSshKeyRegistration:
-    """Source's key paths are aliased under the derived scope, not copied."""
+class TestShareSshKeyAssignments:
+    """Source's vault key assignments are shared with the derived scope."""
 
-    def _patch_sandbox_config(self, keys_path: Path) -> unittest.mock._patch:
-        """Return a patch that routes ``make_sandbox_config().ssh_keys_json_path`` to *keys_path*."""
-        mock_cfg = unittest.mock.MagicMock()
-        mock_cfg.ssh_keys_json_path = keys_path
-        return unittest.mock.patch(
-            "terok.lib.core.config.make_sandbox_config", return_value=mock_cfg
-        )
+    @staticmethod
+    def _patch_vault_db(db):
+        from contextlib import contextmanager
 
-    def test_copies_dict_entry_to_new_scope(self, tmp_path: Path) -> None:
-        """Source's single-key dict entry is copied under the new scope."""
-        import json
+        @contextmanager
+        def _cm():
+            yield db
 
-        from terok.lib.domain.facade import _share_ssh_key_registration
+        return unittest.mock.patch("terok.lib.domain.facade.vault_db", _cm)
 
-        keys_path = tmp_path / "ssh-keys.json"
-        keys_path.write_text(
-            json.dumps({"alpha": {"private_key": "/k/alpha/id", "public_key": "/k/alpha/id.pub"}})
-        )
-        with self._patch_sandbox_config(keys_path):
-            _share_ssh_key_registration("alpha", "beta")
+    def test_delegates_to_db_assign(self) -> None:
+        """Every assignment on the source scope becomes an assignment on the new scope."""
+        from terok.lib.domain.facade import _share_ssh_key_assignments
 
-        mapping = json.loads(keys_path.read_text())
-        # ``update_ssh_keys_json`` normalises entries to a list per scope.
-        assert mapping["beta"] == [{"private_key": "/k/alpha/id", "public_key": "/k/alpha/id.pub"}]
-        assert mapping["alpha"]["private_key"] == "/k/alpha/id"
-
-    def test_missing_file_is_noop(self, tmp_path: Path) -> None:
-        """Absent ``ssh-keys.json`` — silent no-op (handled later by project-init)."""
-        from terok.lib.domain.facade import _share_ssh_key_registration
-
-        keys_path = tmp_path / "ssh-keys.json"
-        with self._patch_sandbox_config(keys_path):
-            _share_ssh_key_registration("alpha", "beta")
-        assert not keys_path.exists()
-
-    def test_missing_source_entry_is_noop(self, tmp_path: Path) -> None:
-        """No entry for *source_id* — derived project is left unregistered."""
-        import json
-
-        from terok.lib.domain.facade import _share_ssh_key_registration
-
-        keys_path = tmp_path / "ssh-keys.json"
-        keys_path.write_text(
-            json.dumps({"gamma": {"private_key": "/k/g", "public_key": "/k/g.pub"}})
-        )
-        with self._patch_sandbox_config(keys_path):
-            _share_ssh_key_registration("alpha", "beta")
-
-        assert "beta" not in json.loads(keys_path.read_text())
-
-    def test_list_entry_copies_all_keys(self, tmp_path: Path) -> None:
-        """All of source's keys (GitHub + GitLab, etc.) are shared with the new scope."""
-        import json
-
-        from terok.lib.domain.facade import _share_ssh_key_registration
-
-        keys_path = tmp_path / "ssh-keys.json"
-        source_keys = [
-            {"private_key": "/k/a1", "public_key": "/k/a1.pub"},
-            {"private_key": "/k/a2", "public_key": "/k/a2.pub"},
+        row_a = unittest.mock.MagicMock(id=11)
+        row_b = unittest.mock.MagicMock(id=22)
+        db = unittest.mock.MagicMock()
+        db.list_ssh_keys_for_scope.return_value = [row_a, row_b]
+        with self._patch_vault_db(db):
+            _share_ssh_key_assignments("alpha", "beta")
+        db.list_ssh_keys_for_scope.assert_called_once_with("alpha")
+        assert [c.args for c in db.assign_ssh_key.call_args_list] == [
+            ("beta", 11),
+            ("beta", 22),
         ]
-        keys_path.write_text(json.dumps({"alpha": source_keys}))
-        with self._patch_sandbox_config(keys_path):
-            _share_ssh_key_registration("alpha", "beta")
 
-        mapping = json.loads(keys_path.read_text())
-        assert mapping["beta"] == source_keys
+    def test_missing_source_entry_is_noop(self) -> None:
+        """No assignments on source — derived project is left unregistered."""
+        from terok.lib.domain.facade import _share_ssh_key_assignments
 
-    def test_list_entry_skips_malformed_keys(self, tmp_path: Path) -> None:
-        """Entries missing ``private_key``/``public_key`` are skipped; valid ones still share."""
-        import json
-
-        from terok.lib.domain.facade import _share_ssh_key_registration
-
-        keys_path = tmp_path / "ssh-keys.json"
-        keys_path.write_text(
-            json.dumps(
-                {
-                    "alpha": [
-                        {"private_key": "/k/a1", "public_key": "/k/a1.pub"},
-                        {"private_key": "/k/a2"},  # missing public_key
-                        "not-a-dict",
-                        {"private_key": "/k/a3", "public_key": "/k/a3.pub"},
-                    ]
-                }
-            )
-        )
-        with self._patch_sandbox_config(keys_path):
-            _share_ssh_key_registration("alpha", "beta")
-
-        mapping = json.loads(keys_path.read_text())
-        assert mapping["beta"] == [
-            {"private_key": "/k/a1", "public_key": "/k/a1.pub"},
-            {"private_key": "/k/a3", "public_key": "/k/a3.pub"},
-        ]
+        db = unittest.mock.MagicMock()
+        db.list_ssh_keys_for_scope.return_value = []
+        with self._patch_vault_db(db):
+            _share_ssh_key_assignments("alpha", "beta")
+        db.assign_ssh_key.assert_not_called()

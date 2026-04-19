@@ -5,8 +5,6 @@
 
 from __future__ import annotations
 
-import json
-from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -58,7 +56,7 @@ class TestDeriveProject:
         derived_cfg = MagicMock(id="derived")
         with (
             patch("terok.lib.domain.facade._derive_project") as derive,
-            patch("terok.lib.domain.facade._share_ssh_key_registration") as share,
+            patch("terok.lib.domain.facade._share_ssh_key_assignments") as share,
             patch("terok.lib.domain.facade.load_project", return_value=derived_cfg) as loader,
         ):
             result = facade.derive_project("source", "derived")
@@ -68,115 +66,109 @@ class TestDeriveProject:
         assert isinstance(result, Project)
 
 
-class TestShareSshKeyRegistration:
-    """Copy every usable SSH key entry from the source scope to the new scope."""
+def _patch_vault_db(db):
+    """Patch ``facade.vault_db`` to yield *db* — returns the ``patch`` context."""
+    from contextlib import contextmanager
 
-    def _write_keys(self, tmp_path: Path, payload: object) -> Path:
-        p = tmp_path / "ssh-keys.json"
-        p.write_text(json.dumps(payload))
-        return p
+    @contextmanager
+    def _cm():
+        yield db
 
-    def test_silent_noop_when_missing_file(self, tmp_path: Path) -> None:
+    return patch("terok.lib.domain.facade.vault_db", _cm)
+
+
+class TestShareSshKeyAssignments:
+    """Copy every SSH key assignment from the source scope to the new scope."""
+
+    def test_delegates_to_db_assign_for_each_row(self) -> None:
         from terok.lib.domain import facade
 
-        with (
-            patch("terok.lib.core.config.make_sandbox_config") as mock_cfg,
-            patch("terok.lib.domain.facade.register_ssh_key") as register,
-        ):
-            mock_cfg.return_value.ssh_keys_json_path = tmp_path / "missing.json"
-            facade._share_ssh_key_registration("src", "new")
-        register.assert_not_called()
+        row_a = MagicMock(id=1)
+        row_b = MagicMock(id=2)
+        db = MagicMock()
+        db.list_ssh_keys_for_scope.return_value = [row_a, row_b]
+        with _patch_vault_db(db):
+            facade._share_ssh_key_assignments("src", "new")
+        db.list_ssh_keys_for_scope.assert_called_once_with("src")
+        assert db.assign_ssh_key.call_args_list == [
+            (("new", 1),),
+            (("new", 2),),
+        ]
 
-    def test_silent_noop_when_corrupt_json(self, tmp_path: Path) -> None:
+    def test_silent_noop_when_source_has_no_keys(self) -> None:
         from terok.lib.domain import facade
 
-        path = tmp_path / "ssh-keys.json"
-        path.write_text("{not json")
-        with (
-            patch("terok.lib.core.config.make_sandbox_config") as mock_cfg,
-            patch("terok.lib.domain.facade.register_ssh_key") as register,
-        ):
-            mock_cfg.return_value.ssh_keys_json_path = path
-            facade._share_ssh_key_registration("src", "new")
-        register.assert_not_called()
-
-    def test_registers_every_full_key_entry(self, tmp_path: Path) -> None:
-        """Source with multiple usable entries → register every one."""
-        from terok.lib.domain import facade
-
-        path = self._write_keys(
-            tmp_path,
-            {
-                "src": [
-                    {"private_key": "/k1", "public_key": "/k1.pub"},
-                    {"private_key": "/k2", "public_key": "/k2.pub"},
-                ]
-            },
-        )
-        with (
-            patch("terok.lib.core.config.make_sandbox_config") as mock_cfg,
-            patch("terok.lib.domain.facade.register_ssh_key") as register,
-        ):
-            mock_cfg.return_value.ssh_keys_json_path = path
-            facade._share_ssh_key_registration("src", "new")
-        assert register.call_count == 2
-        registered_privs = [c.args[1]["private_key"] for c in register.call_args_list]
-        assert registered_privs == ["/k1", "/k2"]
-
-    def test_skips_entries_missing_fields(self, tmp_path: Path) -> None:
-        """Entries lacking ``private_key`` or ``public_key`` are skipped silently."""
-        from terok.lib.domain import facade
-
-        path = self._write_keys(
-            tmp_path,
-            {
-                "src": [
-                    {"private_key": "/ok", "public_key": "/ok.pub"},
-                    {"private_key": "/only-priv"},  # missing public_key
-                    "not a dict",
-                ]
-            },
-        )
-        with (
-            patch("terok.lib.core.config.make_sandbox_config") as mock_cfg,
-            patch("terok.lib.domain.facade.register_ssh_key") as register,
-        ):
-            mock_cfg.return_value.ssh_keys_json_path = path
-            facade._share_ssh_key_registration("src", "new")
-        assert register.call_count == 1
-        assert register.call_args.args[1]["private_key"] == "/ok"
-
-    def test_accepts_legacy_single_dict_entry(self, tmp_path: Path) -> None:
-        """Pre-0.8 ssh-keys.json stored a single dict per scope, not a list."""
-        from terok.lib.domain import facade
-
-        path = self._write_keys(
-            tmp_path, {"src": {"private_key": "/legacy", "public_key": "/legacy.pub"}}
-        )
-        with (
-            patch("terok.lib.core.config.make_sandbox_config") as mock_cfg,
-            patch("terok.lib.domain.facade.register_ssh_key") as register,
-        ):
-            mock_cfg.return_value.ssh_keys_json_path = path
-            facade._share_ssh_key_registration("src", "new")
-        assert register.call_count == 1
-        assert register.call_args.args[1]["private_key"] == "/legacy"
+        db = MagicMock()
+        db.list_ssh_keys_for_scope.return_value = []
+        with _patch_vault_db(db):
+            facade._share_ssh_key_assignments("src", "new")
+        db.assign_ssh_key.assert_not_called()
 
 
 class TestRegisterSshKey:
-    """register_ssh_key delegates to the sandbox helper with the right paths."""
+    """register_ssh_key assigns a key_id to a scope via the vault DB."""
 
-    def test_forwards_paths_and_result(self, tmp_path: Path) -> None:
+    def test_assigns_key_to_scope(self) -> None:
         from terok.lib.domain import facade
 
-        init_result = {"private_key": "/p", "public_key": "/p.pub"}
+        db = MagicMock()
+        with _patch_vault_db(db):
+            facade.register_ssh_key("myproj", 42)
+        db.assign_ssh_key.assert_called_once_with("myproj", 42)
+
+
+class TestProvisionSshKey:
+    """provision_ssh_key mints via SSHManager and binds the fresh key_id."""
+
+    def test_mints_and_binds(self) -> None:
+        from terok.lib.domain import facade
+
+        init_result = {
+            "key_id": 7,
+            "key_type": "ed25519",
+            "fingerprint": "deadbeef",
+            "comment": "tk-main:myproj",
+            "public_line": "ssh-ed25519 AAAA… tk-main:myproj",
+        }
+        ssh_manager = MagicMock()
+        ssh_manager.__enter__ = MagicMock(return_value=ssh_manager)
+        ssh_manager.__exit__ = MagicMock(return_value=False)
+        ssh_manager.init.return_value = init_result
+
+        db = MagicMock()
         with (
-            patch("terok.lib.core.config.make_sandbox_config") as mock_cfg,
-            patch("terok_sandbox.update_ssh_keys_json") as upd,
+            patch("terok.lib.domain.facade.load_project", return_value=MagicMock(id="myproj")),
+            patch("terok.lib.domain.project.make_ssh_manager", return_value=ssh_manager),
+            _patch_vault_db(db),
         ):
-            mock_cfg.return_value.ssh_keys_json_path = tmp_path / "ssh-keys.json"
-            facade.register_ssh_key("myproj", init_result)
-        upd.assert_called_once_with(tmp_path / "ssh-keys.json", "myproj", init_result)
+            result = facade.provision_ssh_key("myproj", key_type="ed25519", force=True)
+
+        ssh_manager.init.assert_called_once_with(key_type="ed25519", comment=None, force=True)
+        db.assign_ssh_key.assert_called_once_with("myproj", 7)
+        assert result is init_result
+
+
+class TestSummarizeSshInit:
+    """summarize_ssh_init prints every field from the SSHInitResult."""
+
+    def test_prints_all_metadata_and_public_line(self, capsys: pytest.CaptureFixture[str]) -> None:
+        from terok.lib.domain import facade
+
+        facade.summarize_ssh_init(
+            {
+                "key_id": 3,
+                "key_type": "rsa",
+                "fingerprint": "abc123",
+                "comment": "tk-main:proj",
+                "public_line": "ssh-rsa AAAA… tk-main:proj",
+            }
+        )
+        out = capsys.readouterr().out
+        assert "id:          3" in out
+        assert "type:        rsa" in out
+        assert "fingerprint: SHA256:abc123" in out
+        assert "comment:     tk-main:proj" in out
+        assert "ssh-rsa AAAA… tk-main:proj" in out
 
 
 class TestMaybePauseForSshKeyRegistration:

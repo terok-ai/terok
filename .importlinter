@@ -32,6 +32,7 @@ name = terok_sandbox access restricted to designated modules
 type = protected
 protected_modules = terok_sandbox
 allowed_importers =
+    terok.cli.commands.project
     terok.cli.commands.setup
     terok.cli.commands.shield
     terok.cli.commands.sickbay
@@ -48,6 +49,7 @@ allowed_importers =
     terok.lib.domain.project_state
     terok.lib.domain.storage
     terok.lib.domain.task_logs
+    terok.lib.domain.vault
     terok.lib.orchestration.agent_config
     terok.lib.orchestration.container_doctor
     terok.lib.orchestration.container_exec

@@ -335,9 +335,8 @@ class TestProjectStateWarnings:
             ),
             patch("subprocess.run", side_effect=FileNotFoundError("no podman")),
             patch("terok.lib.util.logging_utils.log_warning") as mock_warn,
-            patch("terok.lib.core.projects.make_sandbox_config") as mock_sbx,
+            patch("terok.lib.domain.project_state._scope_has_vault_key", return_value=False),
         ):
-            mock_sbx.return_value.ssh_keys_dir = tmp_path / "ssh-keys"
             get_project_state("test-proj")
 
         assert any("Template comparison failed" in str(c) for c in mock_warn.call_args_list)
@@ -362,9 +361,8 @@ class TestProjectStateWarnings:
             patch("terok.lib.domain.project_state.build_dir", return_value=tmp_path / "build"),
             patch("subprocess.run", side_effect=FileNotFoundError("no podman")),
             patch("terok.lib.util.logging_utils.log_warning") as mock_warn,
-            patch("terok.lib.core.projects.make_sandbox_config") as mock_sbx,
+            patch("terok.lib.domain.project_state._scope_has_vault_key", return_value=False),
         ):
-            mock_sbx.return_value.ssh_keys_dir = tmp_path / "ssh-keys"
             get_project_state("test-proj", gate_commit_provider=broken_commit)
 
         assert any("Gate commit lookup failed" in str(c) for c in mock_warn.call_args_list)

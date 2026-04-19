@@ -29,11 +29,14 @@ used by CLI commands that operate on ``project_id`` strings directly.
 
 from __future__ import annotations
 
-import json
+from typing import TYPE_CHECKING
 
 from terok_executor import (
     authenticate as _authenticate_raw,
 )
+
+if TYPE_CHECKING:
+    from terok_sandbox.credentials.ssh import SSHInitResult
 
 from ..core.images import project_cli_image
 from ..core.projects import derive_project as _derive_project, load_project
@@ -75,6 +78,7 @@ from .project import (  # noqa: F401 — re-exported public API
 from .project_state import get_project_state, is_task_image_old
 from .task import Task  # noqa: F401 — re-exported public API
 from .task_logs import LogViewOptions, task_logs  # noqa: F401 — re-exported public API
+from .vault import vault_db  # noqa: F401 — re-exported public API
 
 # ---------------------------------------------------------------------------
 # Project factory functions
@@ -94,66 +98,70 @@ def list_projects() -> list[Project]:
 
 
 def derive_project(source_id: str, new_id: str) -> Project:
-    """Derive a new project from an existing one and return it.
-
-    The derived project shares the source's git-gate mirror and SSH keypair.
-    If the source already has an ``ssh-keys.json`` entry, the same key files
-    are registered under the new scope so the vault can serve the
-    derived project without further setup.
-    """
+    """Copy *source_id*'s gate mirror and vault SSH assignments under *new_id*."""
     _derive_project(source_id, new_id)
-    _share_ssh_key_registration(source_id, new_id)
+    _share_ssh_key_assignments(source_id, new_id)
     return Project(load_project(new_id))
 
 
-def _share_ssh_key_registration(source_id: str, new_id: str) -> None:
-    """Register all of the source's SSH keys under *new_id* in ``ssh-keys.json``.
-
-    Silent no-op when the source has no registered keys yet — ``project-init``
-    on the derived project will populate both scopes once the keys exist on
-    disk.  Every usable key (GitHub + GitLab + …) is shared so the sibling
-    can reach the same remotes as the source.
-    """
-    from ..core.config import make_sandbox_config
-
-    try:
-        mapping = json.loads(make_sandbox_config().ssh_keys_json_path.read_text(encoding="utf-8"))
-    except (FileNotFoundError, json.JSONDecodeError):
-        return
-
-    raw = mapping.get(source_id)
-    source_entries = raw if isinstance(raw, list) else [raw]
-    for key_entry in source_entries:
-        if isinstance(key_entry, dict) and {"private_key", "public_key"} <= key_entry.keys():
-            register_ssh_key(new_id, key_entry)
+def _share_ssh_key_assignments(source_id: str, new_id: str) -> None:
+    """Copy every SSH key assignment from *source_id* to *new_id*."""
+    with vault_db() as db:
+        for row in db.list_ssh_keys_for_scope(source_id):
+            db.assign_ssh_key(new_id, row.id)
 
 
 # ---------------------------------------------------------------------------
-# Workflow helpers
+# SSH provisioning — the three public verbs form the user-facing ``ssh-init``
+# story: mint the keypair, bind it to the project, render the result for the
+# human.  ``maybe_pause_for_ssh_key_registration`` is the follow-up step for
+# projects that need the public key registered upstream before gate-sync.
 # ---------------------------------------------------------------------------
 
 
-def register_ssh_key(project_id: str, init_result: dict) -> None:
-    """Register an SSH key in ``ssh-keys.json`` for the vault's SSH signer.
+def provision_ssh_key(
+    project_id: str,
+    *,
+    key_type: str = "ed25519",
+    comment: str | None = None,
+    force: bool = False,
+) -> SSHInitResult:
+    """Mint a vault-backed keypair for *project_id* and bind it to the scope.
 
-    Call this after :meth:`SSHManager.init` with the returned result dict.
+    Single entry point for both the CLI and the TUI.  Rendering the
+    result for the user is the caller's job — see :func:`summarize_ssh_init`.
     """
-    from terok_sandbox import update_ssh_keys_json
+    from .project import make_ssh_manager
 
-    from ..core.config import make_sandbox_config
+    project = load_project(project_id)
+    with make_ssh_manager(project) as ssh:
+        result = ssh.init(key_type=key_type, comment=comment, force=force)
+    register_ssh_key(project_id, result["key_id"])
+    return result
 
-    update_ssh_keys_json(make_sandbox_config().ssh_keys_json_path, project_id, init_result)
+
+def register_ssh_key(project_id: str, key_id: int) -> None:
+    """Bind an already-minted *key_id* to *project_id* (idempotent)."""
+    with vault_db() as db:
+        db.assign_ssh_key(project_id, key_id)
+
+
+def summarize_ssh_init(result: SSHInitResult) -> None:
+    """Render an ``ssh-init`` result for the terminal."""
+    print(f"  id:          {result['key_id']}")
+    print(f"  type:        {result['key_type']}")
+    print(f"  fingerprint: SHA256:{result['fingerprint']}")
+    print(f"  comment:     {result['comment']}")
+    print("Public key (register as a deploy key on the remote):")
+    print(f"  {result['public_line']}")
 
 
 def maybe_pause_for_ssh_key_registration(project_id: str) -> None:
-    """If the project's upstream uses SSH, pause so the user can register the deploy key.
+    """Pause so the user can register the deploy key, but only for SSH upstreams."""
+    from terok_sandbox import is_ssh_url
 
-    Call this right after ``SSHManager.init()`` — the public key will already
-    have been printed to the terminal.  For HTTPS upstreams this is a no-op.
-    """
     project = load_project(project_id)
-    upstream = project.upstream_url or ""
-    if upstream.startswith("git@") or upstream.startswith("ssh://"):
+    if is_ssh_url(project.upstream_url):
         print("\n" + "=" * 60)
         print("ACTION REQUIRED: Add the public key shown above as a")
         print("deploy key (or to your SSH keys) on the git remote.")
@@ -230,7 +238,10 @@ __all__ = [
     "make_ssh_manager",
     "make_git_gate",
     # Workflow helpers
+    "provision_ssh_key",
     "register_ssh_key",
+    "summarize_ssh_init",
+    "vault_db",
     "maybe_pause_for_ssh_key_registration",
     # Auth
     "authenticate",

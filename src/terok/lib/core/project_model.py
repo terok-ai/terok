@@ -41,10 +41,8 @@ class ProjectConfig(BaseModel):
     gate_path: Path  # git gate (mirror) path
     staging_root: Path | None  # gatekeeping only
 
-    ssh_key_name: str | None
-    ssh_host_dir: Path | None
-    ssh_config_template: Path | None = None
-    ssh_allow_host_keys: bool = False
+    ssh_use_personal: bool = False
+    """Opt in to the user's ``~/.ssh`` keys for host-side gate-sync (default off)."""
     expose_external_remote: bool = False
     human_name: str | None = None
     human_email: str | None = None
@@ -107,23 +105,6 @@ class PresetInfo:
     name: str
     source: str  # "project" | "global" | "bundled"
     path: Path
-
-
-def effective_ssh_key_name(project: ProjectConfig, key_type: str = "ed25519") -> str:
-    """Return the SSH key filename that should be used for this project.
-
-    Precedence:
-      1. Explicit `ssh.key_name` from project.yml (project.ssh_key_name)
-      2. Derived default: id_<type>_<project_id>, e.g. id_ed25519_myproj
-
-    This helper centralizes the default so ssh-init, container env (SSH_KEY_NAME)
-    and host-side git helpers all agree even when project.yml omits ssh.key_name.
-    """
-
-    if project.ssh_key_name:
-        return project.ssh_key_name
-    algo = "ed25519" if key_type == "ed25519" else "rsa"
-    return f"id_{algo}_{project.id}"
 
 
 _PROJECT_ID_RE = re.compile(r"[a-z0-9][a-z0-9_-]*")

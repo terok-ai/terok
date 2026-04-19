@@ -69,7 +69,9 @@ def configure_shared_gate(
 
 
 def test_sync_project_gate_ssh_requires_config() -> None:
-    """SSH upstreams require project SSH config before syncing the gate."""
+    """SSH upstreams require a vault key or explicit personal-SSH opt-in before syncing."""
+    from terok_sandbox.gate.mirror import GateAuthNotConfigured
+
     project_id = "proj6"
     with (
         project_env(
@@ -79,7 +81,7 @@ def test_sync_project_gate_ssh_requires_config() -> None:
             project_id=project_id,
             with_config_file=True,
         ),
-        pytest.raises(SystemExit),
+        pytest.raises(GateAuthNotConfigured),
     ):
         make_git_gate(load_project(project_id)).sync()
 

@@ -25,7 +25,7 @@ from terok_sandbox import (
     uninstall_vault_systemd,
 )
 
-from ..lib.core.projects import effective_ssh_key_name, load_project, resolve_ssh_host_dir
+from ..lib.core.projects import load_project
 from ..lib.domain.facade import (
     authenticate,
     build_images,
@@ -33,10 +33,22 @@ from ..lib.domain.facade import (
     find_projects_sharing_gate,
     generate_dockerfiles,
     maybe_pause_for_ssh_key_registration,
-    register_ssh_key,
+    provision_ssh_key,
+    summarize_ssh_init,
 )
-from ..lib.domain.project import make_git_gate, make_ssh_manager
+from ..lib.domain.project import make_git_gate
 from .shell_launch import launch_login
+
+
+def _lookup_vault_pub_line(scope: str) -> str | None:
+    """Return the scope's most-recent public key line, or ``None`` if unassigned."""
+    from terok_sandbox import public_line_of
+
+    from ..lib.domain.facade import vault_db
+
+    with vault_db() as db:
+        records = db.load_ssh_keys_for_scope(scope)
+    return public_line_of(records[-1]) if records else None
 
 
 class ProjectActionsMixin:
@@ -52,37 +64,29 @@ class ProjectActionsMixin:
 
     def _print_sync_gate_ssh_help(self, project_id: str) -> None:
         """Print SSH-specific troubleshooting details for gate sync failures."""
+        from terok_sandbox import is_ssh_url
+
         try:
             project = load_project(project_id)
         except (Exception, SystemExit):
             return
 
-        upstream = project.upstream_url or ""
-        if not (upstream.startswith("git@") or upstream.startswith("ssh://")):
+        if not is_ssh_url(project.upstream_url):
             return
-
-        key_name = effective_ssh_key_name(project, key_type="ed25519")
-        pub_key_path = resolve_ssh_host_dir(project) / f"{key_name}.pub"
 
         print("\nHint: this project uses an SSH upstream.")
         print(
             "Gate sync failures are often caused by a missing SSH key registration on the remote."
         )
-        print(f"Public key path: {pub_key_path}")
 
-        if pub_key_path.is_file():
-            try:
-                pub_key_text = pub_key_path.read_text(encoding="utf-8", errors="ignore").strip()
-            except Exception:
-                pub_key_text = ""
-            if pub_key_text:
-                print("Public key:")
-                print(f"  {pub_key_text}")
-            else:
-                print("Public key file exists but is empty.")
+        pub_line = _lookup_vault_pub_line(project.id)
+        if pub_line is None:
+            print(f"No SSH key assigned to scope {project.id!r} in the vault.")
+            print(f"Run 'terok project ssh-init {project_id}' to generate one,")
+            print("then register the printed public key as a deploy key upstream.")
         else:
-            print(f"Public key file not found at {pub_key_path}.")
-            print(f"Run 'terok project ssh-init {project_id}' to generate it.")
+            print("Public key (register as a deploy key on the remote):")
+            print(f"  {pub_line}")
 
     async def _run_suspended(
         self,
@@ -170,19 +174,15 @@ class ProjectActionsMixin:
         self._invalidate_image_caches()
 
     async def action_init_ssh(self) -> None:
-        """Initialize the per-project SSH directory and keypair."""
+        """Mint a fresh vault-backed SSH keypair for the current project."""
         if not self.current_project_id:
             self.notify("No project selected.")
             return
         pid = self.current_project_id
 
-        def _init_and_register() -> None:
-            result = make_ssh_manager(load_project(pid)).init()
-            register_ssh_key(pid, result)
-
         await self._run_suspended(
-            _init_and_register,
-            success_msg=f"Initialized SSH dir for {pid}",
+            lambda: summarize_ssh_init(provision_ssh_key(pid)),
+            success_msg=f"Initialized vault-backed SSH key for {pid}",
         )
 
     async def _action_build_agents(self) -> None:
@@ -235,8 +235,7 @@ class ProjectActionsMixin:
             nonlocal gate_ok
             print(f"=== Full Setup for {pid} ===\n")
             print("Step 1/4: Initializing SSH...")
-            result = make_ssh_manager(load_project(pid)).init()
-            register_ssh_key(pid, result)
+            summarize_ssh_init(provision_ssh_key(pid))
             maybe_pause_for_ssh_key_registration(pid)
             print("\nStep 2/4: Generating Dockerfiles...")
             generate_dockerfiles(pid)

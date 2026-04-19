@@ -103,12 +103,19 @@ depends_on = [
     "terok.lib.domain.image_cleanup",
     "terok.lib.domain.project_state",
     "terok.lib.domain.task_logs",
+    "terok.lib.domain.vault",
     "terok.lib.orchestration.task_runners",
     "terok.lib.orchestration.tasks",
     "terok.lib.core.projects",
     "terok.lib.domain.project",
     "terok.lib.domain.task",
 ]
+
+# Vault access primitive (shared open/close handshake)
+[[modules]]
+path = "terok.lib.domain.vault"
+layer = "domain"
+depends_on = ["terok.lib.core.config"]
 
 # Rich domain object: Project (Aggregate Root)
 [[modules]]
@@ -118,6 +125,7 @@ depends_on = [
     "terok.lib.orchestration.agent_config",
     "terok.lib.orchestration.image",
     "terok.lib.domain.project_state",
+    "terok.lib.domain.vault",
     "terok.lib.orchestration.task_runners",
     "terok.lib.orchestration.tasks",
     "terok.lib.core.config",
@@ -193,6 +201,7 @@ depends_on = [
     "terok.lib.core.images",
     "terok.lib.core.projects",
     "terok.lib.core.task_display",
+    "terok.lib.domain.vault",
 ]
 
 # Interactive project creation
@@ -732,8 +741,15 @@ expose = [
     "is_task_image_old",
     "register_ssh_key",
     "maybe_pause_for_ssh_key_registration",
+    "provision_ssh_key",
+    "summarize_ssh_init",
+    "vault_db",
 ]
 from = ["terok.lib.domain.facade"]
+
+[[interfaces]]
+expose = ["vault_db"]
+from = ["terok.lib.domain.vault"]
 
 [[interfaces]]
 expose = ["Project", "AgentManager", "DeleteProjectResult", "delete_project", "find_projects_sharing_gate", "validate_gate_upstream_match", "make_git_gate", "make_ssh_manager"]

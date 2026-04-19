@@ -37,16 +37,6 @@ def build_dir(_env: SimpleNamespace, project_id: str) -> Path:
     return target
 
 
-def ssh_dir(env: SimpleNamespace, project_id: str) -> Path:
-    """Create and return the project's SSH keys dir (under sandbox state)."""
-    from terok.lib.core.config import make_sandbox_config
-
-    target = make_sandbox_config().ssh_keys_dir / project_id
-    target.mkdir(parents=True, exist_ok=True)
-    (target / "id_ed25519").write_text("# private key", encoding="utf-8")
-    return target
-
-
 def task_state_dir(_env: SimpleNamespace, project_id: str) -> Path:
     """Create and return the project's state metadata dir."""
     target = cfg_state_dir() / "projects" / project_id
@@ -79,12 +69,11 @@ def task_archive_subdir(_env: SimpleNamespace, project_id: str) -> Path:
     [
         ("del-proj", {"with_config_file": True}, project_root),
         ("del-build", {"with_config_file": True}, build_dir),
-        ("del-ssh", {"with_config_file": True}, ssh_dir),
         ("del-meta", {}, task_state_dir),
         ("del-gate", {"with_gate": True}, gate_dir),
         ("del-tarch", {}, task_archive_subdir),
     ],
-    ids=["config-dir", "build-dir", "ssh-dir", "task-metadata-dir", "gate-dir", "task-archive-dir"],
+    ids=["config-dir", "build-dir", "task-metadata-dir", "gate-dir", "task-archive-dir"],
 )
 def test_delete_project_removes_managed_directories(
     project_id: str,

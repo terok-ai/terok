@@ -26,7 +26,6 @@ from .config import (
     get_global_section,
     get_shield_drop_on_task_run,
     get_shield_on_task_restart,
-    make_sandbox_config,
     projects_dir,
     sandbox_live_dir,
     user_presets_dir,
@@ -36,7 +35,6 @@ from .git_authorship import normalize_git_authorship
 from .project_model import (  # noqa: F401 — re-exported public API
     PresetInfo,
     ProjectConfig,
-    effective_ssh_key_name,
     is_valid_project_id,
     validate_project_id,
 )
@@ -111,16 +109,6 @@ def _parse_project_yaml(cfg_path: Path) -> RawProjectYaml:
         raise SystemExit(_format_validation_error(exc, cfg_path))
 
 
-def _resolve_ssh_template(raw_template: str | None, root: Path) -> Path | None:
-    """Resolve an SSH config_template path relative to the project root."""
-    if not raw_template:
-        return None
-    p = Path(raw_template).expanduser()
-    if not p.is_absolute():
-        p = root / p
-    return p.resolve()
-
-
 def _resolve_shield_config(raw: RawProjectYaml) -> tuple[bool, str]:
     """Resolve shield settings with project-overrides-global fallback."""
     drop = (
@@ -161,8 +149,6 @@ def _build_project_config(
     if sec == "gatekeeping":
         staging_root = Path(raw.gatekeeping.staging_root or (build_dir() / pid)).resolve()
 
-    ssh_host_dir = Path(raw.ssh.host_dir).expanduser().resolve() if raw.ssh.host_dir else None
-
     match raw.shared_dir:
         case True:
             from ..util.host_cmd import SHARED_DIRNAME
@@ -192,10 +178,7 @@ def _build_project_config(
         tasks_root=tasks_root,
         gate_path=gate_path,
         staging_root=staging_root,
-        ssh_key_name=raw.ssh.key_name,
-        ssh_host_dir=ssh_host_dir,
-        ssh_config_template=_resolve_ssh_template(raw.ssh.config_template, root),
-        ssh_allow_host_keys=raw.ssh.allow_host_keys,
+        ssh_use_personal=raw.ssh.use_personal,
         expose_external_remote=raw.gatekeeping.expose_external_remote,
         human_name=identity.get("human_name") or "Nobody",
         human_email=identity.get("human_email") or "nobody@localhost",
@@ -331,24 +314,13 @@ def derive_project(source_id: str, new_id: str) -> Path:
 
 
 def _pin_shared_infra(cfg: dict, source: ProjectConfig) -> None:
-    """Pin *source*'s resolved gate and SSH paths into *cfg*.
+    """Pin *source*'s resolved gate path into *cfg*.
 
-    Makes the sibling project's infrastructure sharing explicit in the
-    written YAML, decoupled from terok's default-path conventions.
+    SSH keys are shared through the vault DB (assignments table) — no
+    filesystem-level pinning required.  The gate path stays explicit so a
+    derived project lands on the same mirror as its source.
     """
     cfg.setdefault("gate", {})["path"] = str(source.gate_path)
-    ssh_section = cfg.setdefault("ssh", {})
-    ssh_section["host_dir"] = str(resolve_ssh_host_dir(source))
-    ssh_section["key_name"] = effective_ssh_key_name(source)
-
-
-def resolve_ssh_host_dir(project: ProjectConfig) -> Path:
-    """On-disk directory holding *project*'s SSH keypair and config.
-
-    Project-level ``ssh.host_dir`` wins; otherwise falls back to the managed
-    default ``<sandbox state>/ssh-keys/<project_id>``.
-    """
-    return project.ssh_host_dir or (make_sandbox_config().ssh_keys_dir / project.id)
 
 
 def _find_project_root(project_id: str) -> Path:

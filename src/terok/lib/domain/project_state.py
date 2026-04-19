@@ -15,8 +15,17 @@ from terok_sandbox import container_image, image_exists, image_labels, is_contai
 
 from ..core.config import build_dir
 from ..core.images import project_cli_image
-from ..core.projects import load_project, resolve_ssh_host_dir
+from ..core.projects import load_project
 from ..core.task_display import container_name as _container_name
+
+
+def _scope_has_vault_key(scope: str) -> bool:
+    """Return ``True`` iff the vault has at least one SSH key assigned to *scope*."""
+    from .vault import vault_db
+
+    with vault_db() as db:
+        return bool(db.list_ssh_keys_for_scope(scope))
+
 
 if TYPE_CHECKING:
     from ..core.project_model import ProjectConfig
@@ -92,10 +101,9 @@ def get_project_state(
             stale_layers = _detect_stale_layers(project, rendered)
             images_old = bool(stale_layers)
 
-    # SSH: consider SSH "ready" when the key directory and its config file exist.
-    # Falls back to the managed ssh-keys store (same as SSHManager / git gate).
-    ssh_dir = resolve_ssh_host_dir(project).expanduser().resolve()
-    has_ssh = ssh_dir.is_dir() and (ssh_dir / "config").is_file()
+    # SSH: consider SSH "ready" when the scope has at least one assigned key
+    # in the vault DB.  The old on-disk SSH directory no longer exists.
+    has_ssh = _scope_has_vault_key(project.id)
 
     # Gate: a mirror bare repo initialized by sync_project_gate(). We
     # treat existence of the directory as "gate present".

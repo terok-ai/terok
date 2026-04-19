@@ -14,9 +14,10 @@ from ...lib.domain.facade import (
     derive_project,
     find_projects_sharing_gate,
     generate_dockerfiles,
-    register_ssh_key,
+    provision_ssh_key,
+    summarize_ssh_init,
 )
-from ...lib.domain.project import make_git_gate, make_ssh_manager
+from ...lib.domain.project import make_git_gate
 from ...lib.domain.wizards.new_project import offer_edit_then_init, run_wizard
 from ._completers import complete_project_ids as _complete_project_ids, set_completer
 from .setup import cmd_project_init
@@ -104,7 +105,7 @@ def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) ->
     # ssh-init
     p_ssh = sub.add_parser(
         "ssh-init",
-        help="Initialize shared SSH dir and generate a keypair for a project",
+        help="Generate a vault-managed SSH keypair for a project",
     )
     _add_project_arg(p_ssh)
     p_ssh.add_argument(
@@ -114,19 +115,28 @@ def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) ->
         help="Key algorithm (default: ed25519)",
     )
     p_ssh.add_argument(
-        "--key-name",
+        "--comment",
         default=None,
-        help="Key file name (without .pub). Default: id_<type>_<project>",
+        help=(
+            "Comment embedded in the public key "
+            "(default: tk-main:<project> for the scope's first key, "
+            "tk-side:<project>:<n> for subsequent additive inits)"
+        ),
     )
-    p_ssh.add_argument("--force", action="store_true", help="Overwrite existing key and config")
+    p_ssh.add_argument(
+        "--force",
+        action="store_true",
+        help="Rotate — unassign existing keys from the project and generate fresh",
+    )
 
     # gate-sync
     p_gate = sub.add_parser(
         "gate-sync",
         help=(
             "Sync the host-side git gate for a project (creates it if missing). "
-            "For SSH upstreams this uses ONLY the project's ssh dir created by "
-            "'project ssh-init' (not ~/.ssh)."
+            "For SSH upstreams this uses ONLY the vault-managed key from "
+            "'project ssh-init' — never the user's ~/.ssh — unless "
+            "--use-personal-ssh is passed."
         ),
     )
     _add_project_arg(p_gate)
@@ -135,6 +145,12 @@ def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) ->
         dest="force_reinit",
         action="store_true",
         help="Recreate the mirror from scratch",
+    )
+    p_gate.add_argument(
+        "--use-personal-ssh",
+        dest="use_personal_ssh",
+        action="store_true",
+        help="Fall through to the user's ~/.ssh keys instead of the vault",
     )
 
     # presets — subgroup so future preset ops (add/remove/edit) have a home
@@ -258,21 +274,32 @@ def _cmd_project_delete(project_id: str, *, force: bool = False) -> None:
 
 
 def _cmd_ssh_init(args: argparse.Namespace) -> None:
-    """Initialise the project's SSH directory and generate a keypair."""
-    project = load_project(args.project_id)
-    result = make_ssh_manager(project).init(
+    """Provision a vault-managed SSH keypair for the project."""
+    result = provision_ssh_key(
+        args.project_id,
         key_type=getattr(args, "key_type", "ed25519"),
-        key_name=getattr(args, "key_name", None),
+        comment=getattr(args, "comment", None),
         force=getattr(args, "force", False),
     )
-    register_ssh_key(project.id, result)
+    summarize_ssh_init(result)
 
 
 def _cmd_gate_sync(args: argparse.Namespace) -> None:
     """Sync the host-side git gate for a project."""
-    res = make_git_gate(load_project(args.project_id)).sync(
-        force_reinit=getattr(args, "force_reinit", False),
-    )
+    from terok_sandbox.gate.mirror import GateAuthNotConfigured
+
+    use_personal = bool(getattr(args, "use_personal_ssh", False)) or None
+    try:
+        res = make_git_gate(load_project(args.project_id), use_personal_ssh=use_personal).sync(
+            force_reinit=getattr(args, "force_reinit", False)
+        )
+    except GateAuthNotConfigured as exc:
+        raise SystemExit(
+            f"{exc}\n\nEither:\n"
+            f"  * terok project ssh-init {args.project_id}  "
+            "(generate a key, then register it with the remote), or\n"
+            "  * pass --use-personal-ssh to fall through to ~/.ssh."
+        ) from exc
     if not res["success"]:
         raise SystemExit(f"Gate sync failed: {', '.join(res['errors'])}")
     cache_note = " (clone cache refreshed)" if res.get("cache_refreshed") else ""
