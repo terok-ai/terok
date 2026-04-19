@@ -15,12 +15,12 @@ from unittest import mock
 import pytest
 
 from terok.tui.serve import (
-    _bootstrap_password_hash,
+    _bootstrap_password,
     _hash_password,
-    _read_password_hash,
+    _load_password_record,
+    _save_password,
     _valid_port,
     _verify_password,
-    _write_password_hash,
     main,
 )
 
@@ -129,22 +129,22 @@ class TestPasswordHashing:
     def test_file_roundtrip(self, tmp_path: Path) -> None:
         """Written files come back as the original record and are mode 0600."""
         path = tmp_path / "pw"
-        _write_password_hash(path, "s3cret")
+        _save_password(path, "s3cret")
         assert stat.S_IMODE(path.stat().st_mode) == 0o600
-        record = _read_password_hash(path)
+        record = _load_password_record(path)
         assert record is not None and _verify_password("s3cret", record)
 
     def test_read_missing_returns_none(self, tmp_path: Path) -> None:
         """Reading a non-existent path returns ``None`` (not an error)."""
-        assert _read_password_hash(tmp_path / "nope") is None
+        assert _load_password_record(tmp_path / "nope") is None
 
     def test_read_rejects_loose_perms(self, tmp_path: Path) -> None:
         """A 0644 password file is refused on load."""
         path = tmp_path / "pw"
-        _write_password_hash(path, "s3cret")
+        _save_password(path, "s3cret")
         os.chmod(path, 0o644)
         with pytest.raises(SystemExit, match="mode "):
-            _read_password_hash(path)
+            _load_password_record(path)
 
 
 class TestBootstrap:
@@ -155,7 +155,7 @@ class TestBootstrap:
     ) -> None:
         """On first launch a random password is generated, printed, and stored."""
         path = tmp_path / "serve.password"
-        stored = _bootstrap_password_hash(path)
+        stored = _bootstrap_password(path)
         assert stored.startswith("scrypt$")
         err = capsys.readouterr().err
         assert "password = " in err
@@ -166,8 +166,8 @@ class TestBootstrap:
     def test_second_launch_reuses_hash(self, tmp_path: Path) -> None:
         """If a hash already exists it is returned verbatim (no reprint)."""
         path = tmp_path / "serve.password"
-        first = _bootstrap_password_hash(path)
-        second = _bootstrap_password_hash(path)
+        first = _bootstrap_password(path)
+        second = _bootstrap_password(path)
         assert first == second
 
 

@@ -68,9 +68,7 @@ def render_task_details(
         lines.append(Text.assemble("Image:     ", Text("old", style=warning_style)))
     if task.web_port:
         base_url = f"http://{get_public_host()}:{task.web_port}/"
-        # First-hit URL carries the token; Caddy swaps it for an HttpOnly
-        # cookie and redirects to the clean path.  Old tasks (no token)
-        # fall back to the bare URL.
+        # Token in the query is what Caddy trades for its auth cookie.
         link_url = f"{base_url}?token={task.web_token}" if task.web_token else base_url
         lines.append(
             Text.assemble(

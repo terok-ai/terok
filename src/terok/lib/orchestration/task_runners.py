@@ -105,19 +105,12 @@ def _apply_unrestricted_env(env: dict[str, str]) -> None:
 
 
 def _ensure_toad_token(agent_config_dir: Path, existing: str | None = None) -> str:
-    """Write the toad auth token into *agent_config_dir* (0600) and return it.
+    """Per-task auth token for Caddy, written 0600 to ``toad.token`` and returned.
 
-    When *existing* is given (e.g. loaded from task metadata on restart),
-    the same token is rehydrated into the file; otherwise a fresh 32-byte
-    urlsafe token is minted.  The token is the shared secret that Caddy
-    inside the container validates before forwarding to ``textual-serve``;
-    it also ends up in the URL query string for the first browser hit
-    that seeds the auth cookie.
-
-    The write refuses to follow a pre-existing symlink (``O_NOFOLLOW``) —
-    ``agent-config`` is a bind mount, so a stopped container that points
-    ``toad.token`` at an arbitrary host path would otherwise get its
-    content clobbered by the next ``_ensure_toad_token`` call.
+    Reuses *existing* (restart path) or mints a fresh 32-byte urlsafe
+    string.  ``O_NOFOLLOW`` is load-bearing: ``agent-config`` is a bind
+    mount, so a stopped container could pre-stage a symlink at
+    ``toad.token`` to clobber a host path on the next rehydrate.
     """
     token = existing or secrets.token_urlsafe(32)
     dir_fd = os.open(agent_config_dir, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
@@ -153,12 +146,10 @@ def _agent_config_dir(project: ProjectConfig, task_id: str) -> Path:
 
 
 def _rehydrate_toad_token(project: ProjectConfig, task_id: str, meta: dict, cname: str) -> str:
-    """Load the saved token from *meta* and refresh its file on disk.
+    """Saved toad token from *meta*, rewritten to ``agent-config/toad.token``.
 
-    Used by every code path that reuses an existing toad container
-    (resume, restart) — the agent-config dir may have been cleaned up
-    between runs, so the file is rewritten even when the token itself
-    is unchanged.
+    The file may have been cleaned up between runs even when the token
+    persists in metadata; rewriting on every reuse is cheap insurance.
     """
     saved_token = meta.get("web_token")
     if not isinstance(saved_token, str):
@@ -180,11 +171,7 @@ def _resume_toad_container(
     meta_path: Path,
     pub_host: str,
 ) -> None:
-    """Reuse (or start) an existing toad container, rehydrating its auth token.
-
-    Factored out of :func:`task_run_toad` to keep that function's cognitive
-    complexity down; it owns the fast-path for already-created containers.
-    """
+    """Fast-path for a toad task whose container already exists: rehydrate the token, start it if stopped, print the URL."""
     saved_port = meta.get("web_port")
     if not isinstance(saved_port, int):
         raise SystemExit(f"Existing toad container {cname} has no saved web_port in metadata.")

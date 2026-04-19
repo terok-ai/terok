@@ -1,7 +1,15 @@
 # SPDX-FileCopyrightText: 2025 Jiri Vyskocil
 # SPDX-License-Identifier: Apache-2.0
 
-"""Serve the Terok TUI as a web application via textual-serve."""
+"""HTTP gateway that serves terok-tui to the owning user's browser.
+
+An aiohttp Basic-auth middleware is injected into ``textual-serve``'s
+``Server._make_app`` so every route — including the WebSocket upgrade —
+is gated by a password the user picks and the browser remembers for the
+origin.  The password is persisted scrypt-hashed in
+``~/.config/terok/serve.password`` so it survives reboots; on first
+launch a random one is minted and printed once.
+"""
 
 from __future__ import annotations
 
@@ -25,15 +33,14 @@ if TYPE_CHECKING:
     from aiohttp import web
     from textual_serve.server import Server
 
+
 _DEFAULT_HOST = "localhost"
 _DEFAULT_PORT = 8566
 _AUTH_USER = "terok"
-"""Basic-auth username.  Constant so users only memorise the password."""
 _AUTH_REALM = "terok-tui"
 
-# scrypt KDF parameters.  N must be a power of 2; N=2**14 · r=8 · p=1 keeps
-# verify time around 30 ms on modern hardware — slow enough to frustrate
-# brute force yet fast enough for Basic auth re-prompts to stay snappy.
+# N=2**14 · r=8 · p=1 → ≈30 ms per verify on modern hardware; the KDF
+# cost *is* the online-guessing rate limit.
 _SCRYPT_N = 2**14
 _SCRYPT_R = 8
 _SCRYPT_P = 1
@@ -41,40 +48,127 @@ _SCRYPT_DKLEN = 32
 _SCRYPT_PREFIX = "scrypt"
 
 
-def _valid_port(value: str) -> int:
-    """Validate that *value* is a valid TCP port number (1–65535)."""
-    try:
-        port = int(value)
-    except ValueError:
-        raise argparse.ArgumentTypeError(f"invalid port value: {value!r} (must be an integer)")
-    if port < 1 or port > 65535:
-        raise argparse.ArgumentTypeError(
-            f"invalid port value: {value!r} (must be between 1 and 65535)"
-        )
-    return port
+# ── Entry point ─────────────────────────────────────────────────────────
 
 
-def _password_path() -> Path:
-    """Return the persistent path that holds the scrypt-hashed serve password."""
-    root = config_root()
-    root.mkdir(mode=0o700, parents=True, exist_ok=True)
-    return root / "serve.password"
+def main() -> None:
+    """Run the terok-web server, or update the stored password and exit."""
+    _require_textual_serve()
+    args = _argparser().parse_args()
+    path = _password_path()
+
+    if args.set_password:
+        _set_password(path)
+        return
+
+    stored_hash = _bootstrap_password(path)
+    server = _build_server("terok-tui", args.host, args.port, args.public_url, stored_hash)
+    display_url = args.public_url or f"http://{args.host}:{args.port}/"
+    print(
+        f"terok-web: serving at {display_url} (user '{_AUTH_USER}', hash in {path})",
+        file=sys.stderr,
+    )
+    server.serve()
+
+
+# ── Password lifecycle ──────────────────────────────────────────────────
+
+
+def _set_password(path: Path) -> None:
+    """Replace the stored password record with a user-chosen one."""
+    _save_password(path, _prompt_password())
+    print(f"terok-web: password updated in {path}", file=sys.stderr)
+
+
+def _bootstrap_password(path: Path) -> str:
+    """Stored scrypt record for the serve password, minting one on first run."""
+    existing = _load_password_record(path)
+    if existing is not None:
+        return existing
+    fresh = secrets.token_urlsafe(16)
+    record = _save_password(path, fresh)
+    print(
+        "terok-web: no password set — generated a random one.\n"
+        "           Copy it now; it will not be shown again.\n"
+        "           Run 'terok-web --set-password' to set your own.",
+        file=sys.stderr,
+    )
+    print(f"terok-web: password = {fresh}", file=sys.stderr)
+    return record
+
+
+# ── HTTP gate ───────────────────────────────────────────────────────────
+
+
+def _build_server(
+    command: str, host: str, port: int, public_url: str | None, stored_hash: str
+) -> Server:
+    """A textual-serve :class:`Server` with Basic-auth middleware already attached.
+
+    We monkey-patch ``_make_app`` on the instance rather than subclassing
+    so the upstream call shape stays unchanged.  Breaks only if
+    textual-serve renames that seam — guarded at import time.
+    """
+    from textual_serve.server import Server
+
+    mw = _basic_auth_middleware(stored_hash)
+    server = Server(command, host=host, port=port, public_url=public_url)
+    original_make_app = server._make_app
+
+    async def _make_app_with_auth() -> web.Application:
+        app = await original_make_app()
+        app.middlewares.append(mw)
+        return app
+
+    server._make_app = _make_app_with_auth
+    return server
+
+
+def _basic_auth_middleware(stored_hash: str) -> Callable[..., Awaitable[web.StreamResponse]]:
+    """Basic-auth gate that verifies the user's password against *stored_hash*.
+
+    Browsers cache Basic credentials for the origin, so the prompt fires
+    at most once per session.  Each request still pays a full scrypt
+    verify — deliberate rate limit against online guessing.
+    """
+    from aiohttp import web
+
+    challenge = {"WWW-Authenticate": f'Basic realm="{_AUTH_REALM}"'}
+    user_prefix = f"{_AUTH_USER}:".encode()
+
+    @web.middleware
+    async def mw(
+        request: web.Request,
+        handler: Callable[[web.Request], Awaitable[web.StreamResponse]],
+    ) -> web.StreamResponse:
+        header = request.headers.get("Authorization", "")
+        scheme, _, payload = header.partition(" ")
+        if scheme.lower() == "basic":
+            try:
+                decoded = b64decode(payload.encode(), validate=True)
+            except ValueError:
+                decoded = b""
+            if decoded.startswith(user_prefix):
+                candidate = decoded[len(user_prefix) :].decode("utf-8", errors="replace")
+                if _verify_password(candidate, stored_hash):
+                    return await handler(request)
+        return web.Response(status=401, headers=challenge, text="Unauthorized")
+
+    return mw
+
+
+# ── scrypt hashing ──────────────────────────────────────────────────────
 
 
 def _hash_password(password: str) -> str:
-    """Return a serialised scrypt record for *password*.
+    """A serialised scrypt record for *password* — ``scrypt$N$r$p$salt$hash``.
 
-    Format: ``scrypt$N$r$p$salt_b64$hash_b64`` — a single ASCII line,
-    self-describing so parameter changes can be detected on verify.
+    The record is self-describing so parameter upgrades are detectable
+    on verify and re-hashes can happen lazily later.
     """
     salt = secrets.token_bytes(16)
     hashed = hashlib.scrypt(
-        password.encode(),
-        salt=salt,
-        n=_SCRYPT_N,
-        r=_SCRYPT_R,
-        p=_SCRYPT_P,
-        dklen=_SCRYPT_DKLEN,
+        password.encode(), salt=salt, n=_SCRYPT_N, r=_SCRYPT_R, p=_SCRYPT_P, dklen=_SCRYPT_DKLEN
     )
     return "$".join(
         (
@@ -89,14 +183,11 @@ def _hash_password(password: str) -> str:
 
 
 def _verify_password(candidate: str, stored: str) -> bool:
-    """Return True when *candidate* re-hashes to the stored scrypt record."""
+    """True iff *candidate* hashes to the stored scrypt record."""
     try:
         prefix, n_s, r_s, p_s, salt_b64, hash_b64 = stored.split("$")
-    except ValueError:
-        return False
-    if prefix != _SCRYPT_PREFIX:
-        return False
-    try:
+        if prefix != _SCRYPT_PREFIX:
+            return False
         n, r, p = int(n_s), int(r_s), int(p_s)
         salt = urlsafe_b64decode(salt_b64 + "=" * (-len(salt_b64) % 4))
         expected = urlsafe_b64decode(hash_b64 + "=" * (-len(hash_b64) % 4))
@@ -106,31 +197,32 @@ def _verify_password(candidate: str, stored: str) -> bool:
     return hmac.compare_digest(got, expected)
 
 
-def _write_password_record(path: Path, record: str) -> None:
-    """Write *record* to *path* (0600, no symlink follow), enforcing mode on existing files."""
+# ── Password file I/O ───────────────────────────────────────────────────
+
+
+def _save_password(path: Path, password: str) -> str:
+    """Hash *password* and write the record to *path* (0600); return it."""
+    record = _hash_password(password)
     fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC | os.O_NOFOLLOW, 0o600)
     try:
-        st = os.fstat(fd)
-        if st.st_uid != os.getuid():
+        if os.fstat(fd).st_uid != os.getuid():
             raise SystemExit(f"Refusing to write {path}: not owned by current uid.")
         # O_CREAT's mode argument is ignored on an existing file; fchmod
-        # ensures --set-password can't silently leave a loose mode from a
-        # prior run.
+        # keeps --set-password from silently leaving a loose mode.
         os.fchmod(fd, 0o600)
         os.write(fd, (record + "\n").encode())
     finally:
         os.close(fd)
-
-
-def _write_password_hash(path: Path, password: str) -> str:
-    """Hash *password* with scrypt and write the record to *path*.  Returns the record."""
-    record = _hash_password(password)
-    _write_password_record(path, record)
     return record
 
 
-def _read_password_hash(path: Path) -> str | None:
-    """Return the stored scrypt record, or ``None`` if the file does not exist."""
+def _load_password_record(path: Path) -> str | None:
+    """Stored scrypt record at *path*, or ``None`` when no file exists.
+
+    Refuses a symlink, a file not owned by the current user, or loose
+    permissions — any of these would let a local peer leak or swap
+    credentials on a shared host.
+    """
     try:
         fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW)
     except FileNotFoundError:
@@ -150,13 +242,13 @@ def _read_password_hash(path: Path) -> str | None:
         os.close(fd)
 
 
-def _prompt_password(confirm: bool = True) -> str:
-    """Prompt for a password from stdin (hidden when TTY), confirming if asked."""
+def _prompt_password() -> str:
+    """A non-empty password read (hidden on a TTY, one line from stdin otherwise)."""
     if sys.stdin.isatty():
         pw = getpass.getpass("New terok-web password: ")
         if not pw:
             raise SystemExit("Password must not be empty.")
-        if confirm and getpass.getpass("Confirm: ") != pw:
+        if getpass.getpass("Confirm: ") != pw:
             raise SystemExit("Passwords did not match.")
         return pw
     pw = sys.stdin.readline().rstrip("\n")
@@ -165,129 +257,24 @@ def _prompt_password(confirm: bool = True) -> str:
     return pw
 
 
-def _basic_auth_middleware(stored_hash: str) -> Callable[..., Awaitable[web.StreamResponse]]:
-    """Build an aiohttp middleware that enforces Basic auth for every request.
-
-    The username is fixed (:data:`_AUTH_USER`); the password is verified
-    against *stored_hash* via scrypt.  On missing or wrong creds, a 401
-    with ``WWW-Authenticate: Basic`` is returned so browsers prompt once
-    per origin and cache the credentials for the tab lifetime.
-    """
-    from aiohttp import web
-
-    challenge = {"WWW-Authenticate": f'Basic realm="{_AUTH_REALM}"'}
-    user_prefix = f"{_AUTH_USER}:".encode()
-
-    @web.middleware
-    async def mw(
-        request: web.Request,
-        handler: Callable[[web.Request], Awaitable[web.StreamResponse]],
-    ) -> web.StreamResponse:
-        """Pass through when creds verify; otherwise respond with a 401 challenge."""
-        header = request.headers.get("Authorization", "")
-        scheme, _, payload = header.partition(" ")
-        if scheme.lower() == "basic":
-            try:
-                decoded = b64decode(payload.encode(), validate=True)
-            except ValueError:
-                decoded = b""
-            if decoded.startswith(user_prefix):
-                candidate = decoded[len(user_prefix) :].decode("utf-8", errors="replace")
-                if _verify_password(candidate, stored_hash):
-                    return await handler(request)
-        return web.Response(status=401, headers=challenge, text="Unauthorized")
-
-    return mw
+# ── Wiring ──────────────────────────────────────────────────────────────
 
 
-def _build_server(
-    command: str, host: str, port: int, public_url: str | None, stored_hash: str
-) -> Server:
-    """Construct a ``textual_serve`` Server with basic-auth middleware injected.
-
-    Wraps ``Server._make_app`` on the instance so it returns the parent
-    app with our auth middleware appended.  Using instance-level shadowing
-    (instead of subclassing) keeps the indirection to one line and leaves
-    the ``Server(...)`` call shape unchanged — it breaks only if textual-
-    serve renames ``_make_app`` (asserted at import time).
-    """
-    from textual_serve.server import Server
-
-    mw = _basic_auth_middleware(stored_hash)
-    server = Server(command, host=host, port=port, public_url=public_url)
-    original_make_app = server._make_app
-
-    async def _make_app_with_auth() -> web.Application:
-        """Return the vanilla textual-serve app with our middleware appended."""
-        app = await original_make_app()
-        app.middlewares.append(mw)
-        return app
-
-    server._make_app = _make_app_with_auth
-    return server
+def _password_path() -> Path:
+    """Path of the scrypt-hashed serve password (creating its config dir if needed)."""
+    root = config_root()
+    root.mkdir(mode=0o700, parents=True, exist_ok=True)
+    return root / "serve.password"
 
 
-def _set_password_command(path: Path) -> None:
-    """Prompt for a new password, write its hash to *path*, and exit."""
-    pw = _prompt_password(confirm=True)
-    _write_password_hash(path, pw)
-    print(f"terok-web: password updated in {path}", file=sys.stderr)
-
-
-def _bootstrap_password_hash(path: Path) -> str:
-    """Load the stored hash, or mint + print a fresh random password on first run."""
-    existing = _read_password_hash(path)
-    if existing is not None:
-        return existing
-    fresh = secrets.token_urlsafe(16)
-    record = _write_password_hash(path, fresh)
-    print(
-        "terok-web: no password set — generated a random one.\n"
-        "           Copy it now; it will not be shown again.\n"
-        "           Run 'terok-web --set-password' to set your own.",
-        file=sys.stderr,
-    )
-    print(f"terok-web: password = {fresh}", file=sys.stderr)
-    return record
-
-
-def main() -> None:
-    """Launch the Terok TUI as a web application.
-
-    Uses textual-serve to expose the TUI over HTTP/WebSocket so it can be
-    accessed from a browser.  A scrypt-hashed password at
-    ``~/.config/terok/serve.password`` (mode 0600) gates the listener.
-    On first launch a random password is minted and printed once; pass
-    ``--set-password`` to pick a memorable one instead.
-    """
-    try:
-        from textual_serve.server import Server
-    except ModuleNotFoundError as exc:
-        if exc.name in ("textual_serve", "textual_serve.server"):
-            print(
-                "terok-web requires the 'textual-serve' package.\n"
-                "Install it with: pip install textual-serve",
-                file=sys.stderr,
-            )
-            sys.exit(1)
-        raise
-
-    if not hasattr(Server, "_make_app"):
-        print(
-            "Unsupported textual-serve version: Server._make_app is missing.  "
-            "terok pins the upstream seam used to inject basic-auth middleware.",
-            file=sys.stderr,
-        )
-        sys.exit(1)
-
+def _argparser() -> argparse.ArgumentParser:
+    """Argparser for ``terok-web``."""
     parser = argparse.ArgumentParser(
         prog="terok-web",
         description="Serve the Terok TUI as a web application",
     )
     parser.add_argument(
-        "--host",
-        default=_DEFAULT_HOST,
-        help=f"Host to bind to (default: {_DEFAULT_HOST})",
+        "--host", default=_DEFAULT_HOST, help=f"Host to bind to (default: {_DEFAULT_HOST})"
     )
     parser.add_argument(
         "--port",
@@ -307,23 +294,42 @@ def main() -> None:
         action="store_true",
         help="Prompt for a new Basic-auth password, store its scrypt hash, and exit.",
     )
-    args = parser.parse_args()
+    return parser
 
-    path = _password_path()
 
-    if args.set_password:
-        _set_password_command(path)
-        return
+def _valid_port(value: str) -> int:
+    """A TCP port number in the range 1–65535."""
+    try:
+        port = int(value)
+    except ValueError:
+        raise argparse.ArgumentTypeError(f"invalid port value: {value!r} (must be an integer)")
+    if port < 1 or port > 65535:
+        raise argparse.ArgumentTypeError(
+            f"invalid port value: {value!r} (must be between 1 and 65535)"
+        )
+    return port
 
-    stored_hash = _bootstrap_password_hash(path)
-    server = _build_server("terok-tui", args.host, args.port, args.public_url, stored_hash)
 
-    display_url = args.public_url or f"http://{args.host}:{args.port}/"
-    print(
-        f"terok-web: serving at {display_url} (user '{_AUTH_USER}', hash in {path})",
-        file=sys.stderr,
-    )
-    server.serve()
+def _require_textual_serve() -> None:
+    """Exit early if textual-serve is missing or its ``_make_app`` seam is gone."""
+    try:
+        from textual_serve.server import Server
+    except ModuleNotFoundError as exc:
+        if exc.name in ("textual_serve", "textual_serve.server"):
+            print(
+                "terok-web requires the 'textual-serve' package.\n"
+                "Install it with: pip install textual-serve",
+                file=sys.stderr,
+            )
+            sys.exit(1)
+        raise
+    if not hasattr(Server, "_make_app"):
+        print(
+            "Unsupported textual-serve version: Server._make_app is missing.  "
+            "terok pins the upstream seam used to inject basic-auth middleware.",
+            file=sys.stderr,
+        )
+        sys.exit(1)
 
 
 if __name__ == "__main__":
