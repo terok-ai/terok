@@ -43,13 +43,13 @@ def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) ->
     # config paths — overview of configuration, template and output paths
     config_sub.add_parser("paths", help="Show configuration, template and output paths")
 
-    # config show — resolved agent config with provenance
-    p_show = config_sub.add_parser(
-        "show",
+    # config resolved — resolved agent config with provenance
+    p_resolved = config_sub.add_parser(
+        "resolved",
         help="Show resolved agent config for a project (with provenance per level)",
     )
-    set_completer(p_show.add_argument("project_id", help="Project ID"), _complete_project_ids)
-    p_show.add_argument("--preset", help="Apply a preset before showing resolved config")
+    set_completer(p_resolved.add_argument("project_id", help="Project ID"), _complete_project_ids)
+    p_resolved.add_argument("--preset", help="Apply a preset before showing resolved config")
 
     # config import-opencode — unchanged semantics, now under the group
     p_import_oc = config_sub.add_parser(
@@ -66,8 +66,8 @@ def dispatch(args: argparse.Namespace) -> bool:
     match args.config_cmd:
         case "paths":
             _print_config()
-        case "show":
-            _cmd_config_show(args.project_id, getattr(args, "preset", None))
+        case "resolved":
+            _cmd_config_resolved(args.project_id, getattr(args, "preset", None))
         case "import-opencode":
             _cmd_import_opencode(args.file)
         case _:  # pragma: no cover — required=True makes argparse enforce this
@@ -75,7 +75,7 @@ def dispatch(args: argparse.Namespace) -> bool:
     return True
 
 
-def _cmd_config_show(project_id: str, preset: str | None) -> None:
+def _cmd_config_resolved(project_id: str, preset: str | None) -> None:
     """Show resolved agent config with provenance annotations."""
     import json
 

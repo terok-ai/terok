@@ -195,27 +195,27 @@ class TestConfigDispatch:
             assert dispatch(args) is True
         mock.assert_called_once()
 
-    def test_show_invokes_config_show(self) -> None:
-        """``config show`` forwards project_id and preset to the handler."""
+    def test_resolved_invokes_config_resolved(self) -> None:
+        """``config resolved`` forwards project_id and preset to the handler."""
         import argparse
 
         from terok.cli.commands.info import dispatch
 
         args = argparse.Namespace(
-            cmd="config", config_cmd="show", project_id="myproj", preset="team"
+            cmd="config", config_cmd="resolved", project_id="myproj", preset="team"
         )
-        with patch("terok.cli.commands.info._cmd_config_show") as mock:
+        with patch("terok.cli.commands.info._cmd_config_resolved") as mock:
             assert dispatch(args) is True
         mock.assert_called_once_with("myproj", "team")
 
-    def test_show_defaults_preset_to_none(self) -> None:
-        """``config show`` without --preset passes None through."""
+    def test_resolved_defaults_preset_to_none(self) -> None:
+        """``config resolved`` without --preset passes None through."""
         import argparse
 
         from terok.cli.commands.info import dispatch
 
-        args = argparse.Namespace(cmd="config", config_cmd="show", project_id="p")
-        with patch("terok.cli.commands.info._cmd_config_show") as mock:
+        args = argparse.Namespace(cmd="config", config_cmd="resolved", project_id="p")
+        with patch("terok.cli.commands.info._cmd_config_resolved") as mock:
             assert dispatch(args) is True
         mock.assert_called_once_with("p", None)
 

@@ -784,7 +784,7 @@ terok task run-cli myproj 1 --preset team
 terok project presets myproj
 
 # Show what a preset resolves to
-terok config show myproj --preset team
+terok config resolved myproj --preset team
 ```
 
 ### Customize: Global Presets
