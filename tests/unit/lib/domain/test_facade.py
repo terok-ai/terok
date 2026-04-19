@@ -151,9 +151,7 @@ class TestProvisionSshKey:
 class TestSummarizeSshInit:
     """summarize_ssh_init prints every field from the SSHInitResult."""
 
-    def test_prints_all_metadata_and_public_line(
-        self, capsys: pytest.CaptureFixture[str]
-    ) -> None:
+    def test_prints_all_metadata_and_public_line(self, capsys: pytest.CaptureFixture[str]) -> None:
         from terok.lib.domain import facade
 
         facade.summarize_ssh_init(
