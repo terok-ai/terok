@@ -71,7 +71,7 @@ class TestArm:
     def test_updates_label(self, button):
         """arm() changes the label to the armed prompt."""
         button.arm()
-        button.update.assert_called_with("!! CONFIRM PANIC !!")
+        button.update.assert_called_with("PRESS AGAIN TO PANIC")
 
     def test_starts_disarm_timer(self, button):
         """arm() starts a 5-second auto-disarm timer."""

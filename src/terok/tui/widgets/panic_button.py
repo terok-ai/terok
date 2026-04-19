@@ -12,7 +12,7 @@ from textual.message import Message
 from textual.widgets import Static
 
 _LABEL_IDLE = "PANIC"
-_LABEL_ARMED = "!! CONFIRM PANIC !!"
+_LABEL_ARMED = "PRESS AGAIN TO PANIC"
 _DISARM_SECONDS = 5.0
 
 
