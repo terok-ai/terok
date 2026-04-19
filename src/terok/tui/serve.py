@@ -23,6 +23,7 @@ if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable
 
     from aiohttp import web
+    from textual_serve.server import Server
 
 _DEFAULT_HOST = "localhost"
 _DEFAULT_PORT = 8566
@@ -105,17 +106,27 @@ def _verify_password(candidate: str, stored: str) -> bool:
     return hmac.compare_digest(got, expected)
 
 
-def _write_password_hash(path: Path, password: str) -> None:
-    """Write the scrypt record for *password* to *path* (0600, no symlink follow)."""
-    record = _hash_password(password) + "\n"
+def _write_password_record(path: Path, record: str) -> None:
+    """Write *record* to *path* (0600, no symlink follow), enforcing mode on existing files."""
     fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC | os.O_NOFOLLOW, 0o600)
     try:
         st = os.fstat(fd)
         if st.st_uid != os.getuid():
             raise SystemExit(f"Refusing to write {path}: not owned by current uid.")
-        os.write(fd, record.encode())
+        # O_CREAT's mode argument is ignored on an existing file; fchmod
+        # ensures --set-password can't silently leave a loose mode from a
+        # prior run.
+        os.fchmod(fd, 0o600)
+        os.write(fd, (record + "\n").encode())
     finally:
         os.close(fd)
+
+
+def _write_password_hash(path: Path, password: str) -> str:
+    """Hash *password* with scrypt and write the record to *path*.  Returns the record."""
+    record = _hash_password(password)
+    _write_password_record(path, record)
+    return record
 
 
 def _read_password_hash(path: Path) -> str | None:
@@ -189,7 +200,9 @@ def _basic_auth_middleware(stored_hash: str) -> Callable[..., Awaitable[web.Stre
     return mw
 
 
-def _build_server(command: str, host: str, port: int, public_url: str | None, stored_hash: str):
+def _build_server(
+    command: str, host: str, port: int, public_url: str | None, stored_hash: str
+) -> Server:
     """Construct a ``textual_serve`` Server with basic-auth middleware injected.
 
     Wraps ``Server._make_app`` on the instance so it returns the parent
@@ -204,7 +217,7 @@ def _build_server(command: str, host: str, port: int, public_url: str | None, st
     server = Server(command, host=host, port=port, public_url=public_url)
     original_make_app = server._make_app
 
-    async def _make_app_with_auth():
+    async def _make_app_with_auth() -> web.Application:
         """Return the vanilla textual-serve app with our middleware appended."""
         app = await original_make_app()
         app.middlewares.append(mw)
@@ -227,7 +240,7 @@ def _bootstrap_password_hash(path: Path) -> str:
     if existing is not None:
         return existing
     fresh = secrets.token_urlsafe(16)
-    _write_password_hash(path, fresh)
+    record = _write_password_hash(path, fresh)
     print(
         "terok-web: no password set — generated a random one.\n"
         "           Copy it now; it will not be shown again.\n"
@@ -235,7 +248,7 @@ def _bootstrap_password_hash(path: Path) -> str:
         file=sys.stderr,
     )
     print(f"terok-web: password = {fresh}", file=sys.stderr)
-    return _read_password_hash(path) or ""
+    return record
 
 
 def main() -> None:
