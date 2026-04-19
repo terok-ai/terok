@@ -127,6 +127,23 @@ class TestCheckSshSigner:
         assert sev == "warn"
         assert "proj" in detail
 
+    def test_vault_failure_degrades_to_warning(self) -> None:
+        """A vault that refuses to open surfaces as a ``warn``, not a crash."""
+        with (
+            unittest.mock.patch("terok.cli.commands.sickbay.make_sandbox_config"),
+            unittest.mock.patch(
+                "terok.cli.commands.sickbay.list_projects",
+                return_value=[self._mock_project("proj")],
+            ),
+            unittest.mock.patch(
+                "terok_sandbox.CredentialDB", side_effect=RuntimeError("db locked")
+            ),
+        ):
+            sev, _, detail = _check_ssh_signer()
+        assert sev == "warn"
+        assert "unreachable" in detail
+        assert "db locked" in detail
+
 
 class TestCheckTaskHook:
     def test_missing_meta_file_returns_none(self, tmp_path: Path) -> None:

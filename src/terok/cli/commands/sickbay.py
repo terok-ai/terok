@@ -259,8 +259,11 @@ def _check_ssh_signer() -> _CheckResult:
     if not projects:
         return ("ok", label, "no projects configured")
 
-    with vault_db() as db:
-        assigned_scopes = set(db.list_scopes_with_ssh_keys())
+    try:
+        with vault_db() as db:
+            assigned_scopes = set(db.list_scopes_with_ssh_keys())
+    except Exception as exc:  # noqa: BLE001 — surface any vault failure as a warning
+        return ("warn", label, f"vault unreachable — {exc}")
 
     unregistered = [p.id for p in projects if p.id not in assigned_scopes]
     registered = len(projects) - len(unregistered)
