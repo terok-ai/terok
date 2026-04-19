@@ -285,10 +285,16 @@ def test_run_setup(
     kwargs: dict[str, bool],
     expected_call: dict[str, bool] | None,
 ) -> None:
-    """Shield setup handles usage, user, and root installation paths."""
+    """Shield setup handles usage, user, and root installation paths.
+
+    The sibling ``terok_sandbox.shield.run_setup`` is UX-agnostic —
+    it raises ``ValueError`` on invalid combos.  terok's CLI handler
+    (``shield.dispatch`` → ``install-hooks`` branch) is what converts
+    that into a ``SystemExit`` with actionable remediation.
+    """
     with patch("terok_sandbox.shield.setup_hooks_direct") as mock_direct:
         if expected_call is None:
-            with pytest.raises(SystemExit, match="--root"):
+            with pytest.raises(ValueError, match="root=True or user=True"):
                 run_setup(**kwargs)
             mock_direct.assert_not_called()
         else:

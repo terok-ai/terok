@@ -314,6 +314,16 @@ def test_install_hooks_dispatch(
     mock_install.assert_called_once_with(**expected)
 
 
+def test_install_hooks_requires_scope_flag() -> None:
+    """``shield install-hooks`` with neither --root nor --user shows remediation."""
+    args = argparse.Namespace(cmd="shield", shield_cmd="install-hooks", root=False, user=False)
+    with pytest.raises(SystemExit) as exc_info:
+        dispatch(args)
+    message = str(exc_info.value)
+    assert "--root" in message and "--user" in message
+    assert "terok shield install-hooks" in message
+
+
 @patch("terok_shield.cli.interactive.run_interactive")
 @patch("terok.cli.commands.shield._resolve_task", return_value=("proj-cli-1", MOCK_TASK_DIR_1))
 @patch("terok.cli.commands.shield.make_shield")

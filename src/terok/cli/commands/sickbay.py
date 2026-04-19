@@ -52,8 +52,12 @@ _CheckResult = tuple[str, str, str]
 def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
     """Register the ``sickbay`` subcommand."""
     p = subparsers.add_parser("sickbay", help="Run health checks and reconciliation")
-    p.add_argument("project", nargs="?", help="Scope to a single project")
-    p.add_argument("task", nargs="?", help="Scope to a single task")
+    # dest=project_id / task_id matches the rest of the CLI so the shared
+    # completers work; metavar keeps the display ``<project>``/``<task>``.
+    from ._completers import add_project_id, add_task_id
+
+    add_project_id(p, nargs="?", metavar="project", help="Scope to a single project")
+    add_task_id(p, nargs="?", metavar="task", help="Scope to a single task")
     p.add_argument("--fix", action="store_true", help="Auto-remediate issues")
 
 
@@ -62,8 +66,8 @@ def dispatch(args: argparse.Namespace) -> bool:
     if args.cmd != "sickbay":
         return False
     _cmd_sickbay(
-        project_id=getattr(args, "project", None),
-        task_id=getattr(args, "task", None),
+        project_id=getattr(args, "project_id", None),
+        task_id=getattr(args, "task_id", None),
         fix=getattr(args, "fix", False),
     )
     return True

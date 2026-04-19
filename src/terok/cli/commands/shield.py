@@ -109,13 +109,16 @@ def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) ->
         # Commands that need a container get positional project_id + task_id,
         # matching the ``terok task …`` convention.  Commands with an
         # *optional* container arg (like ``status``) get nargs="?" so they
-        # work both with and without a task target.
+        # work both with and without a task target.  Completers attach
+        # either way so tab-complete works in both forms.
+        from ._completers import add_project_id, add_task_id
+
         if cmd.needs_container:
-            sp.add_argument("project_id", help="Project ID")
-            sp.add_argument("task_id", help="Task ID")
+            add_project_id(sp, help="Project ID")
+            add_task_id(sp, help="Task ID")
         elif any(a.name == "container" for a in cmd.args):
-            sp.add_argument("project_id", nargs="?", help="Project ID")
-            sp.add_argument("task_id", nargs="?", help="Task ID")
+            add_project_id(sp, nargs="?", help="Project ID")
+            add_task_id(sp, nargs="?", help="Task ID")
 
         for arg in cmd.args:
             if arg.name == "container":
@@ -139,8 +142,16 @@ def dispatch(args: argparse.Namespace) -> bool:
     cmd_name = args.shield_cmd
 
     # install-hooks is standalone_only and needs subprocess passthrough
-    # (no registry handler)
+    # (no registry handler).  The sibling ``run_setup`` is UX-agnostic
+    # (raises ValueError on invalid combos) — terok's CLI surface turns
+    # that refusal into a SystemExit with actionable remediation text.
     if cmd_name == "install-hooks":
+        if not args.root and not args.user:
+            raise SystemExit(
+                "Specify --root (system-wide, uses sudo) or --user (user-local).\n"
+                "  terok shield install-hooks --root   # /etc/containers/oci/hooks.d\n"
+                "  terok shield install-hooks --user   # ~/.local/share/containers/oci/hooks.d"
+            )
         from terok_sandbox import run_setup as shield_run_setup
 
         shield_run_setup(root=args.root, user=args.user)

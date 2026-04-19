@@ -49,7 +49,12 @@ def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) ->
         help="Show resolved agent config for a project (with provenance per level)",
     )
     set_completer(p_resolved.add_argument("project_id", help="Project ID"), _complete_project_ids)
-    p_resolved.add_argument("--preset", help="Apply a preset before showing resolved config")
+    from ._completers import complete_preset_names
+
+    set_completer(
+        p_resolved.add_argument("--preset", help="Apply a preset before showing resolved config"),
+        complete_preset_names,
+    )
 
     # config import-opencode — unchanged semantics, now under the group
     p_import_oc = config_sub.add_parser(

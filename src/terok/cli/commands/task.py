@@ -15,7 +15,6 @@ from ...lib.core.config import get_logs_partial_streaming as _get_logs_partial_s
 from ...lib.domain.facade import (
     HeadlessRunRequest,
     LogViewOptions,
-    get_tasks as _get_tasks,
     task_archive_list,
     task_archive_logs,
     task_delete,
@@ -33,34 +32,18 @@ from ...lib.domain.facade import (
     task_stop,
 )
 from ...lib.orchestration.tasks import resolve_task_id
-from ._completers import complete_project_ids as _complete_project_ids, set_completer
-
-
-def _complete_task_ids(
-    prefix: str, parsed_args: argparse.Namespace, **kwargs: object
-) -> list[str]:  # pragma: no cover
-    """Return task IDs matching *prefix* for argcomplete."""
-    project_id = getattr(parsed_args, "project_id", None)
-    if not project_id:
-        return []
-    try:
-        tids = [t.task_id for t in _get_tasks(project_id) if t.task_id]
-    except Exception:
-        return []
-    if prefix:
-        tids = [t for t in tids if t.startswith(prefix)]
-    return tids
+from ._completers import add_project_id, add_task_id, complete_preset_names, set_completer
 
 
 def _add_project_arg(parser: argparse.ArgumentParser, **kwargs: object) -> None:
     """Add a ``project_id`` positional with project-ID completion."""
-    set_completer(parser.add_argument("project_id", **kwargs), _complete_project_ids)
+    add_project_id(parser, **kwargs)
 
 
 def _add_project_task_args(parser: argparse.ArgumentParser) -> None:
     """Add ``project_id`` and ``task_id`` positionals with completers."""
-    _add_project_arg(parser)
-    set_completer(parser.add_argument("task_id"), _complete_task_ids)
+    add_project_id(parser)
+    add_task_id(parser)
 
 
 def _add_restriction_flags(parser: argparse.ArgumentParser) -> None:
@@ -139,7 +122,10 @@ def register(
         default=None,
         help="Include a non-default agent by name (repeatable)",
     )
-    t_run.add_argument("--preset", help="Name of a preset to apply (global or project-level)")
+    set_completer(
+        t_run.add_argument("--preset", help="Name of a preset to apply (global or project-level)"),
+        complete_preset_names,
+    )
     t_run.add_argument("--name", help="Human-readable task name (slug-style, e.g. fix-auth-bug)")
     _add_restriction_flags(t_run)
     # Headless-only flags (silently ignored in cli/toad modes)
@@ -201,8 +187,11 @@ def register(
             default=None,
             help="Include a non-default agent by name (repeatable)",
         )
-        t_attach.add_argument(
-            "--preset", help="Name of a preset to apply (global or project-level)"
+        set_completer(
+            t_attach.add_argument(
+                "--preset", help="Name of a preset to apply (global or project-level)"
+            ),
+            complete_preset_names,
         )
         _add_restriction_flags(t_attach)
 
