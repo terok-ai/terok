@@ -286,8 +286,12 @@ def _ensure_vault(*, check_only: bool, color: bool) -> bool:
         # Check-only: just probe reachability
         try:
             ensure_vault_reachable(cfg)
-            mode = get_vault_status().mode or "active"
-            print(f"  Vault            {_status_label(True, color)} ({mode}, reachable)")
+            status = get_vault_status()
+            mode = status.mode or "active"
+            transport = status.transport or "tcp"
+            print(
+                f"  Vault            {_status_label(True, color)} ({mode}, {transport}, reachable)"
+            )
             return True
         except (VaultUnreachableError, SystemExit):
             installed = is_vault_socket_active()
@@ -321,8 +325,13 @@ def _ensure_vault(*, check_only: bool, color: bool) -> bool:
     # Verify actual TCP reachability (triggers systemd start)
     try:
         ensure_vault_reachable(cfg)
-        mode = get_vault_status().mode or "active"
-        print(f"  Vault            {_status_label(True, color)} ({mode}, reachable)")
+        status = get_vault_status()
+        mode = status.mode or "active"
+        transport_label = status.transport or "tcp"
+        print(
+            f"  Vault            {_status_label(True, color)} "
+            f"({mode}, {transport_label}, reachable)"
+        )
         return True
     except (VaultUnreachableError, SystemExit) as exc:
         print(f"  Vault            {_status_label(False, color)} (installed but NOT reachable)")
@@ -352,7 +361,11 @@ def _ensure_gate(*, check_only: bool, color: bool) -> bool:
             # Unit exists (running or socket-activated) — probe TCP to be sure
             try:
                 ensure_server_reachable(cfg)
-                print(f"  Gate server      {_status_label(True, color)} ({status.mode}, reachable)")
+                transport = status.transport or "tcp"
+                print(
+                    f"  Gate server      {_status_label(True, color)} "
+                    f"({status.mode}, {transport}, reachable)"
+                )
                 return True
             except SystemExit:
                 print(
@@ -389,7 +402,7 @@ def _ensure_gate(*, check_only: bool, color: bool) -> bool:
     # Verify reachability (triggers socket activation)
     try:
         ensure_server_reachable(cfg)
-        print(f"  Gate server      {_status_label(True, color)} (systemd, reachable)")
+        print(f"  Gate server      {_status_label(True, color)} (systemd, {transport}, reachable)")
         return True
     except SystemExit as exc:
         print(f"  Gate server      {_status_label(False, color)} (installed but NOT reachable)")
