@@ -15,9 +15,12 @@ from unittest import mock
 import pytest
 
 from terok.tui.serve import (
-    _load_or_mint_password,
-    _secure_runtime_dir,
+    _bootstrap_password_hash,
+    _hash_password,
+    _read_password_hash,
     _valid_port,
+    _verify_password,
+    _write_password_hash,
     main,
 )
 
@@ -59,7 +62,7 @@ class TestMain:
         assert "pip install textual-serve" in captured.err
 
     def test_server_created_with_defaults(
-        self, monkeypatch: pytest.MonkeyPatch, tmp_path: pytest.TempPathFactory
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
     ) -> None:
         """Server is instantiated with default host and port when no args given."""
         mock_server_instance = mock.MagicMock()
@@ -71,7 +74,7 @@ class TestMain:
         monkeypatch.setitem(sys.modules, "textual_serve", mock.MagicMock())
         monkeypatch.setitem(sys.modules, "textual_serve.server", server_mod)
         monkeypatch.setattr("sys.argv", ["terok-web"])
-        monkeypatch.setenv("XDG_RUNTIME_DIR", str(tmp_path))
+        monkeypatch.setenv("TEROK_CONFIG_DIR", str(tmp_path))
 
         main()
 
@@ -81,7 +84,7 @@ class TestMain:
         mock_server_instance.serve.assert_called_once()
 
     def test_server_created_with_custom_args(
-        self, monkeypatch: pytest.MonkeyPatch, tmp_path: pytest.TempPathFactory
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
     ) -> None:
         """Server respects --host and --port arguments."""
         mock_server_instance = mock.MagicMock()
@@ -93,7 +96,7 @@ class TestMain:
         monkeypatch.setitem(sys.modules, "textual_serve", mock.MagicMock())
         monkeypatch.setitem(sys.modules, "textual_serve.server", server_mod)
         monkeypatch.setattr("sys.argv", ["terok-web", "--host", "0.0.0.0", "--port", "9000"])
-        monkeypatch.setenv("XDG_RUNTIME_DIR", str(tmp_path))
+        monkeypatch.setenv("TEROK_CONFIG_DIR", str(tmp_path))
 
         main()
 
@@ -103,62 +106,69 @@ class TestMain:
         mock_server_instance.serve.assert_called_once()
 
 
-class TestPasswordHandling:
-    """Tests for the ephemeral password file lifecycle."""
+class TestPasswordHashing:
+    """Tests for the scrypt password storage and verify pipeline."""
 
-    def test_secure_runtime_dir_creates_0700(
-        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-    ) -> None:
-        """First call creates the runtime dir with mode 0700."""
-        runtime = tmp_path / "x"
-        monkeypatch.setenv("XDG_RUNTIME_DIR", str(runtime))
-        out = _secure_runtime_dir()
-        assert out == runtime / "terok"
-        assert stat.S_IMODE(out.stat().st_mode) == 0o700
+    def test_hash_roundtrip(self) -> None:
+        """A password verifies against its own hash and fails on a mismatch."""
+        record = _hash_password("hunter2")
+        assert record.startswith("scrypt$")
+        assert _verify_password("hunter2", record)
+        assert not _verify_password("hunter3", record)
 
-    def test_secure_runtime_dir_rejects_loose_perms(
-        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-    ) -> None:
-        """A pre-existing runtime dir with 0755 is refused."""
-        runtime = tmp_path / "x" / "terok"
-        runtime.mkdir(parents=True, mode=0o755)
-        monkeypatch.setenv("XDG_RUNTIME_DIR", str(tmp_path / "x"))
-        with pytest.raises(SystemExit, match="mode "):
-            _secure_runtime_dir()
+    def test_hash_is_salted(self) -> None:
+        """Hashing the same password twice produces different records."""
+        assert _hash_password("same") != _hash_password("same")
 
-    def test_secure_runtime_dir_rejects_symlink(
-        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-    ) -> None:
-        """A symlink as the runtime dir is refused (defends against /tmp races)."""
-        real = tmp_path / "real"
-        real.mkdir(mode=0o700)
-        link = tmp_path / "x" / "terok"
-        link.parent.mkdir()
-        link.symlink_to(real)
-        monkeypatch.setenv("XDG_RUNTIME_DIR", str(tmp_path / "x"))
-        with pytest.raises(SystemExit, match="not a plain directory"):
-            _secure_runtime_dir()
+    def test_verify_rejects_garbage(self) -> None:
+        """Malformed records never verify."""
+        assert not _verify_password("x", "not-a-record")
+        assert not _verify_password("x", "scrypt$bogus")
+        assert not _verify_password("x", "scrypt$1$1$1$!!!$!!!")
 
-    def test_mint_and_reuse_password(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-        """Fresh run mints a password; a second call returns the same value."""
-        monkeypatch.setenv("XDG_RUNTIME_DIR", str(tmp_path))
-        first = _load_or_mint_password()
-        assert first
-        path = tmp_path / "terok" / "serve.password"
+    def test_file_roundtrip(self, tmp_path: Path) -> None:
+        """Written files come back as the original record and are mode 0600."""
+        path = tmp_path / "pw"
+        _write_password_hash(path, "s3cret")
         assert stat.S_IMODE(path.stat().st_mode) == 0o600
-        second = _load_or_mint_password()
-        assert first == second
+        record = _read_password_hash(path)
+        assert record is not None and _verify_password("s3cret", record)
 
-    def test_rejects_loose_password_file(
-        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-    ) -> None:
-        """A password file left 0644 is refused on load."""
-        monkeypatch.setenv("XDG_RUNTIME_DIR", str(tmp_path))
-        _load_or_mint_password()  # seed
-        path = tmp_path / "terok" / "serve.password"
+    def test_read_missing_returns_none(self, tmp_path: Path) -> None:
+        """Reading a non-existent path returns ``None`` (not an error)."""
+        assert _read_password_hash(tmp_path / "nope") is None
+
+    def test_read_rejects_loose_perms(self, tmp_path: Path) -> None:
+        """A 0644 password file is refused on load."""
+        path = tmp_path / "pw"
+        _write_password_hash(path, "s3cret")
         os.chmod(path, 0o644)
         with pytest.raises(SystemExit, match="mode "):
-            _load_or_mint_password()
+            _read_password_hash(path)
+
+
+class TestBootstrap:
+    """Tests for first-launch password minting and reuse."""
+
+    def test_first_launch_mints_and_prints(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """On first launch a random password is generated, printed, and stored."""
+        path = tmp_path / "serve.password"
+        stored = _bootstrap_password_hash(path)
+        assert stored.startswith("scrypt$")
+        err = capsys.readouterr().err
+        assert "password = " in err
+        printed = next(line for line in err.splitlines() if "password = " in line)
+        password = printed.split("password = ", 1)[1]
+        assert _verify_password(password, stored)
+
+    def test_second_launch_reuses_hash(self, tmp_path: Path) -> None:
+        """If a hash already exists it is returned verbatim (no reprint)."""
+        path = tmp_path / "serve.password"
+        first = _bootstrap_password_hash(path)
+        second = _bootstrap_password_hash(path)
+        assert first == second
 
 
 class TestBasicAuthMiddleware:
@@ -168,9 +178,9 @@ class TestBasicAuthMiddleware:
         """A request without Authorization gets a 401 + Basic challenge."""
         from aiohttp.test_utils import make_mocked_request
 
-        from terok.tui.serve import _basic_auth_middleware
+        from terok.tui.serve import _basic_auth_middleware, _hash_password
 
-        mw = _basic_auth_middleware("secret")
+        mw = _basic_auth_middleware(_hash_password("secret"))
         req = make_mocked_request("GET", "/")
         resp = await mw(req, lambda _: None)
         assert resp.status == 401
@@ -183,9 +193,9 @@ class TestBasicAuthMiddleware:
         from aiohttp import web
         from aiohttp.test_utils import make_mocked_request
 
-        from terok.tui.serve import _basic_auth_middleware
+        from terok.tui.serve import _basic_auth_middleware, _hash_password
 
-        mw = _basic_auth_middleware("secret")
+        mw = _basic_auth_middleware(_hash_password("secret"))
         token = b64encode(b"terok:secret").decode()
         req = make_mocked_request("GET", "/", headers={"Authorization": f"Basic {token}"})
 
@@ -201,9 +211,9 @@ class TestBasicAuthMiddleware:
 
         from aiohttp.test_utils import make_mocked_request
 
-        from terok.tui.serve import _basic_auth_middleware
+        from terok.tui.serve import _basic_auth_middleware, _hash_password
 
-        mw = _basic_auth_middleware("secret")
+        mw = _basic_auth_middleware(_hash_password("secret"))
         token = b64encode(b"terok:wrong").decode()
         req = make_mocked_request("GET", "/", headers={"Authorization": f"Basic {token}"})
         resp = await mw(req, lambda _: None)
