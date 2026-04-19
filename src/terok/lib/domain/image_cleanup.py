@@ -7,15 +7,11 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from terok_sandbox import (
-    ImageRecord,
-    image_history,
-    image_labels,
-    image_rm,
-    images_list,
-)
+from terok_sandbox import Image, PodmanRuntime
 
 from ..core.projects import list_projects
+
+_runtime = PodmanRuntime()
 
 
 @dataclass
@@ -36,14 +32,14 @@ class ImageInfo:
         return f"{self.repository}:{self.tag}"
 
     @classmethod
-    def from_record(cls, record: ImageRecord) -> ImageInfo:
-        """Lift a sandbox :class:`ImageRecord` into terok's display type."""
+    def from_image(cls, image: Image) -> ImageInfo:
+        """Lift a sandbox :class:`Image` handle into terok's display type."""
         return cls(
-            repository=record.repository,
-            tag=record.tag,
-            image_id=record.image_id,
-            size=record.size,
-            created=record.created,
+            repository=image.repository,
+            tag=image.tag,
+            image_id=image.ref,
+            size=image.size,
+            created=image.created,
         )
 
 
@@ -99,17 +95,14 @@ def list_images(project_id: str | None = None) -> list[ImageInfo]:
         List of ImageInfo objects for matching images.
     """
     images: list[ImageInfo] = []
-    for record in images_list():
-        if not _is_terok_image(record.repository, record.tag):
+    for image in _runtime.images():
+        if not _is_terok_image(image.repository, image.tag):
             continue
         if project_id is not None:
             # Filter: L2 images must match the project; L0/L1 always shown
-            if (
-                _is_terok_l2_image(record.repository, record.tag)
-                and record.repository != project_id
-            ):
+            if _is_terok_l2_image(image.repository, image.tag) and image.repository != project_id:
                 continue
-        images.append(ImageInfo.from_record(record))
+        images.append(ImageInfo.from_image(image))
     return images
 
 
@@ -150,14 +143,14 @@ def find_orphaned_images() -> list[ImageInfo]:
 def _find_dangling_terok_images() -> list[ImageInfo]:
     """Find dangling (untagged) images that were built by terok.
 
-    Walks the sandbox ``images_list(dangling_only=True)`` enumeration and
-    keeps only records whose ancestry matches :func:`_is_terok_built_image`
+    Walks the runtime's ``images(dangling_only=True)`` enumeration and
+    keeps only images whose ancestry matches :func:`_is_terok_built_image`
     (build-context-hash label or terok layer name in history).
     """
     return [
-        ImageInfo.from_record(record)
-        for record in images_list(dangling_only=True)
-        if _is_terok_built_image(record.image_id)
+        ImageInfo.from_image(image)
+        for image in _runtime.images(dangling_only=True)
+        if _is_terok_built_image(image.ref)
     ]
 
 
@@ -167,9 +160,10 @@ def _is_terok_built_image(image_id: str) -> bool:
     Inspects the ``terok.build_context_hash`` label and image history
     for terok layer names.
     """
-    if image_labels(image_id).get("terok.build_context_hash"):
+    image = _runtime.image(image_id)
+    if image.labels().get("terok.build_context_hash"):
         return True
-    return any("terok-l0" in line or "terok-l1" in line for line in image_history(image_id))
+    return any("terok-l0" in line or "terok-l1" in line for line in image.history())
 
 
 def cleanup_images(dry_run: bool = False) -> CleanupResult:
@@ -189,9 +183,15 @@ def cleanup_images(dry_run: bool = False) -> CleanupResult:
         if dry_run:
             removed.append(img.full_name)
             continue
-        if image_rm(img.image_id):
-            removed.append(img.full_name)
-        else:
+        try:
+            if _runtime.image(img.image_id).remove():
+                removed.append(img.full_name)
+            else:
+                failed.append(img.full_name)
+        except Exception as exc:  # noqa: BLE001 — one bad image shouldn't abort the sweep
+            from ..util.logging_utils import log_warning
+
+            log_warning(f"Image cleanup failed for {img.full_name}: {exc}")
             failed.append(img.full_name)
 
     return CleanupResult(removed=removed, failed=failed, dry_run=dry_run)

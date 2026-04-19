@@ -159,7 +159,7 @@ class TestOverviewOutput:
 class TestDetailOutput:
     """``cmd_detail`` prints per-task breakdown for one project."""
 
-    @patch("terok_sandbox.get_container_rw_sizes", return_value={})
+    @patch("terok_sandbox.PodmanRuntime.container_rw_sizes", return_value={})
     @patch("terok.lib.domain.storage.get_tasks_storage", return_value=[])
     @patch("terok.lib.domain.storage.list_images")
     @patch("terok.lib.core.projects.load_project")
@@ -179,7 +179,7 @@ class TestDetailOutput:
         assert "myproject" in output
         assert "Project total" in output
 
-    @patch("terok_sandbox.get_container_rw_sizes", return_value={})
+    @patch("terok_sandbox.PodmanRuntime.container_rw_sizes", return_value={})
     @patch("terok.lib.domain.storage.get_tasks_storage", return_value=[])
     @patch("terok.lib.domain.storage.list_images")
     @patch("terok.lib.core.projects.load_project")

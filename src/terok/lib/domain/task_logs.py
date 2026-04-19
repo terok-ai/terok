@@ -16,12 +16,22 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from terok_executor import AgentRunner
-from terok_sandbox import get_container_state
+from terok_sandbox import PodmanRuntime
 
 from ..core.projects import load_project
 from ..orchestration.tasks import container_name, tasks_meta_dir
 from ..util.yaml import load as _yaml_load
 from .log_format import auto_detect_formatter
+
+_runtime = PodmanRuntime()
+
+
+def get_container_state(cname: str) -> str | None:
+    """Return lifecycle state for *cname* via the container runtime.
+
+    Module-level shim so tests can patch by name.
+    """
+    return _runtime.container(cname).state
 
 
 def _build_raw_logs_cmd(cname: str, *, follow: bool, tail: int | None) -> list[str]:

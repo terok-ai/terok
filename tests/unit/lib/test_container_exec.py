@@ -6,6 +6,8 @@
 import subprocess
 import unittest.mock
 
+from terok_sandbox import ExecResult
+
 from terok.lib.orchestration.container_exec import container_git_diff
 
 _MOD = "terok.lib.orchestration.container_exec"
@@ -17,7 +19,7 @@ class TestContainerGitDiff:
     def test_running_container_returns_diff(self) -> None:
         """Diff output returned when the container is already running."""
         expected = "diff --git a/f.txt b/f.txt\n+hello\n"
-        exec_result = subprocess.CompletedProcess(args=[], returncode=0, stdout=expected, stderr="")
+        exec_result = ExecResult(exit_code=0, stdout=expected, stderr="")
         with (
             unittest.mock.patch(f"{_MOD}.get_container_state", return_value="running"),
             unittest.mock.patch(f"{_MOD}.sandbox_exec", return_value=exec_result) as mock_exec,
@@ -32,7 +34,7 @@ class TestContainerGitDiff:
         """Stopped CLI container is started, exec'd, and stopped again."""
         expected = " 1 file changed\n"
         start_result = subprocess.CompletedProcess(args=[], returncode=0, stderr="")
-        exec_result = subprocess.CompletedProcess(args=[], returncode=0, stdout=expected, stderr="")
+        exec_result = ExecResult(exit_code=0, stdout=expected, stderr="")
         stop_result = subprocess.CompletedProcess(args=[], returncode=0, stderr="")
         with (
             unittest.mock.patch(f"{_MOD}.get_container_state", return_value="exited"),
@@ -65,7 +67,7 @@ class TestContainerGitDiff:
 
     def test_podman_exec_failure_returns_none(self) -> None:
         """Return None when git diff fails inside the container."""
-        exec_result = subprocess.CompletedProcess(args=[], returncode=128, stdout="", stderr="")
+        exec_result = ExecResult(exit_code=128, stdout="", stderr="")
         with (
             unittest.mock.patch(f"{_MOD}.get_container_state", return_value="running"),
             unittest.mock.patch(f"{_MOD}.sandbox_exec", return_value=exec_result),

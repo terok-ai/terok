@@ -20,11 +20,11 @@ from urllib.parse import urlparse, urlunparse
 
 from terok_executor import agent_doctor_checks, get_roster
 from terok_sandbox import (
-    get_container_state,
+    ExecResult,
+    PodmanRuntime,
     get_ssh_signer_port,
     get_token_broker_port,
     make_shield,
-    sandbox_exec,
 )
 from terok_sandbox.doctor import CheckVerdict, DoctorCheck, sandbox_doctor_checks
 
@@ -32,6 +32,19 @@ from ..core.config import make_sandbox_config
 from ..core.projects import load_project
 from ..util.logging_utils import _log_debug
 from .tasks import container_name, load_task_meta, tasks_meta_dir
+
+_runtime = PodmanRuntime()
+
+
+def get_container_state(cname: str) -> str | None:
+    """Module-level shim over ``_runtime.container(cname).state`` — patchable by tests."""
+    return _runtime.container(cname).state
+
+
+def sandbox_exec(cname: str, cmd: list[str], *, timeout: int = 10) -> ExecResult:
+    """Module-level shim over ``_runtime.exec`` — patchable by tests."""
+    return _runtime.exec(_runtime.container(cname), cmd, timeout=timeout)
+
 
 # Type alias matching sickbay.py convention
 _CheckResult = tuple[str, str, str]
@@ -51,8 +64,8 @@ def _exec_in_container(
     cmd: list[str],
     *,
     timeout: int = 10,
-) -> subprocess.CompletedProcess[str]:
-    """Run *cmd* inside *cname* via the sandbox exec API."""
+) -> ExecResult:
+    """Run *cmd* inside *cname* via the container runtime."""
     return sandbox_exec(cname, cmd, timeout=timeout)
 
 
@@ -279,7 +292,7 @@ def _run_probe(cname: str, check: DoctorCheck) -> CheckVerdict:
         return CheckVerdict("warn", f"{check.label}: exec failed — {exc}")
 
     try:
-        return check.evaluate(proc.returncode, proc.stdout, proc.stderr)
+        return check.evaluate(proc.exit_code, proc.stdout, proc.stderr)
     except Exception as exc:  # noqa: BLE001
         return CheckVerdict("warn", f"{check.label}: evaluate failed — {exc}")
 
@@ -291,9 +304,9 @@ def _apply_fix(cname: str, check: DoctorCheck) -> _CheckResult:
         fix_proc = _exec_in_container(cname, check.fix_cmd)  # type: ignore[arg-type]
     except (subprocess.TimeoutExpired, OSError) as exc:
         return ("warn", f"  fix: {check.label}", f"fix failed: {exc}")
-    if fix_proc.returncode == 0:
+    if fix_proc.ok:
         return ("ok", f"  fix: {check.label}", check.fix_description)
-    return ("warn", f"  fix: {check.label}", f"fix failed (rc={fix_proc.returncode})")
+    return ("warn", f"  fix: {check.label}", f"fix failed (rc={fix_proc.exit_code})")
 
 
 # ---------------------------------------------------------------------------

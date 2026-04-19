@@ -9,7 +9,6 @@ and the RunSpec delegation path through _run_container.
 
 from __future__ import annotations
 
-import subprocess
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -89,23 +88,21 @@ class TestPodmanStart:
             _podman_start("test-ctr")
 
     def test_raises_on_start_failure(self) -> None:
-        """Non-zero returncode with stderr becomes SystemExit."""
+        """Runtime failure surfaces as a user-facing SystemExit."""
         from terok.lib.orchestration.task_runners import _podman_start
 
-        result = subprocess.CompletedProcess(args=[], returncode=1, stderr="container not found")
         with (
-            patch(self._PATCH, return_value=result),
+            patch(self._PATCH, side_effect=RuntimeError("container not found")),
             pytest.raises(SystemExit, match="container not found"),
         ):
             _podman_start("test-ctr")
 
     def test_raises_on_start_failure_empty_stderr(self) -> None:
-        """Non-zero returncode with empty stderr still raises SystemExit."""
+        """Any RuntimeError from the runtime is translated to SystemExit."""
         from terok.lib.orchestration.task_runners import _podman_start
 
-        result = subprocess.CompletedProcess(args=[], returncode=125, stderr="")
         with (
-            patch(self._PATCH, return_value=result),
+            patch(self._PATCH, side_effect=RuntimeError("rc=125")),
             pytest.raises(SystemExit),
         ):
             _podman_start("test-ctr")

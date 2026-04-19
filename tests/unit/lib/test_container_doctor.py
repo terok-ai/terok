@@ -5,10 +5,10 @@
 
 from __future__ import annotations
 
-import subprocess
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
+from terok_sandbox import ExecResult
 from terok_sandbox.doctor import CheckVerdict, DoctorCheck
 
 from terok.lib.orchestration.container_doctor import (
@@ -29,11 +29,9 @@ class TestExecInContainer:
 
     def test_delegates_to_sandbox_exec(self) -> None:
         with patch("terok.lib.orchestration.container_doctor.sandbox_exec") as mock_exec:
-            mock_exec.return_value = subprocess.CompletedProcess(
-                args=[], returncode=0, stdout="ok\n", stderr=""
-            )
+            mock_exec.return_value = ExecResult(exit_code=0, stdout="ok\n", stderr="")
             result = _exec_in_container("proj-cli-42", ["echo", "hello"])
-            assert result.returncode == 0
+            assert result.exit_code == 0
             mock_exec.assert_called_once_with("proj-cli-42", ["echo", "hello"], timeout=10)
 
 
@@ -243,9 +241,7 @@ class TestRunContainerDoctor:
         mock_agent_checks.return_value = []
         mock_terok_checks.return_value = []
 
-        mock_exec.return_value = subprocess.CompletedProcess(
-            args=[], returncode=0, stdout="ok\n", stderr=""
-        )
+        mock_exec.return_value = ExecResult(exit_code=0, stdout="ok\n", stderr="")
 
         # Act
         results = run_container_doctor("proj", "42")
@@ -317,8 +313,8 @@ class TestRunContainerDoctor:
 
         # First call is probe (returns mismatch), second is fix (succeeds)
         mock_exec.side_effect = [
-            subprocess.CompletedProcess(args=[], returncode=0, stdout="Wrong\n", stderr=""),
-            subprocess.CompletedProcess(args=[], returncode=0, stdout="", stderr=""),
+            ExecResult(exit_code=0, stdout="Wrong\n", stderr=""),
+            ExecResult(exit_code=0, stdout="", stderr=""),
         ]
 
         # Act

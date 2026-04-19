@@ -229,23 +229,26 @@ class TestPanicStopContainers:
 class TestStopContainers:
     """Tests for _stop_containers internals."""
 
-    @patch("terok_sandbox.stop_task_containers")
-    def test_stops_all_modes(self, mock_stop):
+    @patch("terok_sandbox.PodmanRuntime")
+    def test_stops_all_modes(self, mock_runtime_cls):
         """All container modes are generated for each target."""
         from terok.lib.domain.panic import _stop_containers
 
+        mock_runtime_cls.return_value.force_remove.return_value = []
         t = _target()
         stopped, errors = _stop_containers([t])
         assert not errors
-        mock_stop.assert_called_once()
-        names = mock_stop.call_args[0][0]
-        assert len(names) > 0
+        # force_remove called once with a list of container handles
+        mock_runtime_cls.return_value.force_remove.assert_called_once()
+        handles = mock_runtime_cls.return_value.force_remove.call_args[0][0]
+        assert len(handles) > 0
 
-    @patch("terok_sandbox.stop_task_containers", side_effect=Exception("podman died"))
-    def test_stop_exception(self, _):
-        """Exception from stop_task_containers yields errors."""
+    @patch("terok_sandbox.PodmanRuntime")
+    def test_stop_exception(self, mock_runtime_cls):
+        """Exception from force_remove yields errors."""
         from terok.lib.domain.panic import _stop_containers
 
+        mock_runtime_cls.return_value.force_remove.side_effect = Exception("podman died")
         stopped, errors = _stop_containers([_target()])
         assert not stopped
         assert all("podman died" in e for _, e in errors)

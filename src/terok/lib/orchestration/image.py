@@ -28,7 +28,7 @@ from terok_executor import (
     stage_tmux_config,
     stage_toad_agents,
 )
-from terok_sandbox import image_exists as _sandbox_image_exists
+from terok_sandbox import PodmanRuntime
 
 from ..core.config import build_dir
 from ..core.images import project_cli_image, project_dev_image
@@ -36,17 +36,19 @@ from ..core.project_model import ProjectConfig
 from ..core.projects import load_project
 from ..util.fs import ensure_dir
 
+_runtime = PodmanRuntime()
+
 # ---------- helpers ----------
 
 
 def _image_exists(image: str) -> bool:
     """Check if a container image exists locally.
 
-    Thin wrapper over :func:`terok_sandbox.image_exists` kept as a
+    Thin wrapper over the runtime's ``Image.exists`` check, kept as a
     same-module symbol so existing test mocks (``patch("terok.lib.
     orchestration.image._image_exists")``) keep working.
     """
-    return _sandbox_image_exists(image)
+    return _runtime.image(image).exists()
 
 
 # ---------- Hashing ----------

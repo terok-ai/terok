@@ -15,8 +15,8 @@ from pathlib import Path
 
 from terok_executor import parse_md_agent
 from terok_sandbox import (
+    PodmanRuntime,
     down as shield_down,
-    get_container_state,
     up as shield_up,
 )
 
@@ -53,6 +53,8 @@ from .screens import (
     TaskNameScreen,
 )
 from .widgets import TaskList
+
+_runtime = PodmanRuntime()
 
 
 def _build_interactive_agent_command(provider: object, prompt: str | None) -> str:
@@ -534,7 +536,7 @@ class TaskActionsMixin:
         tid = task.task_id
         cname = container_name(pid, task.mode, tid)
 
-        state = get_container_state(cname)
+        state = _runtime.container(cname).state
         if state is None:
             self.notify(f"No container found for task {tid}.")
             return

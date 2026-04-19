@@ -12,7 +12,18 @@ from functools import lru_cache
 from typing import TYPE_CHECKING
 
 from terok_executor import AGENTS_LABEL
-from terok_sandbox import image_labels
+from terok_sandbox import PodmanRuntime
+
+_runtime = PodmanRuntime()
+
+
+def image_labels(tag: str) -> dict[str, str]:
+    """Return the OCI labels for *tag* via the container runtime.
+
+    Module-level shim so tests can patch by name.
+    """
+    return _runtime.image(tag).labels()
+
 
 if TYPE_CHECKING:
     from terok.lib.core.project_model import ProjectConfig

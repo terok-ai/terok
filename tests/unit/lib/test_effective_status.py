@@ -9,7 +9,7 @@ import subprocess
 from unittest.mock import patch
 
 import pytest
-from terok_sandbox import get_container_states
+from terok_sandbox import PodmanRuntime
 
 from terok.lib.core.task_display import (
     STATUS_DISPLAY,
@@ -172,15 +172,15 @@ class TestTaskStateInheritance:
         ),
     ],
 )
-def test_get_container_states_handles_output_and_errors(
+def test_container_states_handles_output_and_errors(
     output: str | None,
     error: Exception | None,
     expected: dict[str, str],
 ) -> None:
     """Project-wide state lookup parses output and degrades cleanly on errors."""
     patch_kwargs = {"side_effect": error} if error else {"return_value": output}
-    with patch("terok_sandbox.runtime.subprocess.check_output", **patch_kwargs):
-        assert get_container_states("proj") == expected
+    with patch("terok_sandbox.runtime.podman.subprocess.check_output", **patch_kwargs):
+        assert PodmanRuntime().container_states("proj") == expected
 
 
 @pytest.mark.parametrize(
@@ -210,9 +210,8 @@ def test_get_all_task_states_maps_project_container_lookup(
     expected: dict[str, str | None],
 ) -> None:
     """Task-state lookup maps batch project container states back to task IDs."""
-    with patch(
-        "terok.lib.orchestration.tasks.get_container_states",
-        return_value=container_states,
+    with patch.object(
+        PodmanRuntime, "container_states", return_value=container_states
     ) as mocked_get_states:
         assert get_all_task_states("proj", tasks) == expected
     mocked_get_states.assert_called_once_with("proj")

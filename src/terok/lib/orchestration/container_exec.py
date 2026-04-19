@@ -4,27 +4,52 @@
 """Container-based command execution for agent workspaces.
 
 Runs git (and other commands) **inside** task containers via the
-terok-sandbox ``sandbox_exec`` API instead of on the host, eliminating
-the risk of poisoned git hooks or scripts executing with host privileges.
+runtime ``exec`` API instead of on the host, eliminating the risk of
+poisoned git hooks or scripts executing with host privileges.
 """
 
 from subprocess import TimeoutExpired
 
-from terok_sandbox import container_start, container_stop, get_container_state, sandbox_exec
+from terok_sandbox import ExecResult, PodmanRuntime
 
 from ..core.task_display import container_name as _container_name
 from ..util.logging_utils import _log_debug
+
+_runtime = PodmanRuntime()
+
+
+# Module-level shims over the runtime — patchable by tests.
+
+
+def container_start(cname: str) -> None:
+    """Start *cname* via the runtime."""
+    _runtime.container(cname).start()
+
+
+def container_stop(cname: str, *, timeout: int = 10) -> None:
+    """Stop *cname* via the runtime."""
+    _runtime.container(cname).stop(timeout=timeout)
+
+
+def get_container_state(cname: str) -> str | None:
+    """Return lifecycle state for *cname*."""
+    return _runtime.container(cname).state
+
+
+def sandbox_exec(cname: str, cmd: list[str], *, timeout: int = 30) -> ExecResult:
+    """Run *cmd* inside *cname* via the container runtime."""
+    return _runtime.exec(_runtime.container(cname), cmd, timeout=timeout)
 
 
 def _podman_start(cname: str) -> bool:
     """Start a stopped container, returning ``True`` on success."""
     try:
-        result = container_start(cname)
+        container_start(cname)
     except FileNotFoundError:
         _log_debug(f"container_exec._podman_start({cname}): podman not found")
         return False
-    if result.returncode != 0:
-        _log_debug(f"container_exec._podman_start({cname}): rc={result.returncode}")
+    except RuntimeError as exc:
+        _log_debug(f"container_exec._podman_start({cname}): {exc}")
         return False
     return True
 
@@ -33,7 +58,7 @@ def _podman_stop(cname: str, timeout: int = 10) -> None:
     """Stop a container best-effort."""
     try:
         container_stop(cname, timeout=timeout)
-    except FileNotFoundError:
+    except (FileNotFoundError, RuntimeError):
         pass
 
 
@@ -83,8 +108,8 @@ def container_git_diff(
 
     try:
         result = sandbox_exec(cname, ["git", "-C", "/workspace", "diff", *args], timeout=timeout)
-        if result.returncode != 0:
-            _log_debug(f"container_git_diff: git diff failed rc={result.returncode}")
+        if not result.ok:
+            _log_debug(f"container_git_diff: git diff failed rc={result.exit_code}")
             return None
         return result.stdout
     except (FileNotFoundError, TimeoutExpired) as exc:

@@ -26,9 +26,9 @@ import tomllib
 from pathlib import Path
 
 from terok_sandbox import (
+    PodmanRuntime,
     check_environment,
     check_units_outdated,
-    get_container_state,
     get_server_status,
     get_vault_status,
     is_systemd_available,
@@ -44,6 +44,14 @@ from ...lib.orchestration.container_doctor import run_container_doctor
 from ...lib.orchestration.hooks import run_hook
 from ...lib.orchestration.tasks import container_name, tasks_meta_dir
 from ...lib.util.yaml import load as _yaml_load
+
+_runtime = PodmanRuntime()
+
+
+def get_container_state(cname: str) -> str | None:
+    """Module-level shim over ``_runtime.container(cname).state`` — patchable by tests."""
+    return _runtime.container(cname).state
+
 
 # Type alias for check results: (severity, label, detail)
 _CheckResult = tuple[str, str, str]

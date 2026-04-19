@@ -11,7 +11,7 @@ for overview displays.
 from collections.abc import Callable
 from typing import TYPE_CHECKING, Any
 
-from terok_sandbox import container_image, image_exists, image_labels, is_container_running
+from terok_sandbox import PodmanRuntime
 
 from ..core.config import build_dir
 from ..core.images import project_cli_image
@@ -29,6 +29,32 @@ def _scope_has_vault_key(scope: str) -> bool:
 
 if TYPE_CHECKING:
     from ..core.project_model import ProjectConfig
+
+_runtime = PodmanRuntime()
+
+
+# Module-level shims over the runtime — patchable by tests.
+
+
+def image_exists(tag: str) -> bool:
+    """Return ``True`` when an image with *tag* is present locally."""
+    return _runtime.image(tag).exists()
+
+
+def image_labels(tag: str) -> dict[str, str]:
+    """Return the OCI labels for the image identified by *tag*."""
+    return _runtime.image(tag).labels()
+
+
+def is_container_running(cname: str) -> bool:
+    """Return ``True`` if *cname* is currently running."""
+    return _runtime.container(cname).running
+
+
+def container_image(cname: str) -> str | None:
+    """Return the image ID the running container *cname* was created from."""
+    image = _runtime.container(cname).image
+    return image.ref if image is not None else None
 
 
 def get_project_state(
@@ -196,7 +222,7 @@ def is_task_image_old(project_id: str | None, task: Any) -> bool | None:
     if not is_container_running(cname):
         return None
     image_id = container_image(cname)
-    if not image_id:
+    if image_id is None:
         return None
 
     try:

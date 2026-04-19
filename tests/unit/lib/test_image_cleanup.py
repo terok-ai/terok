@@ -5,11 +5,9 @@
 
 from __future__ import annotations
 
-import subprocess
 import unittest.mock
 
 import pytest
-from terok_sandbox import ImageRecord
 
 from terok.lib.domain.image_cleanup import (
     ImageInfo,
@@ -19,19 +17,22 @@ from terok.lib.domain.image_cleanup import (
 )
 
 
-def podman_result(stdout: str = "", returncode: int = 0) -> subprocess.CompletedProcess:
-    """Create a mock podman result (retained for other callers)."""
-    return subprocess.CompletedProcess(args=[], returncode=returncode, stdout=stdout, stderr="")
-
-
-def _records_from_tsv(text: str) -> list[ImageRecord]:
-    """Parse the TSV shape ``podman images --format`` emits into ImageRecords."""
-    out: list[ImageRecord] = []
-    for line in text.strip().splitlines():
-        parts = line.split("\t")
-        if len(parts) == 5:
-            out.append(ImageRecord(*parts))
-    return out
+def _mock_image(
+    *,
+    ref: str,
+    repository: str,
+    tag: str,
+    size: str = "1GB",
+    created: str = "1 day ago",
+) -> unittest.mock.Mock:
+    """Build a Mock that quacks like a :class:`terok_sandbox.Image`."""
+    mock_image = unittest.mock.Mock()
+    mock_image.ref = ref
+    mock_image.repository = repository
+    mock_image.tag = tag
+    mock_image.size = size
+    mock_image.created = created
+    return mock_image
 
 
 ORPHAN_IMAGE = ImageInfo("old-proj", "l2-cli", "sha256:abc", "1GB", "5 days ago")
@@ -55,59 +56,67 @@ class TestImageInfo:
         ids=["tagged", "dangling"],
     )
     def test_full_name(self, image: ImageInfo, expected: str) -> None:
+        """Dangling images get the short-id display; tagged images get ``repo:tag``."""
         assert image.full_name == expected
 
 
 class TestListImages:
-    """Tests for list_images()."""
+    """Tests for ``list_images()``."""
 
     @pytest.mark.parametrize(
-        ("stdout", "project_id", "expected_names"),
+        ("images_spec", "project_id", "expected_names"),
         [
             (
-                "terok-l0\tubuntu-24.04\tsha256:aaa\t500MB\t2 days ago\n"
-                "terok-l1-cli\tubuntu-24.04\tsha256:bbb\t1.2GB\t2 days ago\n"
-                "myproj\tl2-cli\tsha256:ccc\t1.5GB\t1 day ago\n"
-                "ubuntu\t24.04\tsha256:ddd\t77MB\t3 weeks ago\n",
+                [
+                    ("sha256:aaa", "terok-l0", "ubuntu-24.04"),
+                    ("sha256:bbb", "terok-l1-cli", "ubuntu-24.04"),
+                    ("sha256:ccc", "myproj", "l2-cli"),
+                    ("sha256:ddd", "ubuntu", "24.04"),
+                ],
                 None,
                 {"terok-l0:ubuntu-24.04", "terok-l1-cli:ubuntu-24.04", "myproj:l2-cli"},
             ),
             (
-                "terok-l0\tubuntu-24.04\tsha256:aaa\t500MB\t2 days ago\n"
-                "proj-a\tl2-cli\tsha256:bbb\t1.5GB\t1 day ago\n"
-                "proj-b\tl2-cli\tsha256:ccc\t1.5GB\t1 day ago\n",
+                [
+                    ("sha256:aaa", "terok-l0", "ubuntu-24.04"),
+                    ("sha256:bbb", "proj-a", "l2-cli"),
+                    ("sha256:ccc", "proj-b", "l2-cli"),
+                ],
                 "proj-a",
                 {"terok-l0:ubuntu-24.04", "proj-a:l2-cli"},
             ),
             (
-                "myproj\tl2-dev\tsha256:aaa\t1GB\t1 day ago\n",
+                [("sha256:aaa", "myproj", "l2-dev")],
                 None,
                 {"myproj:l2-dev"},
             ),
         ],
         ids=["all-terok-images", "filtered-by-project", "dev-tag"],
     )
-    @unittest.mock.patch("terok.lib.domain.image_cleanup.images_list")
+    @unittest.mock.patch("terok.lib.domain.image_cleanup._runtime")
     def test_list_images(
         self,
-        mock_images_list: unittest.mock.Mock,
-        stdout: str,
+        mock_runtime: unittest.mock.Mock,
+        images_spec: list[tuple[str, str, str]],
         project_id: str | None,
         expected_names: set[str],
     ) -> None:
-        mock_images_list.return_value = _records_from_tsv(stdout)
+        """Runtime enumeration is filtered to terok images (optionally by project)."""
+        mock_runtime.images.return_value = [
+            _mock_image(ref=ref, repository=repo, tag=tag) for ref, repo, tag in images_spec
+        ]
         images = list_images(project_id)
         assert {image.full_name for image in images} == expected_names
 
-    @unittest.mock.patch("terok.lib.domain.image_cleanup.images_list")
-    def test_list_images_podman_failure(self, mock_images_list: unittest.mock.Mock) -> None:
-        """Sandbox returns an empty list on podman failure — terok passes it through."""
-        mock_images_list.return_value = []
+    @unittest.mock.patch("terok.lib.domain.image_cleanup._runtime")
+    def test_list_images_podman_failure(self, mock_runtime: unittest.mock.Mock) -> None:
+        """Runtime returns an empty list on podman failure — terok passes it through."""
+        mock_runtime.images.return_value = []
         assert list_images() == []
 
 
 class TestFindOrphanedImages:
-    """Tests for find_orphaned_images()."""
+    """Tests for ``find_orphaned_images()``."""
 
     @pytest.mark.parametrize(
         ("known_projects", "images", "dangling", "is_terok_built", "expected_ids"),
@@ -167,6 +176,7 @@ class TestFindOrphanedImages:
         is_terok_built: bool,
         expected_ids: set[str],
     ) -> None:
+        """Orphaned = L2-of-missing-project ∪ terok-built dangling, dedup'd by ID."""
         mock_known.return_value = known_projects
         mock_list.return_value = images
         mock_dangling.return_value = dangling
@@ -178,41 +188,47 @@ class TestFindOrphanedImages:
 
 
 class TestCleanupImages:
-    """Tests for cleanup_images()."""
+    """Tests for ``cleanup_images()``."""
 
     @pytest.mark.parametrize(
-        ("dry_run", "podman_returncode", "expected_removed", "expected_failed"),
+        ("dry_run", "remove_result", "expected_removed", "expected_failed"),
         [
-            (True, 0, ["old-proj:l2-cli"], []),
-            (False, 0, ["old-proj:l2-cli"], []),
-            (False, 1, [], ["old-proj:l2-cli"]),
+            (True, True, ["old-proj:l2-cli"], []),
+            (False, True, ["old-proj:l2-cli"], []),
+            (False, False, [], ["old-proj:l2-cli"]),
         ],
         ids=["dry-run", "success", "failure"],
     )
-    @unittest.mock.patch("terok.lib.domain.image_cleanup.image_rm")
+    @unittest.mock.patch("terok.lib.domain.image_cleanup._runtime")
     @unittest.mock.patch("terok.lib.domain.image_cleanup.find_orphaned_images")
     def test_cleanup_images(
         self,
         mock_orphaned: unittest.mock.Mock,
-        mock_image_rm: unittest.mock.Mock,
+        mock_runtime: unittest.mock.Mock,
         dry_run: bool,
-        podman_returncode: int,
+        remove_result: bool,
         expected_removed: list[str],
         expected_failed: list[str],
     ) -> None:
+        """Dry run lists only; real runs delegate to ``Image.remove`` on the runtime."""
         mock_orphaned.return_value = [ORPHAN_IMAGE]
-        mock_image_rm.return_value = podman_returncode == 0
+        mock_image = unittest.mock.Mock()
+        mock_image.remove.return_value = remove_result
+        mock_runtime.image.return_value = mock_image
+
         result = cleanup_images(dry_run=dry_run)
         assert result.dry_run is dry_run
         assert result.removed == expected_removed
         assert result.failed == expected_failed
         if dry_run:
-            mock_image_rm.assert_not_called()
+            mock_image.remove.assert_not_called()
         else:
-            mock_image_rm.assert_called_once_with("sha256:abc")
+            mock_runtime.image.assert_called_once_with("sha256:abc")
+            mock_image.remove.assert_called_once_with()
 
     @unittest.mock.patch("terok.lib.domain.image_cleanup.find_orphaned_images")
     def test_nothing_to_clean(self, mock_orphaned: unittest.mock.Mock) -> None:
+        """Empty orphan list yields an empty cleanup result."""
         mock_orphaned.return_value = []
         result = cleanup_images()
         assert result.removed == []

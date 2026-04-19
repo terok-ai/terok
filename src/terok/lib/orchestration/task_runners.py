@@ -8,6 +8,7 @@ from __future__ import annotations
 import os
 import secrets
 import shlex
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
@@ -23,17 +24,11 @@ from terok_executor import (
 )
 from terok_sandbox import (
     LifecycleHooks,
+    PodmanRuntime,
     Sandbox,
     Sharing,
     VolumeSpec,
-    container_start,
-    container_stop,
     down as _shield_down_impl,
-    get_container_state,
-    is_container_running,
-    login_command as _sandbox_login_command,
-    stream_initial_logs,
-    wait_for_exit,
 )
 
 from ..core.config import (
@@ -69,6 +64,54 @@ from .tasks import (
 
 if TYPE_CHECKING:
     from ..core.project_model import ProjectConfig
+
+_runtime = PodmanRuntime()
+
+
+# Internal convenience wrappers around ``_runtime`` — module-level so
+# tests can patch them by name.  Production code also uses these names
+# directly; they're one-liners on top of the runtime's OOP surface.
+
+
+def get_container_state(cname: str) -> str | None:
+    """Return lifecycle state for *cname* via the container runtime."""
+    return _runtime.container(cname).state
+
+
+def is_container_running(cname: str) -> bool:
+    """Return ``True`` if *cname* is currently running."""
+    return _runtime.container(cname).running
+
+
+def container_start(cname: str) -> None:
+    """Start *cname* via the runtime; raise ``RuntimeError`` on failure."""
+    _runtime.container(cname).start()
+
+
+def container_stop(cname: str, *, timeout: int = 10) -> None:
+    """Stop *cname* via the runtime."""
+    _runtime.container(cname).stop(timeout=timeout)
+
+
+def stream_initial_logs(
+    *,
+    container_name: str,
+    timeout_sec: float | None,
+    ready_check: Callable[[str], bool],
+) -> bool:
+    """Stream logs for *container_name* until *ready_check* matches or timeout."""
+    return _runtime.container(container_name).stream_initial_logs(ready_check, timeout_sec)
+
+
+def wait_for_exit(cname: str, timeout: float | None = None) -> int:
+    """Wait for *cname* to exit; return its exit code."""
+    return _runtime.container(cname).wait(timeout)
+
+
+def login_command(cname: str, *, command: Sequence[str] = ()) -> list[str]:
+    """Return the argv for interactively logging into *cname*."""
+    return _runtime.container(cname).login_command(command=tuple(command))
+
 
 _LOCALHOST = "127.0.0.1"
 _LOOPBACK_HOSTS = frozenset({"127.0.0.1", "localhost", "::1"})
@@ -296,17 +339,11 @@ def _prepare_agent_config(
 def _podman_start(cname: str) -> None:
     """Start an existing container, raising SystemExit on failure."""
     try:
-        result = container_start(cname)
+        container_start(cname)
     except FileNotFoundError:
         raise SystemExit("podman not found; please install podman")
-    if result.returncode != 0:
-        stderr = result.stderr.strip() if result.stderr else ""
-        msg = (
-            f"Failed to start container:\n{stderr}"
-            if stderr
-            else f"podman start failed (rc={result.returncode})"
-        )
-        raise SystemExit(msg)
+    except RuntimeError as exc:
+        raise SystemExit(f"Failed to start container:\n{exc}")
 
 
 def _assert_running(cname: str) -> None:
@@ -322,7 +359,7 @@ def _assert_running(cname: str) -> None:
 def _print_login_instructions(project_id: str, task_id: str, cname: str, color: bool) -> None:
     """Print how to log into a CLI container."""
     login_cmd = f"terok login {project_id} {task_id}"
-    raw_cmd = shlex.join(_sandbox_login_command(cname, command=("bash",)))
+    raw_cmd = shlex.join(login_command(cname, command=("bash",)))
     print(f"Login with: {_blue(login_cmd, color)}")
     print(f"  (or:      {_blue(raw_cmd, color)})")
 
@@ -622,8 +659,8 @@ def task_run_cli(
     # Stream initial logs until ready marker is seen (or timeout), then detach
     stream_initial_logs(
         container_name=cname,
-        timeout_sec=60.0,
         ready_check=lambda line: "__CLI_READY__" in line or ">> init complete" in line,
+        timeout_sec=60.0,
     )
 
     # Verify the container is still alive after log streaming
@@ -781,8 +818,8 @@ def task_run_toad(
 
     ready = stream_initial_logs(
         container_name=cname,
-        timeout_sec=None,
         ready_check=_toad_ready,
+        timeout_sec=None,
     )
 
     if not ready or not is_container_running(cname):
@@ -1195,14 +1232,11 @@ def task_restart(project_id: str, task_id: str) -> None:
     if container_state == "running":
         # Container is running - stop it first, then start it again
         try:
-            result = container_stop(cname, timeout=project.shutdown_timeout)
+            container_stop(cname, timeout=project.shutdown_timeout)
         except FileNotFoundError:
             raise SystemExit("podman not found; please install podman")
-        if result.returncode != 0:
-            stderr = (result.stderr or "").strip()
-            raise SystemExit(
-                f"Failed to stop container: {stderr or f'exit code {result.returncode}'}"
-            )
+        except RuntimeError as exc:
+            raise SystemExit(f"Failed to stop container: {exc}")
         run_hook(
             "post_stop",
             project.hook_post_stop,

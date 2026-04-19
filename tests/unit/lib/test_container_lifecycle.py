@@ -14,7 +14,7 @@ from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
 import pytest
-from terok_sandbox import get_container_state
+from terok_sandbox import PodmanRuntime
 
 from terok.lib.orchestration.task_runners import task_restart
 from terok.lib.orchestration.tasks import get_task_container_state, task_new, task_status, task_stop
@@ -52,11 +52,6 @@ def create_task_with_mode(ctx: SimpleNamespace, project_id: str, *, mode: str = 
     return task_id
 
 
-def completed_process() -> subprocess.CompletedProcess[None]:
-    """Return a successful ``subprocess.run`` result."""
-    return subprocess.CompletedProcess(args=[], returncode=0)
-
-
 def capture_stdout(func: Callable[..., object], /, *args: object, **kwargs: object) -> str:
     """Run *func* and return its captured stdout."""
     output = StringIO()
@@ -70,6 +65,16 @@ def run_podman_args(run_mock: Mock, *, call_index: int = 0) -> list[str]:
     return run_mock.call_args_list[call_index].args[0]
 
 
+def _mock_container(state: str | None = None, **method_overrides: object) -> Mock:
+    """Return a Mock that quacks like a :class:`Container` handle."""
+    container = Mock()
+    container.state = state
+    container.running = state == "running"
+    for method, value in method_overrides.items():
+        getattr(container, method).return_value = value
+    return container
+
+
 @pytest.mark.parametrize(
     ("output", "error", "expected"),
     [
@@ -79,30 +84,30 @@ def run_podman_args(run_mock: Mock, *, call_index: int = 0) -> list[str]:
         pytest.param(None, FileNotFoundError("podman"), None, id="podman-missing"),
     ],
 )
-def test_get_container_state_handles_success_and_errors(
+def test_container_state_handles_success_and_errors(
     output: str | None,
     error: Exception | None,
     expected: str | None,
 ) -> None:
     """Container state lookup lowercases successful output and ignores Podman errors."""
     patch_kwargs = {"side_effect": error} if error else {"return_value": output}
-    with patch("terok_sandbox.runtime.subprocess.check_output", **patch_kwargs):
-        assert get_container_state("test-container") == expected
+    with patch("terok_sandbox.runtime.podman.subprocess.check_output", **patch_kwargs):
+        assert PodmanRuntime().container("test-container").state == expected
 
 
 @pytest.mark.parametrize(
     ("project_id", "shutdown_timeout", "timeout_override", "expected_timeout"),
     [
-        pytest.param("proj_stop", None, None, "10", id="default-timeout"),
-        pytest.param("proj_stop_cfg", 30, None, "30", id="config-timeout"),
-        pytest.param("proj_stop_ovr", 30, 60, "60", id="cli-timeout-override"),
+        pytest.param("proj_stop", None, None, 10, id="default-timeout"),
+        pytest.param("proj_stop_cfg", 30, None, 30, id="config-timeout"),
+        pytest.param("proj_stop_ovr", 30, 60, 60, id="cli-timeout-override"),
     ],
 )
 def test_task_stop_uses_expected_timeout(
     project_id: str,
     shutdown_timeout: int | None,
     timeout_override: int | None,
-    expected_timeout: str,
+    expected_timeout: int,
 ) -> None:
     """Stopping a task uses the default, configured, or explicit timeout."""
     with project_env(
@@ -111,13 +116,12 @@ def test_task_stop_uses_expected_timeout(
     ) as ctx:
         task_id = create_task_with_mode(ctx, project_id)
 
-        stop_result = subprocess.CompletedProcess(args=[], returncode=0, stderr="")
+        container = _mock_container(state="running")
+        runtime_mock = Mock(spec=PodmanRuntime)
+        runtime_mock.container.return_value = container
         with (
             mock_git_config(),
-            patch("terok.lib.orchestration.tasks.get_container_state", return_value="running"),
-            patch(
-                "terok.lib.orchestration.tasks.container_stop", return_value=stop_result
-            ) as mock_stop,
+            patch("terok.lib.orchestration.tasks._runtime", runtime_mock),
         ):
             capture_stdout(
                 task_stop,
@@ -126,9 +130,9 @@ def test_task_stop_uses_expected_timeout(
                 **({"timeout": timeout_override} if timeout_override is not None else {}),
             )
 
-        mock_stop.assert_called_once_with(
-            f"{project_id}-cli-{task_id}", timeout=int(expected_timeout)
-        )
+        # One call for state lookup, one call for stop
+        runtime_mock.container.assert_any_call(f"{project_id}-cli-{task_id}")
+        container.stop.assert_called_once_with(timeout=expected_timeout)
 
 
 def test_task_stop_unknown_task_raises_system_exit() -> None:
@@ -140,28 +144,41 @@ def test_task_stop_unknown_task_raises_system_exit() -> None:
 
 
 def test_task_restart_starts_exited_container() -> None:
-    """Restarting an exited task uses container_start."""
+    """Restarting an exited task uses ``Container.start``."""
     project_id = "proj_restart"
     with project_env(project_config(project_id), project_id=project_id) as ctx:
         task_id = create_task_with_mode(ctx, project_id)
         container_name = f"{project_id}-cli-{task_id}"
 
-        start_result = completed_process()
-        start_result.stderr = ""
+        # First state query → "exited"; subsequent queries (after start) → "running"
+        container_states = iter(["exited", "running"])
+        cache: dict[str, Mock] = {}
+
+        def make_container(name: str) -> Mock:
+            """Return the cached Mock for *name*, updating .state per the schedule."""
+            c = cache.get(name)
+            if c is None:
+                c = Mock()
+                c.login_command.return_value = ["podman", "exec", "-it", name, "bash"]
+                cache[name] = c
+            try:
+                c.state = next(container_states)
+            except StopIteration:
+                c.state = "running"
+            c.running = c.state == "running"
+            return c
+
+        runtime_mock = Mock(spec=PodmanRuntime)
+        runtime_mock.container.side_effect = make_container
         with (
             mock_git_config(),
-            patch(
-                "terok.lib.orchestration.task_runners.get_container_state",
-                side_effect=["exited", "running"],
-            ),
-            patch(
-                "terok.lib.orchestration.task_runners.container_start",
-                return_value=start_result,
-            ) as mock_start,
+            patch("terok.lib.orchestration.task_runners._runtime", runtime_mock),
         ):
             capture_stdout(task_restart, project_id, task_id)
 
-        mock_start.assert_called_once_with(container_name)
+        runtime_mock.container.assert_any_call(container_name)
+        assert container_name in cache, "runtime.container should have been queried for the task"
+        cache[container_name].start.assert_called_once()
 
 
 def test_task_restart_running_container_stops_then_starts() -> None:
@@ -171,27 +188,26 @@ def test_task_restart_running_container_stops_then_starts() -> None:
         task_id = create_task_with_mode(ctx, project_id)
         container_name = f"{project_id}-cli-{task_id}"
 
-        stop_result = subprocess.CompletedProcess(args=[], returncode=0, stderr="")
-        start_result = subprocess.CompletedProcess(args=[], returncode=0, stderr="")
+        # Every state query returns "running"
+        shared_container = _mock_container(state="running")
+        shared_container.login_command.return_value = [
+            "podman",
+            "exec",
+            "-it",
+            container_name,
+            "bash",
+        ]
+        runtime_mock = Mock(spec=PodmanRuntime)
+        runtime_mock.container.return_value = shared_container
         with (
             mock_git_config(),
-            patch(
-                "terok.lib.orchestration.task_runners.get_container_state",
-                side_effect=["running", "running"],
-            ),
-            patch(
-                "terok.lib.orchestration.task_runners.container_stop",
-                return_value=stop_result,
-            ) as mock_stop,
-            patch(
-                "terok.lib.orchestration.task_runners.container_start",
-                return_value=start_result,
-            ) as mock_start,
+            patch("terok.lib.orchestration.task_runners._runtime", runtime_mock),
         ):
             output = capture_stdout(task_restart, project_id, task_id)
 
-        mock_stop.assert_called_once_with(container_name, timeout=10)
-        mock_start.assert_called_once_with(container_name)
+        runtime_mock.container.assert_any_call(container_name)
+        shared_container.stop.assert_called_once_with(timeout=10)
+        shared_container.start.assert_called_once_with()
         assert "Restarted" in output
 
 
@@ -201,9 +217,11 @@ def test_task_status_reports_live_container_state() -> None:
     with project_env(project_config(project_id), project_id=project_id) as ctx:
         task_id = create_task_with_mode(ctx, project_id)
 
+        runtime_mock = Mock(spec=PodmanRuntime)
+        runtime_mock.container.return_value = _mock_container(state="exited")
         with (
             mock_git_config(),
-            patch("terok.lib.orchestration.tasks.get_container_state", return_value="exited"),
+            patch("terok.lib.orchestration.tasks._runtime", runtime_mock),
         ):
             output = capture_stdout(task_status, project_id, task_id)
 
@@ -218,8 +236,8 @@ def test_get_task_container_state_returns_none_without_mode() -> None:
 
 def test_get_task_container_state_uses_project_id_and_mode() -> None:
     """Task container lookup resolves the canonical container name."""
-    with patch(
-        "terok.lib.orchestration.tasks.get_container_state", return_value="running"
-    ) as mock_state:
+    runtime_mock = Mock(spec=PodmanRuntime)
+    runtime_mock.container.return_value = _mock_container(state="running")
+    with patch("terok.lib.orchestration.tasks._runtime", runtime_mock):
         assert get_task_container_state("proj", "1", "cli") == "running"
-        mock_state.assert_called_once_with("proj-cli-1")
+        runtime_mock.container.assert_called_once_with("proj-cli-1")

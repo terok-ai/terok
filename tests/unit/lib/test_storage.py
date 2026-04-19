@@ -167,7 +167,7 @@ class TestGetStorageOverview:
 class TestGetProjectStorageDetail:
     """Detail mode queries per-task sizes and overlay data."""
 
-    @patch("terok_sandbox.get_container_rw_sizes", return_value={"abc": 1024})
+    @patch("terok_sandbox.PodmanRuntime.container_rw_sizes", return_value={"abc": 1024})
     @patch("terok.lib.domain.storage.get_tasks_storage", return_value=[])
     @patch("terok.lib.domain.storage.list_images", return_value=[])
     @patch("terok.lib.core.projects.load_project")

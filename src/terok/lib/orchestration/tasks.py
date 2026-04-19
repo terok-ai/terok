@@ -21,13 +21,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 from terok_executor import AgentRunner
-from terok_sandbox import (
-    container_stop,
-    get_container_state,
-    get_container_states,
-    login_command,
-    stop_task_containers,
-)
+from terok_sandbox import PodmanRuntime
 
 from ..core.config import archive_dir, state_dir
 from ..core.projects import ProjectConfig, load_project
@@ -52,6 +46,24 @@ from ..util.host_cmd import WORKSPACE_DANGEROUS_DIRNAME
 from ..util.logging_utils import _log_debug
 from ..util.yaml import dump as _yaml_dump, load as _yaml_load
 from .container_exec import container_git_diff
+
+_runtime = PodmanRuntime()
+
+
+# Internal convenience wrappers around ``_runtime`` — module-level so
+# tests can patch them by name.  Production code also uses these names
+# directly (they're one-liners, purely syntactic sugar).
+
+
+def get_container_state(cname: str) -> str | None:
+    """Return lifecycle state for *cname* via the container runtime."""
+    return _runtime.container(cname).state
+
+
+def stop_task_containers(names: list[str]):
+    """Force-remove the named containers; return per-name remove results."""
+    return _runtime.force_remove([_runtime.container(n) for n in names])
+
 
 # ---------- Task ID generation ----------
 
@@ -547,7 +559,7 @@ def get_all_task_states(
     Returns:
         ``{task_id: container_state_or_None}`` dict.
     """
-    container_states = get_container_states(project_id)
+    container_states = _runtime.container_states(project_id)
     result: dict[str, str | None] = {}
     for t in tasks:
         if t.mode:
@@ -754,7 +766,7 @@ def _task_delete(project: ProjectConfig, task_id: str) -> TaskDeleteResult:
         _log_debug(f"task_delete: token revoke failed: {exc}")
         warnings.append(f"Token revoke failed: {exc}")
 
-    _log_debug("task_delete: calling _stop_task_containers")
+    _log_debug("task_delete: calling stop_task_containers")
     names = [container_name(project.id, mode, str(task_id)) for mode in CONTAINER_MODES]
     containers_removed = True
     try:
@@ -769,7 +781,7 @@ def _task_delete(project: ProjectConfig, task_id: str) -> TaskDeleteResult:
             _log_debug(f"task_delete: container {r.name} not removed: {r.error}")
             warnings.append(f"Container {r.name}: {r.error}")
             containers_removed = False
-    _log_debug("task_delete: _stop_task_containers returned")
+    _log_debug("task_delete: stop_task_containers returned")
 
     if mode:
         from .hooks import run_hook
@@ -868,7 +880,7 @@ def _validate_login(project: ProjectConfig, task_id: str) -> tuple[str, str]:
 def _get_login_command(project: ProjectConfig, task_id: str) -> list[str]:
     """Return the command to interactively log into a task container."""
     cname, _mode = _validate_login(project, task_id)
-    return login_command(cname)
+    return _runtime.container(cname).login_command()
 
 
 def _task_login(project: ProjectConfig, task_id: str) -> None:
@@ -904,12 +916,11 @@ def _task_stop(project: ProjectConfig, task_id: str, *, timeout: int | None = No
         raise SystemExit(f"Task {task_id} container is not stoppable (state: {state})")
 
     try:
-        result = container_stop(cname, timeout=effective_timeout)
+        _runtime.container(cname).stop(timeout=effective_timeout)
     except FileNotFoundError:
         raise SystemExit("podman not found; please install podman")
-    if result.returncode != 0:
-        stderr = (result.stderr or "").strip()
-        raise SystemExit(f"Failed to stop container: {stderr or f'exit code {result.returncode}'}")
+    except RuntimeError as exc:
+        raise SystemExit(f"Failed to stop container: {exc}")
 
     try:
         from .ports import release_web_port
