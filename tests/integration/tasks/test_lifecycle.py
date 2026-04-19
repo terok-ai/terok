@@ -41,8 +41,12 @@ class TestTaskLifecycle:
         """``task new`` writes the workspace layout used by later container runs."""
         terok_env.write_project("demo", PROJECT_CONFIG)
 
-        created = terok_env.run_cli("task", "new", "demo", "--name", "Fix Login Bug")
-        terok_env.run_cli("task", "new", "demo", "--name", "Docs Sweep")
+        # ``task new`` is a terokctl-only verb (scripting building block) —
+        # the human-facing ``terok`` surface uses ``task run`` instead.
+        created = terok_env.run_cli(
+            "task", "new", "demo", "--name", "Fix Login Bug", prog="terokctl"
+        )
+        terok_env.run_cli("task", "new", "demo", "--name", "Docs Sweep", prog="terokctl")
 
         tid = _extract_task_id(created.stdout)
         assert_hex_id(tid)
@@ -59,7 +63,7 @@ class TestTaskLifecycle:
     def test_task_rename_status_and_archive_delete(self, terok_env: TerokIntegrationEnv) -> None:
         """A task can be renamed, inspected, deleted, and listed from the archive."""
         terok_env.write_project("demo", PROJECT_CONFIG)
-        created = terok_env.run_cli("task", "new", "demo", "--name", "Draft")
+        created = terok_env.run_cli("task", "new", "demo", "--name", "Draft", prog="terokctl")
         tid = _extract_task_id(created.stdout)
 
         renamed = terok_env.run_cli("task", "rename", "demo", tid, "Ship It")

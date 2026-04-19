@@ -52,7 +52,7 @@ All three persist independently and survive:
                     │   (not exists)   │
                     └────────┬─────────┘
                              │
-                    task run-cli
+                    task run
                     (first time)
                              │
                              ▼
@@ -63,7 +63,7 @@ All three persist independently and survive:
     │  │          │                │                  │  │
     │  │          │◀────────────── │                  │  │
     │  └──────────┘  task restart  └──────────────────┘  │
-    │       │        task run-cli          │              │
+    │       │        task run          │              │
     │       │                             │              │
     │       └──────────┬──────────────────┘              │
     │                  │                                 │
@@ -81,11 +81,12 @@ All three persist independently and survive:
 
 | Command | Container Exists & Running | Container Exists & Stopped | Container Doesn't Exist |
 |---------|---------------------------|---------------------------|------------------------|
-| `task run-cli` | Shows "already running" | `podman start` | `podman run` (create) |
+| `task run` | Always creates a fresh task + container (new ID) | Always creates a fresh task + container (new ID) | Always creates a fresh task + container (new ID) |
 | `task stop` | `podman stop` | Error: not running | Error: not running |
-| `task restart` | Shows "already running" | `podman start` | `podman run` (create)  |
+| `task restart` | `podman stop` → `podman start` | `podman start` | Error: suggests `task run` |
 | `task status`  | Shows state            | Shows state     | Shows "not found"      |
 | `task delete` | `podman rm -f` + cleanup | `podman rm -f` + cleanup | Cleanup only |
+| `terokctl task attach` | Shows "already running" | `podman start` | Error: task has no container |
 
 ### Container Naming
 
@@ -175,8 +176,8 @@ Container image hash ≠ Current project build hash
         │
         ▼
   User should: terok project build <project>
-               then: task delete + task run-cli
-               or:   task stop + podman rm <container> + task run-cli
+               then: task delete + task run
+               or:   task stop + podman rm <container> + task run
 ```
 
 ---
@@ -188,10 +189,10 @@ Container image hash ≠ Current project build hash
 ```bash
 # First time (creates container)
 terok task new myproject        # Create task metadata + workspace
-terok task run-cli myproject 1  # Create and start container
+terokctl task attach --mode cli myproject 1  # Create and start container
 
 # Subsequent times (reuses container)
-terok task run-cli myproject 1  # Starts existing container
+terokctl task attach --mode cli myproject 1  # Starts existing container
 ```
 
 ### Stopping and Restarting

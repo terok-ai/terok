@@ -83,19 +83,19 @@ def shield_parser() -> argparse.ArgumentParser:
             id="profiles",
         ),
         pytest.param(
-            ["shield", "setup"],
-            {"shield_cmd": "setup", "root": False, "user": False},
-            id="setup",
+            ["shield", "install-hooks"],
+            {"shield_cmd": "install-hooks", "root": False, "user": False},
+            id="install-hooks",
         ),
         pytest.param(
-            ["shield", "setup", "--root"],
-            {"shield_cmd": "setup", "root": True, "user": False},
-            id="setup-root",
+            ["shield", "install-hooks", "--root"],
+            {"shield_cmd": "install-hooks", "root": True, "user": False},
+            id="install-hooks-root",
         ),
         pytest.param(
-            ["shield", "setup", "--user"],
-            {"shield_cmd": "setup", "root": False, "user": True},
-            id="setup-user",
+            ["shield", "install-hooks", "--user"],
+            {"shield_cmd": "install-hooks", "root": False, "user": True},
+            id="install-hooks-user",
         ),
         pytest.param(
             ["shield", "watch", "proj", "task1"],
@@ -291,19 +291,27 @@ def test_dispatch_runtime_error_prints_message(
 @pytest.mark.parametrize(
     ("kwargs", "expected"),
     [
-        pytest.param({"root": True, "user": False}, {"root": True, "user": False}, id="setup-root"),
-        pytest.param({"root": False, "user": True}, {"root": False, "user": True}, id="setup-user"),
+        pytest.param(
+            {"root": True, "user": False},
+            {"root": True, "user": False},
+            id="install-hooks-root",
+        ),
+        pytest.param(
+            {"root": False, "user": True},
+            {"root": False, "user": True},
+            id="install-hooks-user",
+        ),
     ],
 )
 @patch("terok_sandbox.run_setup")
-def test_setup_dispatch(
-    mock_setup: MagicMock,
+def test_install_hooks_dispatch(
+    mock_install: MagicMock,
     kwargs: dict[str, bool],
     expected: dict[str, bool],
 ) -> None:
-    """The setup subcommand delegates to the facade with the parsed flags."""
-    assert dispatch(argparse.Namespace(cmd="shield", shield_cmd="setup", **kwargs))
-    mock_setup.assert_called_once_with(**expected)
+    """The install-hooks subcommand delegates to the facade with the parsed flags."""
+    assert dispatch(argparse.Namespace(cmd="shield", shield_cmd="install-hooks", **kwargs))
+    mock_install.assert_called_once_with(**expected)
 
 
 @patch("terok_shield.cli.interactive.run_interactive")

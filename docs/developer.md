@@ -71,7 +71,7 @@ terok_sandbox (external)
 
 terok shows the initial container logs to the user when starting task containers and then automatically detaches once a "ready" condition is met. This improves UX but introduces dependencies that developers must be aware of when changing entry scripts or server behavior.
 
-### CLI Mode (task run-cli)
+### CLI Mode (task run --mode cli)
 
 Readiness is determined from log output. The container initialization script emits marker lines:
 - `">> init complete"` (from `resources/scripts/init-ssh-and-repo.sh`)

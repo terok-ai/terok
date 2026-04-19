@@ -281,14 +281,14 @@ terok task new myproj
 terok task list myproj
 
 # Run in CLI mode (headless agent)
-terok task run-cli myproj 1
+terokctl task attach --mode cli myproj 1
 ```
 
 #### Additional Task Operations
 
 ```bash
 # Create and immediately run a task in one step
-terok task start myproj
+terok task run myproj
 
 # Rename a task
 terok task rename myproj 1 fix-auth-bug
@@ -571,8 +571,8 @@ terok task run myproj "Debug and plan a fix" --provider claude --agent debugger 
 The `--agent` flag also works with interactive modes:
 
 ```bash
-terok task run-cli myproj 1 --agent debugger
-terok task start myproj --agent debugger
+terokctl task attach --mode cli myproj 1 --agent debugger
+terok task run myproj --agent debugger
 ```
 
 #### Agent .md File Format
@@ -634,7 +634,7 @@ Every task container receives instructions explaining the workspace layout, avai
 
 - **Claude**: injected via `--append-system-prompt` (system-level context)
 - **Codex**: loaded from `/home/dev/.terok/instructions.md` via `-c model_instructions_file=...`
-  in the wrapper (applies to both `terok task run` and `terok task run-cli`)
+  in the wrapper (applies to both `terok task run` and `terokctl task attach --mode cli`)
 - **Other providers**: prepended to the task prompt (headless `terok task run`)
 
 ### Scenarios
@@ -773,8 +773,8 @@ terok task run myproj "Update the CLI help text" --preset team --agent cli-engin
 Presets work with all task modes:
 
 ```bash
-terok task start myproj --preset review
-terok task run-cli myproj 1 --preset team
+terok task run myproj --preset review
+terokctl task attach --mode cli myproj 1 --preset team
 ```
 
 ### See What's Available
@@ -784,7 +784,7 @@ terok task run-cli myproj 1 --preset team
 terok project presets myproj
 
 # Show what a preset resolves to
-terok config show myproj --preset team
+terok config resolved myproj --preset team
 ```
 
 ### Customize: Global Presets
@@ -838,11 +838,11 @@ Run multiple tasks in the same project, each with a different preset:
 
 ```bash
 # Task 1: architect reviews the codebase
-terok task start myproj --preset review
+terok task run myproj --preset review
 # Task 2: team implements the feature
-terok task start myproj --preset team
+terok task run myproj --preset team
 # Task 3: solo agent writes docs
-terok task start myproj --preset solo
+terok task run myproj --preset solo
 ```
 
 Each task remembers its preset — `terok task restart` reuses it automatically.

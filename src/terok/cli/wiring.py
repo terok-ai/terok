@@ -103,6 +103,12 @@ def wire_group(
     Creates ``<prog> <name> <subcommand>`` paths for each command in *commands*.
     When the group name is given without a subcommand, prints help.
 
+    Sibling commands flow through verbatim — terok does not cosmetically
+    rename them.  Naming consistency across the ecosystem belongs in the
+    sibling packages themselves; "minimise the special-treatment code that
+    surfaces lower-level package CLI functionality in a higher-level
+    package" is the architectural ground rule.
+
     When *config_factory* is set, ``config_factory()`` is called at dispatch
     time and the result injected as ``cfg``.  Handlers that declare ``cfg``
     explicitly or accept ``**kwargs`` are both valid.  A ``TypeError`` is

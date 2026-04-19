@@ -1043,19 +1043,12 @@ def task_followup_headless(
 
 
 def task_restart(project_id: str, task_id: str) -> None:
-    """Restart a task container.
+    """Restart a task's container.
 
-    If the container is running, stops it first and then starts it again.
-    If the container exists in stopped/exited state, uses ``podman start``.
-    If the container doesn't exist, delegates to ``task_run_cli`` or
-    ``task_run_toad``.
-
-    Note:
-        Headless (mode ``"run"``) tasks cannot be auto-restarted because they
-        require the original prompt and context.  Attempting to restart a
-        headless task whose container no longer exists will raise ``SystemExit``.
-        Re-run headless tasks manually via ``terok task run`` with the
-        original prompt instead.
+    Semantics: stop the container if running, then start it.  If the
+    container doesn't exist (e.g. because it was deleted out-of-band),
+    raise ``SystemExit`` with an actionable pointer to ``terok task run``
+    — "restart" only means restart, not re-run.
     """
     project = load_project(project_id)
     meta, meta_path = load_task_meta(project.id, task_id)
@@ -1126,17 +1119,11 @@ def task_restart(project_id: str, task_id: str) -> None:
             if port:
                 print(f"Toad: http://{get_public_host()}:{port}/")
     else:
-        # Container doesn't exist - re-run the task
-        print(f"Container {cname} not found, re-running task...")
-        saved_preset = meta.get("preset")
-        if mode == "cli":
-            task_run_cli(project_id, task_id, preset=saved_preset)
-        elif mode == "toad":
-            task_run_toad(project_id, task_id, preset=saved_preset)
-        elif mode == "run":
-            raise SystemExit(
-                f"Headless task {task_id} cannot be auto-restarted when its container "
-                "is missing. Re-run it via 'terok task run' with the original prompt."
-            )
-        else:
-            raise SystemExit(f"Unknown mode '{mode}' for task {task_id}")
+        # Container is gone — restart can't recreate it.  User must start
+        # a fresh task with ``task run``.
+        raise SystemExit(
+            f"Container {cname} no longer exists.  Restart requires a running "
+            f"or stopped container.  Create a new task with:\n"
+            f"  terok task run {project_id}"
+            + (' "<prompt>" --mode headless' if mode == "run" else "")
+        )

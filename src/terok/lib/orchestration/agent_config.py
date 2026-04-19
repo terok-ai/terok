@@ -71,7 +71,7 @@ def build_agent_config_stack(
 
         preset_data, preset_path = load_preset(project_id, preset)
         # Skip empty presets – they contribute nothing to the merge and would
-        # only add noise to provenance output from ``config show``.
+        # only add noise to provenance output from ``config resolved``.
         if preset_data:
             scope_label = _preset_scope_label(preset_path)
             stack.push(ConfigScope(scope_label, preset_path, preset_data))

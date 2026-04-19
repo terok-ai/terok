@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import json
 import os
+import shlex
 import subprocess
 import sys
 import textwrap
@@ -107,13 +108,33 @@ class TerokIntegrationEnv:
         extra_env: dict[str, str] | None = None,
         check: bool = True,
         timeout: int = 30,
+        prog: str = "terok",
     ) -> subprocess.CompletedProcess[str]:
-        """Run the terok CLI in a subprocess and capture the result."""
+        """Run the terok CLI in a subprocess and capture the result.
+
+        *prog* selects which surface to exercise — ``"terok"`` is the
+        human-facing default, ``"terokctl"`` is the scripting surface
+        (exposes scripting-only verbs like ``task new`` / ``task attach``).
+        """
+        # Validate up front — typos like ``prog="terrok"`` previously fell
+        # through to the terokctl entry silently because the old branch
+        # was ``"main" if prog == "terok" else "terokctl_main"``.
+        _ENTRY_FNS = {"terok": "main", "terokctl": "terokctl_main"}
+        if prog not in _ENTRY_FNS:
+            raise ValueError(f"run_cli prog must be one of {sorted(_ENTRY_FNS)}, got {prog!r}")
+        entry_fn = _ENTRY_FNS[prog]
+
         env = self.cli_env
         if extra_env:
             env.update(extra_env)
         result = subprocess.run(
-            [sys.executable, "-m", "terok.cli", "--no-emoji", *args],
+            [
+                sys.executable,
+                "-c",
+                f"from terok.cli.main import {entry_fn}; {entry_fn}()",
+                "--no-emoji",
+                *args,
+            ],
             input=input_text,
             capture_output=True,
             text=True,
@@ -124,7 +145,7 @@ class TerokIntegrationEnv:
         if check and result.returncode != 0:
             raise AssertionError(
                 "CLI command failed:\n"
-                f"  command: terok {' '.join(args)}\n"
+                f"  command: {prog} {shlex.join(args)}\n"
                 f"  exit: {result.returncode}\n"
                 f"  stdout:\n{result.stdout}\n"
                 f"  stderr:\n{result.stderr}"

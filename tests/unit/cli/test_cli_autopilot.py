@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: 2026 Jiri Vyskocil
 # SPDX-License-Identifier: Apache-2.0
 
-"""Tests for autopilot CLI commands: ``terok task run``."""
+"""Tests for autopilot CLI: ``terok task run --mode headless``."""
 
 from __future__ import annotations
 
@@ -15,10 +15,10 @@ from tests.testcli import run_cli
 from tests.testfs import NONEXISTENT_MARKDOWN_PATH
 
 
-def capture_headless_request(*argv: str) -> HeadlessRunRequest:
-    """Run ``terok task run`` and return the forwarded headless request."""
+def capture_headless_request(project: str, prompt: str, *extra_args: str) -> HeadlessRunRequest:
+    """Run ``terok task run --mode headless`` and capture the forwarded request."""
     with patch("terok.cli.commands.task.task_run_headless") as mock_run:
-        run_cli("task", "run", *argv)
+        run_cli("task", "run", project, "--mode", "headless", "--prompt", prompt, *extra_args)
 
     mock_run.assert_called_once()
     request = mock_run.call_args.args[0]
@@ -38,7 +38,7 @@ def assert_cli_exit(*argv: str, code: int | None = None, message: str | None = N
 
 
 def test_run_dispatches_to_task_run_headless() -> None:
-    """``terok task run`` builds the expected headless request."""
+    """``terok task run --mode headless`` builds the expected headless request."""
     request = capture_headless_request(
         "myproject",
         "Fix the auth bug",
@@ -64,18 +64,33 @@ def test_run_dispatches_to_task_run_headless() -> None:
     assert request.instructions is None
 
 
+def test_headless_without_prompt_exits() -> None:
+    """``--mode headless`` with no ``--prompt`` exits with a clear message."""
+    assert_cli_exit("task", "run", "myproject", "--mode", "headless", message="--prompt")
+
+
 @pytest.mark.parametrize(
     ("argv", "code", "message"),
     [
-        pytest.param(("task", "run"), 2, None, id="missing-project-and-prompt"),
+        pytest.param(("task", "run"), 2, None, id="missing-project"),
         pytest.param(
-            ("task", "run", "myproject", "test", "--provider", "invalid"),
+            ("task", "run", "myproject", "--mode", "headless", "--prompt", "t", "--provider", "x"),
             2,
             None,
             id="bad-provider",
         ),
         pytest.param(
-            ("task", "run", "myproject", "test", "--instructions", str(NONEXISTENT_MARKDOWN_PATH)),
+            (
+                "task",
+                "run",
+                "myproject",
+                "--mode",
+                "headless",
+                "--prompt",
+                "t",
+                "--instructions",
+                str(NONEXISTENT_MARKDOWN_PATH),
+            ),
             None,
             "not found",
             id="missing-instructions-file",
@@ -129,6 +144,9 @@ def test_instructions_file_unicode_error_exits_cleanly(tmp_path: Path) -> None:
         "task",
         "run",
         "myproject",
+        "--mode",
+        "headless",
+        "--prompt",
         "test",
         "--instructions",
         str(bad),
@@ -146,6 +164,9 @@ def test_instructions_file_read_error_exits_cleanly(tmp_path: Path) -> None:
             "task",
             "run",
             "myproject",
+            "--mode",
+            "headless",
+            "--prompt",
             "test",
             "--instructions",
             str(instructions_path),
@@ -167,43 +188,66 @@ def test_run_with_instructions_flag(tmp_path: Path) -> None:
     assert request.instructions == "Custom agent instructions here."
 
 
+# ---------------------------------------------------------------------------
+# ``task run --mode cli|toad`` (interactive modes: create a new task and run it)
+# ---------------------------------------------------------------------------
+
+
 @pytest.mark.parametrize(
-    ("argv", "target", "expected_args", "expected_kwargs"),
+    ("mode", "runner_target"),
     [
-        pytest.param(
-            ["task", "run-cli", "myproject", "1", "--agent", "debugger"],
-            "terok.cli.commands.task.task_run_cli",
-            ("myproject", "1"),
-            {"agents": ["debugger"], "preset": None, "unrestricted": None},
-            id="run-cli",
-        ),
-        pytest.param(
-            ["task", "run-toad", "myproject", "1"],
-            "terok.cli.commands.task.task_run_toad",
-            ("myproject", "1"),
-            {"agents": None, "preset": None, "unrestricted": None},
-            id="run-toad",
-        ),
-        pytest.param(
-            ["task", "run-toad", "myproject", "1", "--agent", "debugger"],
-            "terok.cli.commands.task.task_run_toad",
-            ("myproject", "1"),
-            {"agents": ["debugger"], "preset": None, "unrestricted": None},
-            id="run-toad-with-agent",
-        ),
+        ("cli", "terok.cli.commands.task.task_run_cli"),
+        ("toad", "terok.cli.commands.task.task_run_toad"),
     ],
 )
-def test_task_run_commands_forward_selected_agents(
-    argv: list[str],
-    target: str,
-    expected_args: tuple[str, ...],
-    expected_kwargs: dict[str, object],
-) -> None:
-    """Selected agents and permission mode are forwarded to task runners."""
+def test_run_interactive_mode_creates_and_runs(mode: str, runner_target: str) -> None:
+    """``task run --mode cli|toad`` creates a new task and delegates to the runner."""
+    with (
+        patch("terok.cli.commands.task.task_new", return_value="42") as mock_new,
+        patch(runner_target) as mock_runner,
+    ):
+        run_cli("task", "run", "myproj", "--mode", mode)
+
+    mock_new.assert_called_once_with("myproj", name=None)
+    mock_runner.assert_called_once_with("myproj", "42", agents=None, preset=None, unrestricted=None)
+
+
+# ---------------------------------------------------------------------------
+# ``terokctl task attach`` (scripting: run an existing task)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    ("mode", "runner_target"),
+    [
+        ("cli", "terok.cli.commands.task.task_run_cli"),
+        ("toad", "terok.cli.commands.task.task_run_toad"),
+    ],
+)
+def test_task_attach_forwards_to_runner(mode: str, runner_target: str) -> None:
+    """``terokctl task attach <p> <t> --mode cli|toad`` routes to the right runner."""
     with (
         patch("terok.cli.commands.task.resolve_task_id", side_effect=lambda _pid, tid: tid),
-        patch(target) as mock_run,
+        patch(runner_target) as mock_run,
     ):
-        run_cli(*argv)
+        run_cli(
+            "task",
+            "attach",
+            "myproject",
+            "1",
+            "--mode",
+            mode,
+            "--agent",
+            "debugger",
+            prog="terokctl",
+        )
 
-    mock_run.assert_called_once_with(*expected_args, **expected_kwargs)
+    mock_run.assert_called_once_with(
+        "myproject", "1", agents=["debugger"], preset=None, unrestricted=None
+    )
+
+
+def test_task_attach_not_in_terok() -> None:
+    """``terok task attach`` is not registered on the human-facing surface."""
+    with pytest.raises(SystemExit):
+        run_cli("task", "attach", "myproject", "1", "--mode", "cli")

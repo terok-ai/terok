@@ -88,18 +88,18 @@ def _extract_web_port(stdout: str) -> int:
 
 
 class TestLaunchWorkflows:
-    """Verify host-only task start/restart flows through the real CLI."""
+    """Verify host-only task run/restart flows through the real CLI."""
 
-    def test_task_start_cli_launches_container(
+    def test_task_run_cli_launches_container(
         self, terok_env: TerokIntegrationEnv, tmp_path: Path
     ) -> None:
-        """`task start` should create a task and launch the CLI container."""
+        """`task run` (default --mode cli) should create a task and launch the CLI container."""
         terok_env.write_project(PROJECT_ID, PROJECT_CONFIG)
         state_path, extra_env = _configure_fake_runtime(terok_env, tmp_path)
 
         result = terok_env.run_cli(
             "task",
-            "start",
+            "run",
             PROJECT_ID,
             "--name",
             "Fix Login Bug",
@@ -125,18 +125,19 @@ class TestLaunchWorkflows:
         assert meta["name"] == "fix-login-bug"
         assert meta["unrestricted"] is True
 
-    def test_task_start_toad_launches_browser_tui(
+    def test_task_run_toad_launches_browser_tui(
         self, terok_env: TerokIntegrationEnv, tmp_path: Path
     ) -> None:
-        """`task start --toad` should launch the served Toad workflow."""
+        """`task run --mode toad` should launch the served Toad workflow."""
         terok_env.write_project(PROJECT_ID, PROJECT_CONFIG)
         state_path, extra_env = _configure_fake_runtime(terok_env, tmp_path)
 
         result = terok_env.run_cli(
             "task",
-            "start",
+            "run",
             PROJECT_ID,
-            "--toad",
+            "--mode",
+            "toad",
             extra_env=extra_env,
         )
 
@@ -165,7 +166,7 @@ class TestLaunchWorkflows:
         terok_env.write_project(PROJECT_ID, PROJECT_CONFIG)
         state_path, extra_env = _configure_fake_runtime(terok_env, tmp_path)
 
-        start_result = terok_env.run_cli("task", "start", PROJECT_ID, extra_env=extra_env)
+        start_result = terok_env.run_cli("task", "run", PROJECT_ID, extra_env=extra_env)
         tid = _extract_task_id(start_result.stdout)
         cli_container = f"{PROJECT_ID}-cli-{tid}"
 

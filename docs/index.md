@@ -46,7 +46,7 @@ Install OCI hooks for the egress firewall, start the host-side services
 (vault and git gate), and optionally add shell completions:
 
 ```bash
-terok shield setup --user               # install OCI hooks for terok-shield
+terok shield install-hooks --user               # install OCI hooks for terok-shield
 terok vault install                     # install systemd socket activation
 terok vault start                       # start the vault daemon
 terok gate start                        # start the git gate server
@@ -70,8 +70,8 @@ Or do the same from the command line:
 ```bash
 terok project wizard                    # interactive setup
 terok auth claude myproj                # authenticate agent
-terok task start myproj                 # start a CLI agent task
-terok task start myproj --toad          # Toad multi-agent TUI (browser access)
+terok task run myproj                 # start a CLI agent task
+terok task run myproj --mode toad     # Toad multi-agent TUI (browser access)
 terok login myproj a3                   # attach to a running task by hex ID prefix
 ```
 

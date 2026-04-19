@@ -1,14 +1,13 @@
 # SPDX-FileCopyrightText: 2026 Jiri Vyskocil
 # SPDX-License-Identifier: Apache-2.0
 
-"""D-Bus desktop notification subcommands.
+"""D-Bus subcommands (sibling-wired from :mod:`terok_dbus`).
 
-Wires terok-dbus's :data:`COMMANDS` registry into terok's CLI as
-``terok dbus-debug notify`` and ``terok dbus-debug subscribe``.
-Handlers are async coroutines dispatched via :func:`asyncio.run`.
-
-Exposed under the ``dbus-debug`` group so end users can see it's
-internal/temporary until the notifications feature matures.
+Wires terok-dbus's :data:`COMMANDS` registry into terok's CLI under
+``terok dbus``.  Handlers are async coroutines dispatched via
+:func:`asyncio.run`.  The group hosts both end-user tools (the
+``clearance`` shortcut mirrors the top-level one) and debug utilities
+(``notify``, ``subscribe``).
 """
 
 from __future__ import annotations
@@ -35,10 +34,10 @@ def _add_arg(parser: argparse.ArgumentParser, arg: ArgDef) -> None:
 
 
 def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
-    """Register the ``dbus-debug`` subcommand group from the terok-dbus registry."""
+    """Register the ``dbus`` subcommand group from the terok-dbus registry."""
     p = subparsers.add_parser(
-        "dbus-debug",
-        help="Debug D-Bus notifications",
+        "dbus",
+        help="D-Bus tools (notifications, clearance)",
     )
     sub = p.add_subparsers(dest="dbus_cmd", required=True)
 
@@ -49,8 +48,8 @@ def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) ->
 
 
 def dispatch(args: argparse.Namespace) -> bool:
-    """Handle dbus-debug commands.  Returns True if handled."""
-    if getattr(args, "cmd", None) != "dbus-debug":
+    """Handle dbus commands.  Returns True if handled."""
+    if getattr(args, "cmd", None) != "dbus":
         return False
 
     cmd_name = getattr(args, "dbus_cmd", None)

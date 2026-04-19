@@ -150,11 +150,32 @@ class TestTerokctlSurface:
         assert "terokctl setup" in result.stdout
         assert "terokctl completions install" in result.stdout
 
-    def test_known_subcommands_appear(self) -> None:
-        """Core subcommands are listed — command tree is identical to ``terok``."""
+    def test_core_subcommands_appear(self) -> None:
+        """Core subcommands are listed under terokctl."""
         result = _run_terokctl("--help")
-        for subcmd in ("task", "project", "config", "sickbay", "tui"):
+        for subcmd in ("task", "project", "config", "sickbay"):
             assert subcmd in result.stdout
+
+    def test_tui_absent_from_terokctl(self) -> None:
+        """``tui`` is a terok-only convenience, not part of the scripting surface."""
+        result = _run_terokctl("--help")
+        # Match the help-table row specifically — "tui" as a subcommand label —
+        # rather than any substring (which catches e.g. "multi-agent tui").
+        assert "    tui " not in result.stdout
+        assert "\ntui," not in result.stdout and ",tui,\n" not in result.stdout
+
+    def test_task_new_and_attach_only_in_terokctl(self) -> None:
+        """Scripting-only verbs surface under terokctl task, not terok task."""
+        import re
+
+        ctl = _run_terokctl("task", "--help")
+        # Match the subcommand entry in the help table ("    new   ...").
+        assert re.search(r"^ {4}new\s{2,}", ctl.stdout, flags=re.MULTILINE)
+        assert re.search(r"^ {4}attach\s{2,}", ctl.stdout, flags=re.MULTILINE)
+
+        human = _run_cli("task", "--help")
+        assert not re.search(r"^ {4}new\s{2,}", human.stdout, flags=re.MULTILINE)
+        assert not re.search(r"^ {4}attach\s{2,}", human.stdout, flags=re.MULTILINE)
 
 
 class TestTuiOnNoArgs:
