@@ -142,7 +142,7 @@ def _ensure_shield(*, check_only: bool, color: bool) -> bool:
     # Force-reinstall to ensure hooks match the current package version
     try:
         setup_hooks_direct(root=False)
-    except Exception as exc:  # noqa: BLE001 — best-effort
+    except Exception as exc:  # noqa: BLE001
         print(f"{_status_label(False, color)} ({exc})")
         return False
 
@@ -191,11 +191,11 @@ def _ensure_vault(*, check_only: bool, color: bool) -> bool:
     # Clean reinstall: stop → uninstall → install → verify reachability
     try:
         stop_vault(cfg=cfg)
-    except Exception:  # noqa: BLE001 — best-effort, may not be running
+    except Exception:  # noqa: BLE001
         pass
     try:
         uninstall_vault_systemd(cfg=cfg)
-    except Exception:  # noqa: BLE001 — best-effort, may not be installed
+    except Exception:  # noqa: BLE001
         pass
 
     from ...lib.core.config import get_services_mode
@@ -207,7 +207,7 @@ def _ensure_vault(*, check_only: bool, color: bool) -> bool:
 
         ensure_vault_routes(cfg=cfg)
         install_vault_systemd(cfg=cfg, transport=transport)
-    except Exception as exc:  # noqa: BLE001 — best-effort
+    except Exception as exc:  # noqa: BLE001
         print(f"{_status_label(False, color)} (install failed: {exc})")
         return False
 
@@ -277,7 +277,7 @@ def _ensure_gate(*, check_only: bool, color: bool) -> bool:
 
     try:
         install_systemd_units(cfg=cfg, transport=transport)
-    except Exception as exc:  # noqa: BLE001 — best-effort
+    except Exception as exc:  # noqa: BLE001
         print(f"{_status_label(False, color)} (install failed: {exc})")
         return False
 
@@ -369,27 +369,36 @@ def _ensure_dbus_hub(*, check_only: bool, color: bool) -> bool:
 
 
 def _disable_dbus_bridge(*, check_only: bool, color: bool) -> bool:
-    """Tear down the bridge installation when the operator runs ``--no-dbus-bridge``."""
+    """Tear down the bridge installation when the operator runs ``--no-dbus-bridge``.
+
+    Returns ``False`` if any step of the teardown raised — the operator then
+    sees a red stage in ``terok setup`` output so they can investigate (e.g.
+    permissions denied on the systemd unit path).  ``True`` on a clean
+    teardown or an already-absent install.
+    """
     if check_only:
         print(f"  D-Bus bridge     {_warn_label(color)} (opted out via --no-dbus-bridge)")
         return True
 
     from terok_sandbox import uninstall_shield_bridge
 
+    ok = True
     try:
         uninstall_shield_bridge()
-    except Exception as exc:  # noqa: BLE001 — best-effort cleanup
-        # Log but don't fail: this is the "disable bridge" path, so an
-        # already-missing install is fine.  Surfacing the error still helps
-        # the operator diagnose genuine failures (perm denied, etc.).
+    except Exception as exc:  # noqa: BLE001
         print(f"  D-Bus bridge     {_warn_label(color)} (reader uninstall: {exc})")
+        ok = False
 
     unit_path = _user_systemd_dir() / "terok-dbus.service"
     if unit_path.is_file():
-        unit_path.unlink(missing_ok=True)
-        _disable_user_service("terok-dbus")
+        try:
+            unit_path.unlink(missing_ok=True)
+            _disable_user_service("terok-dbus")
+        except OSError as exc:
+            print(f"  D-Bus bridge     {_warn_label(color)} (unit removal: {exc})")
+            ok = False
     print(f"  D-Bus bridge     {_warn_label(color)} (disabled — audit-minimal mode)")
-    return True
+    return ok
 
 
 def _check_dbus_send(color: bool) -> bool:
