@@ -75,36 +75,28 @@ class TestStrToBool:
 class TestPodmanStart:
     """Verify _podman_start error handling."""
 
-    _PATCH = "terok.lib.orchestration.task_runners.container_start"
-
-    def test_raises_on_missing_podman(self) -> None:
+    def test_raises_on_missing_podman(self, mock_runtime) -> None:
         """FileNotFoundError becomes SystemExit with install hint."""
         from terok.lib.orchestration.task_runners import _podman_start
 
-        with (
-            patch(self._PATCH, side_effect=FileNotFoundError),
-            pytest.raises(SystemExit, match="podman not found"),
-        ):
+        mock_runtime.container.return_value.start.side_effect = FileNotFoundError
+        with pytest.raises(SystemExit, match="podman not found"):
             _podman_start("test-ctr")
 
-    def test_raises_on_start_failure(self) -> None:
+    def test_raises_on_start_failure(self, mock_runtime) -> None:
         """Runtime failure surfaces as a user-facing SystemExit."""
         from terok.lib.orchestration.task_runners import _podman_start
 
-        with (
-            patch(self._PATCH, side_effect=RuntimeError("container not found")),
-            pytest.raises(SystemExit, match="container not found"),
-        ):
+        mock_runtime.container.return_value.start.side_effect = RuntimeError("container not found")
+        with pytest.raises(SystemExit, match="container not found"):
             _podman_start("test-ctr")
 
-    def test_raises_on_start_failure_empty_stderr(self) -> None:
+    def test_raises_on_start_failure_empty_stderr(self, mock_runtime) -> None:
         """Any RuntimeError from the runtime is translated to SystemExit."""
         from terok.lib.orchestration.task_runners import _podman_start
 
-        with (
-            patch(self._PATCH, side_effect=RuntimeError("rc=125")),
-            pytest.raises(SystemExit),
-        ):
+        mock_runtime.container.return_value.start.side_effect = RuntimeError("rc=125")
+        with pytest.raises(SystemExit):
             _podman_start("test-ctr")
 
 

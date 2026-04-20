@@ -8,7 +8,6 @@ from __future__ import annotations
 import os
 import secrets
 import shlex
-from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
@@ -24,13 +23,13 @@ from terok_executor import (
 )
 from terok_sandbox import (
     LifecycleHooks,
-    PodmanRuntime,
     Sandbox,
     Sharing,
     VolumeSpec,
     down as _shield_down_impl,
 )
 
+from ..core import runtime as _rt
 from ..core.config import (
     SHIELD_SECURITY_HINT,
     get_public_host,
@@ -64,53 +63,6 @@ from .tasks import (
 
 if TYPE_CHECKING:
     from ..core.project_model import ProjectConfig
-
-_runtime = PodmanRuntime()
-
-
-# Internal convenience wrappers around ``_runtime`` — module-level so
-# tests can patch them by name.  Production code also uses these names
-# directly; they're one-liners on top of the runtime's OOP surface.
-
-
-def get_container_state(cname: str) -> str | None:
-    """Return lifecycle state for *cname* via the container runtime."""
-    return _runtime.container(cname).state
-
-
-def is_container_running(cname: str) -> bool:
-    """Return ``True`` if *cname* is currently running."""
-    return _runtime.container(cname).running
-
-
-def container_start(cname: str) -> None:
-    """Start *cname* via the runtime; raise ``RuntimeError`` on failure."""
-    _runtime.container(cname).start()
-
-
-def container_stop(cname: str, *, timeout: int = 10) -> None:
-    """Stop *cname* via the runtime."""
-    _runtime.container(cname).stop(timeout=timeout)
-
-
-def stream_initial_logs(
-    *,
-    container_name: str,
-    timeout_sec: float | None,
-    ready_check: Callable[[str], bool],
-) -> bool:
-    """Stream logs for *container_name* until *ready_check* matches or timeout."""
-    return _runtime.container(container_name).stream_initial_logs(ready_check, timeout_sec)
-
-
-def wait_for_exit(cname: str, timeout: float | None = None) -> int:
-    """Wait for *cname* to exit; return its exit code."""
-    return _runtime.container(cname).wait(timeout)
-
-
-def login_command(cname: str, *, command: Sequence[str] = ()) -> list[str]:
-    """Return the argv for interactively logging into *cname*."""
-    return _runtime.container(cname).login_command(command=tuple(command))
 
 
 _LOCALHOST = "127.0.0.1"
@@ -339,7 +291,7 @@ def _prepare_agent_config(
 def _podman_start(cname: str) -> None:
     """Start an existing container, raising SystemExit on failure."""
     try:
-        container_start(cname)
+        _rt.get_runtime().container(cname).start()
     except FileNotFoundError:
         raise SystemExit("podman not found; please install podman")
     except RuntimeError as exc:
@@ -348,7 +300,7 @@ def _podman_start(cname: str) -> None:
 
 def _assert_running(cname: str) -> None:
     """Verify a container is running after start, or raise SystemExit."""
-    post_state = get_container_state(cname)
+    post_state = _rt.get_runtime().container(cname).state
     if post_state != "running":
         raise SystemExit(
             f"Container {cname} failed to start (state: {post_state}). "
@@ -359,7 +311,7 @@ def _assert_running(cname: str) -> None:
 def _print_login_instructions(project_id: str, task_id: str, cname: str, color: bool) -> None:
     """Print how to log into a CLI container."""
     login_cmd = f"terok login {project_id} {task_id}"
-    raw_cmd = shlex.join(login_command(cname, command=("bash",)))
+    raw_cmd = shlex.join(_rt.get_runtime().container(cname).login_command(command=("bash",)))
     print(f"Login with: {_blue(login_cmd, color)}")
     print(f"  (or:      {_blue(raw_cmd, color)})")
 
@@ -565,7 +517,7 @@ def task_run_cli(
     meta, meta_path = load_task_meta(project.id, task_id, "cli")
 
     cname = container_name(project.id, "cli", task_id)
-    container_state = get_container_state(cname)
+    container_state = _rt.get_runtime().container(cname).state
 
     # If container already exists, handle it
     if container_state is not None:
@@ -657,8 +609,7 @@ def task_run_cli(
     )
 
     # Stream initial logs until ready marker is seen (or timeout), then detach
-    stream_initial_logs(
-        container_name=cname,
+    _rt.get_runtime().container(cname).stream_initial_logs(
         ready_check=lambda line: "__CLI_READY__" in line or ">> init complete" in line,
         timeout_sec=60.0,
     )
@@ -710,7 +661,7 @@ def task_run_toad(
     meta, meta_path = load_task_meta(project.id, task_id, "toad")
 
     cname = container_name(project.id, "toad", task_id)
-    container_state = get_container_state(cname)
+    container_state = _rt.get_runtime().container(cname).state
 
     pub_host = get_public_host()
 
@@ -816,13 +767,16 @@ def task_run_toad(
         """Return True when the supervisor wrapper reports both listeners are up."""
         return "TEROK_READY" in line
 
-    ready = stream_initial_logs(
-        container_name=cname,
-        ready_check=_toad_ready,
-        timeout_sec=None,
+    ready = (
+        _rt.get_runtime()
+        .container(cname)
+        .stream_initial_logs(
+            ready_check=_toad_ready,
+            timeout_sec=None,
+        )
     )
 
-    if not ready or not is_container_running(cname):
+    if not ready or not _rt.get_runtime().container(cname).running:
         print(f"Toad failed to start. Check logs: podman logs {cname}")
         raise SystemExit(1)
 
@@ -1033,7 +987,7 @@ def task_run_headless(request: HeadlessRunRequest) -> str:
     color_enabled = _supports_color()
 
     if request.follow:
-        exit_code = wait_for_exit(cname)
+        exit_code = _rt.get_runtime().container(cname).wait()
         _print_run_summary(project.id, task_id, "run", task_dir / "workspace-dangerous")
 
         update_task_exit_code(project.id, task_id, exit_code)
@@ -1096,7 +1050,7 @@ def task_followup_headless(
         )
 
     cname = container_name(project.id, "run", task_id)
-    container_state = get_container_state(cname)
+    container_state = _rt.get_runtime().container(cname).state
     if container_state == "running":
         raise SystemExit(
             f"Container {cname} is still running. "
@@ -1172,7 +1126,7 @@ def task_followup_headless(
     color_enabled = _supports_color()
 
     if follow:
-        exit_code = wait_for_exit(cname)
+        exit_code = _rt.get_runtime().container(cname).wait()
         _print_run_summary(project.id, task_id, "run", task_dir / "workspace-dangerous")
 
         update_task_exit_code(project.id, task_id, exit_code)
@@ -1208,7 +1162,7 @@ def task_restart(project_id: str, task_id: str) -> None:
         raise SystemExit(f"Task {task_id} has never been run (no mode set)")
 
     cname = container_name(project.id, mode, task_id)
-    container_state = get_container_state(cname)
+    container_state = _rt.get_runtime().container(cname).state
 
     print(f"Restarting task {project_id}/{task_id} ({mode})...")
     ensure_vault()
@@ -1232,7 +1186,7 @@ def task_restart(project_id: str, task_id: str) -> None:
     if container_state == "running":
         # Container is running - stop it first, then start it again
         try:
-            container_stop(cname, timeout=project.shutdown_timeout)
+            _rt.get_runtime().container(cname).stop(timeout=project.shutdown_timeout)
         except FileNotFoundError:
             raise SystemExit("podman not found; please install podman")
         except RuntimeError as exc:

@@ -183,15 +183,16 @@ class TestDetectStaleLayers:
 class TestIsTaskImageOld:
     """Verify is_task_image_old return values."""
 
-    def test_returns_false_when_all_current(self) -> None:
+    def test_returns_false_when_all_current(self, mock_runtime) -> None:
         """Running task with current manifest → False."""
         from terok.lib.domain.project_state import is_task_image_old
 
         task = Mock(mode="cli", task_id="42")
+        container = mock_runtime.container.return_value
+        container.running = True
+        container.image = Mock()
 
         with (
-            patch("terok.lib.domain.project_state.is_container_running", return_value=True),
-            patch("terok.lib.domain.project_state.container_image", return_value="sha256:abc123"),
             patch("terok.lib.domain.project_state._container_name", return_value="c1"),
             patch(
                 "terok.lib.orchestration.image.render_all_dockerfiles",
@@ -210,15 +211,16 @@ class TestIsTaskImageOld:
 
         assert result is False
 
-    def test_returns_true_when_stale(self) -> None:
+    def test_returns_true_when_stale(self, mock_runtime) -> None:
         """Running task with stale L1 → True."""
         from terok.lib.domain.project_state import is_task_image_old
 
         task = Mock(mode="cli", task_id="42")
+        container = mock_runtime.container.return_value
+        container.running = True
+        container.image = Mock()
 
         with (
-            patch("terok.lib.domain.project_state.is_container_running", return_value=True),
-            patch("terok.lib.domain.project_state.container_image", return_value="sha256:abc123"),
             patch("terok.lib.domain.project_state._container_name", return_value="c1"),
             patch(
                 "terok.lib.orchestration.image.render_all_dockerfiles",
@@ -251,15 +253,18 @@ class TestIsTaskImageOld:
         task = Mock(mode="cli", task_id="42")
         assert is_task_image_old(None, task) is None
 
-    def test_falls_back_to_label_check_on_exception(self) -> None:
+    def test_falls_back_to_label_check_on_exception(self, mock_runtime) -> None:
         """When manifest approach fails, falls back to L2 label comparison."""
         from terok.lib.domain.project_state import is_task_image_old
 
         task = Mock(mode="cli", task_id="42")
+        container = mock_runtime.container.return_value
+        container.running = True
+        image = Mock()
+        image.labels.return_value = {"terok.build_context_hash": "old-hash"}
+        container.image = image
 
         with (
-            patch("terok.lib.domain.project_state.is_container_running", return_value=True),
-            patch("terok.lib.domain.project_state.container_image", return_value="sha256:abc123"),
             patch("terok.lib.domain.project_state._container_name", return_value="c1"),
             # Make manifest approach fail at load_project (inside is_task_image_old)
             patch(
@@ -270,11 +275,6 @@ class TestIsTaskImageOld:
             patch(
                 "terok.lib.orchestration.image.build_context_hash",
                 return_value="current-hash",
-            ),
-            # Label on image doesn't match → stale
-            patch(
-                "terok.lib.domain.project_state.image_labels",
-                return_value={"terok.build_context_hash": "old-hash"},
             ),
         ):
             result = is_task_image_old("proj1", task)

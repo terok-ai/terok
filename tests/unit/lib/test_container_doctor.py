@@ -27,12 +27,15 @@ MOCK_TASK_DIR = MOCK_BASE / "projects" / "proj" / "tasks" / "42"
 class TestExecInContainer:
     """Low-level sandbox exec helper."""
 
-    def test_delegates_to_sandbox_exec(self) -> None:
-        with patch("terok.lib.orchestration.container_doctor.sandbox_exec") as mock_exec:
-            mock_exec.return_value = ExecResult(exit_code=0, stdout="ok\n", stderr="")
-            result = _exec_in_container("proj-cli-42", ["echo", "hello"])
-            assert result.exit_code == 0
-            mock_exec.assert_called_once_with("proj-cli-42", ["echo", "hello"], timeout=10)
+    def test_delegates_to_runtime_exec(self, mock_runtime) -> None:
+        mock_runtime.exec.return_value = ExecResult(exit_code=0, stdout="ok\n", stderr="")
+        result = _exec_in_container("proj-cli-42", ["echo", "hello"])
+        assert result.exit_code == 0
+        mock_runtime.container.assert_any_call("proj-cli-42")
+        mock_runtime.exec.assert_called_once()
+        args, kwargs = mock_runtime.exec.call_args
+        assert args[1] == ["echo", "hello"]
+        assert kwargs == {"timeout": 10}
 
 
 class TestGitIdentityCheck:
@@ -167,20 +170,19 @@ class TestRunContainerDoctor:
         assert results[0][0] == "warn"
         assert "never started" in results[0][2]
 
-    @patch("terok.lib.orchestration.container_doctor.get_container_state")
     @patch("terok.lib.orchestration.container_doctor.load_task_meta")
     @patch("terok.lib.orchestration.container_doctor.tasks_meta_dir")
     def test_skips_non_running(
         self,
         mock_meta_dir: MagicMock,
         mock_load: MagicMock,
-        mock_state: MagicMock,
         tmp_path: Path,
+        mock_runtime,
     ) -> None:
         (tmp_path / "42.yml").write_text("mode: cli\nname: test\n")
         mock_meta_dir.return_value = tmp_path
         mock_load.return_value = ({"mode": "cli"}, tmp_path / "42.yml")
-        mock_state.return_value = "exited"
+        mock_runtime.container.return_value.state = "exited"
         results = run_container_doctor("proj", "42")
         assert results[0][0] == "info"
         assert "not running" in results[0][2]
@@ -195,14 +197,12 @@ class TestRunContainerDoctor:
     @patch("terok.lib.orchestration.container_doctor.get_ssh_signer_port")
     @patch("terok.lib.orchestration.container_doctor.get_token_broker_port")
     @patch("terok.lib.orchestration.container_doctor.make_sandbox_config")
-    @patch("terok.lib.orchestration.container_doctor.get_container_state")
     @patch("terok.lib.orchestration.container_doctor.load_task_meta")
     @patch("terok.lib.orchestration.container_doctor.tasks_meta_dir")
     def test_running_container_executes_probes(
         self,
         mock_meta_dir: MagicMock,
         mock_load_meta: MagicMock,
-        mock_state: MagicMock,
         mock_sandbox_cfg: MagicMock,
         mock_broker_port: MagicMock,
         mock_ssh_port: MagicMock,
@@ -214,12 +214,13 @@ class TestRunContainerDoctor:
         mock_terok_checks: MagicMock,
         mock_exec: MagicMock,
         tmp_path: Path,
+        mock_runtime,
     ) -> None:
         # Arrange: task metadata exists and container is running
         (tmp_path / "42.yml").write_text("mode: cli\n")
         mock_meta_dir.return_value = tmp_path
         mock_load_meta.return_value = ({"mode": "cli"}, tmp_path / "42.yml")
-        mock_state.return_value = "running"
+        mock_runtime.container.return_value.state = "running"
         mock_sandbox_cfg.return_value = MagicMock()
         mock_broker_port.return_value = 8080
         mock_ssh_port.return_value = 2222
@@ -261,14 +262,12 @@ class TestRunContainerDoctor:
     @patch("terok.lib.orchestration.container_doctor.get_ssh_signer_port")
     @patch("terok.lib.orchestration.container_doctor.get_token_broker_port")
     @patch("terok.lib.orchestration.container_doctor.make_sandbox_config")
-    @patch("terok.lib.orchestration.container_doctor.get_container_state")
     @patch("terok.lib.orchestration.container_doctor.load_task_meta")
     @patch("terok.lib.orchestration.container_doctor.tasks_meta_dir")
     def test_fix_application(
         self,
         mock_meta_dir: MagicMock,
         mock_load_meta: MagicMock,
-        mock_state: MagicMock,
         mock_sandbox_cfg: MagicMock,
         mock_broker_port: MagicMock,
         mock_ssh_port: MagicMock,
@@ -280,12 +279,13 @@ class TestRunContainerDoctor:
         mock_terok_checks: MagicMock,
         mock_exec: MagicMock,
         tmp_path: Path,
+        mock_runtime,
     ) -> None:
         # Arrange
         (tmp_path / "42.yml").write_text("mode: cli\n")
         mock_meta_dir.return_value = tmp_path
         mock_load_meta.return_value = ({"mode": "cli"}, tmp_path / "42.yml")
-        mock_state.return_value = "running"
+        mock_runtime.container.return_value.state = "running"
         mock_sandbox_cfg.return_value = MagicMock()
         mock_broker_port.return_value = 8080
         mock_ssh_port.return_value = 2222
@@ -337,14 +337,12 @@ class TestRunContainerDoctor:
     @patch("terok.lib.orchestration.container_doctor.get_ssh_signer_port")
     @patch("terok.lib.orchestration.container_doctor.get_token_broker_port")
     @patch("terok.lib.orchestration.container_doctor.make_sandbox_config")
-    @patch("terok.lib.orchestration.container_doctor.get_container_state")
     @patch("terok.lib.orchestration.container_doctor.load_task_meta")
     @patch("terok.lib.orchestration.container_doctor.tasks_meta_dir")
     def test_host_side_unknown_check_skipped(
         self,
         mock_meta_dir: MagicMock,
         mock_load_meta: MagicMock,
-        mock_state: MagicMock,
         mock_sandbox_cfg: MagicMock,
         mock_broker_port: MagicMock,
         mock_ssh_port: MagicMock,
@@ -356,12 +354,13 @@ class TestRunContainerDoctor:
         mock_terok_checks: MagicMock,
         mock_exec: MagicMock,
         tmp_path: Path,
+        mock_runtime,
     ) -> None:
         # Arrange
         (tmp_path / "42.yml").write_text("mode: cli\n")
         mock_meta_dir.return_value = tmp_path
         mock_load_meta.return_value = ({"mode": "cli"}, tmp_path / "42.yml")
-        mock_state.return_value = "running"
+        mock_runtime.container.return_value.state = "running"
         mock_sandbox_cfg.return_value = MagicMock()
         mock_broker_port.return_value = 8080
         mock_ssh_port.return_value = 2222

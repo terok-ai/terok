@@ -14,7 +14,7 @@ to ``~/.local/share/terok/sandbox/``.
 
 from collections.abc import Iterator
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -69,3 +69,38 @@ def _mock_infrastructure() -> Iterator[None]:
         ),
     ):
         yield
+
+
+@pytest.fixture(autouse=True)
+def mock_runtime() -> Iterator[MagicMock]:
+    """Install a fresh :class:`MagicMock` as the process-wide ``ContainerRuntime``.
+
+    Every unit test gets an isolated mock runtime patched into
+    :func:`terok.lib.core.runtime.get_runtime`.  Tests that care about
+    specific container-level behaviour configure the mock directly
+    (``mock_runtime.container.return_value.state = "running"``); tests
+    that don't care pay no cost beyond the patch overhead.
+
+    Defaults are set so that common code paths don't trip on
+    "a Mock is not iterable" or similar:
+
+    - ``container_states`` / ``container_rw_sizes`` → ``{}``
+    - ``images`` / ``force_remove`` → ``[]``
+    - ``container(...).wait()`` → ``0`` (benign exit code)
+    - ``container(...).login_command(...)`` → a realistic podman argv
+    - ``container(...).stream_initial_logs(...)`` → ``True`` (ready)
+
+    Runs *after* ``_mock_infrastructure`` so its ``_agent_runner``
+    patch is still in place.
+    """
+    fake = MagicMock(name="mock_runtime")
+    fake.container_states.return_value = {}
+    fake.container_rw_sizes.return_value = {}
+    fake.images.return_value = []
+    fake.force_remove.return_value = []
+    container = fake.container.return_value
+    container.wait.return_value = 0
+    container.login_command.return_value = ["podman", "exec", "-it", "ctr", "bash"]
+    container.stream_initial_logs.return_value = True
+    with patch("terok.lib.core.runtime.get_runtime", return_value=fake):
+        yield fake

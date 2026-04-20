@@ -6,12 +6,13 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import TYPE_CHECKING
 
-from terok_sandbox import Image, PodmanRuntime
-
+from ..core import runtime as _rt
 from ..core.projects import list_projects
 
-_runtime = PodmanRuntime()
+if TYPE_CHECKING:
+    from terok_sandbox import Image
 
 
 @dataclass
@@ -95,7 +96,7 @@ def list_images(project_id: str | None = None) -> list[ImageInfo]:
         List of ImageInfo objects for matching images.
     """
     images: list[ImageInfo] = []
-    for image in _runtime.images():
+    for image in _rt.get_runtime().images():
         if not _is_terok_image(image.repository, image.tag):
             continue
         if project_id is not None:
@@ -149,7 +150,7 @@ def _find_dangling_terok_images() -> list[ImageInfo]:
     """
     return [
         ImageInfo.from_image(image)
-        for image in _runtime.images(dangling_only=True)
+        for image in _rt.get_runtime().images(dangling_only=True)
         if _is_terok_built_image(image.ref)
     ]
 
@@ -160,7 +161,7 @@ def _is_terok_built_image(image_id: str) -> bool:
     Inspects the ``terok.build_context_hash`` label and image history
     for terok layer names.
     """
-    image = _runtime.image(image_id)
+    image = _rt.get_runtime().image(image_id)
     if image.labels().get("terok.build_context_hash"):
         return True
     return any("terok-l0" in line or "terok-l1" in line for line in image.history())
@@ -184,7 +185,7 @@ def cleanup_images(dry_run: bool = False) -> CleanupResult:
             removed.append(img.full_name)
             continue
         try:
-            if _runtime.image(img.image_id).remove():
+            if _rt.get_runtime().image(img.image_id).remove():
                 removed.append(img.full_name)
             else:
                 failed.append(img.full_name)

@@ -245,9 +245,9 @@ def _stop_gate() -> tuple[bool, str | None]:
 
 def _stop_containers(targets: list[_Target]) -> tuple[list[str], list[tuple[str, str]]]:
     """Stop all container modes for each target."""
-    from terok_sandbox import PodmanRuntime
+    from ..core import runtime as _rt
 
-    runtime = PodmanRuntime()
+    runtime = _rt.get_runtime()
     names = [container_name(pid, m, tid) for pid, tid, _, _, _ in targets for m in CONTAINER_MODES]
     if not names:
         return [], []

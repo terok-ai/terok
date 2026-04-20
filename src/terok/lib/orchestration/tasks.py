@@ -21,8 +21,8 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 from terok_executor import AgentRunner
-from terok_sandbox import PodmanRuntime
 
+from ..core import runtime as _rt
 from ..core.config import archive_dir, state_dir
 from ..core.projects import ProjectConfig, load_project
 from ..core.task_display import (
@@ -46,24 +46,6 @@ from ..util.host_cmd import WORKSPACE_DANGEROUS_DIRNAME
 from ..util.logging_utils import _log_debug
 from ..util.yaml import dump as _yaml_dump, load as _yaml_load
 from .container_exec import container_git_diff
-
-_runtime = PodmanRuntime()
-
-
-# Internal convenience wrappers around ``_runtime`` — module-level so
-# tests can patch them by name.  Production code also uses these names
-# directly (they're one-liners, purely syntactic sugar).
-
-
-def get_container_state(cname: str) -> str | None:
-    """Return lifecycle state for *cname* via the container runtime."""
-    return _runtime.container(cname).state
-
-
-def stop_task_containers(names: list[str]):
-    """Force-remove the named containers; return per-name remove results."""
-    return _runtime.force_remove([_runtime.container(n) for n in names])
-
 
 # ---------- Task ID generation ----------
 
@@ -112,7 +94,7 @@ def get_task_container_state(project_id: str, task_id: str, mode: str | None) ->
     if not mode:
         return None
     cname = container_name(project_id, mode, task_id)
-    return get_container_state(cname)
+    return _rt.get_runtime().container(cname).state
 
 
 @dataclass(kw_only=True)
@@ -248,7 +230,7 @@ def get_task_meta(project_id: str, task_id: str) -> TaskMeta:
     if mode is not None:
         try:
             cname = container_name(project_id, mode, task_id)
-            live_state = get_container_state(cname)
+            live_state = _rt.get_runtime().container(cname).state
         except Exception:
             pass
     # Hydrate work status from agent-config (same logic as _get_tasks)
@@ -559,7 +541,7 @@ def get_all_task_states(
     Returns:
         ``{task_id: container_state_or_None}`` dict.
     """
-    container_states = _runtime.container_states(project_id)
+    container_states = _rt.get_runtime().container_states(project_id)
     result: dict[str, str | None] = {}
     for t in tasks:
         if t.mode:
@@ -770,7 +752,7 @@ def _task_delete(project: ProjectConfig, task_id: str) -> TaskDeleteResult:
     names = [container_name(project.id, mode, str(task_id)) for mode in CONTAINER_MODES]
     containers_removed = True
     try:
-        rm_results = stop_task_containers(names)
+        rm_results = _rt.get_runtime().force_remove([_rt.get_runtime().container(n) for n in names])
     except Exception as exc:
         _log_debug(f"task_delete: stop_task_containers raised: {exc}")
         warnings.append(f"Container removal failed: {exc}")
@@ -863,7 +845,7 @@ def _validate_login(project: ProjectConfig, task_id: str) -> tuple[str, str]:
         )
 
     cname = container_name(project.id, mode, task_id)
-    state = get_container_state(cname)
+    state = _rt.get_runtime().container(cname).state
     if state is None:
         raise SystemExit(
             f"Container {cname} does not exist. "
@@ -880,7 +862,7 @@ def _validate_login(project: ProjectConfig, task_id: str) -> tuple[str, str]:
 def _get_login_command(project: ProjectConfig, task_id: str) -> list[str]:
     """Return the command to interactively log into a task container."""
     cname, _mode = _validate_login(project, task_id)
-    return _runtime.container(cname).login_command()
+    return _rt.get_runtime().container(cname).login_command()
 
 
 def _task_login(project: ProjectConfig, task_id: str) -> None:
@@ -909,14 +891,14 @@ def _task_stop(project: ProjectConfig, task_id: str, *, timeout: int | None = No
 
     cname = container_name(project.id, mode, task_id)
 
-    state = get_container_state(cname)
+    state = _rt.get_runtime().container(cname).state
     if state is None:
         raise SystemExit(f"Task {task_id} container does not exist")
     if state not in ("running", "paused"):
         raise SystemExit(f"Task {task_id} container is not stoppable (state: {state})")
 
     try:
-        _runtime.container(cname).stop(timeout=effective_timeout)
+        _rt.get_runtime().container(cname).stop(timeout=effective_timeout)
     except FileNotFoundError:
         raise SystemExit("podman not found; please install podman")
     except RuntimeError as exc:
@@ -987,7 +969,7 @@ def task_status(project_id: str, task_id: str) -> None:
     cs = None
     if mode:
         cname = container_name(project.id, mode, task_id)
-        cs = get_container_state(cname)
+        cs = _rt.get_runtime().container(cname).state
 
     # Build TaskMeta for effective_status / mode_emoji computation
     task = TaskMeta(

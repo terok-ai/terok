@@ -20,12 +20,16 @@ layers =
 
 # ── Cross-package boundaries (tach can't do this) ────────────────
 #
-# TODO: tighten allowed_importers as direct external-package imports are
-# consolidated behind facade modules (see runtime-abstraction-phases.md).
+# ``protected`` contracts: "module X may ONLY be imported by modules Y, Z".
+# The allowed_importers lists are the *floor* — CI fails if a new module
+# imports the package.  Tighten them whenever a consolidation lands.
 #
-# protected contracts: "module X may ONLY be imported by modules Y, Z"
-# The allowed_importers lists start wide (reflecting current state)
-# and shrink as the abstraction is sealed.
+# Phase 2 (runtime protocol): container-runtime callers funnel through
+# ``terok.lib.core.runtime.get_runtime`` rather than instantiating
+# ``PodmanRuntime`` locally.  The files on this list are the ones that
+# legitimately need terok_sandbox for non-runtime reasons: service
+# wrappers (gate/shield/vault/SSH), value types (Sandbox, RunSpec,
+# VolumeSpec), or the shared command registry (CLI wiring).
 
 [importlinter:contract:sandbox-boundary]
 name = terok_sandbox access restricted to designated modules
@@ -40,21 +44,16 @@ allowed_importers =
     terok.cli.main
     terok.cli.wiring
     terok.lib.core.config
-    terok.lib.core.images
     terok.lib.core.projects
+    terok.lib.core.runtime
     terok.lib.domain.facade
     terok.lib.domain.image_cleanup
     terok.lib.domain.panic
     terok.lib.domain.project
-    terok.lib.domain.project_state
-    terok.lib.domain.storage
-    terok.lib.domain.task_logs
     terok.lib.domain.vault
     terok.lib.orchestration.agent_config
     terok.lib.orchestration.container_doctor
-    terok.lib.orchestration.container_exec
     terok.lib.orchestration.environment
-    terok.lib.orchestration.image
     terok.lib.orchestration.ports
     terok.lib.orchestration.task_runners
     terok.lib.orchestration.tasks

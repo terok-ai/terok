@@ -28,15 +28,13 @@ from terok_executor import (
     stage_tmux_config,
     stage_toad_agents,
 )
-from terok_sandbox import PodmanRuntime
 
+from ..core import runtime as _rt
 from ..core.config import build_dir
 from ..core.images import project_cli_image, project_dev_image
 from ..core.project_model import ProjectConfig
 from ..core.projects import load_project
 from ..util.fs import ensure_dir
-
-_runtime = PodmanRuntime()
 
 # ---------- helpers ----------
 
@@ -48,7 +46,7 @@ def _image_exists(image: str) -> bool:
     same-module symbol so existing test mocks (``patch("terok.lib.
     orchestration.image._image_exists")``) keep working.
     """
-    return _runtime.image(image).exists()
+    return _rt.get_runtime().image(image).exists()
 
 
 # ---------- Hashing ----------

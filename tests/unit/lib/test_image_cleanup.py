@@ -93,7 +93,7 @@ class TestListImages:
         ],
         ids=["all-terok-images", "filtered-by-project", "dev-tag"],
     )
-    @unittest.mock.patch("terok.lib.domain.image_cleanup._runtime")
+    # removed — mock_runtime fixture handles it
     def test_list_images(
         self,
         mock_runtime: unittest.mock.Mock,
@@ -108,7 +108,7 @@ class TestListImages:
         images = list_images(project_id)
         assert {image.full_name for image in images} == expected_names
 
-    @unittest.mock.patch("terok.lib.domain.image_cleanup._runtime")
+    # removed — mock_runtime fixture handles it
     def test_list_images_podman_failure(self, mock_runtime: unittest.mock.Mock) -> None:
         """Runtime returns an empty list on podman failure — terok passes it through."""
         mock_runtime.images.return_value = []
@@ -199,7 +199,7 @@ class TestCleanupImages:
         ],
         ids=["dry-run", "success", "failure"],
     )
-    @unittest.mock.patch("terok.lib.domain.image_cleanup._runtime")
+    # removed — mock_runtime fixture handles it
     @unittest.mock.patch("terok.lib.domain.image_cleanup.find_orphaned_images")
     def test_cleanup_images(
         self,

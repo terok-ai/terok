@@ -208,10 +208,9 @@ def test_get_all_task_states_maps_project_container_lookup(
     tasks: list[TaskMeta],
     container_states: dict[str, str],
     expected: dict[str, str | None],
+    mock_runtime,
 ) -> None:
     """Task-state lookup maps batch project container states back to task IDs."""
-    with patch.object(
-        PodmanRuntime, "container_states", return_value=container_states
-    ) as mocked_get_states:
-        assert get_all_task_states("proj", tasks) == expected
-    mocked_get_states.assert_called_once_with("proj")
+    mock_runtime.container_states.return_value = container_states
+    assert get_all_task_states("proj", tasks) == expected
+    mock_runtime.container_states.assert_called_once_with("proj")

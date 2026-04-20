@@ -121,7 +121,7 @@ def test_task_stop_uses_expected_timeout(
         runtime_mock.container.return_value = container
         with (
             mock_git_config(),
-            patch("terok.lib.orchestration.tasks._runtime", runtime_mock),
+            patch("terok.lib.core.runtime.get_runtime", return_value=runtime_mock),
         ):
             capture_stdout(
                 task_stop,
@@ -172,7 +172,7 @@ def test_task_restart_starts_exited_container() -> None:
         runtime_mock.container.side_effect = make_container
         with (
             mock_git_config(),
-            patch("terok.lib.orchestration.task_runners._runtime", runtime_mock),
+            patch("terok.lib.core.runtime.get_runtime", return_value=runtime_mock),
         ):
             capture_stdout(task_restart, project_id, task_id)
 
@@ -201,7 +201,7 @@ def test_task_restart_running_container_stops_then_starts() -> None:
         runtime_mock.container.return_value = shared_container
         with (
             mock_git_config(),
-            patch("terok.lib.orchestration.task_runners._runtime", runtime_mock),
+            patch("terok.lib.core.runtime.get_runtime", return_value=runtime_mock),
         ):
             output = capture_stdout(task_restart, project_id, task_id)
 
@@ -221,7 +221,7 @@ def test_task_status_reports_live_container_state() -> None:
         runtime_mock.container.return_value = _mock_container(state="exited")
         with (
             mock_git_config(),
-            patch("terok.lib.orchestration.tasks._runtime", runtime_mock),
+            patch("terok.lib.core.runtime.get_runtime", return_value=runtime_mock),
         ):
             output = capture_stdout(task_status, project_id, task_id)
 
@@ -238,6 +238,6 @@ def test_get_task_container_state_uses_project_id_and_mode() -> None:
     """Task container lookup resolves the canonical container name."""
     runtime_mock = Mock(spec=PodmanRuntime)
     runtime_mock.container.return_value = _mock_container(state="running")
-    with patch("terok.lib.orchestration.tasks._runtime", runtime_mock):
+    with patch("terok.lib.core.runtime.get_runtime", return_value=runtime_mock):
         assert get_task_container_state("proj", "1", "cli") == "running"
         runtime_mock.container.assert_called_once_with("proj-cli-1")

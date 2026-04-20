@@ -10,54 +10,25 @@ poisoned git hooks or scripts executing with host privileges.
 
 from subprocess import TimeoutExpired
 
-from terok_sandbox import ExecResult, PodmanRuntime
-
+from ..core import runtime as _rt
 from ..core.task_display import container_name as _container_name
 from ..util.logging_utils import _log_debug
 
-_runtime = PodmanRuntime()
 
-
-# Module-level shims over the runtime — patchable by tests.
-
-
-def container_start(cname: str) -> None:
-    """Start *cname* via the runtime."""
-    _runtime.container(cname).start()
-
-
-def container_stop(cname: str, *, timeout: int = 10) -> None:
-    """Stop *cname* via the runtime."""
-    _runtime.container(cname).stop(timeout=timeout)
-
-
-def get_container_state(cname: str) -> str | None:
-    """Return lifecycle state for *cname*."""
-    return _runtime.container(cname).state
-
-
-def sandbox_exec(cname: str, cmd: list[str], *, timeout: int = 30) -> ExecResult:
-    """Run *cmd* inside *cname* via the container runtime."""
-    return _runtime.exec(_runtime.container(cname), cmd, timeout=timeout)
-
-
-def _podman_start(cname: str) -> bool:
-    """Start a stopped container, returning ``True`` on success."""
+def _temporarily_start(cname: str) -> bool:
+    """Start a stopped container for a brief exec window; return ``True`` on success."""
     try:
-        container_start(cname)
-    except FileNotFoundError:
-        _log_debug(f"container_exec._podman_start({cname}): podman not found")
-        return False
-    except RuntimeError as exc:
-        _log_debug(f"container_exec._podman_start({cname}): {exc}")
+        _rt.get_runtime().container(cname).start()
+    except (FileNotFoundError, RuntimeError) as exc:
+        _log_debug(f"container_exec._temporarily_start({cname}): {exc}")
         return False
     return True
 
 
-def _podman_stop(cname: str, timeout: int = 10) -> None:
-    """Stop a container best-effort."""
+def _stop_quietly(cname: str, *, timeout: int = 10) -> None:
+    """Stop a container best-effort; swallow missing-binary and runtime errors."""
     try:
-        container_stop(cname, timeout=timeout)
+        _rt.get_runtime().container(cname).stop(timeout=timeout)
     except (FileNotFoundError, RuntimeError):
         pass
 
@@ -87,8 +58,10 @@ def container_git_diff(
     ``/workspace`` path — the host ``workspace-dangerous`` path is never
     passed to any subprocess.
     """
+    runtime = _rt.get_runtime()
     cname = _container_name(project_id, mode, task_id)
-    state = get_container_state(cname)
+    container = runtime.container(cname)
+    state = container.state
 
     if state is None:
         _log_debug(f"container_git_diff: container {cname} not found")
@@ -102,12 +75,14 @@ def container_git_diff(
             # commits, network calls, and other side effects.
             _log_debug(f"container_git_diff: refusing to restart exited headless container {cname}")
             return None
-        if not _podman_start(cname):
+        if not _temporarily_start(cname):
             return None
         restarted = True
 
     try:
-        result = sandbox_exec(cname, ["git", "-C", "/workspace", "diff", *args], timeout=timeout)
+        result = runtime.exec(
+            container, ["git", "-C", "/workspace", "diff", *args], timeout=timeout
+        )
         if not result.ok:
             _log_debug(f"container_git_diff: git diff failed rc={result.exit_code}")
             return None
@@ -117,4 +92,4 @@ def container_git_diff(
         return None
     finally:
         if restarted:
-            _podman_stop(cname)
+            _stop_quietly(cname)

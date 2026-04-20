@@ -236,14 +236,17 @@ def get_project_storage_detail(project_id: str) -> ProjectDetail:
     This triggers ``podman ps --size`` for the project's containers —
     expect a brief pause while podman computes overlay diffs.
     """
-    from terok_sandbox import PodmanRuntime
-
+    from ..core import runtime as _rt
     from ..core.projects import load_project
 
     project = load_project(project_id)
     project_images = [img for img in list_images(project_id) if not _is_global_image(img)]
     tasks = get_tasks_storage(project.tasks_root)
-    overlays = PodmanRuntime().container_rw_sizes(project_id)
+    runtime = _rt.get_runtime()
+    # ``container_rw_sizes`` is podman-specific; not every backend exposes it.
+    overlays = (
+        runtime.container_rw_sizes(project_id) if hasattr(runtime, "container_rw_sizes") else {}
+    )
 
     return ProjectDetail(
         project_id=project_id,

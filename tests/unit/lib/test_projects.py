@@ -275,7 +275,7 @@ class TestProject:
             project = load_project("proj-no-shared")
         assert project.shared_dir is None
 
-    def test_get_project_state(self) -> None:
+    def test_get_project_state(self, mock_runtime) -> None:
         project_id = "proj3"
         with project_env(
             project_yaml(project_id), project_id=project_id, with_config_file=True
@@ -288,11 +288,9 @@ class TestProject:
             gate_dir = make_sandbox_config().gate_base_path / f"{project_id}.git"
             gate_dir.mkdir(parents=True, exist_ok=True)
 
+            mock_runtime.image.return_value.exists.return_value = True
             # SSH "ready" check now hits the vault DB — stub the probe directly.
             with (
-                unittest.mock.patch(
-                    "terok.lib.domain.project_state.image_exists", return_value=True
-                ),
                 unittest.mock.patch(
                     "terok.lib.core.projects._get_global_git_config", return_value=None
                 ),

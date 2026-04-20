@@ -139,45 +139,47 @@ def _clear_installed_agents_cache() -> None:
     images.installed_agents.cache_clear()
 
 
-def _patch_labels(monkeypatch: pytest.MonkeyPatch, labels: dict[str, str]) -> None:
-    """Stub :func:`terok_sandbox.image_labels` as seen by ``images.py``.
+def _patch_labels(mock_runtime, labels: dict[str, str]) -> None:
+    """Configure the autouse ``mock_runtime`` so ``Image.labels()`` returns *labels*.
 
-    The module imports ``image_labels`` directly, so the patch target is
-    the name in ``terok.lib.core.images``.  An empty dict mimics
-    podman's behaviour for both missing images and unlabeled images —
-    the distinction doesn't matter for the callers under test here.
+    An empty dict mimics podman's behaviour for both missing images and
+    unlabeled images — the distinction doesn't matter for the callers
+    under test here.
     """
-    monkeypatch.setattr(images, "image_labels", lambda _tag: labels)
+    # ``installed_agents`` is ``@lru_cache``-d — clear the cache so each
+    # test sees the patched labels regardless of call order.
+    images.installed_agents.cache_clear()
+    mock_runtime.image.return_value.labels.return_value = labels
 
 
-def test_installed_agents_parses_label(monkeypatch: pytest.MonkeyPatch) -> None:
-    _patch_labels(monkeypatch, {"ai.terok.agents": "claude,codex,opencode"})
+def test_installed_agents_parses_label(mock_runtime) -> None:
+    _patch_labels(mock_runtime, {"ai.terok.agents": "claude,codex,opencode"})
     assert images.installed_agents("terok-l1-cli:test") == frozenset(
         {"claude", "codex", "opencode"}
     )
 
 
-def test_installed_agents_missing_label_returns_empty(monkeypatch: pytest.MonkeyPatch) -> None:
-    _patch_labels(monkeypatch, {})
+def test_installed_agents_missing_label_returns_empty(mock_runtime) -> None:
+    _patch_labels(mock_runtime, {})
     assert images.installed_agents("terok-l1-cli:legacy") == frozenset()
 
 
-def test_installed_agents_missing_image_returns_empty(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_installed_agents_missing_image_returns_empty(mock_runtime) -> None:
     # ``image_labels`` returns {} when the image is absent; same end-state
     # as an unlabeled image, which is correct for the unrestricted-fallback
     # semantics callers rely on.
-    _patch_labels(monkeypatch, {})
+    _patch_labels(mock_runtime, {})
     assert images.installed_agents("terok-l1-cli:nope") == frozenset()
 
 
-def test_is_installed_treats_unlabeled_as_unrestricted(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_is_installed_treats_unlabeled_as_unrestricted(mock_runtime) -> None:
     # Legacy / unlabeled image: every agent is considered installed so
     # older builds keep working until the user rebuilds.
-    _patch_labels(monkeypatch, {})
+    _patch_labels(mock_runtime, {})
     assert images.is_installed("anything", "terok-l1-cli:legacy") is True
 
 
-def test_is_installed_filters_by_label(monkeypatch: pytest.MonkeyPatch) -> None:
-    _patch_labels(monkeypatch, {"ai.terok.agents": "claude,codex"})
+def test_is_installed_filters_by_label(mock_runtime) -> None:
+    _patch_labels(mock_runtime, {"ai.terok.agents": "claude,codex"})
     assert images.is_installed("claude", "terok-l1-cli:test") is True
     assert images.is_installed("vibe", "terok-l1-cli:test") is False

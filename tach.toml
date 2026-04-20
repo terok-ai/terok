@@ -378,6 +378,12 @@ depends_on = [
 [[modules]]
 path = "terok.lib.core.images"
 layer = "core"
+depends_on = ["terok.lib.core.runtime"]
+
+# Process-wide ContainerRuntime accessor
+[[modules]]
+path = "terok.lib.core.runtime"
+layer = "core"
 depends_on = []
 
 # Task display types and status computation

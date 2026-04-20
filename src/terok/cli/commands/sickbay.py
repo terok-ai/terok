@@ -26,7 +26,6 @@ import tomllib
 from pathlib import Path
 
 from terok_sandbox import (
-    PodmanRuntime,
     check_environment,
     check_units_outdated,
     get_server_status,
@@ -36,6 +35,7 @@ from terok_sandbox import (
     is_vault_systemd_available,
 )
 
+from ...lib.core import runtime as _rt
 from ...lib.core.config import get_services_mode, global_config_path, make_sandbox_config
 from ...lib.core.project_model import ProjectConfig
 from ...lib.core.projects import list_projects, load_project
@@ -44,14 +44,6 @@ from ...lib.orchestration.container_doctor import run_container_doctor
 from ...lib.orchestration.hooks import run_hook
 from ...lib.orchestration.tasks import container_name, tasks_meta_dir
 from ...lib.util.yaml import load as _yaml_load
-
-_runtime = PodmanRuntime()
-
-
-def get_container_state(cname: str) -> str | None:
-    """Module-level shim over ``_runtime.container(cname).state`` — patchable by tests."""
-    return _runtime.container(cname).state
-
 
 # Type alias for check results: (severity, label, detail)
 _CheckResult = tuple[str, str, str]
@@ -179,7 +171,7 @@ def _check_task_hook(
         return None
 
     cname = container_name(pid, mode, tid)
-    if get_container_state(cname) == "running":
+    if _rt.get_runtime().container(cname).state == "running":
         return None
 
     fired = meta.get("hooks_fired") or []

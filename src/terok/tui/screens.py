@@ -1299,12 +1299,11 @@ class TaskLaunchScreen(screen.ModalScreen["tuple[str, str, str, str, str, str | 
         If the container never appears after many polls, updates the status
         to indicate a likely launch failure so the user can dismiss.
         """
-        from terok_sandbox import PodmanRuntime
-
+        from ..lib.core import runtime as _rt
         from ..lib.orchestration.tasks import get_task_meta
 
         self._poll_count += 1
-        state = PodmanRuntime().container(self._container_name).state
+        state = _rt.get_runtime().container(self._container_name).state
         status_widget = self.query_one("#launch-status", Static)
         if state == "running":
             # Also check that mode is set in task metadata — this is written

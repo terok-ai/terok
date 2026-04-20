@@ -49,6 +49,19 @@ from tests.testfs import CONTAINER_SSH_DIR
 from tests.testnet import GATE_PORT
 
 
+def _set_state_sequence(mock_runtime, states: list[str | None]) -> None:
+    """Configure runtime.container(...).state to yield ``states`` across calls.
+
+    Each call to ``container(cname).state`` — an attribute read — pops the next
+    value from ``states``. Used when production code reads state multiple times
+    across a lifecycle transition.
+    """
+    it = iter(states)
+    type(mock_runtime.container.return_value).state = unittest.mock.PropertyMock(
+        side_effect=lambda: next(it)
+    )
+
+
 def _gate_repo_fragment(project_id: str, *, port: int = GATE_PORT) -> str:
     """Return the gate URL fragment embedded in task env vars.
 
@@ -114,9 +127,6 @@ class TestTask:
 
             with (
                 unittest.mock.patch("terok_executor.AgentRunner.capture_logs", return_value=False),
-                unittest.mock.patch(
-                    "terok.lib.orchestration.tasks.stop_task_containers", return_value=[]
-                ),
                 mock_git_config(),
             ):
                 result = task_delete(project_id, returned_id)
@@ -437,7 +447,7 @@ class TestTask:
             env, _volumes = build_task_env_and_volumes(load_project(project_id), task_id="1")
             assert env["TEROK_GIT_AUTHORSHIP"] == "human-agent"
 
-    def test_task_run_cli_colors_login_lines_when_tty(self) -> None:
+    def test_task_run_cli_colors_login_lines_when_tty(self, mock_runtime) -> None:
         project_id = "proj_cli_color"
         with project_env(
             f"project:\n  id: {project_id}\n",
@@ -446,16 +456,17 @@ class TestTask:
             clear_env=True,
         ):
             tid = task_new(project_id)
+            _set_state_sequence(mock_runtime, [None, "running"])
+            cname = f"{project_id}-cli-{tid}"
+            mock_runtime.container.return_value.login_command.return_value = [
+                "podman",
+                "exec",
+                "-it",
+                cname,
+                "bash",
+            ]
             with (
                 mock_git_config(),
-                unittest.mock.patch(
-                    "terok.lib.orchestration.task_runners.stream_initial_logs",
-                    return_value=True,
-                ),
-                unittest.mock.patch(
-                    "terok.lib.orchestration.task_runners.get_container_state",
-                    side_effect=[None, "running"],  # No existing container, then alive
-                ),
                 unittest.mock.patch(
                     "terok.lib.orchestration.task_runners._supports_color",
                     return_value=True,
@@ -474,7 +485,7 @@ class TestTask:
             assert expected_enter in output
             assert expected_stop in output
 
-    def test_task_run_cli_does_not_add_files_before_clone(self) -> None:
+    def test_task_run_cli_does_not_add_files_before_clone(self, mock_runtime) -> None:
         """Interactive CLI startup must not add files to workspace before init clone."""
         project_id = "proj_cli_clean_workspace"
         with project_env(
@@ -487,24 +498,15 @@ class TestTask:
             sandbox_live = ctx.base / "sandbox-live"
             workspace_dir = sandbox_live / "tasks" / project_id / tid / "workspace-dangerous"
             assert sorted(p.name for p in workspace_dir.iterdir()) == [".new-task-marker"]
-            with (
-                mock_git_config(),
-                unittest.mock.patch(
-                    "terok.lib.orchestration.task_runners.stream_initial_logs",
-                    return_value=True,
-                ),
-                unittest.mock.patch(
-                    "terok.lib.orchestration.task_runners.get_container_state",
-                    side_effect=[None, "running"],
-                ),
-            ):
+            _set_state_sequence(mock_runtime, [None, "running"])
+            with mock_git_config():
                 task_run_cli(project_id, tid)
 
             assert sorted(p.name for p in workspace_dir.iterdir()) == [".new-task-marker"]
             agent_mounts = ctx.base / "sandbox-live" / "mounts"
             assert (agent_mounts / "_claude-config" / "settings.json").is_file()
 
-    def test_task_run_toad_passes_public_url(self) -> None:
+    def test_task_run_toad_passes_public_url(self, mock_runtime) -> None:
         """task_run_toad must pass --public-url with the host port to toad serve."""
         project_id = "proj_toad_url"
         with project_env(
@@ -514,20 +516,10 @@ class TestTask:
             clear_env=True,
         ):
             tid = task_new(project_id)
+            mock_runtime.container.return_value.state = None
+            mock_runtime.container.return_value.running = True
             with (
                 mock_git_config(),
-                unittest.mock.patch(
-                    "terok.lib.orchestration.task_runners.stream_initial_logs",
-                    return_value=True,
-                ),
-                unittest.mock.patch(
-                    "terok.lib.orchestration.task_runners.get_container_state",
-                    return_value=None,
-                ),
-                unittest.mock.patch(
-                    "terok.lib.orchestration.task_runners.is_container_running",
-                    return_value=True,
-                ),
                 unittest.mock.patch(
                     "terok.lib.orchestration.task_runners.assign_web_port",
                     return_value=7861,
@@ -551,7 +543,9 @@ class TestTask:
             port_idx = extra.index("-p")
             assert extra[port_idx + 1] == "127.0.0.1:7861:8080"
 
-    def test_task_run_toad_uses_public_host(self, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_task_run_toad_uses_public_host(
+        self, monkeypatch: pytest.MonkeyPatch, mock_runtime
+    ) -> None:
         """task_run_toad must use TEROK_PUBLIC_HOST for URLs and bind to 0.0.0.0."""
         project_id = "proj_toad_pub"
         monkeypatch.setenv("TEROK_PUBLIC_HOST", "myserver")
@@ -564,20 +558,10 @@ class TestTask:
             # Re-apply after clear_env
             monkeypatch.setenv("TEROK_PUBLIC_HOST", "myserver")
             tid = task_new(project_id)
+            mock_runtime.container.return_value.state = None
+            mock_runtime.container.return_value.running = True
             with (
                 mock_git_config(),
-                unittest.mock.patch(
-                    "terok.lib.orchestration.task_runners.stream_initial_logs",
-                    return_value=True,
-                ),
-                unittest.mock.patch(
-                    "terok.lib.orchestration.task_runners.get_container_state",
-                    return_value=None,
-                ),
-                unittest.mock.patch(
-                    "terok.lib.orchestration.task_runners.is_container_running",
-                    return_value=True,
-                ),
                 unittest.mock.patch(
                     "terok.lib.orchestration.task_runners.assign_web_port",
                     return_value=7862,
@@ -597,7 +581,7 @@ class TestTask:
             port_idx = extra.index("-p")
             assert extra[port_idx + 1] == "0.0.0.0:7862:8080"
 
-    def test_task_run_cli_already_running(self) -> None:
+    def test_task_run_cli_already_running(self, mock_runtime) -> None:
         """task_run_cli prints message and exits when container is already running."""
         project_id = "proj_cli_running"
         with project_env(
@@ -605,13 +589,8 @@ class TestTask:
             project_id=project_id,
         ):
             tid = task_new(project_id)
-            with (
-                mock_git_config(),
-                unittest.mock.patch(
-                    "terok.lib.orchestration.task_runners.get_container_state",
-                    return_value="running",
-                ),
-            ):
+            mock_runtime.container.return_value.state = "running"
+            with mock_git_config():
                 buffer = StringIO()
                 with redirect_stdout(buffer):
                     task_run_cli(project_id, tid)
@@ -620,7 +599,7 @@ class TestTask:
                 output = buffer.getvalue()
                 assert "already running" in output
 
-    def test_task_run_cli_starts_stopped_container(self) -> None:
+    def test_task_run_cli_starts_stopped_container(self, mock_runtime) -> None:
         """task_run_cli uses 'podman start' for stopped container."""
         project_id = "proj_cli_stopped"
         with project_env(
@@ -637,24 +616,15 @@ class TestTask:
             meta_path.write_text(yaml_dump(meta))
 
             cname = f"{project_id}-cli-{tid}"
-            start_result = subprocess.CompletedProcess(args=[], returncode=0, stderr="")
-            with (
-                mock_git_config(),
-                unittest.mock.patch(
-                    "terok.lib.orchestration.task_runners.get_container_state",
-                    side_effect=["exited", "running"],  # Stopped, then alive after start
-                ),
-                unittest.mock.patch(
-                    "terok.lib.orchestration.task_runners.container_start",
-                    return_value=start_result,
-                ) as mock_start,
-            ):
+            _set_state_sequence(mock_runtime, ["exited", "running"])
+            with mock_git_config():
                 buffer = StringIO()
                 with redirect_stdout(buffer):
                     task_run_cli(project_id, tid)
 
-                # Verify container_start was called with the correct name
-                mock_start.assert_called_once_with(cname)
+                # Verify container(cname).start() was called
+                mock_runtime.container.assert_any_call(cname)
+                mock_runtime.container.return_value.start.assert_called_once_with()
 
                 # Verify metadata mode is preserved
                 meta = yaml_load(meta_path.read_text())
@@ -1071,7 +1041,7 @@ class TestResumeToadContainer:
         meta_path.write_text(yaml_dump(meta))
         (project.tasks_root / str(task_id) / "agent-config").mkdir(parents=True, exist_ok=True)
 
-    def test_resume_running_container_prints_tokenized_url(self) -> None:
+    def test_resume_running_container_prints_tokenized_url(self, mock_runtime) -> None:
         """A running container short-circuits with the printed ``?token=…`` URL."""
         project_id = "proj_resume_running"
         with project_env(
@@ -1082,13 +1052,10 @@ class TestResumeToadContainer:
         ):
             tid = task_new(project_id)
             self._seed_toad_meta(project_id, tid, port=7862, token="tok-running")
+            mock_runtime.container.return_value.state = "running"
             buf = StringIO()
             with (
                 mock_git_config(),
-                unittest.mock.patch(
-                    "terok.lib.orchestration.task_runners.get_container_state",
-                    return_value="running",
-                ),
                 unittest.mock.patch(
                     "terok.lib.orchestration.task_runners.assign_web_port",
                     return_value=7862,
@@ -1108,7 +1075,7 @@ class TestResumeToadContainer:
                 project.tasks_root / str(tid) / "agent-config" / "toad.token"
             ).read_text() == "tok-running"
 
-    def test_resume_stopped_container_restarts_and_prints_url(self) -> None:
+    def test_resume_stopped_container_restarts_and_prints_url(self, mock_runtime) -> None:
         """An existing-but-stopped container is started again with the same token."""
         project_id = "proj_resume_stopped"
         with project_env(
@@ -1119,13 +1086,10 @@ class TestResumeToadContainer:
         ):
             tid = task_new(project_id)
             self._seed_toad_meta(project_id, tid, port=7863, token="tok-stopped")
+            mock_runtime.container.return_value.state = "exited"
             buf = StringIO()
             with (
                 mock_git_config(),
-                unittest.mock.patch(
-                    "terok.lib.orchestration.task_runners.get_container_state",
-                    return_value="exited",
-                ),
                 unittest.mock.patch(
                     "terok.lib.orchestration.task_runners.assign_web_port",
                     return_value=7863,
@@ -1150,7 +1114,7 @@ class TestResumeToadContainer:
             assert "Container started" in out
             assert "?token=tok-stopped" in out
 
-    def test_resume_rejects_changed_port(self) -> None:
+    def test_resume_rejects_changed_port(self, mock_runtime) -> None:
         """If the saved port is taken by another user, fail fast."""
         project_id = "proj_resume_taken"
         with project_env(
@@ -1161,11 +1125,8 @@ class TestResumeToadContainer:
         ):
             tid = task_new(project_id)
             self._seed_toad_meta(project_id, tid, port=7864, token="tok")
+            mock_runtime.container.return_value.state = "running"
             with (
-                unittest.mock.patch(
-                    "terok.lib.orchestration.task_runners.get_container_state",
-                    return_value="running",
-                ),
                 unittest.mock.patch(
                     "terok.lib.orchestration.task_runners.assign_web_port",
                     return_value=9999,  # allocator returned a different port
@@ -1214,39 +1175,35 @@ class TestTaskLogs:
                     task_logs("proj_logs2", task_id)
                 assert "never been run" in str(cm.value)
 
-    def test_container_not_found_raises(self) -> None:
+    def test_container_not_found_raises(self, mock_runtime) -> None:
         """task_logs raises SystemExit when container doesn't exist."""
+        mock_runtime.container.return_value.state = None
         with project_env(
             "project:\n  id: proj_logs3\n",
             project_id="proj_logs3",
         ):
             with mock_git_config():
                 task_id = self._setup_task_with_mode("proj_logs3", "run")
-                with unittest.mock.patch(
-                    "terok.lib.domain.task_logs.get_container_state", return_value=None
-                ):
-                    with pytest.raises(SystemExit) as cm:
-                        task_logs("proj_logs3", task_id)
-                    assert "does not exist" in str(cm.value)
+                with pytest.raises(SystemExit) as cm:
+                    task_logs("proj_logs3", task_id)
+                assert "does not exist" in str(cm.value)
 
-    def test_negative_tail_raises(self) -> None:
+    def test_negative_tail_raises(self, mock_runtime) -> None:
         """task_logs raises SystemExit for negative tail value."""
+        mock_runtime.container.return_value.state = "running"
         with project_env(
             "project:\n  id: proj_logs4\n",
             project_id="proj_logs4",
         ):
             with mock_git_config():
                 task_id = self._setup_task_with_mode("proj_logs4", "run")
-                with unittest.mock.patch(
-                    "terok.lib.domain.task_logs.get_container_state",
-                    return_value="running",
-                ):
-                    with pytest.raises(SystemExit) as cm:
-                        task_logs("proj_logs4", task_id, LogViewOptions(tail=-1))
-                    assert "--tail must be >= 0" in str(cm.value)
+                with pytest.raises(SystemExit) as cm:
+                    task_logs("proj_logs4", task_id, LogViewOptions(tail=-1))
+                assert "--tail must be >= 0" in str(cm.value)
 
-    def test_raw_mode_exec(self) -> None:
+    def test_raw_mode_exec(self, mock_runtime) -> None:
         """task_logs in raw mode calls os.execvp."""
+        mock_runtime.container.return_value.state = "exited"
         with project_env(
             "project:\n  id: proj_logs5\n",
             project_id="proj_logs5",
@@ -1261,14 +1218,8 @@ class TestTaskLogs:
                     captured_args.append((file, args))
                     raise SystemExit(0)
 
-                with (
-                    unittest.mock.patch(
-                        "terok.lib.domain.task_logs.get_container_state",
-                        return_value="exited",
-                    ),
-                    unittest.mock.patch(
-                        "terok.lib.domain.task_logs.os.execvp", side_effect=fake_execvp
-                    ),
+                with unittest.mock.patch(
+                    "terok.lib.domain.task_logs.os.execvp", side_effect=fake_execvp
                 ):
                     with pytest.raises(SystemExit):
                         task_logs("proj_logs5", task_id, LogViewOptions(raw=True))
@@ -1276,30 +1227,26 @@ class TestTaskLogs:
                     assert captured_args[0][0] == "podman"
                     assert "logs" in captured_args[0][1]
 
-    def test_raw_mode_podman_not_found(self) -> None:
+    def test_raw_mode_podman_not_found(self, mock_runtime) -> None:
         """task_logs in raw mode raises SystemExit if podman not found."""
+        mock_runtime.container.return_value.state = "exited"
         with project_env(
             "project:\n  id: proj_logs6\n",
             project_id="proj_logs6",
         ):
             with mock_git_config():
                 task_id = self._setup_task_with_mode("proj_logs6", "cli")
-                with (
-                    unittest.mock.patch(
-                        "terok.lib.domain.task_logs.get_container_state",
-                        return_value="exited",
-                    ),
-                    unittest.mock.patch(
-                        "terok.lib.domain.task_logs.os.execvp",
-                        side_effect=FileNotFoundError("podman"),
-                    ),
+                with unittest.mock.patch(
+                    "terok.lib.domain.task_logs.os.execvp",
+                    side_effect=FileNotFoundError("podman"),
                 ):
                     with pytest.raises(SystemExit) as cm:
                         task_logs("proj_logs6", task_id, LogViewOptions(raw=True))
                     assert "podman not found" in str(cm.value)
 
-    def test_formatted_mode_feeds_formatter(self) -> None:
+    def test_formatted_mode_feeds_formatter(self, mock_runtime) -> None:
         """task_logs in formatted mode pipes lines through formatter."""
+        mock_runtime.container.return_value.state = "exited"
         with project_env(
             "project:\n  id: proj_logs7\n",
             project_id="proj_logs7",
@@ -1326,10 +1273,6 @@ class TestTaskLogs:
 
                 with (
                     unittest.mock.patch(
-                        "terok.lib.domain.task_logs.get_container_state",
-                        return_value="exited",
-                    ),
-                    unittest.mock.patch(
                         "terok.lib.domain.task_logs.AgentRunner"
                     ) as mock_runner_cls,
                     unittest.mock.patch(
@@ -1348,23 +1291,18 @@ class TestTaskLogs:
                     mock_formatter.feed_line.assert_called()
                     mock_formatter.finish.assert_called_once()
 
-    def test_formatted_mode_podman_not_found(self) -> None:
+    def test_formatted_mode_podman_not_found(self, mock_runtime) -> None:
         """task_logs in formatted mode raises SystemExit if podman not found."""
+        mock_runtime.container.return_value.state = "running"
         with project_env(
             "project:\n  id: proj_logs8\n",
             project_id="proj_logs8",
         ):
             with mock_git_config():
                 task_id = self._setup_task_with_mode("proj_logs8", "run")
-                with (
-                    unittest.mock.patch(
-                        "terok.lib.domain.task_logs.get_container_state",
-                        return_value="running",
-                    ),
-                    unittest.mock.patch(
-                        "terok.lib.domain.task_logs.AgentRunner"
-                    ) as mock_runner_cls,
-                ):
+                with unittest.mock.patch(
+                    "terok.lib.domain.task_logs.AgentRunner"
+                ) as mock_runner_cls:
                     mock_runner_cls.return_value.stream_logs_process.side_effect = (
                         FileNotFoundError("podman")
                     )
@@ -1372,8 +1310,9 @@ class TestTaskLogs:
                         task_logs("proj_logs8", task_id)
                     assert "podman not found" in str(cm.value)
 
-    def test_persisted_logs_fallback(self) -> None:
+    def test_persisted_logs_fallback(self, mock_runtime) -> None:
         """task_logs falls back to persisted log file when container is gone."""
+        mock_runtime.container.return_value.state = None
         with project_env(
             "project:\n  id: proj_logs_persist\n",
             project_id="proj_logs_persist",
@@ -1392,15 +1331,9 @@ class TestTaskLogs:
 
                 mock_formatter = unittest.mock.Mock()
 
-                with (
-                    unittest.mock.patch(
-                        "terok.lib.domain.task_logs.get_container_state",
-                        return_value=None,
-                    ),
-                    unittest.mock.patch(
-                        "terok.lib.domain.task_logs.auto_detect_formatter",
-                        return_value=mock_formatter,
-                    ),
+                with unittest.mock.patch(
+                    "terok.lib.domain.task_logs.auto_detect_formatter",
+                    return_value=mock_formatter,
                 ):
                     buf = StringIO()
                     with redirect_stdout(buf):
@@ -1410,8 +1343,9 @@ class TestTaskLogs:
                     assert mock_formatter.feed_line.call_count == 3
                     mock_formatter.finish.assert_called_once()
 
-    def test_persisted_logs_fallback_with_tail(self) -> None:
+    def test_persisted_logs_fallback_with_tail(self, mock_runtime) -> None:
         """task_logs persisted fallback respects --tail option."""
+        mock_runtime.container.return_value.state = None
         with project_env(
             "project:\n  id: proj_logs_tail\n",
             project_id="proj_logs_tail",
@@ -1429,37 +1363,29 @@ class TestTaskLogs:
 
                 mock_formatter = unittest.mock.Mock()
 
-                with (
-                    unittest.mock.patch(
-                        "terok.lib.domain.task_logs.get_container_state",
-                        return_value=None,
-                    ),
-                    unittest.mock.patch(
-                        "terok.lib.domain.task_logs.auto_detect_formatter",
-                        return_value=mock_formatter,
-                    ),
+                with unittest.mock.patch(
+                    "terok.lib.domain.task_logs.auto_detect_formatter",
+                    return_value=mock_formatter,
                 ):
                     task_logs("proj_logs_tail", task_id, LogViewOptions(tail=2))
                     assert mock_formatter.feed_line.call_count == 2
 
-    def test_no_container_no_logs_raises(self) -> None:
+    def test_no_container_no_logs_raises(self, mock_runtime) -> None:
         """task_logs raises when container is gone and no persisted logs exist."""
+        mock_runtime.container.return_value.state = None
         with project_env(
             "project:\n  id: proj_logs_nolog\n",
             project_id="proj_logs_nolog",
         ):
             with mock_git_config():
                 task_id = self._setup_task_with_mode("proj_logs_nolog", "run")
-                with unittest.mock.patch(
-                    "terok.lib.domain.task_logs.get_container_state",
-                    return_value=None,
-                ):
-                    with pytest.raises(SystemExit) as cm:
-                        task_logs("proj_logs_nolog", task_id)
-                    assert "no persisted logs found" in str(cm.value)
+                with pytest.raises(SystemExit) as cm:
+                    task_logs("proj_logs_nolog", task_id)
+                assert "no persisted logs found" in str(cm.value)
 
-    def test_negative_tail_persisted_fallback_raises(self) -> None:
+    def test_negative_tail_persisted_fallback_raises(self, mock_runtime) -> None:
         """task_logs raises for negative tail even when falling back to persisted logs."""
+        mock_runtime.container.return_value.state = None
         with project_env(
             "project:\n  id: proj_logs_negtail\n",
             project_id="proj_logs_negtail",
@@ -1474,13 +1400,9 @@ class TestTaskLogs:
                 logs_dir.mkdir(parents=True, exist_ok=True)
                 (logs_dir / "container.log").write_text("a\nb\n")
 
-                with unittest.mock.patch(
-                    "terok.lib.domain.task_logs.get_container_state",
-                    return_value=None,
-                ):
-                    with pytest.raises(SystemExit) as cm:
-                        task_logs("proj_logs_negtail", task_id, LogViewOptions(tail=-1))
-                    assert "--tail must be >= 0" in str(cm.value)
+                with pytest.raises(SystemExit) as cm:
+                    task_logs("proj_logs_negtail", task_id, LogViewOptions(tail=-1))
+                assert "--tail must be >= 0" in str(cm.value)
 
 
 class TestTaskArchive:
@@ -1517,15 +1439,9 @@ class TestTaskArchive:
                     dest.write_text(log_content)
                     return True
 
-                with (
-                    unittest.mock.patch(
-                        "terok_executor.AgentRunner.capture_logs",
-                        new=_fake_capture,
-                    ),
-                    unittest.mock.patch(
-                        "terok.lib.orchestration.tasks.stop_task_containers",
-                        return_value=[],
-                    ),
+                with unittest.mock.patch(
+                    "terok_executor.AgentRunner.capture_logs",
+                    new=_fake_capture,
                 ):
                     task_delete(project_id, task_id)
 
@@ -1573,15 +1489,9 @@ class TestTaskArchive:
                     result.returncode = 0
                     return result
 
-                with (
-                    unittest.mock.patch(
-                        "terok_executor.AgentRunner.capture_logs",
-                        return_value=True,
-                    ),
-                    unittest.mock.patch(
-                        "terok.lib.orchestration.tasks.stop_task_containers",
-                        return_value=[],
-                    ),
+                with unittest.mock.patch(
+                    "terok_executor.AgentRunner.capture_logs",
+                    return_value=True,
                 ):
                     task_delete(project_id, task_id)
 
@@ -1738,6 +1648,7 @@ class TestTaskDeleteWarnings:
 
     def _delete_with_mocks(
         self,
+        mock_runtime,
         project_id: str = "proj_warn",
         *,
         token_side_effect: BaseException | None = None,
@@ -1748,6 +1659,10 @@ class TestTaskDeleteWarnings:
         """Create a task and delete it with configurable failure injections."""
         if container_results is None:
             container_results = []
+
+        mock_runtime.force_remove.return_value = [
+            self._make_rm_result(**r) for r in container_results
+        ]
 
         with project_env(
             f"project:\n  id: {project_id}\n",
@@ -1760,10 +1675,6 @@ class TestTaskDeleteWarnings:
                     unittest.mock.patch(
                         "terok_executor.AgentRunner.capture_logs",
                         return_value=True,
-                    ),
-                    unittest.mock.patch(
-                        "terok.lib.orchestration.tasks.stop_task_containers",
-                        return_value=[self._make_rm_result(**r) for r in container_results],
                     ),
                 ]
                 if token_side_effect:
@@ -1799,23 +1710,25 @@ class TestTaskDeleteWarnings:
 
                     return task_delete(project_id, task_id)
 
-    def test_clean_delete_returns_empty_warnings(self) -> None:
+    def test_clean_delete_returns_empty_warnings(self, mock_runtime) -> None:
         """Normal deletion returns TaskDeleteResult with no warnings."""
-        result = self._delete_with_mocks(project_id="proj_warn1")
+        result = self._delete_with_mocks(mock_runtime, project_id="proj_warn1")
         assert isinstance(result, TaskDeleteResult)
         assert result.warnings == []
 
-    def test_token_revoke_failure_produces_warning(self) -> None:
+    def test_token_revoke_failure_produces_warning(self, mock_runtime) -> None:
         """Failed token revoke adds a warning but deletion still completes."""
         result = self._delete_with_mocks(
+            mock_runtime,
             project_id="proj_warn2",
             token_side_effect=RuntimeError("auth server down"),
         )
         assert any("Token revoke" in w for w in result.warnings)
 
-    def test_container_rm_failure_produces_warning(self) -> None:
+    def test_container_rm_failure_produces_warning(self, mock_runtime) -> None:
         """Failed container removal adds a warning and keeps port claimed."""
         result = self._delete_with_mocks(
+            mock_runtime,
             project_id="proj_warn3",
             container_results=[
                 {"name": "proj-cli-1", "removed": True},
@@ -1826,25 +1739,28 @@ class TestTaskDeleteWarnings:
         assert not any("proj-cli-1" in w for w in result.warnings)
         assert any("Web port kept claimed" in w for w in result.warnings)
 
-    def test_workspace_rm_failure_produces_warning(self) -> None:
+    def test_workspace_rm_failure_produces_warning(self, mock_runtime) -> None:
         """Failed workspace rmtree adds a warning."""
         result = self._delete_with_mocks(
+            mock_runtime,
             project_id="proj_warn4",
             rmtree_side_effect=PermissionError("busy"),
         )
         assert any("Workspace removal" in w for w in result.warnings)
 
-    def test_metadata_rm_failure_produces_warning(self) -> None:
+    def test_metadata_rm_failure_produces_warning(self, mock_runtime) -> None:
         """Failed metadata unlink adds a warning."""
         result = self._delete_with_mocks(
+            mock_runtime,
             project_id="proj_warn5",
             unlink_side_effect=PermissionError("read-only"),
         )
         assert any("Metadata removal" in w for w in result.warnings)
 
-    def test_multiple_failures_collected(self) -> None:
+    def test_multiple_failures_collected(self, mock_runtime) -> None:
         """Multiple failures from different steps all appear in warnings."""
         result = self._delete_with_mocks(
+            mock_runtime,
             project_id="proj_warn6",
             token_side_effect=RuntimeError("offline"),
             container_results=[
