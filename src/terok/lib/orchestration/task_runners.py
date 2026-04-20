@@ -364,7 +364,7 @@ def _drop_shield_on_creation(cname: str, task_dir: Path) -> None:
         _shield_down_impl(cname, task_dir)
         _write_desired_shield_state(task_dir, "down")
         audit_path = task_dir / "shield" / "audit.jsonl"
-        print(f"Shield dropped (bypass mode). Audit log: {audit_path}")
+        print(f"Shield is down. Audit log: {audit_path}")
         print(SHIELD_SECURITY_HINT)
     except Exception as exc:
         import warnings
