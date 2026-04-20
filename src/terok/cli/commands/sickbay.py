@@ -549,13 +549,25 @@ def _check_dbus_hub_state_dir() -> _CheckResult:
     No mismatch (both unset, or both set to the same value) reports ``ok``.
     The check is skipped cleanly when the unit isn't installed at all.
     """
-    from terok_dbus._install import STATE_DIR_ENV, extract_baked_state_dir, read_installed_unit
-
     label = "D-Bus hub state_dir"
-    unit = read_installed_unit()
+    try:
+        from terok_dbus._install import (
+            STATE_DIR_ENV,
+            extract_baked_state_dir,
+            read_installed_unit,
+        )
+    except Exception as exc:  # noqa: BLE001 — import failure should warn, not abort sickbay
+        return ("warn", label, f"check failed — {exc}")
+    try:
+        unit = read_installed_unit()
+    except Exception as exc:  # noqa: BLE001 — read failure is a sickbay-level warn, not a crash
+        return ("warn", label, f"failed to read hub unit: {exc}")
     if unit is None:
         return ("ok", label, "hub not installed — nothing to audit")
-    baked = extract_baked_state_dir(unit)
+    try:
+        baked = extract_baked_state_dir(unit)
+    except Exception as exc:  # noqa: BLE001 — parse failure is a sickbay-level warn, not a crash
+        return ("warn", label, f"failed to parse hub unit: {exc}")
     env = os.environ.get(STATE_DIR_ENV)
     if baked == env:
         if baked is None:

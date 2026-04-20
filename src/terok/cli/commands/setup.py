@@ -308,11 +308,14 @@ def _ensure_dbus_bridge(*, check_only: bool, enabled: bool, color: bool) -> bool
     if not enabled:
         return _disable_dbus_bridge(check_only=check_only, color=color)
 
-    dbus_send_ok = _check_dbus_send(color)
+    _check_dbus_send(color)  # warning only — never affects the return value
     reader_ok = _ensure_bridge_reader(check_only=check_only, color=color)
     hub_ok = _ensure_dbus_hub(check_only=check_only, color=color)
-    # dbus-send absence is a warning, not a failure — reader soft-fails on run.
-    return reader_ok and hub_ok or not dbus_send_ok  # propagate reader/hub outcome
+    # dbus-send absence is reported as a WARN in its own stage line but must
+    # not mask a real failure from the reader/hub stages — if either install
+    # step errors out, ``terok setup`` has to surface that as a failed run
+    # regardless of whether ``dbus-send`` happens to be on this host.
+    return reader_ok and hub_ok
 
 
 def _ensure_bridge_reader(*, check_only: bool, color: bool) -> bool:
@@ -375,8 +378,11 @@ def _disable_dbus_bridge(*, check_only: bool, color: bool) -> bool:
 
     try:
         uninstall_shield_bridge()
-    except Exception:  # noqa: BLE001 — best-effort cleanup
-        pass
+    except Exception as exc:  # noqa: BLE001 — best-effort cleanup
+        # Log but don't fail: this is the "disable bridge" path, so an
+        # already-missing install is fine.  Surfacing the error still helps
+        # the operator diagnose genuine failures (perm denied, etc.).
+        print(f"  D-Bus bridge     {_warn_label(color)} (reader uninstall: {exc})")
 
     unit_path = _user_systemd_dir() / "terok-dbus.service"
     if unit_path.is_file():
@@ -430,7 +436,9 @@ def _enable_user_service(unit: str) -> None:
         [systemctl, "--user", "enable", unit],
         [systemctl, "--user", "restart", unit],
     ):
-        _sp.run(argv, check=False, capture_output=True)
+        # nosec B603 — argv is a fixed literal plus a unit name we control;
+        # no shell involvement, no user-supplied tokens.
+        _sp.run(argv, check=False, capture_output=True)  # noqa: S603
 
 
 def _disable_user_service(unit: str) -> None:
@@ -440,7 +448,9 @@ def _disable_user_service(unit: str) -> None:
         return
     import subprocess as _sp
 
-    _sp.run(
+    # nosec B603 — argv is a fixed literal plus a unit name we control;
+    # no shell involvement, no user-supplied tokens.
+    _sp.run(  # noqa: S603
         [systemctl, "--user", "disable", "--now", unit],
         check=False,
         capture_output=True,
