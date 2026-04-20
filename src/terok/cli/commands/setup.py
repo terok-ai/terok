@@ -400,17 +400,31 @@ def _user_systemd_dir() -> Path:
 
 
 def _enable_user_service(unit: str) -> None:
-    """``systemctl --user enable --now <unit>`` — silent on hosts without systemctl."""
+    """Reload, enable, and restart a systemd user unit.
+
+    ``restart`` matters here (``enable --now`` alone is not enough): after
+    the operator re-runs ``pipx install terok``, the on-disk venv holds
+    freshly-resolved sibling code, but the long-running unit still has
+    the previous code loaded.  Restarting picks up the new implementation
+    every time ``terok setup`` runs, so a user never has to remember to
+    cycle the unit manually after an upgrade.  ``daemon-reload`` is
+    needed ahead of that when the unit file itself was rewritten
+    (``install_service`` templates ``{{BIN}}`` at install time).
+
+    Silent on hosts without ``systemctl`` — keeps the check-only path
+    usable on e.g. CI images without a user systemd manager.
+    """
     systemctl = shutil.which("systemctl")
     if not systemctl:
         return
     import subprocess as _sp
 
-    _sp.run(
-        [systemctl, "--user", "enable", "--now", unit],
-        check=False,
-        capture_output=True,
-    )
+    for argv in (
+        [systemctl, "--user", "daemon-reload"],
+        [systemctl, "--user", "enable", unit],
+        [systemctl, "--user", "restart", unit],
+    ):
+        _sp.run(argv, check=False, capture_output=True)
 
 
 def _disable_user_service(unit: str) -> None:
