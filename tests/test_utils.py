@@ -113,7 +113,7 @@ def make_staleness_info(**overrides: Any) -> GateStalenessInfo:
     return GateStalenessInfo(**defaults)
 
 
-_TASK_ID_FULL_RE = re.compile(r"[ghjkmnp-tv-z][0-9][0-9a-hjkmnp-tv-z]{3}")
+_TASK_ID_CROCKFORD_4_5_RE = re.compile(r"[ghjkmnp-tv-z][0-9][0-9a-hjkmnp-tv-z]{3}")
 
 
 def assert_task_id(task_id: str | None) -> None:
@@ -123,7 +123,7 @@ def assert_task_id(task_id: str | None) -> None:
     See :mod:`terok.lib.orchestration.tasks` for the generator.
     """
     assert isinstance(task_id, str), f"Expected task ID string, got {task_id!r}"
-    assert _TASK_ID_FULL_RE.fullmatch(task_id), f"Not a valid task ID: {task_id!r}"
+    assert _TASK_ID_CROCKFORD_4_5_RE.fullmatch(task_id), f"Not a valid task ID: {task_id!r}"
 
 
 def make_mock_http_response(data: dict[str, object]) -> unittest.mock.Mock:
