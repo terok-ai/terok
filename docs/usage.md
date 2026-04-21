@@ -968,6 +968,25 @@ terok config import-opencode /path/to/opencode.json
 
 ---
 
+## Container Timezone
+
+Task containers follow the host's timezone by default — no configuration
+needed. Override per-project when you need a fixed zone (for example, to
+pin CI to UTC regardless of where the runner lives):
+
+```yaml
+run:
+  timezone: UTC            # or Europe/Prague, America/Los_Angeles, …
+```
+
+The value is any IANA zone name; it is resolved inside the container
+against the image's `tzdata`. Omitting `run.timezone` (or setting it to
+an empty value) falls back to host-follow — terok reads the host's
+`$TZ`, then `/etc/timezone`, then the `/etc/localtime` symlink — and
+leaves `TZ` unset if none of those resolve.
+
+---
+
 ## GPU Passthrough
 
 GPU passthrough is a per-project opt-in feature (disabled by default).

@@ -61,6 +61,13 @@ class ProjectConfig(BaseModel):
     """Podman ``--cpus`` limit from ``run.cpus`` in project.yml."""
     nested_containers: bool = False
     """Project runs podman/docker inside its container (see ``run.nested_containers``)."""
+    timezone: str | None = None
+    """IANA timezone for task containers (from ``run.timezone``).
+
+    ``None`` lets terok-executor fall back to the host's timezone; pass an
+    explicit string (``"UTC"``, ``"Europe/Prague"``) to override — including
+    to pin containers to UTC for reproducible runs.
+    """
     task_name_categories: list[str] | None = None
     shield_drop_on_task_run: bool = True
     shield_on_task_restart: str = "retain"

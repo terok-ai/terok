@@ -25,6 +25,7 @@ def project_yaml(
     authorship: str | None = None,
     shield_drop_on_task_run: bool | None = None,
     shield_on_task_restart: str | None = None,
+    timezone: str | None = None,
 ) -> str:
     """Build project YAML for tests with optional sections."""
     lines = ["project:", f"  id: {project_id}"]
@@ -40,6 +41,8 @@ def project_yaml(
         shield_lines.append(f"  on_task_restart: {shield_on_task_restart}")
     if shield_lines:
         lines += ["shield:", *shield_lines]
+    if timezone is not None:
+        lines += ["run:", f"  timezone: {timezone}"]
     return "\n".join(lines) + "\n"
 
 
@@ -274,6 +277,19 @@ class TestProject:
         with project_env(project_yaml("proj-no-shared"), project_id="proj-no-shared"):
             project = load_project("proj-no-shared")
         assert project.shared_dir is None
+
+    def test_timezone_from_run_section(self) -> None:
+        """``run.timezone`` in project.yml surfaces on ``ProjectConfig.timezone``."""
+        with project_env(
+            project_yaml("proj-tz", timezone="Europe/Prague"),
+            project_id="proj-tz",
+        ):
+            assert load_project("proj-tz").timezone == "Europe/Prague"
+
+    def test_timezone_omitted_is_none(self) -> None:
+        """Without ``run.timezone`` the field is ``None`` — terok-executor will follow the host."""
+        with project_env(project_yaml("proj-no-tz"), project_id="proj-no-tz"):
+            assert load_project("proj-no-tz").timezone is None
 
     def test_get_project_state(self, mock_runtime) -> None:
         project_id = "proj3"
