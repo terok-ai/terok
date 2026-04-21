@@ -9,6 +9,7 @@ path = [
   "**/*.json",
   "**/*.css",
   "**/*.lock",
+  "**/*.png",
   "**/*.txt",
   "**/*.template",
   "**/*.conf",

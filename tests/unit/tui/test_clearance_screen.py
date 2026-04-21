@@ -172,6 +172,92 @@ class TestRenderNotification:
         )
 
 
+class TestOnNotificationPosted:
+    """``on__notification_posted`` routes new blocks vs verdict updates vs info."""
+
+    def _screen_with_mocked_queries(self, mod):
+        """Return a screen whose query_one returns (log, pending_list) mocks."""
+        screen = mod.ClearanceScreen()
+        log = mock.Mock()
+        pending_list = mock.Mock()
+        pending_list.border_title = ""
+        screen.query_one = mock.Mock(
+            side_effect=lambda sel, *_args, **_kwargs: (
+                log if sel == "#event-log" else pending_list
+            )
+        )
+        return screen, log, pending_list
+
+    def test_new_block_writes_to_log_and_pending_list(self) -> None:
+        """A notification with actions queues onto the pending list and logs once."""
+        mod = _import_clearance()
+        screen, log, pending_list = self._screen_with_mocked_queries(mod)
+        msg = mod._NotificationPosted(
+            nid=42,
+            summary="Blocked: seznam.cz:80",
+            body="Container: my-task\nProtocol: TCP",
+            actions=[("allow", "Allow"), ("deny", "Deny")],
+            replaces_id=0,
+            container_id="fa0905d97a1c",
+            container_name="my-task",
+        )
+        screen.on__notification_posted(msg)
+        assert 42 in screen._pending
+        pending_list.append.assert_called_once()
+        log.write.assert_called_once()
+        assert "Pending (1)" in pending_list.border_title
+
+    def test_verdict_applied_clears_pending_and_logs(self) -> None:
+        """A notification with ``replaces_id`` matching a pending entry resolves it."""
+        mod = _import_clearance()
+        screen, log, pending_list = self._screen_with_mocked_queries(mod)
+        screen._pending[42] = mod._PendingRequest(nid=42, summary="s", body="b")
+        screen._remove_pending_item = mock.Mock()
+        msg = mod._NotificationPosted(
+            nid=42,
+            summary="Allowed: seznam.cz",
+            body="Container: my-task",
+            actions=[],
+            replaces_id=42,
+            container_id="fa0905d97a1c",
+            container_name="my-task",
+        )
+        screen.on__notification_posted(msg)
+        assert 42 not in screen._pending
+        screen._remove_pending_item.assert_called_once_with(42)
+        log.write.assert_called_once()
+
+    def test_informational_message_only_logs(self) -> None:
+        """No actions + no replaces_id → informational line in the log only."""
+        mod = _import_clearance()
+        screen, log, pending_list = self._screen_with_mocked_queries(mod)
+        msg = mod._NotificationPosted(
+            nid=1, summary="Info", body="Details", actions=[], replaces_id=0
+        )
+        screen.on__notification_posted(msg)
+        pending_list.append.assert_not_called()
+        log.write.assert_called_once()
+
+
+class TestClearanceAppFooter:
+    """Standalone app composes a Footer and disables the command palette."""
+
+    def test_compose_yields_footer(self) -> None:
+        """``ClearanceApp.compose`` yields a Footer widget for the bindings bar."""
+        mod = _import_clearance()
+        app = mod.ClearanceApp()
+        yielded = list(app.compose())
+        assert len(yielded) == 1
+        # Class name compared by string because the module imports against
+        # Textual stubs (see tests/unit/tui/tui_test_helpers.py).
+        assert type(yielded[0]).__name__ == "Footer"
+
+    def test_command_palette_disabled(self) -> None:
+        """The clearance app turns off the ``^p`` palette binding entirely."""
+        mod = _import_clearance()
+        assert mod.ClearanceApp.ENABLE_COMMAND_PALETTE is False
+
+
 # ---------------------------------------------------------------------------
 # CLI integration
 # ---------------------------------------------------------------------------
