@@ -90,7 +90,7 @@ _LEGACY_HEX_TASK_ID_FULL_RE = re.compile(r"[0-9a-f]{8}")
 """Full-form validator for pre-0.8.0 hex task IDs.  Deprecated; removal in 0.9.0."""
 
 
-def _is_task_id(text: str) -> bool:
+def is_task_id(text: str) -> bool:
     """Return True if *text* is a well-formed task ID (current or legacy)."""
     return bool(
         _TASK_ID_CROCKFORD_4_5_RE.fullmatch(text) or _LEGACY_HEX_TASK_ID_FULL_RE.fullmatch(text)
@@ -158,7 +158,7 @@ def resolve_task_id(project_id: str, prefix: str) -> str:
     matches = [
         p.stem
         for p in meta_dir.glob(_META_GLOB)
-        if _is_task_id(p.stem) and p.stem.startswith(prefix)
+        if is_task_id(p.stem) and p.stem.startswith(prefix)
     ]
     if len(matches) == 1:
         return matches[0]
@@ -560,7 +560,7 @@ def _get_tasks(project_id: str, reverse: bool = False) -> list[TaskMeta]:
     except SystemExit:
         tasks_root = None
     for f in meta_dir.glob(_META_GLOB):
-        if not _is_task_id(f.stem):
+        if not is_task_id(f.stem):
             continue
         try:
             meta = _yaml_load(f.read_text()) or {}

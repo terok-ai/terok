@@ -43,7 +43,7 @@ from ...lib.core.projects import list_projects, load_project
 from ...lib.core.yaml_schema import SERVICES_TCP_OPTOUT_YAML
 from ...lib.orchestration.container_doctor import run_container_doctor
 from ...lib.orchestration.hooks import run_hook
-from ...lib.orchestration.tasks import _is_task_id, container_name, tasks_meta_dir
+from ...lib.orchestration.tasks import container_name, is_task_id, tasks_meta_dir
 from ...lib.util.yaml import load as _yaml_load
 
 # Type alias for check results: (severity, label, detail)
@@ -168,7 +168,7 @@ def _task_meta_path(pid: str, tid: str) -> Path | None:
     escape ``tasks_meta_dir`` via ``Path`` join; reject anything that
     doesn't match the established project/task-ID grammars.
     """
-    if not is_valid_project_id(pid) or not _is_task_id(tid):
+    if not is_valid_project_id(pid) or not is_task_id(tid):
         return None
     return tasks_meta_dir(pid) / f"{tid}.yml"
 

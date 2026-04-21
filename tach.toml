@@ -590,6 +590,7 @@ expose = [
     "tasks_meta_dir",
     "tasks_archive_dir",
     "resolve_task_id",
+    "is_task_id",
 ]
 from = ["terok.lib.orchestration.tasks"]
 
