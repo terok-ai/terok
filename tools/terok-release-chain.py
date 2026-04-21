@@ -718,6 +718,17 @@ def _find_pr_url(package: str, plan: Plan) -> str:
     die(f"No PR URL found for {package}")
 
 
+def _branch_matches_upstream(repo_dir: Path) -> bool:
+    """Whether HEAD is already at upstream/master — no release payload to ship.
+
+    Hit when the version bump + lockfile update already landed via an earlier
+    feature PR: the release cut has nothing to commit, push, or PR — just tag.
+    """
+    head = sh("git", "rev-parse", "HEAD", cwd=repo_dir, capture=True).stdout.strip()
+    tip = sh("git", "rev-parse", "upstream/master", cwd=repo_dir, capture=True).stdout.strip()
+    return head == tip
+
+
 def execute_step(step: Step, plan: Plan, ctx: Ctx):
     """Execute a single step."""
     repo_dir = ctx.cache_dir / step.package
@@ -746,17 +757,30 @@ def execute_step(step: Step, plan: Plan, ctx: Ctx):
 
         case StepKind.GIT_COMMIT:
             sh("git", "add", "pyproject.toml", "poetry.lock", cwd=repo_dir)
-            # Idempotent: skip if HEAD already carries this commit message
-            r = sh("git", "log", "-1", "--format=%s", cwd=repo_dir, capture=True)
-            if r.stdout.strip() == p["message"]:
+            # Idempotent: HEAD already carries this commit message (re-run of a
+            # previously-committed step), or nothing is staged (a prior feature
+            # PR already landed the version bump + lockfile on master, so the
+            # release cut has nothing to commit — just tag and ship).
+            head = sh("git", "log", "-1", "--format=%s", cwd=repo_dir, capture=True)
+            if head.stdout.strip() == p["message"]:
                 console.print("[dim]Already committed — skipping.[/]")
+            elif (
+                sh("git", "diff", "--cached", "--quiet", cwd=repo_dir, check=False).returncode == 0
+            ):
+                console.print("[dim]Nothing to commit — release payload already on master.[/]")
             else:
                 sh("git", "commit", "-m", p["message"], cwd=repo_dir)
 
         case StepKind.GIT_PUSH:
-            sh("git", "push", "-u", "origin", p["branch"], "--force-with-lease", cwd=repo_dir)
+            if _branch_matches_upstream(repo_dir):
+                console.print("[dim]Branch is at upstream/master — nothing to push.[/]")
+            else:
+                sh("git", "push", "-u", "origin", p["branch"], "--force-with-lease", cwd=repo_dir)
 
         case StepKind.PR_CREATE:
+            if _branch_matches_upstream(repo_dir):
+                console.print("[dim]Branch is at upstream/master — no PR needed.[/]")
+                return
             # Idempotent: reuse existing PR for this head branch
             r = sh(
                 "gh",
@@ -799,6 +823,10 @@ def execute_step(step: Step, plan: Plan, ctx: Ctx):
                 console.print(f"PR created: {step.result['pr_url']}")
 
         case StepKind.PR_MERGE:
+            if _branch_matches_upstream(repo_dir):
+                # No PR was opened — the tag step will use upstream/master.
+                console.print("[dim]No PR to merge — release payload already on master.[/]")
+                return
             pr_url = _find_pr_url(step.package, plan)
             # Idempotent: if already merged, just capture the SHA
             st = pr_state(pr_url, gh_repo)
