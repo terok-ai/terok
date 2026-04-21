@@ -824,8 +824,17 @@ def execute_step(step: Step, plan: Plan, ctx: Ctx):
 
         case StepKind.PR_MERGE:
             if _branch_matches_upstream(repo_dir):
-                # No PR was opened — the tag step will use upstream/master.
-                console.print("[dim]No PR to merge — release payload already on master.[/]")
+                # No PR was opened.  Pin ``merge_sha`` to the current
+                # upstream/master commit so TAG doesn't re-resolve the
+                # moving ref and accidentally tag someone else's push
+                # that landed between this step and the tag step.  HEAD
+                # equals upstream/master here by the condition above.
+                step.result["merge_sha"] = sh(
+                    "git", "rev-parse", "HEAD", cwd=repo_dir, capture=True
+                ).stdout.strip()
+                console.print(
+                    f"[dim]No PR to merge — pinning tag to {step.result['merge_sha'][:12]}.[/]"
+                )
                 return
             pr_url = _find_pr_url(step.package, plan)
             # Idempotent: if already merged, just capture the SHA
