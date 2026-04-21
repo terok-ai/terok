@@ -10,6 +10,13 @@ operator knowing the template layout.  The work is three writes +
 two best-effort cache refreshes; every step soft-fails so a headless
 host without a ``.local/share`` or without ``update-desktop-database``
 never kills the wider ``terok setup`` flow.
+
+The passive assets (``.desktop`` template, logo PNG) live under
+``terok/resources/desktop/`` — this module is the *builder* that reads
+them, renders the ``{{BIN}}`` placeholder, and copies the output to
+the operator's XDG tree.  Keeping the builder outside ``resources/``
+matches the rest of the tree: that directory holds only data files
+consumed by code that lives elsewhere.
 """
 
 from __future__ import annotations
@@ -30,9 +37,20 @@ APP_NAME = "terok"
 _DESKTOP_FILE = f"{APP_NAME}.desktop"
 _ICON_FILE = f"{APP_NAME}.png"
 _ICON_SIZE_DIR = "256x256"  # fixed size; logo is 283x283, close enough for display
-_RESOURCE_PACKAGE = "terok.resources.desktop"
 _TEMPLATE_NAME = "terok.desktop.template"
 _LOGO_NAME = "terok-logo.png"
+
+
+def _resource_dir():
+    """Return a ``Traversable`` rooted at the passive ``resources/desktop/`` assets.
+
+    Uses the namespace-package idiom already used by
+    :func:`terok.lib.core.config.bundled_presets_dir`: walk the top-level
+    ``terok`` package into the ``resources`` + ``desktop`` subdirs (no
+    ``__init__.py`` anywhere under ``resources/``, matching the project's
+    "resources hold only data files" convention).
+    """
+    return importlib_resources.files("terok").joinpath("resources", "desktop")
 
 
 def install_desktop_entry(bin_path: str | Path) -> None:
@@ -100,16 +118,14 @@ def _data_home() -> Path:
 
 def _load_template() -> str:
     """Read the bundled ``terok.desktop.template`` as text."""
-    ref = importlib_resources.files(_RESOURCE_PACKAGE).joinpath(_TEMPLATE_NAME)
-    return ref.read_text(encoding="utf-8")
+    return _resource_dir().joinpath(_TEMPLATE_NAME).read_text(encoding="utf-8")
 
 
 def _install_icon() -> None:
     """Copy the bundled logo into the hicolor icon theme tree."""
     dest = _icon_path()
     dest.parent.mkdir(parents=True, exist_ok=True)
-    source = importlib_resources.files(_RESOURCE_PACKAGE).joinpath(_LOGO_NAME)
-    dest.write_bytes(source.read_bytes())
+    dest.write_bytes(_resource_dir().joinpath(_LOGO_NAME).read_bytes())
     dest.chmod(0o644)
 
 

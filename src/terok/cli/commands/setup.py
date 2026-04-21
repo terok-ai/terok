@@ -473,7 +473,7 @@ def _ensure_desktop_entry(*, check_only: bool) -> bool:
          its own, but the refresh makes it appear in the next-session
          menu without an X-server restart.
     """
-    from terok.resources.desktop import install_desktop_entry, is_desktop_entry_installed
+    from ._desktop_entry import install_desktop_entry, is_desktop_entry_installed
 
     _stage_begin("Desktop entry")
     if check_only:
@@ -500,7 +500,7 @@ def _ensure_desktop_entry(*, check_only: bool) -> bool:
 
 def _disable_desktop_entry(*, check_only: bool) -> bool:
     """Tear down the desktop entry + icon when the operator runs ``--no-desktop-entry``."""
-    from terok.resources.desktop import uninstall_desktop_entry
+    from ._desktop_entry import uninstall_desktop_entry
 
     _stage_begin("Desktop entry")
     if check_only:

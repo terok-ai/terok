@@ -838,7 +838,9 @@ class TestEnsureDesktopEntry:
         """``check_only`` returns what ``is_desktop_entry_installed`` reports."""
         from terok.cli.commands.setup import _ensure_desktop_entry
 
-        with patch("terok.resources.desktop.is_desktop_entry_installed", return_value=True):
+        with patch(
+            "terok.cli.commands._desktop_entry.is_desktop_entry_installed", return_value=True
+        ):
             assert _ensure_desktop_entry(check_only=True) is True
         assert "installed" in capsys.readouterr().out
 
@@ -846,7 +848,9 @@ class TestEnsureDesktopEntry:
         """``check_only`` with no entry present returns False."""
         from terok.cli.commands.setup import _ensure_desktop_entry
 
-        with patch("terok.resources.desktop.is_desktop_entry_installed", return_value=False):
+        with patch(
+            "terok.cli.commands._desktop_entry.is_desktop_entry_installed", return_value=False
+        ):
             assert _ensure_desktop_entry(check_only=True) is False
 
     def test_install_uses_absolute_terok_tui_when_on_path(
@@ -857,7 +861,7 @@ class TestEnsureDesktopEntry:
 
         with (
             patch("terok.cli.commands.setup.shutil.which", return_value="/opt/venv/bin/terok-tui"),
-            patch("terok.resources.desktop.install_desktop_entry") as install,
+            patch("terok.cli.commands._desktop_entry.install_desktop_entry") as install,
         ):
             assert _ensure_desktop_entry(check_only=False) is True
         install.assert_called_once_with("/opt/venv/bin/terok-tui")
@@ -868,7 +872,7 @@ class TestEnsureDesktopEntry:
 
         with (
             patch("terok.cli.commands.setup.shutil.which", return_value=None),
-            patch("terok.resources.desktop.install_desktop_entry") as install,
+            patch("terok.cli.commands._desktop_entry.install_desktop_entry") as install,
         ):
             _ensure_desktop_entry(check_only=False)
         install.assert_called_once_with("terok-tui")
@@ -882,7 +886,7 @@ class TestEnsureDesktopEntry:
         with (
             patch("terok.cli.commands.setup.shutil.which", return_value="terok-tui"),
             patch(
-                "terok.resources.desktop.install_desktop_entry",
+                "terok.cli.commands._desktop_entry.install_desktop_entry",
                 side_effect=OSError("read-only fs"),
             ),
         ):
@@ -902,7 +906,7 @@ class TestDisableDesktopEntry:
     def test_calls_uninstall_and_reports_disabled(self, capsys: pytest.CaptureFixture) -> None:
         from terok.cli.commands.setup import _disable_desktop_entry
 
-        with patch("terok.resources.desktop.uninstall_desktop_entry") as uninstall:
+        with patch("terok.cli.commands._desktop_entry.uninstall_desktop_entry") as uninstall:
             assert _disable_desktop_entry(check_only=False) is True
         uninstall.assert_called_once()
         assert "disabled" in capsys.readouterr().out
@@ -911,7 +915,7 @@ class TestDisableDesktopEntry:
         from terok.cli.commands.setup import _disable_desktop_entry
 
         with patch(
-            "terok.resources.desktop.uninstall_desktop_entry",
+            "terok.cli.commands._desktop_entry.uninstall_desktop_entry",
             side_effect=OSError("permission denied"),
         ):
             assert _disable_desktop_entry(check_only=False) is False
