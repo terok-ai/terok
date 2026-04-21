@@ -19,3 +19,4 @@ plans.md
 .claude/settings.local.json
 terok-executor
 terok-sandbox
+.claude/scheduled_tasks.lock
