@@ -3077,7 +3077,7 @@ resolved_reference = "e8d33da12d0b621414174f9aee221da6034091a6"
 
 [[package]]
 name = "terok-executor"
-version = "0.0.96"
+version = "0.0.97"
 description = "Single-agent task runner for hardened Podman containers"
 optional = false
 python-versions = ">=3.12,<4.0"
@@ -3096,11 +3096,11 @@ tomli-w = ">=1.0"
 type = "git"
 url = "https://github.com/sliwowitz/terok-executor.git"
 reference = "feat/dbus-clearance-bridge"
-resolved_reference = "63093a48b368c9898b9b95c577925b8de6074a8f"
+resolved_reference = "cc129ee323a7247bc6568464d59c756bbf1969ae"
 
 [[package]]
 name = "terok-sandbox"
-version = "0.0.79"
+version = "0.0.80"
 description = "Hardened Podman container runner with gate server and shield integration"
 optional = false
 python-versions = ">=3.12,<4.0"
@@ -3118,7 +3118,7 @@ terok-shield = {git = "https://github.com/sliwowitz/terok-shield.git", branch = 
 type = "git"
 url = "https://github.com/sliwowitz/terok-sandbox.git"
 reference = "feat/dbus-clearance-bridge"
-resolved_reference = "cb01f6b8e6717201aefaacf288a18da5d47d3789"
+resolved_reference = "5e41a1da0cb7e97baa3328bcc050af489b4b25be"
 
 [[package]]
 name = "terok-shield"
