@@ -182,9 +182,7 @@ class TestOnNotificationPosted:
         pending_list = mock.Mock()
         pending_list.border_title = ""
         screen.query_one = mock.Mock(
-            side_effect=lambda sel, *_args, **_kwargs: (
-                log if sel == "#event-log" else pending_list
-            )
+            side_effect=lambda sel, *_args, **_kwargs: log if sel == "#event-log" else pending_list
         )
         return screen, log, pending_list
 
