@@ -267,6 +267,14 @@ class RawRunSection(BaseModel):
             "containers work under SELinux without disabling labels wholesale."
         ),
     )
+    timezone: str | None = Field(
+        default=None,
+        description=(
+            "IANA timezone for the task container (e.g. ``Europe/Prague``, "
+            "``UTC``).  Propagated as ``TZ`` — resolved against the image's "
+            "``tzdata``.  Unset (default) means follow the host's timezone."
+        ),
+    )
     hooks: RawHooksSection = Field(default_factory=RawHooksSection)
 
     @field_validator("memory", "cpus", mode="before")

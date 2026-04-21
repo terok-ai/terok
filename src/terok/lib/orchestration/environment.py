@@ -410,6 +410,7 @@ def build_task_env_and_volumes(
             unrestricted=False,  # task_runners resolves per-provider config
             shared_dir=None if sealed else project.shared_dir,
             envs_dir=sandbox_live_mounts_dir(),
+            timezone=project.timezone,
         ),
         get_roster(),
         # bypass → skip proxy entirely (no tokens, no check)

@@ -3082,20 +3082,21 @@ description = "Single-agent task runner for hardened Podman containers"
 optional = false
 python-versions = ">=3.12,<4.0"
 groups = ["main"]
-files = [
-    {file = "terok_executor-0.0.100-py3-none-any.whl", hash = "sha256:3244c4c71034da5a42e643f50a2ee22522f8795c204c620a2f62825e89b6accb"},
-]
+files = []
+develop = false
 
 [package.dependencies]
 Jinja2 = ">=3.1"
 pwinput = ">=1.0.3"
 "ruamel.yaml" = ">=0.18"
-terok_sandbox = {url = "https://github.com/terok-ai/terok-sandbox/releases/download/v0.0.83/terok_sandbox-0.0.83-py3-none-any.whl"}
+terok-sandbox = {url = "https://github.com/terok-ai/terok-sandbox/releases/download/v0.0.83/terok_sandbox-0.0.83-py3-none-any.whl"}
 tomli-w = ">=1.0"
 
 [package.source]
-type = "url"
-url = "https://github.com/terok-ai/terok-executor/releases/download/v0.0.100/terok_executor-0.0.100-py3-none-any.whl"
+type = "git"
+url = "https://github.com/sliwowitz/terok-executor.git"
+reference = "feat/container-timezone"
+resolved_reference = "82fc463415247bfae8fb9a2810355a27fe773624"
 
 [[package]]
 name = "terok-sandbox"
@@ -3624,4 +3625,4 @@ propcache = ">=0.2.1"
 [metadata]
 lock-version = "2.1"
 python-versions = ">=3.12,<4.0"
-content-hash = "406e09abc3154d42542c253bfdc046237ad49d65a629cd774342854e9a3864d2"
+content-hash = "82b7d919194b5168d6c50cfec1f34378c5e17263af09ca027416f92fd956b6cd"
