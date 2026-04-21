@@ -93,6 +93,14 @@ def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) ->
             "auditability of the hook surface is the priority."
         ),
     )
+    p_setup.add_argument(
+        "--no-desktop-entry",
+        action="store_true",
+        help=(
+            "Skip the XDG desktop entry and icon for terok-tui.  Use on "
+            "headless / server hosts with no application launcher."
+        ),
+    )
 
 
 def dispatch(args: argparse.Namespace) -> bool:
@@ -102,6 +110,7 @@ def dispatch(args: argparse.Namespace) -> bool:
     cmd_setup(
         check_only=getattr(args, "check", False),
         no_dbus_bridge=getattr(args, "no_dbus_bridge", False),
+        no_desktop_entry=getattr(args, "no_desktop_entry", False),
     )
     return True
 
@@ -111,6 +120,18 @@ def dispatch(args: argparse.Namespace) -> bool:
 
 _MANDATORY_BINARIES = ("podman", "git", "ssh-keygen")
 _RECOMMENDED_BINARIES = ("nft", "dnsmasq", "dig")
+
+#: Suffix used by every ``check_only`` phase to qualify the ``ok``/``FAIL``
+#: label with the literal on-disk presence (``ok (installed)`` vs
+#: ``FAIL (not installed)``).  Factored out because three phases print
+#: the pair verbatim; a typo in one would produce inconsistent output.
+_CHECK_SUFFIX_PRESENT = " (installed)"
+_CHECK_SUFFIX_ABSENT = " (not installed)"
+
+
+def _presence_suffix(present: bool) -> str:
+    """Return the trailing ``(installed)``/``(not installed)`` marker for check-only output."""
+    return _CHECK_SUFFIX_PRESENT if present else _CHECK_SUFFIX_ABSENT
 
 
 def _status_label(ok: bool) -> str:
@@ -350,7 +371,7 @@ def _ensure_bridge_reader(*, check_only: bool) -> bool:
     if check_only:
         present = dest.is_file()
         label = _status_label(present)
-        suffix = " (installed)" if present else " (not installed)"
+        suffix = _presence_suffix(present)
         print(f"{label}{suffix}")
         return present
 
@@ -372,7 +393,7 @@ def _ensure_dbus_hub(*, check_only: bool) -> bool:
     if check_only:
         present = unit_path.is_file()
         label = _status_label(present)
-        suffix = " (installed)" if present else " (not installed)"
+        suffix = _presence_suffix(present)
         print(f"{label}{suffix}")
         return present
 
@@ -432,6 +453,65 @@ def _disable_dbus_bridge(*, check_only: bool) -> bool:
             print(f"{_warn_label()} (unit removal: {exc})")
             return False
     print(f"{_warn_label()} (disabled — audit-minimal mode)")
+    return True
+
+
+def _ensure_desktop_entry(*, check_only: bool) -> bool:
+    """Install the XDG desktop entry + application icon for ``terok-tui``.
+
+    Writes three things, each soft-failing if the user doesn't have an
+    application launcher (headless SSH box, container CI image):
+      1. The ``.desktop`` file with ``Exec`` templated to the operator's
+         resolved ``terok-tui`` binary — desktop launchers run with a
+         minimal PATH so ``~/.local/bin`` entries from ``pipx`` installs
+         won't be found by name alone.
+      2. The ``terok-logo.png`` at ``hicolor/256x256/apps/terok.png`` so
+         GNOME / KDE / XFCE can resolve ``Icon=terok`` via the standard
+         icon theme lookup.
+      3. A best-effort ``update-desktop-database`` + ``gtk-update-icon-cache``
+         to nudge the menu / icon caches; the launcher finds the file on
+         its own, but the refresh makes it appear in the next-session
+         menu without an X-server restart.
+    """
+    from ._desktop_entry import install_desktop_entry, is_desktop_entry_installed
+
+    _stage_begin("Desktop entry")
+    if check_only:
+        present = is_desktop_entry_installed()
+        label = _status_label(present)
+        suffix = _presence_suffix(present)
+        print(f"{label}{suffix}")
+        return present
+
+    bin_path = shutil.which("terok-tui")
+    if bin_path is None:
+        # pipx installs go under ~/.local/bin which isn't on the
+        # setup-run PATH everywhere; still write the entry but fall back
+        # to the bare binary name so an updated PATH picks it up.
+        bin_path = "terok-tui"
+    try:
+        install_desktop_entry(bin_path)
+    except Exception as exc:  # noqa: BLE001
+        print(f"{_status_label(False)} ({exc})")
+        return False
+    print(f"{_status_label(True)} (installed)")
+    return True
+
+
+def _disable_desktop_entry(*, check_only: bool) -> bool:
+    """Tear down the desktop entry + icon when the operator runs ``--no-desktop-entry``."""
+    from ._desktop_entry import uninstall_desktop_entry
+
+    _stage_begin("Desktop entry")
+    if check_only:
+        print(f"{_warn_label()} (opted out via --no-desktop-entry)")
+        return True
+    try:
+        uninstall_desktop_entry()
+    except Exception as exc:  # noqa: BLE001
+        print(f"{_warn_label()} (uninstall: {exc})")
+        return False
+    print(f"{_warn_label()} (disabled)")
     return True
 
 
@@ -620,13 +700,20 @@ def _check_selinux_policy() -> bool:
     return True  # pragma: no cover — exhaustive above; defensive fallthrough for new enum members
 
 
-def cmd_setup(*, check_only: bool = False, no_dbus_bridge: bool = False) -> None:
+def cmd_setup(
+    *,
+    check_only: bool = False,
+    no_dbus_bridge: bool = False,
+    no_desktop_entry: bool = False,
+) -> None:
     """Global bootstrap: install shield, vault, gate server, and optional D-Bus bridge.
 
     Non-interactive and idempotent — safe to re-run.  Installs to user-local
     directories (no root needed).  With ``--check``, only reports status.
     ``--no-dbus-bridge`` skips the NFLOG reader resource and the terok-dbus
     hub unit so audit-minimal hosts only see the nft hook pair on disk.
+    ``--no-desktop-entry`` skips the XDG application launcher / icon
+    install — useful on headless hosts and CI images.
     """
     action = "Checking" if check_only else "Setting up"
     print(_bold(f"\n{action} terok host services\n"))
@@ -650,10 +737,23 @@ def cmd_setup(*, check_only: bool = False, no_dbus_bridge: bool = False) -> None
     gate_ok = _ensure_gate(check_only=check_only)
 
     bridge_ok = _ensure_dbus_bridge(check_only=check_only, enabled=not no_dbus_bridge)
+
+    if no_desktop_entry:
+        desktop_ok = _disable_desktop_entry(check_only=check_only)
+    else:
+        desktop_ok = _ensure_desktop_entry(check_only=check_only)
     print()
 
     # Summary + next steps
-    all_ok = binaries_ok and shield_ok and vault_ok and gate_ok and selinux_ok and bridge_ok
+    all_ok = (
+        binaries_ok
+        and shield_ok
+        and vault_ok
+        and gate_ok
+        and selinux_ok
+        and bridge_ok
+        and desktop_ok
+    )
     if all_ok:
         print(_bold("Setup complete."))
     elif not binaries_ok:
