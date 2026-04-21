@@ -3138,7 +3138,7 @@ PyYAML = ">=6.0"
 type = "git"
 url = "https://github.com/sliwowitz/terok-shield.git"
 reference = "feat/clearance-bridge"
-resolved_reference = "eddf5c83956d302e7ba5333cf899332b130ffe50"
+resolved_reference = "aca2aa9f4e1263e70beb098292782d8544c57e62"
 
 [[package]]
 name = "textual"
