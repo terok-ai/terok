@@ -16,6 +16,8 @@ import os
 import re
 import secrets
 import shutil
+import string
+import warnings
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
@@ -47,17 +49,66 @@ from ..util.logging_utils import _log_debug
 from ..util.yaml import dump as _yaml_dump, load as _yaml_load
 from .container_exec import container_git_diff
 
-# ---------- Task ID generation ----------
+# ---------- Task IDs ----------
 
 
 _META_GLOB = "*.yml"
 """Glob pattern for task metadata YAML files."""
 
+_TASK_ID_HEAD_CHARS = "ghjkmnpqrstvwxyz"
+"""Crockford-legal lowercase letters outside hex (``g-z`` minus ``i l o u``, 16 chars).
+
+First character of every task ID, chosen so the ID is unmistakably non-hex
+within the first character — disambiguating terok task IDs from podman
+container IDs, git SHAs, and other hex blobs at a glance.
+"""
+
+_TASK_ID_BODY_CHARS = "0123456789abcdefghjkmnpqrstvwxyz"
+"""Full Crockford base32 alphabet, lowercase (``0-9 a-z`` minus ``i l o u``, 32 chars)."""
+
+_TASK_ID_LEN = 5
+"""Task ID length.  16 · 10 · 32^3 ≈ 5.2M ids per project (~22.3 bits,
+effectively Crockford-4.5 by entropy) — ample for the retry-on-collision
+loop given realistic project sizes."""
+
+_TASK_ID_CROCKFORD_4_5_RE = re.compile(r"[ghjkmnp-tv-z][0-9][0-9a-hjkmnp-tv-z]{3}")
+"""Canonical full-form validator for current-format task IDs.
+
+Called *Crockford-4.5* because the structural-signature chars at
+positions 1–2 (16-letter head, 10 digits) carry only 4.64 bits
+instead of 10 — total entropy 22.32 bits, equivalent to 4.46 full
+Crockford chars rather than 5.
+"""
+
+_TASK_ID_PREFIX_RE = re.compile(r"[ghjkmnp-tv-z](?:[0-9][0-9a-hjkmnp-tv-z]{0,3})?")
+"""Prefix-match regex for a current-format task ID (1 to :data:`_TASK_ID_LEN` chars)."""
+
+_LEGACY_HEX_TASK_ID_PREFIX_RE = re.compile(r"[0-9a-f]{1,8}")
+"""Prefix-match regex for pre-0.8.0 hex task IDs.  Deprecated in 0.8.0; removal in 0.9.0."""
+
+_LEGACY_HEX_TASK_ID_FULL_RE = re.compile(r"[0-9a-f]{8}")
+"""Full-form validator for pre-0.8.0 hex task IDs.  Deprecated; removal in 0.9.0."""
+
+
+def _is_task_id(text: str) -> bool:
+    """Return True if *text* is a well-formed task ID (current or legacy)."""
+    return bool(
+        _TASK_ID_CROCKFORD_4_5_RE.fullmatch(text) or _LEGACY_HEX_TASK_ID_FULL_RE.fullmatch(text)
+    )
+
+
+def _gen_task_id() -> str:
+    """Return a fresh task ID: Crockford-letter head + digit + 3 Crockford chars."""
+    alphabets = (_TASK_ID_HEAD_CHARS, string.digits) + (_TASK_ID_BODY_CHARS,) * (_TASK_ID_LEN - 2)
+    tid = "".join(map(secrets.choice, alphabets))
+    assert _TASK_ID_CROCKFORD_4_5_RE.fullmatch(tid), tid  # generator-output invariant
+    return tid
+
 
 def _generate_unique_id(existing: set[str]) -> str:
-    """Generate a unique 8-char hex task ID not present in *existing*."""
+    """Generate a unique task ID not present in *existing*."""
     for _ in range(100):
-        candidate = secrets.token_hex(4)
+        candidate = _gen_task_id()
         if candidate not in existing:
             return candidate
     raise RuntimeError("Failed to generate unique task ID after 100 attempts")
@@ -68,20 +119,47 @@ def _is_initialized(meta: dict) -> bool:
     return "ready_at" in meta
 
 
+def _validate_task_id_prefix(prefix: str) -> None:
+    """Validate *prefix* and warn on the deprecated legacy-hex format.
+
+    Raises ``SystemExit`` if *prefix* matches neither the current
+    Crockford-4.5 format nor the legacy pre-0.8.0 hex format.  Dispatch
+    is unambiguous: Crockford IDs always start with ``[g-z]`` minus
+    ``i l o u``, which is disjoint from hex.
+    """
+    if _TASK_ID_PREFIX_RE.fullmatch(prefix):
+        return
+    if _LEGACY_HEX_TASK_ID_PREFIX_RE.fullmatch(prefix):
+        warnings.warn(
+            f"Task ID {prefix!r} uses the pre-0.8.0 hex format; "
+            "support will be removed in 0.9.0 — recreate the task to "
+            "adopt the current format.",
+            DeprecationWarning,
+            stacklevel=3,
+        )
+        return
+    raise SystemExit(
+        f"Invalid task ID prefix {prefix!r}; "
+        f"expected 1-{_TASK_ID_LEN} Crockford chars (e.g. 'k3v8h')"
+    )
+
+
 def resolve_task_id(project_id: str, prefix: str) -> str:
-    """Resolve a (possibly partial) hex task ID to its full 8-char form.
+    """Resolve a (possibly partial) task ID to its full form.
 
     Raises ``SystemExit`` with an actionable message on zero or multiple matches.
     """
-    if not re.fullmatch(r"[0-9a-f]{1,8}", prefix):
-        raise SystemExit(f"Invalid task ID prefix {prefix!r}; expected 1-8 lowercase hex chars")
-
+    _validate_task_id_prefix(prefix)
     meta_dir = tasks_meta_dir(project_id)
     if not meta_dir.is_dir():
         raise SystemExit(f"No tasks found for project {project_id}")
     if (meta_dir / f"{prefix}.yml").is_file():
         return prefix
-    matches = [p.stem for p in meta_dir.glob(_META_GLOB) if p.stem.startswith(prefix)]
+    matches = [
+        p.stem
+        for p in meta_dir.glob(_META_GLOB)
+        if _is_task_id(p.stem) and p.stem.startswith(prefix)
+    ]
     if len(matches) == 1:
         return matches[0]
     if not matches:
@@ -482,6 +560,8 @@ def _get_tasks(project_id: str, reverse: bool = False) -> list[TaskMeta]:
     except SystemExit:
         tasks_root = None
     for f in meta_dir.glob(_META_GLOB):
+        if not _is_task_id(f.stem):
+            continue
         try:
             meta = _yaml_load(f.read_text()) or {}
             tid = str(meta.get("task_id", ""))

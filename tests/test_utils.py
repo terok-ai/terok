@@ -13,6 +13,8 @@ from typing import Any
 
 from terok_sandbox import GateStalenessInfo
 
+from terok.lib.orchestration.tasks import _TASK_ID_CROCKFORD_4_5_RE
+
 
 def mock_git_config():
     """Return a mock for _get_global_git_config that returns None (no global git config)."""
@@ -112,11 +114,14 @@ def make_staleness_info(**overrides: Any) -> GateStalenessInfo:
     return GateStalenessInfo(**defaults)
 
 
-def assert_hex_id(task_id: str | None) -> None:
-    """Assert that *task_id* is a valid 8-char hex string."""
+def assert_task_id(task_id: str | None) -> None:
+    """Assert that *task_id* is a valid Crockford-format task ID.
+
+    Format: ``[g-z minus i,l,o,u][0-9][Crockford]{3}`` — 5 chars total.
+    See :mod:`terok.lib.orchestration.tasks` for the generator.
+    """
     assert isinstance(task_id, str), f"Expected task ID string, got {task_id!r}"
-    assert len(task_id) == 8, f"Expected 8-char hex ID, got {task_id!r}"
-    assert all(c in "0123456789abcdef" for c in task_id), f"Not a hex string: {task_id!r}"
+    assert _TASK_ID_CROCKFORD_4_5_RE.fullmatch(task_id), f"Not a valid task ID: {task_id!r}"
 
 
 def make_mock_http_response(data: dict[str, object]) -> unittest.mock.Mock:
@@ -153,4 +158,5 @@ def captured_runspec(agent_runner_mock: unittest.mock.Mock) -> Any:
         extra_args=tuple(kwargs.get("extra_args") or ()),
         unrestricted=kwargs.get("unrestricted", True),
         sealed=kwargs.get("sealed", False),
+        hostname=kwargs.get("hostname"),
     )
