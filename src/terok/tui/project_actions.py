@@ -460,7 +460,7 @@ class ProjectActionsMixin:
             env = {**os.environ, "PYTHONPATH": os.pathsep.join(sys.path)}
             try:
                 result = subprocess.run(
-                    [sys.executable, "-m", "terok.cli.main", "project-wizard"],
+                    [sys.executable, "-m", "terok.cli", "project", "wizard"],
                     check=False,
                     env=env,
                 )
