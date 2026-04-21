@@ -40,6 +40,16 @@ _ICON_SIZE_DIR = "256x256"  # fixed size; logo is 283x283, close enough for disp
 _TEMPLATE_NAME = "terok.desktop.template"
 _LOGO_NAME = "terok-logo.png"
 
+# XDG Base Directory + Icon Theme spec path fragments.  Named so a
+# future theme-dir shift (e.g. an Adwaita-symbolic install path) is a
+# single-constant change and so ``grep`` for the fragment lands on the
+# canonical definition rather than every join site.
+_APPLICATIONS_SUBDIR = "applications"
+_ICONS_SUBDIR = "icons"
+_HICOLOR_THEME = "hicolor"
+_APPS_SUBDIR = "apps"
+_DEFAULT_DATA_HOME = (".local", "share")  # $HOME/.local/share — XDG fallback
+
 
 def _resource_dir():
     """Return a ``Traversable`` rooted at the passive ``resources/desktop/`` assets.
@@ -68,7 +78,7 @@ def install_desktop_entry(bin_path: str | Path) -> None:
     )
     desktop_path = _desktop_entry_path()
     desktop_path.parent.mkdir(parents=True, exist_ok=True)
-    desktop_path.write_text(rendered)
+    desktop_path.write_text(rendered, encoding="utf-8")
     desktop_path.chmod(0o644)
 
     _install_icon()
@@ -99,18 +109,20 @@ def is_desktop_entry_installed() -> bool:
 
 def _desktop_entry_path() -> Path:
     """Return ``$XDG_DATA_HOME/applications/terok.desktop`` (XDG default)."""
-    return _data_home() / "applications" / _DESKTOP_FILE
+    return _data_home() / _APPLICATIONS_SUBDIR / _DESKTOP_FILE
 
 
 def _icon_path() -> Path:
     """Return ``$XDG_DATA_HOME/icons/hicolor/256x256/apps/terok.png``."""
-    return _data_home() / "icons" / "hicolor" / _ICON_SIZE_DIR / "apps" / _ICON_FILE
+    return (
+        _data_home() / _ICONS_SUBDIR / _HICOLOR_THEME / _ICON_SIZE_DIR / _APPS_SUBDIR / _ICON_FILE
+    )
 
 
 def _data_home() -> Path:
     """Return the user's XDG data home, honouring ``$XDG_DATA_HOME`` when set."""
     override = os.environ.get("XDG_DATA_HOME")
-    return Path(override) if override else Path.home() / ".local" / "share"
+    return Path(override) if override else Path.home().joinpath(*_DEFAULT_DATA_HOME)
 
 
 # ── Template + icon source loading ────────────────────────────────────
@@ -136,7 +148,7 @@ def _refresh_desktop_database() -> None:
     """Nudge ``update-desktop-database`` if present; silent otherwise."""
     _run_cache_refresh(
         "update-desktop-database",
-        [_data_home() / "applications"],
+        [_data_home() / _APPLICATIONS_SUBDIR],
     )
 
 
@@ -144,7 +156,7 @@ def _refresh_icon_cache() -> None:
     """Nudge ``gtk-update-icon-cache`` on the hicolor theme if present."""
     _run_cache_refresh(
         "gtk-update-icon-cache",
-        ["-q", "-t", _data_home() / "icons" / "hicolor"],
+        ["-q", "-t", _data_home() / _ICONS_SUBDIR / _HICOLOR_THEME],
     )
 
 

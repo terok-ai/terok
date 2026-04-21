@@ -622,6 +622,17 @@ class TestDispatch:
             assert dispatch(args) is True
         mock.assert_called_once_with(check_only=False, no_dbus_bridge=False, no_desktop_entry=False)
 
+    def test_setup_threads_no_desktop_entry_true(self) -> None:
+        """Explicit ``--no-desktop-entry`` flips the kwarg to True on ``cmd_setup``."""
+        import argparse
+
+        args = argparse.Namespace(
+            cmd="setup", check=False, no_dbus_bridge=False, no_desktop_entry=True
+        )
+        with patch("terok.cli.commands.setup.cmd_setup") as mock:
+            assert dispatch(args) is True
+        mock.assert_called_once_with(check_only=False, no_dbus_bridge=False, no_desktop_entry=True)
+
 
 # ── D-Bus clearance bridge phase ────────────────────────────────────────
 
@@ -874,7 +885,7 @@ class TestEnsureDesktopEntry:
             patch("terok.cli.commands.setup.shutil.which", return_value=None),
             patch("terok.cli.commands._desktop_entry.install_desktop_entry") as install,
         ):
-            _ensure_desktop_entry(check_only=False)
+            assert _ensure_desktop_entry(check_only=False) is True
         install.assert_called_once_with("terok-tui")
 
     def test_install_failure_soft_fails_with_fail_status(
