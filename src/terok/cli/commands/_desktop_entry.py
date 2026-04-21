@@ -172,7 +172,7 @@ def _run_xdg(binary: str, *args: str) -> None:
         return
     # nosec B603 — argv is our own literal binary path plus subcommand/arg tokens.
     try:
-        subprocess.run(  # noqa: S603  # nosec B603
+        result = subprocess.run(  # noqa: S603  # nosec B603
             [found, *args],
             check=False,
             capture_output=True,
@@ -180,6 +180,20 @@ def _run_xdg(binary: str, *args: str) -> None:
         )
     except (OSError, subprocess.TimeoutExpired) as exc:
         _log.debug("%s %s failed: %s", binary, args, exc)
+        return
+    if result.returncode != 0:
+        # ``check=False`` means we never raise — but an operator chasing
+        # a weird install state needs something to grep for.  Capture
+        # the rc + stderr at DEBUG so ``terok setup`` stays quiet while
+        # ``journalctl --user`` + log-capture wrappers can still surface
+        # the real error.
+        _log.debug(
+            "%s %s exited with %d: %s",
+            binary,
+            args,
+            result.returncode,
+            (result.stderr or b"").decode(errors="replace").strip(),
+        )
 
 
 # ── Manual fallback ───────────────────────────────────────────────────
@@ -267,7 +281,7 @@ def _run_cache_refresh(binary: str, args: list[str | Path]) -> None:
         return
     # nosec B603 — argv is a literal + controlled Path; no shell, no user input.
     try:
-        subprocess.run(  # noqa: S603  # nosec B603
+        result = subprocess.run(  # noqa: S603  # nosec B603
             [found, *[str(a) for a in args]],
             check=False,
             capture_output=True,
@@ -275,3 +289,13 @@ def _run_cache_refresh(binary: str, args: list[str | Path]) -> None:
         )
     except (OSError, subprocess.TimeoutExpired) as exc:
         _log.debug("%s refresh failed: %s", binary, exc)
+        return
+    if result.returncode != 0:
+        # Same DEBUG trail as _run_xdg — ``check=False`` keeps us quiet,
+        # the log makes the failure diagnosable after the fact.
+        _log.debug(
+            "%s exited with %d: %s",
+            binary,
+            result.returncode,
+            (result.stderr or b"").decode(errors="replace").strip(),
+        )

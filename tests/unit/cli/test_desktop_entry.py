@@ -147,6 +147,32 @@ class TestInstallViaXdgUtils:
         ):
             desktop.install_desktop_entry("terok-tui")  # must not raise
 
+    def test_non_zero_xdg_exit_is_logged(
+        self,
+        xdg_data_home: Path,
+        caplog: pytest.LogCaptureFixture,
+    ) -> None:
+        """A non-zero xdg-utils exit lands in the DEBUG log with stderr + rc."""
+        import logging
+
+        caplog.set_level(logging.DEBUG, logger="terok.cli.commands._desktop_entry")
+        failing = subprocess.CompletedProcess(
+            args=[],
+            returncode=3,
+            stdout=b"",
+            stderr=b"xdg-desktop-menu: no writable system menu directory found",
+        )
+        with (
+            mock.patch(
+                "terok.cli.commands._desktop_entry.shutil.which",
+                side_effect=_which_everything,
+            ),
+            mock.patch("terok.cli.commands._desktop_entry.subprocess.run", return_value=failing),
+        ):
+            desktop.install_desktop_entry("terok-tui")
+        assert "exited with 3" in caplog.text
+        assert "no writable system menu directory" in caplog.text
+
 
 # ── Manual fallback (no xdg-utils) ────────────────────────────────────
 
@@ -222,6 +248,32 @@ class TestInstallManualFallback:
             ),
         ):
             desktop.install_desktop_entry("terok-tui")  # must not raise
+
+    def test_non_zero_cache_refresh_exit_is_logged(
+        self,
+        xdg_data_home: Path,
+        caplog: pytest.LogCaptureFixture,
+    ) -> None:
+        """A non-zero ``update-desktop-database`` / ``gtk-update-icon-cache`` exit is DEBUG-logged."""
+        import logging
+
+        caplog.set_level(logging.DEBUG, logger="terok.cli.commands._desktop_entry")
+        failing = subprocess.CompletedProcess(
+            args=[],
+            returncode=1,
+            stdout=b"",
+            stderr=b"gtk-update-icon-cache: Cache file is up to date",
+        )
+        with (
+            mock.patch(
+                "terok.cli.commands._desktop_entry.shutil.which",
+                side_effect=_which_no_xdg_utils,
+            ),
+            mock.patch("terok.cli.commands._desktop_entry.subprocess.run", return_value=failing),
+        ):
+            desktop.install_desktop_entry("terok-tui")
+        assert "exited with 1" in caplog.text
+        assert "Cache file is up to date" in caplog.text
 
 
 class TestUninstallDesktopEntry:
