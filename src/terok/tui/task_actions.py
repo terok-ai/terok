@@ -713,7 +713,7 @@ class TaskActionsMixin:
         )
 
     def _action_shield_down(self) -> None:
-        """Drop the shield (bypass mode) for the current task."""
+        """Bring the shield down for the current task (no egress filtering)."""
         if self._notify_shield_bypassed():
             return
         self._action_shield_toggle("down", shield_down)
