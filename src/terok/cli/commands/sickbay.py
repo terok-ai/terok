@@ -307,7 +307,7 @@ def _check_unfired_hooks(
 
 
 def _check_shield_annotations(project_id: str | None, task_id: str | None) -> list[_CheckResult]:
-    """Verify every running task's container carries the expected shield annotation."""
+    """Check that every running task's container carries the expected shield annotation."""
     results: list[_CheckResult] = []
 
     if project_id:
@@ -428,7 +428,7 @@ def _check_containers(
     *,
     fix: bool,
 ) -> list[_CheckResult]:
-    """Run in-container health checks for running tasks.
+    """Check running task containers via the in-container doctor.
 
     The per-task running-state check is handled inside
     ``run_container_doctor`` — it returns an informational result for
@@ -465,7 +465,7 @@ def _check_containers(
 
 
 def _check_selinux_policy() -> _CheckResult:
-    """Render ``check_selinux_status`` as a sickbay check result tuple.
+    """Check SELinux policy prerequisites for socket-based services.
 
     The decision tree (tcp vs socket, enforcing vs permissive, policy
     installed, libselinux loadable) lives in
