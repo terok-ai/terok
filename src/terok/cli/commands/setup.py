@@ -121,6 +121,18 @@ def dispatch(args: argparse.Namespace) -> bool:
 _MANDATORY_BINARIES = ("podman", "git", "ssh-keygen")
 _RECOMMENDED_BINARIES = ("nft", "dnsmasq", "dig")
 
+#: Suffix used by every ``check_only`` phase to qualify the ``ok``/``FAIL``
+#: label with the literal on-disk presence (``ok (installed)`` vs
+#: ``FAIL (not installed)``).  Factored out because three phases print
+#: the pair verbatim; a typo in one would produce inconsistent output.
+_CHECK_SUFFIX_PRESENT = " (installed)"
+_CHECK_SUFFIX_ABSENT = " (not installed)"
+
+
+def _presence_suffix(present: bool) -> str:
+    """Return the trailing ``(installed)``/``(not installed)`` marker for check-only output."""
+    return _CHECK_SUFFIX_PRESENT if present else _CHECK_SUFFIX_ABSENT
+
 
 def _status_label(ok: bool) -> str:
     """Return a coloured status marker."""
@@ -359,7 +371,7 @@ def _ensure_bridge_reader(*, check_only: bool) -> bool:
     if check_only:
         present = dest.is_file()
         label = _status_label(present)
-        suffix = " (installed)" if present else " (not installed)"
+        suffix = _presence_suffix(present)
         print(f"{label}{suffix}")
         return present
 
@@ -381,7 +393,7 @@ def _ensure_dbus_hub(*, check_only: bool) -> bool:
     if check_only:
         present = unit_path.is_file()
         label = _status_label(present)
-        suffix = " (installed)" if present else " (not installed)"
+        suffix = _presence_suffix(present)
         print(f"{label}{suffix}")
         return present
 
@@ -467,7 +479,7 @@ def _ensure_desktop_entry(*, check_only: bool) -> bool:
     if check_only:
         present = is_desktop_entry_installed()
         label = _status_label(present)
-        suffix = " (installed)" if present else " (not installed)"
+        suffix = _presence_suffix(present)
         print(f"{label}{suffix}")
         return present
 

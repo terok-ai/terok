@@ -137,9 +137,9 @@ def _run_cache_refresh(binary: str, args: list[str | Path]) -> None:
     found = shutil.which(binary)
     if not found:
         return
+    # nosec B603 — argv is a literal + controlled Path; no shell, no user input.
     try:
-        # nosec B603 — argv is a literal + controlled Path; no shell, no user input.
-        subprocess.run(  # noqa: S603
+        subprocess.run(  # noqa: S603  # nosec B603
             [found, *[str(a) for a in args]],
             check=False,
             capture_output=True,
