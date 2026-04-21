@@ -1055,13 +1055,16 @@ def _resolve_chain(
     return [repo], None, None
 
 
-@click.group()
+_CLICK_CONTEXT = {"help_option_names": ["-h", "--help"]}
+
+
+@click.group(context_settings=_CLICK_CONTEXT)
 def cli():
     """Cascading release chain for the terok package family."""
     _check_gh_version()
 
 
-@cli.command()
+@cli.command(context_settings=_CLICK_CONTEXT)
 @click.argument("repos", nargs=-1)
 @click.option("--version-step", default="patch", type=click.Choice(["major", "minor", "patch"]))
 @click.option("--version-step-uniform", is_flag=True)
@@ -1187,7 +1190,7 @@ def quick(
     console.print(f"\nElapsed: {elapsed:.0f}s")
 
 
-@cli.command("open")
+@cli.command("open", context_settings=_CLICK_CONTEXT)
 @click.argument("branch")
 @click.argument("repos", nargs=-1, required=True)
 @click.option("-p", "--pretend", is_flag=True, help="Dry run")
@@ -1295,7 +1298,7 @@ def open_chain(branch, repos, pretend, org, fork, cache_dir):
     console.print()
 
 
-@cli.command("plan")
+@cli.command("plan", context_settings=_CLICK_CONTEXT)
 @click.argument("repos", nargs=-1)
 @click.option("-o", "--output", type=click.Path(), help="Output plan file")
 @click.option("--version-step", default="patch", type=click.Choice(["major", "minor", "patch"]))
@@ -1358,7 +1361,7 @@ def plan_cmd(
     console.print(f"Plan written to {out}")
 
 
-@cli.command()
+@cli.command(context_settings=_CLICK_CONTEXT)
 @click.argument("plan_file", type=click.Path(exists=True))
 @click.option("--org", default=_env("TEROK_GH_ORG", "terok-ai"))
 @click.option("--fork", default=_env("TEROK_GH_FORK"))
@@ -1376,7 +1379,7 @@ def simulate(plan_file, org, fork, cache_dir):
     console.print("\n[green]Simulation complete — no issues found.[/]")
 
 
-@cli.command()
+@cli.command(context_settings=_CLICK_CONTEXT)
 @click.argument("plan_file", type=click.Path(exists=True))
 @click.option("-y", "--yes", is_flag=True)
 @click.option("--skip-checks", is_flag=True)
