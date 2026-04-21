@@ -179,6 +179,67 @@ class TestInstallViaXdgUtils:
         ):
             desktop.install_desktop_entry("terok-tui")  # must not raise
 
+    def test_xdg_failure_falls_back_to_manual(self, xdg_data_home: Path) -> None:
+        """xdg-utils on PATH but calls fail → manual path runs, backend is FALLBACK.
+
+        The whole point of the backend return: XDG_UTILS means xdg-utils
+        *actually did the work*, not "we called it and hoped".  A broken
+        front-end (readonly menu dir, DE-detection quirk) has to read as
+        FALLBACK so the operator sees the WARN.
+        """
+        failing = subprocess.CompletedProcess(
+            args=[],
+            returncode=3,
+            stdout=b"",
+            stderr=b"xdg-desktop-menu: no writable system menu directory found",
+        )
+        with (
+            mock.patch(
+                "terok.cli.commands._desktop_entry.shutil.which",
+                side_effect=_which_everything,
+            ),
+            mock.patch(
+                "terok.cli.commands._desktop_entry.subprocess.run",
+                return_value=failing,
+            ),
+        ):
+            backend = desktop.install_desktop_entry("terok-tui")
+
+        assert backend is desktop.DesktopBackend.FALLBACK
+        # Manual path actually landed the files — a FALLBACK label with
+        # no files on disk would be the worst of both worlds.
+        assert desktop.is_desktop_entry_installed()
+
+    def test_xdg_partial_failure_still_falls_back(self, xdg_data_home: Path) -> None:
+        """Menu install OK but icon install fails → still FALLBACK.
+
+        A half-success is the nastiest case — ``.desktop`` would be
+        registered with ``Icon=terok`` but the theme entry would be
+        missing, which is exactly the bug this whole change is about.
+        """
+        ok = subprocess.CompletedProcess(args=[], returncode=0, stdout=b"", stderr=b"")
+        fail = subprocess.CompletedProcess(args=[], returncode=2, stdout=b"", stderr=b"boom")
+        # _install_via_xdg_utils runs menu first, icon second — make
+        # only the icon call fail.  The cache-refresh subprocesses from
+        # the manual fallback run after and also see this sequence, so
+        # we pad with successes.
+        returns = iter([ok, fail, ok, ok, ok, ok])
+
+        with (
+            mock.patch(
+                "terok.cli.commands._desktop_entry.shutil.which",
+                side_effect=_which_everything,
+            ),
+            mock.patch(
+                "terok.cli.commands._desktop_entry.subprocess.run",
+                side_effect=lambda *a, **kw: next(returns),
+            ),
+        ):
+            backend = desktop.install_desktop_entry("terok-tui")
+
+        assert backend is desktop.DesktopBackend.FALLBACK
+        assert desktop.is_desktop_entry_installed()
+
     def test_non_zero_xdg_exit_is_logged(
         self,
         xdg_data_home: Path,

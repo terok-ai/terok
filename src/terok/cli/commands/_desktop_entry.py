@@ -118,9 +118,12 @@ def install_desktop_entry(bin_path: str | Path) -> DesktopBackend:
         _load_template().replace("{{BIN}}", str(bin_path)).replace("{{TRY_EXEC}}", str(bin_path))
     )
     logo_bytes = _resource_dir().joinpath(_LOGO_NAME).read_bytes()
-    if _xdg_utils_available():
-        _install_via_xdg_utils(rendered, logo_bytes)
+    if _xdg_utils_available() and _install_via_xdg_utils(rendered, logo_bytes):
         return DesktopBackend.XDG_UTILS
+    # xdg-utils missing *or* it barfed (readonly menu dir, timeout, bad
+    # DE detection) — land the files ourselves so the operator still
+    # gets a working launcher, and report FALLBACK so the caller can
+    # warn.  The DEBUG log carries the xdg-utils failure detail.
     _install_manually(rendered, logo_bytes)
     return DesktopBackend.FALLBACK
 
@@ -158,7 +161,7 @@ def _xdg_utils_available() -> bool:
     return bool(shutil.which(_XDG_MENU_BINARY) and shutil.which(_XDG_ICON_RESOURCE_BINARY))
 
 
-def _install_via_xdg_utils(desktop_contents: str, logo_bytes: bytes) -> None:
+def _install_via_xdg_utils(desktop_contents: str, logo_bytes: bytes) -> bool:
     """Stage the rendered files and delegate install + cache refresh to xdg-utils.
 
     ``xdg-desktop-menu install`` runs ``desktop-file-install`` (catches
@@ -170,6 +173,13 @@ def _install_via_xdg_utils(desktop_contents: str, logo_bytes: bytes) -> None:
     tempdir (xdg-desktop-menu names it by source basename) and pass the
     icon resource name (``terok``) explicitly to ``xdg-icon-resource``
     so the theme entry is deterministic regardless of source filename.
+
+    Returns:
+        True only when *both* front-ends reported success.  A partial
+        install (menu OK, icon failed — or vice versa) reads as False
+        so the caller can retry via the manual path and land in a
+        consistent state rather than advertising XDG_UTILS for an
+        install that half-failed.
     """
     with tempfile.TemporaryDirectory(prefix="terok-desktop-") as td:
         staged_dir = Path(td)
@@ -177,13 +187,13 @@ def _install_via_xdg_utils(desktop_contents: str, logo_bytes: bytes) -> None:
         staged_icon = staged_dir / _ICON_FILE
         staged_desktop.write_text(desktop_contents, encoding="utf-8")
         staged_icon.write_bytes(logo_bytes)
-        _run_xdg(
+        menu_ok = _run_xdg(
             _XDG_MENU_BINARY,
             "install",
             "--novendor",
             str(staged_desktop),
         )
-        _run_xdg(
+        icon_ok = _run_xdg(
             _XDG_ICON_RESOURCE_BINARY,
             "install",
             "--novendor",
@@ -194,6 +204,7 @@ def _install_via_xdg_utils(desktop_contents: str, logo_bytes: bytes) -> None:
             str(staged_icon),
             APP_NAME,
         )
+    return menu_ok and icon_ok
 
 
 def _uninstall_via_xdg_utils() -> None:
@@ -210,11 +221,18 @@ def _uninstall_via_xdg_utils() -> None:
     )
 
 
-def _run_xdg(binary: str, *args: str) -> None:
-    """Invoke an xdg-utils front-end, swallow failures — install is best-effort."""
+def _run_xdg(binary: str, *args: str) -> bool:
+    """Invoke an xdg-utils front-end; return True only on rc-0, False otherwise.
+
+    Never raises — a hung / missing / broken front-end lands in DEBUG
+    so an operator chasing a weird install state can grep
+    ``journalctl --user`` without ``terok setup`` exploding.  The
+    return value lets :func:`_install_via_xdg_utils` decide whether to
+    hand off to the manual fallback.
+    """
     found = shutil.which(binary)
     if not found:  # pragma: no cover — gated by _xdg_utils_available
-        return
+        return False
     # nosec B603 — argv is our own literal binary path plus subcommand/arg tokens.
     try:
         result = subprocess.run(  # noqa: S603  # nosec B603
@@ -225,13 +243,8 @@ def _run_xdg(binary: str, *args: str) -> None:
         )
     except (OSError, subprocess.TimeoutExpired) as exc:
         _log.debug("%s %s failed: %s", binary, args, exc)
-        return
+        return False
     if result.returncode != 0:
-        # ``check=False`` means we never raise — but an operator chasing
-        # a weird install state needs something to grep for.  Capture
-        # the rc + stderr at DEBUG so ``terok setup`` stays quiet while
-        # ``journalctl --user`` + log-capture wrappers can still surface
-        # the real error.
         _log.debug(
             "%s %s exited with %d: %s",
             binary,
@@ -239,6 +252,8 @@ def _run_xdg(binary: str, *args: str) -> None:
             result.returncode,
             (result.stderr or b"").decode(errors="replace").strip(),
         )
+        return False
+    return True
 
 
 # ── Manual fallback ───────────────────────────────────────────────────

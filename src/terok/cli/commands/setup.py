@@ -499,11 +499,12 @@ def _ensure_desktop_entry(*, check_only: bool) -> bool:
     else:
         # The fallback writes the right XDG paths on spec-compliant
         # hosts but skips desktop-file-install validation and can't
-        # cover DE-specific layout drift — flag so the operator knows
-        # to install xdg-utils for the robust path.
+        # cover DE-specific layout drift.  We also land here when
+        # xdg-utils *is* on PATH but its install calls failed (DEBUG
+        # log carries the detail) — "missing or failed" covers both.
         print(
             f"{_warn_label()} "
-            f"(installed via built-in fallback — xdg-utils not on PATH; "
+            f"(installed via built-in fallback — xdg-utils missing or failed; "
             f"install it for standard XDG registration)"
         )
     return True
