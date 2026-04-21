@@ -293,18 +293,7 @@ def _ensure_gate(*, check_only: bool, color: bool) -> bool:
 
 
 def _ensure_dbus_bridge(*, check_only: bool, enabled: bool, color: bool) -> bool:
-    """Install the D-Bus clearance bridge: shield reader resource + dbus hub unit.
-
-    Two moving parts: a stdlib-only NFLOG reader script (shipped as a
-    terok-shield resource) and the terok-dbus systemd user unit that owns
-    ``org.terok.Shield1``.  When *enabled* is ``False`` this phase removes
-    any prior installation so the nft hook pair is the only thing on disk.
-
-    Requires ``dbus-send`` on the host; if missing we emit a remediation
-    hint but still proceed (the reader soft-fails at hook-fire time).
-
-    Returns ``True`` on success (installed, or skipped intentionally).
-    """
+    """Install the D-Bus clearance bridge: shield reader resource + dbus hub unit."""
     if not enabled:
         return _disable_dbus_bridge(check_only=check_only, color=color)
 
@@ -376,18 +365,18 @@ def _disable_dbus_bridge(*, check_only: bool, color: bool) -> bool:
     permissions denied on the systemd unit path).  ``True`` on a clean
     teardown or an already-absent install.
     """
+    _stage_begin("D-Bus bridge")
     if check_only:
-        print(f"  D-Bus bridge     {_warn_label(color)} (opted out via --no-dbus-bridge)")
+        print(f"{_warn_label(color)} (opted out via --no-dbus-bridge)")
         return True
 
     from terok_sandbox import uninstall_shield_bridge
 
-    ok = True
     try:
         uninstall_shield_bridge()
     except Exception as exc:  # noqa: BLE001
-        print(f"  D-Bus bridge     {_warn_label(color)} (reader uninstall: {exc})")
-        ok = False
+        print(f"{_warn_label(color)} (reader uninstall: {exc})")
+        return False
 
     unit_path = _user_systemd_dir() / "terok-dbus.service"
     if unit_path.is_file():
@@ -395,10 +384,10 @@ def _disable_dbus_bridge(*, check_only: bool, color: bool) -> bool:
             unit_path.unlink(missing_ok=True)
             _disable_user_service("terok-dbus")
         except OSError as exc:
-            print(f"  D-Bus bridge     {_warn_label(color)} (unit removal: {exc})")
-            ok = False
-    print(f"  D-Bus bridge     {_warn_label(color)} (disabled — audit-minimal mode)")
-    return ok
+            print(f"{_warn_label(color)} (unit removal: {exc})")
+            return False
+    print(f"{_warn_label(color)} (disabled — audit-minimal mode)")
+    return True
 
 
 def _check_dbus_send(color: bool) -> bool:
@@ -435,35 +424,26 @@ def _enable_user_service(unit: str) -> None:
     Silent on hosts without ``systemctl`` — keeps the check-only path
     usable on e.g. CI images without a user systemd manager.
     """
-    systemctl = shutil.which("systemctl")
-    if not systemctl:
-        return
-    import subprocess as _sp
-
-    for argv in (
-        [systemctl, "--user", "daemon-reload"],
-        [systemctl, "--user", "enable", unit],
-        [systemctl, "--user", "restart", unit],
-    ):
-        # nosec B603 — argv is a fixed literal plus a unit name we control;
-        # no shell involvement, no user-supplied tokens.
-        _sp.run(argv, check=False, capture_output=True)  # noqa: S603
+    _run_systemctl("--user", "daemon-reload")
+    _run_systemctl("--user", "enable", unit)
+    _run_systemctl("--user", "restart", unit)
 
 
 def _disable_user_service(unit: str) -> None:
     """``systemctl --user disable --now <unit>`` — tolerate missing systemctl."""
+    _run_systemctl("--user", "disable", "--now", unit)
+
+
+def _run_systemctl(*args: str) -> None:
+    """Invoke ``systemctl`` with *args*, suppressing output; no-op if absent."""
     systemctl = shutil.which("systemctl")
     if not systemctl:
         return
     import subprocess as _sp
 
-    # nosec B603 — argv is a fixed literal plus a unit name we control;
-    # no shell involvement, no user-supplied tokens.
-    _sp.run(  # noqa: S603
-        [systemctl, "--user", "disable", "--now", unit],
-        check=False,
-        capture_output=True,
-    )
+    # nosec B603 — argv is systemctl plus literal flags and unit names we
+    # control; no shell involvement, no user-supplied tokens.
+    _sp.run([systemctl, *args], check=False, capture_output=True)  # noqa: S603
 
 
 def _check_selinux_policy(*, color: bool) -> bool:

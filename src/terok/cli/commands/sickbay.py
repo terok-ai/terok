@@ -221,18 +221,11 @@ def _reconcile_post_stop(
 def _check_task_shield_annotation(
     pid: str, tid: str, project: ProjectConfig
 ) -> _CheckResult | None:
-    """Cross-check terok's task dir against the container's ``terok.shield.state_dir``.
+    """Check that task_dir agrees with the container's ``terok.shield.state_dir``.
 
-    Two orchestrators own the data on either side of this handoff — terok
-    writes ``<task_dir>/shield/`` at pre_start, and podman stores the
-    annotation back on the container.  If they disagree, a verdict
-    dispatched from the bottom-up path (hub or TUI, which only know the
-    container name) will write to the wrong state — or fail to find
-    anything at all.  This check catches the drift before it bites.
-
-    Fires only when the container is actually running with a shield state
-    dir present — skips non-shielded containers, skips stopped ones (those
-    are the post_stop hook's territory).
+    Drift between the two sides sends a verdict dispatched from the hub or
+    TUI (which only know the container name) to the wrong state dir, or to
+    nothing at all.  Non-shielded containers and stopped ones are skipped.
     """
     meta_path = tasks_meta_dir(pid) / f"{tid}.yml"
     if not meta_path.is_file():
@@ -258,14 +251,14 @@ def _check_task_shield_annotation(
         return (
             "warn",
             label,
-            f"shield dir {expected} exists but container {cname!r} carries no "
-            "terok.shield.state_dir annotation — verdict dispatch will miss",
+            f"{cname!r}: no terok.shield.state_dir annotation, expected {expected} "
+            "— verdict dispatch will miss",
         )
     if actual.resolve() != expected:
         return (
             "warn",
             label,
-            f"shield annotation on {cname!r} points at {actual}, expected {expected} "
+            f"{cname!r}: annotation points at {actual}, expected {expected} "
             "— filesystem moved without re-running pre_start?",
         )
     return None
