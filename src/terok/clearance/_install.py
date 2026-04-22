@@ -20,7 +20,7 @@ from pathlib import Path
 
 UNIT_NAME = "terok-clearance-notifier.service"
 
-_UNIT_VERSION = 1
+_UNIT_VERSION = 2
 """Bump when the unit template's semantics change.
 
 Substituted into ``{{UNIT_VERSION}}`` at render time so

@@ -68,3 +68,11 @@ async def _teardown(subscriber: EventSubscriber, notifier: Notifier) -> None:
 def main() -> None:  # pragma: no cover — CLI entry point
     """Systemd-unit ``ExecStart`` target — launches :func:`run_notifier` on an event loop."""
     asyncio.run(run_notifier())
+
+
+if __name__ == "__main__":
+    # Without this guard ``python -m terok.clearance.notifier.app`` under
+    # systemd would import the module, define ``main``, and exit 0 without
+    # running it — the notifier silently never started and every desktop
+    # popup went missing.
+    main()

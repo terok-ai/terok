@@ -630,6 +630,10 @@ def _cmd_sickbay(
             reporter.begin(label)
             status, _, detail = check()
             reporter.end(status, detail)
+        # Visual separator between host-wide checks and per-project /
+        # per-task rows that follow — same intent as ``terok setup``'s
+        # blank line between stage groups.
+        print()
 
     for status, label, detail in _check_unfired_hooks(project_id, task_id, fix=fix):
         reporter.emit(status, label, detail)
