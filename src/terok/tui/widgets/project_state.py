@@ -51,6 +51,30 @@ def render_project_loading(
     return Text("\n").join(lines)
 
 
+def render_broken_project(bp: BrokenProject, css_variables: dict[str, str] | None = None) -> Text:
+    """Render a damaged project's validation error as a Rich Text block (#565).
+
+    The config path plus the raw error message are enough for the user to
+    open ``project.yml`` in an editor and fix whatever pydantic or the
+    YAML parser flagged — no extra round-trip to the CLI.
+    """
+    variables = css_variables or {}
+    error_color = variables.get("error", "red")
+    dim = Style(dim=True)
+    header = Text(f"Project:   {bp.id} ", style=Style(color=error_color, bold=True))
+    header.append("(broken)", style=Style(color=error_color))
+    lines = [
+        header,
+        Text(""),
+        Text("This project's configuration could not be loaded:"),
+        Text(""),
+        Text(bp.error, style=Style(color=error_color)),
+        Text(""),
+        Text(f"Config: {bp.config_path}", style=dim),
+    ]
+    return Text("\n").join(lines)
+
+
 def render_project_details(
     project: ProjectConfig | None,
     state: dict | None,
@@ -260,24 +284,5 @@ class ProjectState(Static):
         )
 
     def set_broken(self, bp: BrokenProject) -> None:
-        """Render a broken project's validation error in place of the normal state.
-
-        The config path plus the raw error message are enough for the user to
-        open ``project.yml`` in an editor and fix whatever pydantic or the
-        YAML parser flagged — no extra round-trip to the CLI (#565).
-        """
-        variables = _get_css_variables(self)
-        error_color = variables.get("error", "red")
-        dim = Style(dim=True)
-        header = Text(f"Project:   {bp.id} ", style=Style(color=error_color, bold=True))
-        header.append("(broken)", style=Style(color=error_color))
-        lines = [
-            header,
-            Text(""),
-            Text("This project's configuration could not be loaded:"),
-            Text(""),
-            Text(bp.error, style=Style(color=error_color)),
-            Text(""),
-            Text(f"Config: {bp.config_path}", style=dim),
-        ]
-        self.update(Text("\n").join(lines))
+        """Show *bp*'s validation error in place of the normal infrastructure readout."""
+        self.update(render_broken_project(bp, _get_css_variables(self)))

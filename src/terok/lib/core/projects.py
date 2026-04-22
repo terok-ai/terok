@@ -353,27 +353,6 @@ class BrokenProject:
     error: str
 
 
-def _discover_project_paths() -> dict[str, Path]:
-    """Map each on-disk project ID to its ``project.yml`` path.
-
-    User scope wins over system scope for collisions — matches how
-    :func:`load_project` resolves the effective config.  Returning the
-    path alongside the ID lets :func:`discover_projects` carry the
-    location forward to ``BrokenProject`` without re-walking.
-    """
-    paths: dict[str, Path] = {}
-    for root in (user_projects_dir(), projects_dir()):
-        if not root.is_dir():
-            continue
-        for d in root.iterdir():
-            if not d.is_dir() or d.name in paths:
-                continue
-            yml = d / _PROJECT_YML
-            if yml.is_file() and is_valid_project_id(d.name):
-                paths[d.name] = yml
-    return paths
-
-
 def discover_projects() -> tuple[list[ProjectConfig], list[BrokenProject]]:
     """Load every project on disk, splitting successes from config-level failures.
 
@@ -413,6 +392,27 @@ def list_projects() -> list[ProjectConfig]:
         logger.warning("Skipping broken project '%s': %s", bp.id, bp.error.replace("\n", "\\n"))
         print(f"warning: skipping broken project '{bp.id}': {bp.error}", file=sys.stderr)
     return valid
+
+
+def _discover_project_paths() -> dict[str, Path]:
+    """Map each on-disk project ID to its ``project.yml`` path.
+
+    User scope wins over system scope for collisions — matches how
+    :func:`load_project` resolves the effective config.  Returning the
+    path alongside the ID lets :func:`discover_projects` carry the
+    location forward to ``BrokenProject`` without re-walking.
+    """
+    paths: dict[str, Path] = {}
+    for root in (user_projects_dir(), projects_dir()):
+        if not root.is_dir():
+            continue
+        for d in root.iterdir():
+            if not d.is_dir() or d.name in paths:
+                continue
+            yml = d / _PROJECT_YML
+            if yml.is_file() and is_valid_project_id(d.name):
+                paths[d.name] = yml
+    return paths
 
 
 _CONTROL_CHARS = re.compile(r"[\x00-\x08\x0b-\x1f\x7f-\x9f]")

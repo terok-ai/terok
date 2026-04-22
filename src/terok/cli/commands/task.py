@@ -318,78 +318,25 @@ def dispatch(args: argparse.Namespace) -> bool:
 
 
 def _cmd_task_run(args: argparse.Namespace) -> None:
-    """Handle ``terok task run`` — create a task and run it in the chosen mode.
-
-    The L2 image preflight fires inside each mode branch *after* that mode's
-    cheap validation so a user who forgets e.g. ``--prompt`` in headless mode
-    sees the argparse-style error before being asked whether to spend minutes
-    building an image.
-    """
+    """Dispatch ``terok task run`` to the runner for the chosen mode."""
     mode = getattr(args, "mode", "cli")
-
     if mode == "headless":
         _cmd_task_run_headless(args)
     elif mode == "toad":
-        _ensure_project_image(args.project_id)
         _cmd_task_run_interactive(args, runner=task_run_toad, attach=False)
     else:  # mode == "cli"
-        _ensure_project_image(args.project_id)
         _cmd_task_run_interactive(args, runner=task_run_cli, attach=_resolve_attach(args))
 
 
-def _resolve_attach(args: argparse.Namespace) -> bool:
-    """Resolve --attach/--no-attach for ``task run --mode=cli``.
+def _cmd_task_run_interactive(args: argparse.Namespace, *, runner: Any, attach: bool) -> None:
+    """Create a task, launch its container, and optionally attach to it.
 
-    Default is True on an interactive TTY (``docker run -it`` mental model),
-    False otherwise — scripts piping the output want "start it and return"
-    rather than ``execvp`` into an interactive shell.
-    """
-    if args.attach is not None:
-        return bool(args.attach)
-    return sys.stdin.isatty() and sys.stdout.isatty()
-
-
-def _ensure_project_image(project_id: str) -> None:
-    """Check the project's L2 image exists; offer to build it when missing.
-
-    TTY → interactive ``Build now? [Y/n]`` prompt, then ``build_images()``
-    inline.  Non-TTY → exit with a hint so scripts stay deterministic.
-    """
-    if project_image_exists(project_id):
-        return
-
-    hint = (
-        f"Image for project {project_id!r} is not present. "
-        f"Build it first: terok project build {project_id}"
-    )
-    if not (sys.stdin.isatty() and sys.stdout.isatty()):
-        raise SystemExit(hint)
-
-    try:
-        answer = (
-            input(f"Image for project {project_id!r} is missing. Build now? [Y/n]: ")
-            .strip()
-            .lower()
-        )
-    except (EOFError, KeyboardInterrupt):
-        print()
-        raise SystemExit(hint) from None
-
-    if answer in ("n", "no"):
-        raise SystemExit(hint)
-
-    build_images(project_id)
-
-
-def _cmd_task_run_interactive(
-    args: argparse.Namespace, *, runner: Any, attach: bool = False
-) -> None:
-    """Create + run for interactive modes (cli, toad).
-
-    When *attach* is true (CLI mode on a TTY), ``execvp`` into ``task_login``
-    after the container reports ready.  Toad prints its URL + token and returns.
+    *runner* is the mode-specific launcher (CLI or Toad).  Toad prints a
+    URL + token and returns; CLI under *attach* execs into ``task_login``
+    once the container reports ready.
     """
     pid = args.project_id
+    _ensure_project_image(pid)
     tid = task_new(pid, name=getattr(args, "name", None))
     runner(
         pid,
@@ -435,6 +382,50 @@ def _cmd_task_run_headless(args: argparse.Namespace) -> None:
             unrestricted=_resolve_unrestricted(args),
         )
     )
+
+
+def _resolve_attach(args: argparse.Namespace) -> bool:
+    """Decide whether a CLI-mode ``task run`` execs into ``terok login`` on ready.
+
+    Default is True on an interactive TTY (``docker run -it`` mental model),
+    False otherwise — scripts piping the output want "start it and return"
+    rather than ``execvp`` into an interactive shell.
+    """
+    if args.attach is not None:
+        return bool(args.attach)
+    return sys.stdin.isatty() and sys.stdout.isatty()
+
+
+def _ensure_project_image(project_id: str) -> None:
+    """Ensure the project's L2 image exists, offering to build it when missing.
+
+    TTY → interactive ``Build now? [Y/n]`` prompt, then ``build_images()``
+    inline.  Non-TTY → exit with a hint so scripts stay deterministic.
+    """
+    if project_image_exists(project_id):
+        return
+
+    hint = (
+        f"Image for project {project_id!r} is not present. "
+        f"Build it first: terok project build {project_id}"
+    )
+    if not (sys.stdin.isatty() and sys.stdout.isatty()):
+        raise SystemExit(hint)
+
+    try:
+        answer = (
+            input(f"Image for project {project_id!r} is missing. Build now? [Y/n]: ")
+            .strip()
+            .lower()
+        )
+    except (EOFError, KeyboardInterrupt):
+        print()
+        raise SystemExit(hint) from None
+
+    if answer in ("n", "no"):
+        raise SystemExit(hint)
+
+    build_images(project_id)
 
 
 def _read_instructions(instructions_path: str | None) -> str | None:

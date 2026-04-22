@@ -39,27 +39,19 @@ from ..util.fs import ensure_dir
 # ---------- helpers ----------
 
 
-def _image_exists(image: str) -> bool:
-    """Check if a container image exists locally.
+def image_exists(image: str) -> bool:
+    """Return True when *image* is present in the local container store."""
+    return _image_exists(image)
 
-    Thin wrapper over the runtime's ``Image.exists`` check, kept as a
-    same-module symbol so existing test mocks (``patch("terok.lib.
-    orchestration.image._image_exists")``) keep working.
+
+def _image_exists(image: str) -> bool:
+    """Same check as :func:`image_exists`, kept as a separate symbol for tests.
+
+    The public function resolves this name on every call, so
+    ``patch("terok.lib.orchestration.image._image_exists", fake)`` reaches
+    every caller — an ``image_exists = _image_exists`` alias would not.
     """
     return _rt.get_runtime().image(image).exists()
-
-
-def image_exists(image: str) -> bool:
-    """Public wrapper around :func:`_image_exists` that stays patch-transparent.
-
-    ``image_exists = _image_exists`` would capture the reference at import
-    time, so ``monkeypatch.setattr(..., "_image_exists", fake)`` would only
-    affect same-module callers — the facade / TUI would keep using the
-    original implementation.  The delegating form below looks the module
-    attribute up at call time, so the underscore-form monkeypatches that
-    existing tests rely on continue to propagate to public callers.
-    """
-    return _image_exists(image)
 
 
 # ---------- Hashing ----------

@@ -482,68 +482,79 @@ if _HAS_TEXTUAL:
         # ---------- Helpers ----------
 
         async def refresh_projects(self) -> None:
-            """Reload all projects and update the project list widget."""
-            proj_widget = self.query_one("#project-list", ProjectList)
+            """Reload projects from disk and rebuild every dependent pane."""
             projects, broken = discover_projects()
-            self._projects_by_id = {proj.id: proj for proj in projects}
+            self._projects_by_id = {p.id: p for p in projects}
             self._broken_by_id = {bp.id: bp for bp in broken}
+
+            proj_widget = self.query_one("#project-list", ProjectList)
             proj_widget.set_projects(projects, broken)
+            self._announce_newly_broken(broken)
 
-            # Surface broken configs with a one-shot notification so users on
-            # an upgrade who lost a project to schema drift see it immediately
-            # rather than having to select the row to discover it (#565).  Only
-            # fire when the set of broken IDs has changed since the last
-            # announcement so repeated refreshes don't spam the operator.
-            current_broken_ids = {bp.id for bp in broken}
-            if current_broken_ids and current_broken_ids != self._announced_broken_ids:
-                first = broken[0]
-                summary = f"{first.id}: {first.error.splitlines()[0]}"
-                extra = f" (+{len(broken) - 1} more)" if len(broken) > 1 else ""
-                self.notify(
-                    f"Broken project config detected — {summary}{extra}",
-                    severity="warning",
-                    timeout=15,
-                )
-                self._announced_broken_ids = current_broken_ids
-            elif not current_broken_ids:
-                # All breakages cleared — forget the announced set so a future
-                # regression announces again.
-                self._announced_broken_ids = set()
+            if not projects and not broken:
+                self._render_empty_project_state()
+                return
 
-            if projects or broken:
-                # Try to restore last selected project, fall back to first
-                # item (broken entries lead the list, so they win when a
-                # broken one was last selected).
-                last_project = self._last_selected_project
-                candidate_ids = [bp.id for bp in broken] + [p.id for p in projects]
-                if last_project and last_project in candidate_ids:
-                    self.current_project_id = last_project
-                    proj_widget.select_project(self.current_project_id)
-                elif self.current_project_id is None:
-                    self.current_project_id = candidate_ids[0]
-                    proj_widget.select_project(self.current_project_id)
+            self._restore_or_default_project_selection(proj_widget, projects, broken)
+            self._last_project_state = None
+            self._last_image_old = None
 
-                # Reset cached detail screen state; workers will repopulate.
-                self._last_project_state = None
-                self._last_image_old = None
-                # Broken projects have no tasks to load, and kicking off
-                # refresh_tasks would raise inside load_project.
-                if self.current_project_id in self._broken_by_id:
-                    self._render_broken_selection(self.current_project_id)
-                else:
-                    await self.refresh_tasks()
-                    self._start_upstream_polling()
+            if self.current_project_id in self._broken_by_id:
+                # Broken projects have no loadable config; ``refresh_tasks`` and
+                # the polling loop would raise inside ``load_project``.
+                self._render_broken_selection(self.current_project_id)
             else:
-                self.current_project_id = None
-                self._last_project_state = None
-                self._last_image_old = None
-                task_list = self.query_one("#task-list", TaskList)
-                task_list.set_tasks("", [])
-                task_details = self.query_one("#task-details", TaskDetails)
-                task_details.set_task(None)
-                # No projects means no meaningful project state.
-                state_widget = self.query_one("#project-state", ProjectState)
-                state_widget.set_state(None, None, None)
+                await self.refresh_tasks()
+                self._start_upstream_polling()
+
+        def _announce_newly_broken(self, broken: list[BrokenProject]) -> None:
+            """Toast once when the set of broken-project IDs changes.
+
+            Users upgrading across a schema change need to see the breakage
+            immediately — but only once per distinct set, so repeated
+            ``refresh_projects`` calls don't spam (#565).
+            """
+            current_ids = {bp.id for bp in broken}
+            if not current_ids:
+                # Breakages cleared — forget announced so a regression re-fires.
+                self._announced_broken_ids = set()
+                return
+            if current_ids == self._announced_broken_ids:
+                return
+            first = broken[0]
+            summary = f"{first.id}: {first.error.splitlines()[0]}"
+            extra = f" (+{len(broken) - 1} more)" if len(broken) > 1 else ""
+            self.notify(
+                f"Broken project config detected — {summary}{extra}",
+                severity="warning",
+                timeout=15,
+            )
+            self._announced_broken_ids = current_ids
+
+        def _restore_or_default_project_selection(
+            self,
+            proj_widget: ProjectList,
+            projects: list[ProjectConfig],
+            broken: list[BrokenProject],
+        ) -> None:
+            """Restore the previously-selected project, or fall back to the first row."""
+            candidate_ids = [bp.id for bp in broken] + [p.id for p in projects]
+            last_project = self._last_selected_project
+            if last_project and last_project in candidate_ids:
+                self.current_project_id = last_project
+                proj_widget.select_project(self.current_project_id)
+            elif self.current_project_id is None:
+                self.current_project_id = candidate_ids[0]
+                proj_widget.select_project(self.current_project_id)
+
+        def _render_empty_project_state(self) -> None:
+            """Clear every pane when no projects exist on disk at all."""
+            self.current_project_id = None
+            self._last_project_state = None
+            self._last_image_old = None
+            self.query_one("#task-list", TaskList).set_tasks("", [])
+            self.query_one("#task-details", TaskDetails).set_task(None)
+            self.query_one("#project-state", ProjectState).set_state(None, None, None)
 
         def _render_broken_selection(self, project_id: str) -> None:
             """Render a broken project's error and clear the task/details panes."""
