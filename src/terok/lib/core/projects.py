@@ -353,29 +353,25 @@ class BrokenProject:
     error: str
 
 
-def _discover_project_ids() -> list[str]:
-    """Return sorted project IDs from user + system project dirs."""
-    ids: set[str] = set()
+def _discover_project_paths() -> dict[str, Path]:
+    """Map each on-disk project ID to its ``project.yml`` path.
+
+    User scope wins over system scope for collisions — matches how
+    :func:`load_project` resolves the effective config.  Returning the
+    path alongside the ID lets :func:`discover_projects` carry the
+    location forward to ``BrokenProject`` without re-walking.
+    """
+    paths: dict[str, Path] = {}
     for root in (user_projects_dir(), projects_dir()):
         if not root.is_dir():
             continue
         for d in root.iterdir():
-            if not d.is_dir():
+            if not d.is_dir() or d.name in paths:
                 continue
-            if (d / _PROJECT_YML).is_file() and is_valid_project_id(d.name):
-                ids.add(d.name)
-    return sorted(ids)
-
-
-def _config_path_for(project_id: str) -> Path:
-    """Resolve a project's ``project.yml`` path, user scope winning over system."""
-    for root in (user_projects_dir(), projects_dir()):
-        candidate = root / project_id / _PROJECT_YML
-        if candidate.is_file():
-            return candidate
-    # Fall back to the user path — used for display when neither file is
-    # readable (shouldn't normally happen; ``_discover_project_ids`` filters).
-    return user_projects_dir() / project_id / _PROJECT_YML
+            yml = d / _PROJECT_YML
+            if yml.is_file() and is_valid_project_id(d.name):
+                paths[d.name] = yml
+    return paths
 
 
 def discover_projects() -> tuple[list[ProjectConfig], list[BrokenProject]]:
@@ -387,14 +383,15 @@ def discover_projects() -> tuple[list[ProjectConfig], list[BrokenProject]]:
     schema drift, filesystem issues) in ``SystemExit`` with a human-readable
     message; anything else propagates as a genuine bug.
     """
+    paths_by_id = _discover_project_paths()
     valid: list[ProjectConfig] = []
     broken: list[BrokenProject] = []
-    for pid in _discover_project_ids():
+    for pid in sorted(paths_by_id):
         try:
             valid.append(load_project(pid))
         except SystemExit as exc:
             msg = _sanitize_for_tty(str(exc))
-            broken.append(BrokenProject(id=pid, config_path=_config_path_for(pid), error=msg))
+            broken.append(BrokenProject(id=pid, config_path=paths_by_id[pid], error=msg))
     return valid, broken
 
 

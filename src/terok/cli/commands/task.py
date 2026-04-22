@@ -344,9 +344,8 @@ def _resolve_attach(args: argparse.Namespace) -> bool:
     False otherwise — scripts piping the output want "start it and return"
     rather than ``execvp`` into an interactive shell.
     """
-    explicit = getattr(args, "attach", None)
-    if explicit is not None:
-        return bool(explicit)
+    if args.attach is not None:
+        return bool(args.attach)
     return sys.stdin.isatty() and sys.stdout.isatty()
 
 
