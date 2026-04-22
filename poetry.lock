@@ -593,14 +593,14 @@ files = [
 
 [[package]]
 name = "click"
-version = "8.3.2"
+version = "8.3.3"
 description = "Composable command line interface toolkit"
 optional = false
 python-versions = ">=3.10"
 groups = ["dev", "docs"]
 files = [
-    {file = "click-8.3.2-py3-none-any.whl", hash = "sha256:1924d2c27c5653561cd2cae4548d1406039cb79b858b747cfea24924bbc1616d"},
-    {file = "click-8.3.2.tar.gz", hash = "sha256:14162b8b3b3550a7d479eafa77dfd3c38d9dc8951f6f69c78913a8f9a7540fd5"},
+    {file = "click-8.3.3-py3-none-any.whl", hash = "sha256:a2bf429bb3033c89fa4936ffb35d5cb471e3719e1f3c8a7c3fff0b8314305613"},
+    {file = "click-8.3.3.tar.gz", hash = "sha256:398329ad4837b2ff7cbe1dd166a4c0f8900c3ca3a218de04466f38f6497f18a2"},
 ]
 
 [package.dependencies]
@@ -3112,7 +3112,7 @@ tomli-w = ">=1.0"
 type = "git"
 url = "https://github.com/sliwowitz/terok-executor.git"
 reference = "feat/bump-sandbox-podman-inspector"
-resolved_reference = "b330c23ec82c5fd0568573e4964f9c13bae6c0cd"
+resolved_reference = "e5ee69b56b02db50e91a3cd389cf9d28a12a02e9"
 
 [[package]]
 name = "terok-sandbox"
@@ -3128,13 +3128,13 @@ develop = false
 aiohttp = ">=3.9"
 cryptography = ">=46.0.7"
 platformdirs = ">=4.9.6"
-terok-shield = {url = "https://github.com/terok-ai/terok-shield/releases/download/v0.6.26/terok_shield-0.6.26-py3-none-any.whl"}
+terok-shield = {git = "https://github.com/sliwowitz/terok-shield.git", branch = "feat/propagate-pythonpath-simple-clearance"}
 
 [package.source]
 type = "git"
 url = "https://github.com/sliwowitz/terok-sandbox.git"
 reference = "feat/podman-inspector"
-resolved_reference = "40c3a80aa86ce043e3bc99e2b7526eaa86e6773a"
+resolved_reference = "29055706fe6119406c5c951a0a5d069ae830c28b"
 
 [[package]]
 name = "terok-shield"
@@ -3143,17 +3143,18 @@ description = "nftables-based egress firewalling for Podman containers"
 optional = false
 python-versions = ">=3.12,<4.0"
 groups = ["main"]
-files = [
-    {file = "terok_shield-0.6.26-py3-none-any.whl", hash = "sha256:789d5355522bd61e23262eb5fe180f25a7259c37651acefccd8736a65e6900a8"},
-]
+files = []
+develop = false
 
 [package.dependencies]
 pydantic = ">=2.0"
 PyYAML = ">=6.0"
 
 [package.source]
-type = "url"
-url = "https://github.com/terok-ai/terok-shield/releases/download/v0.6.26/terok_shield-0.6.26-py3-none-any.whl"
+type = "git"
+url = "https://github.com/sliwowitz/terok-shield.git"
+reference = "feat/propagate-pythonpath-simple-clearance"
+resolved_reference = "614437bceebb63cd422d283b1617d0d0d6bee089"
 
 [[package]]
 name = "textual"
@@ -3642,4 +3643,4 @@ propcache = ">=0.2.1"
 [metadata]
 lock-version = "2.1"
 python-versions = ">=3.12,<4.0"
-content-hash = "c46704fee02f16356bd567da0e555eb843b77d9fd031bd91f2b485dff81cedfe"
+content-hash = "1cde1531f7d59118b52dd73bc2ed09c362431dfe540b5cab9bcec38a4c38f99a"
