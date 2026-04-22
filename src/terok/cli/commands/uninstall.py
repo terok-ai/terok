@@ -78,35 +78,7 @@ def dispatch(args: argparse.Namespace) -> bool:
     return True
 
 
-# ── Palette ──
-
-
-def _bold(text: str) -> str:
-    return _ansi_bold(text, supports_color())
-
-
-def _green(text: str) -> str:
-    return _ansi_green(text, supports_color())
-
-
-def _red(text: str) -> str:
-    return _ansi_red(text, supports_color())
-
-
-def _yellow(text: str) -> str:
-    return _ansi_yellow(text, supports_color())
-
-
-def _stage_begin(label: str) -> None:
-    """Print ``'  <label>'`` padded to the status column; mirror of setup's version."""
-    print(f"  {label:<17}", end="", flush=True)
-
-
-def _status_label(ok: bool) -> str:
-    return _green("ok") if ok else _red("FAIL")
-
-
-# ── Top-level orchestrator ─────────────────────────────────────────────
+# ── Orchestrator ───────────────────────────────────────────────────────
 
 
 def cmd_uninstall(
@@ -169,10 +141,10 @@ def _uninstall_desktop_entry() -> bool:
 def _uninstall_dbus_bridge() -> bool:
     """Remove the NFLOG reader resource + terok-dbus hub unit.
 
-    Order matters: ``disable --now`` stops + deactivates the service while
-    the unit file is still on disk (otherwise systemd has no unit to
-    resolve); then unlink the file; then ``daemon-reload`` so systemd
-    purges the now-dangling in-memory entry.
+    Order matters: ``disable --now`` stops and deactivates the service
+    while the unit file is still on disk (otherwise systemd has no unit
+    to resolve); then unlink the file; then ``daemon-reload`` so
+    systemd purges the now-dangling in-memory entry.
     """
     from terok_sandbox import uninstall_shield_bridge
 
@@ -228,3 +200,37 @@ def _purge_credential_db() -> bool:
         return False
     print(f"{_status_label(True)} (removed {db_path})")
     return True
+
+
+# ── Terminal output ────────────────────────────────────────────────────
+
+
+def _stage_begin(label: str) -> None:
+    """Render the left-hand ``  <label>`` column of a stage line and flush.
+
+    17-char padding keeps the status marker aligned across stages; the
+    matching terminator is the regular ``print(...)`` that writes the
+    status suffix and newline.
+    """
+    print(f"  {label:<17}", end="", flush=True)
+
+
+def _status_label(ok: bool) -> str:
+    """Return a coloured ``ok`` / ``FAIL`` marker."""
+    return _green("ok") if ok else _red("FAIL")
+
+
+def _bold(text: str) -> str:
+    return _ansi_bold(text, supports_color())
+
+
+def _green(text: str) -> str:
+    return _ansi_green(text, supports_color())
+
+
+def _red(text: str) -> str:
+    return _ansi_red(text, supports_color())
+
+
+def _yellow(text: str) -> str:
+    return _ansi_yellow(text, supports_color())
