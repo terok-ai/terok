@@ -12,7 +12,7 @@ from rich.text import Text
 from terok_sandbox import EnvironmentCheck, GateServerStatus, GateStalenessInfo
 from textual.widgets import Static
 
-from ...lib.core.projects import ProjectConfig
+from ...lib.core.projects import BrokenProject, ProjectConfig
 from ...lib.core.task_display import GPU_DISPLAY, SECURITY_CLASS_DISPLAY, has_gpu
 from ...lib.util.emoji import render_emoji
 from .task_detail import _get_css_variables
@@ -258,3 +258,26 @@ class ProjectState(Static):
                 shield_env=shield_env,
             )
         )
+
+    def set_broken(self, bp: BrokenProject) -> None:
+        """Render a broken project's validation error in place of the normal state.
+
+        The config path plus the raw error message are enough for the user to
+        open ``project.yml`` in an editor and fix whatever pydantic or the
+        YAML parser flagged — no extra round-trip to the CLI (#565).
+        """
+        variables = _get_css_variables(self)
+        error_color = variables.get("error", "red")
+        dim = Style(dim=True)
+        header = Text(f"Project:   {bp.id} ", style=Style(color=error_color, bold=True))
+        header.append("(broken)", style=Style(color=error_color))
+        lines = [
+            header,
+            Text(""),
+            Text("This project's configuration could not be loaded:"),
+            Text(""),
+            Text(bp.error, style=Style(color=error_color)),
+            Text(""),
+            Text(f"Config: {bp.config_path}", style=dim),
+        ]
+        self.update(Text("\n").join(lines))

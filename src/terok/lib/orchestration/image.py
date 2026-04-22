@@ -49,6 +49,12 @@ def _image_exists(image: str) -> bool:
     return _rt.get_runtime().image(image).exists()
 
 
+# Public alias — the underscore form above is retained only so pre-existing
+# test monkeypatches don't break.  New callers (facade, TUI, etc.) should
+# import :func:`image_exists` so tach can police the boundary.
+image_exists = _image_exists
+
+
 # ---------- Hashing ----------
 
 

@@ -15,6 +15,8 @@ from ...lib.core.config import get_logs_partial_streaming as _get_logs_partial_s
 from ...lib.domain.facade import (
     HeadlessRunRequest,
     LogViewOptions,
+    build_images,
+    project_image_exists,
     task_archive_list,
     task_archive_logs,
     task_delete,
@@ -128,6 +130,21 @@ def register(
     )
     t_run.add_argument("--name", help="Human-readable task name (slug-style, e.g. fix-auth-bug)")
     _add_restriction_flags(t_run)
+    # CLI-mode attach (default: attach when stdout is a TTY).  Headless
+    # already streams/follows on its own; toad returns a URL + token.
+    attach_group = t_run.add_mutually_exclusive_group()
+    attach_group.add_argument(
+        "--attach",
+        action="store_true",
+        default=None,
+        help="After container is ready, log into it (default on TTY, --mode=cli only)",
+    )
+    attach_group.add_argument(
+        "--no-attach",
+        dest="attach",
+        action="store_false",
+        help="Print login instructions instead of attaching",
+    )
     # Headless-only flags (silently ignored in cli/toad modes)
     t_run.add_argument(
         "--provider",
@@ -303,16 +320,72 @@ def dispatch(args: argparse.Namespace) -> bool:
 def _cmd_task_run(args: argparse.Namespace) -> None:
     """Handle ``terok task run`` — create a task and run it in the chosen mode."""
     mode = getattr(args, "mode", "cli")
+    # Preflight: the L2 CLI image must exist before any ``task run`` mode;
+    # all three runners launch containers from it.  Offered interactively on
+    # a TTY, a hard error otherwise.
+    _ensure_project_image(args.project_id)
+
     if mode == "headless":
         _cmd_task_run_headless(args)
     elif mode == "toad":
-        _cmd_task_run_interactive(args, runner=task_run_toad)
+        _cmd_task_run_interactive(args, runner=task_run_toad, attach=False)
     else:  # mode == "cli"
-        _cmd_task_run_interactive(args, runner=task_run_cli)
+        _cmd_task_run_interactive(args, runner=task_run_cli, attach=_resolve_attach(args))
 
 
-def _cmd_task_run_interactive(args: argparse.Namespace, *, runner: Any) -> None:
-    """Create + run for interactive modes (cli, toad)."""
+def _resolve_attach(args: argparse.Namespace) -> bool:
+    """Resolve --attach/--no-attach for ``task run --mode=cli``.
+
+    Default is True on an interactive TTY (``docker run -it`` mental model),
+    False otherwise — scripts piping the output want "start it and return"
+    rather than ``execvp`` into an interactive shell.
+    """
+    explicit = getattr(args, "attach", None)
+    if explicit is not None:
+        return bool(explicit)
+    return sys.stdin.isatty() and sys.stdout.isatty()
+
+
+def _ensure_project_image(project_id: str) -> None:
+    """Check the project's L2 image exists; offer to build it when missing.
+
+    TTY → interactive ``Build now? [Y/n]`` prompt, then ``build_images()``
+    inline.  Non-TTY → exit with a hint so scripts stay deterministic.
+    """
+    if project_image_exists(project_id):
+        return
+
+    hint = (
+        f"Image for project {project_id!r} is not present. "
+        f"Build it first: terok project build {project_id}"
+    )
+    if not (sys.stdin.isatty() and sys.stdout.isatty()):
+        raise SystemExit(hint)
+
+    try:
+        answer = (
+            input(f"Image for project {project_id!r} is missing. Build now? [Y/n]: ")
+            .strip()
+            .lower()
+        )
+    except (EOFError, KeyboardInterrupt):
+        print()
+        raise SystemExit(hint) from None
+
+    if answer in ("n", "no"):
+        raise SystemExit(hint)
+
+    build_images(project_id)
+
+
+def _cmd_task_run_interactive(
+    args: argparse.Namespace, *, runner: Any, attach: bool = False
+) -> None:
+    """Create + run for interactive modes (cli, toad).
+
+    When *attach* is true (CLI mode on a TTY), ``execvp`` into ``task_login``
+    after the container reports ready.  Toad prints its URL + token and returns.
+    """
     pid = args.project_id
     tid = task_new(pid, name=getattr(args, "name", None))
     runner(
@@ -322,6 +395,9 @@ def _cmd_task_run_interactive(args: argparse.Namespace, *, runner: Any) -> None:
         preset=getattr(args, "preset", None),
         unrestricted=_resolve_unrestricted(args),
     )
+    if attach:
+        # ``task_login`` calls ``os.execvp`` and never returns on success.
+        task_login(pid, tid)
 
 
 def _cmd_task_run_headless(args: argparse.Namespace) -> None:
