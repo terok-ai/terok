@@ -56,7 +56,16 @@ class IdentityResolver:
 
     def __call__(self, container_id: str) -> ContainerIdentity:
         """Return the task-aware identity for *container_id*."""
-        info = self._inspector(container_id)
+        try:
+            info = self._inspector(container_id)
+        except Exception:
+            # ``PodmanInspector`` normally soft-fails by returning an
+            # empty ``ContainerInfo``, but a podman-side race or an
+            # unexpected error path can still raise.  Clamp it here so
+            # the caller (notifier / TUI) never takes a crash from
+            # identity resolution.
+            _log.debug("PodmanInspector raised for %s", container_id, exc_info=True)
+            return ContainerIdentity()
         if not info.container_id:
             return ContainerIdentity()
         project = info.annotations.get(ANNOTATION_PROJECT, "")

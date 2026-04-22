@@ -15,8 +15,13 @@ import asyncio
 import contextlib
 import logging
 
-from terok_dbus import EventSubscriber, Notifier, create_notifier
-from terok_dbus._service import configure_logging, wait_for_shutdown_signal
+from terok_dbus import (
+    EventSubscriber,
+    Notifier,
+    configure_logging,
+    create_notifier,
+    wait_for_shutdown_signal,
+)
 
 from terok.clearance.identity import IdentityResolver
 
@@ -56,13 +61,14 @@ async def _teardown(subscriber: EventSubscriber, notifier: Notifier) -> None:
     ):
         try:
             await asyncio.wait_for(coro, timeout=_CLEANUP_STEP_TIMEOUT_S)
-        except Exception as exc:  # noqa: BLE001 — shutdown must continue past any step
+        except TimeoutError:
             _log.warning(
-                "clearance-notifier shutdown: %s didn't finish within %gs (%s)",
+                "clearance-notifier shutdown: %s didn't finish within %gs",
                 name,
                 _CLEANUP_STEP_TIMEOUT_S,
-                exc,
             )
+        except Exception as exc:  # noqa: BLE001 — shutdown must continue past any step
+            _log.warning("clearance-notifier shutdown: %s failed (%s)", name, exc)
 
 
 def main() -> None:  # pragma: no cover — CLI entry point

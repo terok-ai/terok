@@ -437,10 +437,17 @@ class TestRunContainer:
             )
 
         spec = captured_runspec(sandbox_factory)
-        # _run_container also prepends ``--annotation ai.terok.{project,task}``
-        # so the clearance IdentityResolver can map container → task metadata;
-        # the caller-supplied extras come after.
-        assert spec.extra_args[-2:] == ("-p", "8080:80")
+        # _run_container prepends ``--annotation ai.terok.{project,task}``
+        # so the clearance IdentityResolver can map container → task
+        # metadata; the caller-supplied extras come after.
+        assert spec.extra_args == (
+            "--annotation",
+            "ai.terok.project=p1",
+            "--annotation",
+            "ai.terok.task=t1",
+            "-p",
+            "8080:80",
+        )
         assert spec.command == ("bash", "-lc", "toad --serve")
 
     def test_resource_limits_from_project(self) -> None:

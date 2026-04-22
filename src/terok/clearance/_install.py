@@ -96,16 +96,27 @@ def _read_template() -> str:
 
 
 def _daemon_reload() -> None:
-    """Ask the user's systemd to re-read its unit files; silently skip if unavailable."""
+    """Ask the user's systemd to re-read its unit files.
+
+    ``systemctl`` absent (container / CI host without systemd) is the
+    silent-skip path; every other failure raises so ``install_service``
+    surfaces an obvious error instead of reporting success while leaving
+    the new unit invisible to systemd.
+    """
     systemctl = shutil.which("systemctl")
     if not systemctl:
         return
-    subprocess.run(  # nosec B603 — fixed argv, no shell
+    result = subprocess.run(  # nosec B603 — fixed argv, no shell
         [systemctl, "--user", "daemon-reload"],
         check=False,
         capture_output=True,
         text=True,
     )
+    if result.returncode != 0:
+        stderr = (result.stderr or "").strip() or "<no output>"
+        raise RuntimeError(
+            f"systemctl --user daemon-reload failed (exit {result.returncode}): {stderr}"
+        )
 
 
 def read_installed_unit_version() -> int | None:

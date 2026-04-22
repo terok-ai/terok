@@ -357,7 +357,11 @@ def _ensure_dbus_bridge(*, check_only: bool, enabled: bool) -> bool:
     _check_dbus_send()  # warning only — never affects the return value
     reader_ok = _ensure_bridge_reader(check_only=check_only)
     hub_ok = _ensure_dbus_hub(check_only=check_only)
-    notifier_ok = _ensure_clearance_notifier(check_only=check_only)
+    # Gate the notifier on the hub.  Enabling ``terok-clearance-notifier``
+    # when the hub didn't come up would leave it in a ``Restart=on-failure``
+    # loop against a missing socket; better to skip it and let the user
+    # fix the hub first.
+    notifier_ok = _ensure_clearance_notifier(check_only=check_only) if hub_ok else True
     # dbus-send absence is reported as a WARN in its own stage line but must
     # not mask a real failure from the reader/hub/notifier stages — if any
     # install step errors out, ``terok setup`` has to surface that as a
