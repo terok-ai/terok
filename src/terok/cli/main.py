@@ -28,6 +28,7 @@ from .commands import (
     shield,
     sickbay,
     task,
+    uninstall,
     vault_local,
 )
 from .wiring import wire_dispatch, wire_group
@@ -43,6 +44,7 @@ except ImportError:  # pragma: no cover - optional dep
 _DISPATCHERS = [
     panic.dispatch,
     setup.dispatch,
+    uninstall.dispatch,
     auth.dispatch,
     project.dispatch,
     task.dispatch,
@@ -134,6 +136,7 @@ def main(prog: str = "terok") -> None:
     # sibling-wired groups, then dev/shell niceties.
     panic.register(sub)
     setup.register(sub)
+    uninstall.register(sub)
     auth.register(sub)
     project.register(sub)
     task.register(

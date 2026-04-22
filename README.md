@@ -52,15 +52,19 @@ pipx install ./terok-*.whl
 
 ### One-time setup
 
-Install OCI hooks for the egress firewall, start the host-side services
-(vault and git gate), and optionally add shell completions:
+One command installs everything — shield OCI hooks, vault, git gate,
+D-Bus clearance bridge, and an XDG desktop entry for the TUI:
 
 ```bash
-terok shield install-hooks --user               # install OCI hooks for terok-shield
-terok vault install                     # install systemd socket activation
-terok vault start                       # start the vault daemon
-terok gate start                        # start the git gate server
+terok setup                             # idempotent; safe to re-run after upgrades
 terok completions install               # (optional) tab completion
+```
+
+To remove everything later:
+
+```bash
+terok uninstall                         # reverse of setup; preserves credential DB
+terok uninstall --purge-credentials     # also delete stored tokens + SSH keys
 ```
 
 ### First project
