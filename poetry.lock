@@ -3112,7 +3112,7 @@ tomli-w = ">=1.0"
 type = "git"
 url = "https://github.com/sliwowitz/terok-executor.git"
 reference = "feat/bump-sandbox-podman-inspector"
-resolved_reference = "e5ee69b56b02db50e91a3cd389cf9d28a12a02e9"
+resolved_reference = "23fa6aabe12c3a16d9471896bc6584491934c3c1"
 
 [[package]]
 name = "terok-sandbox"
@@ -3134,7 +3134,7 @@ terok-shield = {git = "https://github.com/sliwowitz/terok-shield.git", branch = 
 type = "git"
 url = "https://github.com/sliwowitz/terok-sandbox.git"
 reference = "feat/podman-inspector"
-resolved_reference = "8a2c3b539543a732c8e284a5c6c596727920370f"
+resolved_reference = "2a9e9bb8d0dbf4b3ee824db4a29c449029e0bede"
 
 [[package]]
 name = "terok-shield"
@@ -3154,7 +3154,7 @@ PyYAML = ">=6.0"
 type = "git"
 url = "https://github.com/sliwowitz/terok-shield.git"
 reference = "feat/propagate-pythonpath-simple-clearance"
-resolved_reference = "74ee7c81dc9171a97e8fe0ccf81ff50e85928e4b"
+resolved_reference = "419056dc19bd3725c9167243a148b113e985e635"
 
 [[package]]
 name = "textual"
