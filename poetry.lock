@@ -3089,7 +3089,7 @@ dbus-fast = ">=2.0,<5.0"
 type = "git"
 url = "https://github.com/sliwowitz/terok-dbus.git"
 reference = "feat/varlink-clearance-hub"
-resolved_reference = "6274d6f23ecb3a480526fc09111f6b22da1fcc61"
+resolved_reference = "4475fdac5cfef5a8ba8f795742d5f9cc2e99b7fc"
 
 [[package]]
 name = "terok-executor"
@@ -3134,7 +3134,7 @@ terok-shield = {git = "https://github.com/sliwowitz/terok-shield.git", branch = 
 type = "git"
 url = "https://github.com/sliwowitz/terok-sandbox.git"
 reference = "feat/podman-inspector"
-resolved_reference = "094f379f7010304a0487a667f3b040d2983afa43"
+resolved_reference = "bc205e9739b5f512589b5acbe1b9abbbf589f438"
 
 [[package]]
 name = "terok-shield"
@@ -3154,7 +3154,7 @@ PyYAML = ">=6.0"
 type = "git"
 url = "https://github.com/sliwowitz/terok-shield.git"
 reference = "feat/propagate-pythonpath-simple-clearance"
-resolved_reference = "614437bceebb63cd422d283b1617d0d0d6bee089"
+resolved_reference = "74ee7c81dc9171a97e8fe0ccf81ff50e85928e4b"
 
 [[package]]
 name = "textual"
@@ -3323,14 +3323,14 @@ telegram = ["requests"]
 
 [[package]]
 name = "typer"
-version = "0.24.1"
+version = "0.24.2"
 description = "Typer, build great CLIs. Easy to code. Based on Python type hints."
 optional = false
 python-versions = ">=3.10"
 groups = ["dev"]
 files = [
-    {file = "typer-0.24.1-py3-none-any.whl", hash = "sha256:112c1f0ce578bfb4cab9ffdabc68f031416ebcc216536611ba21f04e9aa84c9e"},
-    {file = "typer-0.24.1.tar.gz", hash = "sha256:e39b4732d65fbdcde189ae76cf7cd48aeae72919dea1fdfc16593be016256b45"},
+    {file = "typer-0.24.2-py3-none-any.whl", hash = "sha256:b618bc3d721f9a8d30f3e05565be26416d06e9bcc29d49bc491dc26aba674fa8"},
+    {file = "typer-0.24.2.tar.gz", hash = "sha256:ec070dcfca1408e85ee203c6365001e818c3b7fffe686fd07ff2d68095ca0480"},
 ]
 
 [package.dependencies]
