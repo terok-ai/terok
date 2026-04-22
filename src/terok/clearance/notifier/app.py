@@ -23,10 +23,9 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import logging
-import signal
-import sys
 
-from terok_dbus import EventSubscriber, create_notifier
+from terok_dbus import EventSubscriber, Notifier, create_notifier
+from terok_dbus._service import configure_logging, wait_for_shutdown_signal
 
 from terok.clearance.identity import IdentityResolver
 
@@ -40,7 +39,7 @@ _CLEANUP_STEP_TIMEOUT_S = 2.0
 
 async def run_notifier() -> None:
     """Run the notifier until SIGINT/SIGTERM."""
-    _configure_logging()
+    configure_logging()
     notifier = await create_notifier("terok-clearance")
     subscriber = EventSubscriber(notifier, identity_resolver=IdentityResolver())
     try:
@@ -53,12 +52,12 @@ async def run_notifier() -> None:
 
     _log.info("terok-clearance-notifier online")
     try:
-        await _wait_for_shutdown_signal()
+        await wait_for_shutdown_signal()
     finally:
         await _teardown(subscriber, notifier)
 
 
-async def _teardown(subscriber: EventSubscriber, notifier) -> None:  # noqa: ANN001
+async def _teardown(subscriber: EventSubscriber, notifier: Notifier) -> None:
     """Stop subscriber + disconnect notifier under per-step timeouts."""
     for name, coro in (
         ("subscriber", subscriber.stop()),
@@ -73,24 +72,6 @@ async def _teardown(subscriber: EventSubscriber, notifier) -> None:  # noqa: ANN
                 _CLEANUP_STEP_TIMEOUT_S,
                 exc,
             )
-
-
-async def _wait_for_shutdown_signal() -> None:  # pragma: no cover — real signal delivery
-    """Block until SIGINT/SIGTERM arrives so systemd can stop us cleanly."""
-    stop = asyncio.Event()
-    loop = asyncio.get_running_loop()
-    for sig in (signal.SIGINT, signal.SIGTERM):
-        loop.add_signal_handler(sig, stop.set)
-    await stop.wait()
-
-
-def _configure_logging() -> None:
-    """Send INFO-level logs to stderr so journald / systemd pick them up."""
-    logging.basicConfig(
-        format="%(asctime)s %(levelname)s %(name)s: %(message)s",
-        level=logging.INFO,
-        stream=sys.stderr,
-    )
 
 
 def main() -> None:  # pragma: no cover — CLI entry point
