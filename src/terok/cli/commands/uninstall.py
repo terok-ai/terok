@@ -14,13 +14,7 @@ from __future__ import annotations
 
 import argparse
 
-from ...lib.util.ansi import (
-    bold as _ansi_bold,
-    green as _ansi_green,
-    red as _ansi_red,
-    supports_color,
-    yellow as _ansi_yellow,
-)
+from ._setup_ui import _bold, _stage_begin, _status_label, _yellow
 
 # ── CLI wiring ─────────────────────────────────────────────────────────
 
@@ -200,37 +194,3 @@ def _purge_credential_db() -> bool:
         return False
     print(f"{_status_label(True)} (removed {db_path})")
     return True
-
-
-# ── Terminal output ────────────────────────────────────────────────────
-
-
-def _stage_begin(label: str) -> None:
-    """Render the left-hand ``  <label>`` column of a stage line and flush.
-
-    17-char padding keeps the status marker aligned across stages; the
-    matching terminator is the regular ``print(...)`` that writes the
-    status suffix and newline.
-    """
-    print(f"  {label:<17}", end="", flush=True)
-
-
-def _status_label(ok: bool) -> str:
-    """Return a coloured ``ok`` / ``FAIL`` marker."""
-    return _green("ok") if ok else _red("FAIL")
-
-
-def _bold(text: str) -> str:
-    return _ansi_bold(text, supports_color())
-
-
-def _green(text: str) -> str:
-    return _ansi_green(text, supports_color())
-
-
-def _red(text: str) -> str:
-    return _ansi_red(text, supports_color())
-
-
-def _yellow(text: str) -> str:
-    return _ansi_yellow(text, supports_color())

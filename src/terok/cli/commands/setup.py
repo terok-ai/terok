@@ -15,7 +15,6 @@ import argparse
 import os
 import shutil
 import sys
-from functools import cache
 from pathlib import Path
 
 from terok_executor import AUTH_PROVIDERS
@@ -31,41 +30,16 @@ from ...lib.domain.facade import (
     summarize_ssh_init,
 )
 from ...lib.domain.project import make_git_gate
-from ...lib.util.ansi import (
-    bold as _ansi_bold,
-    green as _ansi_green,
-    red as _ansi_red,
-    supports_color,
-    yellow as _ansi_yellow,
+from ._setup_ui import (
+    _bold,
+    _red,
+    _stage_begin,
+    _status_label,
+    _warn_label,
+    _yellow,
 )
 
-# ── Palette ────────────────────────────────────────────────────────────
-#
-# The ``supports_color()`` verdict is stable for a process lifetime
-# (NO_COLOR / FORCE_COLOR / isatty() don't change mid-run), so every
-# phase below can render through colour-aware helpers that resolve the
-# flag once.  Tests force a deterministic verdict by clearing the cache.
-
-
-@cache
-def _colour_on() -> bool:
-    return supports_color()
-
-
-def _bold(text: str) -> str:
-    return _ansi_bold(text, _colour_on())
-
-
-def _green(text: str) -> str:
-    return _ansi_green(text, _colour_on())
-
-
-def _red(text: str) -> str:
-    return _ansi_red(text, _colour_on())
-
-
-def _yellow(text: str) -> str:
-    return _ansi_yellow(text, _colour_on())
+# ── CLI wiring ─────────────────────────────────────────────────────────
 
 
 def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
@@ -115,46 +89,87 @@ def dispatch(args: argparse.Namespace) -> bool:
     return True
 
 
-# ── Global bootstrap (terok setup) ──────────────────────────────────────
+# ── Orchestrator ───────────────────────────────────────────────────────
+
+
+def cmd_setup(
+    *,
+    check_only: bool = False,
+    no_dbus_bridge: bool = False,
+    no_desktop_entry: bool = False,
+) -> None:
+    """Global bootstrap: install shield, vault, gate server, and optional D-Bus bridge.
+
+    Non-interactive and idempotent — safe to re-run.  Installs to user-local
+    directories (no root needed).  With ``--check``, only reports status.
+    ``--no-dbus-bridge`` skips the NFLOG reader resource and the terok-dbus
+    hub unit so audit-minimal hosts only see the nft hook pair on disk.
+    ``--no-desktop-entry`` skips the XDG application launcher / icon
+    install — useful on headless hosts and CI images.
+    """
+    action = "Checking" if check_only else "Setting up"
+    print(_bold(f"\n{action} terok host services\n"))
+
+    print(_bold("Host binaries:"))
+    binaries_ok = _check_host_binaries()
+    print()
+
+    # SELinux prereq prints only on enforcing hosts in socket mode.
+    # Surfaced *before* service install so the fix hint isn't buried
+    # below multi-line install output the user has to scroll past.
+    selinux_ok = _check_selinux_policy()
+
+    print(_bold("Services:"))
+    shield_ok = _ensure_shield(check_only=check_only)
+    vault_ok = _ensure_vault(check_only=check_only)
+    gate_ok = _ensure_gate(check_only=check_only)
+    bridge_ok = _ensure_dbus_bridge(check_only=check_only, enabled=not no_dbus_bridge)
+
+    if no_desktop_entry:
+        desktop_ok = _disable_desktop_entry(check_only=check_only)
+    else:
+        desktop_ok = _ensure_desktop_entry(check_only=check_only)
+    print()
+
+    all_ok = (
+        binaries_ok
+        and shield_ok
+        and vault_ok
+        and gate_ok
+        and selinux_ok
+        and bridge_ok
+        and desktop_ok
+    )
+    if all_ok:
+        print(_bold("Setup complete."))
+    elif not binaries_ok:
+        print(_bold(_red("Missing mandatory binaries — install them first.")))
+    elif not selinux_ok:
+        print(
+            _bold(_yellow("SELinux prerequisites unmet — task containers will fail until fixed."))
+        )
+    else:
+        print(_bold(_yellow("Some services could not be installed (see above).")))
+
+    providers = ", ".join(AUTH_PROVIDERS)
+    print(
+        f"\nNext steps:\n"
+        f"  terok auth <provider>                      Host-wide auth ({providers})\n"
+        f"  terok project wizard                       Create your first project\n"
+        f"  terok task run <project>                   Start a CLI task (attaches on TTY)\n"
+    )
+
+    if not binaries_ok:
+        sys.exit(2)
+    if not all_ok:
+        sys.exit(1)
+
+
+# ── Host binary prerequisites ──────────────────────────────────────────
 
 
 _MANDATORY_BINARIES = ("podman", "git", "ssh-keygen")
 _RECOMMENDED_BINARIES = ("nft", "dnsmasq", "dig")
-
-#: Suffix used by every ``check_only`` phase to qualify the ``ok``/``FAIL``
-#: label with the literal on-disk presence (``ok (installed)`` vs
-#: ``FAIL (not installed)``).  Factored out because three phases print
-#: the pair verbatim; a typo in one would produce inconsistent output.
-_CHECK_SUFFIX_PRESENT = " (installed)"
-_CHECK_SUFFIX_ABSENT = " (not installed)"
-
-
-def _presence_suffix(present: bool) -> str:
-    """Return the trailing ``(installed)``/``(not installed)`` marker for check-only output."""
-    return _CHECK_SUFFIX_PRESENT if present else _CHECK_SUFFIX_ABSENT
-
-
-def _status_label(ok: bool) -> str:
-    """Return a coloured status marker."""
-    return _green("ok") if ok else _red("FAIL")
-
-
-def _warn_label() -> str:
-    """Return a coloured warning marker."""
-    return _yellow("WARN")
-
-
-def _stage_begin(label: str) -> None:
-    """Write ``'  <label>'`` (padded to the status column) and flush.
-
-    Long-running service stages print the label up-front so the operator
-    sees *which* stage is currently grinding — without progressive output
-    the whole block looks frozen during a slow ``systemctl restart`` or a
-    network round-trip.  The matching terminator is the regular
-    ``print(...)`` that writes the ``ok``/``FAIL`` suffix and the newline.
-    """
-    # 17 chars wide = longest label ("terok_socket_t" = 14) + 3 space gutter.
-    print(f"  {label:<17}", end="", flush=True)
 
 
 def _check_host_binaries() -> bool:
@@ -175,6 +190,83 @@ def _check_host_binaries() -> bool:
             print(f"  {name:<16} {_warn_label()} (recommended but not required)")
 
     return all_ok
+
+
+# ── SELinux prerequisite ───────────────────────────────────────────────
+
+
+def _check_selinux_policy() -> bool:
+    """Print SELinux prereq status and return whether it's satisfied.
+
+    ``True`` means containers will be able to reach service sockets
+    (either because socket mode isn't in use, SELinux isn't enforcing,
+    or the policy + libselinux are both ready).  ``False`` means the
+    user must run a remediation step (install ``selinux-policy-devel``,
+    ``sudo bash install_policy.sh``, or ``dnf install libselinux``)
+    before task containers will work — ``cmd_setup`` propagates that
+    into a non-zero exit so the setup run fails loudly, matching the
+    runtime AVC-denial reality.
+
+    The decision tree is shared with ``terok sickbay`` via
+    :func:`terok_sandbox.check_selinux_status`; this function only
+    renders it as printed setup output.
+    """
+    from terok_sandbox import (
+        SelinuxStatus,
+        check_selinux_status,
+        selinux_install_command,
+        selinux_install_script,
+    )
+
+    from ...lib.core.config import get_services_mode
+
+    result = check_selinux_status(services_mode=get_services_mode())
+    if result.status in (
+        SelinuxStatus.NOT_APPLICABLE_TCP_MODE,
+        SelinuxStatus.NOT_APPLICABLE_PERMISSIVE,
+    ):
+        return True
+
+    install_cmd = selinux_install_command()
+    print()
+    print(_bold("SELinux:"))
+    match result.status:
+        case SelinuxStatus.POLICY_MISSING:
+            print(f"  terok_socket_t   {_warn_label()} (policy NOT installed)")
+            print("                   Containers cannot connect to service sockets.")
+            print("                   Fix (pick one):")
+            if result.missing_policy_tools:
+                tools = ", ".join(result.missing_policy_tools)
+                print(f"                   Policy tools missing: {tools}")
+                print(
+                    f"                     install policy: "
+                    f"{_bold('sudo dnf install selinux-policy-devel policycoreutils')}, "
+                    f"then {_bold(install_cmd)}"
+                )
+            else:
+                print(f"                     install policy: {_bold(install_cmd)}")
+            print(
+                f"                     or opt out:     add "
+                f"{_bold(SERVICES_TCP_OPTOUT_YAML)}"
+                f" to {global_config_path()}"
+            )
+            print()
+            return False
+        case SelinuxStatus.LIBSELINUX_MISSING:
+            print(f"  terok_socket_t   {_warn_label()} (libselinux.so.1 not loadable)")
+            print("                   Sockets will bind as unconfined_t — containers denied.")
+            print(f"                   Fix: {_bold('sudo dnf install libselinux')}")
+            print()
+            return False
+        case SelinuxStatus.OK:
+            print(f"  terok_socket_t   {_status_label(True)} (policy installed)")
+            print(f"                   Installer: {selinux_install_script()}")
+            print()
+            return True
+    return True  # pragma: no cover — exhaustive above; defensive fallthrough for new enum members
+
+
+# ── Service phases ─────────────────────────────────────────────────────
 
 
 def _ensure_shield(*, check_only: bool) -> bool:
@@ -347,6 +439,9 @@ def _ensure_gate(*, check_only: bool) -> bool:
         return False
 
 
+# ── D-Bus clearance bridge ─────────────────────────────────────────────
+
+
 def _ensure_dbus_bridge(*, check_only: bool, enabled: bool) -> bool:
     """Install the clearance bridge: shield reader + dbus hub + notifier."""
     if not enabled:
@@ -370,6 +465,18 @@ def _ensure_dbus_bridge(*, check_only: bool, enabled: bool) -> bool:
     return reader_ok and hub_ok and notifier_ok
 
 
+def _check_dbus_send() -> bool:
+    """Warn the operator when ``dbus-send`` is missing; doesn't fail setup."""
+    present = shutil.which("dbus-send") is not None
+    if present:
+        return True
+    print(
+        f"  dbus-send        {_warn_label()} "
+        f"(missing — install dbus-tools / dbus for clearance signals)"
+    )
+    return False
+
+
 def _ensure_bridge_reader(*, check_only: bool) -> bool:
     """Copy the NFLOG reader script out of terok-shield into the user data dir."""
     from terok_sandbox import reader_script_path
@@ -378,9 +485,7 @@ def _ensure_bridge_reader(*, check_only: bool) -> bool:
     dest = reader_script_path()
     if check_only:
         present = dest.is_file()
-        label = _status_label(present)
-        suffix = _presence_suffix(present)
-        print(f"{label}{suffix}")
+        print(f"{_status_label(present)}{_presence_suffix(present)}")
         return present
 
     from terok_sandbox import install_shield_bridge
@@ -400,9 +505,7 @@ def _ensure_dbus_hub(*, check_only: bool) -> bool:
     unit_path = _user_systemd_dir() / "terok-dbus.service"
     if check_only:
         present = unit_path.is_file()
-        label = _status_label(present)
-        suffix = _presence_suffix(present)
-        print(f"{label}{suffix}")
+        print(f"{_status_label(present)}{_presence_suffix(present)}")
         return present
 
     try:
@@ -442,9 +545,7 @@ def _ensure_clearance_notifier(*, check_only: bool) -> bool:
     unit_path = default_unit_path()
     if check_only:
         present = unit_path.is_file()
-        label = _status_label(present)
-        suffix = _presence_suffix(present)
-        print(f"{label}{suffix}")
+        print(f"{_status_label(present)}{_presence_suffix(present)}")
         return present
 
     from terok.clearance._install import install_service
@@ -460,26 +561,6 @@ def _ensure_clearance_notifier(*, check_only: bool) -> bool:
         return False
     _enable_user_service("terok-clearance-notifier")
     print(f"{_status_label(True)} (installed + enabled)")
-    return True
-
-
-def _disable_clearance_notifier(*, check_only: bool) -> bool:
-    """Tear down the clearance-notifier unit when the bridge is opted out."""
-    _stage_begin("Clearance notifier")
-    from terok.clearance._install import default_unit_path
-
-    unit_path = default_unit_path()
-    if check_only:
-        print(f"{_warn_label()} (opted out via --no-dbus-bridge)")
-        return True
-    if unit_path.is_file():
-        _disable_user_service("terok-clearance-notifier")
-        try:
-            unit_path.unlink(missing_ok=True)
-        except OSError as exc:
-            print(f"{_warn_label()} (unit removal: {exc})")
-            return False
-    print(f"{_warn_label()} (disabled — audit-minimal mode)")
     return True
 
 
@@ -520,6 +601,29 @@ def _disable_dbus_bridge(*, check_only: bool) -> bool:
     return True
 
 
+def _disable_clearance_notifier(*, check_only: bool) -> bool:
+    """Tear down the clearance-notifier unit when the bridge is opted out."""
+    _stage_begin("Clearance notifier")
+    from terok.clearance._install import default_unit_path
+
+    unit_path = default_unit_path()
+    if check_only:
+        print(f"{_warn_label()} (opted out via --no-dbus-bridge)")
+        return True
+    if unit_path.is_file():
+        _disable_user_service("terok-clearance-notifier")
+        try:
+            unit_path.unlink(missing_ok=True)
+        except OSError as exc:
+            print(f"{_warn_label()} (unit removal: {exc})")
+            return False
+    print(f"{_warn_label()} (disabled — audit-minimal mode)")
+    return True
+
+
+# ── Desktop entry ──────────────────────────────────────────────────────
+
+
 def _ensure_desktop_entry(*, check_only: bool) -> bool:
     """Install the XDG desktop entry + application icon for ``terok-tui``.
 
@@ -542,9 +646,7 @@ def _ensure_desktop_entry(*, check_only: bool) -> bool:
     _stage_begin("Desktop entry")
     if check_only:
         present = is_desktop_entry_installed()
-        label = _status_label(present)
-        suffix = _presence_suffix(present)
-        print(f"{label}{suffix}")
+        print(f"{_status_label(present)}{_presence_suffix(present)}")
         return present
 
     bin_path = shutil.which("terok-tui")
@@ -591,16 +693,7 @@ def _disable_desktop_entry(*, check_only: bool) -> bool:
     return True
 
 
-def _check_dbus_send() -> bool:
-    """Warn the operator when ``dbus-send`` is missing; doesn't fail setup."""
-    present = shutil.which("dbus-send") is not None
-    if present:
-        return True
-    print(
-        f"  dbus-send        {_warn_label()} "
-        f"(missing — install dbus-tools / dbus for clearance signals)"
-    )
-    return False
+# ── systemd user-service helpers ───────────────────────────────────────
 
 
 def _user_systemd_dir() -> Path:
@@ -705,154 +798,19 @@ def _append_setup_log(argv: tuple[str, ...], rc: int, stdout: str, stderr: str) 
         return  # log is best-effort; never escalate into a setup failure
 
 
-def _check_selinux_policy() -> bool:
-    """Print SELinux prereq status and return whether it's satisfied.
+# ── Check-only output helpers ──────────────────────────────────────────
 
-    ``True`` means containers will be able to reach service sockets
-    (either because socket mode isn't in use, SELinux isn't enforcing,
-    or the policy + libselinux are both ready).  ``False`` means the
-    user must run a remediation step (install ``selinux-policy-devel``,
-    ``sudo bash install_policy.sh``, or ``dnf install libselinux``)
-    before task containers will work — ``cmd_setup`` propagates that
-    into a non-zero exit so the setup run fails loudly, matching the
-    runtime AVC-denial reality.
-
-    The decision tree is shared with ``terok sickbay`` via
-    :func:`terok_sandbox.check_selinux_status`; this function only
-    renders it as printed setup output.
-    """
-    from terok_sandbox import (
-        SelinuxStatus,
-        check_selinux_status,
-        selinux_install_command,
-        selinux_install_script,
-    )
-
-    from ...lib.core.config import get_services_mode
-
-    result = check_selinux_status(services_mode=get_services_mode())
-    if result.status in (
-        SelinuxStatus.NOT_APPLICABLE_TCP_MODE,
-        SelinuxStatus.NOT_APPLICABLE_PERMISSIVE,
-    ):
-        return True
-
-    install_cmd = selinux_install_command()
-    print()
-    print(_bold("SELinux:"))
-    match result.status:
-        case SelinuxStatus.POLICY_MISSING:
-            print(f"  terok_socket_t   {_warn_label()} (policy NOT installed)")
-            print("                   Containers cannot connect to service sockets.")
-            print("                   Fix (pick one):")
-            if result.missing_policy_tools:
-                tools = ", ".join(result.missing_policy_tools)
-                print(f"                   Policy tools missing: {tools}")
-                print(
-                    f"                     install policy: "
-                    f"{_bold('sudo dnf install selinux-policy-devel policycoreutils')}, "
-                    f"then {_bold(install_cmd)}"
-                )
-            else:
-                print(f"                     install policy: {_bold(install_cmd)}")
-            print(
-                f"                     or opt out:     add "
-                f"{_bold(SERVICES_TCP_OPTOUT_YAML)}"
-                f" to {global_config_path()}"
-            )
-            print()
-            return False
-        case SelinuxStatus.LIBSELINUX_MISSING:
-            print(f"  terok_socket_t   {_warn_label()} (libselinux.so.1 not loadable)")
-            print("                   Sockets will bind as unconfined_t — containers denied.")
-            print(f"                   Fix: {_bold('sudo dnf install libselinux')}")
-            print()
-            return False
-        case SelinuxStatus.OK:
-            print(f"  terok_socket_t   {_status_label(True)} (policy installed)")
-            print(f"                   Installer: {selinux_install_script()}")
-            print()
-            return True
-    return True  # pragma: no cover — exhaustive above; defensive fallthrough for new enum members
+#: Suffix used by every ``check_only`` phase to qualify the ``ok``/``FAIL``
+#: label with the literal on-disk presence (``ok (installed)`` vs
+#: ``FAIL (not installed)``).  Factored out because three phases print
+#: the pair verbatim; a typo in one would produce inconsistent output.
+_CHECK_SUFFIX_PRESENT = " (installed)"
+_CHECK_SUFFIX_ABSENT = " (not installed)"
 
 
-def cmd_setup(
-    *,
-    check_only: bool = False,
-    no_dbus_bridge: bool = False,
-    no_desktop_entry: bool = False,
-) -> None:
-    """Global bootstrap: install shield, vault, gate server, and optional D-Bus bridge.
-
-    Non-interactive and idempotent — safe to re-run.  Installs to user-local
-    directories (no root needed).  With ``--check``, only reports status.
-    ``--no-dbus-bridge`` skips the NFLOG reader resource and the terok-dbus
-    hub unit so audit-minimal hosts only see the nft hook pair on disk.
-    ``--no-desktop-entry`` skips the XDG application launcher / icon
-    install — useful on headless hosts and CI images.
-    """
-    action = "Checking" if check_only else "Setting up"
-    print(_bold(f"\n{action} terok host services\n"))
-
-    # Step 1: Host binary prerequisites
-    print(_bold("Host binaries:"))
-    binaries_ok = _check_host_binaries()
-    print()
-
-    # Step 2: SELinux prereq (prints only on enforcing hosts in socket mode;
-    # surfaced *before* service install so the fix hint isn't buried below
-    # multi-line install output the user has to scroll past).
-    selinux_ok = _check_selinux_policy()
-
-    # Step 3: Services
-    print(_bold("Services:"))
-    shield_ok = _ensure_shield(check_only=check_only)
-
-    vault_ok = _ensure_vault(check_only=check_only)
-
-    gate_ok = _ensure_gate(check_only=check_only)
-
-    bridge_ok = _ensure_dbus_bridge(check_only=check_only, enabled=not no_dbus_bridge)
-
-    if no_desktop_entry:
-        desktop_ok = _disable_desktop_entry(check_only=check_only)
-    else:
-        desktop_ok = _ensure_desktop_entry(check_only=check_only)
-    print()
-
-    # Summary + next steps
-    all_ok = (
-        binaries_ok
-        and shield_ok
-        and vault_ok
-        and gate_ok
-        and selinux_ok
-        and bridge_ok
-        and desktop_ok
-    )
-    if all_ok:
-        print(_bold("Setup complete."))
-    elif not binaries_ok:
-        print(_bold(_red("Missing mandatory binaries — install them first.")))
-    elif not selinux_ok:
-        print(
-            _bold(_yellow("SELinux prerequisites unmet — task containers will fail until fixed."))
-        )
-    else:
-        print(_bold(_yellow("Some services could not be installed (see above).")))
-
-    providers = ", ".join(AUTH_PROVIDERS)
-    print(
-        f"\nNext steps:\n"
-        f"  terok auth <provider>                      Host-wide auth ({providers})\n"
-        f"  terok project wizard                       Create your first project\n"
-        f"  terok task run <project>                   Start a CLI task (attaches on TTY)\n"
-    )
-
-    if not binaries_ok:
-        sys.exit(2)
-    if not all_ok:
-        sys.exit(1)
+def _presence_suffix(present: bool) -> str:
+    """Return the trailing ``(installed)``/``(not installed)`` marker for check-only output."""
+    return _CHECK_SUFFIX_PRESENT if present else _CHECK_SUFFIX_ABSENT
 
 
 # ── Per-project setup ──────────────────────────────────────────────────
