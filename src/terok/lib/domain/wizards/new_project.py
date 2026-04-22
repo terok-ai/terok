@@ -144,14 +144,12 @@ def collect_wizard_inputs() -> dict | None:
                 break
             print(error, file=sys.stderr)
 
-        # Upstream URL
-        while True:
-            upstream_url = _prompt("Upstream git URL")
-            if upstream_url:
-                break
-            print("Upstream URL is required.", file=sys.stderr)
+        # Upstream URL (optional — empty creates a project with no remote;
+        # the host-side gate will still initialise as a bare local repo).
+        upstream_url = _prompt("Upstream git URL (empty for local-only)")
 
-        # Default branch (empty = use remote's default branch)
+        # Default branch (empty = use remote's default branch, or ``main``
+        # when there's no remote to consult).
         default_branch = _prompt("Default branch (empty → remote default)")
 
         # Image snippet

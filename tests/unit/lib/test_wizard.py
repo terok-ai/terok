@@ -108,9 +108,9 @@ def test_validate_project_id(project_id: str, valid: bool) -> None:
             id="retry-invalid-project-id",
         ),
         pytest.param(
-            ["1", "1", "proj", "", "https://example.com/r.git", "main", "n"],
-            wizard_values(project_id="proj", upstream_url="https://example.com/r.git"),
-            id="retry-empty-upstream-url",
+            ["1", "1", "proj", "", "main", "n"],
+            wizard_values(project_id="proj", upstream_url=""),
+            id="empty-upstream-url-accepted",
         ),
     ],
 )

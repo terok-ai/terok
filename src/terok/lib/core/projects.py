@@ -146,6 +146,16 @@ def _build_project_config(
     tasks_root = Path(raw.tasks.root or (sandbox_live_dir() / "tasks" / pid)).resolve()
     gate_path = Path(raw.gate.path or (gate_repos_dir() / f"{pid}.git")).resolve()
 
+    # ``gatekeeping`` mode is defined *by* the gate enforcing human review,
+    # so disabling the gate in that mode is an incoherent configuration.
+    # Reject at load time with a pointer at the two coherent resolutions.
+    if sec == "gatekeeping" and not raw.gate.enabled:
+        raise SystemExit(
+            f"Project {pid!r}: security_class 'gatekeeping' requires gate.enabled: true "
+            "(gatekeeping *is* the gate-enforced mode).  Either set security_class: online "
+            "to drop the gate, or set gate.enabled: true."
+        )
+
     staging_root: Path | None = None
     if sec == "gatekeeping":
         staging_root = Path(raw.gatekeeping.staging_root or (build_dir() / pid)).resolve()
@@ -173,11 +183,16 @@ def _build_project_config(
         id=pid,
         security_class=sec,
         isolation=raw.project.isolation,
-        upstream_url=raw.git.upstream_url,
+        # Normalise "" → None so downstream ``is None`` checks and truthy
+        # checks agree — the wizard and the template both emit an empty
+        # string for a no-upstream project, but the rest of the stack
+        # treats None as the canonical "no upstream" sentinel.
+        upstream_url=raw.git.upstream_url or None,
         default_branch=raw.git.default_branch or None,
         root=root.resolve(),
         tasks_root=tasks_root,
         gate_path=gate_path,
+        gate_enabled=raw.gate.enabled,
         staging_root=staging_root,
         ssh_use_personal=raw.ssh.use_personal,
         expose_external_remote=raw.gatekeeping.expose_external_remote,

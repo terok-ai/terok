@@ -182,10 +182,32 @@ class RawTasksSection(BaseModel):
 
 
 class RawGateSection(BaseModel):
-    """The ``gate:`` section of project.yml."""
+    """The ``gate:`` section of project.yml.
+
+    ``enabled`` and ``upstream_url`` are orthogonal knobs.  Four combinations:
+
+    - ``enabled=True`` + upstream set → host mirrors upstream; container
+      clones from the mirror (the default; current behaviour).
+    - ``enabled=True`` + no upstream → host initialises a remoteless bare
+      repo; the container still gets a remote to push to.
+    - ``enabled=False`` + upstream set → host never touches the remote;
+      the container fetches directly from upstream.  Useful when the host
+      has no path to the upstream but the container does (firewall,
+      corporate proxy), or when the mirror is simply unwanted.
+    - ``enabled=False`` + no upstream → no git plumbing; the container
+      starts with an empty workspace.
+
+    When upstream is absent, ``security_class`` collapses: ``online`` and
+    ``gatekeeping`` describe the same act because there's nothing to push
+    to beyond the gate.  Both values are accepted and behave identically.
+    """
 
     model_config = ConfigDict(extra="forbid")
 
+    enabled: bool = Field(
+        default=True,
+        description="Enable the host-side git gate mirror for this project",
+    )
     path: str | None = Field(default=None, description="Override git gate (mirror) path")
 
 

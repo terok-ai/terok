@@ -129,6 +129,29 @@ class TestProjectInit:
         with pytest.raises(SystemExit, match="Gate sync failed"):
             cmd_project_init("badproj")
 
+    @_patch_init_steps
+    def test_cmd_project_init_skips_gate_sync_when_disabled(
+        self,
+        mock_provision,
+        mock_summarize,
+        mock_pause,
+        mock_gen,
+        mock_build,
+        mock_gate_cls,
+        mock_load,
+    ) -> None:
+        """``gate.enabled: false`` short-circuits after build — no sync attempted."""
+        mock_provision.return_value = _FAKE_SSH_INIT_RESULT
+        mock_load.return_value = unittest.mock.Mock(gate_enabled=False)
+
+        from terok.cli.commands.setup import cmd_project_init
+
+        cmd_project_init("noproj")
+
+        mock_build.assert_called_once_with("noproj")
+        mock_gate_cls.assert_not_called()
+        mock_gate_cls.return_value.sync.assert_not_called()
+
 
 class TestCliSshInit:
     """Tests for the ``project ssh-init`` CLI command."""

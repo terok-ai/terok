@@ -105,7 +105,11 @@ def _security_mode_env_and_volumes(
         if project.expose_external_remote and project.upstream_url:
             env["EXTERNAL_REMOTE_URL"] = project.upstream_url
     else:
-        if gate_repo.exists():
+        # Online mode: use the gate as a clone accelerator when it exists
+        # *and* the project opted in.  ``gate.enabled: false`` is the
+        # explicit escape hatch for hosts that cannot reach the remote
+        # (container clones directly from upstream instead).
+        if project.gate_enabled and gate_repo.exists():
             try:
                 ensure_server_reachable(cfg)
             except SystemExit:

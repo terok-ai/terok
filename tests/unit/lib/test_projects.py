@@ -139,6 +139,43 @@ class TestProject:
         assert projects[0].upstream_url == "https://user.example/repo.git"
         assert projects[0].root == (user_projects / "proj2").resolve()
 
+    def test_gatekeeping_with_gate_disabled_rejected_at_load(self) -> None:
+        """gatekeeping *is* the gate-enforced mode; disabling the gate is incoherent."""
+        yaml = (
+            "project:\n"
+            "  id: bad\n"
+            "  security_class: gatekeeping\n"
+            "git:\n"
+            "  upstream_url: https://example.com/r.git\n"
+            "gate:\n"
+            "  enabled: false\n"
+        )
+        with project_env(yaml, project_id="bad"):
+            with pytest.raises(SystemExit, match="gatekeeping"):
+                load_project("bad")
+
+    def test_gate_enabled_defaults_true(self) -> None:
+        """Projects without an explicit gate section keep the old default (enabled)."""
+        yaml = "project:\n  id: p\ngit:\n  upstream_url: https://example.com/r.git\n"
+        with project_env(yaml, project_id="p"):
+            project = load_project("p")
+        assert project.gate_enabled is True
+
+    def test_gate_disabled_loads_in_online_mode(self) -> None:
+        """online + gate.enabled: false is the supported disabled-gate shape."""
+        yaml = (
+            "project:\n"
+            "  id: hostless\n"
+            "git:\n"
+            "  upstream_url: git@github.com:user/repo.git\n"
+            "gate:\n"
+            "  enabled: false\n"
+        )
+        with project_env(yaml, project_id="hostless"):
+            project = load_project("hostless")
+        assert project.gate_enabled is False
+        assert project.upstream_url == "git@github.com:user/repo.git"
+
     def test_discover_projects_splits_valid_and_broken(
         self, capsys: pytest.CaptureFixture[str]
     ) -> None:

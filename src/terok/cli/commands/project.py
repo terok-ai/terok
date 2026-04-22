@@ -288,9 +288,18 @@ def _cmd_gate_sync(args: argparse.Namespace) -> None:
     """Sync the host-side git gate for a project."""
     from terok_sandbox.gate.mirror import GateAuthNotConfigured
 
+    project = load_project(args.project_id)
+    if not project.gate_enabled:
+        raise SystemExit(
+            f"Project {project.id!r} has gate.enabled: false — refusing to sync.\n"
+            "Either set gate.enabled: true in project.yml, or drop the "
+            "gate-sync step entirely (the container clones directly from "
+            "upstream, if any)."
+        )
+
     use_personal = bool(getattr(args, "use_personal_ssh", False)) or None
     try:
-        res = make_git_gate(load_project(args.project_id), use_personal_ssh=use_personal).sync(
+        res = make_git_gate(project, use_personal_ssh=use_personal).sync(
             force_reinit=getattr(args, "force_reinit", False)
         )
     except GateAuthNotConfigured as exc:
@@ -303,9 +312,10 @@ def _cmd_gate_sync(args: argparse.Namespace) -> None:
     if not res["success"]:
         raise SystemExit(f"Gate sync failed: {', '.join(res['errors'])}")
     cache_note = " (clone cache refreshed)" if res.get("cache_refreshed") else ""
+    upstream_label = res["upstream_url"] or "(none — local-only bare repo)"
     print(
         f"Gate ready at {res['path']} "
-        f"(upstream: {res['upstream_url']}; created: {res['created']}){cache_note}"
+        f"(upstream: {upstream_label}; created: {res['created']}){cache_note}"
     )
 
 
