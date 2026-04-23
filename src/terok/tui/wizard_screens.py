@@ -35,6 +35,7 @@ from textual.containers import Horizontal, Vertical, VerticalScroll
 from textual.screen import ModalScreen
 from textual.widgets import Button, Input, Label, RadioButton, RadioSet, RichLog, Static, TextArea
 
+from ..lib.domain.facade import project_needs_key_registration
 from ..lib.domain.wizards.new_project import (
     QUESTIONS,
     Question,
@@ -393,11 +394,37 @@ class InitProgressScreen(ModalScreen[bool]):
                 yield Button("Close", id="wizard-init-close", variant="default", disabled=True)
 
     async def on_mount(self) -> None:
-        """Persist the reviewed YAML then kick off the background worker."""
+        """Persist the reviewed YAML, then kick off the background worker.
+
+        A write failure (read-only dir, disk full, permission change) is
+        rendered into the log pane and the Close button is re-enabled so
+        the user can dismiss the modal cleanly — we never call
+        :meth:`_run_init` on a partial-write state, which would either
+        run against a stale config on disk or fail the first facade step
+        with a confusing secondary error.
+        """
         log = self.query_one("#wizard-init-log", RichLog)
         log.write(f"[dim]Writing project.yml for {self._project_id}…[/]")
-        write_project_yaml(self._project_id, self._rendered_yaml, overwrite=True)
+        try:
+            write_project_yaml(self._project_id, self._rendered_yaml, overwrite=True)
+        except (OSError, SystemExit) as exc:
+            log.write(f"[red]Failed to write project.yml: {exc}[/]")
+            self._finish_with_close_button()
+            return
         self._run_init()
+
+    def _finish_with_close_button(self) -> None:
+        """Enable the Close button after the screen reaches a terminal state.
+
+        Used both from ``on_mount`` when the write fails and from the
+        worker's ``finally`` block on success / error — the single path
+        keeps the button's enable/label/variant in sync no matter which
+        branch reached the end.
+        """
+        button = self.query_one("#wizard-init-close", Button)
+        button.disabled = False
+        button.variant = "success" if self._ok else "warning"
+        button.label = "Done" if self._ok else "Close"
 
     # ── Step status helpers ───────────────────────────────────────────
 
@@ -448,7 +475,7 @@ class InitProgressScreen(ModalScreen[bool]):
             self._mark("ssh", "done", f"key id {result['key_id']}")
             log.write(f"[green]✓[/] SSH key minted: {result['comment']}")
 
-            if _needs_key_registration(self._project_id):
+            if project_needs_key_registration(self._project_id):
                 self.query_one("#wizard-init-ssh-pubkey", TextArea).text = result["public_line"]
                 self.query_one("#wizard-init-ssh-key").styles.display = "block"
                 log.write(
@@ -510,11 +537,7 @@ class InitProgressScreen(ModalScreen[bool]):
                     self._mark(key, "failed", str(exc))
                     break
         finally:
-            self.query_one("#wizard-init-close", Button).disabled = False
-            self.query_one("#wizard-init-close", Button).variant = (
-                "success" if self._ok else "warning"
-            )
-            self.query_one("#wizard-init-close", Button).label = "Done" if self._ok else "Close"
+            self._finish_with_close_button()
 
     # ── Button handlers ───────────────────────────────────────────────
 
@@ -534,19 +557,6 @@ class InitProgressScreen(ModalScreen[bool]):
 
 
 # ── Helpers ───────────────────────────────────────────────────────────
-
-
-def _needs_key_registration(project_id: str) -> bool:
-    """Return True when the project's upstream is an SSH URL and thus needs a deploy-key pause."""
-    from terok_sandbox import is_ssh_url
-
-    from ..lib.core.projects import load_project
-
-    try:
-        project = load_project(project_id)
-    except SystemExit:
-        return False
-    return bool(project.upstream_url) and is_ssh_url(project.upstream_url)
 
 
 @contextlib.contextmanager

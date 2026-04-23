@@ -794,6 +794,7 @@ expose = [
     "is_task_image_old",
     "register_ssh_key",
     "maybe_pause_for_ssh_key_registration",
+    "project_needs_key_registration",
     "provision_ssh_key",
     "summarize_ssh_init",
     "vault_db",

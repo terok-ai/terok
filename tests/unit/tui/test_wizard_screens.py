@@ -204,3 +204,35 @@ def test_touched_wizard_yaml_survives_roundtrip() -> None:
     ):
         path = write_project_yaml("roundtrip", rendered, overwrite=True)
         assert path.read_text() == rendered
+
+
+# ── InitProgressScreen — error paths ──────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_init_screen_write_failure_surfaces_in_log() -> None:
+    """A failed ``write_project_yaml`` renders the error and enables Close.
+
+    The worker's facade pipeline is *not* entered — a write that fails
+    is a stale project.yml waiting to happen, and downstream steps
+    would just fail secondarily on a confusing error.
+    """
+    from terok.tui.wizard_screens import InitProgressScreen
+
+    def _boom(*_args, **_kwargs):
+        raise OSError("read-only filesystem")
+
+    app = _WizardHost(InitProgressScreen("demo", "project:\n  id: demo\n"))
+    with (
+        patch("terok.tui.wizard_screens.write_project_yaml", side_effect=_boom),
+        patch("terok.tui.wizard_screens.InitProgressScreen._run_init") as mock_run_init,
+    ):
+        async with app.run_test() as pilot:
+            await pilot.pause()
+            screen = app.screen
+            assert isinstance(screen, InitProgressScreen)
+            close_button = screen.query_one("#wizard-init-close")
+            # Close button is enabled so the user can dismiss cleanly.
+            assert close_button.disabled is False
+            # The worker was never invoked on the failed-write path.
+            mock_run_init.assert_not_called()

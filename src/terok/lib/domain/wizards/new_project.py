@@ -171,13 +171,32 @@ QUESTIONS: tuple[Question, ...] = (
 def validate_answer(question: Question, raw: str) -> tuple[str, str | None]:
     """Normalise and validate a raw answer for *question*.
 
-    Returns ``(value, error_or_None)`` — the transformed value and an
-    error message if the answer was rejected.  Both presenters call this
-    so validation semantics stay identical regardless of UI.
+    Returns ``(value, error_or_None)`` — the normalised value and an
+    error message if the answer was rejected.  Both presenters call
+    this so validation semantics stay identical regardless of UI.
+
+    Normalisation, in order:
+
+    1. Strip surrounding whitespace (copy-paste leftovers, accidental
+       trailing spaces).  All-whitespace input is indistinguishable
+       from empty for the required/optional check.
+    2. Apply ``question.transform`` if set (e.g. ``str.lower``).
+    3. Enforce the required flag against the final value.
+    4. For ``kind="choice"``, the value must be one of the declared
+       slugs — defensive against presenter bugs that might submit a
+       label, index, or free-form typo.
+    5. Run ``question.validate`` for field-specific rules.
     """
-    value = question.transform(raw) if question.transform else raw
+    value = raw.strip()
+    if question.transform:
+        value = question.transform(value)
     if question.required and not value:
         return value, f"{question.prompt} is required."
+    if question.kind == "choice" and value:
+        valid_slugs = {slug for slug, _label in question.choices}
+        if value not in valid_slugs:
+            allowed = ", ".join(sorted(valid_slugs))
+            return value, f"{question.prompt} must be one of: {allowed}"
     if question.validate:
         err = question.validate(value)
         if err:
@@ -210,6 +229,13 @@ def _prompt_choice(title: str, options: list[tuple[str, str]]) -> str | None:
     return None
 
 
+#: Exact text terok writes into the snippet tempfile before handing it to
+#: ``$EDITOR``.  Matching this verbatim keeps the trimmer from eating
+#: intentional user comments at the top of the file — only *our* boilerplate
+#: goes away, any other leading ``#`` lines the user types survive.
+_SNIPPET_PREAMBLE = "# Add custom Dockerfile commands below.\n# Empty file = no snippet.\n"
+
+
 def _prompt_image_snippet() -> str:
     """Optionally open an editor for a custom image snippet.
 
@@ -222,7 +248,7 @@ def _prompt_image_snippet() -> str:
     with tempfile.NamedTemporaryFile(
         suffix=".dockerfile", prefix="terok-snippet-", mode="w", delete=False
     ) as tmp:
-        tmp.write("# Add custom Dockerfile commands below.\n# Empty file = no snippet.\n")
+        tmp.write(_SNIPPET_PREAMBLE)
         tmp_path = Path(tmp.name)
 
     try:
@@ -237,18 +263,18 @@ def _prompt_image_snippet() -> str:
 
 
 def _trim_snippet_preamble(content: str) -> str:
-    """Strip leading comment-only lines (the boilerplate preamble) and trailing blanks."""
-    raw_lines = content.splitlines()
-    start_idx = 0
-    while start_idx < len(raw_lines):
-        stripped = raw_lines[start_idx].strip()
-        if stripped and not stripped.startswith("#"):
-            break
-        start_idx += 1
-    trimmed = raw_lines[start_idx:]
-    while trimmed and not trimmed[-1].strip():
-        trimmed.pop()
-    return "\n".join(trimmed)
+    """Strip exactly the injected preamble and trailing blanks.
+
+    The earlier implementation pruned every leading comment line, which
+    would eat user-intended ``# TODO`` or copyright notices.  We instead
+    match :data:`_SNIPPET_PREAMBLE` verbatim — if the user didn't
+    remove it, drop it; if they did, leave the rest alone.
+    """
+    if content.startswith(_SNIPPET_PREAMBLE):
+        content = content[len(_SNIPPET_PREAMBLE) :]
+    # Trailing blanks stay stripped — meaningful-whitespace policy
+    # is the same regardless of whether the preamble was intact.
+    return content.rstrip("\n").rstrip()
 
 
 def _ask_cli(question: Question) -> str | None:

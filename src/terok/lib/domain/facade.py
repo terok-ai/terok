@@ -161,12 +161,25 @@ def summarize_ssh_init(result: SSHInitResult) -> None:
     print(f"  {result['public_line']}")
 
 
-def maybe_pause_for_ssh_key_registration(project_id: str) -> None:
-    """Pause so the user can register the deploy key, but only for SSH upstreams."""
+def project_needs_key_registration(project_id: str) -> bool:
+    """Return True when the project's upstream is SSH-scheme, so a deploy key must be added.
+
+    Shared predicate used by the CLI's pause helper below and the TUI
+    wizard's mid-flow "continue" gate — keeps the rule (SSH URLs need
+    registration, HTTPS and no-upstream projects don't) in one place.
+    """
     from terok_sandbox import is_ssh_url
 
-    project = load_project(project_id)
-    if is_ssh_url(project.upstream_url):
+    try:
+        project = load_project(project_id)
+    except SystemExit:
+        return False
+    return bool(project.upstream_url) and is_ssh_url(project.upstream_url)
+
+
+def maybe_pause_for_ssh_key_registration(project_id: str) -> None:
+    """Pause so the user can register the deploy key, but only for SSH upstreams."""
+    if project_needs_key_registration(project_id):
         print("\n" + "=" * 60)
         print("ACTION REQUIRED: Add the public key shown above as a")
         print("deploy key (or to your SSH keys) on the git remote.")
@@ -335,6 +348,7 @@ __all__ = [
     "summarize_ssh_init",
     "vault_db",
     "maybe_pause_for_ssh_key_registration",
+    "project_needs_key_registration",
     # Auth
     "authenticate",
     # Project state

@@ -413,6 +413,31 @@ class TestValidateAnswer:
         assert value == snippet
         assert err is None
 
+    def test_surrounding_whitespace_is_stripped(self) -> None:
+        """Leading/trailing whitespace is removed before validation and transform."""
+        value, err = validate_answer(_q("project_id"), "  MyProj  ")
+        assert value == "myproj"
+        assert err is None
+
+    def test_all_whitespace_answer_counts_as_empty_for_required(self) -> None:
+        """``'   '`` → required field rejected the same way an empty string is."""
+        value, err = validate_answer(_q("project_id"), "   ")
+        assert value == ""
+        assert err is not None
+        assert "required" in err
+
+    def test_unknown_choice_slug_is_rejected(self) -> None:
+        """Defensive check: a bogus slug for a choice question returns an error."""
+        value, err = validate_answer(_q("security_class"), "bogus")
+        assert err is not None
+        assert "must be one of" in err
+
+    def test_whitespace_only_optional_text_accepted_as_empty(self) -> None:
+        """Optional text field: spaces collapse to empty and pass through cleanly."""
+        value, err = validate_answer(_q("upstream_url"), "   ")
+        assert value == ""
+        assert err is None
+
 
 # ---------------------------------------------------------------------------
 # render_project_yaml / write_project_yaml — TUI-only rendering helpers that
