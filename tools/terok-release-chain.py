@@ -491,12 +491,12 @@ def wait_for_checks(pr_url: str, gh_repo: str, ctx: Ctx) -> str:
             die(f"gh pr checks failed (exit {r.returncode}): {detail}")
 
         checks = json.loads(r.stdout) if r.stdout.strip() else []
+        # Fail-closed: an empty check list is never "passed".  Keep polling
+        # until real checks appear or ctx.check_timeout fires — operators
+        # whose repo genuinely has no CI must say so with --skip-checks.
         if not checks:
-            if elapsed < CHECK_GRACE_WINDOW:
-                time.sleep(CHECK_POLL_INTERVAL)
-                continue
-            console.print("[green]No checks configured.[/]")
-            return "passed"
+            time.sleep(CHECK_POLL_INTERVAL)
+            continue
 
         pending = sum(1 for c in checks if c["bucket"] == "pending")
         failing = [c for c in checks if c["bucket"] in ("fail", "cancel")]
@@ -574,7 +574,7 @@ def _wheel_downloadable(url: str) -> bool:
         return False
 
 
-def wait_for_wheel(repo: str, version: str, org: str, timeout: int = DEFAULT_WHEEL_TIMEOUT):
+def wait_for_wheel(repo: str, version: str, org: str, timeout: int = DEFAULT_WHEEL_TIMEOUT) -> None:
     """Block until the released wheel is downloadable.
 
     Two-phase check: the GitHub API lists the asset name first, then the
