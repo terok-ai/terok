@@ -35,8 +35,17 @@ def render_task_details(
     css_variables: dict[str, str] | None = None,
     show_workspace: bool = True,
     shield_hooks_ok: bool | None = None,
+    is_web: bool = False,
 ) -> Text:
-    """Render task details as a Rich Text object."""
+    """Render task details as a Rich Text object.
+
+    *is_web* is the caller's ``app.is_web`` — when False (the TUI is
+    running in a real terminal) we emit OSC 8 hyperlinks so wrapped
+    URL lines stay one clickable link.  In web mode we skip OSC 8
+    because xterm.js's link handler shows a "could be dangerous"
+    confirmation dialog for every click; the ``@click`` meta below
+    keeps that path working without the dialog.
+    """
     if task is None:
         return Text(empty_message or "")
 
@@ -73,11 +82,17 @@ def render_task_details(
         # Render the full URL verbatim so users without OSC-8 support
         # (and copy-paste) still get the tokenised URL.
         link_url = f"{base_url}?token={task.web_token}" if task.web_token else base_url
-        # Route clicks through Textual's ``open_url`` action instead of
-        # an OSC-8 hyperlink — xterm.js's OSC handler shows a "could be
-        # dangerous" confirm dialog for every click, but the ``open_url``
-        # meta-message goes straight to ``window.open`` on the client.
+        # ``@click`` meta is the in-Textual click dispatcher — it routes
+        # through ``open_url`` and avoids xterm.js's OSC 8 confirm
+        # dialog when the TUI is served via textual-serve.  Outside web
+        # mode (real terminal underneath) we *also* attach Rich's
+        # ``link=`` so the host terminal sees the OSC 8 hyperlink: with
+        # the shared ``id=`` Rich emits, wrapped URL segments stitch
+        # back into one clickable link instead of breaking at the panel
+        # edge.
         click_style = accent_style + Style.from_meta({"@click": f"open_link({link_url!r})"})
+        if not is_web:
+            click_style = click_style + Style(link=link_url)
         lines.append(Text.assemble("Web URL:   ", Text(link_url, style=click_style)))
     if task.mode == "cli" and project_id:
         lines.append(
@@ -181,6 +196,7 @@ class TaskDetails(Static):
             _get_css_variables(self),
             show_workspace=False,
             shield_hooks_ok=hooks_ok,
+            is_web=bool(self.app and self.app.is_web),
         )
         content.update(rendered)
 

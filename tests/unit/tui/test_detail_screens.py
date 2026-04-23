@@ -245,6 +245,39 @@ class TestRenderHelpers:
         text_str = str(result)
         assert "Exit code: 0" in text_str
 
+    def test_web_url_emits_osc8_link_outside_web_mode(self) -> None:
+        """In a real terminal the URL style carries an OSC 8 link for cross-line wrap."""
+        import io
+
+        from rich.console import Console
+
+        widgets = import_widgets()
+        task = make_task(widgets, task_id="42", mode="toad", web_port=8123, web_token="t0k")
+        result = widgets.render_task_details(task, project_id="proj1", is_web=False)
+        # Render to a buffer with ``force_terminal`` so styles serialise
+        # to ANSI; the plain ``str(result)`` projection drops styling.
+        buf = io.StringIO()
+        Console(file=buf, width=80, force_terminal=True, color_system="standard").print(result)
+        ansi = buf.getvalue()
+        assert "\x1b]8;" in ansi  # OSC 8 sequence present
+        assert "id=" in ansi  # shared id for cross-line stitching
+
+    def test_web_url_skips_osc8_when_web_mode(self) -> None:
+        """In web mode (xterm.js) we omit OSC 8 to avoid the dangerous-link dialog."""
+        import io
+
+        from rich.console import Console
+
+        widgets = import_widgets()
+        task = make_task(widgets, task_id="42", mode="toad", web_port=8123, web_token="t0k")
+        result = widgets.render_task_details(task, project_id="proj1", is_web=True)
+        buf = io.StringIO()
+        Console(file=buf, width=80, force_terminal=True, color_system="standard").print(result)
+        ansi = buf.getvalue()
+        assert "\x1b]8;" not in ansi  # no OSC 8 — Textual @click handles the click
+        # The URL itself is still in the rendered text so users can copy it.
+        assert "8123" in ansi
+
     @pytest.mark.parametrize(
         ("overrides", "present", "absent"),
         [

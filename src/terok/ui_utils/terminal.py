@@ -14,6 +14,7 @@ from terok.lib.util.ansi import (  # noqa: F401  -- re-exports
     bold,
     color,
     green,
+    hyperlink,
     red,
     supports_color,
     yellow,
