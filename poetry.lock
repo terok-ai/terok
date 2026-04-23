@@ -3092,27 +3092,26 @@ url = "https://github.com/terok-ai/terok-clearance/releases/download/v0.6.3/tero
 
 [[package]]
 name = "terok-executor"
-version = "0.0.115"
+version = "0.0.116"
 description = "Single-agent task runner for hardened Podman containers"
 optional = false
 python-versions = ">=3.12,<4.0"
 groups = ["main"]
-files = []
-develop = false
+files = [
+    {file = "terok_executor-0.0.116-py3-none-any.whl", hash = "sha256:150921e66df60b09cabe23bee10d1077c65bca57ccb7b6659d4a6a053c88aa6f"},
+]
 
 [package.dependencies]
 Jinja2 = ">=3.1"
 pwinput = ">=1.0.3"
 pydantic = ">=2.9"
 "ruamel.yaml" = ">=0.18"
-terok-sandbox = {url = "https://github.com/terok-ai/terok-sandbox/releases/download/v0.0.97/terok_sandbox-0.0.97-py3-none-any.whl"}
+terok_sandbox = {url = "https://github.com/terok-ai/terok-sandbox/releases/download/v0.0.97/terok_sandbox-0.0.97-py3-none-any.whl"}
 tomli-w = ">=1.0"
 
 [package.source]
-type = "git"
-url = "https://github.com/sliwowitz/terok-executor.git"
-reference = "chore/bump-sandbox-0.0.97"
-resolved_reference = "3f4641006018105025686082d9640baa4f1cfad8"
+type = "url"
+url = "https://github.com/terok-ai/terok-executor/releases/download/v0.0.116/terok_executor-0.0.116-py3-none-any.whl"
 
 [[package]]
 name = "terok-sandbox"
@@ -3644,4 +3643,4 @@ propcache = ">=0.2.1"
 [metadata]
 lock-version = "2.1"
 python-versions = ">=3.12,<4.0"
-content-hash = "49a67484c3d0182cca19c83ad74d210032eb9ab2b6dd58822349bc3d96720f20"
+content-hash = "e4655e471e20460d0f18de9c2cc6b355411c6b5c007199720cdc57c3b4e0dc9d"
