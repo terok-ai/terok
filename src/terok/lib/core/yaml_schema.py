@@ -155,16 +155,25 @@ class RawGlobalGitSection(BaseModel):
 
 
 class RawSSHSection(BaseModel):
-    """The ``ssh:`` section of project.yml."""
+    """The ``ssh:`` section, valid in both ``project.yml`` and global ``config.yml``.
+
+    The default is ``None`` (not ``False``) so ``model_dump(exclude_none=True)``
+    can distinguish *unset* from *explicitly false* — the project layer
+    needs to leave the global value alone when the user omitted ``ssh:``,
+    not stomp it back to ``False``.  The effective ``False`` default
+    happens at the consumer end via ``ssh_resolved.get("use_personal",
+    False)``, so callers see the same behaviour as before.
+    """
 
     model_config = ConfigDict(extra="forbid")
 
-    use_personal: bool = Field(
-        default=False,
+    use_personal: bool | None = Field(
+        default=None,
         description=(
             "Opt in to the user's ``~/.ssh`` keys for host-side ``gate-sync``. "
             "Default ``false`` — terok uses only its vault-managed key. "
-            "See also the per-invocation override ``--use-personal-ssh``."
+            "Resolves through ConfigStack: ``terok-global config.yml`` → "
+            "``project.yml`` → CLI ``--use-personal-ssh`` (highest)."
         ),
     )
 
@@ -602,6 +611,7 @@ class RawGlobalConfig(BaseModel):
     network: RawNetworkSection = Field(default_factory=RawNetworkSection)
     tasks: RawTasksGlobalSection = Field(default_factory=RawTasksGlobalSection)
     git: RawGlobalGitSection = Field(default_factory=RawGlobalGitSection)
+    ssh: RawSSHSection = Field(default_factory=RawSSHSection)
     hooks: RawHooksSection = Field(default_factory=RawHooksSection)
     image: RawImageSection = Field(default_factory=RawImageSection)
     experimental: bool = False

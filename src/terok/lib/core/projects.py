@@ -39,7 +39,7 @@ from .project_model import (  # noqa: F401 — re-exported public API
     is_valid_project_id,
     validate_project_id,
 )
-from .yaml_schema import RawGlobalGitSection, RawProjectYaml
+from .yaml_schema import RawGlobalGitSection, RawProjectYaml, RawSSHSection
 
 logger = logging.getLogger(__name__)
 
@@ -153,6 +153,7 @@ def _resolve_hooks(raw: RawProjectYaml) -> tuple[str | None, str | None, str | N
 def _build_project_config(
     raw: RawProjectYaml,
     identity: dict[str, str | None],
+    ssh_resolved: dict[str, Any],
     root: Path,
     project_id: str,
 ) -> ProjectConfig:
@@ -211,7 +212,10 @@ def _build_project_config(
         gate_path=gate_path,
         gate_enabled=raw.gate.enabled,
         staging_root=staging_root,
-        ssh_use_personal=raw.ssh.use_personal,
+        # ``ssh_resolved`` carries the merged terok-global → project value.
+        # Both layers default to ``None`` (unset), so ``False`` is the
+        # final fallback when neither the user nor the global config opted in.
+        ssh_use_personal=ssh_resolved.get("use_personal") or False,
         expose_external_remote=raw.gatekeeping.expose_external_remote,
         human_name=identity.get("human_name") or "Nobody",
         human_email=identity.get("human_email") or "nobody@localhost",
@@ -479,6 +483,24 @@ def _validated_global_git_section() -> dict[str, Any]:
         return {}
 
 
+def _validated_global_ssh_section() -> dict[str, Any]:
+    """Return the global config ``ssh:`` section, validated through the schema.
+
+    Mirrors :func:`_validated_global_git_section` — same defensive pattern,
+    same fail-soft behaviour: a malformed section logs a warning and is
+    treated as empty, so a typo in ``config.yml`` doesn't take the whole
+    project load down.
+    """
+    raw = get_global_section("ssh")
+    if not raw:
+        return {}
+    try:
+        return RawSSHSection.model_validate(raw).model_dump(exclude_none=True)
+    except ValidationError:
+        logger.warning("Invalid ssh section in global config, ignoring", exc_info=True)
+        return {}
+
+
 def load_project(project_id: str) -> ProjectConfig:
     """Load and return a fully resolved :class:`ProjectConfig` from *project_id*."""
     root = _find_project_root(project_id)
@@ -496,8 +518,17 @@ def load_project(project_id: str) -> ProjectConfig:
     identity_stack.push(ConfigScope("project", cfg_path, git_dict))
     identity = identity_stack.resolve()
 
+    # SSH knobs resolved via the same ConfigStack: terok-global → project.yml.
+    # The CLI override (``--use-personal-ssh``) sits one tier above this and
+    # is applied in ``make_git_gate`` so it doesn't have to round-trip
+    # through ``ProjectConfig`` mutation.
+    ssh_stack = ConfigStack()
+    ssh_stack.push(ConfigScope("terok-global", None, _validated_global_ssh_section()))
+    ssh_stack.push(ConfigScope("project", cfg_path, raw.ssh.model_dump(exclude_none=True)))
+    ssh_resolved = ssh_stack.resolve()
+
     try:
-        return _build_project_config(raw, identity, root, project_id)
+        return _build_project_config(raw, identity, ssh_resolved, root, project_id)
     except ValidationError as exc:
         # Identity values come from merged sources (git config, global config,
         # project.yml).  Include provenance in the error so the user knows
