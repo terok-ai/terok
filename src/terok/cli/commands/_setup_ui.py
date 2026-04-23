@@ -73,5 +73,5 @@ def _stage_begin(label: str) -> None:
     a network round-trip.  The matching terminator is the regular
     ``print(...)`` that writes the status suffix and newline.
     """
-    # 17 chars wide = longest label ("terok_socket_t" = 14) + 3 space gutter.
-    print(f"  {label:<17}", end="", flush=True)
+    # 21 chars wide = longest label ("Clearance notifier" = 18) + 3 space gutter.
+    print(f"  {label:<21}", end="", flush=True)
