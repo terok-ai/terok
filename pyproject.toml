@@ -51,7 +51,7 @@ textual-serve = ">=1.1.0"
 terok-executor = {url = "https://github.com/terok-ai/terok-executor/releases/download/v0.0.108/terok_executor-0.0.108-py3-none-any.whl"}
 terok-sandbox = {url = "https://github.com/terok-ai/terok-sandbox/releases/download/v0.0.89/terok_sandbox-0.0.89-py3-none-any.whl"}
 terok-shield = {url = "https://github.com/terok-ai/terok-shield/releases/download/v0.6.27/terok_shield-0.6.27-py3-none-any.whl"}
-terok-dbus = {url = "https://github.com/terok-ai/terok-dbus/releases/download/v0.5.13/terok_dbus-0.5.13-py3-none-any.whl"}
+terok-clearance = {url = "https://github.com/terok-ai/terok-clearance/releases/download/v0.6.0/terok_clearance-0.6.0-py3-none-any.whl"}
 
 [tool.poetry.group.dev.dependencies]
 pydevd-pycharm = "261.23567.80"

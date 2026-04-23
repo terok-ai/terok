@@ -16,7 +16,7 @@ from __future__ import annotations
 import logging
 from dataclasses import replace
 
-from terok_dbus import ContainerIdentity
+from terok_clearance import ContainerIdentity
 from terok_sandbox import PodmanInspector
 
 from terok.lib.orchestration.tasks import load_task_meta

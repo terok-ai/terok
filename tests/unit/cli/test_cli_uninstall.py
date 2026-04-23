@@ -56,7 +56,12 @@ def test_dbus_bridge_removed(
 
     mock_reader.assert_called_once()
     # disable --now must run before unlink; daemon-reload after.
-    assert mock_systemctl.call_args_list[0].args[:4] == ("--user", "disable", "--now", "terok-dbus")
+    assert mock_systemctl.call_args_list[0].args[:4] == (
+        "--user",
+        "disable",
+        "--now",
+        "terok-dbus",
+    )
     assert mock_systemctl.call_args_list[1].args == ("--user", "daemon-reload")
     assert not unit.exists()
     assert "ok" in capsys.readouterr().out

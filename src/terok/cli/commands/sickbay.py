@@ -25,11 +25,11 @@ import sys
 import tomllib
 from pathlib import Path
 
-from terok_dbus import (
+from terok_clearance import (
     check_units_outdated as _dbus_check_units_outdated,
     read_installed_unit_version as _dbus_read_unit_version,
 )
-from terok_dbus._install import UNIT_NAME as _DBUS_UNIT_NAME
+from terok_clearance._install import UNIT_NAME as _DBUS_UNIT_NAME
 from terok_sandbox import (
     check_environment,
     check_units_outdated,
@@ -146,7 +146,7 @@ def _check_clearance_hub() -> _CheckResult:
     A pre-varlink Shield1 D-Bus hub wrote the same file name and the
     same ``ExecStart={{BIN}} serve`` line — the version marker is how
     we tell the two generations apart.  ``None`` version with file
-    present = legacy unit; bumped ``_UNIT_VERSION`` in terok-dbus =
+    present = legacy unit; bumped ``_UNIT_VERSION`` in terok-clearance =
     rerun-setup prompt.
     """
     label = "Clearance hub"

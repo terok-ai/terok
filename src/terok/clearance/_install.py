@@ -26,7 +26,7 @@ _UNIT_VERSION = 2
 Substituted into ``{{UNIT_VERSION}}`` at render time so
 :func:`check_units_outdated` can tell a fresh install from an older
 generation — mirrors the pattern used by ``terok-gate``,
-``terok-vault``, and ``terok-dbus``.
+``terok-vault``, and ``terok-clearance``.
 """
 
 _VERSION_MARKER_PREFIX = "# terok-clearance-notifier-version:"

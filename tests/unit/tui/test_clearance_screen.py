@@ -38,7 +38,7 @@ class TestNotifyBridge:
         screen = mod.ClearanceScreen()
         screen.post_message = mock.Mock()
 
-        from terok_dbus import Notification
+        from terok_clearance import Notification
 
         n = Notification(nid=1, summary="S", body="B", actions=[], replaces_id=0, timeout_ms=-1)
         screen._on_notify(n)
@@ -54,7 +54,7 @@ class TestNotifyBridge:
         screen = mod.ClearanceScreen()
         screen.post_message = mock.Mock()
 
-        from terok_dbus import Notification
+        from terok_clearance import Notification
 
         n = Notification(
             nid=2,
@@ -74,7 +74,7 @@ class TestNotifyBridge:
         screen = mod.ClearanceScreen()
         screen.post_message = mock.Mock()
 
-        from terok_dbus import Notification
+        from terok_clearance import Notification
 
         n = Notification(
             nid=1, summary="Allowed", body="", actions=[], replaces_id=1, timeout_ms=5000
@@ -85,7 +85,7 @@ class TestNotifyBridge:
 
     def test_callback_notifier_wired_to_on_notify(self) -> None:
         """CallbackNotifier's on_notify hook invokes _on_notify."""
-        from terok_dbus import CallbackNotifier
+        from terok_clearance import CallbackNotifier
 
         mod = _import_clearance()
         screen = mod.ClearanceScreen()
@@ -121,7 +121,7 @@ class TestLifecycleBridge:
 
     def test_callback_notifier_wires_lifecycle_hooks(self) -> None:
         """CallbackNotifier forwards both lifecycle hooks back into the screen."""
-        from terok_dbus import CallbackNotifier
+        from terok_clearance import CallbackNotifier
 
         mod = _import_clearance()
         screen = mod.ClearanceScreen()

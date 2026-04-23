@@ -15,7 +15,7 @@ import asyncio
 import contextlib
 import logging
 
-from terok_dbus import (
+from terok_clearance import (
     EventSubscriber,
     Notifier,
     configure_logging,

@@ -63,7 +63,7 @@ def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) ->
         action="store_true",
         help=(
             "Skip the optional D-Bus clearance bridge (NFLOG reader resource + "
-            "terok-dbus hub unit).  Use on hosts with no session D-Bus or when "
+            "terok-clearance hub unit).  Use on hosts with no session D-Bus or when "
             "auditability of the hook surface is the priority."
         ),
     )
@@ -102,7 +102,7 @@ def cmd_setup(
 
     Non-interactive and idempotent — safe to re-run.  Installs to user-local
     directories (no root needed).  With ``--check``, only reports status.
-    ``--no-dbus-bridge`` skips the NFLOG reader resource and the terok-dbus
+    ``--no-dbus-bridge`` skips the NFLOG reader resource and the terok-clearance
     hub unit so audit-minimal hosts only see the nft hook pair on disk.
     ``--no-desktop-entry`` skips the XDG application launcher / icon
     install — useful on headless hosts and CI images.
@@ -500,7 +500,7 @@ def _ensure_bridge_reader(*, check_only: bool) -> bool:
 
 
 def _ensure_dbus_hub(*, check_only: bool) -> bool:
-    """Install the terok-dbus systemd user unit that owns org.terok.Shield1."""
+    """Install the terok-clearance systemd user unit that owns org.terok.Shield1."""
     _stage_begin("D-Bus hub")
     unit_path = _user_systemd_dir() / "terok-dbus.service"
     if check_only:
@@ -509,19 +509,19 @@ def _ensure_dbus_hub(*, check_only: bool) -> bool:
         return present
 
     try:
-        from terok_dbus._install import install_service
+        from terok_clearance._install import install_service
     except ImportError as exc:  # noqa: BLE001
         print(f"{_status_label(False)} (import failed: {exc})")
         return False
 
-    # Avoid ``shutil.which("terok-dbus")`` here: a hostile PATH (shell rc,
-    # unexpected cwd) could otherwise poison the ExecStart= baked into the
-    # persistent user unit.  ``sys.executable`` is set by the running
-    # interpreter, not resolved through PATH, so the pipx venv's own Python
-    # — or whatever is actually executing this process — is the one the
-    # unit ends up invoking.
+    # Avoid ``shutil.which("terok-clearance-hub")`` here: a hostile PATH
+    # (shell rc, unexpected cwd) could otherwise poison the ExecStart=
+    # baked into the persistent user unit.  ``sys.executable`` is set
+    # by the running interpreter, not resolved through PATH, so the
+    # pipx venv's own Python — or whatever is actually executing this
+    # process — is the one the unit ends up invoking.
     try:
-        install_service([sys.executable, "-m", "terok_dbus._cli"])
+        install_service([sys.executable, "-m", "terok_clearance._cli"])
     except Exception as exc:  # noqa: BLE001
         print(f"{_status_label(False)} ({exc})")
         return False

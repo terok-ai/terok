@@ -757,20 +757,20 @@ class TestEnsureDbusHub:
         import sys as _sys
 
         with (
-            patch("terok_dbus._install.install_service") as mock_install,
+            patch("terok_clearance._install.install_service") as mock_install,
             patch("terok.cli.commands.setup._enable_user_service") as mock_enable,
         ):
             assert _ensure_dbus_hub(check_only=False) is True
         (argv,) = mock_install.call_args[0]
-        assert argv == [_sys.executable, "-m", "terok_dbus._cli"]
+        assert argv == [_sys.executable, "-m", "terok_clearance._cli"]
         mock_enable.assert_called_once_with("terok-dbus")
         assert "installed" in capsys.readouterr().out
 
     def test_import_failure_soft_fails(self, capsys: pytest.CaptureFixture) -> None:
-        """An ImportError out of terok_dbus._install must not crash setup."""
+        """An ImportError out of terok_clearance._install must not crash setup."""
         with patch.dict(
             "sys.modules",
-            {"terok_dbus._install": None},
+            {"terok_clearance._install": None},
         ):
             assert _ensure_dbus_hub(check_only=False) is False
         assert "import failed" in capsys.readouterr().out
@@ -779,7 +779,7 @@ class TestEnsureDbusHub:
         """install_service exceptions are caught, reported, return False."""
         with (
             patch(
-                "terok_dbus._install.install_service",
+                "terok_clearance._install.install_service",
                 side_effect=RuntimeError("template missing"),
             ),
             patch("terok.cli.commands.setup._enable_user_service"),
@@ -1024,7 +1024,7 @@ class TestUserServiceHelpers:
             patch("terok.cli.commands.setup.shutil.which", return_value="/bin/systemctl"),
             patch.object(sp, "run") as mock_run,
         ):
-            _enable_user_service("terok-dbus")
+            _enable_user_service("terok-clearance")
         commands = [call.args[0] for call in mock_run.call_args_list]
         verbs = [cmd[2] for cmd in commands]
         assert verbs == ["daemon-reload", "enable", "restart"]
@@ -1039,7 +1039,7 @@ class TestUserServiceHelpers:
             patch("terok.cli.commands.setup.shutil.which", return_value=None),
             patch.object(sp, "run") as mock_run,
         ):
-            _enable_user_service("terok-dbus")
+            _enable_user_service("terok-clearance")
         mock_run.assert_not_called()
 
     def test_disable_invokes_single_systemctl_call(self) -> None:
@@ -1050,7 +1050,7 @@ class TestUserServiceHelpers:
             patch("terok.cli.commands.setup.shutil.which", return_value="/bin/systemctl"),
             patch.object(sp, "run") as mock_run,
         ):
-            _disable_user_service("terok-dbus")
+            _disable_user_service("terok-clearance")
         mock_run.assert_called_once()
         argv = mock_run.call_args.args[0]
         assert argv[0] == "/bin/systemctl"
@@ -1083,5 +1083,5 @@ class TestUserServiceHelpers:
             patch("terok.cli.commands.setup.shutil.which", return_value=None),
             patch.object(sp, "run") as mock_run,
         ):
-            _disable_user_service("terok-dbus")
+            _disable_user_service("terok-clearance")
         mock_run.assert_not_called()

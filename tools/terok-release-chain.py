@@ -76,11 +76,11 @@ def alert_prompt(prompt: str, **kwargs: Any) -> Any:
 #
 # Single source of truth for release ordering and sibling relationships.
 
-CHAIN = ["terok-dbus", "terok-shield", "terok-sandbox", "terok-executor", "terok"]
+CHAIN = ["terok-clearance", "terok-shield", "terok-sandbox", "terok-executor", "terok"]
 
 DEPS: dict[str, list[str]] = {
-    "terok-dbus": [],
-    "terok-shield": ["terok-dbus"],
+    "terok-clearance": [],
+    "terok-shield": ["terok-clearance"],
     "terok-sandbox": ["terok-shield"],
     "terok-executor": ["terok-sandbox"],
     # terok pins terok-shield directly (src/terok/cli/commands/shield.py
@@ -89,11 +89,11 @@ DEPS: dict[str, list[str]] = {
     # converts sandbox's branch-pin to a release-URL pin leaves shield as
     # a leftover branch-pin, and Poetry can't reconcile the branch HEAD
     # version against the shield version sandbox's release wheel declares.
-    "terok": ["terok-executor", "terok-sandbox", "terok-shield", "terok-dbus"],
+    "terok": ["terok-executor", "terok-sandbox", "terok-shield", "terok-clearance"],
 }
 
 ALIASES = {
-    "dbus": "terok-dbus",
+    "dbus": "terok-clearance",
     "shield": "terok-shield",
     "sandbox": "terok-sandbox",
     "executor": "terok-executor",

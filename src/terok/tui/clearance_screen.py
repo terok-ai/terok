@@ -3,8 +3,8 @@
 
 """In-TUI clearance screen for live D-Bus shield verdict handling.
 
-Provides a ``ClearanceScreen`` backed by ``terok_dbus.CallbackNotifier``
-plugged into ``terok_dbus.EventSubscriber``.  The subscriber handles the
+Provides a ``ClearanceScreen`` backed by ``terok_clearance.CallbackNotifier``
+plugged into ``terok_clearance.EventSubscriber``.  The subscriber handles the
 full signal-to-verdict cycle; the callback notifier bridges D-Bus events
 into Textual messages so the screen can render blocked connections and
 route operator Allow/Deny actions back through D-Bus.
@@ -27,7 +27,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
-    from terok_dbus import Notification
+    from terok_clearance import Notification
 
 from rich.style import Style
 from rich.text import Text
@@ -227,7 +227,7 @@ class ClearanceScreen(screen.Screen[None]):
         """Connect to the clearance hub and start the event subscriber."""
         log = self.query_one(_ID_EVENT_LOG, RichLog)
         try:
-            from terok_dbus import CallbackNotifier, EventSubscriber
+            from terok_clearance import CallbackNotifier, EventSubscriber
 
             from terok.clearance.identity import IdentityResolver
 

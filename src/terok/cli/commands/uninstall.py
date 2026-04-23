@@ -133,7 +133,7 @@ def _uninstall_desktop_entry() -> bool:
 
 
 def _uninstall_dbus_bridge() -> bool:
-    """Remove the NFLOG reader resource + terok-dbus hub unit.
+    """Remove the NFLOG reader resource + terok-clearance hub unit.
 
     Order matters: ``disable --now`` stops and deactivates the service
     while the unit file is still on disk (otherwise systemd has no unit
