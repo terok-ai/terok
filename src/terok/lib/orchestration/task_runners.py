@@ -43,6 +43,7 @@ from ..core.task_display import has_gpu
 from ..util.ansi import (
     blue as _blue,
     green as _green,
+    hyperlink as _hyperlink,
     red as _red,
     supports_color as _supports_color,
     yellow as _yellow,
@@ -195,7 +196,7 @@ def _resume_toad_container(
     url = _toad_browser_url(pub_host, saved_port, saved_token)
     if container_state == "running":
         print(f"Container {_green(cname, color_enabled)} is already running.")
-        print(f"Toad: {_blue(url, color_enabled)}")
+        print(f"Toad: {_hyperlink(_blue(url, color_enabled), url, enabled=color_enabled)}")
         return
     print(f"Starting existing container {_green(cname, color_enabled)}...")
     task_dir = project.tasks_root / str(task_id)
@@ -214,7 +215,7 @@ def _resume_toad_container(
     )
     _apply_shield_policy(project, cname, task_dir, is_restart=True)
     print("Container started.")
-    print(f"Toad: {_blue(url, color_enabled)}")
+    print(f"Toad: {_hyperlink(_blue(url, color_enabled), url, enabled=color_enabled)}")
 
 
 @dataclass(frozen=True)
@@ -816,7 +817,7 @@ def task_run_toad(
     print(
         f"\n>> Toad is serving."
         f"\n- Name: {_green(cname, color_enabled)}"
-        f"\n- URL:  {_blue(url, color_enabled)}"
+        f"\n- URL:  {_hyperlink(_blue(url, color_enabled), url, enabled=color_enabled)}"
         f"\n- Logs: {_yellow(f'podman logs -f {cname}', color_enabled)}"
         f"\n- Stop: {_red(f'podman stop {cname}', color_enabled)}"
     )
@@ -1243,7 +1244,8 @@ def task_restart(project_id: str, task_id: str) -> None:
             port = meta.get("web_port")
             token = meta.get("web_token")
             if isinstance(port, int) and isinstance(token, str):
-                print(f"Toad: {_toad_browser_url(get_public_host(), port, token)}")
+                url = _toad_browser_url(get_public_host(), port, token)
+                print(f"Toad: {_hyperlink(_blue(url, color_enabled), url, enabled=color_enabled)}")
     else:
         # Container is gone — restart can't recreate it.  User must start
         # a fresh task with ``task run``.

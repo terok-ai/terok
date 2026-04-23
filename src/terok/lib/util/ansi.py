@@ -64,3 +64,30 @@ def green(text: str, enabled: bool) -> str:
 def red(text: str, enabled: bool) -> str:
     """Return *text* in red (ANSI 31) when *enabled*."""
     return color(text, "31", enabled)
+
+
+def hyperlink(text: str, url: str, *, enabled: bool) -> str:
+    """Wrap *text* in an OSC 8 hyperlink to *url*, or return it unchanged.
+
+    Modern terminals (foot, WezTerm, Kitty, GNOME Terminal, iTerm2,
+    foot, Konsole…) recognise the ``\\e]8;id=...;URL\\e\\\\TEXT\\e]8;;\\e\\\\``
+    sequence as a clickable hyperlink — even when the visible text wraps
+    across lines, because the shared ``id=`` attribute tells the
+    terminal that the segments belong to one link.  Without it the
+    terminal's own URL auto-detector kicks in instead, which is
+    single-line-only and tends to slurp adjacent border characters.
+
+    Gated on the same ``enabled`` flag the colour helpers use: a user
+    who set ``NO_COLOR=1`` likely also wants plain output, and most
+    no-colour terminals don't honour OSC 8 either.  Composes cleanly
+    with the colour helpers (``hyperlink(blue(url, c), url, enabled=c)``)
+    because the OSC 8 wrapper sits *outside* the SGR escape.
+    """
+    if not enabled:
+        return text
+    # 32-bit positive id keeps the sequence short and matches what Rich
+    # emits.  ``hash`` mod 2**32 is fine — collisions across links would
+    # only mis-stitch wraps if two different URLs landed in the same
+    # render, which the project never does.
+    link_id = hash(url) & 0xFFFFFFFF
+    return f"\x1b]8;id={link_id};{url}\x1b\\{text}\x1b]8;;\x1b\\"

@@ -149,8 +149,9 @@ class ProjectActionsMixin:
             self.notify(f"{label} in browser: {cname}")
         elif is_web_mode():
             self.notify(
-                f"No terminal available in web mode.  Open a host shell and run: "
-                f"terok login {cname}",
+                f"No terminal available in web mode.  Open a host shell and run "
+                f"`terok login {cname}`, or start a new task in toad mode "
+                f"(toad runs in the browser, no host shell needed).",
                 severity="warning",
                 timeout=15,
             )
