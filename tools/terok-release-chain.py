@@ -46,54 +46,13 @@ if int(_pydantic_ver.split(".")[0]) < 2:
 console = Console(stderr=True)
 
 
-# ── Attention-grabbing interactive prompts ────────────────────────────────
+# ── Chain ─────────────────────────────────────────────────────────────────
 #
-# Long stages (clones, CI waits) make it easy for the operator to wander
-# off.  Every confirmation/prompt routes through these helpers — terminal
-# bell plus a reverse-video banner in a colour used nowhere else — so
-# the prompt lands in peripheral vision instead of scrolling past.
-
-
-def _alert_banner(text: str) -> None:
-    """Pull the operator's eyes back to the terminal: bell + banner."""
-    console.bell()
-    console.print(f"\n[black on bright_yellow] {text} [/]")
-
-
-def alert_confirm(prompt: str, **kwargs: Any) -> bool:
-    """Ask a yes/no question loudly enough that a distracted operator notices."""
-    _alert_banner("INPUT NEEDED")
-    return click.confirm(prompt, **kwargs)
-
-
-def alert_prompt(prompt: str, **kwargs: Any) -> Any:
-    """Ask for free-form input loudly enough that a distracted operator notices."""
-    _alert_banner("INPUT NEEDED")
-    return click.prompt(prompt, **kwargs)
-
-
-# ── Domain types ──────────────────────────────────────────────────────────
-#
-# Aliases that read like the domain: "sibling-dep graph" not "dict of str
-# to list of str".  Used at module boundaries where the shape matters for
-# the reader.
-
-DepGraph = dict[str, list[str]]
-"""Package → in-chain packages it depends on."""
-
-SiblingVersions = dict[str, str]
-"""Sibling package → version string to pin for it."""
-
-PrSpecs = dict[str, int]
-"""Package → GitHub PR number (the release-from-PR workflow)."""
-
-ReleasedVersions = dict[str, str]
-"""Package → new version string, for packages already processed in this run."""
-
-
-# ── Chain config ──────────────────────────────────────────────────────────
-#
-# Single source of truth for release ordering and sibling relationships.
+# The two tables most likely to need editing, and the vocabulary the rest
+# of this file serves.  ``CHAIN`` fixes the release order; ``DEPS`` fixes
+# the inter-package dependency graph.  Everything below exists only to
+# execute a chained release against these two declarations, given the
+# operator's CLI preferences.
 
 CHAIN = ["terok-clearance", "terok-shield", "terok-sandbox", "terok-executor", "terok"]
 
@@ -197,6 +156,25 @@ def wheel_url(org: str, repo: str, version: str) -> str:
         f"https://github.com/{org}/{repo}/releases/download/"
         f"v{version}/{wheel_filename(repo, version)}"
     )
+
+
+# ── Domain types ──────────────────────────────────────────────────────────
+#
+# Supporting aliases used in signatures below — they make the planner and
+# executor read in the domain's vocabulary ("sibling versions", not
+# "dict of str to str").
+
+DepGraph = dict[str, list[str]]
+"""Package → in-chain packages it depends on."""
+
+SiblingVersions = dict[str, str]
+"""Sibling package → version string to pin for it."""
+
+PrSpecs = dict[str, int]
+"""Package → GitHub PR number (the release-from-PR workflow)."""
+
+ReleasedVersions = dict[str, str]
+"""Package → new version string, for packages already processed in this run."""
 
 
 # ── Plan model ────────────────────────────────────────────────────────────
@@ -1110,6 +1088,32 @@ def execute_plan(plan: Plan, *, mode: ExecMode, ctx: Ctx) -> Plan:
             if ctx.plan_path:
                 save_plan(plan, ctx.plan_path)
     return plan
+
+
+# ── Operator attention prompts ────────────────────────────────────────────
+#
+# Long stages (clones, CI waits) make it easy for the operator to wander
+# off.  Every confirmation/prompt routes through these helpers — terminal
+# bell plus a reverse-video banner in a colour used nowhere else — so
+# the prompt lands in peripheral vision instead of scrolling past.
+
+
+def _alert_banner(text: str) -> None:
+    """Pull the operator's eyes back to the terminal: bell + banner."""
+    console.bell()
+    console.print(f"\n[black on bright_yellow] {text} [/]")
+
+
+def alert_confirm(prompt: str, **kwargs: Any) -> bool:
+    """Ask a yes/no question loudly enough that a distracted operator notices."""
+    _alert_banner("INPUT NEEDED")
+    return click.confirm(prompt, **kwargs)
+
+
+def alert_prompt(prompt: str, **kwargs: Any) -> Any:
+    """Ask for free-form input loudly enough that a distracted operator notices."""
+    _alert_banner("INPUT NEEDED")
+    return click.prompt(prompt, **kwargs)
 
 
 # ── CLI ───────────────────────────────────────────────────────────────────
