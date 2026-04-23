@@ -116,7 +116,7 @@ cp examples/terok-config.yml ~/.config/terok/config.yml
 
 ### Minimum Settings
 
-Every project needs these four fields in its `project.yml`:
+Every project needs these fields in its `project.yml`:
 
 ```yaml
 project:
@@ -127,8 +127,12 @@ image:
   base_image: docker.io/library/ubuntu:24.04
 
 git:
-  upstream_url: https://github.com/yourorg/yourrepo.git
+  upstream_url: https://github.com/yourorg/yourrepo.git   # optional
 ```
+
+`git.upstream_url` is optional.  Projects without one start their task
+containers with an empty workspace — useful for local experiments.
+See [Gate and upstream combinations](#gate-and-upstream-combinations).
 
 ### Nice-to-Have Settings
 
@@ -140,6 +144,38 @@ git:
   human_email: "your@email.com"
   default_branch: main
   authorship: agent-human    # or: human-agent, human, agent
+```
+
+### Gate and upstream combinations
+
+The host-side git gate (mirror) and the project's remote `upstream_url`
+are independent knobs.  Four combinations:
+
+| `gate.enabled` | `upstream_url` | Behaviour |
+|---|---|---|
+| `true` (default) | set | Host mirrors upstream; container clones from the mirror.  Default. |
+| `true` | absent | Host initialises a remoteless bare gate; the container still gets a remote to push to.  Local-only scratch projects. |
+| `false` | set | Host never touches the remote; the container fetches directly from upstream.  Useful when the host has no path to the remote (firewall, corporate proxy) but the container does. |
+| `false` | absent | No git plumbing at all; container workspace starts empty. |
+
+When `upstream_url` is absent, `security_class` collapses — `online` and
+`gatekeeping` describe the same act, since there is nothing to push
+beyond the gate.  Both values are accepted; they behave identically.
+
+`gatekeeping + gate.enabled: false` is rejected at load time —
+gatekeeping *is* the gate-enforced mode, so disabling the gate in that
+mode is incoherent.
+
+```yaml
+# Host blocks outbound SSH to github, but the container's network
+# allowlist reaches github via its own rules.
+project:
+  id: cp2k
+  security_class: online
+git:
+  upstream_url: git@github.com:user/cp2k.git
+gate:
+  enabled: false
 ```
 
 <!-- markdownlint-disable MD046 -->

@@ -358,7 +358,10 @@ def test_gate_sync_success_prints_summary(capsys: pytest.CaptureFixture[str]) ->
     }
     args = argparse.Namespace(project_id="p1", force_reinit=False)
     with (
-        patch("terok.cli.commands.project.load_project"),
+        patch(
+            "terok.cli.commands.project.load_project",
+            return_value=MagicMock(gate_enabled=True),
+        ),
         patch("terok.cli.commands.project.make_git_gate", return_value=fake_gate),
     ):
         _cmd_gate_sync(args)
@@ -368,17 +371,58 @@ def test_gate_sync_success_prints_summary(capsys: pytest.CaptureFixture[str]) ->
     assert "clone cache refreshed" in out
 
 
+def test_gate_sync_renders_remoteless_upstream_label(capsys: pytest.CaptureFixture[str]) -> None:
+    """A remoteless (upstream_url=None) gate renders a human hint, not ``None``."""
+    fake_gate = MagicMock()
+    fake_gate.sync.return_value = {
+        "success": True,
+        "path": "/gate/scratch",
+        "upstream_url": None,
+        "created": True,
+        "cache_refreshed": False,
+    }
+    args = argparse.Namespace(project_id="scratch", force_reinit=False)
+    with (
+        patch(
+            "terok.cli.commands.project.load_project",
+            return_value=MagicMock(gate_enabled=True),
+        ),
+        patch("terok.cli.commands.project.make_git_gate", return_value=fake_gate),
+    ):
+        _cmd_gate_sync(args)
+
+    assert "upstream: (none — local-only bare repo)" in capsys.readouterr().out
+
+
 def test_gate_sync_failure_raises(capsys: pytest.CaptureFixture[str]) -> None:
     """A failure verdict turns into a SystemExit carrying the error detail."""
     fake_gate = MagicMock()
-    fake_gate.sync.return_value = {"success": False, "errors": ["no upstream_url"]}
+    fake_gate.sync.return_value = {"success": False, "errors": ["clone timed out"]}
     args = argparse.Namespace(project_id="broken", force_reinit=False)
     with (
-        patch("terok.cli.commands.project.load_project"),
+        patch(
+            "terok.cli.commands.project.load_project",
+            return_value=MagicMock(gate_enabled=True),
+        ),
         patch("terok.cli.commands.project.make_git_gate", return_value=fake_gate),
-        pytest.raises(SystemExit, match="no upstream_url"),
+        pytest.raises(SystemExit, match="clone timed out"),
     ):
         _cmd_gate_sync(args)
+
+
+def test_gate_sync_refuses_when_gate_disabled() -> None:
+    """``gate.enabled: false`` rejects at the CLI rather than touching sandbox."""
+    args = argparse.Namespace(project_id="noproj", force_reinit=False)
+    with (
+        patch(
+            "terok.cli.commands.project.load_project",
+            return_value=MagicMock(id="noproj", gate_enabled=False),
+        ),
+        patch("terok.cli.commands.project.make_git_gate") as mock_make,
+        pytest.raises(SystemExit, match="gate.enabled: false"),
+    ):
+        _cmd_gate_sync(args)
+    mock_make.assert_not_called()
 
 
 # ---------------------------------------------------------------------------

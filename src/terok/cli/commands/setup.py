@@ -817,7 +817,15 @@ def _presence_suffix(present: bool) -> str:
 
 
 def cmd_project_init(project_id: str) -> None:
-    """Full project setup: ssh-init, generate, build, gate-sync."""
+    """Full project setup: ssh-init, generate, build, gate-sync.
+
+    The final gate-sync step is skipped when ``gate.enabled`` is false in
+    project.yml — the container fetches directly from upstream (or runs
+    with an empty workspace) instead of through a host-side mirror.  This
+    is the escape hatch for hosts that cannot reach the remote (firewall
+    blocking SSH, corporate proxy, offline laptop) while the container's
+    network path still works.
+    """
     print("==> Initializing SSH...")
     summarize_ssh_init(provision_ssh_key(project_id))
     maybe_pause_for_ssh_key_registration(project_id)
@@ -828,8 +836,13 @@ def cmd_project_init(project_id: str) -> None:
     print("==> Building images...")
     build_images(project_id)
 
+    project = load_project(project_id)
+    if not project.gate_enabled:
+        print("==> Gate disabled by project.yml — skipping gate-sync.")
+        return
+
     print("==> Syncing git gate...")
-    res = make_git_gate(load_project(project_id)).sync()
+    res = make_git_gate(project).sync()
     if not res["success"]:
         raise SystemExit(f"Gate sync failed: {', '.join(res['errors'])}")
     print(f"Gate ready at {res['path']}")
