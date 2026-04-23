@@ -56,7 +56,7 @@ CHAIN = ["terok-clearance", "terok-shield", "terok-sandbox", "terok-executor", "
 DEPS: DepGraph = {
     "terok-clearance": [],
     "terok-shield": ["terok-clearance"],
-    "terok-sandbox": ["terok-shield"],
+    "terok-sandbox": ["terok-shield", "terok-clearance"],
     "terok-executor": ["terok-sandbox"],
     "terok": ["terok-executor", "terok-sandbox", "terok-shield", "terok-clearance"],
 }
