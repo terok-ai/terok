@@ -81,7 +81,7 @@ CHAIN = ["terok-clearance", "terok-shield", "terok-sandbox", "terok-executor", "
 DEPS: dict[str, list[str]] = {
     "terok-clearance": [],
     "terok-shield": ["terok-clearance"],
-    "terok-sandbox": ["terok-shield"],
+    "terok-sandbox": ["terok-shield", "terok-clearance"],
     "terok-executor": ["terok-sandbox"],
     # terok pins terok-shield directly (src/terok/cli/commands/shield.py
     # imports from it), so it must be in this list even though shield would
