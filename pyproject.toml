@@ -48,8 +48,8 @@ textual-serve = ">=1.1.0"
 # both siblings that publish the new section schemas (sandbox PR #202,
 # executor PR #224).  Shield and clearance track release wheels.  The
 # release script flips the git pins back to URL pins before cutting.
-terok-executor = {git = "https://github.com/sliwowitz/terok-executor.git", branch = "refactor/config-schema-ownership"}
-terok-sandbox = {git = "https://github.com/sliwowitz/terok-sandbox.git", branch = "refactor/config-schema-ownership"}
+terok-executor = {url = "https://github.com/terok-ai/terok-executor/releases/download/v0.0.114/terok_executor-0.0.114-py3-none-any.whl"}
+terok-sandbox = {url = "https://github.com/terok-ai/terok-sandbox/releases/download/v0.0.95/terok_sandbox-0.0.95-py3-none-any.whl"}
 terok-shield = {url = "https://github.com/terok-ai/terok-shield/releases/download/v0.6.31/terok_shield-0.6.31-py3-none-any.whl"}
 terok-clearance = {url = "https://github.com/terok-ai/terok-clearance/releases/download/v0.6.3/terok_clearance-0.6.3-py3-none-any.whl"}
 
