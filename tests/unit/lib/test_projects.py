@@ -270,6 +270,27 @@ class TestProject:
             with pytest.raises(SystemExit, match="Failed to read"):
                 load_project("bad-yaml")
 
+    def test_load_project_catches_non_yaml_exceptions(self) -> None:
+        """Parser internal crashes (e.g. ruamel.yaml ``IndexError``) become SystemExit.
+
+        Users have tripped ruamel.yaml's scanner into ``IndexError`` with
+        inputs that *look* syntactically valid but hit a reader edge
+        case.  Without a broad catch, the exception would bubble all the
+        way up to the Textual keypress handler and take down the TUI —
+        instead the file becomes a "broken project" visible in the list.
+        """
+        import terok.lib.core.projects as projects_mod
+
+        def _raise_index_error(text: str) -> object:
+            raise IndexError("string index out of range")
+
+        with project_env(project_yaml("weird"), project_id="weird"):
+            with unittest.mock.patch.object(
+                projects_mod, "_yaml_load", side_effect=_raise_index_error
+            ):
+                with pytest.raises(SystemExit, match="Failed to read"):
+                    load_project("weird")
+
     @pytest.mark.parametrize(
         ("project_id", "yaml_text", "expected"),
         [
