@@ -344,10 +344,17 @@ class ShowSshKeyScreen(ModalScreen[None]):
         Binding("enter", "close", "Close"),
     ]
 
+    # Horizontal padding is deliberately zero: Textual paints the
+    # padded cells with the Screen background, so a character-flow
+    # Shift-drag across wrapped rows would capture the left padding
+    # as literal spaces on every continuation line, defeating the
+    # whole point of this screen.  Vertical padding is harmless —
+    # it sits above the first and below the last row of the key,
+    # outside any drag that starts/ends on the key itself.
     CSS = """
     ShowSshKeyScreen {
         background: $surface;
-        padding: 1 2;
+        padding: 1 0;
     }
 
     #wizard-ssh-show-hint {
