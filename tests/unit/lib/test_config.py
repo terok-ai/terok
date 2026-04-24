@@ -754,6 +754,92 @@ def test_is_claude_oauth_not_exposed_by_default(
     assert cfg.is_claude_oauth_exposed() is False
 
 
+# ---------- Codex OAuth helpers (mirror Claude) ----------
+
+
+def test_codex_allow_oauth_default(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    """``get_codex_allow_oauth()`` defaults to False."""
+    monkeypatch.setenv("TEROK_CONFIG_FILE", str(write_config(tmp_path, "")))
+    assert cfg.get_codex_allow_oauth() is False
+
+
+def test_codex_expose_oauth_token_enabled(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    """``get_codex_expose_oauth_token()`` reads ``agent.codex.expose_oauth_token``."""
+    monkeypatch.setenv(
+        "TEROK_CONFIG_FILE",
+        str(write_config(tmp_path, "agent:\n  codex:\n    expose_oauth_token: true\n")),
+    )
+    assert cfg.get_codex_expose_oauth_token() is True
+
+
+def test_codex_agent_config_non_dict_returns_empty(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """``_codex_agent_config()`` returns ``{}`` when ``agent.codex`` is not a dict."""
+    monkeypatch.setenv(
+        "TEROK_CONFIG_FILE",
+        str(write_config(tmp_path, "agent:\n  codex: just-a-string\n")),
+    )
+    assert cfg.get_codex_allow_oauth() is False
+    assert cfg.get_codex_expose_oauth_token() is False
+
+
+def test_is_codex_oauth_exposed(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    """``is_codex_oauth_exposed()`` requires experimental + expose_oauth_token."""
+    monkeypatch.setenv(
+        "TEROK_CONFIG_FILE",
+        str(
+            write_config(
+                tmp_path,
+                "experimental: true\nagent:\n  codex:\n    expose_oauth_token: true\n",
+            )
+        ),
+    )
+    assert cfg.is_codex_oauth_exposed() is True
+
+
+def test_is_codex_oauth_not_exposed_without_experimental(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """``is_codex_oauth_exposed()`` returns False without the experimental gate."""
+    monkeypatch.setenv(
+        "TEROK_CONFIG_FILE",
+        str(write_config(tmp_path, "agent:\n  codex:\n    expose_oauth_token: true\n")),
+    )
+    assert cfg.is_codex_oauth_exposed() is False
+
+
+def test_is_codex_oauth_proxied_when_allowed(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """``is_codex_oauth_proxied()`` returns True when experimental + allow_oauth."""
+    monkeypatch.setenv(
+        "TEROK_CONFIG_FILE",
+        str(
+            write_config(tmp_path, "experimental: true\nagent:\n  codex:\n    allow_oauth: true\n")
+        ),
+    )
+    assert cfg.is_codex_oauth_proxied() is True
+
+
+def test_is_codex_oauth_not_proxied_when_exposed(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """``is_codex_oauth_proxied()`` returns False when token is exposed (exposed wins)."""
+    monkeypatch.setenv(
+        "TEROK_CONFIG_FILE",
+        str(
+            write_config(
+                tmp_path,
+                "experimental: true\nagent:\n  codex:\n    allow_oauth: true\n"
+                "    expose_oauth_token: true\n",
+            )
+        ),
+    )
+    assert cfg.is_codex_oauth_proxied() is False
+    assert cfg.is_codex_oauth_exposed() is True
+
+
 # ---------- Layered config merging ----------
 
 

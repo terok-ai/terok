@@ -669,3 +669,71 @@ def is_claude_oauth_exposed() -> bool:
     instead of being replaced with a phantom marker.
     """
     return is_experimental() and get_claude_expose_oauth_token()
+
+
+# ---------- Codex OAuth config (agent.codex.*) ----------
+
+
+def _codex_agent_config() -> dict:
+    """Return the ``agent.codex`` sub-dict, guarding against non-dict values."""
+    codex = _load_validated().agent.get("codex")
+    return codex if isinstance(codex, dict) else {}
+
+
+def get_codex_allow_oauth() -> bool:
+    """Return ``agent.codex.allow_oauth`` from global config (default False).
+
+    When True (and experimental is enabled), the vault brokers Codex
+    OAuth end-to-end: the in-container ``auth.json`` carries a phantom
+    access/refresh token and the real id_token JWT; inference requests
+    ride through ``OPENAI_BASE_URL`` to the vault socket where the
+    phantom is swapped for the live bearer.  Shield denies
+    ``api.openai.com`` to prevent accidental direct hits.
+
+    Global config (config.yml)::
+
+        agent:
+          codex:
+            allow_oauth: true
+    """
+    return _codex_agent_config().get("allow_oauth", False) is True
+
+
+def get_codex_expose_oauth_token() -> bool:
+    """Return ``agent.codex.expose_oauth_token`` from global config (default False).
+
+    When True (and experimental is enabled), the real Codex ``auth.json``
+    is copied into the shared mount so the in-container Codex CLI reads
+    the live OAuth token directly.  The vault is bypassed for Codex.
+    Shield must allow ``api.openai.com``.
+
+    Global config (config.yml)::
+
+        agent:
+          codex:
+            expose_oauth_token: true
+    """
+    return _codex_agent_config().get("expose_oauth_token", False) is True
+
+
+def is_codex_oauth_proxied() -> bool:
+    """Return True when Codex OAuth traffic is routed through the proxy.
+
+    Kept in lockstep with :func:`is_claude_oauth_proxied` so shield
+    rules and env overrides stay symmetrical.  The proxied path relies
+    on the ``oauth_refresh`` block in ``codex.yaml`` for background
+    token rotation and on the phantom ``auth.json`` written by
+    :func:`~terok_executor.credentials.auth._codex_oauth_mount_writer`
+    for in-container auth brokering.
+    """
+    return is_experimental() and get_codex_allow_oauth() and not get_codex_expose_oauth_token()
+
+
+def is_codex_oauth_exposed() -> bool:
+    """Return True when the real Codex OAuth token is intentionally exposed.
+
+    Exposed mode trades token security for working Codex OAuth — the real
+    ``auth.json`` is mounted into every task container instead of being
+    wiped post-capture.  This is Phase 1's only path to a usable Codex.
+    """
+    return is_experimental() and get_codex_expose_oauth_token()
