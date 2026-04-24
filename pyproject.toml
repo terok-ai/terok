@@ -50,8 +50,8 @@ textual-serve = ">=1.1.0"
 # bumps its sandbox pin to match so Poetry can resolve both git URLs
 # to the same revision.  Release script flips both to wheel URLs at
 # merge.
-terok-executor = {git = "https://github.com/sliwowitz/terok-executor.git", branch = "feat/services-mode-ssot"}
-terok-sandbox = {git = "https://github.com/sliwowitz/terok-sandbox.git", branch = "feat/services-mode-ssot"}
+terok-executor = {url = "https://github.com/terok-ai/terok-executor/releases/download/v0.0.119/terok_executor-0.0.119-py3-none-any.whl"}
+terok-sandbox = {url = "https://github.com/terok-ai/terok-sandbox/releases/download/v0.0.100/terok_sandbox-0.0.100-py3-none-any.whl"}
 terok-shield = {url = "https://github.com/terok-ai/terok-shield/releases/download/v0.6.32/terok_shield-0.6.32-py3-none-any.whl"}
 terok-clearance = {url = "https://github.com/terok-ai/terok-clearance/releases/download/v0.6.4/terok_clearance-0.6.4-py3-none-any.whl"}
 
