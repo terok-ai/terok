@@ -3092,13 +3092,13 @@ url = "https://github.com/terok-ai/terok-clearance/releases/download/v0.6.4/tero
 
 [[package]]
 name = "terok-executor"
-version = "0.0.120"
+version = "0.0.121"
 description = "Single-agent task runner for hardened Podman containers"
 optional = false
 python-versions = ">=3.12,<4.0"
 groups = ["main"]
 files = [
-    {file = "terok_executor-0.0.120-py3-none-any.whl", hash = "sha256:da800f5abf9216fbff624b4a2670d5a3a5ec0f34098b533dc7bda2ebf42a47d1"},
+    {file = "terok_executor-0.0.121-py3-none-any.whl", hash = "sha256:751db46d651b8dbf29d9b17848c082fc764da79c15aa51a4b571176da6ca9179"},
 ]
 
 [package.dependencies]
@@ -3111,7 +3111,7 @@ tomli-w = ">=1.0"
 
 [package.source]
 type = "url"
-url = "https://github.com/terok-ai/terok-executor/releases/download/v0.0.120/terok_executor-0.0.120-py3-none-any.whl"
+url = "https://github.com/terok-ai/terok-executor/releases/download/v0.0.121/terok_executor-0.0.121-py3-none-any.whl"
 
 [[package]]
 name = "terok-sandbox"
@@ -3643,4 +3643,4 @@ propcache = ">=0.2.1"
 [metadata]
 lock-version = "2.1"
 python-versions = ">=3.12,<4.0"
-content-hash = "96bdf333643fd7235d751c3de801eb0b2a416b75261b99ab0aae189c0a1b8866"
+content-hash = "be92ac47edf2f3f5ba7babaa444977590db0830d107b154f97e4da23d4bc6e1f"
