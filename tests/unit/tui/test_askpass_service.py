@@ -129,7 +129,7 @@ class TestSocketPath:
         ``~/.local/state/terok``).  Delegating here means any future
         change to that chain lands transparently.
         """
-        with patch("terok.tui.askpass_service.namespace_runtime_dir", return_value=tmp_path):
+        with patch("terok.tui.askpass_service.runtime_dir", return_value=tmp_path):
             path = default_socket_path(pid=12345)
         assert path == tmp_path / "askpass-12345.sock"
 
@@ -141,7 +141,7 @@ class TestSocketPath:
         Proves we're not reimplementing the XDG chain locally.
         """
         monkeypatch.setenv("XDG_RUNTIME_DIR", "/tmp/unused-should-be-ignored")
-        with patch("terok.tui.askpass_service.namespace_runtime_dir", return_value=tmp_path):
+        with patch("terok.tui.askpass_service.runtime_dir", return_value=tmp_path):
             assert default_socket_path(pid=1).parent == tmp_path
 
 

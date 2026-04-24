@@ -20,11 +20,11 @@ terminal frame or silently failing:
   env vars when we *do* want our own askpass to run.
 
 The service is reachable only via a unix socket under terok's runtime
-namespace (:func:`terok_sandbox.paths.namespace_runtime_dir`) with
-mode ``0600`` — the filesystem is the auth boundary.  No socket is
-ever bound until a project with ``use_personal_ssh=true`` actually
-spawns a subprocess *and* lacks a usable GUI askpass, so users who
-don't opt in pay nothing for this feature.
+namespace (:func:`terok.lib.core.paths.runtime_dir`) with mode
+``0600`` — the filesystem is the auth boundary.  No socket is ever
+bound until a project with ``use_personal_ssh=true`` actually spawns
+a subprocess *and* lacks a usable GUI askpass, so users who don't opt
+in pay nothing for this feature.
 """
 
 from __future__ import annotations
@@ -39,13 +39,13 @@ from collections.abc import Mapping
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from terok_sandbox.paths import namespace_runtime_dir
 from textual.app import ComposeResult
 from textual.binding import Binding
 from textual.containers import Horizontal, Vertical
 from textual.screen import ModalScreen
 from textual.widgets import Button, Input, Static
 
+from ..lib.core.paths import runtime_dir
 from . import askpass_protocol as proto
 
 if TYPE_CHECKING:
@@ -108,13 +108,13 @@ def build_askpass_env(
 def default_socket_path(*, pid: int | None = None) -> Path:
     """Return a per-process socket path under terok's runtime namespace.
 
-    Delegates to :func:`terok_sandbox.paths.namespace_runtime_dir`
-    which owns the XDG resolution order (``$XDG_RUNTIME_DIR/terok/``
-    → ``$XDG_STATE_HOME/terok/`` → ``~/.local/state/terok/``) and
-    creates the directory with safe permissions.  No ``/tmp``
-    fallback means no predictable-temp-path surface.
+    Delegates to :func:`terok.lib.core.paths.runtime_dir` — the
+    boundary-respecting wrapper around the sandbox's namespace
+    resolver (``$XDG_RUNTIME_DIR/terok/`` → ``$XDG_STATE_HOME/terok/``
+    → ``~/.local/state/terok/``).  No ``/tmp`` fallback means no
+    predictable-temp-path surface (bandit B108).
     """
-    return namespace_runtime_dir() / f"askpass-{pid or os.getpid()}.sock"
+    return runtime_dir() / f"askpass-{pid or os.getpid()}.sock"
 
 
 def locate_helper_bin() -> Path:

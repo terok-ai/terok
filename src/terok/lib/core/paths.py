@@ -95,6 +95,27 @@ def runtime_root() -> Path:
     return Path.home() / ".cache" / APP_NAME
 
 
+def runtime_dir() -> Path:
+    """Per-user runtime directory for ephemeral IPC artefacts.
+
+    For short-lived sockets / pid files / FIFOs — things we'd put in
+    ``$XDG_RUNTIME_DIR`` when it's available.
+
+    Delegates to :func:`terok_sandbox.paths.namespace_runtime_dir`,
+    which resolves ``$XDG_RUNTIME_DIR/terok`` → ``$XDG_STATE_HOME/terok``
+    → ``~/.local/state/terok``.  The chain deliberately avoids ``/tmp``
+    so we don't land on a predictable-temp-path footprint (bandit B108).
+
+    Distinct from :func:`runtime_root`: ``runtime_root`` is terok's own
+    ``~/.cache/terok`` convention (used for non-namespace-scoped
+    transient state), while this function sits under the shared terok
+    namespace root for ecosystem packages to co-locate.
+    """
+    from terok_sandbox.paths import namespace_runtime_dir
+
+    return namespace_runtime_dir()
+
+
 def vault_root() -> Path:
     """Shared vault directory used by all terok ecosystem packages.
 
