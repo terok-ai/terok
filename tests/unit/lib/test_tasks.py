@@ -828,6 +828,10 @@ class TestTask:
         wl-copy's fork-a-daemon behaviour used to deadlock ``subprocess.run``
         when stdout was captured; stdout is now ``DEVNULL`` and the call has
         a hard timeout.  If either defence regresses the caller freezes.
+
+        Also locks in the contract that ``hint`` stays ``None`` when a
+        helper was available but failed at runtime — the user already
+        has wl-clipboard, so suggesting they install it would be wrong.
         """
         with unittest.mock.patch.dict(
             os.environ, {"XDG_SESSION_TYPE": "wayland", "WAYLAND_DISPLAY": "wayland-0"}
@@ -842,6 +846,11 @@ class TestTask:
                     assert not result.ok
                     assert result.error is not None
                     assert "timed out" in result.error
+                    # A misleading "install wl-clipboard" hint on a system that
+                    # already has wl-clipboard would wrongly take precedence
+                    # over the real timeout message at the call sites that
+                    # prefer ``hint`` over ``error``.
+                    assert result.hint is None
 
     def test_get_clipboard_helper_status_with_available_helpers(self) -> None:
         """Test get_clipboard_helper_status returns available helpers on macOS."""

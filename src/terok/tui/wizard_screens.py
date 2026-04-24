@@ -772,11 +772,17 @@ class InitProgressScreen(ModalScreen[InitOutcome]):
     def action_cancel(self) -> None:
         """Esc aborts the wizard at any point in its lifecycle.
 
-        Three distinct cases to handle:
+        The Close button's ``disabled`` flag is the authoritative
+        "worker finished" signal — ``_outcome`` defaults to FAILED at
+        ``__init__`` time and only gets rewritten on success/decline
+        paths, so reading it to detect completion would falsely
+        classify an in-flight run as already-failed.
 
-        * **Worker already finished** (Close button enabled) — the
-          stored outcome is SUCCESS/FAILED/DECLINED; dismiss with it
-          so the caller's match arms render the correct notification.
+        Three cases:
+
+        * **Worker finished** (Close button enabled) — the stored
+          outcome is SUCCESS/FAILED/DECLINED; dismiss with it so the
+          caller's match arms render the correct notification.
         * **Worker paused on the SSH-key "continue" gate** — the
           worker is awaiting an :class:`asyncio.Event`; cancelling
           raises ``CancelledError`` out of that ``await`` and the
@@ -789,7 +795,12 @@ class InitProgressScreen(ModalScreen[InitOutcome]):
           in a transient state the caller may need to clean up later —
           but the UI is freed immediately, which is the point.
         """
-        if self._outcome in (InitOutcome.SUCCESS, InitOutcome.FAILED, InitOutcome.DECLINED):
+        try:
+            close_button = self.query_one("#wizard-init-close", Button)
+        except NoMatches:
+            # Screen already torn down by a prior dismiss — nothing to do.
+            return
+        if not close_button.disabled:
             self.dismiss(self._outcome)
             return
 

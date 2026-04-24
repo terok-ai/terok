@@ -130,9 +130,11 @@ def copy_to_clipboard_detailed(text: str) -> ClipboardCopyResult:
               message when all helpers fail.
             * ``hint``: An optional hint string with guidance on how to enable
               clipboard support on the current platform (for example, a command
-              to install a missing helper). This is typically populated when no
-              helper is available or when all helpers fail, and is ``None`` on
-              successful copies.
+              to install a missing helper). Populated only when **no** helper
+              was found on the system; ``None`` on success and also ``None``
+              when helpers were available but all of them failed at runtime —
+              in that case the user already has a helper installed, so
+              ``error`` describes what actually went wrong.
 
     Examples:
         Basic usage with boolean check::
@@ -200,7 +202,9 @@ def copy_to_clipboard_detailed(text: str) -> ClipboardCopyResult:
         except Exception as e:
             errors.append(f"{name} error: {e}")
 
-    hint = _clipboard_install_hint()
-    return ClipboardCopyResult(
-        ok=False, error=errors[-1] if errors else "Clipboard copy failed.", hint=hint or None
-    )
+    # Helpers *were* available but all of them failed at runtime — a
+    # broken Wayland socket, a misconfigured compositor, an xclip
+    # segfault, etc.  Suggesting ``apt install wl-clipboard`` here would
+    # be actively misleading; the user already has the helper.  Leave
+    # hint None so the caller surfaces the actual per-helper error.
+    return ClipboardCopyResult(ok=False, error=errors[-1] if errors else "Clipboard copy failed.")
