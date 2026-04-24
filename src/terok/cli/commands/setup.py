@@ -32,6 +32,7 @@ import shutil
 import sys
 
 from terok_executor import AUTH_PROVIDERS
+from terok_sandbox import Marker, bold, stage_begin, stage_end, supports_color
 
 from ...lib.core.projects import load_project
 from ...lib.domain.facade import (
@@ -42,7 +43,26 @@ from ...lib.domain.facade import (
     summarize_ssh_init,
 )
 from ...lib.domain.project import make_git_gate
-from ._setup_ui import _bold, _red, _stage_begin, _status_label, _warn_label, _yellow
+from ...lib.util.ansi import red as _ansi_red, yellow as _ansi_yellow
+
+# Cache the colour verdict once for the banner helpers below.  The
+# stage renderer in ``terok_sandbox`` already does the same internally,
+# so banner colour and stage-marker colour agree on a single TTY-probe
+# result.  ``ansi.red`` / ``ansi.yellow`` take an explicit flag by
+# design — other sites in terok need per-call colour policies — so we
+# wrap them once here rather than threading the flag through each call.
+_COLOUR_ON = supports_color()
+
+
+def _red(text: str) -> str:
+    """Colour a failure banner when the terminal supports it."""
+    return _ansi_red(text, _COLOUR_ON)
+
+
+def _yellow(text: str) -> str:
+    """Colour a warning banner when the terminal supports it."""
+    return _ansi_yellow(text, _COLOUR_ON)
+
 
 # ── CLI wiring ─────────────────────────────────────────────────────────
 
@@ -129,7 +149,7 @@ def cmd_setup(
     """
     from terok_executor import ensure_sandbox_ready
 
-    print(_bold("\nSetting up terok host services\n"))
+    print(bold("\nSetting up terok host services\n"))
 
     sandbox_failed = False
     try:
@@ -137,7 +157,7 @@ def cmd_setup(
     except SystemExit as exc:
         sandbox_failed = True
         if exc.code:
-            print(_bold(_red(f"Sandbox aggregator reported failures (exit {exc.code}).")))
+            print(bold(_red(f"Sandbox aggregator reported failures (exit {exc.code}).")))
 
     images_failed = False
     if with_images and not sandbox_failed:
@@ -151,13 +171,13 @@ def cmd_setup(
 
     print()
     if not sandbox_failed and not images_failed and desktop_ok:
-        print(_bold("Setup complete."))
+        print(bold("Setup complete."))
     elif sandbox_failed:
-        print(_bold(_red("Setup failed — see service stage lines above.")))
+        print(bold(_red("Setup failed — see service stage lines above.")))
     elif images_failed:
-        print(_bold(_red("Image build failed — see above.")))
+        print(bold(_red("Image build failed — see above.")))
     else:
-        print(_bold(_yellow("Desktop entry install reported errors (see above).")))
+        print(bold(_yellow("Desktop entry install reported errors (see above).")))
 
     providers = ", ".join(AUTH_PROVIDERS)
     print(
@@ -185,16 +205,16 @@ def _run_image_build(*, base: str, family: str | None) -> bool:
     """
     from terok_executor import BuildError, build_base_images
 
-    _stage_begin("Base images (L0/L1)")
+    stage_begin("Base images (L0/L1)")
     try:
         build_base_images(base_image=base, family=family)
     except BuildError as exc:
-        print(f"{_status_label(False)} ({exc})")
+        stage_end(Marker.FAIL, str(exc))
         return False
     except SystemExit:
-        print(f"{_status_label(False)} (factory exited unexpectedly)")
+        stage_end(Marker.FAIL, "factory exited unexpectedly")
         return False
-    print(f"{_status_label(True)} (built)")
+    stage_end(Marker.OK, "built")
     return True
 
 
@@ -220,7 +240,7 @@ def _ensure_desktop_entry() -> bool:
     """
     from ._desktop_entry import DesktopBackend, install_desktop_entry
 
-    _stage_begin("Desktop entry")
+    stage_begin("Desktop entry")
     bin_path = shutil.which("terok-tui")
     if bin_path is None:
         # pipx installs go under ~/.local/bin which isn't on the
@@ -230,20 +250,20 @@ def _ensure_desktop_entry() -> bool:
     try:
         backend = install_desktop_entry(bin_path)
     except Exception as exc:  # noqa: BLE001
-        print(f"{_status_label(False)} ({exc})")
+        stage_end(Marker.FAIL, str(exc))
         return False
     if backend is DesktopBackend.XDG_UTILS:
-        print(f"{_status_label(True)} (installed)")
+        stage_end(Marker.OK, "installed")
     else:
         # The fallback writes the right XDG paths on spec-compliant
         # hosts but skips desktop-file-install validation and can't
         # cover DE-specific layout drift.  We also land here when
         # xdg-utils *is* on PATH but its install calls failed (DEBUG
         # log carries the detail) — "missing or failed" covers both.
-        print(
-            f"{_warn_label()} "
-            f"(installed via built-in fallback — xdg-utils missing or failed; "
-            f"install it for standard XDG registration)"
+        stage_end(
+            Marker.WARN,
+            "installed via built-in fallback — xdg-utils missing or failed; "
+            "install it for standard XDG registration",
         )
     return True
 
