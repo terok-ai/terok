@@ -107,6 +107,7 @@ terok-tui = "terok.tui.app:main"
 terok-web = "terok.tui.serve:main"
 terok-clearance = "terok.tui.clearance_screen:main"
 terok-gate = "terok_sandbox.gate.server:main"
+terok-askpass = "terok.tui.askpass:main"
 
 [tool.ruff]
 target-version = "py312"
