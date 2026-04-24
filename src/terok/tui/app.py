@@ -110,6 +110,7 @@ if _HAS_TEXTUAL:
         shield_env: EnvironmentCheck | None = None
         error: str | None = None
 
+    from .askpass_service import AskpassService
     from .clipboard import get_clipboard_helper_status
     from .polling import PollingMixin
     from .project_actions import ProjectActionsMixin
@@ -309,6 +310,10 @@ if _HAS_TEXTUAL:
             # First-run nudge marker — flipped when the wizard has auto-opened
             # once, so subsequent empty-install starts don't nag.
             self._first_run_dismissed: bool = False
+            # Lazy — only instantiated + bound when a ``ssh.use_personal: true``
+            # project actually spawns a subprocess.  Users who don't opt in
+            # never bind the socket.
+            self._askpass_service: AskpassService | None = None
 
         def _update_title(self):
             """Update the TUI title with version and branch information."""
@@ -1155,7 +1160,21 @@ if _HAS_TEXTUAL:
             self._stop_upstream_polling()
             self._stop_container_status_polling()
             self._stop_gate_server_polling()
+            if self._askpass_service is not None:
+                await self._askpass_service.stop()
             self.exit()
+
+        async def ensure_askpass_service(self) -> AskpassService:
+            """Return the running :class:`AskpassService`, starting it on first use.
+
+            Idempotent.  The first call from a ``use_personal_ssh`` project
+            binds the socket; subsequent calls reuse the same service for
+            the lifetime of the TUI.  ``action_quit`` tears it down.
+            """
+            if self._askpass_service is None:
+                self._askpass_service = AskpassService(self)
+            await self._askpass_service.start()
+            return self._askpass_service
 
         async def action_show_project_actions(self) -> None:
             """Show detail screen with project info and actions."""

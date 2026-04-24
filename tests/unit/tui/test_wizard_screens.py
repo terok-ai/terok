@@ -384,7 +384,7 @@ def test_gate_sync_in_subprocess_returns_result_dict() -> None:
 
     sentinel = {"success": True, "upstream_url": "https://example.com/r.git", "errors": []}
 
-    def _fake_run_isolated(body: str, *, label: str) -> None:  # noqa: ARG001
+    def _fake_run_isolated(body: str, *, label: str, env: dict | None = None) -> None:  # noqa: ARG001
         # Extract the result path from the body — it's the last argument
         # passed to ``open(...)``.
         import json

@@ -27,6 +27,7 @@ from __future__ import annotations
 import contextlib
 import enum
 import io
+import os
 from pathlib import Path
 from typing import Any
 
@@ -46,6 +47,7 @@ from ..lib.domain.wizards.new_project import (
     validate_answer,
     write_project_yaml,
 )
+from .askpass_service import build_askpass_env, gui_askpass_usable
 
 # ── Step 1: the form ──────────────────────────────────────────────────
 
@@ -688,6 +690,39 @@ class InitProgressScreen(ModalScreen[InitOutcome]):
             self._step_text(key, status, detail)
         )
 
+    async def _askpass_subprocess_env(self, project: Any) -> dict[str, str] | None:
+        """Return env for ``_run_isolated`` — ``None`` for projects that don't opt into personal SSH.
+
+        Three branches:
+
+        - **Vault-only project (default).**  Return ``None`` so the
+          subprocess inherits the ambient env — no socket, no helper,
+          no cost for users who haven't opted in.
+        - **Personal SSH + usable GUI askpass.**  When the user has a
+          desktop helper wired up (``SSH_ASKPASS`` set and
+          ``DISPLAY``/``WAYLAND_DISPLAY`` reachable), their GUI dialog
+          is a better UX than our modal — skip starting our socket
+          server entirely and just propagate env with
+          ``SSH_ASKPASS_REQUIRE=force`` so OpenSSH uses their helper
+          even with a tty attached.
+        - **Personal SSH, no GUI askpass.**  Start the app's
+          :class:`AskpassService` (lazily; first call binds the unix
+          socket) and build the env vars OpenSSH needs to route
+          passphrase prompts through :class:`AskpassModal`.
+        """
+        if not project.ssh_use_personal:
+            return None
+        if gui_askpass_usable(os.environ):
+            # User's GUI helper wins — still enforce REQUIRE=force so
+            # ssh doesn't fall back to /dev/tty on tty-bearing sessions.
+            return {**os.environ, "SSH_ASKPASS_REQUIRE": "force"}
+        service = await self.app.ensure_askpass_service()
+        return build_askpass_env(
+            os.environ,
+            socket_path=service.socket_path,
+            helper_bin=service.helper_bin,
+        )
+
     # ── Background worker ─────────────────────────────────────────────
 
     async def _run_init(self) -> None:
@@ -759,6 +794,12 @@ class InitProgressScreen(ModalScreen[InitOutcome]):
                 await asyncio.to_thread(generate_dockerfiles, self._project_id)
             self._mark("generate", "done")
 
+            # Project is loaded once upfront — we need it for the
+            # gate_enabled gate (step 4) *and* for ``ssh_use_personal``
+            # to decide whether subprocess env needs the askpass wiring.
+            project = load_project(self._project_id)
+            subprocess_env = await self._askpass_subprocess_env(project)
+
             # Step 3: Build.  ``build_images`` invokes ``podman build``
             # subprocesses that inherit the caller's stdout/stderr file
             # descriptors; left alone, their raw output *corrupts the
@@ -774,20 +815,21 @@ class InitProgressScreen(ModalScreen[InitOutcome]):
                 "the TUI intact; watch `podman images`, or see #473 for the planned "
                 "log-tailer widget).[/]"
             )
-            await asyncio.to_thread(_build_in_subprocess, self._project_id)
+            await asyncio.to_thread(_build_in_subprocess, self._project_id, env=subprocess_env)
             self._mark("build", "done")
 
-            # Step 4: Gate sync — load_project to read gate_enabled.
-            # Sync itself runs in a subprocess for the same reason as
-            # the build: ``git clone --mirror`` and friends inherit
-            # stdout/stderr and would otherwise overwrite the TUI frame.
-            project = load_project(self._project_id)
+            # Step 4: Gate sync — sync itself runs in a subprocess for
+            # the same reason as the build: ``git clone --mirror`` and
+            # friends inherit stdout/stderr and would otherwise
+            # overwrite the TUI frame.
             if not project.gate_enabled:
                 self._mark("gate", "skipped", "gate.enabled: false")
                 log.write("[dim]Gate disabled in project.yml — skipping gate-sync.[/]")
             else:
                 self._mark("gate", "running")
-                res = await asyncio.to_thread(_gate_sync_in_subprocess, self._project_id)
+                res = await asyncio.to_thread(
+                    _gate_sync_in_subprocess, self._project_id, env=subprocess_env
+                )
                 if res["success"]:
                     upstream_hint = (
                         f"upstream {res['upstream_url']}"
@@ -934,7 +976,12 @@ def _log_capture(log: RichLog):
                 log.write(text)
 
 
-def _run_isolated(child_body: str, *, label: str) -> None:
+def _run_isolated(
+    child_body: str,
+    *,
+    label: str,
+    env: dict[str, str] | None = None,
+) -> None:
     """Run *child_body* as a ``python -c`` subprocess with captured fds.
 
     Several init steps shell out to long-running commands (``podman
@@ -956,6 +1003,12 @@ def _run_isolated(child_body: str, *, label: str) -> None:
     Combined, no subprocess below this call — however badly behaved —
     can prompt the user over the TUI.
 
+    *env* is passed straight through to :func:`subprocess.run`.  When
+    ``None`` the child inherits the parent's environment (default
+    behaviour); the wizard uses this parameter to inject askpass
+    variables for ``use_personal_ssh`` projects so OpenSSH routes
+    passphrase prompts to the TUI modal instead of failing silently.
+
     *label* is the human-friendly step name used in the error message.
     Any non-zero exit propagates as :class:`RuntimeError` carrying the
     last few KiB of the child's combined output, which the wizard's
@@ -975,6 +1028,7 @@ def _run_isolated(child_body: str, *, label: str) -> None:
         check=False,
         stdin=subprocess.DEVNULL,
         start_new_session=True,
+        env=env,
     )
     if result.returncode != 0:
         tail = (result.stderr or result.stdout or "").strip().splitlines()
@@ -982,14 +1036,16 @@ def _run_isolated(child_body: str, *, label: str) -> None:
         raise RuntimeError(f"{label} exited with code {result.returncode}:\n{snippet}")
 
 
-def _build_in_subprocess(project_id: str) -> None:
+def _build_in_subprocess(project_id: str, *, env: dict[str, str] | None = None) -> None:
     """Run :func:`build_images` in a child Python process."""
     # Literal repr keeps project_id safely escaped into the -c body.
     child_body = f"from terok.lib.domain.facade import build_images; build_images({project_id!r})"
-    _run_isolated(child_body, label="build_images")
+    _run_isolated(child_body, label="build_images", env=env)
 
 
-def _gate_sync_in_subprocess(project_id: str) -> dict[str, Any]:
+def _gate_sync_in_subprocess(
+    project_id: str, *, env: dict[str, str] | None = None
+) -> dict[str, Any]:
     """Run the gate sync in a child Python process and return its result dict.
 
     The result dict is serialised to a tempfile (rather than captured
@@ -1011,7 +1067,7 @@ def _gate_sync_in_subprocess(project_id: str) -> dict[str, Any]:
             "_result = make_git_gate(_project).sync()\n"
             f"json.dump(_result, open({str(result_path)!r}, 'w'))\n"
         )
-        _run_isolated(child_body, label="gate sync")
+        _run_isolated(child_body, label="gate sync", env=env)
         return json.loads(result_path.read_text(encoding="utf-8"))
     finally:
         result_path.unlink(missing_ok=True)
