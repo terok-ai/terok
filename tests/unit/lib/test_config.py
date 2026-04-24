@@ -12,8 +12,7 @@ from pathlib import Path
 import pytest
 from terok_sandbox import port_registry as reg
 
-from terok.lib.core import config as cfg
-from terok.lib.core import paths as _paths
+from terok.lib.core import config as cfg, paths as _paths
 
 
 @pytest.fixture(autouse=True)
