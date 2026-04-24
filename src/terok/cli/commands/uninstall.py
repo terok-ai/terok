@@ -18,7 +18,7 @@ from __future__ import annotations
 
 import argparse
 
-from terok_sandbox import Marker, bold, stage_begin, stage_end, yellow
+from terok_sandbox import bold, stage_line, yellow
 
 # ── CLI wiring ─────────────────────────────────────────────────────────
 
@@ -114,14 +114,14 @@ def _uninstall_desktop_entry() -> bool:
     """Remove the XDG desktop entry + application icon."""
     from ._desktop_entry import uninstall_desktop_entry
 
-    stage_begin("Desktop entry")
-    try:
-        uninstall_desktop_entry()
-    except Exception as exc:  # noqa: BLE001
-        stage_end(Marker.FAIL, str(exc))
-        return False
-    stage_end(Marker.OK, "removed")
-    return True
+    with stage_line("Desktop entry") as s:
+        try:
+            uninstall_desktop_entry()
+        except Exception as exc:  # noqa: BLE001
+            s.fail(str(exc))
+            return False
+        s.ok("removed")
+        return True
 
 
 def _uninstall_sandbox_stack(*, root: bool) -> bool:
@@ -132,37 +132,56 @@ def _uninstall_sandbox_stack(*, root: bool) -> bool:
     Handle it here until shield's ``run_uninstall`` subsumes it; the
     reader is harmless without the hooks that feed it, but leaving
     orphans on disk is the wrong default.
+
+    Reader cleanup is a soft-fail: a reader-bridge failure does not
+    short-circuit the aggregator, since leftover script bits are
+    harmless without the hooks that feed them and the caller almost
+    always wants the rest of the stack torn down even if that one step
+    misbehaves.  The function still returns ``False`` whenever any
+    step failed, so the caller's "uninstall complete" banner only
+    fires when both halves succeeded.
     """
     from terok_sandbox import sandbox_uninstall, uninstall_shield_bridge
 
-    stage_begin("Sandbox stack")
-    try:
-        uninstall_shield_bridge()
-    except Exception as exc:  # noqa: BLE001 — soft-fail, next step is authoritative
-        stage_end(Marker.FAIL, f"reader: {exc}")
-        return False
-    try:
-        sandbox_uninstall(root=root)
-    except (SystemExit, Exception) as exc:  # noqa: BLE001 — aggregator may raise
-        stage_end(Marker.FAIL, str(exc))
-        return False
-    stage_end(Marker.OK, "clearance + gate + vault + shield removed")
-    return True
+    with stage_line("Sandbox stack") as s:
+        reader_failed = False
+        try:
+            uninstall_shield_bridge()
+        except Exception as exc:  # noqa: BLE001 — soft-fail; aggregator still runs below
+            s.fail(f"reader: {exc}")
+            reader_failed = True
+        try:
+            sandbox_uninstall(root=root)
+        except (SystemExit, Exception) as exc:  # noqa: BLE001 — aggregator may raise
+            # An aggregator failure dominates the stage line — the
+            # reader's earlier ``s.fail`` (if any) is overwritten because
+            # the more authoritative teardown is the one that didn't
+            # complete.  Either way the function reports failure.
+            s.fail(str(exc))
+            return False
+        if reader_failed:
+            # Aggregator succeeded but reader didn't; keep the reader's
+            # FAIL marker on the line (set above) so the operator sees
+            # which half tripped, and report the partial failure to the
+            # caller.
+            return False
+        s.ok("clearance + gate + vault + shield removed")
+        return True
 
 
 def _purge_credential_db() -> bool:
     """Delete the vault credential database — agents will need re-auth."""
     from terok_sandbox import SandboxConfig
 
-    stage_begin("Credential DB")
-    db_path = SandboxConfig().db_path
-    if not db_path.exists():
-        stage_end(Marker.OK, "already absent")
+    with stage_line("Credential DB") as s:
+        db_path = SandboxConfig().db_path
+        if not db_path.exists():
+            s.ok("already absent")
+            return True
+        try:
+            db_path.unlink()
+        except OSError as exc:
+            s.fail(str(exc))
+            return False
+        s.ok(f"removed {db_path}")
         return True
-    try:
-        db_path.unlink()
-    except OSError as exc:
-        stage_end(Marker.FAIL, str(exc))
-        return False
-    stage_end(Marker.OK, f"removed {db_path}")
-    return True
