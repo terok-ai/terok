@@ -87,11 +87,23 @@ def parse_reply(frame: dict[str, Any]) -> tuple[str, str | None]:
     ``answer_or_None`` is ``None`` for cancel, the passphrase string for
     accept.  An empty string is a valid passphrase (some keys have none)
     — only the explicit ``cancel: true`` marker aborts the helper.
+
+    Cancel and answer are mutually exclusive: a frame that carries both
+    is ambiguous (which wins?) and almost certainly a sender bug, so
+    raise rather than silently picking one — the :func:`make_cancel` /
+    :func:`make_answer` factories are the only sanctioned way to build
+    a reply on our side.
     """
     request_id = frame.get("request_id")
     if not isinstance(request_id, str) or not request_id:
         raise AskpassProtocolError("reply missing non-empty 'request_id'")
-    if frame.get("cancel") is True:
+    is_cancel = frame.get("cancel") is True
+    has_answer = "answer" in frame
+    if is_cancel and has_answer:
+        raise AskpassProtocolError(
+            "reply has both 'cancel: true' and 'answer' — exactly one is allowed"
+        )
+    if is_cancel:
         return request_id, None
     answer = frame.get("answer")
     if not isinstance(answer, str):

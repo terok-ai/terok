@@ -123,3 +123,14 @@ class TestParseReply:
         """A reply must commit to one of the two shapes."""
         with pytest.raises(proto.AskpassProtocolError):
             proto.parse_reply({"request_id": "x"})
+
+    def test_both_cancel_and_answer_rejected(self) -> None:
+        """A reply with both ``cancel: true`` and ``answer`` is ambiguous.
+
+        Parser must raise rather than silently picking one — otherwise
+        a sender bug that duplicates both fields would be hidden at
+        the receiver, and the helper's decision (exit 0 vs non-zero)
+        would depend on field-ordering quirks.
+        """
+        with pytest.raises(proto.AskpassProtocolError, match="both"):
+            proto.parse_reply({"request_id": "x", "cancel": True, "answer": "pass"})
