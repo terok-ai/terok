@@ -47,6 +47,7 @@ allowed_importers =
     terok.cli.main
     terok.cli.wiring
     terok.lib.core.config
+    terok.lib.core.paths
     terok.lib.core.projects
     terok.lib.core.runtime
     terok.lib.core.yaml_schema
