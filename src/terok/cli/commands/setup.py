@@ -7,12 +7,18 @@ Thin wrapper over :func:`terok_executor.ensure_sandbox_ready` — the
 executor-level composer that generates vault routes from the agent
 roster and then runs the sandbox aggregator (shield hooks + reader +
 vault + gate + clearance hub/verdict/notifier with a full
-stop → uninstall → install → verify cycle per service).  After the
-service stack we build the L0/L1 base images via
-:func:`terok_executor.build_base_images` so a fresh ``terok setup``
-leaves the host ready to run tasks without a separate image-build
-step.  On top, terok adds its own desktop-entry install for
-``terok-tui``.  Safe to re-run; every phase is idempotent.
+stop → uninstall → install → verify cycle per service).  On top,
+terok adds its own desktop-entry install for ``terok-tui``.  Safe
+to re-run; every phase is idempotent.
+
+Base images are **not** built by default: each project declares its
+own ``image.base_image`` in ``project.yml`` (ubuntu, fedora,
+nvidia/cuda, …), so at setup time there's nothing sensible to
+pre-build.  L0/L1 build happens lazily on first ``terok task run``
+keyed by the project's declared base, or explicitly via
+``terok project init``.  The ``--with-images=<BASE>`` flag is the
+expert escape hatch for operators who *know* a fleet-wide base
+image and want to pay the build cost once up front.
 
 Per-project operations live under the ``project`` group in
 :mod:`project.py`; :func:`cmd_project_init` stays here because
@@ -62,22 +68,26 @@ def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) ->
         ),
     )
     p_setup.add_argument(
-        "--no-images",
-        action="store_true",
+        "--with-images",
+        metavar="BASE_IMAGE",
+        default=None,
         help=(
-            "Skip the L0/L1 base-image build.  Use on hosts that will "
-            "never run tasks locally (e.g. management-only installs)."
+            "Pre-build L0/L1 for BASE_IMAGE (e.g. ``ubuntu:24.04``, "
+            "``fedora:43``, ``nvidia/cuda:12.6.0-runtime-ubuntu24.04``).  "
+            "Normally images build lazily on first ``terok task run`` or "
+            "``terok project init``, keyed by each project's declared "
+            "base — so this flag is only useful when you *know* your "
+            "fleet will use one base and want to pay the cost once up "
+            "front.  No default: omit the flag to skip the build."
         ),
-    )
-    p_setup.add_argument(
-        "--base",
-        default="ubuntu:24.04",
-        help="Base image for the L0/L1 build (default: ubuntu:24.04).",
     )
     p_setup.add_argument(
         "--family",
         default=None,
-        help="Override auto-detected package family (``deb`` or ``rpm``).",
+        help=(
+            "Package family override for ``--with-images`` (``deb`` or "
+            "``rpm``).  Auto-detected from the base image name otherwise."
+        ),
     )
 
 
@@ -87,8 +97,7 @@ def dispatch(args: argparse.Namespace) -> bool:
         return False
     cmd_setup(
         no_desktop_entry=getattr(args, "no_desktop_entry", False),
-        no_images=getattr(args, "no_images", False),
-        base=getattr(args, "base", "ubuntu:24.04"),
+        with_images=getattr(args, "with_images", None),
         family=getattr(args, "family", None),
     )
     return True
@@ -100,20 +109,23 @@ def dispatch(args: argparse.Namespace) -> bool:
 def cmd_setup(
     *,
     no_desktop_entry: bool = False,
-    no_images: bool = False,
-    base: str = "ubuntu:24.04",
+    with_images: str | None = None,
     family: str | None = None,
 ) -> None:
-    """Install the sandbox stack via the executor composer, build base images, then desktop entry.
+    """Install the sandbox stack + desktop entry; optionally pre-build one L0/L1 pair.
 
     Exits non-zero if the sandbox aggregator fails (one or more service
-    phases unreachable) or if the image build fails.  The desktop entry
-    step is non-fatal when xdg-utils is missing — the built-in fallback
-    covers spec-compliant hosts and the warning is a WARN, not a FAIL.
+    phases unreachable) or if a requested image build fails.  The
+    desktop entry step is non-fatal when xdg-utils is missing — the
+    built-in fallback covers spec-compliant hosts and the warning is
+    a WARN, not a FAIL.
 
-    ``no_images`` skips the L0/L1 build for management-only hosts that
-    never run tasks locally; ``base`` + ``family`` are forwarded to the
-    image factory when the build does run.
+    When ``with_images`` is ``None`` (the default) the L0/L1 build is
+    *skipped entirely* — image-build decisions are per-project and
+    happen on first ``terok task run`` / ``terok project init``.  Pass
+    a base image (e.g. ``"ubuntu:24.04"``) to eagerly build once up
+    front for a known fleet.  ``family`` overrides package-family
+    detection for that build.
     """
     from terok_executor import ensure_sandbox_ready
 
@@ -128,11 +140,11 @@ def cmd_setup(
             print(_bold(_red(f"Sandbox aggregator reported failures (exit {exc.code}).")))
 
     images_failed = False
-    if not no_images and not sandbox_failed:
+    if with_images and not sandbox_failed:
         # Skip the (slow) image build when the service stack is already
         # broken — the user needs to fix setup before anything that
         # depends on images will be useful anyway.
-        images_failed = not _run_image_build(base=base, family=family)
+        images_failed = not _run_image_build(base=with_images, family=family)
 
     print()
     desktop_ok = no_desktop_entry or _ensure_desktop_entry()
