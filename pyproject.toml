@@ -4,7 +4,7 @@ build-backend = "poetry_dynamic_versioning.backend"
 
 [tool.poetry]
 name = "terok"
-version = "0.8.0"
+version = "0.7.6"
 description = "Manage containerized projects and per-run tasks with Podman"
 readme = "README.md"
 license = "Apache-2.0"
@@ -48,10 +48,10 @@ rich = ">=13.0"
 platformdirs = ">=4.5.1"
 unique-namer = ">=1.3"
 textual-serve = ">=1.1.0"
-terok-executor = {url = "https://github.com/terok-ai/terok-executor/releases/download/v0.0.122/terok_executor-0.0.122-py3-none-any.whl"}
-terok-sandbox = {url = "https://github.com/terok-ai/terok-sandbox/releases/download/v0.0.102/terok_sandbox-0.0.102-py3-none-any.whl"}
-terok-shield = {url = "https://github.com/terok-ai/terok-shield/releases/download/v0.6.32/terok_shield-0.6.32-py3-none-any.whl"}
-terok-clearance = {url = "https://github.com/terok-ai/terok-clearance/releases/download/v0.6.4/terok_clearance-0.6.4-py3-none-any.whl"}
+terok-executor = {url = "https://github.com/terok-ai/terok-executor/releases/download/v0.0.123/terok_executor-0.0.123-py3-none-any.whl"}
+terok-sandbox = {url = "https://github.com/terok-ai/terok-sandbox/releases/download/v0.0.103/terok_sandbox-0.0.103-py3-none-any.whl"}
+terok-shield = {url = "https://github.com/terok-ai/terok-shield/releases/download/v0.6.33/terok_shield-0.6.33-py3-none-any.whl"}
+terok-clearance = {url = "https://github.com/terok-ai/terok-clearance/releases/download/v0.6.5/terok_clearance-0.6.5-py3-none-any.whl"}
 
 [tool.poetry.group.dev.dependencies]
 pydevd-pycharm = "261.23567.80"
