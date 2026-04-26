@@ -3112,7 +3112,7 @@ tomli-w = ">=1.0"
 type = "git"
 url = "https://github.com/sliwowitz/terok-executor.git"
 reference = "feat/codex-oauth-expose-dispatch"
-resolved_reference = "613ec0b61a6e3bb89bf6ab829376eb3283af74ed"
+resolved_reference = "ef0d24d156b7304baaec1055be88fe42608b5941"
 
 [[package]]
 name = "terok-sandbox"
