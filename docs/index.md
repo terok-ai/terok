@@ -29,7 +29,7 @@ Python packages.
 ### Workflow
 
 - **Projects ⊃ Tasks** — long-lived project config, ephemeral task
-  containers; many tasks per project, each fully isolated
+  containers; many tasks per project
 - **Headless / interactive / web interface** — pick the launch mode
   per task; same agents, same hardening
 - **Layered images** — base distro · agent CLIs · per-project
@@ -51,7 +51,8 @@ Python packages.
 - **Python 3.12+**
 - **OpenSSH client** — for private git repos
 - Optional but recommended: **systemd** user session, **`dnsmasq`**
-  or **`dig`**, a desktop **notification daemon**
+  and **`dig`** (DNS plumbing for the egress firewall), a desktop
+  **notification daemon**
 
 ### Installation
 

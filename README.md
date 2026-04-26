@@ -35,7 +35,7 @@ Python packages.
 ### Workflow
 
 - **Projects ⊃ Tasks** — long-lived project config, ephemeral task
-  containers; many tasks per project, each fully isolated
+  containers; many tasks per project
 - **Headless / interactive / web interface** — pick the launch mode
   per task; same agents, same hardening
 - **Layered images** — base distro · agent CLIs · per-project
@@ -88,8 +88,7 @@ Hard dependencies:
 Optional but recommended:
 
 - **systemd** user session — runs the gate / vault / clearance daemons
-- **`dnsmasq`** — dynamic DNS-based egress allowlisting
-- **`dig`** — fallback DNS resolver when dnsmasq is unavailable
+- **`dnsmasq`** and **`dig`** — DNS plumbing the egress firewall uses
 - A desktop **notification daemon** — for the Allow / Deny popups path
 
 ### Installation
