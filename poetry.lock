@@ -3112,7 +3112,7 @@ tomli-w = ">=1.0"
 type = "git"
 url = "https://github.com/sliwowitz/terok-executor.git"
 reference = "feat/acp-aggregator"
-resolved_reference = "657d6c41ce5eeeec056e933152bf3a08b9ab16a9"
+resolved_reference = "8217c220bd10cd0d74bbd51ccb07778138a11f44"
 
 [[package]]
 name = "terok-sandbox"
@@ -3137,7 +3137,7 @@ terok-shield = {url = "https://github.com/terok-ai/terok-shield/releases/downloa
 type = "git"
 url = "https://github.com/sliwowitz/terok-sandbox.git"
 reference = "feat/exec-stdio-primitive"
-resolved_reference = "3cf4aad624cebb356a384a026ac3acd0e137c14b"
+resolved_reference = "c68c8ad8249ea20fc4281a9210a21714416359f2"
 
 [[package]]
 name = "terok-shield"
