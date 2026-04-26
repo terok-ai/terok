@@ -14,7 +14,7 @@ Python packages.
 
 ## What you get
 
-#### Hardening
+### Hardening
 
 - **Rootless Podman** — no daemon, no privileged user namespace
 - **Default-deny egress firewall** with curated allowlist profiles
@@ -26,7 +26,7 @@ Python packages.
 - **Live Allow / Deny prompts** — desktop notifications on blocked
   outbound traffic, turned into immediate firewall rules
 
-#### Workflow
+### Workflow
 
 - **Projects ⊃ Tasks** — long-lived project config, ephemeral task
   containers; many tasks per project, each fully isolated
