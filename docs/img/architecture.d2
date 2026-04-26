@@ -3,13 +3,12 @@
 #      --elk-padding='[top=4,left=4,bottom=4,right=4]' \
 #      --theme=0 --dark-theme=200 --pad=8 \
 #      architecture.d2 architecture.svg
-# Then strip the page-background rect (the matching rect inside <mask>
-# must stay — it holds the connection arrow routing together):
-#   python3 -c 'import re,sys;p=sys.argv[1];s=open(p).read();\
-#     m=[(x.start(),x.end()) for x in re.finditer(r"<mask\\b.*?</mask>",s,re.S)];\
-#     pat=re.compile(r"<rect x=\"-?\\d+\" y=\"-?\\d+\" width=\"\\d+\" height=\"\\d+\" fill=\"white\"></rect>");\
-#     it=pat.finditer(s);\
-#     [open(p,"w").write(s[:x.start()]+s[x.end():]) for x in it if not any(a<=x.start()<b for a,b in m)][:1]' architecture.svg
+# Then post-process with postprocess.py to (a) drop the page-background
+# white rect (the matching one inside <mask> must stay or arrows
+# disappear), (b) bold only the first text line of each shape (the
+# package name), and (c) inject a dark-mode @media block flipping the
+# explicit layer fills + strokes to readable shades for
+# prefers-color-scheme: dark.
 
 vars: {
   d2-config: {
@@ -23,22 +22,17 @@ style.fill: transparent
 
 direction: down
 
-# Per-layer palette: each layer of the stack carries a distinct hue
-# so the colour by itself reads as "what kind of thing is this?"
+# Three colour groups read at a glance:
+#   * orchestration (blue) — the surface the operator drives
+#   * agent runtime stack (teal) — everything that runs and bounds
+#                                  an agent task
+#   * system foundation (slate) — the OS pieces we sit on
 classes: {
   orchestration: {
     style: {
       fill: "#dbeafe"
       stroke: "#1d4ed8"
-      stroke-width: 2
-      border-radius: 12
-    }
-  }
-  pertask: {
-    style: {
-      fill: "#ede9fe"
-      stroke: "#7c3aed"
-      stroke-width: 2
+      stroke-width: 1
       border-radius: 12
     }
   }
@@ -46,15 +40,7 @@ classes: {
     style: {
       fill: "#ccfbf1"
       stroke: "#0d9488"
-      stroke-width: 2
-      border-radius: 12
-    }
-  }
-  boundary: {
-    style: {
-      fill: "#ffedd5"
-      stroke: "#c2410c"
-      stroke-width: 2
+      stroke-width: 1
       border-radius: 12
     }
   }
@@ -62,7 +48,7 @@ classes: {
     style: {
       fill: "#f1f5f9"
       stroke: "#475569"
-      stroke-width: 2
+      stroke-width: 1
       border-radius: 12
     }
   }
@@ -73,7 +59,7 @@ terok: "terok\nProject orchestration · multi-agent presets · TUI · sickbay" {
 }
 
 executor: "terok-executor\nPer-task agent runner · image factory · auth flows" {
-  class: pertask
+  class: runtime
 }
 
 sandbox: "terok-sandbox\nHardened Podman runtime · credential vault · git gate" {
@@ -81,11 +67,11 @@ sandbox: "terok-sandbox\nHardened Podman runtime · credential vault · git gate
 }
 
 shield: "terok-shield\nnftables egress firewall · default-deny · audit" {
-  class: boundary
+  class: runtime
 }
 
-clearance: "terok-clearance\nLive Allow/Deny prompts · D-Bus + varlink hub" {
-  class: boundary
+clearance: "terok-clearance\nLive Allow / Deny · D-Bus + varlink hub" {
+  class: runtime
 }
 
 system: "System foundation\nrootless Podman · nftables · systemd · D-Bus" {
