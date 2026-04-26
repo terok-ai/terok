@@ -39,7 +39,6 @@ def dispatch(args: argparse.Namespace) -> bool:
         return False
 
     from terok_executor import get_roster
-    from terok_executor.roster.loader import _load_bundled_agents, _load_user_agents
 
     roster = get_roster()
     names = roster.all_names if getattr(args, "all", False) else roster.agent_names
@@ -48,21 +47,15 @@ def dispatch(args: argparse.Namespace) -> bool:
         print("No agents registered.", file=sys.stderr)
         return True
 
-    raw = _load_bundled_agents()
-    raw.update(_load_user_agents())
-
-    rows: list[tuple[str, str, str]] = []
+    rows: list[tuple[str, str]] = []
     for name in sorted(names):
         provider = roster.providers.get(name)
         auth = roster.auth_providers.get(name)
         label = provider.label if provider else (auth.label if auth else name)
-        kind = raw.get(name, {}).get("kind", "native")
-        rows.append((name, label, kind))
+        rows.append((name, label))
 
     w_name = max(len("NAME"), max(len(r[0]) for r in rows))
-    w_label = max(len("LABEL"), max(len(r[1]) for r in rows))
-
-    print(f"{'NAME':<{w_name}}  {'LABEL':<{w_label}}  TYPE")
-    for name, label, kind in rows:
-        print(f"{name:<{w_name}}  {label:<{w_label}}  {kind}")
+    print(f"{'NAME':<{w_name}}  LABEL")
+    for name, label in rows:
+        print(f"{name:<{w_name}}  {label}")
     return True
