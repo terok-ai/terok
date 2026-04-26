@@ -34,6 +34,7 @@ except ImportError:  # optional dependency
 
 APP_NAME = "terok"
 _VAULT_SUBDIR = "vault"
+_ACP_RUNTIME_SUBDIR = "acp"
 
 
 # ── Configuration ──────────────────────────────────────────────────────
@@ -90,6 +91,28 @@ def core_state_dir() -> Path:
 
 
 # ── Vault ──────────────────────────────────────────────────────────────
+
+
+def acp_socket_path(project_id: str, task_id: str) -> Path:
+    """Return the per-task ACP listener socket path on the host.
+
+    The proxy daemon binds this Unix socket on first
+    ``terok acp connect`` and tears it down when the task's container
+    exits.  Path layout matches the askpass-service convention
+    (``runtime_dir() / <subdir> / …``) so all transient sockets live
+    under a single XDG-compliant root.
+    """
+    return runtime_dir() / _ACP_RUNTIME_SUBDIR / project_id / f"{task_id}.sock"
+
+
+def acp_bound_path(project_id: str, task_id: str) -> Path:
+    """Return the per-task ACP "bound agent" sidecar JSON path.
+
+    Written atomically by the proxy daemon when an agent is bound to a
+    session; read by the host-side discovery surface to surface the
+    bound-agent name in ``acp list`` output.
+    """
+    return runtime_dir() / _ACP_RUNTIME_SUBDIR / project_id / f"{task_id}.bound"
 
 
 def vault_root() -> Path:
