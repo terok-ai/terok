@@ -25,7 +25,6 @@ from .commands import (
     info,
     panic,
     project,
-    selinux,
     setup,
     shield,
     sickbay,
@@ -46,7 +45,6 @@ except ImportError:  # pragma: no cover - optional dep
 _DISPATCHERS = [
     panic.dispatch,
     setup.dispatch,
-    selinux.dispatch,
     uninstall.dispatch,
     auth.dispatch,
     project.dispatch,
@@ -142,7 +140,6 @@ def main(prog: str = "terok") -> None:
     # sibling-wired groups, then dev/shell niceties.
     panic.register(sub)
     setup.register(sub)
-    selinux.register(sub)
     uninstall.register(sub)
     auth.register(sub)
     project.register(sub)

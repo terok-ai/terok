@@ -173,11 +173,12 @@ terok completions install               # Re-install shell completions
 
 ## Notes
 
-- **SELinux hosts**: run `terok selinux setup` (which calls
-  `sudo bash <install-script>`) before `terok setup`, then re-run
-  `terok setup` once the policy module is loaded.  Without it the
-  shield + clearance services bind sockets as `unconfined_t` and
-  podman will refuse to talk to them.
+- **SELinux hosts**: install the policy module before `terok setup`,
+  otherwise the shield + clearance services bind sockets as
+  `unconfined_t` and podman will refuse to talk to them.  The exact
+  install command (a `sudo bash` over the script terok-sandbox
+  ships) is printed by `terok sickbay` when the policy is missing —
+  run it once, then re-run `terok setup`.
 - **Clipboard**: If mouse selection doesn't copy to your clipboard,
   hold **Shift** while selecting, then **Shift+Ctrl+C** to copy.
   See [Tips](docs/usage.md#tips) for details.

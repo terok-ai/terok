@@ -37,7 +37,6 @@ type = protected
 protected_modules = terok_sandbox
 allowed_importers =
     terok.cli.commands.project
-    terok.cli.commands.selinux
     terok.cli.commands.setup
     terok.cli.commands.shield
     terok.cli.commands.sickbay
