@@ -308,17 +308,25 @@ def _ensure_shell_completions() -> None:
     shell the install is skipped with a one-line hint pointing the
     operator at ``terok completions install --shell <name>``.
     """
-    from .completions import _install_completions, is_completion_installed
+    import os
+
+    from .completions import _SHELLS, _install_completions, is_completion_installed
 
     if is_completion_installed():
         return
     print()
     print(bold("Installing shell completions"))
-    try:
-        _install_completions(shell=None)
-    except SystemExit as exc:
-        print(yellow(f"Shell completions skipped: {exc}"))
+
+    # Inline the shell detection from completions._detect_shell so we
+    # don't have to swallow its SystemExit-on-failure here.
+    shell_path = os.environ.get("SHELL", "")
+    shell = os.path.basename(shell_path)
+    if shell not in _SHELLS:
+        print(yellow(f"Shell completions skipped: cannot detect from $SHELL={shell_path!r}"))
         print("Install manually: terok completions install --shell <bash|zsh|fish>")
+        return
+    try:
+        _install_completions(shell=shell)
     except Exception as exc:  # noqa: BLE001
         print(yellow(f"Shell completions skipped: {exc}"))
 

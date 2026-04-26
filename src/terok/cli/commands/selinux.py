@@ -17,6 +17,7 @@ command prints a one-line note and exits cleanly.
 from __future__ import annotations
 
 import argparse
+import shutil
 import subprocess  # nosec B404 — sudo is the documented install path
 import sys
 
@@ -58,9 +59,10 @@ def dispatch(args: argparse.Namespace) -> bool:
         )
         return True
 
-    print(f"Running: sudo bash {script}")
+    sudo = shutil.which("sudo") or "/usr/bin/sudo"
+    print(f"Running: {sudo} bash {script}")
     try:
-        subprocess.run(["sudo", "bash", str(script)], check=True)  # nosec B603
+        subprocess.run([sudo, "bash", str(script)], check=True)  # nosec B603
     except subprocess.CalledProcessError as exc:
         raise SystemExit(f"SELinux install failed (exit {exc.returncode})") from exc
     print("SELinux policy installed.  Re-run `terok setup` to finish.")

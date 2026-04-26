@@ -51,7 +51,12 @@ def dispatch(args: argparse.Namespace) -> bool:
     for name in sorted(names):
         provider = roster.providers.get(name)
         auth = roster.auth_providers.get(name)
-        label = provider.label if provider else (auth.label if auth else name)
+        if provider is not None:
+            label = provider.label
+        elif auth is not None:
+            label = auth.label
+        else:
+            label = name
         rows.append((name, label))
 
     w_name = max(len("NAME"), max(len(r[0]) for r in rows))
