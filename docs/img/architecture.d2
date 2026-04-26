@@ -1,5 +1,5 @@
 # Render with:
-#   d2 --layout=elk --elk-nodeNodeBetweenLayers=20 \
+#   d2 --layout=elk --elk-nodeNodeBetweenLayers=8 \
 #      --elk-padding='[top=4,left=4,bottom=4,right=4]' \
 #      --theme=0 --dark-theme=200 --pad=8 \
 #      architecture.d2 architecture.svg
@@ -62,9 +62,10 @@ terok: "terok\nProject orchestration · multi-agent presets · TUI · sickbay" {
   class: orchestration
 }
 
-notifications: "Desktop notifications\nFreedesktop notification daemon · Allow / Deny popups" {
-  width: 540
+notifications: "Desktop notifications\nAllow / Deny popups" {
+  width: 360
   class: system
+  near: top-right
 }
 
 executor: "terok-executor\nPer-task agent runner · image factory · auth flows" {
@@ -90,15 +91,6 @@ clearance: "terok-clearance\nLive Allow / Deny · D-Bus + varlink hub" {
 system: "System foundation\nrootless Podman · nftables · systemd · D-Bus" {
   width: 540
   class: system
-}
-
-# Layout-only invisible edge keeps notifications at the same top
-# rank as terok.  The visible arrow that follows is the real
-# clearance → notifications relationship.
-notifications -> executor: "" {
-  style: {
-    opacity: 0.0
-  }
 }
 
 terok -> executor
