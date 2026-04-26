@@ -107,6 +107,7 @@ class TestCmdSetup:
             patch("terok_executor.ensure_sandbox_ready") as sandbox,
             patch("terok_executor.build_base_images") as images,
             patch("terok.cli.commands.setup._ensure_desktop_entry", return_value=True) as desktop,
+            patch("terok.cli.commands.setup._ensure_shell_completions"),
         ):
             cmd_setup()
         sandbox.assert_called_once()
@@ -125,6 +126,7 @@ class TestCmdSetup:
             patch("terok_executor.ensure_sandbox_ready"),
             patch("terok_executor.build_base_images"),
             patch("terok.cli.commands.setup._ensure_desktop_entry", return_value=True) as desktop,
+            patch("terok.cli.commands.setup._ensure_shell_completions"),
         ):
             cmd_setup(no_desktop_entry=True)
         desktop.assert_called_once_with(policy="skip")
@@ -135,6 +137,7 @@ class TestCmdSetup:
             patch("terok_executor.ensure_sandbox_ready"),
             patch("terok_executor.build_base_images"),
             patch("terok.cli.commands.setup._ensure_desktop_entry", return_value=True) as desktop,
+            patch("terok.cli.commands.setup._ensure_shell_completions"),
         ):
             cmd_setup(install_desktop_entry=True)
         desktop.assert_called_once_with(policy="install")
@@ -149,6 +152,7 @@ class TestCmdSetup:
                 "terok.lib.core.config.get_tui_desktop_entry",
                 return_value="install",
             ),
+            patch("terok.cli.commands.setup._ensure_shell_completions"),
         ):
             cmd_setup()
         desktop.assert_called_once_with(policy="install")
@@ -159,6 +163,7 @@ class TestCmdSetup:
             patch("terok_executor.ensure_sandbox_ready"),
             patch("terok_executor.build_base_images") as images,
             patch("terok.cli.commands.setup._ensure_desktop_entry", return_value=True),
+            patch("terok.cli.commands.setup._ensure_shell_completions"),
         ):
             cmd_setup(with_images="ubuntu:24.04")
         images.assert_called_once_with(base_image="ubuntu:24.04", family=None)
@@ -169,6 +174,7 @@ class TestCmdSetup:
             patch("terok_executor.ensure_sandbox_ready"),
             patch("terok_executor.build_base_images") as images,
             patch("terok.cli.commands.setup._ensure_desktop_entry", return_value=True),
+            patch("terok.cli.commands.setup._ensure_shell_completions"),
         ):
             cmd_setup(with_images="my-registry.example.com/odd-base:1.0", family="rpm")
         images.assert_called_once_with(
@@ -244,6 +250,7 @@ class TestCmdSetup:
             patch("terok_executor.ensure_sandbox_ready"),
             patch("terok_executor.build_base_images"),
             patch("terok.cli.commands.setup._ensure_desktop_entry", return_value=False),
+            patch("terok.cli.commands.setup._ensure_shell_completions"),
         ):
             cmd_setup()  # no SystemExit
         out = capsys.readouterr().out

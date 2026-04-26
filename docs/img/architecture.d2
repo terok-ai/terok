@@ -1,0 +1,108 @@
+# Render with:
+#   d2 --layout=elk --elk-nodeNodeBetweenLayers=8 \
+#      --elk-padding='[top=4,left=4,bottom=4,right=4]' \
+#      --theme=0 --dark-theme=200 --pad=8 \
+#      architecture.d2 architecture.svg
+# Then run postprocess.py to (a) drop the page-background white
+# rect (the matching rect inside <mask> must stay or the connection
+# arrows disappear), (b) un-bold every tspan after the first one
+# in each shape label so only the package name stays bold, (c) tighten
+# the vertical padding inside every coloured rect, and (d) inject a
+# `prefers-color-scheme: dark` block flipping the explicit layer
+# fills + strokes to readable shades on a dark page background.
+
+vars: {
+  d2-config: {
+    pad: 8
+  }
+}
+
+# Transparent root so the SVG inherits the host page's
+# light/dark background; theme-aware fills handle the rest.
+style.fill: transparent
+
+direction: down
+
+# Three colour groups read at a glance:
+#   * orchestration (navy blue) — the surface the operator drives
+#   * agent runtime stack (deep orange) — everything that runs and
+#                                          bounds an agent task
+#   * operator + system surface (dark green) — the user-visible side
+#                                              channel and the OS
+#                                              foundation we sit on
+classes: {
+  orchestration: {
+    style: {
+      fill: "#c7d2fe"
+      stroke: "#3730a3"
+      stroke-width: 1
+      border-radius: 12
+    }
+  }
+  runtime: {
+    style: {
+      fill: "#fed7aa"
+      stroke: "#c2410c"
+      stroke-width: 1
+      border-radius: 12
+    }
+  }
+  system: {
+    style: {
+      fill: "#bbf7d0"
+      stroke: "#15803d"
+      stroke-width: 1
+      border-radius: 12
+    }
+  }
+}
+
+terok: "terok\nProject orchestration · CLI + TUI · task lifecycle" {
+  width: 540
+  class: orchestration
+}
+
+notifications: "desktop notifications\nAllow / Deny popups" {
+  width: 240
+  class: system
+}
+
+executor: "terok-executor\nPer-task agent runner · image factory · auth flows" {
+  width: 540
+  class: runtime
+}
+
+sandbox: "terok-sandbox\nHardened Podman runtime · credential vault · git gate" {
+  width: 540
+  class: runtime
+}
+
+shield: "terok-shield\nnftables egress firewall · default-deny · audit" {
+  width: 380
+  class: runtime
+}
+
+clearance: "terok-clearance\nLive Allow / Deny · D-Bus + varlink hub" {
+  width: 380
+  class: runtime
+}
+
+system: "system foundation\nrootless Podman · nftables · systemd · D-Bus" {
+  width: 540
+  class: system
+}
+
+# Layout-only invisible edge keeps notifications at the same top
+# rank as terok.  The visible arrow that follows is the real
+# clearance → notifications relationship.
+notifications -> executor: "" {
+  style.opacity: 0.0
+}
+
+terok -> executor
+executor -> sandbox
+sandbox -> shield
+sandbox -> clearance
+shield -> system
+clearance -> system
+clearance -> notifications

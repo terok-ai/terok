@@ -16,6 +16,7 @@ import sys
 from ..lib.core.config import set_experimental
 from ..lib.core.version import format_version_string, get_version_info
 from .commands import (
+    agents,
     auth,
     clearance,
     completions,
@@ -56,6 +57,7 @@ _DISPATCHERS = [
     clearance.dispatch,
     sickbay.dispatch,
     info.dispatch,
+    agents.dispatch,
     completions.dispatch,
 ]
 
@@ -148,6 +150,7 @@ def main(prog: str = "terok") -> None:
     clearance.register(sub)
     sickbay.register(sub)
     shield.register(sub)
+    agents.register(sub)
     info.register(sub)
 
     # Mount sub-package command registries under scoped prefixes.

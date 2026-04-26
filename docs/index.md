@@ -1,37 +1,58 @@
 # terok
 
-Orchestration and instrumentation platform for containerized AI coding agents.
-Provides both a CLI (`terok`) and a Textual TUI (`terok-tui`, or `terok tui`).
+An open, Podman-native runtime for AI coding agents you can let off
+the leash — without giving them the leash to your machine.
 
-terok manages the *what* — which agents run, how they're configured, and
-what code they work on.  The hardened container runtime
-([terok-sandbox](https://github.com/terok-ai/terok-sandbox)) manages the
-*how* — Podman isolation, egress firewalling, gated git access, and SSH
-provisioning.
+terok runs each agent task inside a hardened, rootless container with
+default-deny outbound networking, a credential vault that keeps real
+keys on the host, a per-task git checkpoint, and a desktop
+notification path for live allow/deny decisions.  It ships a CLI
+and a Textual TUI on top of a focused stack of independently-released
+Python packages.
 
-## Features
+![terok ecosystem at a glance](img/architecture.svg)
 
-- **Multiple Agents**: Claude Code, Codex, GitHub Copilot, Mistral Vibe, Blablador, Kisski, and OpenCode
-- **Selectable Agents**: Pick which agents bake into your image via `image.agents` in `project.yml` or `--agents claude,codex` on the command line — different selections coexist as separate L1 images
-- **Headless Autopilot**: Run agents non-interactively with a prompt — useful for CI/CD and scripted workflows
-- **Presets**: Bundled and custom reusable agent configurations (`solo`, `review`, `team`)
-- **Multi-Agent Teams**: Run multiple specialized sub-agents in a single task
-- **Task Lifecycle**: Create, run, stop, restart, follow up, and archive tasks
-- **Security Modes**: Online and gatekeeping modes for different trust levels
-- **Container Layers**: Efficient three-layer container image architecture (L0/L1/L2)
-- **Distro-Agnostic Base Images**: Ubuntu/Debian (apt) and Fedora/RPM (dnf) base images supported out of the box; `image.family` override for anything outside the allowlist
-- **Nested Containers**: `run.nested_containers: true` declares projects that run podman/docker inside their container — terok adds the SELinux `label=nested` type and `/dev/fuse` device, keeping the outer container's SELinux boundary intact
-- **Hardened Runtime**: Defence-in-depth via [terok-sandbox](https://github.com/terok-ai/terok-sandbox) — egress firewall, gated git access, SSH isolation, GPU passthrough, socket-based credential and SSH transport with SELinux support
-- **Agent Instructions**: Layered, inheritable instruction system delivered to every task
-- **Interactive TUI**: Full-featured Textual interface with project/task management, log viewing, and login sessions
+## What you get
+
+### Hardening
+
+- **Rootless Podman** — no daemon, no privileged user namespace
+- **Default-deny egress firewall** with curated allowlist profiles
+  and per-container audit logs (via
+  [terok-shield](https://github.com/terok-ai/terok-shield))
+- **Credential vault** — secrets stay on the host
+- **Per-task git gate** — a git mirror that the agent pushes through,
+  giving you a human-review point before changes leave your machine
+- **Live Allow / Deny prompts** — desktop notifications on blocked
+  outbound traffic, turned into immediate firewall rules
+
+### Workflow
+
+- **Projects ⊃ Tasks** — long-lived project config, ephemeral task
+  containers; many tasks per project
+- **Headless / interactive / web interface** — pick the launch mode
+  per task; same agents, same hardening
+- **Layered images** — base distro · agent CLIs · per-project
+  snippet, cached and reused across projects; Ubuntu / Debian /
+  Fedora / nvidia/cuda out of the box, GPU passthrough for projects
+  whose base image supports it
+- **Sickbay + panic** — health checks with auto-remediation and an
+  emergency kill-switch
+- **Multi-vendor agents** — Claude Code, Codex, Copilot, Vibe, plus
+  custom LLM endpoints via OpenCode (Helmholtz, university, or your
+  own endpoint — bundled defaults included)
 
 ## Quick Start
 
 ### Prerequisites
 
-- Podman installed and configured
-- Python 3.12+
-- OpenSSH client (for private git repos)
+- **Podman** (rootless) and **`nft`** (nftables CLI) — the two hard
+  dependencies
+- **Python 3.12+**
+- **OpenSSH client** — for private git repos
+- Optional but recommended: **systemd** user session, **`dnsmasq`**
+  and **`dig`** (DNS plumbing for the egress firewall), a desktop
+  **notification daemon**
 
 ### Installation
 
@@ -42,23 +63,20 @@ pipx install ./terok-*.whl
 
 ### One-time setup
 
-Install OCI hooks for the egress firewall, start the host-side services
-(vault and git gate), and optionally add shell completions:
-
 ```bash
-terok shield install-hooks --user               # install OCI hooks for terok-shield
-terok vault install                     # install systemd socket activation
-terok vault start                       # start the vault daemon
-terok gate start                        # start the git gate server
-terok completions install               # (optional) tab completion
+terok setup
 ```
+
+`setup` installs the shield OCI hooks, the vault, the git gate, the
+D-Bus clearance bridge, the XDG desktop entry for the TUI, and shell
+completions for your detected shell.  Idempotent — safe to re-run.
 
 ### First project
 
-Launch the TUI and create your first project from there:
+Launch the TUI:
 
 ```bash
-terok tui
+terok                                   # bare `terok` on a TTY runs the TUI
 ```
 
 - Press **n** to run the project wizard (creates config, builds images, sets up SSH + gate)
@@ -68,11 +86,11 @@ terok tui
 Or do the same from the command line:
 
 ```bash
-terok project wizard                    # interactive setup
-terok auth claude myproj                # authenticate agent
-terok task run myproj                 # start a CLI agent task
-terok task run myproj --mode toad     # Toad multi-agent TUI (browser access)
-terok login myproj a3                   # attach to a running task by hex ID prefix
+terok auth claude                       # authenticate host-wide
+terok project wizard                    # interactive project setup
+terok task run myproj                   # create a CLI task and attach (default on TTY)
+terok task run myproj --mode toad       # web interface (browser access)
+terok login myproj a3                   # re-attach later by task ID prefix
 ```
 
 For manual project configuration or CI, see the [User Guide](usage.md).
@@ -89,20 +107,6 @@ terok task run myproj "Add tests" --model opus --timeout 3600
 # Use a specific provider
 terok task run myproj "Fix the bug" --provider codex
 ```
-
-### Presets
-
-Three presets work out of the box — no config needed:
-
-```bash
-terok task run myproj "Fix the typo" --preset solo          # single fast agent
-terok task run myproj "Review auth module" --preset review   # read-only analysis
-terok task run myproj "Add pagination" --preset team         # multi-agent team
-```
-
-Create your own in `~/.config/terok/presets/` (shared across projects) or
-per-project in `<project>/presets/`. See the
-[Presets Guide](usage.md#presets) for details.
 
 ## Documentation
 
