@@ -3112,7 +3112,7 @@ tomli-w = ">=1.0"
 type = "git"
 url = "https://github.com/sliwowitz/terok-executor.git"
 reference = "feat/acp-aggregator"
-resolved_reference = "24a879f7389dfb626d10c5edb733026794bf3aae"
+resolved_reference = "657d6c41ce5eeeec056e933152bf3a08b9ab16a9"
 
 [[package]]
 name = "terok-sandbox"
