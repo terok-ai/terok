@@ -33,7 +33,7 @@ def test_dispatch_returns_false_for_unknown_subcommand() -> None:
 def test_setup_invokes_install_script_via_sudo(
     capsys: pytest.CaptureFixture[str], tmp_path: Path
 ) -> None:
-    """``terok selinux setup`` execs ``sudo bash <script>`` and prints a confirmation."""
+    """``terok selinux setup`` execs ``<sudo> bash <script>`` and prints a confirmation."""
     fake_script = tmp_path / "install.sh"
     fake_script.write_text("#!/bin/bash\nexit 0\n")
 
@@ -42,17 +42,41 @@ def test_setup_invokes_install_script_via_sudo(
 
     with (
         patch("terok_sandbox.selinux_install_script", return_value=fake_script),
+        patch("shutil.which", return_value="/usr/bin/sudo"),
         patch("subprocess.run", return_value=completed) as run_mock,
     ):
         assert selinux.dispatch(_ns()) is True
 
     run_mock.assert_called_once_with(
-        ["sudo", "bash", str(fake_script)],
+        ["/usr/bin/sudo", "bash", str(fake_script)],
         check=True,
     )
     out = capsys.readouterr().out
     assert "SELinux policy installed" in out
     assert "terok setup" in out
+
+
+def test_setup_falls_back_to_default_sudo_path_when_not_on_path(
+    tmp_path: Path,
+) -> None:
+    """When ``sudo`` is not on PATH, fall back to the conventional /usr/bin/sudo location."""
+    fake_script = tmp_path / "install.sh"
+    fake_script.write_text("#!/bin/bash\nexit 0\n")
+
+    completed = MagicMock(spec=subprocess.CompletedProcess)
+    completed.returncode = 0
+
+    with (
+        patch("terok_sandbox.selinux_install_script", return_value=fake_script),
+        patch("shutil.which", return_value=None),
+        patch("subprocess.run", return_value=completed) as run_mock,
+    ):
+        selinux.dispatch(_ns())
+
+    run_mock.assert_called_once_with(
+        ["/usr/bin/sudo", "bash", str(fake_script)],
+        check=True,
+    )
 
 
 def test_setup_skips_when_install_script_missing(
@@ -80,6 +104,7 @@ def test_setup_propagates_install_failure_as_systemexit(tmp_path: Path) -> None:
 
     with (
         patch("terok_sandbox.selinux_install_script", return_value=fake_script),
+        patch("shutil.which", return_value="/usr/bin/sudo"),
         patch("subprocess.run", side_effect=failed),
         pytest.raises(SystemExit) as exc,
     ):
