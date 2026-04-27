@@ -7,7 +7,7 @@ Pure data types with no filesystem or subprocess I/O.  These are the
 **value objects** in the domain model: they carry configuration data but
 have no behavior beyond computed paths.
 
-[`ProjectConfig`][] is loaded from ``project.yml`` by the companion
+[`ProjectConfig`][terok.lib.core.project_model.ProjectConfig] is loaded from ``project.yml`` by the companion
 [`projects`][terok.lib.core.projects] module and wrapped by the rich
 [`Project`][terok.lib.domain.project.Project] aggregate to provide behavior.
 """

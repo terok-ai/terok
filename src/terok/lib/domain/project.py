@@ -3,7 +3,7 @@
 
 """Rich Project domain object — DDD Aggregate Root.
 
-The central domain object in terok's architecture.  [`Project`][] wraps a
+The central domain object in terok's architecture.  [`Project`][terok.lib.domain.project.Project] wraps a
 [`ProjectConfig`][terok.lib.core.project_model.ProjectConfig] value object with
 lifecycle behavior and serves as the **single entry point** for all
 project-scoped operations:
@@ -30,14 +30,14 @@ Subsystems (``gate``, ``ssh``, ``agents``) are lazy-initialized on first
 access — constructing a ``Project`` performs no I/O beyond loading the
 config that was already resolved by the caller.
 
-This module also contains [`delete_project`][] and its helpers, which
+This module also contains [`delete_project`][terok.lib.domain.project.delete_project] and its helpers, which
 handle the full teardown of a project including archiving, task cleanup,
 and safe removal of managed directories.
 
 See Also:
-    [`terok.lib.domain.facade`][] — factory functions that return ``Project``
-    [`terok.lib.domain.task`][] — the ``Task`` entity contained by ``Project``
-    [`terok.lib.core.project_model`][] — the ``ProjectConfig`` value object
+    [`terok.lib.domain.facade`][terok.lib.domain.facade] — factory functions that return ``Project``
+    [`terok.lib.domain.task`][terok.lib.domain.task] — the ``Task`` entity contained by ``Project``
+    [`terok.lib.core.project_model`][terok.lib.core.project_model] — the ``ProjectConfig`` value object
 """
 
 from __future__ import annotations
@@ -177,7 +177,7 @@ def validate_gate_upstream_match(project_id: str) -> None:
 
 
 def make_git_gate(config: ProjectConfig, *, use_personal_ssh: bool | None = None) -> GitGate:
-    """Construct a [`GitGate`][] from a [`ProjectConfig`][] (adapter factory).
+    """Construct a `GitGate` from a [`ProjectConfig`][terok.cli.commands.sickbay.ProjectConfig] (adapter factory).
 
     Injects ``validate_gate_upstream_match`` as the gate validation callback.
     The ``use_personal_ssh`` flag resolves per-invocation override (e.g.
@@ -197,7 +197,7 @@ def make_git_gate(config: ProjectConfig, *, use_personal_ssh: bool | None = None
 
 
 def make_ssh_manager(config: ProjectConfig) -> SSHManager:
-    """Return an [`SSHManager`][] for *config* that owns its vault DB.
+    """Return an `SSHManager` for *config* that owns its vault DB.
 
     Use it as a context manager (``with make_ssh_manager(cfg) as m: ...``);
     the DB connection closes on exit.
@@ -384,7 +384,7 @@ class AgentManager:
 
     Resolves the layered agent configuration stack (global → project →
     preset → CLI overrides) and selects the active headless provider for a
-    project.  Used by [`Project`][] via ``project.agents``.
+    project.  Used by [`Project`][terok.lib.domain.project.Project] via ``project.agents``.
 
     The config stack is resolved lazily on each call — the manager holds no
     cached state, so config file changes take effect immediately.
@@ -424,7 +424,7 @@ class Project:
     """Rich project object — DDD Aggregate Root.
 
     The primary domain object that callers interact with.  Wraps a
-    [`ProjectConfig`][] value object and exposes all project-scoped
+    [`ProjectConfig`][terok.cli.commands.sickbay.ProjectConfig] value object and exposes all project-scoped
     operations through a natural OOP interface::
 
         project = get_project("myproj")

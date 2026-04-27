@@ -16,7 +16,7 @@ Tasks are always obtained through a [`Project`][terok.lib.domain.project.Project
     task.stop()
 
 **Snapshot semantics:** a ``Task`` captures a point-in-time snapshot of
-[`TaskMeta`][] at construction.  Mutations (``rename()``, ``run_cli()``,
+[`TaskMeta`][terok.lib.domain.task.TaskMeta] at construction.  Mutations (``rename()``, ``run_cli()``,
 ``stop()``) modify the underlying storage but do *not* update the in-memory
 snapshot.  To observe the new state after a mutation, obtain a fresh
 ``Task`` via ``project.get_task(id)``.  This keeps the entity free of
@@ -24,8 +24,8 @@ implicit I/O and consistent with how ``TaskMeta`` is used throughout the
 codebase.
 
 See Also:
-    [`terok.lib.domain.project`][] — the ``Project`` aggregate that contains tasks
-    [`terok.lib.orchestration.tasks`][] — ``TaskMeta`` value object and
+    [`terok.lib.domain.project`][terok.lib.domain.project] — the ``Project`` aggregate that contains tasks
+    [`terok.lib.orchestration.tasks`][terok.lib.orchestration.tasks] — ``TaskMeta`` value object and
         low-level task functions
 """
 

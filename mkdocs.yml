@@ -41,6 +41,12 @@ plugins:
   - mkdocstrings:
       handlers:
         python:
+          inventories:
+            - https://docs.python.org/3/objects.inv
+            - https://terok-ai.github.io/terok-executor/objects.inv
+            - https://terok-ai.github.io/terok-sandbox/objects.inv
+            - https://terok-ai.github.io/terok-shield/objects.inv
+            - https://terok-ai.github.io/terok-clearance/objects.inv
           options:
             docstring_style: google
             show_source: true
@@ -48,6 +54,7 @@ plugins:
             show_root_full_path: false
             show_symbol_type_heading: true
             show_symbol_type_toc: true
+            show_if_no_docstring: true
             members_order: source
             merge_init_into_class: true
   - terok:
