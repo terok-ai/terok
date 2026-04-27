@@ -85,8 +85,8 @@ class RawProjectSection(BaseModel):
     )
     name: str | None = Field(default=None, description="Human-readable project name (display only)")
     security_class: str = Field(
-        default="online",
-        description="Security mode: ``online`` (direct push) or ``gatekeeping`` (gated mirror)",
+        default="gatekeeping",
+        description="Security mode: ``gatekeeping`` (gated mirror, default) or ``online`` (direct push)",
     )
     isolation: str = Field(
         default="shared", description="shared (bind mounts) or sealed (no mounts)"

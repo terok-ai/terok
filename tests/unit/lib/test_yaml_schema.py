@@ -26,7 +26,7 @@ class RawProjectYamlTests(unittest.TestCase):
     def test_minimal_valid_input(self) -> None:
         """Empty dict produces all defaults."""
         raw = RawProjectYaml.model_validate({})
-        self.assertEqual(raw.project.security_class, "online")
+        self.assertEqual(raw.project.security_class, "gatekeeping")
         self.assertIsNone(raw.git.upstream_url)
         self.assertEqual(raw.image.base_image, "ubuntu:24.04")
         self.assertEqual(raw.run.shutdown_timeout, 10)
@@ -83,7 +83,7 @@ class RawProjectYamlTests(unittest.TestCase):
     def test_none_section_coerced_to_empty(self) -> None:
         """Top-level ``None`` section values are coerced to ``{}``."""
         raw = RawProjectYaml.model_validate({"project": None, "git": None, "ssh": None})
-        self.assertEqual(raw.project.security_class, "online")
+        self.assertEqual(raw.project.security_class, "gatekeeping")
         self.assertIsNone(raw.git.upstream_url)
         self.assertFalse(raw.ssh.use_personal)
 

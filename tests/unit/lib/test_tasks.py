@@ -445,7 +445,7 @@ class TestTask:
         """Task containers receive the resolved Git authorship mode."""
         project_id = "proj_authorship_env"
         with project_env(
-            f"project:\n  id: {project_id}\ngit:\n  upstream_url: https://example.com/repo.git\n  authorship: human-agent\n",
+            f"project:\n  id: {project_id}\n  security_class: online\ngit:\n  upstream_url: https://example.com/repo.git\n  authorship: human-agent\n",
             project_id=project_id,
         ):
             env, _volumes = build_task_env_and_volumes(load_project(project_id), task_id="1")
@@ -454,7 +454,7 @@ class TestTask:
     def test_task_run_cli_colors_login_lines_when_tty(self, mock_runtime) -> None:
         project_id = "proj_cli_color"
         with project_env(
-            f"project:\n  id: {project_id}\n",
+            f"project:\n  id: {project_id}\n  security_class: online\n",
             project_id=project_id,
             with_config_file=True,
             clear_env=True,
@@ -493,7 +493,7 @@ class TestTask:
         """Interactive CLI startup must not add files to workspace before init clone."""
         project_id = "proj_cli_clean_workspace"
         with project_env(
-            f"project:\n  id: {project_id}\n",
+            f"project:\n  id: {project_id}\n  security_class: online\n",
             project_id=project_id,
             with_config_file=True,
             clear_env=True,
@@ -516,7 +516,7 @@ class TestTask:
         """task_run_toad must pass --public-url with the host port to toad serve."""
         project_id = "proj_toad_url"
         with project_env(
-            f"project:\n  id: {project_id}\n",
+            f"project:\n  id: {project_id}\n  security_class: online\n",
             project_id=project_id,
             with_config_file=True,
             clear_env=True,
@@ -556,7 +556,7 @@ class TestTask:
         project_id = "proj_toad_pub"
         monkeypatch.setenv("TEROK_PUBLIC_HOST", "myserver")
         with project_env(
-            f"project:\n  id: {project_id}\n",
+            f"project:\n  id: {project_id}\n  security_class: online\n",
             project_id=project_id,
             with_config_file=True,
             clear_env=True,

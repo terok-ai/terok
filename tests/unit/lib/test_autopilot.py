@@ -127,7 +127,11 @@ def write_runner_project(base: Path, project_id: str, extra_yml: str = "") -> Pa
     projects_root.mkdir(parents=True, exist_ok=True)
     config_file = base / "config.yml"
     config_file.write_text(f"credentials:\n  dir: {envs_dir}\n", encoding="utf-8")
-    write_project(projects_root, project_id, f"project:\n  id: {project_id}\n{extra_yml}")
+    write_project(
+        projects_root,
+        project_id,
+        f"project:\n  id: {project_id}\n  security_class: online\n{extra_yml}",
+    )
     return config_file
 
 
