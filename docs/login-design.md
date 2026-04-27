@@ -95,13 +95,6 @@ The user gets a real terminal in the new tab while the TUI remains in the origin
 
 ### `--tmux` opt-in wrapper (R3, R5)
 
-`terok-tui --tmux` wraps the TUI in a managed tmux session with the host config
+`terok tui --tmux` wraps the TUI in a managed tmux session with the host config
 (blue status bar, usage hints). Login sessions become additional tmux windows.
 This is opt-in — without the flag, the TUI runs directly in the terminal as before.
-
-## Future Directions
-
-- Embedded terminal widget in the TUI (pyte-based, requires significant effort)
-- Support for additional terminal emulators beyond gnome-terminal and konsole
-- Auto-wrap in tmux by default (pending user feedback on the opt-in flag)
-- Toad/ACP integration as alternative agent frontend

@@ -20,10 +20,11 @@ DEFAULT_BRANCH = "main"
 @contextmanager
 def image_project(project_id: str, *, security_class: str = "online") -> Iterator[object]:
     """Create a minimal project config suitable for Dockerfile generation tests."""
-    lines = [f"project:\n  id: {project_id}\n"]
-    if security_class != "online":
-        lines.append(f"  security_class: {security_class}\n")
-    lines.append("git:\n")
+    lines = [
+        f"project:\n  id: {project_id}\n",
+        f"  security_class: {security_class}\n",
+        "git:\n",
+    ]
     lines.append(f"  upstream_url: {UPSTREAM_URL}\n")
     lines.append(f"  default_branch: {DEFAULT_BRANCH}\n")
     yaml = "".join(lines)

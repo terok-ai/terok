@@ -7,22 +7,22 @@ terok manages two types of resources:
 - **Containers** — mutable instances of images, one per task
 
 ```text
-┌─────────────────────────────────────────────────────────────────┐
-│                         IMAGES (immutable)                      │
-│  ┌─────────┐    ┌─────────────┐    ┌─────────────────────────┐  │
-│  │   L0    │───▶│     L1      │───▶│          L2             │  │
-│  │  (dev)  │    │   (cli)     │    │     (project-cli)       │  │
-│  └─────────┘    └─────────────┘    └─────────────────────────┘  │
-└─────────────────────────────────────────────────────────────────┘
-                              │
-                              ▼
-┌─────────────────────────────────────────────────────────────────┐
-│                      CONTAINERS (mutable)                       │
-│  ┌─────────────────┐  ┌─────────────────┐  ┌─────────────────┐  │
-│  │  project-cli-1  │  │  project-cli-2  │  │  project-cli-3  │  │
-│  │    (task 1)     │  │    (task 2)     │  │    (task 3)     │  │
-│  └─────────────────┘  └─────────────────┘  └─────────────────┘  │
-└─────────────────────────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────────────────────────────┐
+│                              IMAGES (immutable)                              │
+│   ┌─────────┐     ┌─────────────┐     ┌─────────────────────────┐            │
+│   │   L0    │ ──▶ │     L1      │ ──▶ │           L2            │            │
+│   │  (dev)  │     │   (cli)     │     │      (project-cli)      │            │
+│   └─────────┘     └─────────────┘     └─────────────────────────┘            │
+└──────────────────────────────────────────────────────────────────────────────┘
+                                  │
+                                  ▼
+┌──────────────────────────────────────────────────────────────────────────────┐
+│                            CONTAINERS (mutable)                              │
+│  ┌────────────────────┐  ┌────────────────────┐  ┌────────────────────┐      │
+│  │ project-cli-v9krt  │  │ project-cli-h4y12  │  │ project-cli-k3v8h  │      │
+│  │   (task v9krt)     │  │   (task h4y12)     │  │   (task k3v8h)     │      │
+│  └────────────────────┘  └────────────────────┘  └────────────────────┘      │
+└──────────────────────────────────────────────────────────────────────────────┘
 ```
 
 ---
@@ -34,10 +34,10 @@ terok manages two types of resources:
 A task consists of three persistent components:
 
 ```text
-Task #1
-├── Workspace    ~/.local/share/terok/tasks/<project>/1/workspace-dangerous/
-├── Metadata     ~/.local/share/terok/projects/<project>/tasks/1.yml
-└── Container    <project>-cli-1
+Task v9krt
+├── Workspace    ~/.local/share/terok/tasks/<project>/v9krt/workspace-dangerous/
+├── Metadata     ~/.local/share/terok/projects/<project>/tasks/v9krt.yml
+└── Container    <project>-cli-v9krt
 ```
 
 All three persist independently and survive:
@@ -86,7 +86,6 @@ All three persist independently and survive:
 | `task restart` | `podman stop` → `podman start` | `podman start` | Error: suggests `task run` |
 | `task status`  | Shows state            | Shows state     | Shows "not found"      |
 | `task delete` | `podman rm -f` + cleanup | `podman rm -f` + cleanup | Cleanup only |
-| `terokctl task attach` | Shows "already running" | `podman start` | Error: task has no container |
 
 ### Container Naming
 
@@ -94,7 +93,7 @@ All three persist independently and survive:
 <project-id>-<mode>-<task-id>
 
 Examples:
-  myproject-cli-1       # CLI container for task 1
+  myproject-cli-v9krt   # CLI container for task v9krt
   myproject-auth-codex  # Auth container (ephemeral, uses --rm)
 ```
 
@@ -187,42 +186,41 @@ Container image hash ≠ Current project build hash
 ### Starting a Task
 
 ```bash
-# First time (creates container)
-terok task new myproject        # Create task metadata + workspace
-terokctl task attach --mode cli myproject 1  # Create and start container
+# Create a fresh task + container in one step (default on a TTY: also attaches)
+terok task run myproject
 
-# Subsequent times (reuses container)
-terokctl task attach --mode cli myproject 1  # Starts existing container
+# Re-attach a shell into a running task (prefix accepted if unambiguous)
+terok login myproject v9krt
 ```
 
 ### Stopping and Restarting
 
 ```bash
-terok task stop myproject 1     # Graceful stop (container persists)
-terok task restart myproject 1  # Fast restart (podman start)
+terok task stop myproject v9krt     # Graceful stop (container persists)
+terok task restart myproject v9krt  # Fast restart (podman start)
 ```
 
 ### Checking Status
 
 ```bash
-terok task status myproject 1   # Shows metadata vs actual container state
-terok task list myproject       # Lists all tasks with status
+terok task status myproject v9krt   # Shows metadata vs actual container state
+terok task list myproject           # Lists all tasks with status
 ```
 
 ### Cleaning Up
 
 ```bash
-terok task delete myproject 1   # Removes container + workspace + metadata
+terok task delete myproject v9krt   # Removes container + workspace + metadata
 ```
 
 ### Manual Container Management
 
 ```bash
 # These work because containers persist
-podman ps -a --filter name=myproject  # List all project containers
-podman logs myproject-cli-1           # View container logs
-podman exec -it myproject-cli-1 bash  # Enter running container
-podman stop myproject-cli-1           # Stop container
-podman start myproject-cli-1          # Start stopped container
-podman rm myproject-cli-1             # Remove container (keeps workspace)
+podman ps -a --filter name=myproject     # List all project containers
+podman logs myproject-cli-v9krt          # View container logs
+podman exec -it myproject-cli-v9krt bash # Enter running container
+podman stop myproject-cli-v9krt          # Stop container
+podman start myproject-cli-v9krt         # Start stopped container
+podman rm myproject-cli-v9krt            # Remove container (keeps workspace)
 ```

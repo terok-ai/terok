@@ -226,6 +226,7 @@ class TestProject:
         yaml = (
             "project:\n"
             "  id: hostless\n"
+            "  security_class: online\n"
             "git:\n"
             "  upstream_url: git@github.com:user/repo.git\n"
             "gate:\n"

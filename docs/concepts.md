@@ -36,7 +36,7 @@ and how much friction you are willing to tolerate.
 
 ```mermaid
 graph LR
-    A["<b>Chat Window</b><br/>Copy-paste snippets<br/>Agent sees nothing"] --- B["<b>Restricted Agent</b><br/>Read-only access<br/>No network, no push"] --- C["<b>Gatekept Agent</b><br/>Full workspace<br/>Pushes to gate only"] --- D["<b>Online Agent</b><br/>Full workspace<br/>Pushes to upstream"] --- E["<b>Unrestricted Local</b><br/>Full machine access<br/>Your SSH keys"]
+    A["<b>Chat Window</b><br/>Copy-paste snippets<br/>Agent sees nothing"] --- B["<b>Restricted Agent</b><br/>Read-only access<br/>No network, no push"] --- C["<b>Gatekeeping mode</b><br/>Full workspace<br/>Pushes to gate only"] --- D["<b>Online mode</b><br/>Full workspace<br/>Pushes to upstream"] --- E["<b>Unrestricted Local</b><br/>Full machine access<br/>Your SSH keys"]
 
 ```
 
@@ -44,11 +44,11 @@ graph LR
 |-------|-----------|-------------|----------|
 | **Chat window** | Read pasted snippets | See files, run tools, push code | Quick questions, small edits |
 | **Restricted** | Read code, run tests | Write to git, access network | Code review, analysis |
-| **Gatekept** (terok default) | Edit code, push to gate | Push to upstream, access arbitrary hosts | Autonomous development with human review |
+| **Gatekeeping** (terok default) | Edit code, push to gate | Push to upstream, access arbitrary hosts | Autonomous development with human review |
 | **Online** | Edit code, push to upstream | Escape the container | Trusted agents, CI-like workflows |
 | **Unrestricted local** | Everything on the machine | Nothing is off-limits | Dangerous — no isolation at all |
 
-terok provides the **gatekept** and **online** levels, with configurable
+terok provides the **gatekeeping** and **online** modes, with configurable
 options to tune the exact trade-off within each.
 
 ---
@@ -556,22 +556,6 @@ sequenceDiagram
 The gate is a standard git repository. Any git client — your IDE,
 `git` CLI, or a GUI tool — can interact with it using normal git
 operations.
-
----
-
-## Comparison: terok vs. Alternatives
-
-| Capability | Chat window | Agent on bare metal | Docker-based tools | **terok** |
-|------------|-------------|--------------------|--------------------|-----------|
-| Agent runs tests | No | Yes | Yes | Yes |
-| Agent installs packages | No | Yes (risky) | Yes | Yes |
-| Agent pushes to GitHub | No | Yes (risky) | Varies | Configurable |
-| Parallel agents | No | Manual | Varies | Built-in |
-| Human review checkpoint | N/A | No | Varies | Gate (gatekeeping) |
-| Egress firewall | N/A | No | Rare | Shield |
-| No root/daemon required | N/A | N/A | Docker needs daemon | Podman rootless |
-| Multi-vendor agents | N/A | One at a time | Usually one | Claude, Codex, Copilot, Vibe, Blablador |
-| Per-task workspace isolation | N/A | Manual | Varies | Automatic |
 
 ---
 

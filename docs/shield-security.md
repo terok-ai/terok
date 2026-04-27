@@ -31,27 +31,22 @@ logging continues.**
 **Secrets exfiltration.**
 A compromised or prompt-injected agent can send API keys, tokens, SSH
 private keys, or any other secrets mounted in the container to arbitrary
-external endpoints.  With the shield *up*, outbound connections are limited
-to explicitly allowlisted domains, making bulk exfiltration far harder.
+external endpoints.  With the shield *up*, outbound connections are
+limited to the configured allowlist, narrowing the destinations an
+exfiltration attempt can reach.
 
 **Prompt injection surface.**
-Without egress restrictions, an agent can fetch arbitrary content from the
-internet — including attacker-controlled pages designed to inject malicious
-instructions.  The shield limits which domains can serve content to the
-agent, dramatically reducing this attack vector.
+Without egress restrictions, the agent can fetch content from any host on
+the internet, including attacker-controlled pages.  The shield narrows
+this to the allowlist; it does not stop injection from content served by
+allowlisted hosts.
 
 **Internal network exposure.**
-Containers running without egress filtering can scan and attack hosts on
-private networks (RFC 1918 ranges: `10.0.0.0/8`, `172.16.0.0/12`,
-`192.168.0.0/16`).  If the host is connected to a corporate LAN, VPN, or
-cloud VPC, a compromised agent gains lateral movement capability.  The
-shield blocks RFC 1918 destinations by default.
-
-**Unrestricted downloads.**
-Agents can download and execute arbitrary binaries, install packages from
-untrusted sources, or pull container images — all without audit trail
-filtering.  This enables supply-chain attacks where the agent is tricked
-into installing backdoored dependencies.
+Containers without egress filtering can reach hosts on private networks
+(RFC 1918 ranges: `10.0.0.0/8`, `172.16.0.0/12`, `192.168.0.0/16`).  On a
+host connected to a corporate LAN, VPN, or cloud VPC, that exposes
+internal services to the agent.  The shield blocks RFC 1918 destinations
+by default.
 
 ### What you keep
 

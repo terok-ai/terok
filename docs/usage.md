@@ -35,11 +35,10 @@ pipx install ./terok-*.whl
 pip install ./terok-*.whl
 ```
 
-After install, you should have console scripts: `terok` (TUI), `terok` (CLI).
+After install, the `terok` command is on `$PATH`.  Run it with no arguments
+on a TTY to launch the TUI; pass a subcommand to drive the CLI.
 
 ### Global Flags
-
-Both `terok` and `terok` support:
 
 | Flag | Description |
 |------|-------------|
@@ -122,7 +121,7 @@ Every project needs these fields in its `project.yml`:
 ```yaml
 project:
   id: myproj
-  security_class: online        # or "gatekeeping"
+  security_class: gatekeeping   # default — or "online" for direct push
 
 image:
   base_image: docker.io/library/ubuntu:24.04
@@ -197,7 +196,7 @@ install.  The steps below show the equivalent CLI workflow.
 
 - Podman installed and working
 - OpenSSH client tools (ssh, ssh-keygen) for private Git over SSH
-- tmux (optional, for `terok-tui --tmux` and persistent container sessions)
+- tmux (optional, for the TUI under tmux and persistent container sessions)
 
 ### Step 1: Create Project Directory
 
@@ -211,7 +210,7 @@ mkdir -p ~/.config/terok/projects/myproj
 # ~/.config/terok/projects/myproj/project.yml
 project:
   id: myproj
-  security_class: online    # or "gatekeeping" for restricted mode
+  security_class: gatekeeping   # default — or "online" for direct push
 
 image:
   base_image: docker.io/library/ubuntu:24.04
@@ -342,30 +341,24 @@ terok task list myproj
 #### Additional Task Operations
 
 ```bash
-# Create a task metadata record without running it (scripting, terokctl only)
-terokctl task new myproj
-
-# Attach to an existing task (terokctl, scripting)
-terokctl task attach --mode cli myproj 1
-
 # Rename a task
-terok task rename myproj 1 fix-auth-bug
+terok task rename myproj v9krt fix-auth-bug
 
 # Follow up on a completed/failed headless task with a new prompt
-terok task followup myproj 1 -p "Now add tests for the fix"
+terok task followup myproj v9krt -p "Now add tests for the fix"
 
 # View formatted container logs
-terok task logs myproj 1              # Latest logs
-terok task logs myproj 1 -f           # Follow live output
-terok task logs myproj 1 --tail 50    # Last 50 lines
-terok task logs myproj 1 --raw        # Raw podman output
+terok task logs myproj v9krt              # Latest logs
+terok task logs myproj v9krt -f           # Follow live output
+terok task logs myproj v9krt --tail 50    # Last 50 lines
+terok task logs myproj v9krt --raw        # Raw podman output
 
 # Stop or restart a task
-terok task stop myproj 1
-terok task restart myproj 1
+terok task stop myproj v9krt
+terok task restart myproj v9krt
 
 # Delete a task
-terok task delete myproj 1
+terok task delete myproj v9krt
 
 # View archived (deleted) tasks and their logs
 terok task archive list myproj
@@ -376,13 +369,21 @@ terok task archive logs myproj 20260305T143000Z
 
 ```bash
 # Open a shell in a running task container (persistent tmux session)
-terok login myproj 1
+terok login myproj v9krt
+
+# Any unambiguous prefix works — terok resolves it against the live task list
+terok login myproj v9k
+terok login myproj v9
 ```
 
 This opens a tmux session inside the container. The session persists across
 disconnects — re-running `terok login` reattaches to the same session.
 Interactive shells show `hilfe --kurz` on entry; run `hilfe` inside the
 container for the fuller in-container help.
+
+`login` and the other per-task verbs (`task stop`, `task restart`,
+`task delete`, `task logs`, `task followup`, `task rename`) all accept an
+unambiguous prefix in place of the full task ID.
 
 #### From the TUI
 
@@ -399,7 +400,7 @@ method automatically:
 #### Running the TUI under tmux (recommended)
 
 ```bash
-terok-tui --tmux
+terok tui --tmux
 ```
 
 This wraps the TUI in a managed tmux session with a blue status bar showing
@@ -617,7 +618,7 @@ unrestricted (`true`).
 #### Checking the current mode
 
 ```bash
-terok task status myproj 1
+terok task status myproj v9krt
 # Output includes: Permissions: unrestricted
 ```
 
@@ -677,7 +678,6 @@ terok task run myproj "Debug and plan a fix" --provider claude --agent debugger 
 The `--agent` flag also works with interactive modes:
 
 ```bash
-terokctl task attach --mode cli myproj 1 --agent debugger
 terok task run myproj --agent debugger
 ```
 
@@ -740,7 +740,7 @@ Every task container receives instructions explaining the workspace layout, avai
 
 - **Claude**: injected via `--append-system-prompt` (system-level context)
 - **Codex**: loaded from `/home/dev/.terok/instructions.md` via `-c model_instructions_file=...`
-  in the wrapper (applies to both `terok task run` and `terokctl task attach --mode cli`)
+  in the wrapper
 - **Other providers**: prepended to the task prompt (headless `terok task run`)
 
 ### Scenarios
@@ -880,7 +880,6 @@ Presets work with all task modes:
 
 ```bash
 terok task run myproj --preset review
-terokctl task attach --mode cli myproj 1 --preset team
 ```
 
 ### See What's Available
