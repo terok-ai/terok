@@ -1,5 +1,4 @@
 # SPDX-FileCopyrightText: 2025 Jiri Vyskocil
-# SPDX-FileCopyrightText: 2026 Jiri Vyskocil
 # SPDX-License-Identifier: Apache-2.0
 
 """Tests for core config helpers."""
@@ -850,6 +849,40 @@ def test_is_codex_oauth_not_proxied_when_exposed(
     )
     assert cfg.is_codex_oauth_proxied() is False
     assert cfg.is_codex_oauth_exposed() is True
+
+
+# ---------- Cross-provider OAuth gate ----------
+
+
+@pytest.mark.parametrize(
+    ("yaml_body", "provider", "expected"),
+    [
+        ("", "claude", False),
+        ("agent:\n  claude:\n    allow_oauth: true\n", "claude", False),
+        ("experimental: true\nagent:\n  claude:\n    allow_oauth: true\n", "claude", True),
+        ("experimental: true\nagent:\n  claude:\n    expose_oauth_token: true\n", "claude", True),
+        ("experimental: true\nagent:\n  codex:\n    allow_oauth: true\n", "codex", True),
+        ("", "gh", True),
+    ],
+    ids=[
+        "claude-default-off",
+        "claude-no-experimental",
+        "claude-proxied",
+        "claude-exposed",
+        "codex-proxied",
+        "unknown-provider-open",
+    ],
+)
+def test_is_oauth_enabled_for(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    yaml_body: str,
+    provider: str,
+    expected: bool,
+) -> None:
+    """Cross-provider OAuth gate honours the per-provider experimental config."""
+    monkeypatch.setenv("TEROK_CONFIG_FILE", str(write_config(tmp_path, yaml_body)))
+    assert cfg.is_oauth_enabled_for(provider) is expected
 
 
 # ---------- Layered config merging ----------

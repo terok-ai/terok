@@ -189,6 +189,31 @@ def test_run_interactive_runs_each_selected_provider() -> None:
     ]
 
 
+def test_run_interactive_hides_oauth_when_disabled(capsys: pytest.CaptureFixture[str]) -> None:
+    """Without experimental + allow_oauth, the menu only advertises api-key."""
+    with (
+        patch("sys.stdin", new=StringIO("\n")),
+        patch("terok.cli.commands.auth.is_oauth_enabled_for", return_value=False),
+        patch("terok.cli.commands.auth._run_one"),
+    ):
+        _run_interactive(project_id=None)
+    out = capsys.readouterr().out
+    assert "oauth" not in out
+    assert "api-key" in out
+
+
+def test_run_interactive_shows_oauth_when_enabled(capsys: pytest.CaptureFixture[str]) -> None:
+    """With the gate open, OAuth is surfaced alongside any API-key support."""
+    with (
+        patch("sys.stdin", new=StringIO("\n")),
+        patch("terok.cli.commands.auth.is_oauth_enabled_for", return_value=True),
+        patch("terok.cli.commands.auth._run_one"),
+    ):
+        _run_interactive(project_id=None)
+    out = capsys.readouterr().out
+    assert "oauth" in out
+
+
 # ── single-provider runner ─────────────────────────────────────────────
 
 

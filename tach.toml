@@ -685,6 +685,7 @@ expose = [
     "get_codex_expose_oauth_token",
     "is_codex_oauth_proxied",
     "is_codex_oauth_exposed",
+    "is_oauth_enabled_for",
     "get_vault_bypass",
     "get_services_mode",
     "get_vault_transport",
