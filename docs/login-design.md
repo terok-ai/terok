@@ -51,12 +51,12 @@ creates, subsequent logins reattach.
 The login command is the same; what varies is how the user gets a terminal to run it.
 A dispatch chain selects the best available method:
 
-    ┌──────────────────────────────────────────────────┐
-    │ 1. Inside tmux?  → tmux new-window              │
-    │ 2. Desktop DE?   → gnome-terminal / konsole      │
-    │ 3. Web mode?     → ttyd + open new browser tab   │
-    │ 4. Fallback      → suspend TUI, run directly     │
-    └──────────────────────────────────────────────────┘
+    ┌─────────────────────────────────────────────────────────┐
+    │ 1. Inside tmux?  → tmux new-window                      │
+    │ 2. Desktop DE?   → gnome-terminal / konsole / ptyxis    │
+    │ 3. Web mode?     → ttyd + open new browser tab          │
+    │ 4. Fallback      → suspend TUI, run directly            │
+    └─────────────────────────────────────────────────────────┘
 
 Methods 1-3 keep the TUI visible. Method 4 (suspend) blocks the TUI but works everywhere.
 
