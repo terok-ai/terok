@@ -743,3 +743,22 @@ def is_codex_oauth_exposed() -> bool:
     wiped post-capture.  This is Phase 1's only path to a usable Codex.
     """
     return is_experimental() and get_codex_expose_oauth_token()
+
+
+# ---------- Cross-provider OAuth gate ----------
+
+
+def is_oauth_enabled_for(provider: str) -> bool:
+    """Return True when OAuth is operationally enabled for *provider*.
+
+    Gated providers (currently claude and codex) require the experimental
+    flag plus a per-provider ``allow_oauth`` or ``expose_oauth_token``
+    config key.  Ungated providers fall through to True so user-facing
+    menus continue to surface OAuth where the underlying flow does not
+    depend on terok's experimental gate.
+    """
+    if provider == "claude":
+        return is_claude_oauth_proxied() or is_claude_oauth_exposed()
+    if provider == "codex":
+        return is_codex_oauth_proxied() or is_codex_oauth_exposed()
+    return True

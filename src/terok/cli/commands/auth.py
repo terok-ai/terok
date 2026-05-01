@@ -21,6 +21,7 @@ import sys
 
 from terok_executor import AUTH_PROVIDERS
 
+from ...lib.core.config import is_oauth_enabled_for
 from ...lib.core.images import require_agent_installed
 from ...lib.core.projects import load_project
 from ...lib.domain.facade import authenticate
@@ -104,7 +105,7 @@ def _run_interactive(project_id: str | None) -> None:
     for i, name in enumerate(provider_names, 1):
         info = AUTH_PROVIDERS[name]
         modes = []
-        if info.supports_oauth:
+        if info.supports_oauth and is_oauth_enabled_for(name):
             modes.append("oauth")
         if info.supports_api_key:
             modes.append("api-key")
