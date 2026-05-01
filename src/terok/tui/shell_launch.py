@@ -50,8 +50,24 @@ def is_inside_konsole() -> bool:
     return _parent_process_has_name("konsole")
 
 
-def _parent_process_has_name(name: str) -> bool:
-    """Check if any parent process has the given name."""
+def is_inside_ptyxis() -> bool:
+    """Return True if the current process is running inside Ptyxis.
+
+    Checks multiple methods for detection:
+    1. TERM_PROGRAM environment variable
+    2. Parent process name (fallback only if TERM_PROGRAM is not set);
+       both ``ptyxis`` and the per-tab ``ptyxis-agent`` qualify
+    """
+    if os.environ.get("TERM_PROGRAM") == "ptyxis":
+        return True
+    if os.environ.get("TERM_PROGRAM"):
+        return False
+    return _parent_process_has_name("ptyxis", "ptyxis-agent")
+
+
+def _parent_process_has_name(*names: str) -> bool:
+    """Check if any parent process matches one of the given names."""
+    candidates = set(names)
     try:
         pid = os.getppid()
         result = subprocess.run(
@@ -62,7 +78,7 @@ def _parent_process_has_name(name: str) -> bool:
         )
         if result.returncode == 0:
             proc_name = result.stdout.strip()
-            if proc_name == name:
+            if proc_name in candidates:
                 return True
         for _ in range(3):
             result = subprocess.run(
@@ -91,7 +107,7 @@ def _parent_process_has_name(name: str) -> bool:
             if result.returncode != 0:
                 return False
             proc_name = result.stdout.strip()
-            if proc_name == name:
+            if proc_name in candidates:
                 return True
     except (subprocess.TimeoutExpired, FileNotFoundError, ValueError):
         pass
@@ -145,6 +161,16 @@ def spawn_terminal_with_command(command: list[str], title: str | None = None) ->
             args.extend(["-e", "bash", "-c", shell_cmd])
             subprocess.Popen(
                 ["konsole"] + args,
+                start_new_session=True,
+            )
+            return True
+        if is_inside_ptyxis():
+            args = ["--tab"]
+            if title:
+                args.extend(["--title", title])
+            args.extend(["--", "bash", "-c", shell_cmd])
+            subprocess.Popen(
+                ["ptyxis"] + args,
                 start_new_session=True,
             )
             return True

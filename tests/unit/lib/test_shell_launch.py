@@ -15,6 +15,7 @@ import pytest
 from terok.tui.shell_launch import (
     is_inside_gnome_terminal,
     is_inside_konsole,
+    is_inside_ptyxis,
     is_inside_tmux,
     launch_login,
     spawn_terminal_with_command,
@@ -68,6 +69,10 @@ class TestTerminalDetection:
             (is_inside_konsole, terminal_env("gnome-terminal"), False, False),
             (is_inside_konsole, {}, False, False),
             (is_inside_konsole, {}, True, True),
+            (is_inside_ptyxis, terminal_env("ptyxis"), False, True),
+            (is_inside_ptyxis, terminal_env("gnome-terminal"), False, False),
+            (is_inside_ptyxis, {}, False, False),
+            (is_inside_ptyxis, {}, True, True),
         ],
         ids=[
             "gnome-by-env",
@@ -79,6 +84,10 @@ class TestTerminalDetection:
             "konsole-other-terminal",
             "konsole-missing-env",
             "konsole-parent-fallback",
+            "ptyxis-by-env",
+            "ptyxis-other-terminal",
+            "ptyxis-missing-env",
+            "ptyxis-parent-fallback",
         ],
     )
     def test_terminal_detection(
@@ -170,8 +179,36 @@ class TestSpawnTerminal:
                     _shell_payload(SHELL_COMMAND),
                 ],
             ),
+            (
+                terminal_env("ptyxis"),
+                False,
+                None,
+                ["ptyxis", "--tab", "--", "bash", "-c", _shell_payload(SHELL_COMMAND)],
+            ),
+            (
+                terminal_env("ptyxis"),
+                False,
+                "login:c1",
+                [
+                    "ptyxis",
+                    "--tab",
+                    "--title",
+                    "login:c1",
+                    "--",
+                    "bash",
+                    "-c",
+                    _shell_payload(SHELL_COMMAND),
+                ],
+            ),
         ],
-        ids=["gnome", "gnome-with-title", "konsole", "konsole-with-title"],
+        ids=[
+            "gnome",
+            "gnome-with-title",
+            "konsole",
+            "konsole-with-title",
+            "ptyxis",
+            "ptyxis-with-title",
+        ],
     )
     def test_spawn_terminal_with_supported_terminal(
         self,
