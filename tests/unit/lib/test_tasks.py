@@ -139,6 +139,46 @@ class TestTask:
             assert not meta_path.exists()
             assert not workspace.exists()
 
+    def test_read_task_meta_backfills_legacy_project_id(self) -> None:
+        """A pre-``project_id``-field record gets the field populated from the meta-dir path.
+
+        Tasks created before ``project_id`` joined ``TaskMeta`` had only
+        ``task_id`` on disk; without backfill, the next ``_write_task_meta``
+        would land an empty wire dossier (no ``project`` key) and the
+        clearance UI would render a half-identity until some unrelated
+        write happened to repopulate the field.  The backfill leans on
+        the meta-dir path layout (``…/projects/<project_id>/tasks/``)
+        rather than threading ``project_id`` through every reader.
+        """
+        from terok.lib.util.yaml import dump as yaml_dump
+
+        project_id = "proj_backfill"
+        with project_env(
+            f"project:\n  id: {project_id}\n",
+            project_id=project_id,
+        ) as ctx:
+            meta_dir = ctx.state_dir / "projects" / project_id / "tasks"
+            meta_dir.mkdir(parents=True, exist_ok=True)
+            tid = "x9y1z"
+            # Seed a legacy single-YAML record (pre-self-describing,
+            # pre-project_id-field).  Mimics what an upgrading operator
+            # has on disk.
+            (meta_dir / f"{tid}.yml").write_text(
+                yaml_dump({"task_id": tid, "name": "diligent-octopus", "mode": "cli"})
+            )
+
+            meta = _read_task_meta(meta_dir, tid)
+
+            assert meta is not None
+            assert meta["project_id"] == project_id
+            # The on-disk dossier now carries the wire shape.
+            dossier = json.loads((meta_dir / f"{tid}_dossier.json").read_text(encoding="utf-8"))
+            assert dossier == {
+                "project": project_id,
+                "task": tid,
+                "name": "diligent-octopus",
+            }
+
     def test_task_new_records_created_at(self) -> None:
         """task_new writes an ISO 8601 created_at timestamp that round-trips via get_tasks.
 

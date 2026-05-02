@@ -1,5 +1,4 @@
 # SPDX-FileCopyrightText: 2025 Jiri Vyskocil
-# SPDX-FileCopyrightText: 2026 Jiri Vyskocil
 # SPDX-License-Identifier: Apache-2.0
 
 """Task metadata, lifecycle, and query operations.
@@ -190,7 +189,16 @@ def _read_task_meta(meta_dir: Path, task_id: str) -> dict | None:
         if wire_key in _DOSSIER_FROM_WIRE:
             merged[_DOSSIER_FROM_WIRE[wire_key]] = value
 
-    if spillover:
+    # Backfill ``project_id`` from the meta-dir path for legacy records
+    # that predate the field landing in TaskMeta.  Without this, a
+    # task-rename on a legacy task lands a half-populated dossier (no
+    # ``project``) on the wire until some other code path happens to
+    # set it.  Path layout is ``<state>/projects/<project_id>/tasks``.
+    backfill_needed = not merged.get("project_id")
+    if backfill_needed and meta_dir.parent.parent.name == "projects":
+        merged["project_id"] = meta_dir.parent.name
+
+    if spillover or backfill_needed:
         # Normalise on disk so the next read takes the fast path.
         _write_task_meta(_dossier_path(meta_dir, task_id), merged)
 
@@ -629,7 +637,9 @@ def get_task_meta(project_id: str, task_id: str) -> TaskMeta:
             pass
     return TaskMeta(
         task_id=tid,
-        project_id=raw.get("project_id", project_id),
+        # ``or`` (not the dict default) so a migrated record carrying an
+        # empty string still falls back to the path-derived project_id.
+        project_id=raw.get("project_id") or project_id,
         mode=mode,
         workspace=raw.get("workspace", ""),
         web_port=raw.get("web_port"),
