@@ -139,8 +139,16 @@ def read_task_agents(base: Path, project_id: str, task_id: str = "1") -> dict[st
 
 
 def read_task_meta(base: Path, project_id: str, task_id: str = "1") -> dict[str, object]:
-    """Load task metadata JSON for a task."""
-    return json.loads(task_paths(base, project_id, task_id)[1].read_text() or "{}")
+    """Load merged task metadata for a task — wire-dossier + bookkeeping.
+
+    Live tasks store the wire-dossier triple in JSON (the file shield
+    consumers parse) and everything else in YAML; ``_read_task_meta``
+    composes them back into the orchestrator's logical dict shape.
+    """
+    from terok.lib.orchestration.tasks import _read_task_meta
+
+    meta_dir = task_paths(base, project_id, task_id)[1].parent
+    return _read_task_meta(meta_dir, task_id) or {}
 
 
 def prepare_agent_config(

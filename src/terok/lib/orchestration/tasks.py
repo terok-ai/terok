@@ -4,17 +4,28 @@
 
 """Task metadata, lifecycle, and query operations.
 
-Provides module-level functions for CRUD over JSON-backed task metadata.
-The shield reader reads the same files at every event emit (see the
-``dossier.meta_path`` OCI annotation contract), so the on-disk format
-is JSON: stdlib-only on the consumer side, no PyYAML dependency on the
-hot path.  Files written by older terok versions are migrated to JSON
-on first read.
+On disk each task is two sibling files keyed on its ID:
 
-Container runner functions (``task_run_cli``,
-``task_run_headless``, ``task_restart``) live in the companion
-``task_runners`` module.  Display types and status computation live in
-``task_display``.  Log viewing lives in ``task_logs``.
+* ``<task_id>.json`` — the wire-dossier file shield consumers read,
+  in wire shape (``{project, task, name}``).
+* ``<task_id>.yml`` — terok's internal bookkeeping (mode, workspace,
+  web port, hooks_fired, exit_code, lifecycle state).
+
+Format-as-contract: when a file's name says JSON, its audience is
+"anyone consuming shield events", so its shape *is* the wire dossier
+— no projection, no key translation.  YAML is for terok's eyes only;
+ruamel keeps comments and round-trip ergonomics cheap.
+
+The split is reconciled at the I/O boundary: ``_read_task_meta``
+returns one merged dict in internal-storage shape (``project_id``,
+``task_id``, …), ``_write_task_meta`` splits a single dict back to
+both files atomically.  Pre-split single-JSON layouts are detected
+and split-on-first-read so an upgrade path never loses data.
+
+Container runner functions (``task_run_cli``, ``task_run_headless``,
+``task_restart``) live in the companion ``task_runners`` module.
+Display types and status computation live in ``task_display``.  Log
+viewing lives in ``task_logs``.
 """
 
 import json
@@ -54,66 +65,157 @@ from ..util.emoji import render_emoji
 from ..util.fs import archive_timestamp, create_archive_dir, ensure_dir
 from ..util.host_cmd import WORKSPACE_DANGEROUS_DIRNAME
 from ..util.logging_utils import _log_debug
-from ..util.yaml import load as _yaml_load
+from ..util.yaml import dump as _yaml_dump, load as _yaml_load
 from .container_exec import container_git_diff
 
 # ---------- Task meta file format ----------
+#
+# Per-task state lives in two sibling files keyed on ``task_id``:
+#
+# * ``<task_id>.json`` — the **wire dossier**.  Exactly the keys the
+#   clearance UI renders (``project`` / ``task`` / ``name``).  This
+#   file's audience is anyone consuming shield events: terok-shield
+#   reads it from inside the container's user namespace via stdlib
+#   ``json`` (no ruamel, no terok package), and forwards its contents
+#   onto every block / shield-up / shield-down event.  Format is part
+#   of the contract: JSON, dict-of-strings, wire shape.
+#
+# * ``<task_id>.yml`` — terok's **internal bookkeeping**.  Mode,
+#   workspace, web port, web token, hooks_fired, exit_code, lifecycle
+#   state — everything the orchestrator cares about and nobody else
+#   does.  YAML to keep human edits and round-trip comments cheap;
+#   single consumer, so ruamel is fine on the hot path.
+#
+# The split is deliberate.  When the file format itself signals the
+# audience, there's no question whether a given field belongs on the
+# wire — its filename answers.
+
+# Subset of meta keys that belong on the wire (and thus in the JSON
+# dossier file).  The orchestrator stores them under their internal
+# names (``project_id`` / ``task_id`` / ``name``); ``_dossier_path``
+# is written with the wire-key shape ``{project, task, name}``.
+_DOSSIER_INTERNAL_KEYS = ("project_id", "task_id", "name")
+_DOSSIER_TO_WIRE = {"project_id": "project", "task_id": "task", "name": "name"}
+_DOSSIER_FROM_WIRE = {v: k for k, v in _DOSSIER_TO_WIRE.items()}
 
 
 def _meta_path(meta_dir: Path, task_id: str) -> Path:
-    """Canonical task-meta file path — JSON since the dossier-on-the-wire refactor.
+    """Path to the wire-dossier JSON file — canonical shield-consumer pointer.
 
-    The shield reader reads this file from inside the container's user
-    namespace using nothing but the stdlib (no PyYAML, no terok package);
-    JSON keeps the consumer side trivial.  YAML files from earlier installs
-    are migrated on first read by ``_read_task_meta``.
+    The OCI ``dossier.meta_path`` annotation points operators at *this*
+    file.  Companion bookkeeping lives at the ``.yml`` sibling.
     """
     return meta_dir / f"{task_id}.json"
 
 
-def _read_task_meta(meta_dir: Path, task_id: str) -> dict | None:
-    """Load task meta as a plain dict — migrating ``.yml`` → ``.json`` on encounter.
+def _state_path(meta_dir: Path, task_id: str) -> Path:
+    """Path to the orchestrator-internal bookkeeping YAML.
 
-    Returns ``None`` when neither shape is on disk.  When only the legacy YAML
-    file exists, this performs a one-shot migration: parses with ruamel, writes
-    the JSON form atomically, deletes the YAML.  Subsequent reads find the
-    JSON directly with zero YAML dependency on the hot path.
+    Holds everything except the wire-dossier triple.  Single consumer
+    (terok itself), so ruamel round-tripping is fine.
+    """
+    return meta_dir / f"{task_id}.yml"
+
+
+def _read_task_meta(meta_dir: Path, task_id: str) -> dict | None:
+    """Compose the orchestrator's logical task-meta dict from the on-disk pair.
+
+    Reads the wire-dossier JSON and the internal YAML, translates the
+    JSON's wire keys back to internal storage names, and returns the
+    union.  Either file may be absent: a fresh task before its first
+    write writes one before the other; an upgrade path that
+    encounters a single-file ``<task_id>.json`` from before this
+    split splits it on the spot.
+
+    Returns ``None`` only when neither file is on disk.
     """
     json_path = _meta_path(meta_dir, task_id)
+    yml_path = _state_path(meta_dir, task_id)
+    legacy_yml = meta_dir / f"{task_id}.yml"  # pre-JSON-migration single YAML
+
+    if not (json_path.is_file() or yml_path.is_file() or legacy_yml.is_file()):
+        return None
+
+    json_data: dict = {}
     if json_path.is_file():
         text = json_path.read_text(encoding="utf-8")
-        return json.loads(text) if text.strip() else {}
-    yml_path = meta_dir / f"{task_id}.yml"
-    if not yml_path.is_file():
-        return None
-    meta = _to_plain(_yaml_load(yml_path.read_text(encoding="utf-8")) or {})
-    _write_task_meta(json_path, meta)
-    yml_path.unlink(missing_ok=True)
-    return meta
+        json_data = json.loads(text) if text.strip() else {}
+
+    # If the JSON file holds non-dossier fields, it predates the
+    # one-file-per-audience split — a single-JSON layout that mixed
+    # wire dossier with terok bookkeeping.  Split it now so the next
+    # read sees the canonical pair.
+    spillover = {k: v for k, v in json_data.items() if k not in _DOSSIER_FROM_WIRE}
+    if spillover:
+        json_data = {k: v for k, v in json_data.items() if k in _DOSSIER_FROM_WIRE}
+
+    yml_data: dict = {}
+    if yml_path.is_file():
+        yml_data = _to_plain(_yaml_load(yml_path.read_text(encoding="utf-8")) or {})
+    elif legacy_yml.is_file() and legacy_yml != yml_path:  # pragma: no cover — same path today
+        # Defensive: ``legacy_yml`` resolves to the same path as ``yml_path``
+        # under the current naming, so this branch is unreachable.  Kept as a
+        # tripwire if either filename ever drifts from the other.
+        yml_data = _to_plain(_yaml_load(legacy_yml.read_text(encoding="utf-8")) or {})
+
+    # Spillover came from a recent caller writing the legacy single-JSON
+    # layout (tests, or a pre-split terok release).  Treat it as more
+    # authoritative than any YAML still on disk — that YAML was written
+    # before the latest mutation and may be stale.
+    if spillover:
+        yml_data = {**yml_data, **spillover}
+
+    merged: dict = dict(yml_data)
+    for wire_key, value in json_data.items():
+        if wire_key in _DOSSIER_FROM_WIRE:
+            merged[_DOSSIER_FROM_WIRE[wire_key]] = value
+
+    if spillover:
+        # Normalise on disk so the next read takes the fast path.
+        _write_task_meta(json_path, merged)
+
+    return merged
 
 
 def _write_task_meta(json_path: Path, meta: dict) -> None:
-    """Atomic JSON write: stage as ``.tmp``, ``os.replace`` over the canonical path.
+    """Atomic split-write: wire-dossier JSON + orchestrator bookkeeping YAML.
 
-    The shield reader and the orchestrator both read this file; a partial
-    write under EINTR / power loss could otherwise feed JSON-decode errors
-    to either side.  ``os.replace`` is the rename(2) primitive POSIX
-    requires to be atomic on the same filesystem.
+    Both files live in the same directory and get atomic-rename writes
+    (``.tmp`` + ``os.replace``).  A partial write under EINTR / power
+    loss can leave one stale and the other fresh, but never a
+    half-written file — readers always get a parseable shape.
+
+    The wire dossier is small and well-known; the internal YAML
+    carries everything else.  The split on disk mirrors the contract:
+    JSON for shield consumers, YAML for terok-internal state.
     """
+    yml_path = _state_path(json_path.parent, json_path.stem)
     json_path.parent.mkdir(parents=True, exist_ok=True)
-    tmp = json_path.with_suffix(json_path.suffix + ".tmp")
-    tmp.write_text(
-        json.dumps(meta, indent=2, ensure_ascii=False, default=str) + "\n", encoding="utf-8"
-    )
-    os.replace(tmp, json_path)
+
+    dossier = {
+        wire_key: str(meta[internal_key])
+        for internal_key, wire_key in _DOSSIER_TO_WIRE.items()
+        if meta.get(internal_key)
+    }
+    state = {k: v for k, v in meta.items() if k not in _DOSSIER_INTERNAL_KEYS}
+
+    _atomic_write(json_path, json.dumps(dossier, indent=2, ensure_ascii=False, default=str) + "\n")
+    _atomic_write(yml_path, _yaml_dump(state))
+
+
+def _atomic_write(path: Path, text: str) -> None:
+    """Stage to ``<path>.tmp`` and rename — POSIX-atomic on the same filesystem."""
+    tmp = path.with_suffix(path.suffix + ".tmp")
+    tmp.write_text(text, encoding="utf-8")
+    os.replace(tmp, path)
 
 
 def _to_plain(obj: object) -> object:
     """Recursively unwrap ruamel ``CommentedMap`` / ``CommentedSeq`` to plain types.
 
     Round-trip-mode YAML hands back commented containers that are dict/list
-    subclasses.  ``json.dumps`` accepts them but the migration result should
-    be fully plain so downstream readers don't accidentally inherit metadata
+    subclasses.  ``json.dumps`` accepts them but the merged dict should be
+    fully plain so downstream readers don't inadvertently inherit metadata
     that no longer applies.
     """
     if isinstance(obj, dict):
@@ -124,24 +226,28 @@ def _to_plain(obj: object) -> object:
 
 
 def _iter_task_ids(meta_dir: Path) -> Iterator[str]:
-    """Yield every task ID with a meta file in *meta_dir* — JSON first, YAML fallback.
+    """Yield every task ID with at least one meta file in *meta_dir*.
 
-    Mid-migration the directory may contain both shapes; the iterator
-    deduplicates so a freshly migrated entry isn't double-counted.
+    A task is identified by either of its two sibling files (``<id>.json``
+    or ``<id>.yml``); the iterator deduplicates so a normal pair isn't
+    double-counted.  ``.tmp`` scratch files from a mid-flight atomic write
+    are filtered out.
     """
     if not meta_dir.is_dir():
         return
     seen: set[str] = set()
     for ext in ("json", "yml"):
         for path in meta_dir.glob(f"*.{ext}"):
-            if path.stem not in seen:
-                seen.add(path.stem)
-                yield path.stem
+            tid = path.stem
+            if tid in seen or path.name.endswith(".tmp"):
+                continue
+            seen.add(tid)
+            yield tid
 
 
 def _has_task_meta(meta_dir: Path, prefix: str) -> bool:
-    """``True`` if a meta file exists for *prefix* — either JSON or legacy YAML."""
-    return (meta_dir / f"{prefix}.json").is_file() or (meta_dir / f"{prefix}.yml").is_file()
+    """``True`` if either meta file exists for *prefix* (JSON dossier or YAML state)."""
+    return _meta_path(meta_dir, prefix).is_file() or _state_path(meta_dir, prefix).is_file()
 
 
 # ---------- Task IDs ----------
@@ -919,9 +1025,15 @@ def _archive_task(project: ProjectConfig, task_id: str, meta: dict) -> Path | No
         archive_root = tasks_archive_dir(project.id)
         archive_dir = create_archive_dir(archive_root, dir_name)
 
-        # Save metadata snapshot — JSON matches the live-task format so
-        # archived entries remain readable with the same loader.
-        _write_task_meta(archive_dir / "task.json", _to_plain(meta))
+        # Save the *merged* meta as a single self-contained JSON snapshot.
+        # The live-task layout splits dossier (JSON) from state (YAML)
+        # because each file has a different audience; an archive entry
+        # has only one audience (the operator looking at history) and is
+        # never re-read by shield, so the split brings no value here.
+        _atomic_write(
+            archive_dir / "task.json",
+            json.dumps(_to_plain(meta), indent=2, ensure_ascii=False, default=str) + "\n",
+        )
 
         # Copy logs if they exist
         task_dir = project.tasks_root / str(task_id)

@@ -1,4 +1,5 @@
 # SPDX-FileCopyrightText: 2025 Jiri Vyskocil
+# SPDX-FileCopyrightText: 2026 Jiri Vyskocil
 # SPDX-License-Identifier: Apache-2.0
 
 """Task container runners: CLI, headless, toad, and restart."""
@@ -465,13 +466,13 @@ def _run_container(
 ) -> None:
     """Launch a detached task container, annotated for clearance enrichment.
 
-    Three ``dossier.*`` OCI annotations bind the container to its task
-    identity so clearance popups can render "Task: project/task_id ·
-    name" instead of raw short IDs: ``dossier.project``,
-    ``dossier.task``, and ``dossier.meta_path``.  The meta-path
-    annotation carries the JSON path (not a snapshot of the name) so a
-    rename mid-run surfaces the fresh label in the next popup — the
-    shield reader rereads the file on every emit.
+    A single ``dossier.meta_path`` OCI annotation binds the container
+    to its task identity: it points at the wire-dossier JSON file
+    terok writes per task (``{project, task, name}`` in wire shape).
+    Shield rereads that file on every event emit, so a task rename
+    mid-run surfaces the fresh label in the next popup without touching
+    the annotation.  Project/task IDs lived as separate annotations in
+    earlier iterations; the JSON file made them redundant.
 
     Podman command assembly (userns, shield/bypass, GPU, env redaction,
     CDI detection) is delegated to `AgentRunner.launch_prepared`.
@@ -492,20 +493,13 @@ def _run_container(
         command: Optional command + args appended after the image name.
         hooks: Optional lifecycle callbacks fired around the launch.
     """
-    # OCI annotations under the ``dossier.*`` namespace flow through to the
-    # shield reader, which picks them up at hook spawn time and ships them
-    # on every clearance event as ``ClearanceEvent.dossier``.  Shield treats
-    # the namespace as opaque, so any orchestrator key is welcome here; the
-    # subset clearance renders today is ``project``, ``task``, ``name``,
-    # and ``meta_path`` (a JSON sidecar reread on every emit so a
-    # ``task_rename`` mid-run surfaces the fresh name without touching the
-    # annotation).
+    # OCI annotation under the ``dossier.*`` namespace flows through to
+    # the shield reader, which picks it up at hook spawn time and uses
+    # the pointed-at JSON file as ``ClearanceEvent.dossier`` on every
+    # event.  The JSON file IS the wire dossier — wire-shape keys, no
+    # projection, no snapshot — so one annotation is enough.
     task_meta_path = _meta_path(tasks_meta_dir(project.id), task_id)
     annotations = [
-        "--annotation",
-        f"dossier.project={project.id}",
-        "--annotation",
-        f"dossier.task={task_id}",
         "--annotation",
         f"dossier.meta_path={task_meta_path}",
     ]

@@ -1,4 +1,5 @@
 # SPDX-FileCopyrightText: 2025 Jiri Vyskocil
+# SPDX-FileCopyrightText: 2026 Jiri Vyskocil
 # SPDX-License-Identifier: Apache-2.0
 
 import contextlib
@@ -26,6 +27,7 @@ from terok.lib.orchestration.task_runners import (
 )
 from terok.lib.orchestration.tasks import (
     TaskDeleteResult,
+    _read_task_meta,
     get_tasks,
     get_workspace_git_diff,
     task_delete,
@@ -115,7 +117,7 @@ class TestTask:
             meta_path = meta_dir / f"{returned_id}.json"
             assert meta_path.is_file()
 
-            meta = json.loads(meta_path.read_text(encoding="utf-8"))
+            meta = _read_task_meta(meta_dir, returned_id) or {}
             assert meta["task_id"] == returned_id
             workspace_value = meta.get("workspace")
             assert workspace_value
@@ -149,8 +151,8 @@ class TestTask:
             project_id=project_id,
         ) as ctx:
             tid = task_new(project_id)
-            meta_path = ctx.state_dir / "projects" / project_id / "tasks" / f"{tid}.json"
-            meta = json.loads(meta_path.read_text() or "{}")
+            meta_dir = ctx.state_dir / "projects" / project_id / "tasks"
+            meta = _read_task_meta(meta_dir, tid) or {}
 
             assert "created_at" in meta
             parsed = datetime.fromisoformat(meta["created_at"])
@@ -633,7 +635,7 @@ class TestTask:
                 mock_runtime.container.return_value.start.assert_called_once_with()
 
                 # Verify metadata mode is preserved
-                meta = json.loads(meta_path.read_text() or "{}")
+                meta = _read_task_meta(meta_dir, tid) or {}
                 assert meta["mode"] == "cli"
 
     def test_get_workspace_git_diff_no_task(self) -> None:
