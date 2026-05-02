@@ -186,6 +186,65 @@ class TestRoundTrip:
         assert "name: test" in text
 
 
+class TestThreadSafety:
+    """Concurrent ``load`` / ``dump`` from worker threads must not race.
+
+    Regression: a shared module-level ``YAML()`` instance carries
+    composer/parser/scanner state, so concurrent calls scrambled its event
+    stream and surfaced as ``'MappingEndEvent' object has no attribute
+    'anchor'`` deep inside the Textual TUI's shield-state worker.
+    """
+
+    SAMPLE = (
+        "# top comment\n"
+        "name: terok\n"
+        "git:\n"
+        "  remote: origin\n"
+        "  branch: master  # default\n"
+        "tasks:\n"
+        "  - id: 1\n"
+        "    title: 'first'\n"
+        "  - id: 2\n"
+        '    title: "second"\n'
+        "nested:\n"
+        "  a:\n"
+        "    b:\n"
+        "      c: 42\n"
+    )
+
+    def test_concurrent_load(self) -> None:
+        from concurrent.futures import ThreadPoolExecutor
+
+        def work() -> int:
+            for _ in range(50):
+                data = load(self.SAMPLE)
+                assert data["name"] == "terok"
+                assert data["nested"]["a"]["b"]["c"] == 42
+            return 0
+
+        with ThreadPoolExecutor(max_workers=8) as pool:
+            futures = [pool.submit(work) for _ in range(8)]
+            for f in futures:
+                f.result()  # re-raises any exception from a worker
+
+    def test_concurrent_load_and_dump(self) -> None:
+        from concurrent.futures import ThreadPoolExecutor
+
+        def loader() -> None:
+            for _ in range(50):
+                load(self.SAMPLE)
+
+        def dumper() -> None:
+            data = load(self.SAMPLE)
+            for _ in range(50):
+                dump(data)
+
+        with ThreadPoolExecutor(max_workers=8) as pool:
+            futures = [pool.submit(loader if i % 2 else dumper) for i in range(8)]
+            for f in futures:
+                f.result()
+
+
 class TestYAMLError:
     """Tests for ``YAMLError`` re-export."""
 
