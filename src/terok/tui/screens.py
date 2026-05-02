@@ -1272,14 +1272,16 @@ class TaskLaunchScreen(screen.ModalScreen["tuple[str, str, str, str, str, str | 
             yield Select(choices, value=login_value, id="login-agent")
             yield Input(placeholder="Initial prompt (optional)", id="launch-prompt")
             with Horizontal(id="launch-buttons"):
-                yield Button("Dismiss", id="btn-dismiss", variant="default")
-                yield Button("Login", id="btn-login", variant="primary", disabled=True)
+                # While the container is starting, Dismiss is the only enabled
+                # action — promote it to primary so it's not visually muted.
+                # Roles swap in _poll_status() once Login becomes available.
+                yield Button("Dismiss", id="btn-dismiss", variant="primary")
+                yield Button("Login", id="btn-login", variant="default", disabled=True)
         dialog.border_title = f"CLI Task {self._task_id} ({self._task_name})"
         dialog.border_subtitle = "Esc to dismiss"
 
     def on_mount(self) -> None:
         """Start polling for container readiness and focus the prompt input."""
-        self._update_prompt_state()
         prompt = self.query_one("#launch-prompt", Input)
         prompt.focus()
         self._poll_timer = self.set_interval(1.5, self._poll_status)
@@ -1317,7 +1319,10 @@ class TaskLaunchScreen(screen.ModalScreen["tuple[str, str, str, str, str, str | 
             if has_mode:
                 status_widget.update("Status: Container ready")
                 self._container_ready = True
-                self.query_one("#btn-login", Button).disabled = False
+                login_btn = self.query_one("#btn-login", Button)
+                login_btn.disabled = False
+                login_btn.variant = "primary"
+                self.query_one("#btn-dismiss", Button).variant = "default"
                 if self._poll_timer:
                     self._poll_timer.stop()
                     self._poll_timer = None
@@ -1327,20 +1332,6 @@ class TaskLaunchScreen(screen.ModalScreen["tuple[str, str, str, str, str, str | 
             status_widget.update(f"Status: {state}")
         elif self._poll_count >= self._POLL_STALL_THRESHOLD:
             status_widget.update("Status: Launch may have failed \u2014 check notifications")
-
-    def _update_prompt_state(self) -> None:
-        """Enable/disable prompt input based on selected agent."""
-        agent_select = self.query_one("#login-agent", Select)
-        prompt_input = self.query_one("#launch-prompt", Input)
-        if agent_select.value == "bash":
-            prompt_input.value = ""
-            prompt_input.disabled = True
-        else:
-            prompt_input.disabled = False
-
-    def on_select_changed(self, event: "Select.Changed") -> None:  # type: ignore[name-defined]
-        """Update prompt visibility when agent selection changes."""
-        self._update_prompt_state()
 
     def on_input_submitted(self, event: "Input.Submitted") -> None:  # type: ignore[name-defined]
         """Treat Enter in the prompt input as Login if container is ready."""
@@ -1360,8 +1351,6 @@ class TaskLaunchScreen(screen.ModalScreen["tuple[str, str, str, str, str, str | 
         agent = agent_select.value
         prompt_input = self.query_one("#launch-prompt", Input)
         prompt = prompt_input.value.strip() or None
-        if agent == "bash":
-            prompt = None
         self.dismiss(
             (
                 self._project_id,

@@ -183,7 +183,7 @@ class TestTaskLaunchScreen:
         screen._do_login()
         screen.dismiss.assert_called_once_with(("p", "1", "fix-bug", "c", "claude", "fix the bug"))
 
-    def test_do_login_bash_clears_prompt(self) -> None:
+    def test_do_login_bash_keeps_prompt(self) -> None:
         screens, _ = import_screens()
         screen = screens.TaskLaunchScreen(
             container_name="c", project_id="p", task_id="1", task_name="my-task"
@@ -193,7 +193,31 @@ class TestTaskLaunchScreen:
         mock_select = mock.Mock()
         mock_select.value = "bash"
         mock_input = mock.Mock()
-        mock_input.value = "should be ignored"
+        mock_input.value = "scribble for the agent"
+
+        def query_one(selector, cls=None):
+            if "login-agent" in selector:
+                return mock_select
+            return mock_input
+
+        screen.query_one = query_one
+
+        screen._do_login()
+        screen.dismiss.assert_called_once_with(
+            ("p", "1", "my-task", "c", "bash", "scribble for the agent")
+        )
+
+    def test_do_login_bash_empty_prompt_is_none(self) -> None:
+        screens, _ = import_screens()
+        screen = screens.TaskLaunchScreen(
+            container_name="c", project_id="p", task_id="1", task_name="my-task"
+        )
+        screen.dismiss = mock.Mock()
+
+        mock_select = mock.Mock()
+        mock_select.value = "bash"
+        mock_input = mock.Mock()
+        mock_input.value = "   "
 
         def query_one(selector, cls=None):
             if "login-agent" in selector:
@@ -750,7 +774,10 @@ class TestOnLaunchScreenResultTitle:
         with (
             mock.patch.dict(
                 action_globals,
-                {"get_login_command": mock.Mock(return_value=["podman", "exec", "-it", "c"])},
+                {
+                    "get_login_command": mock.Mock(return_value=["podman", "exec", "-it", "c"]),
+                    "_save_initial_prompt": mock.Mock(),
+                },
             ),
             mock.patch.dict(
                 "terok_executor.provider.providers.AGENT_PROVIDERS",
@@ -788,7 +815,10 @@ class TestOnLaunchScreenResultTitle:
         with (
             mock.patch.dict(
                 action_globals,
-                {"get_login_command": mock.Mock(return_value=["podman", "exec", "-it", "c"])},
+                {
+                    "get_login_command": mock.Mock(return_value=["podman", "exec", "-it", "c"]),
+                    "_save_initial_prompt": mock.Mock(),
+                },
             ),
             mock.patch.dict(
                 "terok_executor.provider.providers.AGENT_PROVIDERS",

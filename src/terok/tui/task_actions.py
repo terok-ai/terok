@@ -34,6 +34,8 @@ from ..lib.domain.facade import (
 )
 from ..lib.orchestration.autopilot import wait_for_container_exit
 from ..lib.orchestration.tasks import (
+    CONTAINER_TEROK_CONFIG,
+    agent_config_dir,
     container_name,
     generate_task_name,
     get_login_command,
@@ -62,6 +64,36 @@ def _build_interactive_agent_command(provider: object, prompt: str | None) -> st
     if not prompt:
         return provider.binary
     return f"{provider.binary} {shlex.quote(prompt)}"
+
+
+_INITIAL_PROMPT_FILENAME = "initial-prompt.txt"
+_INITIAL_PROMPT_PATH = f"{CONTAINER_TEROK_CONFIG}/{_INITIAL_PROMPT_FILENAME}"
+
+# Shell wrapper for bash-agent launches with an initial prompt. The prompt
+# travels via the file mount, never as a shell argument — wrapper string
+# contains zero user-data interpolation.
+_BASH_INITIAL_PROMPT_WRAPPER = (
+    f"p={shlex.quote(_INITIAL_PROMPT_PATH)}; "
+    '[ -s "$p" ] && { '
+    'printf "\\n\\033[1;33m\U0001f4dd Initial prompt:\\033[0m\\n"; '
+    'cat "$p"; printf "\\n\\n"; '
+    "}; exec bash -i"
+)
+
+
+def _save_initial_prompt(project_id: str, task_id: str, prompt: str | None) -> None:
+    """Persist the user's initial prompt to the task's mounted agent-config dir."""
+    if not prompt:
+        return
+    path = agent_config_dir(project_id, task_id) / _INITIAL_PROMPT_FILENAME
+    path.write_text(prompt + "\n", encoding="utf-8")
+
+
+def _build_bash_login_cmd(base_cmd: list[str], prompt: str | None) -> list[str]:
+    """Login command for the bash agent, surfacing the saved initial prompt if any."""
+    if not prompt:
+        return base_cmd
+    return [*base_cmd, "bash", "-lc", _BASH_INITIAL_PROMPT_WRAPPER]
 
 
 def _login_title(project_id: str, task_id: str, task_name: str) -> str:
@@ -262,8 +294,10 @@ class TaskActionsMixin:
             self.notify(str(e))
             return
 
+        _save_initial_prompt(pid, tid, prompt)
+
         if agent == "bash":
-            cmd = base_cmd
+            cmd = _build_bash_login_cmd(base_cmd, prompt)
         else:
             from terok_executor import AGENT_PROVIDERS
 

@@ -433,6 +433,15 @@ def tasks_meta_dir(project_id: str) -> Path:
     return core_state_dir() / "projects" / project_id / "tasks"
 
 
+CONTAINER_TEROK_CONFIG = "/home/dev/.terok"
+"""In-container mount point for the per-task agent-config dir."""
+
+
+def agent_config_dir(project_id: str, task_id: str) -> Path:
+    """Host path of the agent-config dir bind-mounted at `CONTAINER_TEROK_CONFIG`."""
+    return load_project(project_id).tasks_root / str(task_id) / "agent-config"
+
+
 def tasks_archive_dir(project_id: str) -> Path:
     """Return the directory containing archived task data for *project_id*.
 
