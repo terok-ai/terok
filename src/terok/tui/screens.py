@@ -1251,6 +1251,7 @@ class TaskLaunchScreen(screen.ModalScreen["tuple[str, str, str, str, str, str | 
         self._container_ready = False
         self._poll_timer = None
         self._poll_count = 0
+        self._probe_in_flight = False
 
     def compose(self) -> ComposeResult:
         """Build status, agent selector, prompt input, and action buttons."""
@@ -1272,11 +1273,8 @@ class TaskLaunchScreen(screen.ModalScreen["tuple[str, str, str, str, str, str | 
             yield Select(choices, value=login_value, id="login-agent")
             yield Input(placeholder="Initial prompt (optional)", id="launch-prompt")
             with Horizontal(id="launch-buttons"):
-                # While the container is starting, Dismiss is the only enabled
-                # action — promote it to primary so it's not visually muted.
-                # Roles swap in _poll_status() once Login becomes available.
-                yield Button("Dismiss", id="btn-dismiss", variant="primary")
-                yield Button("Login", id="btn-login", variant="default", disabled=True)
+                yield Button("Dismiss", id="btn-dismiss", variant="default")
+                yield Button("Login", id="btn-login", variant="primary", disabled=True)
         dialog.border_title = f"CLI Task {self._task_id} ({self._task_name})"
         dialog.border_subtitle = "Esc to dismiss"
 
@@ -1290,7 +1288,26 @@ class TaskLaunchScreen(screen.ModalScreen["tuple[str, str, str, str, str, str | 
     # appearing, assume the launch failed and show a hint.
     _POLL_STALL_THRESHOLD = 60
 
-    def _poll_status(self) -> None:
+    def _probe_readiness(self) -> tuple[str | None, bool]:
+        """Synchronous readiness probe — runs in a worker thread.
+
+        ``podman inspect`` can stall for several seconds the first time a
+        freshly built image is referenced; doing it here keeps the event
+        loop free so the modal stays dismissible.
+        """
+        from ..lib.core import runtime as _rt
+        from ..lib.orchestration.tasks import get_task_meta
+
+        state = _rt.get_runtime().container(self._container_name).state
+        has_mode = False
+        if state == "running":
+            try:
+                has_mode = get_task_meta(self._project_id, self._task_id).mode is not None
+            except (SystemExit, Exception):
+                has_mode = False
+        return state, has_mode
+
+    async def _poll_status(self) -> None:
         """Check container state and task mode; enable Login only when fully ready.
 
         A task is fully ready when both conditions are met:
@@ -1301,33 +1318,29 @@ class TaskLaunchScreen(screen.ModalScreen["tuple[str, str, str, str, str, str | 
         If the container never appears after many polls, updates the status
         to indicate a likely launch failure so the user can dismiss.
         """
-        from ..lib.core import runtime as _rt
-        from ..lib.orchestration.tasks import get_task_meta
+        # The probe shells out to podman; skip overlapping ticks so a slow
+        # subprocess can't fan out into a backlog of in-flight threads.
+        if self._probe_in_flight:
+            return
+        import asyncio
 
         self._poll_count += 1
-        state = _rt.get_runtime().container(self._container_name).state
-        status_widget = self.query_one("#launch-status", Static)
-        if state == "running":
-            # Also check that mode is set in task metadata — this is written
-            # only after the runner's readiness marker fires.
-            try:
-                meta = get_task_meta(self._project_id, self._task_id)
-                has_mode = meta.mode is not None
-            except (SystemExit, Exception):
-                has_mode = False
+        self._probe_in_flight = True
+        try:
+            state, has_mode = await asyncio.to_thread(self._probe_readiness)
+        finally:
+            self._probe_in_flight = False
 
-            if has_mode:
-                status_widget.update("Status: Container ready")
-                self._container_ready = True
-                login_btn = self.query_one("#btn-login", Button)
-                login_btn.disabled = False
-                login_btn.variant = "primary"
-                self.query_one("#btn-dismiss", Button).variant = "default"
-                if self._poll_timer:
-                    self._poll_timer.stop()
-                    self._poll_timer = None
-            else:
-                status_widget.update("Status: Initializing\u2026")
+        status_widget = self.query_one("#launch-status", Static)
+        if state == "running" and has_mode:
+            status_widget.update("Status: Container ready")
+            self._container_ready = True
+            self.query_one("#btn-login", Button).disabled = False
+            if self._poll_timer:
+                self._poll_timer.stop()
+                self._poll_timer = None
+        elif state == "running":
+            status_widget.update("Status: Initializing\u2026")
         elif state:
             status_widget.update(f"Status: {state}")
         elif self._poll_count >= self._POLL_STALL_THRESHOLD:
