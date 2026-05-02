@@ -114,7 +114,7 @@ class TestTask:
             returned_id = task_new(project_id)
             assert_task_id(returned_id)
             meta_dir = ctx.state_dir / "projects" / project_id / "tasks"
-            meta_path = meta_dir / f"{returned_id}.json"
+            meta_path = meta_dir / f"{returned_id}_dossier.json"
             assert meta_path.is_file()
 
             meta = _read_task_meta(meta_dir, returned_id) or {}
@@ -190,7 +190,7 @@ class TestTask:
     def _patch_task_meta(ctx, project_id: str, tid: str, **updates) -> None:
         """Load a task's YAML metadata, apply updates, and write it back."""
         meta_dir = ctx.state_dir / "projects" / project_id / "tasks"
-        meta_path = meta_dir / f"{tid}.json"
+        meta_path = meta_dir / f"{tid}_dossier.json"
         meta = json.loads(meta_path.read_text() or "{}")
         meta.update(updates)
         # Setting mode implies the task reached readiness (ready_at marker).
@@ -614,7 +614,7 @@ class TestTask:
         ) as ctx:
             tid = task_new(project_id)
             meta_dir = ctx.state_dir / "projects" / project_id / "tasks"
-            meta_path = meta_dir / f"{tid}.json"
+            meta_path = meta_dir / f"{tid}_dossier.json"
 
             # Simulate task was previously run
             meta = json.loads(meta_path.read_text() or "{}")
@@ -670,7 +670,7 @@ class TestTask:
             tid = task_new(project_id)
             from terok.lib.orchestration.tasks import tasks_meta_dir
 
-            meta_path = tasks_meta_dir(project_id) / f"{tid}.json"
+            meta_path = tasks_meta_dir(project_id) / f"{tid}_dossier.json"
             meta = json.loads(meta_path.read_text() or "{}")
             meta["mode"] = "cli"
             meta_path.write_text(json.dumps(meta, indent=2))
@@ -694,7 +694,7 @@ class TestTask:
             tid = task_new(project_id)
             from terok.lib.orchestration.tasks import tasks_meta_dir
 
-            meta_path = tasks_meta_dir(project_id) / f"{tid}.json"
+            meta_path = tasks_meta_dir(project_id) / f"{tid}_dossier.json"
             meta = json.loads(meta_path.read_text() or "{}")
             meta["mode"] = "run"
             meta_path.write_text(json.dumps(meta, indent=2))
@@ -718,7 +718,7 @@ class TestTask:
             tid = task_new(project_id)
             from terok.lib.orchestration.tasks import tasks_meta_dir
 
-            meta_path = tasks_meta_dir(project_id) / f"{tid}.json"
+            meta_path = tasks_meta_dir(project_id) / f"{tid}_dossier.json"
             meta = json.loads(meta_path.read_text() or "{}")
             meta["mode"] = "cli"
             meta_path.write_text(json.dumps(meta, indent=2))
@@ -1189,7 +1189,7 @@ class TestTaskLogs:
         from terok.lib.core.paths import core_state_dir
 
         meta_dir = core_state_dir() / "projects" / project_id / "tasks"
-        meta_path = meta_dir / f"{task_id}.json"
+        meta_path = meta_dir / f"{task_id}_dossier.json"
         meta = json.loads(meta_path.read_text() or "{}") or {}
         meta["mode"] = mode
         meta_path.write_text(json.dumps(meta, indent=2))
@@ -1461,7 +1461,7 @@ class TestTaskArchive:
             with mock_git_config():
                 task_id = task_new(project_id)
                 meta_dir = ctx.state_dir / "projects" / project_id / "tasks"
-                meta_path = meta_dir / f"{task_id}.json"
+                meta_path = meta_dir / f"{task_id}_dossier.json"
 
                 # Set mode in metadata (simulating a task that ran)
                 meta = json.loads(meta_path.read_text() or "{}") or {}

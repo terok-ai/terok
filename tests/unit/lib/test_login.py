@@ -32,7 +32,7 @@ def setup_task_with_mode(
     """
     task_id = task_new(project_id)
     if mode:
-        meta_path = ctx.state_dir / "projects" / project_id / "tasks" / f"{task_id}.json"
+        meta_path = ctx.state_dir / "projects" / project_id / "tasks" / f"{task_id}_dossier.json"
         meta = json.loads(meta_path.read_text() or "{}")
         meta["mode"] = mode
         meta_path.write_text(json.dumps(meta, indent=2), encoding="utf-8")

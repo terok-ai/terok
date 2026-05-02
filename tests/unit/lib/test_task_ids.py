@@ -112,7 +112,7 @@ class TestResolveTaskId:
         meta_dir = tasks_meta_dir(project_id)
         meta_dir.mkdir(parents=True, exist_ok=True)
         meta = {"task_id": task_id, "name": "test-task", "mode": None, "workspace": "/tmp/ws"}
-        (meta_dir / f"{task_id}.json").write_text(json.dumps(meta, indent=2))
+        (meta_dir / f"{task_id}_dossier.json").write_text(json.dumps(meta, indent=2))
 
     def test_exact_match(self) -> None:
         """Full task ID should resolve immediately."""
@@ -212,7 +212,7 @@ class TestLegacyHexCompat:
         meta_dir = tasks_meta_dir(project_id)
         meta_dir.mkdir(parents=True, exist_ok=True)
         meta = {"task_id": task_id, "name": "legacy", "mode": None, "workspace": "/tmp/ws"}
-        (meta_dir / f"{task_id}.json").write_text(json.dumps(meta, indent=2))
+        (meta_dir / f"{task_id}_dossier.json").write_text(json.dumps(meta, indent=2))
 
     def test_legacy_hex_resolves_with_deprecation(self) -> None:
         """A legacy 8-char hex task on disk should still resolve, with a DeprecationWarning."""

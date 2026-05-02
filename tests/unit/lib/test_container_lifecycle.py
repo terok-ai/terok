@@ -32,7 +32,7 @@ def project_config(project_id: str, *, shutdown_timeout: int | None = None) -> s
 
 def task_meta_path(ctx: SimpleNamespace, project_id: str, task_id: str) -> Path:
     """Return the metadata path for *task_id* inside the temporary project env."""
-    return ctx.state_dir / "projects" / project_id / "tasks" / f"{task_id}.json"
+    return ctx.state_dir / "projects" / project_id / "tasks" / f"{task_id}_dossier.json"
 
 
 def update_task_meta(

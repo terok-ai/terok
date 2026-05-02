@@ -35,7 +35,7 @@ def task_meta_dir(tmp_path: Path) -> Path:
 
 def _write_meta(meta_dir: Path, tid: str, meta: dict) -> Path:
     """Write task metadata to a YAML file and return the path."""
-    p = meta_dir / f"{tid}.yml"
+    p = meta_dir / f"{tid}_meta.yml"
     p.write_text(yaml_dump(meta))
     return p
 

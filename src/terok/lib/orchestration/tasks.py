@@ -6,21 +6,22 @@
 
 On disk each task is two sibling files keyed on its ID:
 
-* ``<task_id>.json`` — the wire-dossier file shield consumers read,
-  in wire shape (``{project, task, name}``).
-* ``<task_id>.yml`` — terok's internal bookkeeping (mode, workspace,
-  web port, hooks_fired, exit_code, lifecycle state).
+* ``<task_id>_dossier.json`` — the wire-dossier file shield consumers
+  read, in wire shape (``{project, task, name}``).
+* ``<task_id>_meta.yml`` — terok's internal bookkeeping (mode,
+  workspace, web port, hooks_fired, exit_code, lifecycle state).
 
-Format-as-contract: when a file's name says JSON, its audience is
-"anyone consuming shield events", so its shape *is* the wire dossier
-— no projection, no key translation.  YAML is for terok's eyes only;
-ruamel keeps comments and round-trip ergonomics cheap.
+Format-as-contract: the JSON file's filename says "dossier" and its
+audience is "anyone consuming shield events", so its shape *is* the
+wire dossier — no projection, no key translation.  The YAML file's
+filename says "meta" and its audience is terok-internal; ruamel keeps
+comments and round-trip ergonomics cheap.
 
 The split is reconciled at the I/O boundary: ``_read_task_meta``
 returns one merged dict in internal-storage shape (``project_id``,
 ``task_id``, …), ``_write_task_meta`` splits a single dict back to
-both files atomically.  Pre-split single-JSON layouts are detected
-and split-on-first-read so an upgrade path never loses data.
+both files atomically.  Pre-self-describing names (``<id>.json`` /
+``<id>.yml``) are migrated to the new layout in place on first read.
 
 Container runner functions (``task_run_cli``, ``task_run_headless``,
 ``task_restart``) live in the companion ``task_runners`` module.
@@ -70,51 +71,76 @@ from .container_exec import container_git_diff
 
 # ---------- Task meta file format ----------
 #
-# Per-task state lives in two sibling files keyed on ``task_id``:
+# Per-task state lives in two sibling files in ``tasks_meta_dir``,
+# named with a self-describing suffix that signals their audience:
 #
-# * ``<task_id>.json`` — the **wire dossier**.  Exactly the keys the
+# * ``<task_id>_dossier.json`` — *the dossier*.  Exactly the keys the
 #   clearance UI renders (``project`` / ``task`` / ``name``).  This
-#   file's audience is anyone consuming shield events: terok-shield
-#   reads it from inside the container's user namespace via stdlib
-#   ``json`` (no ruamel, no terok package), and forwards its contents
-#   onto every block / shield-up / shield-down event.  Format is part
-#   of the contract: JSON, dict-of-strings, wire shape.
+#   file is the contract terok-shield reads on every event from
+#   inside the container's user namespace using nothing but the
+#   stdlib (no ruamel, no terok package), forwarding its contents
+#   verbatim onto every block / shield-up / shield-down.  JSON,
+#   dict-of-strings, wire shape — the format is part of the
+#   contract.
 #
-# * ``<task_id>.yml`` — terok's **internal bookkeeping**.  Mode,
-#   workspace, web port, web token, hooks_fired, exit_code, lifecycle
-#   state — everything the orchestrator cares about and nobody else
-#   does.  YAML to keep human edits and round-trip comments cheap;
-#   single consumer, so ruamel is fine on the hot path.
+# * ``<task_id>_meta.yml`` — terok's internal bookkeeping.  Mode,
+#   workspace, web port, web token, hooks_fired, exit_code,
+#   lifecycle state — everything the orchestrator cares about and
+#   nobody else does.  YAML to keep round-trip comments and human
+#   edits cheap; single consumer, so ruamel on the hot path is fine.
 #
-# The split is deliberate.  When the file format itself signals the
-# audience, there's no question whether a given field belongs on the
-# wire — its filename answers.
+# Format-as-contract: when a file's name says JSON, its audience is
+# "anyone consuming shield events"; when it says YAML, the audience
+# is terok-internal.  No question which field belongs where — the
+# filename answers.
 
-# Subset of meta keys that belong on the wire (and thus in the JSON
-# dossier file).  The orchestrator stores them under their internal
-# names (``project_id`` / ``task_id`` / ``name``); ``_dossier_path``
-# is written with the wire-key shape ``{project, task, name}``.
+#: Suffix of the wire-dossier JSON file (full name: ``<task_id>_dossier.json``).
+_DOSSIER_SUFFIX = "_dossier.json"
+
+#: Suffix of the orchestrator-bookkeeping YAML file (full name: ``<task_id>_meta.yml``).
+_META_SUFFIX = "_meta.yml"
+
+# Subset of in-memory meta keys that belong on the wire (and thus in
+# the JSON dossier file).  Stored under internal names — translated
+# at the I/O boundary by ``_DOSSIER_TO_WIRE`` / ``_DOSSIER_FROM_WIRE``.
 _DOSSIER_INTERNAL_KEYS = ("project_id", "task_id", "name")
 _DOSSIER_TO_WIRE = {"project_id": "project", "task_id": "task", "name": "name"}
 _DOSSIER_FROM_WIRE = {v: k for k, v in _DOSSIER_TO_WIRE.items()}
 
 
-def _meta_path(meta_dir: Path, task_id: str) -> Path:
-    """Path to the wire-dossier JSON file — canonical shield-consumer pointer.
+def _dossier_path(meta_dir: Path, task_id: str) -> Path:
+    """Path to the wire-dossier JSON file — what shield consumers read.
 
     The OCI ``dossier.meta_path`` annotation points operators at *this*
-    file.  Companion bookkeeping lives at the ``.yml`` sibling.
+    file.  Companion bookkeeping lives at the ``_meta.yml`` sibling.
     """
-    return meta_dir / f"{task_id}.json"
+    return meta_dir / f"{task_id}{_DOSSIER_SUFFIX}"
 
 
-def _state_path(meta_dir: Path, task_id: str) -> Path:
-    """Path to the orchestrator-internal bookkeeping YAML.
+def _meta_path(meta_dir: Path, task_id: str) -> Path:
+    """Path to the orchestrator-bookkeeping YAML — terok-internal state.
 
     Holds everything except the wire-dossier triple.  Single consumer
     (terok itself), so ruamel round-tripping is fine.
     """
-    return meta_dir / f"{task_id}.yml"
+    return meta_dir / f"{task_id}{_META_SUFFIX}"
+
+
+def _migrate_legacy_filenames(meta_dir: Path, task_id: str) -> None:
+    """Rename pre-self-describing meta files in place — one-shot, idempotent.
+
+    Earlier iterations stored the dossier and meta as ``<task_id>.json``
+    and ``<task_id>.yml``; the new names spell out their audience.
+    Rename eagerly so every other read/write/iter helper deals with the
+    canonical layout exclusively.  Idempotent: a second call is a no-op.
+    """
+    pairs = (
+        (meta_dir / f"{task_id}.json", _dossier_path(meta_dir, task_id)),
+        (meta_dir / f"{task_id}.yml", _meta_path(meta_dir, task_id)),
+    )
+    for old, new in pairs:
+        if old.is_file() and not new.is_file():
+            old.rename(new)
 
 
 def _read_task_meta(meta_dir: Path, task_id: str) -> dict | None:
@@ -122,18 +148,20 @@ def _read_task_meta(meta_dir: Path, task_id: str) -> dict | None:
 
     Reads the wire-dossier JSON and the internal YAML, translates the
     JSON's wire keys back to internal storage names, and returns the
-    union.  Either file may be absent: a fresh task before its first
-    write writes one before the other; an upgrade path that
-    encounters a single-file ``<task_id>.json`` from before this
-    split splits it on the spot.
+    union.  Either file may be absent.  Returns ``None`` only when
+    neither file is on disk.
 
-    Returns ``None`` only when neither file is on disk.
+    A pre-self-describing layout (``<task_id>.json`` / ``<task_id>.yml``)
+    is migrated to the new names in place before the read so callers
+    never see the legacy paths.  Likewise a single-JSON layout that
+    mixed wire dossier with bookkeeping (the brief intermediate state
+    on this branch before the split) is detected and re-split here.
     """
-    json_path = _meta_path(meta_dir, task_id)
-    yml_path = _state_path(meta_dir, task_id)
-    legacy_yml = meta_dir / f"{task_id}.yml"  # pre-JSON-migration single YAML
+    _migrate_legacy_filenames(meta_dir, task_id)
+    json_path = _dossier_path(meta_dir, task_id)
+    yml_path = _meta_path(meta_dir, task_id)
 
-    if not (json_path.is_file() or yml_path.is_file() or legacy_yml.is_file()):
+    if not (json_path.is_file() or yml_path.is_file()):
         return None
 
     json_data: dict = {}
@@ -141,10 +169,8 @@ def _read_task_meta(meta_dir: Path, task_id: str) -> dict | None:
         text = json_path.read_text(encoding="utf-8")
         json_data = json.loads(text) if text.strip() else {}
 
-    # If the JSON file holds non-dossier fields, it predates the
-    # one-file-per-audience split — a single-JSON layout that mixed
-    # wire dossier with terok bookkeeping.  Split it now so the next
-    # read sees the canonical pair.
+    # Pre-split single-JSON layout (this branch's earlier iteration)
+    # mixed wire dossier with bookkeeping.  Detect, split, normalise.
     spillover = {k: v for k, v in json_data.items() if k not in _DOSSIER_FROM_WIRE}
     if spillover:
         json_data = {k: v for k, v in json_data.items() if k in _DOSSIER_FROM_WIRE}
@@ -152,16 +178,10 @@ def _read_task_meta(meta_dir: Path, task_id: str) -> dict | None:
     yml_data: dict = {}
     if yml_path.is_file():
         yml_data = _to_plain(_yaml_load(yml_path.read_text(encoding="utf-8")) or {})
-    elif legacy_yml.is_file() and legacy_yml != yml_path:  # pragma: no cover — same path today
-        # Defensive: ``legacy_yml`` resolves to the same path as ``yml_path``
-        # under the current naming, so this branch is unreachable.  Kept as a
-        # tripwire if either filename ever drifts from the other.
-        yml_data = _to_plain(_yaml_load(legacy_yml.read_text(encoding="utf-8")) or {})
 
-    # Spillover came from a recent caller writing the legacy single-JSON
-    # layout (tests, or a pre-split terok release).  Treat it as more
-    # authoritative than any YAML still on disk — that YAML was written
-    # before the latest mutation and may be stale.
+    # Spillover came from a caller writing the pre-split layout — treat
+    # it as more authoritative than any YAML on disk, since that YAML
+    # was written before the latest mutation and may be stale.
     if spillover:
         yml_data = {**yml_data, **spillover}
 
@@ -172,25 +192,24 @@ def _read_task_meta(meta_dir: Path, task_id: str) -> dict | None:
 
     if spillover:
         # Normalise on disk so the next read takes the fast path.
-        _write_task_meta(json_path, merged)
+        _write_task_meta(_dossier_path(meta_dir, task_id), merged)
 
     return merged
 
 
-def _write_task_meta(json_path: Path, meta: dict) -> None:
-    """Atomic split-write: wire-dossier JSON + orchestrator bookkeeping YAML.
+def _write_task_meta(dossier_path: Path, meta: dict) -> None:
+    """Atomic split-write: ``_dossier.json`` + ``_meta.yml`` in one atomic step each.
 
-    Both files live in the same directory and get atomic-rename writes
-    (``.tmp`` + ``os.replace``).  A partial write under EINTR / power
-    loss can leave one stale and the other fresh, but never a
-    half-written file — readers always get a parseable shape.
-
-    The wire dossier is small and well-known; the internal YAML
-    carries everything else.  The split on disk mirrors the contract:
-    JSON for shield consumers, YAML for terok-internal state.
+    *dossier_path* is the canonical dossier-file handle — what
+    ``_dossier_path()`` returns and what ``load_task_meta`` hands back.
+    The companion bookkeeping path is derived by swapping the suffix.
+    Atomic-rename writes (``.tmp`` + ``os.replace``) on each file mean
+    a partial write under EINTR / power loss can leave one stale and
+    the other fresh, but never a half-written file — readers always
+    get a parseable shape.
     """
-    yml_path = _state_path(json_path.parent, json_path.stem)
-    json_path.parent.mkdir(parents=True, exist_ok=True)
+    meta_dir, task_id = _dossier_handle_to_dir_and_id(dossier_path)
+    meta_dir.mkdir(parents=True, exist_ok=True)
 
     dossier = {
         wire_key: str(meta[internal_key])
@@ -199,8 +218,28 @@ def _write_task_meta(json_path: Path, meta: dict) -> None:
     }
     state = {k: v for k, v in meta.items() if k not in _DOSSIER_INTERNAL_KEYS}
 
-    _atomic_write(json_path, json.dumps(dossier, indent=2, ensure_ascii=False, default=str) + "\n")
-    _atomic_write(yml_path, _yaml_dump(state))
+    _atomic_write(
+        _dossier_path(meta_dir, task_id),
+        json.dumps(dossier, indent=2, ensure_ascii=False, default=str) + "\n",
+    )
+    _atomic_write(_meta_path(meta_dir, task_id), _yaml_dump(state))
+
+
+def _dossier_handle_to_dir_and_id(path: Path) -> tuple[Path, str]:
+    """Decompose a dossier-file handle into ``(meta_dir, task_id)``.
+
+    Accepts both the canonical ``<task_id>_dossier.json`` and the
+    pre-self-describing ``<task_id>.json`` so callers caching a handle
+    across the migration boundary keep working.  Raises on anything
+    else — silently inferring a task_id from a foreign filename would
+    let bugs pass undetected.
+    """
+    name = path.name
+    if name.endswith(_DOSSIER_SUFFIX):
+        return path.parent, name[: -len(_DOSSIER_SUFFIX)]
+    if name.endswith(".json"):
+        return path.parent, name[: -len(".json")]
+    raise ValueError(f"not a dossier-file handle: {path}")
 
 
 def _atomic_write(path: Path, text: str) -> None:
@@ -228,26 +267,40 @@ def _to_plain(obj: object) -> object:
 def _iter_task_ids(meta_dir: Path) -> Iterator[str]:
     """Yield every task ID with at least one meta file in *meta_dir*.
 
-    A task is identified by either of its two sibling files (``<id>.json``
-    or ``<id>.yml``); the iterator deduplicates so a normal pair isn't
-    double-counted.  ``.tmp`` scratch files from a mid-flight atomic write
-    are filtered out.
+    Recognises both the canonical layout (``<id>_dossier.json`` /
+    ``<id>_meta.yml``) and the pre-self-describing layout
+    (``<id>.json`` / ``<id>.yml``) — the latter is migrated lazily on
+    the next ``_read_task_meta`` call, so transient mixed states are
+    yielded under their canonical task ID without double-counting.
     """
     if not meta_dir.is_dir():
         return
     seen: set[str] = set()
-    for ext in ("json", "yml"):
-        for path in meta_dir.glob(f"*.{ext}"):
-            tid = path.stem
-            if tid in seen or path.name.endswith(".tmp"):
-                continue
+    for path in meta_dir.iterdir():
+        if not path.is_file() or path.name.endswith(".tmp"):
+            continue
+        tid = _task_id_from_filename(path.name)
+        if tid and tid not in seen:
             seen.add(tid)
             yield tid
 
 
+def _task_id_from_filename(name: str) -> str:
+    """Strip the meta-file suffix to recover the task ID, ``""`` if unrecognised."""
+    for suffix in (_DOSSIER_SUFFIX, _META_SUFFIX, ".json", ".yml"):
+        if name.endswith(suffix):
+            return name[: -len(suffix)]
+    return ""
+
+
 def _has_task_meta(meta_dir: Path, prefix: str) -> bool:
-    """``True`` if either meta file exists for *prefix* (JSON dossier or YAML state)."""
-    return _meta_path(meta_dir, prefix).is_file() or _state_path(meta_dir, prefix).is_file()
+    """``True`` if either meta file exists for *prefix* (canonical or legacy layout)."""
+    return (
+        _dossier_path(meta_dir, prefix).is_file()
+        or _meta_path(meta_dir, prefix).is_file()
+        or (meta_dir / f"{prefix}.json").is_file()
+        or (meta_dir / f"{prefix}.yml").is_file()
+    )
 
 
 # ---------- Task IDs ----------
@@ -669,7 +722,7 @@ def update_task_exit_code(project_id: str, task_id: str, exit_code: int | None) 
     if meta is None:
         return
     meta["exit_code"] = exit_code
-    _write_task_meta(_meta_path(meta_dir, task_id), meta)
+    _write_task_meta(_dossier_path(meta_dir, task_id), meta)
 
 
 def _write_task_readme(task_dir: Path) -> None:
@@ -741,7 +794,7 @@ def _task_new(project: ProjectConfig, *, name: str | None = None) -> str:
         "web_port": None,
         "created_at": datetime.now(tz=UTC).isoformat(),
     }
-    _write_task_meta(_meta_path(meta_dir, next_id), meta)
+    _write_task_meta(_dossier_path(meta_dir, next_id), meta)
     print(f"Created task {next_id} ({task_name}) in {ws}")
     return next_id
 
@@ -794,7 +847,7 @@ def _task_rename(project: ProjectConfig, task_id: str, new_name: str) -> None:
     if err:
         raise SystemExit(f"Invalid task name: {err}")
     meta["name"] = sanitized
-    _write_task_meta(_meta_path(meta_dir, task_id), meta)
+    _write_task_meta(_dossier_path(meta_dir, task_id), meta)
     print(f"Renamed task {task_id} to {sanitized}")
 
 
@@ -954,9 +1007,15 @@ def load_task_meta(
 ) -> tuple[dict, Path]:
     """Load task metadata and optionally validate mode.
 
-    Returns (meta, meta_path). Raises SystemExit if task is unknown or mode
-    conflicts with *expected_mode*.  ``meta_path`` is always the canonical
-    JSON path even when the on-disk file was migrated from YAML on this read.
+    Returns the merged in-memory dict (dossier + bookkeeping in their
+    internal storage shape).  Raises SystemExit if the task is unknown
+    or its mode conflicts with *expected_mode*.
+
+    Returns ``(meta, dossier_path)``: the merged in-memory dict (in
+    its internal storage shape — ``project_id`` / ``task_id`` / …)
+    plus the canonical dossier-file handle for write-back via
+    ``_write_task_meta(dossier_path, meta)``.  Raises SystemExit if
+    the task is unknown or its mode conflicts with *expected_mode*.
     """
     meta_dir = tasks_meta_dir(project_id)
     meta = _read_task_meta(meta_dir, task_id)
@@ -964,7 +1023,7 @@ def load_task_meta(
         raise SystemExit(f"Unknown task {task_id}")
     if expected_mode is not None:
         _check_mode(meta, expected_mode)
-    return meta, _meta_path(meta_dir, task_id)
+    return meta, _dossier_path(meta_dir, task_id)
 
 
 def mark_task_deleting(project_id: str, task_id: str) -> None:
@@ -975,7 +1034,7 @@ def mark_task_deleting(project_id: str, task_id: str) -> None:
         if meta is None:
             return
         meta["deleting"] = True
-        _write_task_meta(_meta_path(meta_dir, task_id), meta)
+        _write_task_meta(_dossier_path(meta_dir, task_id), meta)
     except Exception as e:
         _log_debug(f"mark_task_deleting: failed project_id={project_id} task_id={task_id}: {e}")
 
@@ -1070,9 +1129,16 @@ def _task_delete(project: ProjectConfig, task_id: str) -> TaskDeleteResult:
 
     workspace = project.tasks_root / str(task_id)
     meta_dir = tasks_meta_dir(project.id)
+    dossier_path = _dossier_path(meta_dir, task_id)
     meta_path = _meta_path(meta_dir, task_id)
+    # Pre-self-describing layout (`<id>.json` / `<id>.yml`) — clean too,
+    # in case the task was created before the rename and never since
+    # touched (no read = no migration).
+    legacy_json = meta_dir / f"{task_id}.json"
     legacy_yml = meta_dir / f"{task_id}.yml"
-    _log_debug(f"task_delete: workspace={workspace} meta_path={meta_path}")
+    _log_debug(
+        f"task_delete: workspace={workspace} dossier_path={dossier_path} meta_path={meta_path}"
+    )
 
     meta = _read_task_meta(meta_dir, task_id) or {}
 
@@ -1134,14 +1200,16 @@ def _task_delete(project: ProjectConfig, task_id: str) -> TaskDeleteResult:
             _log_debug(f"task_delete: workspace removal failed: {exc}")
             warnings.append(f"Workspace removal failed: {exc}")
 
-    # Both shapes might be present mid-migration (the read above migrates
-    # YAML→JSON, but a sibling reader could lose the race); clean both.
-    if meta_path.is_file() or legacy_yml.is_file():
-        _log_debug("task_delete: removing metadata file")
+    # Drop both halves of the on-disk pair plus any legacy single-file
+    # remnants.  Each ``unlink(missing_ok=True)`` is independent so a
+    # half-installed bundle still cleans up everything that was there.
+    paths_to_remove = (dossier_path, meta_path, legacy_json, legacy_yml)
+    if any(p.is_file() for p in paths_to_remove):
+        _log_debug("task_delete: removing metadata files")
         try:
-            meta_path.unlink(missing_ok=True)
-            legacy_yml.unlink(missing_ok=True)
-            _log_debug("task_delete: metadata file removed")
+            for p in paths_to_remove:
+                p.unlink(missing_ok=True)
+            _log_debug("task_delete: metadata files removed")
         except Exception as exc:
             _log_debug(f"task_delete: metadata removal failed: {exc}")
             warnings.append(f"Metadata removal failed: {exc}")

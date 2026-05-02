@@ -101,7 +101,7 @@ def task_paths(base: Path, project_id: str, task_id: str = "1") -> tuple[Path, P
     state = base / "state"
     return (
         sandbox_live / "tasks" / project_id / task_id / "agent-config",
-        state / "projects" / project_id / "tasks" / f"{task_id}.json",
+        state / "projects" / project_id / "tasks" / f"{task_id}_dossier.json",
     )
 
 

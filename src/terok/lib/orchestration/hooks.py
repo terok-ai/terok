@@ -11,7 +11,6 @@ reconcile missed hooks (e.g. post_stop after an unclean shutdown).
 
 from __future__ import annotations
 
-import json
 import logging
 import os
 import subprocess  # nosec B404 — hooks execute user-configured commands by design
@@ -52,61 +51,66 @@ def _build_hook_env(
     return env
 
 
-def _record_hook(meta_path: Path, hook_name: str) -> None:
-    """Append *hook_name* to the ``hooks_fired`` list in task metadata.
+def _record_hook(dossier_path: Path, hook_name: str) -> None:
+    """Append *hook_name* to the ``hooks_fired`` list in task bookkeeping.
 
-    The path the caller hands in may be either the canonical JSON file
-    or a leftover YAML one from an older install.  We resolve to the
-    canonical ``.json`` path first — once the migration has happened
-    (any earlier hook in this run could have done it) the on-disk YAML
-    is gone, so a stale ``Path("…task.yml")`` would otherwise fail the
-    existence check and silently drop subsequent hook records.
-
-    The write goes through the same ``.tmp`` + ``os.replace`` pattern
-    the rest of the metadata layer uses, so an interrupted record can
-    never leave a truncated ``.json`` behind.
+    *dossier_path* is the dossier-file handle the caller already has
+    (returned by ``load_task_meta`` / ``_dossier_path``).  ``hooks_fired``
+    is bookkeeping (not wire dossier), so the actual write targets the
+    sibling ``_meta.yml`` file.  Atomic-rename keeps an interrupted
+    record from leaving a torn YAML behind.
     """
-    json_path = meta_path.with_suffix(".json")
-    if json_path.is_file():
-        source_path = json_path
-    elif meta_path.is_file():
-        source_path = meta_path
-    else:
+    yml_path = _bookkeeping_yml_for(dossier_path)
+    if not yml_path.is_file():
+        # No bookkeeping file yet (task hasn't been written by terok)
+        # — nothing to update.  The hook still ran; we just don't have
+        # a place to record the marker.
         return
     try:
-        text = source_path.read_text(encoding="utf-8")
-        meta = _decode_meta(text, source_path.suffix)
+        from ..util.yaml import dump as _yaml_dump, load as _yaml_load
+
+        meta = _plain(_yaml_load(yml_path.read_text(encoding="utf-8")) or {})
         fired = meta.get("hooks_fired") or []
         if hook_name not in fired:
             fired.append(hook_name)
         meta["hooks_fired"] = fired
-        tmp = json_path.with_suffix(json_path.suffix + ".tmp")
-        tmp.write_text(
-            json.dumps(meta, indent=2, ensure_ascii=False, default=str) + "\n",
-            encoding="utf-8",
-        )
-        os.replace(tmp, json_path)
-        if source_path.suffix == ".yml":
-            source_path.unlink(missing_ok=True)
+        tmp = yml_path.with_suffix(yml_path.suffix + ".tmp")
+        tmp.write_text(_yaml_dump(meta), encoding="utf-8")
+        os.replace(tmp, yml_path)
     except Exception:
-        logger.warning("failed to record hook %s in %s", hook_name, meta_path, exc_info=True)
+        logger.warning("failed to record hook %s in %s", hook_name, yml_path, exc_info=True)
 
 
-def _decode_meta(text: str, suffix: str) -> dict:
-    """Parse task meta text — JSON for ``.json``, ruamel for legacy ``.yml``.
+#: Suffixes the hook recorder recognises on a dossier-file handle —
+#: kept inline rather than imported from ``tasks.py`` because that
+#: module imports ``run_hook`` from here and the reverse would build
+#: a cycle.  The canonical (``_dossier.json``) and pre-self-describing
+#: (``.json``) layouts both map to the bookkeeping YAML alongside.
+_DOSSIER_SUFFIXES = ("_dossier.json", ".json")
+_BOOKKEEPING_SUFFIXES = ("_meta.yml", ".yml")
 
-    Kept inline (rather than importing the canonical reader from
-    ``tasks.py``) so this module stays at its tach layer; ``tasks.py``
-    imports ``run_hook`` from here, so the reverse import would build a
-    cycle and tach correctly rejects it.
+
+def _bookkeeping_yml_for(dossier_path: Path) -> Path:
+    """Return the ``_meta.yml`` sibling of *dossier_path*.
+
+    Falls back to the legacy ``.yml`` location if it's the one on disk
+    — a hook firing mid-migration shouldn't lose its record just
+    because the rename hasn't happened yet.
     """
-    if suffix == ".yml":
-        from ..util.yaml import load as _yaml_load
-
-        raw = _yaml_load(text) or {}
-        # Ruamel hands back ``CommentedMap``; convert to a plain dict.
-        return _plain(raw)
-    return json.loads(text) if text.strip() else {}
+    name = dossier_path.name
+    for src in _DOSSIER_SUFFIXES:
+        if name.endswith(src):
+            stem = name[: -len(src)]
+            new = dossier_path.parent / f"{stem}{_BOOKKEEPING_SUFFIXES[0]}"
+            if new.is_file():
+                return new
+            legacy = dossier_path.parent / f"{stem}{_BOOKKEEPING_SUFFIXES[1]}"
+            return legacy if legacy.is_file() else new
+    # Unknown dossier suffix — best-effort sibling under the dossier
+    # path's stem with the canonical bookkeeping suffix.  Used when a
+    # caller hands us a path that doesn't match either layout (tests
+    # constructing toy paths, defensive code paths in callers).
+    return dossier_path.parent / f"{dossier_path.stem}{_BOOKKEEPING_SUFFIXES[0]}"
 
 
 def _plain(obj: object) -> object:

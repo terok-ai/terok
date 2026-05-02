@@ -58,7 +58,7 @@ from .hooks import run_hook
 from .ports import assign_web_port, release_web_port
 from .tasks import (
     CONTAINER_TEROK_CONFIG,
-    _meta_path,
+    _dossier_path,
     _write_task_meta,
     container_name,
     load_task_meta,
@@ -498,10 +498,10 @@ def _run_container(
     # the pointed-at JSON file as ``ClearanceEvent.dossier`` on every
     # event.  The JSON file IS the wire dossier — wire-shape keys, no
     # projection, no snapshot — so one annotation is enough.
-    task_meta_path = _meta_path(tasks_meta_dir(project.id), task_id)
+    task_dossier_path = _dossier_path(tasks_meta_dir(project.id), task_id)
     annotations = [
         "--annotation",
-        f"dossier.meta_path={task_meta_path}",
+        f"dossier.meta_path={task_dossier_path}",
     ]
     merged_args = annotations + list(extra_args or ()) + _project_runtime_flags(project)
     try:

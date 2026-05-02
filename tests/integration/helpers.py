@@ -188,7 +188,7 @@ class TerokIntegrationEnv:
 
     def task_meta_path(self, project_id: str, task_id: str) -> Path:
         """Return the metadata YAML path for *task_id*."""
-        return self.task_meta_dir(project_id) / f"{task_id}.yml"
+        return self.task_meta_dir(project_id) / f"{task_id}_meta.yml"
 
     def task_archive_root(self, project_id: str) -> Path:
         """Return the archive root for deleted tasks."""

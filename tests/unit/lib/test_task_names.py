@@ -41,7 +41,7 @@ def project_yaml(project_id: str, *, name_categories: list[str] | None = None) -
 
 def task_meta_name(ctx, project_id: str, task_id: str) -> str:
     """Return the persisted task name from task metadata."""
-    meta_path = ctx.state_dir / "projects" / project_id / "tasks" / f"{task_id}.json"
+    meta_path = ctx.state_dir / "projects" / project_id / "tasks" / f"{task_id}_dossier.json"
     return json.loads(meta_path.read_text() or "{}")["name"]
 
 
