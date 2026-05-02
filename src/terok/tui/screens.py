@@ -1250,7 +1250,8 @@ class TaskLaunchScreen(screen.ModalScreen["tuple[str, str, str, str, str, str | 
         self._installed = installed
         self._container_ready = False
         self._poll_timer = None
-        self._poll_count = 0
+        self._probe_in_flight = False
+        self._start_time = 0.0
 
     def compose(self) -> ComposeResult:
         """Build status, agent selector, prompt input, and action buttons."""
@@ -1272,25 +1273,45 @@ class TaskLaunchScreen(screen.ModalScreen["tuple[str, str, str, str, str, str | 
             yield Select(choices, value=login_value, id="login-agent")
             yield Input(placeholder="Initial prompt (optional)", id="launch-prompt")
             with Horizontal(id="launch-buttons"):
-                # While the container is starting, Dismiss is the only enabled
-                # action — promote it to primary so it's not visually muted.
-                # Roles swap in _poll_status() once Login becomes available.
-                yield Button("Dismiss", id="btn-dismiss", variant="primary")
-                yield Button("Login", id="btn-login", variant="default", disabled=True)
+                yield Button("Dismiss", id="btn-dismiss", variant="default")
+                yield Button("Login", id="btn-login", variant="primary", disabled=True)
         dialog.border_title = f"CLI Task {self._task_id} ({self._task_name})"
         dialog.border_subtitle = "Esc to dismiss"
 
     def on_mount(self) -> None:
         """Start polling for container readiness and focus the prompt input."""
+        import time
+
         prompt = self.query_one("#launch-prompt", Input)
         prompt.focus()
+        self._start_time = time.monotonic()
         self._poll_timer = self.set_interval(1.5, self._poll_status)
 
-    # After this many polls (~90s at 1.5s interval) without the container
-    # appearing, assume the launch failed and show a hint.
-    _POLL_STALL_THRESHOLD = 60
+    # If no container has appeared within this many wall-clock seconds, assume
+    # the launch failed and surface a hint.  Wall-clock based (not tick count)
+    # so the hint still fires when a probe is wedged on ``podman inspect``.
+    _POLL_STALL_TIMEOUT_S = 90.0
 
-    def _poll_status(self) -> None:
+    def _probe_readiness(self) -> tuple[str | None, bool]:
+        """Synchronous readiness probe — runs in a worker thread.
+
+        ``podman inspect`` can stall for several seconds the first time a
+        freshly built image is referenced; doing it here keeps the event
+        loop free so the modal stays dismissible.
+        """
+        from ..lib.core import runtime as _rt
+        from ..lib.orchestration.tasks import get_task_meta
+
+        state = _rt.get_runtime().container(self._container_name).state
+        has_mode = False
+        if state == "running":
+            try:
+                has_mode = get_task_meta(self._project_id, self._task_id).mode is not None
+            except (SystemExit, Exception):
+                has_mode = False
+        return state, has_mode
+
+    async def _poll_status(self) -> None:
         """Check container state and task mode; enable Login only when fully ready.
 
         A task is fully ready when both conditions are met:
@@ -1301,36 +1322,40 @@ class TaskLaunchScreen(screen.ModalScreen["tuple[str, str, str, str, str, str | 
         If the container never appears after many polls, updates the status
         to indicate a likely launch failure so the user can dismiss.
         """
-        from ..lib.core import runtime as _rt
-        from ..lib.orchestration.tasks import get_task_meta
+        import asyncio
+        import time
 
-        self._poll_count += 1
-        state = _rt.get_runtime().container(self._container_name).state
+        elapsed = time.monotonic() - self._start_time
+        stalled = elapsed >= self._POLL_STALL_TIMEOUT_S
         status_widget = self.query_one("#launch-status", Static)
-        if state == "running":
-            # Also check that mode is set in task metadata — this is written
-            # only after the runner's readiness marker fires.
-            try:
-                meta = get_task_meta(self._project_id, self._task_id)
-                has_mode = meta.mode is not None
-            except (SystemExit, Exception):
-                has_mode = False
 
-            if has_mode:
-                status_widget.update("Status: Container ready")
-                self._container_ready = True
-                login_btn = self.query_one("#btn-login", Button)
-                login_btn.disabled = False
-                login_btn.variant = "primary"
-                self.query_one("#btn-dismiss", Button).variant = "default"
-                if self._poll_timer:
-                    self._poll_timer.stop()
-                    self._poll_timer = None
-            else:
-                status_widget.update("Status: Initializing\u2026")
+        # The probe shells out to podman; skip overlapping ticks so a slow
+        # subprocess can't fan out into a backlog of in-flight threads.
+        # The stall hint still fires here so a wedged ``podman inspect`` can
+        # surface a failure to the user.
+        if self._probe_in_flight:
+            if stalled:
+                status_widget.update("Status: Launch may have failed \u2014 check notifications")
+            return
+
+        self._probe_in_flight = True
+        try:
+            state, has_mode = await asyncio.to_thread(self._probe_readiness)
+        finally:
+            self._probe_in_flight = False
+
+        if state == "running" and has_mode:
+            status_widget.update("Status: Container ready")
+            self._container_ready = True
+            self.query_one("#btn-login", Button).disabled = False
+            if self._poll_timer:
+                self._poll_timer.stop()
+                self._poll_timer = None
+        elif state == "running":
+            status_widget.update("Status: Initializing\u2026")
         elif state:
             status_widget.update(f"Status: {state}")
-        elif self._poll_count >= self._POLL_STALL_THRESHOLD:
+        elif stalled:
             status_widget.update("Status: Launch may have failed \u2014 check notifications")
 
     def on_input_submitted(self, event: "Input.Submitted") -> None:  # type: ignore[name-defined]
