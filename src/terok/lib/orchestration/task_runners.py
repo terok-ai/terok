@@ -56,6 +56,7 @@ from .environment import build_task_env_and_volumes, ensure_vault
 from .hooks import run_hook
 from .ports import assign_web_port, release_web_port
 from .tasks import (
+    CONTAINER_TEROK_CONFIG,
     container_name,
     load_task_meta,
     task_new,
@@ -77,7 +78,6 @@ _TOAD_TOKEN_FILE_NAME = "toad.token"  # nosec B105 — filename, not a credentia
 _ANTHROPIC_API_HOST = "api.anthropic.com"
 _OPENAI_API_HOST = "api.openai.com"
 _FALSE_STRINGS = frozenset({"false", "0", "no", "off"})
-_CONTAINER_TEROK_CONFIG = "/home/dev/.terok"
 
 
 def _str_to_bool(value: object) -> bool:
@@ -604,7 +604,7 @@ def task_run_cli(
 
     # Resolve layered agent config (global → project → preset → CLI overrides)
     agent_config_dir = _prepare_agent_config(project, project_id, task_id, agents, preset)
-    volumes.append(VolumeSpec(agent_config_dir, _CONTAINER_TEROK_CONFIG, sharing=Sharing.PRIVATE))
+    volumes.append(VolumeSpec(agent_config_dir, CONTAINER_TEROK_CONFIG, sharing=Sharing.PRIVATE))
 
     # Resolve unrestricted mode: CLI flag → config → default (True)
     if unrestricted is None:
@@ -735,7 +735,7 @@ def task_run_toad(
     env, volumes = build_task_env_and_volumes(project, task_id)
 
     agent_config_dir = _prepare_agent_config(project, project_id, task_id, agents, preset)
-    volumes.append(VolumeSpec(agent_config_dir, _CONTAINER_TEROK_CONFIG, sharing=Sharing.PRIVATE))
+    volumes.append(VolumeSpec(agent_config_dir, CONTAINER_TEROK_CONFIG, sharing=Sharing.PRIVATE))
 
     token = _ensure_toad_token(agent_config_dir)
     meta["web_token"] = token
@@ -982,7 +982,7 @@ def task_run_headless(request: HeadlessRunRequest) -> str:
         _apply_unrestricted_env(env)
 
     # Mount agent-config dir to /home/dev/.terok
-    volumes.append(VolumeSpec(agent_config_dir, _CONTAINER_TEROK_CONFIG, sharing=Sharing.PRIVATE))
+    volumes.append(VolumeSpec(agent_config_dir, CONTAINER_TEROK_CONFIG, sharing=Sharing.PRIVATE))
 
     # Build headless command via provider registry
     headless_cmd = build_headless_command(

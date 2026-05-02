@@ -603,6 +603,8 @@ expose = [
     "resolve_task_id",
     "is_task_id",
     "normalize_task_id_input",
+    "CONTAINER_TEROK_CONFIG",
+    "agent_config_dir",
 ]
 from = ["terok.lib.orchestration.tasks"]
 

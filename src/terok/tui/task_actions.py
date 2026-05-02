@@ -34,6 +34,8 @@ from ..lib.domain.facade import (
 )
 from ..lib.orchestration.autopilot import wait_for_container_exit
 from ..lib.orchestration.tasks import (
+    CONTAINER_TEROK_CONFIG,
+    agent_config_dir,
     container_name,
     generate_task_name,
     get_login_command,
@@ -62,6 +64,39 @@ def _build_interactive_agent_command(provider: object, prompt: str | None) -> st
     if not prompt:
         return provider.binary
     return f"{provider.binary} {shlex.quote(prompt)}"
+
+
+_LAUNCH_NOTE_FILENAME = "launch-note.txt"
+_LAUNCH_NOTE_PATH = f"{CONTAINER_TEROK_CONFIG}/{_LAUNCH_NOTE_FILENAME}"
+
+# Shell wrapper for bash-agent launches with a note. Reads the note via cat
+# (no shell expansion of user data), prints it after the login profile has
+# run, removes it, and execs an interactive shell.  Wrapper string contains
+# zero user-data interpolation — the note travels via the file mount.
+_BASH_NOTE_WRAPPER = (
+    f"n={shlex.quote(_LAUNCH_NOTE_PATH)}; "
+    '[ -s "$n" ] && { '
+    'printf "\\n\\033[1;33m\U0001f4dd Launch note:\\033[0m\\n"; '
+    'cat "$n"; printf "\\n\\n"; rm -f "$n"; '
+    "}; exec bash -i"
+)
+
+
+def _build_bash_login_cmd(
+    base_cmd: list[str], project_id: str, task_id: str, prompt: str | None
+) -> list[str]:
+    """Login command for the bash agent, optionally surfacing a launch note.
+
+    With no prompt the base login command (login shell inside tmux) is used
+    unchanged.  With a prompt, the note is written to the task's mounted
+    agent-config dir and a small wrapper prints it after the login banner
+    before dropping into an interactive shell.
+    """
+    if not prompt:
+        return base_cmd
+    note_path = agent_config_dir(project_id, task_id) / _LAUNCH_NOTE_FILENAME
+    note_path.write_text(prompt + "\n", encoding="utf-8")
+    return [*base_cmd, "bash", "-lc", _BASH_NOTE_WRAPPER]
 
 
 def _login_title(project_id: str, task_id: str, task_name: str) -> str:
@@ -263,7 +298,7 @@ class TaskActionsMixin:
             return
 
         if agent == "bash":
-            cmd = base_cmd
+            cmd = _build_bash_login_cmd(base_cmd, pid, tid, prompt)
         else:
             from terok_executor import AGENT_PROVIDERS
 
