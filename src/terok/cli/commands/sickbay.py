@@ -27,10 +27,12 @@ from pathlib import Path
 
 from terok_clearance import (
     check_units_outdated as _clearance_check_units_outdated,
+    read_installed_notifier_unit_version as _clearance_notifier_unit_version,
     read_installed_unit_version as _clearance_hub_unit_version,
 )
 from terok_clearance.runtime.installer import (
     HUB_UNIT_NAME as _CLEARANCE_HUB_UNIT_NAME,
+    NOTIFIER_UNIT_NAME as _CLEARANCE_NOTIFIER_UNIT_NAME,
 )
 from terok_sandbox import (
     SERVICES_TCP_OPTOUT_YAML,
@@ -51,22 +53,18 @@ from ...lib.core.projects import list_projects, load_project
 from ...lib.orchestration.container_doctor import run_container_doctor
 from ...lib.orchestration.hooks import run_hook
 from ...lib.orchestration.tasks import (
+    _iter_task_ids,
+    _meta_path,
+    _read_task_meta,
     container_name,
     is_task_id,
     resolve_task_id,
     tasks_meta_dir,
 )
 from ...lib.util.check_reporter import CheckReporter
-from ...lib.util.yaml import load as _yaml_load
 
 # Type alias for check results: (severity, label, detail)
 _CheckResult = tuple[str, str, str]
-
-#: Glob pattern for per-task metadata files under ``tasks_meta_dir(project_id)``.
-#: Used across multiple sickbay checks that enumerate tasks by walking the
-#: metadata directory.  Kept as a named constant so changing the convention
-#: later is a one-line edit.
-_TASK_META_GLOB = "*.yml"
 
 
 def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
@@ -151,16 +149,25 @@ def _check_clearance_stack() -> _CheckResult:
 
     Delegates drift detection to the clearance package so sickbay
     tracks whatever new units terok-clearance ships next without
-    knowing the triple's shape itself.
+    knowing the triple's shape itself.  Hub and notifier versions
+    surface side-by-side so an operator who edits the notifier-only
+    profile (e.g. hardening tweaks) doesn't have to read the unit
+    file to see whether their drift was picked up.
     """
     label = "Clearance stack"
     outdated = _clearance_check_units_outdated()
     if outdated:
         return ("warn", label, outdated)
-    installed = _clearance_hub_unit_version()
-    if installed is None:
+    hub = _clearance_hub_unit_version()
+    notifier = _clearance_notifier_unit_version()
+    if hub is None and notifier is None:
         return ("ok", label, f"{_CLEARANCE_HUB_UNIT_NAME} not installed")
-    return ("ok", label, f"{_CLEARANCE_HUB_UNIT_NAME} v{installed}")
+    parts: list[str] = []
+    if hub is not None:
+        parts.append(f"{_CLEARANCE_HUB_UNIT_NAME} v{hub}")
+    if notifier is not None:
+        parts.append(f"{_CLEARANCE_NOTIFIER_UNIT_NAME} v{notifier}")
+    return ("ok", label, ", ".join(parts))
 
 
 def _check_vault() -> _CheckResult:
@@ -195,30 +202,36 @@ def _check_vault() -> _CheckResult:
 
 
 def _task_meta_path(pid: str, tid: str) -> Path | None:
-    """Resolve a task's metadata YAML path, refusing traversal in *pid* / *tid*.
+    """Resolve a task's canonical metadata path, refusing traversal in *pid* / *tid*.
 
     Both IDs arrive from CLI positional args (``terok sickbay <project>
     <task>``).  A hostile value like ``../../etc/passwd`` would otherwise
     escape ``tasks_meta_dir`` via ``Path`` join; reject anything that
     doesn't match the established project/task-ID grammars.
+
+    The returned path always points at the JSON canonical name; YAML
+    files from earlier installs are migrated by ``_read_task_meta`` on
+    the read path.
     """
     if not is_valid_project_id(pid) or not is_task_id(tid):
         return None
-    return tasks_meta_dir(pid) / f"{tid}.yml"
+    return _meta_path(tasks_meta_dir(pid), tid)
 
 
 def _check_task_hook(
     pid: str, tid: str, project: ProjectConfig, *, fix: bool
 ) -> _CheckResult | None:
     """Check a single task for unfired post_stop hook.  Returns None if ok."""
-    meta_path = _task_meta_path(pid, tid)
-    if meta_path is None or not meta_path.is_file():
+    if not is_valid_project_id(pid) or not is_task_id(tid):
         return None
-
+    meta_dir = tasks_meta_dir(pid)
     try:
-        meta = _yaml_load(meta_path.read_text()) or {}
+        meta = _read_task_meta(meta_dir, tid)
     except Exception:
-        return ("warn", f"Task {pid}/{tid}", f"bad metadata: {meta_path}")
+        return ("warn", f"Task {pid}/{tid}", f"bad metadata: {_meta_path(meta_dir, tid)}")
+    if meta is None:
+        return None
+    meta_path = _meta_path(meta_dir, tid)
 
     mode = meta.get("mode")
     if not mode:
@@ -274,12 +287,14 @@ def _check_task_shield_annotation(
     TUI (which only know the container name) to the wrong state dir, or to
     nothing at all.  Non-shielded containers and stopped ones are skipped.
     """
-    meta_path = _task_meta_path(pid, tid)
-    if meta_path is None or not meta_path.is_file():
+    if not is_valid_project_id(pid) or not is_task_id(tid):
         return None
+    meta_dir = tasks_meta_dir(pid)
     try:
-        meta = _yaml_load(meta_path.read_text()) or {}
+        meta = _read_task_meta(meta_dir, tid)
     except Exception:  # noqa: BLE001
+        return None
+    if meta is None:
         return None
     mode = meta.get("mode")
     if not mode:
@@ -329,9 +344,7 @@ def _check_unfired_hooks(
         if not meta_dir.is_dir():
             continue
 
-        task_ids = (
-            [f.stem for f in meta_dir.glob(_TASK_META_GLOB)] if task_id is None else [task_id]
-        )
+        task_ids = list(_iter_task_ids(meta_dir)) if task_id is None else [task_id]
         for tid in task_ids:
             result = _check_task_hook(pid, tid, project, fix=fix)
             if result:
@@ -353,9 +366,7 @@ def _check_shield_annotations(project_id: str | None, task_id: str | None) -> li
         meta_dir = tasks_meta_dir(pid)
         if not meta_dir.is_dir():
             continue
-        task_ids = (
-            [f.stem for f in meta_dir.glob(_TASK_META_GLOB)] if task_id is None else [task_id]
-        )
+        task_ids = list(_iter_task_ids(meta_dir)) if task_id is None else [task_id]
         for tid in task_ids:
             result = _check_task_shield_annotation(pid, tid, project)
             if result:
@@ -490,8 +501,7 @@ def _stream_containers(
         meta_dir = tasks_meta_dir(pid)
         if not meta_dir.is_dir():
             continue
-        for meta_file in meta_dir.glob(_TASK_META_GLOB):
-            tid = meta_file.stem
+        for tid in _iter_task_ids(meta_dir):
             run_container_doctor(
                 pid,
                 tid,

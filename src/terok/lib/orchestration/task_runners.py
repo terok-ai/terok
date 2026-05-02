@@ -49,7 +49,7 @@ from ..util.ansi import (
     yellow as _yellow,
 )
 from ..util.net import url_host
-from ..util.yaml import dump as _yaml_dump, load as _yaml_load
+from ..util.yaml import load as _yaml_load
 from .agent_config import resolve_agent_config
 from .container_exec import container_git_diff
 from .environment import build_task_env_and_volumes, ensure_vault
@@ -57,6 +57,8 @@ from .hooks import run_hook
 from .ports import assign_web_port, release_web_port
 from .tasks import (
     CONTAINER_TEROK_CONFIG,
+    _dossier_path,
+    _write_task_meta,
     container_name,
     load_task_meta,
     task_new,
@@ -463,12 +465,13 @@ def _run_container(
 ) -> None:
     """Launch a detached task container, annotated for clearance enrichment.
 
-    Three ``ai.terok.*`` OCI annotations bind the container to its task
-    identity so clearance popups can render "Task: project/task_id ·
-    name" instead of raw short IDs: project, task_id, and
-    task_meta_path.  The meta-path annotation carries the YAML path
-    (not a snapshot of the name) so a rename mid-run surfaces the
-    fresh label in the next popup.
+    A single ``dossier.meta_path`` OCI annotation binds the container
+    to its task identity: it points at the wire-dossier JSON file
+    terok writes per task (``{project, task, name}`` in wire shape).
+    Shield rereads that file on every event emit, so a task rename
+    mid-run surfaces the fresh label in the next popup without touching
+    the annotation.  Project/task IDs lived as separate annotations in
+    earlier iterations; the JSON file made them redundant.
 
     Podman command assembly (userns, shield/bypass, GPU, env redaction,
     CDI detection) is delegated to `AgentRunner.launch_prepared`.
@@ -489,20 +492,15 @@ def _run_container(
         command: Optional command + args appended after the image name.
         hooks: Optional lifecycle callbacks fired around the launch.
     """
-    # OCI annotations picked up by ``terok_clearance.IdentityResolver``
-    # to render task-aware clearance popups.  Shield writes its own set
-    # through the same path; these are additive.  The ``task_meta_path``
-    # annotation is a data contract: clearance reads the YAML at that
-    # path on every dispatch, so a ``task_rename`` mid-run surfaces the
-    # fresh name in the next popup without touching the annotation.
-    task_meta_path = tasks_meta_dir(project.id) / f"{task_id}.yml"
+    # OCI annotation under the ``dossier.*`` namespace flows through to
+    # the shield reader, which picks it up at hook spawn time and uses
+    # the pointed-at JSON file as ``ClearanceEvent.dossier`` on every
+    # event.  The JSON file IS the wire dossier — wire-shape keys, no
+    # projection, no snapshot — so one annotation is enough.
+    task_dossier_path = _dossier_path(tasks_meta_dir(project.id), task_id)
     annotations = [
         "--annotation",
-        f"ai.terok.project={project.id}",
-        "--annotation",
-        f"ai.terok.task={task_id}",
-        "--annotation",
-        f"ai.terok.task_meta_path={task_meta_path}",
+        f"dossier.meta_path={task_dossier_path}",
     ]
     merged_args = annotations + list(extra_args or ()) + _project_runtime_flags(project)
     try:
@@ -595,7 +593,7 @@ def task_run_cli(
         _apply_shield_policy(project, cname, task_dir, is_restart=True)
         meta["mode"] = "cli"
         meta["ready_at"] = datetime.now(UTC).isoformat()
-        meta_path.write_text(_yaml_dump(meta))
+        _write_task_meta(meta_path, meta)
         print("Container started.")
         _print_login_instructions(project.id, task_id, cname, color_enabled)
         return
@@ -683,7 +681,7 @@ def task_run_cli(
     meta["unrestricted"] = unrestricted
     if preset:
         meta["preset"] = preset
-    meta_path.write_text(_yaml_dump(meta))
+    _write_task_meta(meta_path, meta)
 
     color_enabled = _supports_color()
     print(
@@ -762,7 +760,7 @@ def task_run_toad(
     meta["unrestricted"] = unrestricted
     if preset:
         meta["preset"] = preset
-    meta_path.write_text(_yaml_dump(meta))
+    _write_task_meta(meta_path, meta)
 
     # Preserve the address family when the public host is a loopback — binding
     # ::1 to 127.0.0.1 would make the URL we print (``http://[::1]:…``)
@@ -845,7 +843,7 @@ def task_run_toad(
     )
 
     meta["ready_at"] = datetime.now(UTC).isoformat()
-    meta_path.write_text(_yaml_dump(meta))
+    _write_task_meta(meta_path, meta)
 
     color_enabled = _supports_color()
     url = _toad_browser_url(pub_host, port, token)
@@ -1035,7 +1033,7 @@ def task_run_headless(request: HeadlessRunRequest) -> str:
     meta["unrestricted"] = unrestricted
     if request.preset:
         meta["preset"] = request.preset
-    meta_path.write_text(_yaml_dump(meta))
+    _write_task_meta(meta_path, meta)
 
     color_enabled = _supports_color()
 
@@ -1174,7 +1172,7 @@ def task_followup_headless(
 
     # Clear previous exit_code so effective_status shows "running" until new exit
     meta["exit_code"] = None
-    meta_path.write_text(_yaml_dump(meta))
+    _write_task_meta(meta_path, meta)
 
     color_enabled = _supports_color()
 

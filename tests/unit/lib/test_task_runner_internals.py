@@ -467,20 +467,17 @@ class TestRunContainer:
             )
 
         spec = captured_runspec(sandbox_factory)
-        # _run_container prepends three annotations
-        # (``ai.terok.{project,task,task_meta_path}``) so the clearance
-        # IdentityResolver can map container → task metadata; the
-        # caller-supplied extras come after.
-        from terok.lib.orchestration.tasks import tasks_meta_dir
+        # _run_container prepends a single ``dossier.meta_path`` annotation
+        # — the file at that path *is* the wire dossier (wire-shape JSON,
+        # ``{project, task, name}``).  The shield reader rereads it on
+        # every emit so renames surface live.  Caller-supplied extras come
+        # after.
+        from terok.lib.orchestration.tasks import _dossier_path, tasks_meta_dir
 
-        expected_meta_path = tasks_meta_dir("p1") / "t1.yml"
+        expected_dossier_path = _dossier_path(tasks_meta_dir("p1"), "t1")
         assert spec.extra_args == (
             "--annotation",
-            "ai.terok.project=p1",
-            "--annotation",
-            "ai.terok.task=t1",
-            "--annotation",
-            f"ai.terok.task_meta_path={expected_meta_path}",
+            f"dossier.meta_path={expected_dossier_path}",
             "-p",
             "8080:80",
         )

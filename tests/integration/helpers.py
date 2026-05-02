@@ -188,7 +188,35 @@ class TerokIntegrationEnv:
 
     def task_meta_path(self, project_id: str, task_id: str) -> Path:
         """Return the metadata YAML path for *task_id*."""
-        return self.task_meta_dir(project_id) / f"{task_id}.yml"
+        return self.task_meta_dir(project_id) / f"{task_id}_meta.yml"
+
+    def task_dossier_path(self, project_id: str, task_id: str) -> Path:
+        """Return the wire-dossier JSON path for *task_id*."""
+        return self.task_meta_dir(project_id) / f"{task_id}_dossier.json"
+
+    def task_meta(self, project_id: str, task_id: str) -> dict:
+        """Return the merged on-disk task meta — dossier (JSON) ∪ bookkeeping (YAML).
+
+        Mirrors the in-memory shape ``_read_task_meta`` produces for terok
+        internal callers, so integration assertions can ask for ``name``
+        / ``mode`` / ``web_port`` / etc. without caring which file each
+        field actually lives in.
+        """
+        from ruamel.yaml import YAML
+
+        result: dict = {}
+        yml = self.task_meta_path(project_id, task_id)
+        if yml.is_file():
+            data = YAML(typ="rt").load(yml.read_text(encoding="utf-8")) or {}
+            result.update({str(k): v for k, v in data.items()})
+        dossier = self.task_dossier_path(project_id, task_id)
+        if dossier.is_file():
+            text = dossier.read_text(encoding="utf-8")
+            wire = json.loads(text) if text.strip() else {}
+            for src, dst in (("project", "project_id"), ("task", "task_id"), ("name", "name")):
+                if wire.get(src):
+                    result[dst] = wire[src]
+        return result
 
     def task_archive_root(self, project_id: str) -> Path:
         """Return the archive root for deleted tasks."""

@@ -125,17 +125,15 @@ class _LifecyclePosted(Message):
 def _render_notification(message: _NotificationPosted) -> str:
     """Format a notification for the TUI log + pending list.
 
-    When both the container name and ID arrived on the bus, surface them
-    together as ``name (id)`` — the TUI has the space and operators running
-    multiple tasks benefit from the disambiguation.  When only one is
-    available (older hubs, resolver miss), the subscriber-generated body
-    is already correct; pass it through untouched.
+    The subscriber's body already does dossier-aware identity rendering
+    via ``_identity_label`` (``project/task · name`` or fall back to the
+    bare container slug) — the TUI just concatenates the title and body
+    so every consumer of the same event renders identically.  An earlier
+    iteration here recomposed ``Container: {name} ({id})`` from the
+    notifier's typed kwargs and silently diverged from the desktop
+    popup; one renderer, one source of truth, no divergence.
     """
-    if not (message.container_name and message.container_id):
-        return f"{message.summary}  {message.body}"
-    body_lines = message.body.split("\n", 1)
-    tail = f"\n{body_lines[1]}" if len(body_lines) == 2 else ""
-    return f"{message.summary}  Container: {message.container_name} ({message.container_id}){tail}"
+    return f"{message.summary}  {message.body}"
 
 
 # ---------------------------------------------------------------------------
@@ -227,18 +225,17 @@ class ClearanceScreen(screen.Screen[None]):
         """Connect to the clearance hub and start the event subscriber."""
         log = self.query_one(_ID_EVENT_LOG, RichLog)
         try:
-            from terok_clearance import CallbackNotifier, EventSubscriber, IdentityResolver
-            from terok_sandbox import create_container_inspector
+            from terok_clearance import CallbackNotifier, EventSubscriber
 
             self._notifier = CallbackNotifier(
                 on_notify=self._on_notify,
                 on_container_started=self._on_container_started,
                 on_container_exited=self._on_container_exited,
             )
-            self._subscriber = EventSubscriber(
-                self._notifier,
-                identity_resolver=IdentityResolver(inspector=create_container_inspector()),
-            )
+            # Identity resolution is no longer a TUI concern: the shield
+            # reader resolves the orchestrator dossier at emit time and
+            # ships it on every event, so the subscriber just reads it.
+            self._subscriber = EventSubscriber(self._notifier)
             await self._subscriber.start()
             log.write(Text("Connected to clearance hub...", style=_STYLE_INFO))
         except Exception as exc:

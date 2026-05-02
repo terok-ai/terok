@@ -83,7 +83,10 @@ class TestTaskLifecycle:
         archive_root = terok_env.task_archive_root("demo")
         archived_entries = [entry for entry in archive_root.iterdir() if entry.is_dir()]
         assert archived_entries, "Expected task delete to create an archive entry"
-        assert any((entry / "task.yml").is_file() for entry in archived_entries)
+        # Archive snapshots are single-file JSON — one audience (operator
+        # browsing history), never reread by shield, so the live-task
+        # dossier/meta split brings no value here.
+        assert any((entry / "task.json").is_file() for entry in archived_entries)
 
         archived = terok_env.run_cli("task", "archive", "list", "demo")
         assert f"#{tid}: ship-it" in archived.stdout

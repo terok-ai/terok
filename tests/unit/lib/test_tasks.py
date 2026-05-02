@@ -1,7 +1,9 @@
 # SPDX-FileCopyrightText: 2025 Jiri Vyskocil
+# SPDX-FileCopyrightText: 2026 Jiri Vyskocil
 # SPDX-License-Identifier: Apache-2.0
 
 import contextlib
+import json
 import os
 import re
 import subprocess
@@ -25,6 +27,7 @@ from terok.lib.orchestration.task_runners import (
 )
 from terok.lib.orchestration.tasks import (
     TaskDeleteResult,
+    _read_task_meta,
     get_tasks,
     get_workspace_git_diff,
     task_delete,
@@ -32,7 +35,6 @@ from terok.lib.orchestration.tasks import (
     task_new,
 )
 from terok.lib.util.net import url_host
-from terok.lib.util.yaml import dump as yaml_dump, load as yaml_load
 from terok.tui.clipboard import (
     copy_to_clipboard_detailed,
     get_clipboard_helper_status,
@@ -41,7 +43,6 @@ from tests.test_utils import (
     assert_task_id,
     captured_runspec,
     mock_git_config,
-    parse_meta_value,
     project_env,
     write_project,
 )
@@ -113,14 +114,13 @@ class TestTask:
             returned_id = task_new(project_id)
             assert_task_id(returned_id)
             meta_dir = ctx.state_dir / "projects" / project_id / "tasks"
-            meta_path = meta_dir / f"{returned_id}.yml"
+            meta_path = meta_dir / f"{returned_id}_dossier.json"
             assert meta_path.is_file()
 
-            meta_text = meta_path.read_text(encoding="utf-8")
-            assert parse_meta_value(meta_text, "task_id") == returned_id
-            workspace_value = parse_meta_value(meta_text, "workspace")
-            assert workspace_value is not None
-            assert workspace_value != ""
+            meta = _read_task_meta(meta_dir, returned_id) or {}
+            assert meta["task_id"] == returned_id
+            workspace_value = meta.get("workspace")
+            assert workspace_value
             workspace = Path(workspace_value)  # type: ignore[arg-type]
             assert workspace.is_dir()
 
@@ -139,6 +139,46 @@ class TestTask:
             assert not meta_path.exists()
             assert not workspace.exists()
 
+    def test_read_task_meta_backfills_legacy_project_id(self) -> None:
+        """A pre-``project_id``-field record gets the field populated from the meta-dir path.
+
+        Tasks created before ``project_id`` joined ``TaskMeta`` had only
+        ``task_id`` on disk; without backfill, the next ``_write_task_meta``
+        would land an empty wire dossier (no ``project`` key) and the
+        clearance UI would render a half-identity until some unrelated
+        write happened to repopulate the field.  The backfill leans on
+        the meta-dir path layout (``…/projects/<project_id>/tasks/``)
+        rather than threading ``project_id`` through every reader.
+        """
+        from terok.lib.util.yaml import dump as yaml_dump
+
+        project_id = "proj_backfill"
+        with project_env(
+            f"project:\n  id: {project_id}\n",
+            project_id=project_id,
+        ) as ctx:
+            meta_dir = ctx.state_dir / "projects" / project_id / "tasks"
+            meta_dir.mkdir(parents=True, exist_ok=True)
+            tid = "x9y1z"
+            # Seed a legacy single-YAML record (pre-self-describing,
+            # pre-project_id-field).  Mimics what an upgrading operator
+            # has on disk.
+            (meta_dir / f"{tid}.yml").write_text(
+                yaml_dump({"task_id": tid, "name": "diligent-octopus", "mode": "cli"})
+            )
+
+            meta = _read_task_meta(meta_dir, tid)
+
+            assert meta is not None
+            assert meta["project_id"] == project_id
+            # The on-disk dossier now carries the wire shape.
+            dossier = json.loads((meta_dir / f"{tid}_dossier.json").read_text(encoding="utf-8"))
+            assert dossier == {
+                "project": project_id,
+                "task": tid,
+                "name": "diligent-octopus",
+            }
+
     def test_task_new_records_created_at(self) -> None:
         """task_new writes an ISO 8601 created_at timestamp that round-trips via get_tasks.
 
@@ -151,8 +191,8 @@ class TestTask:
             project_id=project_id,
         ) as ctx:
             tid = task_new(project_id)
-            meta_path = ctx.state_dir / "projects" / project_id / "tasks" / f"{tid}.yml"
-            meta = yaml_load(meta_path.read_text())
+            meta_dir = ctx.state_dir / "projects" / project_id / "tasks"
+            meta = _read_task_meta(meta_dir, tid) or {}
 
             assert "created_at" in meta
             parsed = datetime.fromisoformat(meta["created_at"])
@@ -190,13 +230,13 @@ class TestTask:
     def _patch_task_meta(ctx, project_id: str, tid: str, **updates) -> None:
         """Load a task's YAML metadata, apply updates, and write it back."""
         meta_dir = ctx.state_dir / "projects" / project_id / "tasks"
-        meta_path = meta_dir / f"{tid}.yml"
-        meta = yaml_load(meta_path.read_text())
+        meta_path = meta_dir / f"{tid}_dossier.json"
+        meta = json.loads(meta_path.read_text() or "{}")
         meta.update(updates)
         # Setting mode implies the task reached readiness (ready_at marker).
         if "mode" in updates and updates["mode"] is not None and "ready_at" not in updates:
             meta.setdefault("ready_at", "2025-01-01T00:00:00+00:00")
-        meta_path.write_text(yaml_dump(meta))
+        meta_path.write_text(json.dumps(meta, indent=2))
 
     @staticmethod
     def _task_list_output(project_id: str, states: dict[str, str | None], **filters: str) -> str:
@@ -614,12 +654,12 @@ class TestTask:
         ) as ctx:
             tid = task_new(project_id)
             meta_dir = ctx.state_dir / "projects" / project_id / "tasks"
-            meta_path = meta_dir / f"{tid}.yml"
+            meta_path = meta_dir / f"{tid}_dossier.json"
 
             # Simulate task was previously run
-            meta = yaml_load(meta_path.read_text())
+            meta = json.loads(meta_path.read_text() or "{}")
             meta["mode"] = "cli"
-            meta_path.write_text(yaml_dump(meta))
+            meta_path.write_text(json.dumps(meta, indent=2))
 
             cname = f"{project_id}-cli-{tid}"
             with (
@@ -635,7 +675,7 @@ class TestTask:
                 mock_runtime.container.return_value.start.assert_called_once_with()
 
                 # Verify metadata mode is preserved
-                meta = yaml_load(meta_path.read_text())
+                meta = _read_task_meta(meta_dir, tid) or {}
                 assert meta["mode"] == "cli"
 
     def test_get_workspace_git_diff_no_task(self) -> None:
@@ -670,10 +710,10 @@ class TestTask:
             tid = task_new(project_id)
             from terok.lib.orchestration.tasks import tasks_meta_dir
 
-            meta_path = tasks_meta_dir(project_id) / f"{tid}.yml"
-            meta = yaml_load(meta_path.read_text())
+            meta_path = tasks_meta_dir(project_id) / f"{tid}_dossier.json"
+            meta = json.loads(meta_path.read_text() or "{}")
             meta["mode"] = "cli"
-            meta_path.write_text(yaml_dump(meta))
+            meta_path.write_text(json.dumps(meta, indent=2))
 
             expected = "diff --git a/f.txt b/f.txt\n+line\n"
             with unittest.mock.patch(
@@ -694,10 +734,10 @@ class TestTask:
             tid = task_new(project_id)
             from terok.lib.orchestration.tasks import tasks_meta_dir
 
-            meta_path = tasks_meta_dir(project_id) / f"{tid}.yml"
-            meta = yaml_load(meta_path.read_text())
+            meta_path = tasks_meta_dir(project_id) / f"{tid}_dossier.json"
+            meta = json.loads(meta_path.read_text() or "{}")
             meta["mode"] = "run"
-            meta_path.write_text(yaml_dump(meta))
+            meta_path.write_text(json.dumps(meta, indent=2))
 
             expected = "diff --git a/f.txt b/f.txt\n+prev\n"
             with unittest.mock.patch(
@@ -718,10 +758,10 @@ class TestTask:
             tid = task_new(project_id)
             from terok.lib.orchestration.tasks import tasks_meta_dir
 
-            meta_path = tasks_meta_dir(project_id) / f"{tid}.yml"
-            meta = yaml_load(meta_path.read_text())
+            meta_path = tasks_meta_dir(project_id) / f"{tid}_dossier.json"
+            meta = json.loads(meta_path.read_text() or "{}")
             meta["mode"] = "cli"
-            meta_path.write_text(yaml_dump(meta))
+            meta_path.write_text(json.dumps(meta, indent=2))
 
             with unittest.mock.patch(
                 "terok.lib.orchestration.tasks.container_git_diff",
@@ -1079,9 +1119,9 @@ class TestResumeToadContainer:
         from terok.lib.orchestration.tasks import load_task_meta
 
         _, meta_path = load_task_meta(project.id, task_id, "toad")
-        meta = yaml_load(meta_path.read_text(encoding="utf-8"))
+        meta = json.loads(meta_path.read_text(encoding="utf-8") or "{}")
         meta.update({"mode": "toad", "web_port": port, "web_token": token})
-        meta_path.write_text(yaml_dump(meta))
+        meta_path.write_text(json.dumps(meta, indent=2))
         (project.tasks_root / str(task_id) / "agent-config").mkdir(parents=True, exist_ok=True)
 
     def test_resume_running_container_prints_tokenized_url(self, mock_runtime) -> None:
@@ -1189,10 +1229,10 @@ class TestTaskLogs:
         from terok.lib.core.paths import core_state_dir
 
         meta_dir = core_state_dir() / "projects" / project_id / "tasks"
-        meta_path = meta_dir / f"{task_id}.yml"
-        meta = yaml_load(meta_path.read_text()) or {}
+        meta_path = meta_dir / f"{task_id}_dossier.json"
+        meta = json.loads(meta_path.read_text() or "{}") or {}
         meta["mode"] = mode
-        meta_path.write_text(yaml_dump(meta))
+        meta_path.write_text(json.dumps(meta, indent=2))
         return task_id
 
     def test_unknown_task_raises(self) -> None:
@@ -1461,14 +1501,14 @@ class TestTaskArchive:
             with mock_git_config():
                 task_id = task_new(project_id)
                 meta_dir = ctx.state_dir / "projects" / project_id / "tasks"
-                meta_path = meta_dir / f"{task_id}.yml"
+                meta_path = meta_dir / f"{task_id}_dossier.json"
 
                 # Set mode in metadata (simulating a task that ran)
-                meta = yaml_load(meta_path.read_text()) or {}
+                meta = json.loads(meta_path.read_text() or "{}") or {}
                 meta["mode"] = "run"
                 meta["name"] = "test-task"
                 meta["exit_code"] = 0
-                meta_path.write_text(yaml_dump(meta))
+                meta_path.write_text(json.dumps(meta, indent=2))
 
                 # Create logs dir to simulate persisted logs
                 task_dir = ctx.state_dir / "tasks" / project_id / task_id
@@ -1504,10 +1544,10 @@ class TestTaskArchive:
                 assert task_id in archive_entry.name
                 assert "test-task" in archive_entry.name
 
-                # Archive should contain task.yml
-                archived_meta = archive_entry / "task.yml"
+                # Archive should contain task.json
+                archived_meta = archive_entry / "task.json"
                 assert archived_meta.is_file()
-                archived_data = yaml_load(archived_meta.read_text())
+                archived_data = json.loads(archived_meta.read_text() or "{}")
                 assert archived_data["task_id"] == task_id
                 assert archived_data["name"] == "test-task"
 
@@ -1545,9 +1585,9 @@ class TestTaskArchive:
                 archives = list(archive_root.iterdir())
                 assert len(archives) == 1
 
-                # Should have task.yml but no logs subdir
+                # Should have task.json but no logs subdir
                 archive_entry = archives[0]
-                assert (archive_entry / "task.yml").is_file()
+                assert (archive_entry / "task.json").is_file()
                 assert not (archive_entry / "logs").exists()
 
     def test_list_archived_tasks(self) -> None:
@@ -1566,14 +1606,15 @@ class TestTaskArchive:
             for i, ts in enumerate(["20260301T100000Z", "20260302T100000Z", "20260303T100000Z"]):
                 entry_dir = archive_root / f"{ts}_{i + 1}_task-{i + 1}"
                 entry_dir.mkdir()
-                (entry_dir / "task.yml").write_text(
-                    yaml_dump(
+                (entry_dir / "task.json").write_text(
+                    json.dumps(
                         {
                             "task_id": str(i + 1),
                             "name": f"task-{i + 1}",
                             "mode": "run",
                             "exit_code": 0,
-                        }
+                        },
+                        indent=2,
                     )
                 )
 
@@ -1743,7 +1784,7 @@ class TestTaskDeleteWarnings:
                         orig_unlink = Path.unlink
 
                         def _guarded_unlink(self, *a, **kw):
-                            if "tasks" in str(self) and self.suffix == ".yml":
+                            if "tasks" in str(self) and self.suffix == ".json":
                                 raise unlink_side_effect
                             return orig_unlink(self, *a, **kw)
 

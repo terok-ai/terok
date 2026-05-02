@@ -13,7 +13,6 @@ from typing import Any
 
 import pytest
 
-from terok.lib.util.yaml import load as yaml_load
 from tests.test_utils import assert_task_id
 from tests.testnet import EXAMPLE_UPSTREAM_URL, LOCALHOST, localhost_url
 
@@ -109,7 +108,7 @@ class TestLaunchWorkflows:
         tid = _extract_task_id(result.stdout)
         assert_task_id(tid)
         cli_container = f"{PROJECT_ID}-cli-{tid}"
-        meta = yaml_load(terok_env.task_meta_path(PROJECT_ID, tid).read_text(encoding="utf-8"))
+        meta = terok_env.task_meta(PROJECT_ID, tid)
         state = _load_fake_podman_state(state_path)
         args = _container_args(state, cli_container)
 
@@ -144,7 +143,7 @@ class TestLaunchWorkflows:
         tid = _extract_task_id(result.stdout)
         web_port = _extract_web_port(result.stdout)
         toad_container = f"{PROJECT_ID}-toad-{tid}"
-        meta = yaml_load(terok_env.task_meta_path(PROJECT_ID, tid).read_text(encoding="utf-8"))
+        meta = terok_env.task_meta(PROJECT_ID, tid)
         state = _load_fake_podman_state(state_path)
         args = _container_args(state, toad_container)
 
