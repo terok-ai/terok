@@ -430,13 +430,13 @@ graph TB
 
 ## Shared Directories
 
-Some configuration and credentials need to be shared across tasks. terok
-mounts two kinds of shared directories into containers:
+Some configuration needs to be shared across tasks. terok mounts two
+kinds of shared directories into containers:
 
 ### Global shared directories
 
 These are shared by **all tasks across all projects** and contain
-agent credentials and configuration:
+agent settings, memories, and *phantom* credential markers:
 
 ```text
 ~/.local/share/terok/agent/mounts/
@@ -448,8 +448,13 @@ agent credentials and configuration:
 ```
 
 These directories persist across container restarts and task
-recreation. When you log in to an agent provider in one container, the
-credentials are available in all future containers.
+recreation. After `terok auth <provider>`, future tasks have brokered
+authenticated access via the vault — the real credentials live in the
+vault DB on the host, never in these mounts. The credential file
+inside each shared dir holds only a phantom marker; the token broker
+swaps it for the real value at request time. The credential file is
+mounted read-only into task containers so an in-container login flow
+cannot replace the phantom with a real token (see issue #873).
 
 ### Per-project SSH keys
 

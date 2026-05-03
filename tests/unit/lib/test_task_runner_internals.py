@@ -9,6 +9,7 @@ and the RunSpec delegation path through _run_container.
 
 from __future__ import annotations
 
+import contextlib
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -283,75 +284,130 @@ class TestApplyShieldPolicy:
             _apply_shield_policy(project, "ctr", tmp_path, is_restart=True)
 
 
-# ── _maybe_deny_anthropic_api ────────────────────────────
+# ── _apply_auth_protect_denies ────────────────────────────
 
 
-class TestMaybeDenyAnthropicApi:
-    """Verify shield deny for api.anthropic.com when Claude OAuth is proxied."""
+class TestApplyAuthProtectDenies:
+    """Verify roster-driven deny for agent OAuth/API endpoints."""
 
-    def test_noop_when_not_proxied(self) -> None:
-        """No-op when Claude OAuth is not proxied."""
-        from terok.lib.orchestration.task_runners import _maybe_deny_anthropic_api
+    @staticmethod
+    def _route(upstream: str, oauth_refresh: dict | None = None) -> MagicMock:
+        """Build a mock VaultRoute with the relevant fields set."""
+        r = MagicMock()
+        r.upstream = upstream
+        r.oauth_refresh = oauth_refresh
+        return r
 
-        with patch(
-            "terok.lib.core.config.is_claude_oauth_proxied",
-            return_value=False,
-        ):
-            _maybe_deny_anthropic_api("ctr", MOCK_TASK_DIR)
+    def _patches(
+        self,
+        *,
+        routes: dict,
+        exposed: frozenset[str] = frozenset(),
+        allow_entries: frozenset[str] = frozenset(),
+        shield_obj: MagicMock | None = None,
+    ) -> tuple:
+        """Build the standard patch stack for these tests."""
+        roster = MagicMock()
+        roster.vault_routes = routes
+        return (
+            patch("terok_executor.get_roster", return_value=roster),
+            patch(
+                "terok.lib.core.config.exposed_credential_providers",
+                return_value=exposed,
+            ),
+            patch(
+                "terok.lib.orchestration.task_runners._resolved_allow_entries",
+                return_value=allow_entries,
+            ),
+            patch("terok_sandbox.make_shield", return_value=shield_obj or MagicMock()),
+        )
 
-    def test_calls_shield_deny_when_proxied(self, tmp_path: Path) -> None:
-        """Calls shield.deny('api.anthropic.com') when Claude OAuth is proxied."""
-        from terok.lib.orchestration.task_runners import _maybe_deny_anthropic_api
-
-        mock_shield = MagicMock()
-        with (
-            patch("terok.lib.core.config.is_claude_oauth_proxied", return_value=True),
-            patch("terok_sandbox.make_shield", return_value=mock_shield),
-        ):
-            _maybe_deny_anthropic_api("ctr", tmp_path)
-
-        mock_shield.deny.assert_called_once_with("ctr", "api.anthropic.com")
-
-    def test_warns_on_failure(self) -> None:
-        """Emits a warning when shield.deny raises."""
-        from terok.lib.orchestration.task_runners import _maybe_deny_anthropic_api
-
-        with (
-            patch("terok.lib.core.config.is_claude_oauth_proxied", return_value=True),
-            patch("terok_sandbox.make_shield", side_effect=RuntimeError("nft missing")),
-            pytest.warns(match="shield deny api.anthropic.com"),
-        ):
-            _maybe_deny_anthropic_api("ctr", MOCK_TASK_DIR)
-
-
-# ── _maybe_deny_openai_api ────────────────────────────
-
-
-class TestMaybeDenyOpenAiApi:
-    """Verify shield deny for api.openai.com when Codex OAuth is proxied."""
-
-    def test_noop_when_not_proxied(self) -> None:
-        """No-op when Codex OAuth proxying is disabled."""
-        from terok.lib.orchestration.task_runners import _maybe_deny_openai_api
-
-        with patch(
-            "terok.lib.core.config.is_codex_oauth_proxied",
-            return_value=False,
-        ):
-            _maybe_deny_openai_api("ctr", MOCK_TASK_DIR)
-
-    def test_calls_shield_deny_when_proxied(self, tmp_path: Path) -> None:
-        """Calls shield.deny('api.openai.com') when Codex OAuth is proxied."""
-        from terok.lib.orchestration.task_runners import _maybe_deny_openai_api
+    def test_denies_upstream_and_oauth_refresh_for_each_provider(self, tmp_path: Path) -> None:
+        """Both upstream and oauth_refresh.token_url are denied per provider."""
+        from terok.lib.orchestration.task_runners import _apply_auth_protect_denies
 
         mock_shield = MagicMock()
-        with (
-            patch("terok.lib.core.config.is_codex_oauth_proxied", return_value=True),
-            patch("terok_sandbox.make_shield", return_value=mock_shield),
-        ):
-            _maybe_deny_openai_api("ctr", tmp_path)
+        routes = {
+            "claude": self._route(
+                "https://api.anthropic.com",
+                oauth_refresh={"token_url": "https://platform.claude.com/v1/oauth/token"},
+            ),
+            "vibe": self._route("https://api.mistral.ai"),
+        }
+        with contextlib.ExitStack() as stack:
+            for p in self._patches(routes=routes, shield_obj=mock_shield):
+                stack.enter_context(p)
+            _apply_auth_protect_denies("ctr", tmp_path)
 
-        mock_shield.deny.assert_called_once_with("ctr", "api.openai.com")
+        called_hosts = {c.args[1] for c in mock_shield.deny.call_args_list}
+        assert called_hosts == {
+            "api.anthropic.com",
+            "platform.claude.com",
+            "api.mistral.ai",
+        }
+
+    def test_skips_exposed_providers(self, tmp_path: Path) -> None:
+        """Providers in expose_credential_providers don't get denies."""
+        from terok.lib.orchestration.task_runners import _apply_auth_protect_denies
+
+        mock_shield = MagicMock()
+        routes = {"claude": self._route("https://api.anthropic.com")}
+        with contextlib.ExitStack() as stack:
+            for p in self._patches(
+                routes=routes, exposed=frozenset({"claude"}), shield_obj=mock_shield
+            ):
+                stack.enter_context(p)
+            _apply_auth_protect_denies("ctr", tmp_path)
+
+        mock_shield.deny.assert_not_called()
+
+    def test_skips_glab(self, tmp_path: Path) -> None:
+        """glab is excluded — gitlab.com mixes git and API traffic."""
+        from terok.lib.orchestration.task_runners import _apply_auth_protect_denies
+
+        mock_shield = MagicMock()
+        routes = {"glab": self._route("https://gitlab.com")}
+        with contextlib.ExitStack() as stack:
+            for p in self._patches(routes=routes, shield_obj=mock_shield):
+                stack.enter_context(p)
+            _apply_auth_protect_denies("ctr", tmp_path)
+
+        mock_shield.deny.assert_not_called()
+
+    def test_opt_out_via_allow_profile(self, tmp_path: Path) -> None:
+        """Hosts in the resolved allow profile set are skipped."""
+        from terok.lib.orchestration.task_runners import _apply_auth_protect_denies
+
+        mock_shield = MagicMock()
+        routes = {"claude": self._route("https://api.anthropic.com")}
+        with contextlib.ExitStack() as stack:
+            for p in self._patches(
+                routes=routes,
+                allow_entries=frozenset({"api.anthropic.com"}),
+                shield_obj=mock_shield,
+            ):
+                stack.enter_context(p)
+            _apply_auth_protect_denies("ctr", tmp_path)
+
+        mock_shield.deny.assert_not_called()
+
+    def test_warns_on_per_host_failure(self, tmp_path: Path) -> None:
+        """A single deny() failure warns but doesn't abort the loop."""
+        from terok.lib.orchestration.task_runners import _apply_auth_protect_denies
+
+        mock_shield = MagicMock()
+        mock_shield.deny.side_effect = [RuntimeError("nft missing"), None]
+        routes = {
+            "claude": self._route("https://api.anthropic.com"),
+            "vibe": self._route("https://api.mistral.ai"),
+        }
+        with contextlib.ExitStack() as stack:
+            for p in self._patches(routes=routes, shield_obj=mock_shield):
+                stack.enter_context(p)
+            with pytest.warns(match="auth-protect: deny"):
+                _apply_auth_protect_denies("ctr", tmp_path)
+
+        assert mock_shield.deny.call_count == 2
 
 
 # ── _run_container ────────────────────────────────────────

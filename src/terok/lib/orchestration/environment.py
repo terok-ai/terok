@@ -25,7 +25,11 @@ from terok_sandbox import (
     get_gate_server_port,
 )
 
-from ..core.config import make_sandbox_config, sandbox_live_mounts_dir
+from ..core.config import (
+    exposed_credential_providers,
+    make_sandbox_config,
+    sandbox_live_mounts_dir,
+)
 from ..core.projects import ProjectConfig
 from ..util.host_cmd import WORKSPACE_DANGEROUS_DIRNAME
 
@@ -463,6 +467,7 @@ def build_task_env_and_volumes(
             timezone=project.timezone,
             enabled_vault_patch_providers=enabled_patch_providers,
             disabled_vault_patch_providers=disabled_patch_providers,
+            expose_credential_providers=exposed_credential_providers(),
         ),
         roster,
         # bypass → skip proxy entirely (no tokens, no check)
