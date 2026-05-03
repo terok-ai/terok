@@ -8,7 +8,6 @@ login, restart, follow-up, log viewing, and diff copying.
 """
 
 import io
-import shlex
 from collections.abc import Callable
 from contextlib import redirect_stdout
 from pathlib import Path
@@ -34,7 +33,6 @@ from ..lib.domain.facade import (
 )
 from ..lib.orchestration.autopilot import wait_for_container_exit
 from ..lib.orchestration.tasks import (
-    CONTAINER_TEROK_CONFIG,
     agent_config_dir,
     container_name,
     generate_task_name,
@@ -53,32 +51,10 @@ from .screens import (
 )
 from .widgets import TaskList
 
-
-def _build_interactive_agent_command(provider: object, prompt: str | None) -> str:
-    """Build shell command to launch an agent interactively with optional prompt.
-
-    Uses the binary as a positional command — the prompt is a first-turn
-    argument, NOT the headless ``-p`` flag.  The agent runs interactively
-    inside tmux so the user can re-attach later.
-    """
-    if not prompt:
-        return provider.binary
-    return f"{provider.binary} {shlex.quote(prompt)}"
-
-
+# Per-task file the agent wrappers (terok-executor) consume one-shot, and the
+# bashrc banner (also from terok-executor) displays after the help banner.
+# Filename is the contract; the wrapper hard-codes the same path.
 _INITIAL_PROMPT_FILENAME = "initial-prompt.txt"
-_INITIAL_PROMPT_PATH = f"{CONTAINER_TEROK_CONFIG}/{_INITIAL_PROMPT_FILENAME}"
-
-# Shell wrapper for bash-agent launches with an initial prompt. The prompt
-# travels via the file mount, never as a shell argument — wrapper string
-# contains zero user-data interpolation.
-_BASH_INITIAL_PROMPT_WRAPPER = (
-    f"p={shlex.quote(_INITIAL_PROMPT_PATH)}; "
-    '[ -s "$p" ] && { '
-    f'printf "\\n\\033[1;33m\U0001f4dd Initial prompt\\033[0m \\033[2m(%s)\\033[0m\\n" {shlex.quote(_INITIAL_PROMPT_PATH)}; '
-    'cat "$p"; printf "\\n\\n"; '
-    "}; exec bash -i"
-)
 
 
 def _save_initial_prompt(project_id: str, task_id: str, prompt: str | None) -> None:
@@ -87,13 +63,6 @@ def _save_initial_prompt(project_id: str, task_id: str, prompt: str | None) -> N
         return
     path = agent_config_dir(project_id, task_id) / _INITIAL_PROMPT_FILENAME
     path.write_text(prompt + "\n", encoding="utf-8")
-
-
-def _build_bash_login_cmd(base_cmd: list[str], prompt: str | None) -> list[str]:
-    """Login command for the bash agent, surfacing the saved initial prompt if any."""
-    if not prompt:
-        return base_cmd
-    return [*base_cmd, "bash", "-lc", _BASH_INITIAL_PROMPT_WRAPPER]
 
 
 def _login_title(project_id: str, task_id: str, task_name: str) -> str:
@@ -294,10 +263,15 @@ class TaskActionsMixin:
             self.notify(str(e))
             return
 
+        # Stash the prompt where the agent wrappers (terok-executor) and the
+        # interactive bash banner can pick it up.  Bash displays it after
+        # `hilfe --kurz`; the per-provider wrapper consumes it one-shot on
+        # bare invocation and renames the file so subsequent runs --resume
+        # the saved session instead of replaying the prompt.
         _save_initial_prompt(pid, tid, prompt)
 
         if agent == "bash":
-            cmd = _build_bash_login_cmd(base_cmd, prompt)
+            cmd = base_cmd
         else:
             from terok_executor import AGENT_PROVIDERS
 
@@ -305,8 +279,7 @@ class TaskActionsMixin:
             if not provider:
                 self.notify(f"Unknown agent: {agent}")
                 return
-            agent_cmd = _build_interactive_agent_command(provider, prompt)
-            cmd = [*base_cmd, "bash", "-lc", agent_cmd]
+            cmd = [*base_cmd, "bash", "-lc", provider.binary]
 
         await self._launch_terminal_session(
             cmd, title=_login_title(pid, tid, task_name), cname=cname
