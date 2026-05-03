@@ -5,15 +5,21 @@
 
 Plan-then-execute architecture: generate a release plan (JSON), validate
 it, then execute step-by-step with crash-recovery.  Supports full and
-GitHub-prerelease releases, and the "release from PR" workflow for
-chained feature branches.
+GitHub-prerelease releases, master and from-PR sources, and any mix.
+
+Chain spec grammar (positional arg to ``quick`` and ``plan``):
+    pkg              one package (master)
+    pkg:NUM          release pkg from PR #NUM
+    A..B             range; intermediates filled from master
+    A,B,C            list (downstream closure auto-includes packages whose
+                     pyproject pin to a released package needs bumping)
+    A,B:NUM..C       any combination
 
 Usage:
-    python3 tools/terok-release-chain.py quick sandbox              # single package
-    python3 tools/terok-release-chain.py quick sandbox..terok        # chain
-    python3 tools/terok-release-chain.py quick sandbox..terok --open-top  # chain, top=deps-only
-    python3 tools/terok-release-chain.py quick --from-prs sandbox:42,executor:55
-    python3 tools/terok-release-chain.py quick --from-prs s:42,e:55,t:706 --open-top
+    python3 tools/terok-release-chain.py quick sandbox
+    python3 tools/terok-release-chain.py quick sandbox..terok --open-top
+    python3 tools/terok-release-chain.py quick sandbox:42,executor:55,terok:706 --open-top
+    python3 tools/terok-release-chain.py quick clearance,sandbox:221..terok
     python3 tools/terok-release-chain.py open feat/comms clearance
     python3 tools/terok-release-chain.py plan sandbox..terok -o plan.json
     python3 tools/terok-release-chain.py simulate plan.json
@@ -28,6 +34,7 @@ import re
 import subprocess
 import time
 import urllib.request
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from enum import StrEnum
@@ -203,6 +210,11 @@ class PackagePlan(BaseModel):
     new_version: str | None = None
     pr_number: int | None = None
     pr_branch: str | None = None
+    pr_url: str | None = None
+    """Populated up-front for ``:PR`` overrides; set by ``PR_CREATE`` for
+    master releases as soon as the script opens its own PR.  Surfaced at the
+    operator-attention points (per-package banner, merge-with-failures
+    prompt, exception handler, end-of-run summary)."""
     sibling_deps: dict[str, str] = {}
 
 
@@ -508,12 +520,12 @@ def wait_for_checks(pr_url: str, gh_repo: str, ctx: Ctx) -> str:
             console.print("[green]All checks passed![/]")
             return "passed"
 
-        console.print("[yellow]Checks failed:[/]")
+        console.print(f"[yellow]Checks failed on {pr_url}:[/]")
         for c in failing:
             console.print(f"  {c['name']}: {c['bucket']}")
         if ctx.auto_yes:
             console.print("[yellow]Force-merging (--yes)[/]")
-        elif not alert_confirm("Force merge anyway?", default=False):
+        elif not alert_confirm(f"Force merge anyway? ({pr_url})", default=False):
             die("Aborted.")
         return "passed"
 
@@ -608,16 +620,20 @@ def _step(pkg: str, seq: int, kind: StepKind, **params: Any) -> Step:
     return Step(id=f"{pkg}.{seq}.{kind}", kind=kind, package=pkg, params=params)
 
 
-def _branch_for(pkg: PackagePlan, release_name: str) -> tuple[str, dict[str, str]]:
-    """Branch name + checkout parameters for *pkg*'s work on this run."""
+def _branch_for(pkg: PackagePlan, release_name: str) -> str:
+    """Branch the work for *pkg* will land on.
+
+    PR-bound packages reuse the PR's own branch.  A new release cuts a
+    ``chore/release-<ver>`` branch off ``upstream/master``.  A deps-only
+    bump (the open-top default when no PR was supplied) goes onto a single
+    shared ``chore/bump-deps[-<slug>]`` branch.
+    """
     if pkg.pr_branch:
-        return pkg.pr_branch, {"branch": pkg.pr_branch, "source": "pr"}
-    if pkg.action in (Action.RELEASE_MASTER, Action.RELEASE_PR):
-        branch = f"{RELEASE_BRANCH_PREFIX}{pkg.new_version}"
-        return branch, {"branch": branch, "base": "upstream/master"}
+        return pkg.pr_branch
+    if pkg.new_version:
+        return f"{RELEASE_BRANCH_PREFIX}{pkg.new_version}"
     suffix = slugify(release_name)
-    branch = f"{BUMP_DEPS_BRANCH_PREFIX}{'-' + suffix if suffix else ''}"
-    return branch, {"branch": branch, "base": "upstream/master"}
+    return f"{BUMP_DEPS_BRANCH_PREFIX}{'-' + suffix if suffix else ''}"
 
 
 def plan_steps(pkg: PackagePlan, org: str, fork: str, name: str) -> list[Step]:
@@ -627,7 +643,7 @@ def plan_steps(pkg: PackagePlan, org: str, fork: str, name: str) -> list[Step]:
         pkg.action == Action.DEPS_ONLY and not pkg.pr_branch
     )
 
-    branch, checkout_params = _branch_for(pkg, name)
+    branch = _branch_for(pkg, name)
     title = f"{pkg.new_version} {name}".strip() if pkg.new_version else ""
     commit_msg = f"{RELEASE_COMMIT_PREFIX} {title}" if do_release else BUMP_DEPS_COMMIT
 
@@ -637,7 +653,11 @@ def plan_steps(pkg: PackagePlan, org: str, fork: str, name: str) -> list[Step]:
         steps.append(_step(pkg.repo, len(steps), kind, **params))
 
     add(StepKind.CLONE_SYNC)
-    add(StepKind.CHECKOUT, **checkout_params)
+    add(
+        StepKind.CHECKOUT,
+        branch=branch,
+        **({"source": "pr"} if pkg.pr_branch else {"base": "upstream/master"}),
+    )
     for dep, ver in pkg.sibling_deps.items():
         add(StepKind.DEP_UPDATE, dep_repo=dep, dep_version=ver)
     if do_release:
@@ -722,13 +742,14 @@ def generate_plan(
         # Determine action — stop_at wins over pr_specs (deps-only, no release)
         pr_num: int | None = None
         pr_branch: str | None = None
+        pr_url: str | None = None
         if pr_specs and repo in pr_specs:
             info = pr_info(pr_specs[repo], gh_repo)
             if info.get("state") != "OPEN":
                 die(
                     f"PR #{pr_specs[repo]} for {repo} is {info.get('state', 'unknown')} — must be OPEN"
                 )
-            pr_num, pr_branch = pr_specs[repo], info["headRefName"]
+            pr_num, pr_branch, pr_url = pr_specs[repo], info["headRefName"], info["url"]
 
         if repo == stop_at:
             action = Action.DEPS_ONLY
@@ -756,6 +777,7 @@ def generate_plan(
             new_version=new_ver,
             pr_number=pr_num,
             pr_branch=pr_branch,
+            pr_url=pr_url,
             sibling_deps=sibling_deps,
         )
         packages.append(pkg)
@@ -776,18 +798,23 @@ def generate_plan(
 # ── Executor ──────────────────────────────────────────────────────────────
 
 
+def _package(plan: Plan, repo: str) -> PackagePlan:
+    """Locate the ``PackagePlan`` for *repo* in *plan*."""
+    return next(p for p in plan.packages if p.repo == repo)
+
+
 def _find_pr_url(package: str, plan: Plan) -> str:
     """URL of the PR the executor should act on for *package*.
 
-    Prefers the URL captured by an earlier PR_CREATE step (authoritative);
-    falls back to the PR number from a ``--from-prs`` spec.
+    Prefers ``PackagePlan.pr_url`` (set up-front for ``:PR`` overrides or
+    populated by an earlier ``PR_CREATE`` step); falls back to the PR
+    number when only that is known.
     """
-    for s in plan.steps:
-        if s.package == package and s.kind == StepKind.PR_CREATE and s.result.get("pr_url"):
-            return s.result["pr_url"]
-    for pkg in plan.packages:
-        if pkg.repo == package and pkg.pr_number:
-            return str(pkg.pr_number)
+    pkg = _package(plan, package)
+    if pkg.pr_url:
+        return pkg.pr_url
+    if pkg.pr_number:
+        return str(pkg.pr_number)
     die(f"No PR URL found for {package}")
 
 
@@ -884,8 +911,8 @@ def execute_step(step: Step, plan: Plan, ctx: Ctx):
                 check=False,
             )
             if r.returncode == 0 and r.stdout.strip():
-                step.result["pr_url"] = r.stdout.strip()
-                console.print(f"PR already exists: {step.result['pr_url']}")
+                url = r.stdout.strip()
+                console.print(f"PR already exists: {url}")
             else:
                 r = sh(
                     "gh", "pr", "create", "--repo", gh_repo,
@@ -895,8 +922,12 @@ def execute_step(step: Step, plan: Plan, ctx: Ctx):
                     "--label", AUTOMATED_RELEASE_LABEL,
                     capture=True,
                 )  # fmt: skip
-                step.result["pr_url"] = r.stdout.strip()
-                console.print(f"PR created: {step.result['pr_url']}")
+                url = r.stdout.strip()
+                console.print(f"PR created: {url}")
+            step.result["pr_url"] = url
+            # Mirror onto the PackagePlan so the per-package banner, exception
+            # handler, and end-of-run summary can all read URLs from one place.
+            _package(plan, step.package).pr_url = url
 
         case StepKind.PR_MERGE:
             if _branch_matches_upstream(repo_dir):
@@ -1026,13 +1057,21 @@ def execute_plan(plan: Plan, *, mode: ExecMode, ctx: Ctx) -> Plan:
     the exception propagates — the operator fixes the root cause and
     re-runs ``execute`` on the same plan file to resume.
     """
+    last_pkg: str | None = None
     for step in plan.steps:
         if mode == ExecMode.RESUME and step.status == "completed":
             console.print(f"[dim]Skipping completed: {step.id}[/]")
             continue
 
-        pkg_label = f"[bold cyan]{step.package}[/]"
-        console.print(f"\n{pkg_label} {step.kind.value}")
+        # Per-package banner once per repo: shows ``:PR``-supplied URL
+        # immediately; for master releases the URL surfaces from PR_CREATE's
+        # own log line later in the package's step sequence.
+        if step.package != last_pkg:
+            pkg = _package(plan, step.package)
+            url_suffix = f"  {pkg.pr_url}" if pkg.pr_url else ""
+            console.print(f"\n[bold cyan]== {step.package} =={url_suffix}[/]")
+            last_pkg = step.package
+        console.print(f"  [dim]{step.kind.value}[/]")
 
         if mode == ExecMode.SIMULATE:
             simulate_step(step, plan, ctx)
@@ -1049,6 +1088,9 @@ def execute_plan(plan: Plan, *, mode: ExecMode, ctx: Ctx) -> Plan:
                 step.result["error"] = str(exc)
                 if ctx.plan_path:
                     save_plan(plan, ctx.plan_path)
+                pkg = _package(plan, step.package)
+                if pkg.pr_url:
+                    console.print(f"[red]Step operated on:[/] {pkg.pr_url}")
                 raise
             if ctx.plan_path:
                 save_plan(plan, ctx.plan_path)
@@ -1061,22 +1103,21 @@ def execute_plan(plan: Plan, *, mode: ExecMode, ctx: Ctx) -> Plan:
 # helpers pull their attention back when input is actually needed.
 
 
-def _alert_banner(text: str) -> None:
-    """Pull the operator's eyes back to the terminal: bell + banner."""
+def _alert(prompt_fn: Callable[..., Any], prompt: str, **kwargs: Any) -> Any:
+    """Bell + banner + prompt — pull a distracted operator back to the terminal."""
     console.bell()
-    console.print(f"\n[black on bright_yellow] {text} [/]")
+    console.print("\n[black on bright_yellow] INPUT NEEDED [/]")
+    return prompt_fn(prompt, **kwargs)
 
 
 def alert_confirm(prompt: str, **kwargs: Any) -> bool:
     """Ask a yes/no question loudly enough that a distracted operator notices."""
-    _alert_banner("INPUT NEEDED")
-    return click.confirm(prompt, **kwargs)
+    return _alert(click.confirm, prompt, **kwargs)
 
 
 def alert_prompt(prompt: str, **kwargs: Any) -> Any:
     """Ask for free-form input loudly enough that a distracted operator notices."""
-    _alert_banner("INPUT NEEDED")
-    return click.prompt(prompt, **kwargs)
+    return _alert(click.prompt, prompt, **kwargs)
 
 
 # ── CLI ───────────────────────────────────────────────────────────────────
@@ -1115,20 +1156,65 @@ def _common_ctx(
     )
 
 
-def _parse_pr_specs(specs: str) -> dict[str, int]:
-    result = {}
-    for part in specs.split(","):
-        part = part.strip()
-        if ":" not in part or part.count(":") != 1:
-            die(f"Malformed --from-prs entry '{part}': expected repo:PR (e.g. sandbox:42)")
-        repo, num = part.split(":")
-        if not repo or not num:
-            die(f"Malformed --from-prs entry '{part}': repo and PR number must be non-empty")
+def _parse_endpoint(s: str) -> tuple[str, int | None]:
+    """Parse one ``pkg`` or ``pkg:PR`` token from a chain spec."""
+    if ":" in s:
+        name, pr = s.split(":", 1)
         try:
-            result[normalise(repo)] = int(num)
+            return normalise(name.strip()), int(pr.strip())
         except ValueError:
-            die(f"Malformed --from-prs entry '{part}': PR number must be an integer")
-    return result
+            die(f"Bad PR number in '{s}': must be an integer")
+    return normalise(s.strip()), None
+
+
+def parse_chain_spec(spec: str) -> list[tuple[str, int | None]]:
+    """Parse a chain spec into ordered ``(repo, pr_or_None)`` entries.
+
+    Grammar: ``pkg[:PR]`` entries combined with ``,`` and ``..``.  A range
+    fills intermediate packages from ``CHAIN`` order (each as bare master).
+    Each entry tracks its own PR override; duplicates raise.
+    """
+    entries: list[tuple[str, int | None]] = []
+    seen: set[str] = set()
+
+    def add(repo: str, pr: int | None) -> None:
+        if repo in seen:
+            die(f"Duplicate package in chain spec: {repo}")
+        entries.append((repo, pr))
+        seen.add(repo)
+
+    for part in (p.strip() for p in spec.split(",")):
+        if not part:
+            die(f"Empty entry in chain spec: '{spec}'")
+        if ".." in part:
+            start_s, end_s = part.split("..", 1)
+            start_repo, start_pr = _parse_endpoint(start_s)
+            end_repo, end_pr = _parse_endpoint(end_s)
+            for repo in build_chain(start_repo, end_repo):
+                pr = start_pr if repo == start_repo else end_pr if repo == end_repo else None
+                add(repo, pr)
+        else:
+            add(*_parse_endpoint(part))
+    return entries
+
+
+def _downstream_closure(explicit: list[str]) -> list[str]:
+    """Add every package that transitively depends on any package in *explicit*.
+
+    A new release of P bumps P's version, so every Q whose pyproject pins P
+    (directly or transitively per ``DEPS``) must also be re-released so its
+    URL pin can be bumped — otherwise consumers see two URL-pinned versions
+    of the same package and Poetry blocks the install.  Returned list is
+    ordered by ``CHAIN``.
+    """
+    needed = set(explicit)
+    while True:
+        added = {
+            r for r, deps in DEPS.items() if r not in needed and any(d in needed for d in deps)
+        }
+        if not added:
+            return [r for r in CHAIN if r in needed]
+        needed |= added
 
 
 def _render_plan_preview(plan: Plan) -> None:
@@ -1148,53 +1234,76 @@ def _render_plan_preview(plan: Plan) -> None:
             else pkg.current_version
         )
         dep_str = ", ".join(f"{d} v{v}" for d, v in pkg.sibling_deps.items())
-        table.add_row(str(i), pkg.repo, pkg.action.value, ver, dep_str)
+        action = pkg.action.value + (f" #{pkg.pr_number}" if pkg.pr_number else "")
+        table.add_row(str(i), pkg.repo, action, ver, dep_str)
     console.print(table)
 
 
 def _resolve_chain(
-    repos: tuple[str, ...],
-    from_prs: str | None,
+    spec: str,
     *,
     open_top: bool = False,
-) -> tuple[list[str], str | None, dict[str, int] | None]:
-    """Parse CLI args into (chain, stop_at, pr_specs).
+) -> tuple[list[str], str | None, dict[str, int]]:
+    """Parse the chain spec, expand by downstream closure, return planner inputs.
 
-    Syntax:
-        sandbox             → release a single package
-        sandbox..terok      → chain from sandbox to terok
-        --from-prs s:42     → single PR release
-        --from-prs s:42,e:5 → PR chain
+    The closure is essential: typing ``clearance,sandbox:221`` releases
+    executor and terok too, because their pin to clearance would otherwise
+    fall out of sync.  See ``_downstream_closure`` for the full rationale.
 
-    With ``--open-top``, the last package in the chain gets DEPS_ONLY
-    (deps updated, no version bump or merge).
+    Returns ``(ordered_chain, stop_at, pr_specs)``.  With ``--open-top``,
+    the last package becomes ``DEPS_ONLY`` (deps update only, no release).
     """
-    if from_prs:
-        pr_specs = _parse_pr_specs(from_prs)
-        chain_repos = [r for r in CHAIN if r in pr_specs]
-        if not chain_repos:
-            die("No known repos in --from-prs")
-        chain = build_chain(chain_repos[0], chain_repos[-1])
-        return chain, chain[-1] if open_top else None, pr_specs
-
-    if not repos:
-        die("Specify a repo, a range (sandbox..terok), or --from-prs")
-
-    if len(repos) > 1:
-        die("Use 'sandbox..terok' range syntax instead of two separate arguments")
-
-    spec = repos[0]
-    if ".." in spec:
-        start_s, end_s = spec.split("..", 1)
-        chain = build_chain(normalise(start_s), normalise(end_s))
-        return chain, chain[-1] if open_top else None, None
-
-    # Single package — release just this one
-    repo = normalise(spec)
-    return [repo], None, None
+    entries = parse_chain_spec(spec)
+    pr_specs = {repo: pr for repo, pr in entries if pr is not None}
+    chain = _downstream_closure([repo for repo, _ in entries])
+    return chain, (chain[-1] if open_top else None), pr_specs
 
 
 _CLICK_CONTEXT = {"help_option_names": ["-h", "--help"]}
+
+
+def _stack(*decorators: Callable) -> Callable:
+    """Compose Click option decorators in declaration order."""
+
+    def wrap(f: Callable) -> Callable:
+        for d in reversed(decorators):
+            f = d(f)
+        return f
+
+    return wrap
+
+
+# ── Shared option groups ─────────────────────────────────────────────────
+#
+# Click decorators are stacked the same way on `quick` and `plan_cmd`; pulling
+# them into one decorator keeps the two commands' shape in sync and shrinks
+# the CLI definition by ~40 lines.
+
+_remote_options = _stack(
+    click.option("--org", default=_env("TEROK_GH_ORG", "terok-ai")),
+    click.option("--fork", default=_env("TEROK_GH_FORK")),
+    click.option(
+        "--cache-dir",
+        default=_env("TEROK_RELEASE_DIR", str(Path.home() / ".cache/terok-release")),
+    ),
+)
+"""``--org / --fork / --cache-dir`` triple shared by every subcommand."""
+
+_chain_options = _stack(
+    click.argument("chain_spec"),
+    click.option("--version-step", default="patch", type=click.Choice(["major", "minor", "patch"])),
+    click.option("--version-step-uniform", is_flag=True),
+    click.option("-n", "--name", "release_name", default="", help="Release name suffix"),
+    click.option("--upgrade-pinned", is_flag=True),
+    click.option("--open-top", is_flag=True, help="Top package: update deps only, no release"),
+    click.option(
+        "--prerelease",
+        is_flag=True,
+        help="Publish as a GitHub prerelease (hidden from the repo's 'Latest' badge)",
+    ),
+    _remote_options,
+)
+"""Chain-spec positional + planner options shared by ``quick`` and ``plan``."""
 
 
 @click.group(context_settings=_CLICK_CONTEXT)
@@ -1204,60 +1313,51 @@ def cli():
 
 
 @cli.command(context_settings=_CLICK_CONTEXT)
-@click.argument("repos", nargs=-1)
-@click.option("--version-step", default="patch", type=click.Choice(["major", "minor", "patch"]))
-@click.option("--version-step-uniform", is_flag=True)
-@click.option("-n", "--name", "release_name", default="", help="Release name suffix")
+@_chain_options
 @click.option("-y", "--yes", is_flag=True, help="Auto-approve normal confirmations")
 @click.option("-p", "--pretend", is_flag=True, help="Dry run")
 @click.option("--skip-checks", is_flag=True)
 @click.option("--check-timeout", default=DEFAULT_CHECK_TIMEOUT, type=int)
-@click.option("--upgrade-pinned", is_flag=True)
-@click.option("--from-prs", default=None, help="repo:PR pairs (e.g. sandbox:42,executor:55)")
-@click.option("--open-top", is_flag=True, help="Top package: update deps only, no release")
-@click.option(
-    "--prerelease",
-    is_flag=True,
-    help="Publish as a GitHub prerelease (hidden from the repo's 'Latest' badge)",
-)
-@click.option("--org", default=_env("TEROK_GH_ORG", "terok-ai"))
-@click.option("--fork", default=_env("TEROK_GH_FORK"))
-@click.option(
-    "--cache-dir", default=_env("TEROK_RELEASE_DIR", str(Path.home() / ".cache/terok-release"))
-)
 def quick(
-    repos,
+    chain_spec,
     version_step,
     version_step_uniform,
     release_name,
-    yes,
-    pretend,
-    skip_checks,
-    check_timeout,
     upgrade_pinned,
-    from_prs,
     open_top,
     prerelease,
     org,
     fork,
     cache_dir,
+    yes,
+    pretend,
+    skip_checks,
+    check_timeout,
 ):
     """Plan and execute a release chain in one shot.
 
     \b
+    CHAIN_SPEC grammar:
+      pkg                              one package
+      pkg:NUM                          release pkg from PR #NUM
+      A..B                             range; intermediates filled from master
+      A,B,C                            list (downstream closure auto-includes)
+      A,B:NUM..C                       any combination
+
+    \b
     Examples:
-      quick sandbox                    Release a single package
-      quick sandbox..terok             Chain from sandbox to terok
-      quick sandbox..terok --open-top  Chain, terok gets deps-only PR
-      quick --from-prs sandbox:155     Release from a PR
-      quick --from-prs s:155,e:167,t:706 --open-top
-                                       PR chain, terok gets deps updated only
-      quick sandbox..terok --prerelease
-                                       Chain, all releases marked prerelease
+      quick sandbox                       single package from master
+      quick sandbox..terok                chain, all from master
+      quick sandbox..terok --open-top     terok stays as deps-only PR
+      quick sandbox:155                   release from one PR
+      quick sandbox:155,executor:167,terok:706 --open-top
+                                          PR chain; terok deps-only on its PR
+      quick clearance,sandbox:221..terok  mixed; closure adds executor
+      quick sandbox..terok --prerelease   prerelease badge on each
     """
     org, fork, cd, ctx = _common_ctx(org, fork, cache_dir, pretend, yes, skip_checks, check_timeout)
 
-    chain, stop_at, pr_specs = _resolve_chain(repos, from_prs, open_top=open_top)
+    chain, stop_at, pr_specs = _resolve_chain(chain_spec, open_top=open_top)
 
     # Prompt for release name if not given
     if not release_name and not pretend:
@@ -1308,7 +1408,8 @@ def quick(
         if pkg.new_version:
             console.print(f"  [green]*[/] {pkg.repo} v{pkg.new_version}")
         else:
-            console.print(f"  [yellow]*[/] {pkg.repo}  (deps only)")
+            url_suffix = f" → {pkg.pr_url}" if pkg.pr_url else ""
+            console.print(f"  [yellow]*[/] {pkg.repo}  (deps only){url_suffix}")
     console.print(f"\nElapsed: {elapsed:.0f}s")
 
 
@@ -1316,11 +1417,7 @@ def quick(
 @click.argument("branch")
 @click.argument("repos", nargs=-1, required=True)
 @click.option("-p", "--pretend", is_flag=True, help="Dry run")
-@click.option("--org", default=_env("TEROK_GH_ORG", "terok-ai"))
-@click.option("--fork", default=_env("TEROK_GH_FORK"))
-@click.option(
-    "--cache-dir", default=_env("TEROK_RELEASE_DIR", str(Path.home() / ".cache/terok-release"))
-)
+@_remote_options
 def open_chain(branch, repos, pretend, org, fork, cache_dir):
     """Open a PR chain for cross-cutting development.
 
@@ -1421,41 +1518,27 @@ def open_chain(branch, repos, pretend, org, fork, cache_dir):
 
 
 @cli.command("plan", context_settings=_CLICK_CONTEXT)
-@click.argument("repos", nargs=-1)
+@_chain_options
 @click.option("-o", "--output", type=click.Path(), help="Output plan file")
-@click.option("--version-step", default="patch", type=click.Choice(["major", "minor", "patch"]))
-@click.option("--version-step-uniform", is_flag=True)
-@click.option("-n", "--name", "release_name", default="")
-@click.option("--upgrade-pinned", is_flag=True)
-@click.option("--from-prs", default=None)
-@click.option("--open-top", is_flag=True, help="Top package: update deps only, no release")
-@click.option(
-    "--prerelease",
-    is_flag=True,
-    help="Publish as a GitHub prerelease (hidden from the repo's 'Latest' badge)",
-)
-@click.option("--org", default=_env("TEROK_GH_ORG", "terok-ai"))
-@click.option("--fork", default=_env("TEROK_GH_FORK"))
-@click.option(
-    "--cache-dir", default=_env("TEROK_RELEASE_DIR", str(Path.home() / ".cache/terok-release"))
-)
 def plan_cmd(
-    repos,
-    output,
+    chain_spec,
     version_step,
     version_step_uniform,
     release_name,
     upgrade_pinned,
-    from_prs,
     open_top,
     prerelease,
     org,
     fork,
     cache_dir,
+    output,
 ):
-    """Generate a release plan without executing it."""
+    """Generate a release plan without executing it.
+
+    Same CHAIN_SPEC grammar as ``quick``; see ``quick --help`` for examples.
+    """
     org, fork, cd, ctx = _common_ctx(org, fork, cache_dir, True, True, True, 0)
-    chain, stop_at, pr_specs = _resolve_chain(repos, from_prs, open_top=open_top)
+    chain, stop_at, pr_specs = _resolve_chain(chain_spec, open_top=open_top)
     if not release_name:
         console.print(
             "[yellow]Warning: no release name (-n). Release titles will be version-only.[/]"
@@ -1485,11 +1568,7 @@ def plan_cmd(
 
 @cli.command(context_settings=_CLICK_CONTEXT)
 @click.argument("plan_file", type=click.Path(exists=True))
-@click.option("--org", default=_env("TEROK_GH_ORG", "terok-ai"))
-@click.option("--fork", default=_env("TEROK_GH_FORK"))
-@click.option(
-    "--cache-dir", default=_env("TEROK_RELEASE_DIR", str(Path.home() / ".cache/terok-release"))
-)
+@_remote_options
 def simulate(plan_file, org, fork, cache_dir):
     """Validate a plan against real repo state."""
     org, fork, cd, ctx = _common_ctx(org, fork, cache_dir, True, True, True, 0, require_fork=False)
@@ -1506,11 +1585,7 @@ def simulate(plan_file, org, fork, cache_dir):
 @click.option("-y", "--yes", is_flag=True)
 @click.option("--skip-checks", is_flag=True)
 @click.option("--check-timeout", default=DEFAULT_CHECK_TIMEOUT, type=int)
-@click.option("--org", default=_env("TEROK_GH_ORG", "terok-ai"))
-@click.option("--fork", default=_env("TEROK_GH_FORK"))
-@click.option(
-    "--cache-dir", default=_env("TEROK_RELEASE_DIR", str(Path.home() / ".cache/terok-release"))
-)
+@_remote_options
 def execute(plan_file, yes, skip_checks, check_timeout, org, fork, cache_dir):
     """Execute (or resume) a release plan."""
     org, fork, cd, ctx = _common_ctx(
