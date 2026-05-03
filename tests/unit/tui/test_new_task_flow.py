@@ -253,56 +253,66 @@ class TestTaskLaunchScreen:
 
 
 # ---------------------------------------------------------------------------
-# _build_interactive_agent_command
+# Launch command shape — prompt travels via the on-disk file, not as a CLI arg
 # ---------------------------------------------------------------------------
 
 
-class TestBuildInteractiveAgentCommand:
-    """Tests for _build_interactive_agent_command helper."""
+def _run_launch_with_prompt(agent: str, prompt: str | None) -> tuple[mock.Mock, mock.Mock]:
+    """Drive _on_launch_screen_result for *agent*/*prompt* and return mocks."""
+    _, app_class = import_app()
+    instance = app_class()
+    instance.current_project_id = "proj1"
+    instance.refresh_tasks = mock.AsyncMock()
+    instance._launch_terminal_session = mock.AsyncMock()
 
-    def _import_helper(self) -> Callable[..., str]:
-        """Import the helper function from the freshly loaded module."""
-        _, app_class = import_app()
-        return app_class._start_cli_task_background.__globals__["_build_interactive_agent_command"]
+    fake_provider = mock.Mock()
+    fake_provider.binary = "claude"
+    save = mock.Mock()
+    action_globals = app_class._on_launch_screen_result.__globals__
 
-    def test_no_prompt_returns_binary(self) -> None:
-        build = self._import_helper()
-        provider = mock.Mock()
-        provider.binary = "claude"
-        provider.prompt_flag = "-p"
-        assert build(provider, None) == "claude"
+    with (
+        mock.patch.dict(
+            action_globals,
+            {
+                "get_login_command": mock.Mock(return_value=["podman", "exec", "-it", "c"]),
+                "_save_initial_prompt": save,
+            },
+        ),
+        mock.patch.dict(
+            "terok_executor.provider.providers.AGENT_PROVIDERS",
+            {"claude": fake_provider},
+            clear=True,
+        ),
+    ):
+        result = ("proj1", "5", "task", "proj1-cli-5", agent, prompt)
+        run(app_class._on_launch_screen_result(instance, result))
 
-    def test_empty_prompt_returns_binary(self) -> None:
-        build = self._import_helper()
-        provider = mock.Mock()
-        provider.binary = "claude"
-        provider.prompt_flag = "-p"
-        assert build(provider, "") == "claude"
+    return instance._launch_terminal_session, save
 
-    def test_with_prompt(self) -> None:
-        build = self._import_helper()
-        provider = mock.Mock()
-        provider.binary = "claude"
-        result = build(provider, "fix the bug")
-        assert result == "claude 'fix the bug'"
 
-    def test_simple_prompt_no_quotes(self) -> None:
-        build = self._import_helper()
-        provider = mock.Mock()
-        provider.binary = "codex"
-        result = build(provider, "hello")
-        assert result == "codex hello"
+class TestLaunchCmdShape:
+    """The prompt is delivered via initial-prompt.txt; the cmd never carries it."""
 
-    def test_prompt_with_special_chars_is_quoted(self) -> None:
-        import shlex
+    def test_agent_launch_omits_prompt_from_cli(self) -> None:
+        launch, save = _run_launch_with_prompt("claude", "fix 'the' bug")
+        cmd = launch.call_args[0][0]
+        # Wrapper consumes the file; the spawned binary is a bare invocation.
+        assert cmd == ["podman", "exec", "-it", "c", "bash", "-lc", "claude"]
+        save.assert_called_once_with("proj1", "5", "fix 'the' bug")
 
-        build = self._import_helper()
-        provider = mock.Mock()
-        provider.binary = "claude"
-        prompt = "fix 'the' bug"
-        result = build(provider, prompt)
-        expected = f"claude {shlex.quote(prompt)}"
-        assert result == expected
+    def test_agent_launch_without_prompt(self) -> None:
+        launch, save = _run_launch_with_prompt("claude", None)
+        cmd = launch.call_args[0][0]
+        assert cmd == ["podman", "exec", "-it", "c", "bash", "-lc", "claude"]
+        save.assert_called_once_with("proj1", "5", None)
+
+    def test_bash_launch_uses_base_cmd_directly(self) -> None:
+        # Bash relies on the bashrc banner snippet (terok-executor) to display
+        # the prompt — no per-launch wrapper needed.
+        launch, save = _run_launch_with_prompt("bash", "first message")
+        cmd = launch.call_args[0][0]
+        assert cmd == ["podman", "exec", "-it", "c"]
+        save.assert_called_once_with("proj1", "5", "first message")
 
 
 # ---------------------------------------------------------------------------

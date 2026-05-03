@@ -3086,21 +3086,22 @@ description = "Single-agent task runner for hardened Podman containers"
 optional = false
 python-versions = ">=3.12,<4.0"
 groups = ["main"]
-files = [
-    {file = "terok_executor-0.0.127-py3-none-any.whl", hash = "sha256:7cfdcc6295ed3a7cc368eac1c18e933acf2753d485b4d165c81f26c2e3e49a9b"},
-]
+files = []
+develop = false
 
 [package.dependencies]
 Jinja2 = ">=3.1"
 pwinput = ">=1.0.3"
 pydantic = ">=2.9"
 "ruamel.yaml" = ">=0.18"
-terok_sandbox = {url = "https://github.com/terok-ai/terok-sandbox/releases/download/v0.0.106/terok_sandbox-0.0.106-py3-none-any.whl"}
+terok-sandbox = {url = "https://github.com/terok-ai/terok-sandbox/releases/download/v0.0.106/terok_sandbox-0.0.106-py3-none-any.whl"}
 tomli-w = ">=1.0"
 
 [package.source]
-type = "url"
-url = "https://github.com/terok-ai/terok-executor/releases/download/v0.0.127/terok_executor-0.0.127-py3-none-any.whl"
+type = "git"
+url = "https://github.com/sliwowitz/terok-executor.git"
+reference = "feat/initial-prompt-wrapper-pickup"
+resolved_reference = "61b79db70dbf9240d469e500617b3e1625cae45d"
 
 [[package]]
 name = "terok-sandbox"
@@ -4023,4 +4024,4 @@ propcache = ">=0.2.1"
 [metadata]
 lock-version = "2.1"
 python-versions = ">=3.12,<4.0"
-content-hash = "b2c4292d718116a481410dd843a02e772d2f7b691dd5f4060849dcef1dd141a3"
+content-hash = "d844e75c951997c86c481416429b22e990f14e09be87708ba53321e0f6372500"
