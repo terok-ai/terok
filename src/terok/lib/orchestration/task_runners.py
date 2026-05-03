@@ -77,8 +77,6 @@ _TOAD_PUBLIC_PORT = 8080
 _TOAD_INTERNAL_PORT = 8081
 """Loopback port that toad binds inside the container — reached only via Caddy."""
 _TOAD_TOKEN_FILE_NAME = "toad.token"  # nosec B105 — filename, not a credential
-_ANTHROPIC_API_HOST = "api.anthropic.com"
-_OPENAI_API_HOST = "api.openai.com"
 _FALSE_STRINGS = frozenset({"false", "0", "no", "off"})
 
 
@@ -377,46 +375,114 @@ def _drop_shield_on_creation(cname: str, task_dir: Path) -> None:
         warnings.warn(f"shield drop: {exc}", stacklevel=2)
 
 
-def _maybe_deny_anthropic_api(cname: str, task_dir: Path) -> None:
-    """Block ``api.anthropic.com`` when Claude OAuth is proxied.
+def _collect_route_hosts(route: object) -> frozenset[str]:
+    """Return the egress hosts derived from a single vault route.
 
-    When the shield is down, deny sets prevent phantom tokens from leaking
-    to Anthropic's hardcoded ``BASE_API_URL`` endpoint.  No-op when Claude
-    OAuth is skipped or exposed.
+    Inspects ``route.upstream`` and (when present) ``route.oauth_refresh
+    ['token_url']``, returning the non-empty ``netloc`` parts.  Empty
+    set when neither URL is declared or both fail to parse.
     """
-    from ..core.config import is_claude_oauth_proxied
+    from urllib.parse import urlparse
 
-    if not is_claude_oauth_proxied():
-        return
+    hosts: set[str] = set()
+    for url in (
+        getattr(route, "upstream", "") or "",
+        (getattr(route, "oauth_refresh", None) or {}).get("token_url", "")
+        if isinstance(getattr(route, "oauth_refresh", None), dict)
+        else "",
+    ):
+        if url and (host := urlparse(url).netloc):
+            hosts.add(host)
+    return frozenset(hosts)
+
+
+def _auth_protect_hosts() -> dict[str, frozenset[str]]:
+    """Return ``{provider: {hosts to deny}}`` from the active roster.
+
+    For every roster entry with a ``vault.upstream``, harvest the host
+    portion of the upstream URL and the OAuth refresh ``token_url`` (if
+    declared).  These are the egress endpoints an in-container ``/login``
+    flow must never reach — blocking them keeps a compromised or
+    socially-engineered agent from completing the OAuth handshake even
+    when the shield is in ``down`` mode (terok-ai/terok#873).
+
+    Excluded from the table:
+
+    - ``glab`` — ``gitlab.com`` carries both API and ``git push`` traffic;
+      separating them at the host level isn't possible.  Read-only
+      credential containment alone covers it.
+    """
+    from terok_executor import get_roster
+
+    excluded = {"glab"}
+    out: dict[str, frozenset[str]] = {}
+    for name, route in get_roster().vault_routes.items():
+        if name in excluded:
+            continue
+        if hosts := _collect_route_hosts(route):
+            out[name] = hosts
+    return out
+
+
+def _resolved_allow_entries(shield_obj: object) -> frozenset[str]:
+    """Return the set of domain/IP entries in the active allow profiles.
+
+    The set is the union of every line in every profile listed in
+    ``shield.config.default_profiles``.  Used as the opt-out signal for
+    auth-protect denies: a developer who needs direct access to an
+    otherwise-blocked endpoint adds it to a custom allowlist profile (per
+    [terok-ai/terok#566](https://github.com/terok-ai/terok/issues/566)).
+    """
     try:
-        from terok_sandbox import make_shield
+        names = list(shield_obj.config.default_profiles)
+        if not names:
+            return frozenset()
+        return frozenset(shield_obj.profiles.compose_profiles(names))
+    except Exception:  # noqa: BLE001
+        return frozenset()
 
-        make_shield(task_dir).deny(cname, _ANTHROPIC_API_HOST)
+
+def _apply_auth_protect_denies(cname: str, task_dir: Path) -> None:
+    """Deny agent OAuth/API endpoints in this task's container.
+
+    Replaces the previous Anthropic/OpenAI special cases with a generic
+    roster-driven loop.  The denies survive ``shield down`` (the deny set
+    is repopulated on mode transitions), so an in-container ``/login``
+    fails even when the egress firewall has been dropped for development.
+
+    Skipped for providers in
+    [`_exposed_credential_providers`][terok.lib.orchestration.environment._exposed_credential_providers]
+    (where the writable credential file is intentional) and for hosts
+    already present in the active allow profiles (the developer has
+    explicitly opted that endpoint back in).
+    """
+    from terok_sandbox import make_shield
+
+    from ..core.config import exposed_credential_providers
+
+    exposed = exposed_credential_providers()
+    try:
+        shield_obj = make_shield(task_dir)
     except Exception as exc:  # noqa: BLE001
         import warnings
 
-        warnings.warn(f"shield deny {_ANTHROPIC_API_HOST}: {exc}", stacklevel=2)
-
-
-def _maybe_deny_openai_api(cname: str, task_dir: Path) -> None:
-    """Block ``api.openai.com`` when Codex OAuth is proxied.
-
-    The shared Codex config rewrite points built-in OpenAI traffic at the
-    vault.  When the shield is down, this deny rule prevents accidental
-    fallback to the public OpenAI API host.
-    """
-    from ..core.config import is_codex_oauth_proxied
-
-    if not is_codex_oauth_proxied():
+        warnings.warn(f"auth-protect: shield unavailable: {exc}", stacklevel=2)
         return
-    try:
-        from terok_sandbox import make_shield
 
-        make_shield(task_dir).deny(cname, _OPENAI_API_HOST)
-    except Exception as exc:  # noqa: BLE001
-        import warnings
+    allow_entries = _resolved_allow_entries(shield_obj)
 
-        warnings.warn(f"shield deny {_OPENAI_API_HOST}: {exc}", stacklevel=2)
+    for provider, hosts in _auth_protect_hosts().items():
+        if provider in exposed:
+            continue
+        for host in hosts:
+            if host in allow_entries:
+                continue
+            try:
+                shield_obj.deny(cname, host)
+            except Exception as exc:  # noqa: BLE001
+                import warnings
+
+                warnings.warn(f"auth-protect: deny {host}: {exc}", stacklevel=2)
 
 
 def _apply_shield_policy(
@@ -446,8 +512,7 @@ def _apply_shield_policy(
     else:
         _write_desired_shield_state(task_dir, "up")
 
-    _maybe_deny_anthropic_api(cname, task_dir)
-    _maybe_deny_openai_api(cname, task_dir)
+    _apply_auth_protect_denies(cname, task_dir)
 
 
 def _run_container(

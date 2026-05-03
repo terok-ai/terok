@@ -761,6 +761,22 @@ def is_codex_oauth_exposed() -> bool:
 # ---------- Cross-provider OAuth gate ----------
 
 
+def exposed_credential_providers() -> frozenset[str]:
+    """Providers whose real credential file is mounted writable on purpose.
+
+    The executor mounts every shared credential file read-only by default
+    (terok-ai/terok#873).  Providers in experimental ``expose_oauth_token``
+    mode are the explicit opt-out: the agent intentionally manages its
+    own token, so the writable bind is required.
+    """
+    exposed: set[str] = set()
+    if is_claude_oauth_exposed():
+        exposed.add("claude")
+    if is_codex_oauth_exposed():
+        exposed.add("codex")
+    return frozenset(exposed)
+
+
 def is_oauth_enabled_for(provider: str) -> bool:
     """Return True when OAuth is operationally enabled for *provider*.
 
