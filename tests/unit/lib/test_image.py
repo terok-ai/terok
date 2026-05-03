@@ -100,7 +100,10 @@ def test_generate_dockerfiles_outputs_expected_files_and_content() -> None:
         )
         l2_content = (out_dir / "L2.Dockerfile").read_text(encoding="utf-8")
         l1_cli_content = (out_dir / "L1.cli.Dockerfile").read_text(encoding="utf-8")
-        assert "hilfe --kurz" in l1_cli_content
+        # Banner snippet is now concatenated from a sidecar (see
+        # terok-executor scripts/terok-bash-banner.sh), so the bashrc setup
+        # references the snippet path rather than the literal hilfe call.
+        assert 'cat /tmp/terok-bash-banner.sh >> "$bashrc"' in l1_cli_content
         assert "SSH_KEY_NAME" not in l2_content
         assert "{{DEFAULT_BRANCH}}" not in l2_content
         assert f'CODE_REPO="{UPSTREAM_URL}"' in l2_content
