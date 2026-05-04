@@ -1,5 +1,10 @@
 name: no-git-deps
 
+# Inert until merge queue is enabled on `master` and `no-git-deps` is
+# listed as a required status check in the master ruleset.
+# Settings → Rules → Rulesets → (master ruleset): add "Require merge queue"
+# and add `no-git-deps` under "Require status checks to pass".
+
 on:
   merge_group:
 
@@ -7,7 +12,7 @@ jobs:
   no-git-deps:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - name: Scan pyproject.toml for git sources
         run: |
           python3 <<'PY'
@@ -16,16 +21,17 @@ jobs:
           data = tomllib.loads(pathlib.Path("pyproject.toml").read_text())
           offenders = []
 
+          def scan(label, deps):
+              for name, spec in deps.items():
+                  if isinstance(spec, dict) and "git" in spec:
+                      ref = spec.get("branch") or spec.get("rev") or spec.get("tag") or "?"
+                      offenders.append(f"{label}.{name} -> {spec['git']}@{ref}")
+
           poetry = data.get("tool", {}).get("poetry", {})
           for key in ("dependencies", "dev-dependencies"):
-              for name, spec in poetry.get(key, {}).items():
-                  if isinstance(spec, dict) and "git" in spec:
-                      ref = spec.get("branch") or spec.get("rev") or spec.get("tag")
-                      offenders.append(f"{key}.{name} -> {spec.get('git')}@{ref}")
+              scan(key, poetry.get(key, {}))
           for gname, g in poetry.get("group", {}).items():
-              for name, spec in g.get("dependencies", {}).items():
-                  if isinstance(spec, dict) and "git" in spec:
-                      offenders.append(f"group.{gname}.{name} -> {spec.get('git')}")
+              scan(f"group.{gname}", g.get("dependencies", {}))
 
           project = data.get("project", {})
           for dep in project.get("dependencies", []):
