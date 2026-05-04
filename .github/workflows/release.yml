@@ -12,7 +12,11 @@ permissions:
   contents: write
 
 jobs:
+  no-git-deps:
+    uses: ./.github/workflows/no-git-deps.yml
+
   build:
+    needs: no-git-deps
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
