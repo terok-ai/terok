@@ -538,7 +538,6 @@ def _check_selinux_policy() -> _CheckResult:
         SelinuxStatus,
         check_selinux_status,
         selinux_install_command,
-        selinux_install_script,
     )
 
     label = "SELinux policy"
@@ -576,12 +575,61 @@ def _check_selinux_policy() -> _CheckResult:
                 "Fix: sudo dnf install libselinux",
             )
         case SelinuxStatus.OK:
-            return (
-                "ok",
-                label,
-                "terok_socket_t installed, binding functional "
-                f"(installer: {selinux_install_script()})",
-            )
+            return ("ok", label, "terok_socket_t installed, binding functional")
+
+
+def _check_strict_systemd_hardening() -> _CheckResult:
+    """Detect drift between the strict-hardening probe and what's on disk.
+
+    Sandbox's unit installer drops in ``hardening-systemd.conf`` under
+    each unit's ``.d/`` directory when the host's user-systemd manager
+    is known to support the capability-modifying directives that
+    Ubuntu 24.04's user manager rejects (Fedora ≥43 today).  This row
+    surfaces three states:
+
+    * ``ok (applied)`` — probe says capable AND drop-in is on disk
+    * ``ok (not applicable)`` — probe says incapable (Ubuntu, …) AND
+      no drop-in on disk; expected
+    * ``warn`` — drift between probe and disk (e.g. probe was refined
+      after a previous ``terok setup``).  Fix: re-run ``terok setup``.
+
+    Cheap probe — reads ``/etc/os-release`` once.  Drop-in detection
+    is one ``Path.exists()`` call per unit.
+    """
+    import os
+
+    from ...lib.integrations.sandbox import (
+        STRICT_HARDENING_DROPIN_FILENAME as DROPIN_FILENAME,
+        supports_strict_user_hardening,
+    )
+
+    label = "Strict hardening"
+    capable = supports_strict_user_hardening()
+
+    # Probe one representative unit on each side (gate + vault).  If the
+    # probe says we should have the drop-in, all four units should — but
+    # checking all four here is overkill; the install path is atomic.
+    xdg = os.environ.get("XDG_CONFIG_HOME")
+    unit_dir = (Path(xdg) if xdg else Path.home() / ".config") / "systemd" / "user"
+    sentinels = ("terok-vault.service", "terok-gate-socket.service")
+    present = [u for u in sentinels if (unit_dir / f"{u}.d" / DROPIN_FILENAME).is_file()]
+
+    if capable and not present:
+        return (
+            "warn",
+            label,
+            "host supports strict directives but drop-in absent — re-run `terok setup`",
+        )
+    if not capable and present:
+        return (
+            "warn",
+            label,
+            "drop-in present on a host the probe flags as incapable — "
+            "stale install; re-run `terok setup` to clean up",
+        )
+    if capable:
+        return ("ok", label, "applied (Fedora-class user manager)")
+    return ("ok", label, "not applicable (user manager lacks CAP_SETPCAP)")
 
 
 def _check_vault_migration() -> _CheckResult:
@@ -692,6 +740,7 @@ _GLOBAL_CHECKS = [
     ("Recovery key acknowledged", _check_recovery_acknowledged),
     ("SSH signer", _check_ssh_signer),
     ("SELinux policy", _check_selinux_policy),
+    ("Strict hardening", _check_strict_systemd_hardening),
     ("Clearance stack", _check_clearance_stack),
     ("Default agents", _check_default_agents),
 ]

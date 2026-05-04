@@ -8,10 +8,16 @@ elsewhere in terok import from this module rather than from
 ``terok_sandbox`` directly — see the package docstring in
 [`terok.lib.integrations`][terok.lib.integrations] for the rationale.
 
-Every symbol comes from the wheel's top-level public API.  Shield's
+Most symbols come from the wheel's top-level public API.  Shield's
 high-level wrappers (``make_shield``, ``up``, ``down``, ``quarantine``,
 ``status``) flow through here as sandbox's own re-exports; shield's
 command registry has its own adapter, ``terok.lib.integrations.shield``.
+
+A small set of strict-hardening probes (``STRICT_HARDENING_DROPIN_FILENAME``,
+``supports_strict_user_hardening``) is reached from a private submodule
+because the wheel doesn't expose it on its top-level API yet — moving
+that probe out of ``_util._systemd_caps`` is part of the same hardening
+chain that lands these helpers and stays scoped to this one file.
 """
 
 from terok_sandbox import (  # noqa: F401 — re-exported public API
@@ -87,6 +93,7 @@ from terok_sandbox import (  # noqa: F401 — re-exported public API
     handle_vault_to_keyring,
     installed_versions,
     is_recovery_acknowledged,
+    is_selinux_enforcing,
     is_ssh_url,
     is_systemd_available,
     is_systemd_creds_available,
@@ -109,7 +116,7 @@ from terok_sandbox import (  # noqa: F401 — re-exported public API
     sandbox_doctor_checks,
     sandbox_uninstall,
     selinux_install_command,
-    selinux_install_script,
+    selinux_loaded_confined_domains,
     setup_hooks_direct,
     shield_interactive_session,
     shield_watch_session,
@@ -125,6 +132,10 @@ from terok_sandbox import (  # noqa: F401 — re-exported public API
     up,
     yaml_update_section,
     yellow,
+)
+from terok_sandbox._util._systemd_caps import (  # noqa: F401 — re-exported public API
+    DROPIN_FILENAME as STRICT_HARDENING_DROPIN_FILENAME,
+    supports_strict_user_hardening,
 )
 
 __all__ = [
@@ -164,6 +175,7 @@ __all__ = [
     "SSH_COMMANDS",
     "SSHInitResult",
     "SSHManager",
+    "STRICT_HARDENING_DROPIN_FILENAME",
     "Sandbox",
     "SandboxConfig",
     "SelinuxStatus",
@@ -200,6 +212,7 @@ __all__ = [
     "handle_vault_to_keyring",
     "installed_versions",
     "is_recovery_acknowledged",
+    "is_selinux_enforcing",
     "is_ssh_url",
     "is_systemd_available",
     "is_systemd_creds_available",
@@ -222,7 +235,7 @@ __all__ = [
     "sandbox_doctor_checks",
     "sandbox_uninstall",
     "selinux_install_command",
-    "selinux_install_script",
+    "selinux_loaded_confined_domains",
     "setup_hooks_direct",
     "shield_interactive_session",
     "shield_watch_session",
@@ -234,6 +247,7 @@ __all__ = [
     "status",
     "stop_daemon",
     "stop_vault",
+    "supports_strict_user_hardening",
     "systemd_creds_has_tpm2",
     "up",
     "yaml_update_section",

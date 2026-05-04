@@ -182,26 +182,17 @@ def test_vault_to_keyring_calls_handle_with_cfg() -> None:
     m_to_keyring.assert_called_once_with(cfg=cfg)
 
 
-def test_selinux_install_policy_runs_sudo_bash() -> None:
-    """``selinux_install_policy`` resolves sudo + bash via PATH and runs the bundled script."""
-    from pathlib import Path
-
-    def _which(name: str) -> str:
-        return {"sudo": "/usr/bin/sudo", "bash": "/usr/bin/bash"}[name]
-
+def test_selinux_install_policy_runs_sudo_python_module() -> None:
+    """``selinux_install_policy`` resolves sudo via PATH and runs the hardening tool."""
     with (
-        mock.patch(
-            "terok.lib.integrations.sandbox.selinux_install_script",
-            return_value=Path("/bundled/install_policy.sh"),
-        ),
-        mock.patch("shutil.which", side_effect=_which),
+        mock.patch("shutil.which", return_value="/usr/bin/sudo"),
+        mock.patch("sys.executable", "/usr/bin/python3"),
         mock.patch("subprocess.run") as m_run,
     ):
         worker_actions.selinux_install_policy()
-    # Absolute paths from ``shutil.which`` — no partial-path lookup at
-    # exec time (bandit B607 / Sonar partial-path).
     m_run.assert_called_once_with(
-        ["/usr/bin/sudo", "/usr/bin/bash", "/bundled/install_policy.sh"], check=True
+        ["/usr/bin/sudo", "/usr/bin/python3", "-m", "terok_sandbox.tools.hardening", "install"],
+        check=True,
     )
 
 
@@ -211,18 +202,6 @@ def test_selinux_install_policy_aborts_when_sudo_missing() -> None:
 
     with mock.patch("shutil.which", return_value=None):
         with _pytest.raises(SystemExit, match="sudo not on PATH"):
-            worker_actions.selinux_install_policy()
-
-
-def test_selinux_install_policy_aborts_when_bash_missing() -> None:
-    """A missing ``bash`` surfaces as SystemExit with the binary name."""
-    import pytest as _pytest
-
-    def _which(name: str) -> str | None:
-        return "/usr/bin/sudo" if name == "sudo" else None
-
-    with mock.patch("shutil.which", side_effect=_which):
-        with _pytest.raises(SystemExit, match="bash not on PATH"):
             worker_actions.selinux_install_policy()
 
 
