@@ -249,36 +249,25 @@ def vault_to_keyring() -> None:
 
 
 def selinux_install_policy() -> None:
-    """Run the bundled SELinux installer with ``sudo bash`` and stream the output.
+    """Run the SELinux/AppArmor hardening installer via ``sudo`` and stream the output.
 
-    Delegates to the ``install_policy.sh`` script terok-sandbox ships
-    in its resources — same one ``terok setup`` prints when the policy
-    is missing.  Output (including any sudo prompt) lands in the
-    captured-log view so the operator can authenticate inline.
-
-    ``sudo`` and ``bash`` are looked up via [`shutil.which`][shutil.which]
-    so the subprocess gets an absolute executable path — keeps
-    bandit (B607 partial-path), SonarCloud, and a hostile ``PATH``
-    all out of the picture.  Failing either lookup turns into a clear
-    [`SystemExit`][SystemExit] rather than a confusing ``FileNotFoundError``.
+    Delegates to ``python -m terok_sandbox.tools.hardening install`` —
+    the same command ``terok setup`` and sickbay print when policy is
+    missing.  Output (including any sudo prompt) lands in the captured-
+    log view so the operator can authenticate inline.
     """
     import shutil
     import subprocess  # noqa: S404 — running sudo to load a bundled SELinux policy is the whole point of this verb  # nosec B404
-
-    from terok.lib.api.setup import selinux_install_script
+    import sys
 
     sudo = shutil.which("sudo")
-    bash = shutil.which("bash")
-    if sudo is None or bash is None:
-        missing = "sudo" if sudo is None else "bash"
+    if sudo is None:
         raise SystemExit(
-            f"selinux_install_policy: {missing} not on PATH — install it or run "
-            "the bundled script manually."
+            "selinux_install_policy: sudo not on PATH — install it or run "
+            "`python -m terok_sandbox.tools.hardening install` manually."
         )
-    # Stream stdout/stderr to the parent process so ConsoleLog captures
-    # them line-by-line — same shape as every other dispatched action.
-    subprocess.run(  # noqa: S603 — argv built from absolute paths + a bundled script  # nosec B603
-        [sudo, bash, str(selinux_install_script())],
+    subprocess.run(  # noqa: S603 — argv built from absolute paths + the bundled tool  # nosec B603
+        [sudo, sys.executable, "-m", "terok_sandbox.tools.hardening", "install"],
         check=True,
     )
 

@@ -35,6 +35,11 @@ type = protected
 protected_modules = terok_sandbox
 allowed_importers =
     terok.lib.integrations.sandbox
+    # Out-of-band hardening orchestrator — packager-side, separate
+    # from the daily user CLI.  Imports the per-package install/remove
+    # functions to chain them; lives outside the integrations layer
+    # because it isn't part of the daily import graph.
+    terok.tools.hardening
 
 [importlinter:contract:executor-boundary]
 name = terok_executor access restricted to the integrations adapter
@@ -49,6 +54,8 @@ type = protected
 protected_modules = terok_clearance
 allowed_importers =
     terok.lib.integrations.clearance
+    # See terok.tools.hardening note in sandbox-boundary.
+    terok.tools.hardening
 
 [importlinter:contract:shield-boundary]
 name = terok_shield access restricted to the integrations adapter
