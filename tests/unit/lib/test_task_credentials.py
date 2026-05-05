@@ -248,6 +248,32 @@ class TestAuditCredentials:
         assert len(rows) == 1
         assert rows[0]["provider"] == "claude"
 
+    def test_naive_threshold_rejected_at_helper_boundary(self, patched_sandbox_config) -> None:
+        """``audit_credentials`` defends against naive thresholds even in-process.
+
+        The CLI rejects naive inputs at parse time, but the helper itself
+        also asserts the invariant so programmatic callers can't slip
+        an aware-vs-naive ``TypeError`` past the boundary.
+        """
+        _seed_audit_lines(
+            patched_sandbox_config.credential_audit_log_path,
+            [
+                {
+                    "ts": "2026-05-05T12:00:00+00:00",
+                    "scope": "p",
+                    "subject": "t",
+                    "provider": "claude",
+                    "method": "GET",
+                    "path": "/x",
+                    "status": 200,
+                    "outcome": "ok",
+                    "duration_ms": 1,
+                },
+            ],
+        )
+        with pytest.raises(ValueError, match="offset-aware"):
+            list(audit_credentials("p", "t", since=datetime(2026, 5, 5)))
+
     def test_malformed_timestamp_kept_under_since_filter(self, patched_sandbox_config) -> None:
         """Lines whose ``ts`` doesn't parse round through — forensic conservatism."""
         _seed_audit_lines(

@@ -150,9 +150,16 @@ def _on_or_after(ts_value: str, threshold: datetime) -> bool:
     Lines with malformed / missing timestamps round to ``True`` —
     forensically a "we don't know when this happened, surface it" is
     safer than dropping it during a ``--since`` filter.
+
+    *threshold* must be offset-aware.  Audit lines record UTC, so
+    comparing an aware line timestamp to a naive threshold raises
+    ``TypeError`` at runtime; the CLI rejects naive inputs at parse
+    time, and this assert keeps programmatic callers honest.
     """
     from datetime import datetime as _dt
 
+    if threshold.tzinfo is None:
+        raise ValueError("audit_credentials threshold must be offset-aware")
     try:
         when = _dt.fromisoformat(ts_value)
     except ValueError:

@@ -286,7 +286,12 @@ def register(
     t_audit.add_argument(
         "--since",
         default=None,
-        help="ISO-8601 timestamp; drop lines older than this (e.g. 2026-05-05T12:00:00)",
+        help=(
+            "ISO-8601 timestamp with timezone offset; drop lines older "
+            "than this (e.g. 2026-05-05T12:00:00+00:00).  Naive "
+            "timestamps are rejected — the audit log records UTC and "
+            "comparing aware vs. naive raises TypeError."
+        ),
     )
     t_audit.add_argument(
         "--tail",
@@ -606,6 +611,12 @@ def _cmd_task_audit_credentials(project_id: str, task_id: str, args: argparse.Na
             since = datetime.fromisoformat(since_arg)
         except ValueError as exc:
             raise SystemExit(f"Invalid --since timestamp {since_arg!r}: {exc}") from exc
+        if since.tzinfo is None:
+            raise SystemExit(
+                f"--since {since_arg!r} is naive (no timezone offset).  Audit "
+                "lines record UTC; pass an offset-aware ISO-8601 timestamp "
+                "(append '+00:00' for UTC, or your local offset)."
+            )
 
     entries = audit_credentials(
         project_id,
