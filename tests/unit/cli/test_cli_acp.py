@@ -13,7 +13,6 @@ is the load-bearing surface for "ACP daemon could not start" errors.
 
 from __future__ import annotations
 
-import json
 import os
 import socket
 from pathlib import Path
@@ -155,14 +154,14 @@ class TestForwardSocketToStdout:
             os.close(w)
         assert keep_going is False
 
-    def test_connection_reset_emits_jsonrpc_error_frame(
-        self, capsys: pytest.CaptureFixture[str]
-    ) -> None:
-        """``ConnectionResetError`` becomes a JSON-RPC error frame, not a stack trace.
+    def test_connection_reset_exits_via_fail(self, capsys: pytest.CaptureFixture[str]) -> None:
+        """``ConnectionResetError`` exits via ``_fail`` with the log path on stderr.
 
         Builds a ``recv`` that raises ``ConnectionResetError`` directly
         rather than wrestling with the kernel into emitting a real RST,
-        which is timing-sensitive across Linux versions.
+        which is timing-sensitive across Linux versions.  Stdout stays
+        clean: an unsolicited ``id: null`` JSON-RPC frame would be
+        rejected by Zed's parser as "neither id nor method".
         """
 
         class ResetSock:
@@ -172,31 +171,28 @@ class TestForwardSocketToStdout:
         with pytest.raises(SystemExit) as excinfo:
             _forward_socket_to_stdout(ResetSock(), 1, Path("/tmp/probe.log"))  # type: ignore[arg-type]
         assert excinfo.value.code == 1
-        frame = json.loads(capsys.readouterr().out.strip())
-        assert frame["error"]["code"] == -32000
-        assert "/tmp/probe.log" in frame["error"]["message"]
-        assert "connection reset" in frame["error"]["message"].lower()
+        captured = capsys.readouterr()
+        assert captured.out == ""  # no malformed JSON-RPC frame
+        assert "/tmp/probe.log" in captured.err
+        assert "connection reset" in captured.err.lower()
 
 
 class TestFail:
-    """``_fail`` emits a JSON-RPC error frame on stdout before exiting.
+    """``_fail`` writes to stderr only — no malformed JSON-RPC frame."""
 
-    ACP clients launch us as a subprocess and typically discard our
-    stderr — without the stdout frame, ``acp connect`` failures look
-    like a silent dead agent in the client UI.
-    """
+    def test_writes_message_to_stderr_and_exits(self, capsys: pytest.CaptureFixture[str]) -> None:
+        """Stderr carries the message; stdout stays clean.
 
-    def test_emits_jsonrpc_error_frame_on_stdout(self, capsys: pytest.CaptureFixture[str]) -> None:
-        """Stdout carries a parseable JSON-RPC error with id=null and code -32000."""
+        An unsolicited ``{id: null, error}`` frame on stdout used to be
+        emitted here so Zed would surface the error, but Zed's parser
+        rejected it as "neither id nor method" — and Zed already
+        captures the agent subprocess's stderr at WARN level, which is
+        the right channel for this kind of unsolicited error anyway.
+        """
         with pytest.raises(SystemExit) as excinfo:
             _fail("daemon won't start")
         assert excinfo.value.code == 1
 
         captured = capsys.readouterr()
-        frame = json.loads(captured.out.strip())
-        assert frame == {
-            "jsonrpc": "2.0",
-            "id": None,
-            "error": {"code": -32000, "message": "terok acp: daemon won't start"},
-        }
+        assert captured.out == ""
         assert "daemon won't start" in captured.err

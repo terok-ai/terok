@@ -28,7 +28,6 @@ in the client UI.
 from __future__ import annotations
 
 import argparse
-import json
 import os
 import select
 import socket
@@ -194,10 +193,10 @@ def _wait_for_socket(
     Polls *daemon* alongside the bind probe so a startup crash surfaces
     immediately with the daemon's exit code instead of stalling the
     full *timeout* and reporting a misleading "did not bind" error.
-    Both failure paths emit a JSON-RPC error frame on stdout so an
-    ACP client launching us as its agent subprocess shows the cause
-    in its UI rather than swallowing stderr; the message names
-    *log_path* so the user can read the daemon's traceback.
+    Both failure paths exit via :func:`_fail` so the message reaches
+    stderr (and any ACP client that captures the agent subprocess's
+    stderr, like Zed at WARN level), naming *log_path* so the user
+    can read the daemon's traceback.
     """
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
@@ -213,22 +212,17 @@ def _wait_for_socket(
 
 
 def _fail(message: str) -> None:
-    """Emit a JSON-RPC error frame on stdout, an ``acp:`` line on stderr, then exit.
+    """Print *message* on stderr and exit with code 1.
 
-    ACP clients that launch us as their agent server read JSON-RPC
-    frames from our stdout and typically discard our stderr; emitting
-    an ``id: null, error`` frame surfaces *message* in the client UI
-    instead of leaving the model picker dimmed with no breadcrumb.
-    The stderr line is kept so ``terok acp connect`` from a real
-    terminal still shows what went wrong.
+    Earlier this also wrote a JSON-RPC ``{id: null, error: …}`` frame
+    on stdout so a launching client (Zed) would surface the cause in
+    its UI.  But that frame is malformed under JSON-RPC 2.0 — Zed's
+    parser logs ``received message with neither id nor method`` and
+    drops it.  Stderr is the right channel for unsolicited errors
+    here: ACP clients that capture the agent subprocess's stderr
+    (Zed does, at WARN level) get the message verbatim, and a real
+    terminal user sees it directly.
     """
-    frame = {
-        "jsonrpc": "2.0",
-        "id": None,
-        "error": {"code": -32000, "message": f"terok acp: {message}"},
-    }
-    sys.stdout.write(json.dumps(frame) + "\n")
-    sys.stdout.flush()
     print(f"terok: {message}", file=sys.stderr)
     raise SystemExit(1)
 
