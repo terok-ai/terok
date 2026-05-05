@@ -130,6 +130,63 @@ def _projects_to_show(project_id_filter: str | None) -> list[Project]:
 # ── connect ──────────────────────────────────────────────────────────────
 
 
+_EXPERIMENTAL_ACK_ENV = "TEROK_ACP_EXPERIMENTAL"
+"""Env var the user must set to opt in to ACP integration.
+
+The per-task ``workspace-dangerous`` host mount stays — it's the
+canonical persistence layer.  What's discouraged is **pointing the
+IDE at that mount on the host**: the agent inside the container can
+write arbitrary content there, and a host IDE that opens those files
+typically runs them too — git hooks on checkout, ``Makefile``
+targets on save-and-build, ``package.json`` postinstall scripts on
+``npm install``, IDE-extension config (``.vscode/``,
+``.zed/settings.json``) that wires plugins into the editor.  Any of
+those vectors lets the agent's writes execute as the user on the
+host, which is the boundary terok exists to defend.
+
+Until a proper shared live-view ships (one that doesn't require the
+IDE to read the dangerous mount directly — TBD design), every
+``terok acp connect`` invocation prints a banner explaining the
+trade-off and refuses to run unless the user has explicitly
+acknowledged it via this env var.
+"""
+
+
+def _check_experimental_ack() -> None:
+    """Refuse to run ``acp connect`` unless the user opted in.
+
+    Prints the banner regardless of opt-in state (so users discover
+    the env var without reading the docs first), then fails the
+    command if the var isn't set.  The banner names the actual
+    threat — agent-planted git hooks / build scripts / IDE config
+    executing on the host as the user — so the consent is informed.
+    """
+    if os.environ.get(_EXPERIMENTAL_ACK_ENV, "").lower() in {"1", "true", "yes", "on"}:
+        return
+    sys.stderr.write(
+        "terok acp: ACP integration is EXPERIMENTAL and DISCOURAGED for production use.\n"
+        "\n"
+        "  Why: connecting an IDE here means the IDE will read/edit files in the\n"
+        "  per-task workspace-dangerous mount.  The agent can write anything\n"
+        "  there — including code paths the host IDE will execute on your\n"
+        "  behalf:\n"
+        "\n"
+        "    - git hooks fired on checkout / commit / status;\n"
+        "    - Makefile targets, package.json postinstall scripts, etc.\n"
+        "      run when you trigger a build from the IDE;\n"
+        "    - IDE-extension config (.vscode/, .zed/settings.json) that\n"
+        "      wires plugins into the editor.\n"
+        "\n"
+        "  Any of these can let the agent's writes execute as you on the\n"
+        "  host, which is the boundary terok is supposed to keep closed.\n"
+        "  A shared live-view that doesn't expose the mount is on the\n"
+        "  roadmap; until then this is your acknowledgement.\n"
+        "\n"
+        f"  Set {_EXPERIMENTAL_ACK_ENV}=1 to proceed.\n"
+    )
+    raise SystemExit(2)
+
+
 def _cmd_connect(project_id: str, task_id: str) -> None:
     """Bridge the caller's stdio to a task's ACP socket.
 
@@ -137,7 +194,11 @@ def _cmd_connect(project_id: str, task_id: str) -> None:
     not already live, waits for it to bind, then runs the in-process
     pump (stdin → AF_UNIX socket, socket → stdout) until either side
     reaches EOF.
+
+    Refuses to run unless :data:`_EXPERIMENTAL_ACK_ENV` is set —
+    see :func:`_check_experimental_ack` for the rationale.
     """
+    _check_experimental_ack()
     sock_path = acp_socket_path(project_id, task_id)
     log_path = acp_log_path(project_id, task_id)
     if not acp_socket_is_live(sock_path):

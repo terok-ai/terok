@@ -20,6 +20,8 @@ from pathlib import Path
 import pytest
 
 from terok.cli.commands.acp import (
+    _EXPERIMENTAL_ACK_ENV,
+    _check_experimental_ack,
     _fail,
     _forward_socket_to_stdout,
     _forward_stdin_to_socket,
@@ -175,6 +177,58 @@ class TestForwardSocketToStdout:
         assert captured.out == ""  # no malformed JSON-RPC frame
         assert "/tmp/probe.log" in captured.err
         assert "connection reset" in captured.err.lower()
+
+
+class TestExperimentalAck:
+    """``_check_experimental_ack`` gates ``terok acp connect`` on user opt-in.
+
+    The check refuses to run unless ``TEROK_ACP_EXPERIMENTAL`` is set
+    to a truthy value.  The threat the banner names is specific:
+    pointing an IDE at the workspace-dangerous mount lets an agent
+    plant code (git hooks, build scripts, IDE config) that the
+    host IDE will then execute as the user — which is the boundary
+    terok exists to defend.
+    """
+
+    @pytest.mark.parametrize("value", ["1", "true", "True", "TRUE", "yes", "on"])
+    def test_truthy_env_var_passes(self, value: str, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Any conventional truthy spelling counts as opt-in."""
+        monkeypatch.setenv(_EXPERIMENTAL_ACK_ENV, value)
+        # Should return without raising.
+        _check_experimental_ack()
+
+    @pytest.mark.parametrize("value", ["", "0", "false", "no", "off", "maybe"])
+    def test_falsy_or_unset_env_var_exits(
+        self,
+        value: str,
+        monkeypatch: pytest.MonkeyPatch,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """Anything other than a truthy spelling triggers the banner + SystemExit(2)."""
+        monkeypatch.setenv(_EXPERIMENTAL_ACK_ENV, value)
+        with pytest.raises(SystemExit) as excinfo:
+            _check_experimental_ack()
+        assert excinfo.value.code == 2
+        captured = capsys.readouterr()
+        # Banner must spell out the actual threat (host IDE executing
+        # agent-planted code) so the consent is informed, not just the
+        # word "experimental".
+        assert "EXPERIMENTAL" in captured.err
+        assert "git hooks" in captured.err
+        assert "package.json" in captured.err.lower() or "postinstall" in captured.err.lower()
+        assert _EXPERIMENTAL_ACK_ENV in captured.err
+
+    def test_unset_env_var_exits(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """Var literally absent (not just empty) is still a refusal."""
+        monkeypatch.delenv(_EXPERIMENTAL_ACK_ENV, raising=False)
+        with pytest.raises(SystemExit) as excinfo:
+            _check_experimental_ack()
+        assert excinfo.value.code == 2
+        assert _EXPERIMENTAL_ACK_ENV in capsys.readouterr().err
 
 
 class TestFail:
