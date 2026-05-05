@@ -8,23 +8,39 @@ proxy: each running task gets a Unix socket that aggregates the
 container's in-image agents (claude, codex, …) behind ACP's standard
 model selector as namespaced ``agent:model`` ids.
 
-``acp list`` is a cheap discovery view — one filesystem check per
-running task plus one credential-DB read.  ``acp connect`` exec's
-``socat`` at the chosen socket, spawning the proxy daemon if it is
-not already up.
+This module owns only the orchestration glue terok adds on top of
+``terok-executor``'s host-proxy daemon:
+
+- ``acp list`` walks projects → tasks → endpoints,
+- ``acp connect`` translates ``(project_id, task_id)`` to a container
+  name and per-task socket path, lazy-spawns the executor daemon
+  (``python -m terok_executor.acp.daemon``), and bridges the caller's
+  stdio to that socket so an ACP client (Zed, Toad, …) launching us
+  as its agent server speaks JSON-RPC straight through.
+
+Errors raised before the bridge is up are surfaced both on stderr
+*and* as a single JSON-RPC error frame on stdout: most ACP clients
+launch the agent as a subprocess and never display its stderr, so
+the error frame is what makes "ACP daemon could not start" visible
+in the client UI.
 """
 
 from __future__ import annotations
 
 import argparse
+import json
 import os
+import select
+import socket
 import subprocess  # nosec B404 — only used with explicit argv (no shell, no untrusted input)
 import sys
 import time
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from ...lib.core.paths import acp_socket_is_live, acp_socket_path
+from terok_executor.acp.daemon import acp_socket_is_live
+
+from ...lib.core.paths import acp_socket_path
 from ...lib.domain.facade import list_projects
 from ._completers import add_project_id, add_task_id
 
@@ -116,36 +132,38 @@ def _projects_to_show(project_id_filter: str | None) -> list[Project]:
 
 
 def _cmd_connect(project_id: str, task_id: str) -> None:
-    """Bridge the caller's stdio to a task's ACP socket via ``socat``.
+    """Bridge the caller's stdio to a task's ACP socket.
 
-    Spawns the proxy daemon if the socket does not yet exist, then
-    replaces the CLI process with ``socat`` so the caller's terminal
-    flow is preserved end-to-end.  ``socat`` is part of the supported
-    runtime — if it is missing, ``execvp`` raises ``FileNotFoundError``
-    and the user should run ``terok sickbay`` to investigate.
+    Spawns the executor's per-container ACP daemon if the socket is
+    not already live, waits for it to bind, then runs the in-process
+    pump (stdin → AF_UNIX socket, socket → stdout) until either side
+    reaches EOF.
     """
     sock_path = acp_socket_path(project_id, task_id)
     if not acp_socket_is_live(sock_path):
-        daemon = _spawn_daemon(project_id, task_id)
+        daemon = _spawn_daemon(project_id, task_id, sock_path)
         _wait_for_socket(sock_path, timeout=_DAEMON_BIND_TIMEOUT_SEC, daemon=daemon)
-    os.execvp("socat", ["socat", "-", f"UNIX-CONNECT:{sock_path}"])  # nosec B606 B607 — replacing the CLI with socat is the design
+    _inprocess_pump(sock_path)
 
 
-def _spawn_daemon(project_id: str, task_id: str) -> subprocess.Popen:
-    """Start the proxy daemon detached, so it survives the CLI exit.
+def _spawn_daemon(project_id: str, task_id: str, sock_path: Path) -> subprocess.Popen:
+    """Resolve project+task → container name and spawn the executor daemon.
 
-    ``sys.executable`` resolves to the running interpreter's absolute
-    path; the remaining argv elements are the module path (a
-    constant) and the project / task ids parsed by argparse.  No shell,
-    no untrusted input — the bandit S603 / S607 warnings on subprocess
-    + partial-path analyses are documented false positives here.
-
-    Returns the ``Popen`` handle so the caller can poll for an early
-    exit while waiting on the socket — a daemon that crashes during
-    startup should fail fast, not stall the full bind timeout.
+    The daemon module is in ``terok-executor`` — invoked via
+    ``sys.executable -m`` so the spawn doesn't depend on
+    ``terok-executor`` being on ``PATH`` (it isn't, after a plain
+    ``pipx install terok``).  Returns the ``Popen`` so the bind-wait
+    loop can fail fast on early exit.
     """
-    return subprocess.Popen(  # nosec B603 — argv = [interpreter, -m, module, argparse-validated ids]
-        [sys.executable, "-m", "terok.cli.acp_proxy", project_id, task_id],
+    from ...lib.orchestration.tasks import (
+        container_name as resolve_container_name,
+        get_task_meta,
+    )
+
+    task_meta = get_task_meta(project_id, task_id)
+    cname = resolve_container_name(project_id, task_meta.mode, task_id)
+    return subprocess.Popen(  # nosec B603 — argv = [interpreter, -m, module, container, sock]
+        [sys.executable, "-m", "terok_executor.acp.daemon", cname, str(sock_path)],
         stdin=subprocess.DEVNULL,
         stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL,
@@ -157,25 +175,130 @@ def _spawn_daemon(project_id: str, task_id: str) -> subprocess.Popen:
 def _wait_for_socket(path: Path, *, timeout: float, daemon: subprocess.Popen) -> None:
     """Block until *daemon* binds *path* or *timeout* elapses.
 
-    Probing accept-readiness rather than just existence handles the
-    case of a stale ``.sock`` left by a previous crash.  Polling
-    *daemon* surfaces an early-exit crash immediately instead of
-    stalling the full *timeout* and reporting a misleading
-    "did not bind" error.
+    Polls *daemon* alongside the bind probe so a startup crash surfaces
+    immediately with the daemon's exit code instead of stalling the
+    full *timeout* and reporting a misleading "did not bind" error.
+    Both failure paths emit a JSON-RPC error frame on stdout so an
+    ACP client launching us as its agent subprocess shows the cause
+    in its UI rather than swallowing stderr.
     """
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
         if daemon.poll() is not None:
-            print(
-                f"terok: ACP daemon exited before binding {path} (exit code {daemon.returncode})",
-                file=sys.stderr,
+            _fail(
+                f"ACP daemon exited before binding {path} (exit code {daemon.returncode})",
             )
-            raise SystemExit(1)
         if acp_socket_is_live(path):
             return
         time.sleep(0.05)
-    print(
-        f"terok: ACP daemon did not bind {path} within {timeout:.1f}s",
-        file=sys.stderr,
-    )
+    _fail(f"ACP daemon did not bind {path} within {timeout:.1f}s")
+
+
+def _fail(message: str) -> None:
+    """Emit a JSON-RPC error frame on stdout, an ``acp:`` line on stderr, then exit.
+
+    ACP clients that launch us as their agent server read JSON-RPC
+    frames from our stdout and typically discard our stderr; emitting
+    an ``id: null, error`` frame surfaces *message* in the client UI
+    instead of leaving the model picker dimmed with no breadcrumb.
+    The stderr line is kept so ``terok acp connect`` from a real
+    terminal still shows what went wrong.
+    """
+    frame = {
+        "jsonrpc": "2.0",
+        "id": None,
+        "error": {"code": -32000, "message": f"terok acp: {message}"},
+    }
+    sys.stdout.write(json.dumps(frame) + "\n")
+    sys.stdout.flush()
+    print(f"terok: {message}", file=sys.stderr)
     raise SystemExit(1)
+
+
+# ── stdio ↔ socket bridge (sole transport, no socat fallback) ─────────────
+
+
+def _inprocess_pump(sock_path: Path) -> None:
+    """Bridge stdin/stdout to *sock_path* until either side reaches EOF.
+
+    Connects to the daemon's listener, then multiplexes:
+    stdin EOF triggers ``shutdown(SHUT_WR)`` so the daemon can drain
+    its final reply; daemon EOF returns from the loop and the
+    ``finally`` block closes the socket.  Non-blocking IO with
+    :func:`select` for multiplexing; partial sends/writes are looped
+    until drained.
+    """
+    sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+    sock.connect(str(sock_path))
+    sock.setblocking(False)
+    stdin_fd = sys.stdin.buffer.fileno()
+    stdout_fd = sys.stdout.buffer.fileno()
+    stdin_open = True
+    try:
+        while True:
+            # Drop stdin from the watch set after EOF — otherwise
+            # ``select`` keeps marking it ready and we'd attempt a
+            # second ``shutdown(SHUT_WR)``, dropping the daemon's
+            # final reply on the floor.
+            read_fds: list[object] = [sock]
+            if stdin_open:
+                read_fds.append(stdin_fd)
+            ready, _, _ = select.select(read_fds, [], [])
+            if stdin_open and stdin_fd in ready:
+                stdin_open = _forward_stdin_to_socket(stdin_fd, sock)
+            if sock in ready and not _forward_socket_to_stdout(sock, stdout_fd):
+                return
+    finally:
+        try:
+            sock.close()
+        except OSError:
+            pass
+
+
+def _forward_stdin_to_socket(stdin_fd: int, sock: socket.socket) -> bool:
+    """Forward one stdin chunk to *sock*; return ``False`` once stdin hits EOF."""
+    data = os.read(stdin_fd, 4096)
+    if not data:
+        # ``shutdown`` may raise if the daemon already closed its end —
+        # tolerate that, the SHUT_WR is advisory anyway.
+        try:
+            sock.shutdown(socket.SHUT_WR)
+        except OSError:
+            pass
+        return False
+    _send_all(sock, data)
+    return True
+
+
+def _send_all(sock: socket.socket, data: bytes) -> None:
+    """Drain *data* into the non-blocking *sock*, looping past short sends.
+
+    A non-blocking ``send`` may write fewer bytes than requested under
+    backpressure, and ``BlockingIOError`` signals "kernel send buffer
+    full" — wait for write-readiness via a single-fd ``select`` and
+    retry until the whole frame is committed.
+    """
+    view = memoryview(data)
+    while view:
+        try:
+            sent = sock.send(view)
+            view = view[sent:]
+        except BlockingIOError:
+            select.select([], [sock], [])
+
+
+def _forward_socket_to_stdout(sock: socket.socket, stdout_fd: int) -> bool:
+    """Forward one socket chunk to *stdout_fd*; return ``False`` on daemon EOF."""
+    try:
+        data = sock.recv(4096)
+    except BlockingIOError:
+        return True
+    if not data:
+        return False
+    # ``os.write`` may also write fewer bytes than supplied (rare on
+    # regular fds, but possible on pipes/ptys).
+    view = memoryview(data)
+    while view:
+        written = os.write(stdout_fd, view)
+        view = view[written:]
+    return True
