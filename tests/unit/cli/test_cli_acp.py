@@ -20,7 +20,6 @@ from pathlib import Path
 import pytest
 
 from terok.cli.commands.acp import (
-    _EXPERIMENTAL_ACK_ENV,
     _check_experimental_ack,
     _fail,
     _forward_socket_to_stdout,
@@ -180,55 +179,78 @@ class TestForwardSocketToStdout:
 
 
 class TestExperimentalAck:
-    """``_check_experimental_ack`` gates ``terok acp connect`` on user opt-in.
+    """``_check_experimental_ack`` gates ``terok acp connect`` on the existing ``is_experimental()`` axis.
 
-    The check refuses to run unless ``TEROK_ACP_EXPERIMENTAL`` is set
-    to a truthy value.  The threat the banner names is specific:
-    pointing an IDE at the workspace-dangerous mount lets an agent
-    plant code (git hooks, build scripts, IDE config) that the
-    host IDE will then execute as the user — which is the boundary
-    terok exists to defend.
+    Same opt-in axis as the rest of the codebase's experimental
+    features (``--experimental`` CLI flag, ``experimental: true`` in
+    config.yml).  The threat-model banner prints regardless so users
+    discover what they're consenting to even before they flip the
+    flag.
     """
 
-    @pytest.mark.parametrize("value", ["1", "true", "True", "TRUE", "yes", "on"])
-    def test_truthy_env_var_passes(self, value: str, monkeypatch: pytest.MonkeyPatch) -> None:
-        """Any conventional truthy spelling counts as opt-in."""
-        monkeypatch.setenv(_EXPERIMENTAL_ACK_ENV, value)
-        # Should return without raising.
+    def test_passes_when_experimental_enabled(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """With experimental on, the gate prints the banner but does not exit."""
+        from terok.cli.commands import acp as acp_mod
+
+        monkeypatch.setattr(acp_mod, "is_experimental", lambda: True)
         _check_experimental_ack()
 
-    @pytest.mark.parametrize("value", ["", "0", "false", "no", "off", "maybe"])
-    def test_falsy_or_unset_env_var_exits(
+    def test_exits_when_experimental_disabled(
         self,
-        value: str,
         monkeypatch: pytest.MonkeyPatch,
         capsys: pytest.CaptureFixture[str],
     ) -> None:
-        """Anything other than a truthy spelling triggers the banner + SystemExit(2)."""
-        monkeypatch.setenv(_EXPERIMENTAL_ACK_ENV, value)
+        """With experimental off, gate exits 2 after printing banner + how-to-enable.
+
+        Asserts only structural invariants: ``EXPERIMENTAL`` appears
+        (so it's recognisable as the discouragement banner, not a
+        stack trace), the ``--experimental`` opt-in mechanism is
+        named (so the user knows what to flip), and the body is more
+        than a one-liner.  Avoids pinning specific phrasing in case
+        the wording evolves with the threat model.
+        """
+        from terok.cli.commands import acp as acp_mod
+
+        monkeypatch.setattr(acp_mod, "is_experimental", lambda: False)
         with pytest.raises(SystemExit) as excinfo:
             _check_experimental_ack()
         assert excinfo.value.code == 2
         captured = capsys.readouterr()
-        # Banner must spell out the actual threat (host IDE executing
-        # agent-planted code) so the consent is informed, not just the
-        # word "experimental".
         assert "EXPERIMENTAL" in captured.err
-        assert "git hooks" in captured.err
-        assert "package.json" in captured.err.lower() or "postinstall" in captured.err.lower()
-        assert _EXPERIMENTAL_ACK_ENV in captured.err
+        assert "--experimental" in captured.err
+        assert captured.err.count("\n") >= 5
 
-    def test_unset_env_var_exits(
-        self,
-        monkeypatch: pytest.MonkeyPatch,
-        capsys: pytest.CaptureFixture[str],
-    ) -> None:
-        """Var literally absent (not just empty) is still a refusal."""
-        monkeypatch.delenv(_EXPERIMENTAL_ACK_ENV, raising=False)
-        with pytest.raises(SystemExit) as excinfo:
-            _check_experimental_ack()
-        assert excinfo.value.code == 2
-        assert _EXPERIMENTAL_ACK_ENV in capsys.readouterr().err
+    def test_cmd_connect_invokes_check_first(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """The gate runs before ``_cmd_connect`` does any real work.
+
+        A refactor that moved ``_check_experimental_ack`` below the
+        ``_spawn_daemon`` / ``_inprocess_pump`` calls would still pass
+        the unit-level tests above, but it would also defeat the gate:
+        the daemon would already be alive by the time the user is told
+        no.  Mock the gate to raise a sentinel and confirm that nothing
+        downstream of it ran.
+        """
+        from terok.cli.commands import acp as acp_mod
+
+        called: list[str] = []
+
+        def _stub_check() -> None:
+            called.append("check")
+            raise SystemExit(2)
+
+        def _unreachable_spawn(*_args: object, **_kwargs: object) -> None:
+            called.append("spawn")  # pragma: no cover — must not run
+
+        def _unreachable_pump(*_args: object, **_kwargs: object) -> None:
+            called.append("pump")  # pragma: no cover — must not run
+
+        monkeypatch.setattr(acp_mod, "_check_experimental_ack", _stub_check)
+        monkeypatch.setattr(acp_mod, "_spawn_daemon", _unreachable_spawn)
+        monkeypatch.setattr(acp_mod, "_inprocess_pump", _unreachable_pump)
+
+        with pytest.raises(SystemExit):
+            acp_mod._cmd_connect("project", "task")
+        assert called == ["check"]
 
 
 class TestFail:

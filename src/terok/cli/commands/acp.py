@@ -39,6 +39,7 @@ from typing import TYPE_CHECKING
 
 from terok_executor.acp.daemon import acp_socket_is_live
 
+from ...lib.core.config import is_experimental
 from ...lib.core.paths import acp_log_path, acp_socket_path
 from ...lib.domain.facade import list_projects
 from ._completers import add_project_id, add_task_id
@@ -130,43 +131,38 @@ def _projects_to_show(project_id_filter: str | None) -> list[Project]:
 # ── connect ──────────────────────────────────────────────────────────────
 
 
-_EXPERIMENTAL_ACK_ENV = "TEROK_ACP_EXPERIMENTAL"
-"""Env var the user must set to opt in to ACP integration.
-
-The per-task ``workspace-dangerous`` host mount stays — it's the
-canonical persistence layer.  What's discouraged is **pointing the
-IDE at that mount on the host**: the agent inside the container can
-write arbitrary content there, and a host IDE that opens those files
-typically runs them too — git hooks on checkout, ``Makefile``
-targets on save-and-build, ``package.json`` postinstall scripts on
-``npm install``, IDE-extension config (``.vscode/``,
-``.zed/settings.json``) that wires plugins into the editor.  Any of
-those vectors lets the agent's writes execute as the user on the
-host, which is the boundary terok exists to defend.
-
-Until a proper shared live-view ships (one that doesn't require the
-IDE to read the dangerous mount directly — TBD design), every
-``terok acp connect`` invocation prints a banner explaining the
-trade-off and refuses to run unless the user has explicitly
-acknowledged it via this env var.
-"""
-
-
 def _check_experimental_ack() -> None:
-    """Refuse to run ``acp connect`` unless the user opted in.
+    """Refuse to run ``acp connect`` unless experimental features are enabled.
 
-    Prints the banner regardless of opt-in state (so users discover
-    the env var without reading the docs first), then fails the
-    command if the var isn't set.  The banner names the actual
-    threat — agent-planted git hooks / build scripts / IDE config
-    executing on the host as the user — so the consent is informed.
+    ACP integration is gated on the codebase's existing experimental
+    axis (``Config.is_experimental()`` — set via the ``--experimental``
+    CLI flag or ``experimental: true`` in ``config.yml``); same axis as
+    e.g. claude OAuth proxying and codex vaulted OAuth.  When that's
+    off, this command refuses to run.
+
+    The threat-model banner (next paragraph) is *always* printed,
+    regardless of opt-in state, so users discover *what they're
+    consenting to* even if they never bother flipping the flag.
+
+    Why connecting an IDE here is dangerous: the per-task
+    ``workspace-dangerous`` host mount stays — it's the canonical
+    persistence layer for terok and is here to stay.  What's
+    discouraged is pointing the IDE at that mount on the host.  The
+    agent inside the container can write arbitrary content there, and
+    a host IDE that opens those files typically *runs* them too: git
+    hooks on checkout, ``Makefile`` targets on save-and-build,
+    ``package.json`` postinstall scripts on ``npm install``,
+    IDE-extension config (``.vscode/``, ``.zed/settings.json``) that
+    wires plugins into the editor.  Any of those vectors lets the
+    agent's writes execute as the user on the host, which is the
+    boundary terok exists to defend.  A shared live-view that
+    doesn't require the IDE to read the dangerous mount directly is
+    on the roadmap; until then this gate is the acknowledgement.
     """
-    if os.environ.get(_EXPERIMENTAL_ACK_ENV, "").lower() in {"1", "true", "yes", "on"}:
-        return
     sys.stderr.write(
         "terok acp: ACP integration is EXPERIMENTAL and DISCOURAGED for production use.\n"
         "\n"
-        "  Why: connecting an IDE here means the IDE will read/edit files in the\n"
+        "  Connecting an IDE here means the IDE will read/edit files in the\n"
         "  per-task workspace-dangerous mount.  The agent can write anything\n"
         "  there — including code paths the host IDE will execute on your\n"
         "  behalf:\n"
@@ -181,10 +177,15 @@ def _check_experimental_ack() -> None:
         "  host, which is the boundary terok is supposed to keep closed.\n"
         "  A shared live-view that doesn't expose the mount is on the\n"
         "  roadmap; until then this is your acknowledgement.\n"
-        "\n"
-        f"  Set {_EXPERIMENTAL_ACK_ENV}=1 to proceed.\n"
     )
-    raise SystemExit(2)
+    if not is_experimental():
+        sys.stderr.write(
+            "\n"
+            "  Refusing to start: experimental features are disabled.\n"
+            "  Pass --experimental on the command line, or set\n"
+            "  experimental: true in config.yml, to proceed.\n"
+        )
+        raise SystemExit(2)
 
 
 def _cmd_connect(project_id: str, task_id: str) -> None:
