@@ -40,7 +40,7 @@ from typing import TYPE_CHECKING
 
 from terok_executor.acp.daemon import acp_socket_is_live
 
-from ...lib.core.paths import acp_socket_path
+from ...lib.core.paths import acp_log_path, acp_socket_path
 from ...lib.domain.facade import list_projects
 from ._completers import add_project_id, add_task_id
 
@@ -140,20 +140,28 @@ def _cmd_connect(project_id: str, task_id: str) -> None:
     reaches EOF.
     """
     sock_path = acp_socket_path(project_id, task_id)
+    log_path = acp_log_path(project_id, task_id)
     if not acp_socket_is_live(sock_path):
-        daemon = _spawn_daemon(project_id, task_id, sock_path)
-        _wait_for_socket(sock_path, timeout=_DAEMON_BIND_TIMEOUT_SEC, daemon=daemon)
-    _inprocess_pump(sock_path)
+        daemon = _spawn_daemon(project_id, task_id, sock_path, log_path)
+        _wait_for_socket(
+            sock_path, timeout=_DAEMON_BIND_TIMEOUT_SEC, daemon=daemon, log_path=log_path
+        )
+    _inprocess_pump(sock_path, log_path=log_path)
 
 
-def _spawn_daemon(project_id: str, task_id: str, sock_path: Path) -> subprocess.Popen:
+def _spawn_daemon(
+    project_id: str, task_id: str, sock_path: Path, log_path: Path
+) -> subprocess.Popen:
     """Resolve project+task → container name and spawn the executor daemon.
 
     The daemon module is in ``terok-executor`` — invoked via
     ``sys.executable -m`` so the spawn doesn't depend on
     ``terok-executor`` being on ``PATH`` (it isn't, after a plain
-    ``pipx install terok``).  Returns the ``Popen`` so the bind-wait
-    loop can fail fast on early exit.
+    ``pipx install terok``).  Daemon stderr is appended to *log_path*
+    so its tracebacks outlive the detached spawn — the bridge can
+    point the user at this file when the connection RSTs mid-session.
+    Returns the ``Popen`` so the bind-wait loop can fail fast on
+    early exit.
     """
     from ...lib.orchestration.tasks import (
         container_name as resolve_container_name,
@@ -162,17 +170,25 @@ def _spawn_daemon(project_id: str, task_id: str, sock_path: Path) -> subprocess.
 
     task_meta = get_task_meta(project_id, task_id)
     cname = resolve_container_name(project_id, task_meta.mode, task_id)
+    log_path.parent.mkdir(parents=True, exist_ok=True)
+    log_fd = open(log_path, "ab", buffering=0)  # noqa: SIM115 — handed to Popen
     return subprocess.Popen(  # nosec B603 — argv = [interpreter, -m, module, container, sock]
         [sys.executable, "-m", "terok_executor.acp.daemon", cname, str(sock_path)],
         stdin=subprocess.DEVNULL,
         stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
+        stderr=log_fd,
         start_new_session=True,
         close_fds=True,
     )
 
 
-def _wait_for_socket(path: Path, *, timeout: float, daemon: subprocess.Popen) -> None:
+def _wait_for_socket(
+    path: Path,
+    *,
+    timeout: float,
+    daemon: subprocess.Popen,
+    log_path: Path,
+) -> None:
     """Block until *daemon* binds *path* or *timeout* elapses.
 
     Polls *daemon* alongside the bind probe so a startup crash surfaces
@@ -180,18 +196,20 @@ def _wait_for_socket(path: Path, *, timeout: float, daemon: subprocess.Popen) ->
     full *timeout* and reporting a misleading "did not bind" error.
     Both failure paths emit a JSON-RPC error frame on stdout so an
     ACP client launching us as its agent subprocess shows the cause
-    in its UI rather than swallowing stderr.
+    in its UI rather than swallowing stderr; the message names
+    *log_path* so the user can read the daemon's traceback.
     """
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
         if daemon.poll() is not None:
             _fail(
-                f"ACP daemon exited before binding {path} (exit code {daemon.returncode})",
+                f"ACP daemon exited before binding {path} "
+                f"(exit code {daemon.returncode}); see {log_path}"
             )
         if acp_socket_is_live(path):
             return
         time.sleep(0.05)
-    _fail(f"ACP daemon did not bind {path} within {timeout:.1f}s")
+    _fail(f"ACP daemon did not bind {path} within {timeout:.1f}s; see {log_path}")
 
 
 def _fail(message: str) -> None:
@@ -218,7 +236,7 @@ def _fail(message: str) -> None:
 # ── stdio ↔ socket bridge (sole transport, no socat fallback) ─────────────
 
 
-def _inprocess_pump(sock_path: Path) -> None:
+def _inprocess_pump(sock_path: Path, *, log_path: Path) -> None:
     """Bridge stdin/stdout to *sock_path* until either side reaches EOF.
 
     Connects to the daemon's listener, then multiplexes:
@@ -227,6 +245,13 @@ def _inprocess_pump(sock_path: Path) -> None:
     ``finally`` block closes the socket.  Non-blocking IO with
     :func:`select` for multiplexing; partial sends/writes are looped
     until drained.
+
+    A ``ConnectionResetError`` from ``recv`` means the daemon's
+    process ended abruptly mid-session — the kernel sends RST when
+    there are unread bytes the daemon will never process.  That gets
+    surfaced via :func:`_fail` so the ACP client sees a JSON-RPC
+    error pointing at *log_path* (where the daemon's traceback lives)
+    rather than a bare Python stack from the bridge.
     """
     sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
     sock.connect(str(sock_path))
@@ -246,7 +271,7 @@ def _inprocess_pump(sock_path: Path) -> None:
             ready, _, _ = select.select(read_fds, [], [])
             if stdin_open and stdin_fd in ready:
                 stdin_open = _forward_stdin_to_socket(stdin_fd, sock)
-            if sock in ready and not _forward_socket_to_stdout(sock, stdout_fd):
+            if sock in ready and not _forward_socket_to_stdout(sock, stdout_fd, log_path):
                 return
     finally:
         try:
@@ -287,12 +312,20 @@ def _send_all(sock: socket.socket, data: bytes) -> None:
             select.select([], [sock], [])
 
 
-def _forward_socket_to_stdout(sock: socket.socket, stdout_fd: int) -> bool:
-    """Forward one socket chunk to *stdout_fd*; return ``False`` on daemon EOF."""
+def _forward_socket_to_stdout(sock: socket.socket, stdout_fd: int, log_path: Path) -> bool:
+    """Forward one socket chunk to *stdout_fd*; return ``False`` on daemon EOF.
+
+    A ``ConnectionResetError`` from ``recv`` means the daemon process
+    died with bytes still in its receive buffer (kernel sends RST,
+    not FIN).  Surface it as a JSON-RPC error frame pointing at
+    *log_path* — never escapes as a bare Python traceback.
+    """
     try:
         data = sock.recv(4096)
     except BlockingIOError:
         return True
+    except ConnectionResetError:
+        _fail(f"ACP daemon connection reset (process exited mid-session); see {log_path}")
     if not data:
         return False
     # ``os.write`` may also write fewer bytes than supplied (rare on

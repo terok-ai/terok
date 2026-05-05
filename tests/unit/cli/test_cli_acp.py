@@ -16,6 +16,7 @@ from __future__ import annotations
 import json
 import os
 import socket
+from pathlib import Path
 
 import pytest
 
@@ -125,7 +126,7 @@ class TestForwardSocketToStdout:
         peer.send(b"reply\n")
         r, w = os.pipe()
         try:
-            keep_going = _forward_socket_to_stdout(caller, w)
+            keep_going = _forward_socket_to_stdout(caller, w, Path("/tmp/test.log"))
             os.close(w)
             assert keep_going is True
             assert os.read(r, 64) == b"reply\n"
@@ -137,7 +138,7 @@ class TestForwardSocketToStdout:
         caller, _peer = sock_pair
         r, w = os.pipe()
         try:
-            assert _forward_socket_to_stdout(caller, w) is True
+            assert _forward_socket_to_stdout(caller, w, Path("/tmp/test.log")) is True
         finally:
             os.close(r)
             os.close(w)
@@ -148,11 +149,33 @@ class TestForwardSocketToStdout:
         peer.close()
         r, w = os.pipe()
         try:
-            keep_going = _forward_socket_to_stdout(caller, w)
+            keep_going = _forward_socket_to_stdout(caller, w, Path("/tmp/test.log"))
         finally:
             os.close(r)
             os.close(w)
         assert keep_going is False
+
+    def test_connection_reset_emits_jsonrpc_error_frame(
+        self, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """``ConnectionResetError`` becomes a JSON-RPC error frame, not a stack trace.
+
+        Builds a ``recv`` that raises ``ConnectionResetError`` directly
+        rather than wrestling with the kernel into emitting a real RST,
+        which is timing-sensitive across Linux versions.
+        """
+
+        class ResetSock:
+            def recv(self, _n: int) -> bytes:
+                raise ConnectionResetError(104, "Connection reset by peer")
+
+        with pytest.raises(SystemExit) as excinfo:
+            _forward_socket_to_stdout(ResetSock(), 1, Path("/tmp/probe.log"))  # type: ignore[arg-type]
+        assert excinfo.value.code == 1
+        frame = json.loads(capsys.readouterr().out.strip())
+        assert frame["error"]["code"] == -32000
+        assert "/tmp/probe.log" in frame["error"]["message"]
+        assert "connection reset" in frame["error"]["message"].lower()
 
 
 class TestFail:

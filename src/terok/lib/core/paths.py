@@ -125,6 +125,18 @@ def acp_bound_path(project_id: str, task_id: str) -> Path:
     return _acp_runtime_path(project_id, task_id, suffix=".bound")
 
 
+def acp_log_path(project_id: str, task_id: str) -> Path:
+    """Return the per-task ACP daemon stderr log path.
+
+    ``terok acp connect`` redirects the spawned daemon's stderr here
+    so its tracebacks survive the detached spawn — without it the
+    daemon's only error surface would be the kernel sending RST mid-
+    session, and the user would see a bare Python stack trace from
+    the bridge with no hint at the underlying cause.
+    """
+    return _acp_runtime_path(project_id, task_id, suffix=".log")
+
+
 def vault_root() -> Path:
     """Shared vault directory used by all terok ecosystem packages.
 
