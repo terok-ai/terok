@@ -183,13 +183,16 @@ class TestExperimentalAck:
 
     Same opt-in axis as the rest of the codebase's experimental
     features (``--experimental`` CLI flag, ``experimental: true`` in
-    config.yml).  The threat-model banner prints regardless so users
-    discover what they're consenting to even before they flip the
-    flag.
+    config.yml).  ACP is experimental because by default the IDE has
+    no view into the agent's filesystem; usable functionality
+    requires the user to point the IDE at the task's
+    workspace-dangerous folder, which is a general-design concern
+    documented elsewhere — the gate is about feature completeness,
+    not "ACP is dangerous."
     """
 
     def test_passes_when_experimental_enabled(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        """With experimental on, the gate prints the banner but does not exit."""
+        """With experimental on, the gate is silent and does not exit."""
         from terok.cli.commands import acp as acp_mod
 
         monkeypatch.setattr(acp_mod, "is_experimental", lambda: True)
@@ -200,14 +203,11 @@ class TestExperimentalAck:
         monkeypatch: pytest.MonkeyPatch,
         capsys: pytest.CaptureFixture[str],
     ) -> None:
-        """With experimental off, gate exits 2 after printing banner + how-to-enable.
+        """With experimental off, gate exits 2 after a short note + how-to-enable.
 
-        Asserts only structural invariants: ``EXPERIMENTAL`` appears
-        (so it's recognisable as the discouragement banner, not a
-        stack trace), the ``--experimental`` opt-in mechanism is
-        named (so the user knows what to flip), and the body is more
-        than a one-liner.  Avoids pinning specific phrasing in case
-        the wording evolves with the threat model.
+        Asserts only structural invariants — the opt-in mechanism is
+        named so the user knows what to flip, and the body says more
+        than just "no" — without pinning specific wording.
         """
         from terok.cli.commands import acp as acp_mod
 
@@ -216,9 +216,9 @@ class TestExperimentalAck:
             _check_experimental_ack()
         assert excinfo.value.code == 2
         captured = capsys.readouterr()
-        assert "EXPERIMENTAL" in captured.err
+        assert "experimental" in captured.err.lower()
         assert "--experimental" in captured.err
-        assert captured.err.count("\n") >= 5
+        assert captured.err.count("\n") >= 3
 
     def test_cmd_connect_invokes_check_first(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """The gate runs before ``_cmd_connect`` does any real work.

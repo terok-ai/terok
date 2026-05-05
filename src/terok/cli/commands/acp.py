@@ -134,58 +134,34 @@ def _projects_to_show(project_id_filter: str | None) -> list[Project]:
 def _check_experimental_ack() -> None:
     """Refuse to run ``acp connect`` unless experimental features are enabled.
 
-    ACP integration is gated on the codebase's existing experimental
-    axis (``Config.is_experimental()`` — set via the ``--experimental``
-    CLI flag or ``experimental: true`` in ``config.yml``); same axis as
-    e.g. claude OAuth proxying and codex vaulted OAuth.  When that's
-    off, this command refuses to run.
+    Gates on the codebase's standard experimental axis
+    (``Config.is_experimental()`` — ``--experimental`` flag or
+    ``experimental: true`` in ``config.yml``); same axis as claude
+    OAuth proxying, codex vaulted OAuth, etc.
 
-    The threat-model banner (next paragraph) is *always* printed,
-    regardless of opt-in state, so users discover *what they're
-    consenting to* even if they never bother flipping the flag.
-
-    Why connecting an IDE here is dangerous: the per-task
-    ``workspace-dangerous`` host mount stays — it's the canonical
-    persistence layer for terok and is here to stay.  What's
-    discouraged is pointing the IDE at that mount on the host.  The
-    agent inside the container can write arbitrary content there, and
-    a host IDE that opens those files typically *runs* them too: git
-    hooks on checkout, ``Makefile`` targets on save-and-build,
-    ``package.json`` postinstall scripts on ``npm install``,
-    IDE-extension config (``.vscode/``, ``.zed/settings.json``) that
-    wires plugins into the editor.  Any of those vectors lets the
-    agent's writes execute as the user on the host, which is the
-    boundary terok exists to defend.  A shared live-view that
-    doesn't require the IDE to read the dangerous mount directly is
-    on the roadmap; until then this gate is the acknowledgement.
+    Why experimental: by default the IDE has no view into the agent's
+    in-container filesystem, so a connecting IDE will see *zero* of
+    the agent's edits.  The only way to get a working live-view today
+    is for the user to deliberately point their IDE at the per-task
+    ``workspace-dangerous`` folder; that folder's lifecycle and risk
+    profile are documented in the general terok design (it's not an
+    ACP-specific concern).  Until either ACP ``fs/*`` callbacks land
+    or a proper shared live-view ships, the protocol's usefulness
+    here is limited and the gate stays.
     """
+    if is_experimental():
+        return
     sys.stderr.write(
-        "terok acp: ACP integration is EXPERIMENTAL and DISCOURAGED for production use.\n"
+        "terok acp: experimental.  By default the IDE has no view into the\n"
+        "agent's filesystem, so functionality is limited.  Pointing the IDE\n"
+        "at the task's workspace-dangerous folder (see terok docs for the\n"
+        "design rationale) gives a working live-view; ACP fs/* callbacks\n"
+        "and a sandbox-friendly shared view are on the roadmap.\n"
         "\n"
-        "  Connecting an IDE here means the IDE will read/edit files in the\n"
-        "  per-task workspace-dangerous mount.  The agent can write anything\n"
-        "  there — including code paths the host IDE will execute on your\n"
-        "  behalf:\n"
-        "\n"
-        "    - git hooks fired on checkout / commit / status;\n"
-        "    - Makefile targets, package.json postinstall scripts, etc.\n"
-        "      run when you trigger a build from the IDE;\n"
-        "    - IDE-extension config (.vscode/, .zed/settings.json) that\n"
-        "      wires plugins into the editor.\n"
-        "\n"
-        "  Any of these can let the agent's writes execute as you on the\n"
-        "  host, which is the boundary terok is supposed to keep closed.\n"
-        "  A shared live-view that doesn't expose the mount is on the\n"
-        "  roadmap; until then this is your acknowledgement.\n"
+        "Pass --experimental, or set experimental: true in config.yml,\n"
+        "to proceed.\n"
     )
-    if not is_experimental():
-        sys.stderr.write(
-            "\n"
-            "  Refusing to start: experimental features are disabled.\n"
-            "  Pass --experimental on the command line, or set\n"
-            "  experimental: true in config.yml, to proceed.\n"
-        )
-        raise SystemExit(2)
+    raise SystemExit(2)
 
 
 def _cmd_connect(project_id: str, task_id: str) -> None:
