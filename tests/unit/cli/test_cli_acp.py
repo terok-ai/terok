@@ -19,6 +19,7 @@ from pathlib import Path
 
 import pytest
 
+from terok.cli.commands import acp as acp_mod
 from terok.cli.commands.acp import (
     _check_experimental_ack,
     _fail,
@@ -193,8 +194,6 @@ class TestExperimentalAck:
 
     def test_passes_when_experimental_enabled(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """With experimental on, the gate is silent and does not exit."""
-        from terok.cli.commands import acp as acp_mod
-
         monkeypatch.setattr(acp_mod, "is_experimental", lambda: True)
         _check_experimental_ack()
 
@@ -209,8 +208,6 @@ class TestExperimentalAck:
         named so the user knows what to flip, and the body says more
         than just "no" — without pinning specific wording.
         """
-        from terok.cli.commands import acp as acp_mod
-
         monkeypatch.setattr(acp_mod, "is_experimental", lambda: False)
         with pytest.raises(SystemExit) as excinfo:
             _check_experimental_ack()
@@ -230,8 +227,6 @@ class TestExperimentalAck:
         no.  Mock the gate to raise a sentinel and confirm that nothing
         downstream of it ran.
         """
-        from terok.cli.commands import acp as acp_mod
-
         called: list[str] = []
 
         def _stub_check() -> None:

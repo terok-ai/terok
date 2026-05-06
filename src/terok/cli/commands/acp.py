@@ -134,20 +134,20 @@ def _projects_to_show(project_id_filter: str | None) -> list[Project]:
 def _check_experimental_ack() -> None:
     """Refuse to run ``acp connect`` unless experimental features are enabled.
 
-    Gates on the codebase's standard experimental axis
-    (``Config.is_experimental()`` — ``--experimental`` flag or
-    ``experimental: true`` in ``config.yml``); same axis as claude
-    OAuth proxying, codex vaulted OAuth, etc.
-
     Why experimental: by default the IDE has no view into the agent's
-    in-container filesystem, so a connecting IDE will see *zero* of
-    the agent's edits.  The only way to get a working live-view today
-    is for the user to deliberately point their IDE at the per-task
+    in-container filesystem, so a connecting IDE sees *zero* of the
+    agent's edits.  The only working live-view today comes from the
+    user deliberately pointing their IDE at the per-task
     ``workspace-dangerous`` folder; that folder's lifecycle and risk
-    profile are documented in the general terok design (it's not an
-    ACP-specific concern).  Until either ACP ``fs/*`` callbacks land
-    or a proper shared live-view ships, the protocol's usefulness
-    here is limited and the gate stays.
+    profile are documented in the general terok design — not an
+    ACP-specific concern.  Until ACP ``fs/*`` callbacks land or a
+    sandbox-friendly shared view ships, the protocol's usefulness
+    here is limited.
+
+    Gates on the codebase's standard experimental axis
+    (:func:`is_experimental` — ``--experimental`` flag or
+    ``experimental: true`` in ``config.yml``); same axis as
+    claude-OAuth-proxying, codex-vaulted-OAuth, and friends.
     """
     if is_experimental():
         return
@@ -167,13 +167,11 @@ def _check_experimental_ack() -> None:
 def _cmd_connect(project_id: str, task_id: str) -> None:
     """Bridge the caller's stdio to a task's ACP socket.
 
-    Spawns the executor's per-container ACP daemon if the socket is
-    not already live, waits for it to bind, then runs the in-process
-    pump (stdin → AF_UNIX socket, socket → stdout) until either side
-    reaches EOF.
-
-    Refuses to run unless :data:`_EXPERIMENTAL_ACK_ENV` is set —
-    see :func:`_check_experimental_ack` for the rationale.
+    Refuses to run unless :func:`_check_experimental_ack` passes.
+    Otherwise spawns the executor's per-container ACP daemon if the
+    socket is not already live, waits for it to bind, then runs the
+    in-process pump (stdin → AF_UNIX socket, socket → stdout) until
+    either side reaches EOF.
     """
     _check_experimental_ack()
     sock_path = acp_socket_path(project_id, task_id)
