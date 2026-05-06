@@ -56,12 +56,17 @@ class TestWarnUser:
         assert "Warning [shield]: Firewall unreachable." in capsys.readouterr().err
 
     def test_never_raises_on_stderr_failure(self) -> None:
-        """Exception safety: writing to stderr fails silently."""
+        """Exception safety: writing to stderr fails silently.
+
+        After the cross-package logger unification (terok-sandbox#244)
+        the underlying ``sys`` reference lives in
+        ``terok_sandbox._util._logging`` — patch there.
+        """
         import io
 
         broken = io.StringIO()
         broken.write = lambda _: (_ for _ in ()).throw(OSError("broken pipe"))
-        with patch("terok.lib.util.logging_utils.sys") as mock_sys:
+        with patch("terok_sandbox._util._logging.sys") as mock_sys:
             mock_sys.stderr = broken
             # Must not raise
             warn_user("test", "should not crash")
@@ -72,7 +77,7 @@ class TestWarnUser:
         log_file = tmp_path / LOG_FILENAME
         assert log_file.exists()
         content = log_file.read_text(encoding="utf-8")
-        assert "[WARNING]" in content
+        assert "WARNING:" in content
         assert "[gate] Connection refused." in content
 
 
@@ -91,14 +96,14 @@ class TestLogFunctions:
         log_file = tmp_path / LOG_FILENAME
         assert log_file.exists()
         content = log_file.read_text(encoding="utf-8")
-        assert "[WARNING] disk almost full" in content
+        assert "WARNING: disk almost full" in content
 
     def test_log_debug_writes_debug_level(self, tmp_path: Path) -> None:
         """_log_debug() writes a DEBUG-level line."""
         with patch("terok.lib.core.paths.core_state_dir", return_value=tmp_path):
             _log_debug("resolved path /foo")
         content = (tmp_path / LOG_FILENAME).read_text(encoding="utf-8")
-        assert "[DEBUG] resolved path /foo" in content
+        assert "DEBUG: resolved path /foo" in content
 
     def test_log_appends_multiple_lines(self, tmp_path: Path) -> None:
         """Successive calls append; they do not overwrite."""
@@ -147,9 +152,9 @@ class TestLogFunctions:
         with patch("terok.lib.core.paths.core_state_dir", return_value=tmp_path):
             log_warning("ts check")
         line = (tmp_path / LOG_FILENAME).read_text(encoding="utf-8").strip()
-        # Format: [YYYY-MM-DD HH:MM:SS] [WARNING] ts check
+        # Format: [YYYY-MM-DD HH:MM:SS] WARNING: ts check
         assert line.startswith("[")
-        assert "] [WARNING] ts check" in line
+        assert "] WARNING: ts check" in line
 
 
 # ===========================================================================

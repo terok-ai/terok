@@ -55,7 +55,9 @@ allowed_importers =
     terok.lib.domain.image_cleanup
     terok.lib.domain.panic
     terok.lib.domain.project
+    terok.lib.domain.task_credentials
     terok.lib.domain.vault
+    terok.lib.util.logging_utils
     terok.lib.orchestration.agent_config
     terok.lib.orchestration.container_doctor
     terok.lib.orchestration.environment

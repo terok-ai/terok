@@ -125,6 +125,17 @@ path = "terok.lib.domain.vault"
 layer = "domain"
 depends_on = ["terok.lib.core.config"]
 
+# Operator-facing credential management — task-level revoke + audit.
+# Domain layer because it owns the project/task → (scope, subject)
+# translation that the sandbox itself doesn't model.
+[[modules]]
+path = "terok.lib.domain.task_credentials"
+layer = "domain"
+depends_on = [
+    "terok.lib.core.config",
+    "terok.lib.domain.vault",
+]
+
 # Rich domain object: Project (Aggregate Root)
 [[modules]]
 path = "terok.lib.domain.project"

@@ -1,69 +1,48 @@
 # SPDX-FileCopyrightText: 2026 Jiri Vyskocil
 # SPDX-License-Identifier: Apache-2.0
 
-"""Utility functions for logging.
+"""Best-effort file logging + structured stderr warnings.
 
-Provides best-effort file-based logging and structured stderr warnings.
-All functions are exception-safe — they never raise or affect callers.
+Thin shim over
+[`terok_sandbox.BestEffortLogger`][terok_sandbox.BestEffortLogger] —
+the implementation lives once in terok-sandbox so terok and the
+sandbox share the same idiom.  Module-level functions preserve the
+legacy call shape so existing call sites stay untouched.
 """
 
-import sys
+from __future__ import annotations
+
+from terok_sandbox import BestEffortLogger
 
 LOG_FILENAME = "terok.log"
 """Filename for the best-effort terok library log (written under ``core_state_dir()``)."""
 
 
+def _terok_log_path():
+    """Resolve terok's log path lazily so XDG / env-var overrides take effect."""
+    from ..core.paths import core_state_dir
+
+    return core_state_dir() / LOG_FILENAME
+
+
+_logger = BestEffortLogger(_terok_log_path)
+
+
 def _log(message: str, *, level: str = "DEBUG") -> None:
-    """Append a timestamped line to the terok library log.
-
-    Best-effort, exception-safe: any IO error is silently ignored so this
-    function never raises or affects callers.
-
-    Writes to ``core_state_dir()/terok.log``.
-    """
-    try:
-        import time
-
-        from ..core.paths import core_state_dir
-
-        log_path = core_state_dir() / LOG_FILENAME
-        log_path.parent.mkdir(parents=True, exist_ok=True)
-        timestamp = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())
-        with open(log_path, "a", encoding="utf-8") as f:
-            f.write(f"[{timestamp}] [{level}] {message}\n")
-    except Exception:  # nosec B110 — intentionally silent; logging must never disrupt callers
-        pass
+    """Append a timestamped line to the terok library log.  Never raises."""
+    _logger.log(message, level=level)
 
 
 def _log_debug(message: str) -> None:
-    """Append a DEBUG line to the terok library log.
-
-    Convenience wrapper — see `_log` for details.
-    """
-    _log(message, level="DEBUG")
+    """Append a DEBUG line to the terok library log."""
+    _logger.debug(message)
 
 
 def log_warning(message: str) -> None:
-    """Append a WARNING line to the terok library log.
-
-    Convenience wrapper — see `_log` for details.
-    """
-    _log(message, level="WARNING")
+    """Append a WARNING line to the terok library log."""
+    _logger.warning(message)
 
 
 def warn_user(component: str, message: str) -> None:
-    """Print a structured warning to stderr and log it.
-
-    Format::
-
-        Warning [terok]: Config file ... is malformed. Using defaults.
-
-    Exception-safe: never raises.  Should be used when a recoverable
-    problem occurs that the user needs to know about (e.g. malformed
-    config files, missing credentials, silent fallbacks).
-    """
-    try:
-        print(f"Warning [{component}]: {message}", file=sys.stderr)
-        log_warning(f"[{component}] {message}")
-    except Exception:  # nosec B110 — intentionally silent; user warnings must never raise
-        pass
+    """Print a structured warning to stderr and append it to the terok log."""
+    _logger.warn_user(component, message)

@@ -3099,13 +3099,13 @@ url = "https://github.com/terok-ai/terok-clearance/releases/download/v0.6.9/tero
 
 [[package]]
 name = "terok-executor"
-version = "0.0.130"
+version = "0.0.131"
 description = "Single-agent task runner for hardened Podman containers"
 optional = false
 python-versions = ">=3.12,<3.15"
 groups = ["main"]
 files = [
-    {file = "terok_executor-0.0.130-py3-none-any.whl", hash = "sha256:63ee133d98924bad37274c39a7198fba9355dce1235310d5c59c6fe485ebfbf8"},
+    {file = "terok_executor-0.0.131-py3-none-any.whl", hash = "sha256:e47a1da004019f61669f26053c81fe39575de937612ea3fd2947786ece1b16fd"},
 ]
 
 [package.dependencies]
@@ -3114,22 +3114,22 @@ Jinja2 = ">=3.1"
 pwinput = ">=1.0.3"
 pydantic = ">=2.9"
 "ruamel.yaml" = ">=0.18"
-terok_sandbox = {url = "https://github.com/terok-ai/terok-sandbox/releases/download/v0.0.108/terok_sandbox-0.0.108-py3-none-any.whl"}
+terok_sandbox = {url = "https://github.com/terok-ai/terok-sandbox/releases/download/v0.0.109/terok_sandbox-0.0.109-py3-none-any.whl"}
 tomli-w = ">=1.0"
 
 [package.source]
 type = "url"
-url = "https://github.com/terok-ai/terok-executor/releases/download/v0.0.130/terok_executor-0.0.130-py3-none-any.whl"
+url = "https://github.com/terok-ai/terok-executor/releases/download/v0.0.131/terok_executor-0.0.131-py3-none-any.whl"
 
 [[package]]
 name = "terok-sandbox"
-version = "0.0.108"
+version = "0.0.109"
 description = "Hardened Podman container runner with gate server and shield integration"
 optional = false
 python-versions = ">=3.12,<4.0"
 groups = ["main"]
 files = [
-    {file = "terok_sandbox-0.0.108-py3-none-any.whl", hash = "sha256:cbe597753e8bc59b6bb5f637fb9af454496ed58dcdc9fdea6d7ec98c347104e9"},
+    {file = "terok_sandbox-0.0.109-py3-none-any.whl", hash = "sha256:d2c5d52252882a12fee7a340983ee30efa14b228f6ddd70da2a4bb39afa2c7b4"},
 ]
 
 [package.dependencies]
@@ -3143,7 +3143,7 @@ terok_shield = {url = "https://github.com/terok-ai/terok-shield/releases/downloa
 
 [package.source]
 type = "url"
-url = "https://github.com/terok-ai/terok-sandbox/releases/download/v0.0.108/terok_sandbox-0.0.108-py3-none-any.whl"
+url = "https://github.com/terok-ai/terok-sandbox/releases/download/v0.0.109/terok_sandbox-0.0.109-py3-none-any.whl"
 
 [[package]]
 name = "terok-shield"
@@ -4042,4 +4042,4 @@ propcache = ">=0.2.1"
 [metadata]
 lock-version = "2.1"
 python-versions = ">=3.12,<3.15"
-content-hash = "034bb0b0a49d4531c61f594ba0240ed7007a7dc6b28c774315ad14533d32aa16"
+content-hash = "7ac82d37e57561479cf3e58d5039c3292cb0d0c02da52456c6df90cfb1df4ea9"

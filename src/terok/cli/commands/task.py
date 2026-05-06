@@ -6,6 +6,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 import sys
 from typing import Any
 
@@ -265,6 +266,45 @@ def register(
 
     t_status = tsub.add_parser("status", help="Show actual container state vs metadata")
     _add_project_task_args(t_status)
+
+    t_revoke = tsub.add_parser(
+        "revoke-credentials",
+        help="Revoke every phantom token bound to a task — leaves the container running",
+    )
+    _add_project_task_args(t_revoke)
+
+    t_audit = tsub.add_parser(
+        "audit-credentials",
+        help="Show the broker's credential-use audit lines for a task",
+    )
+    _add_project_task_args(t_audit)
+    t_audit.add_argument(
+        "--provider",
+        default=None,
+        help="Keep only lines for this provider (claude, openai, github, …)",
+    )
+    t_audit.add_argument(
+        "--since",
+        default=None,
+        help=(
+            "ISO-8601 timestamp with timezone offset; drop lines older "
+            "than this (e.g. 2026-05-05T12:00:00+00:00).  Naive "
+            "timestamps are rejected — the audit log records UTC and "
+            "comparing aware vs. naive raises TypeError."
+        ),
+    )
+    t_audit.add_argument(
+        "--tail",
+        type=int,
+        default=None,
+        help="Show only the last N matching lines",
+    )
+    t_audit.add_argument(
+        "--json",
+        action="store_true",
+        dest="json_output",
+        help="Emit raw JSONL (one entry per line) instead of the formatted table",
+    )
 
     t_logs = tsub.add_parser("logs", help="View formatted container logs for a task")
     _add_project_task_args(t_logs)
@@ -537,6 +577,75 @@ def _read_instructions(instructions_path: str | None) -> str | None:
         raise SystemExit(f"Failed to read instructions file {instructions_path}: {exc}") from exc
 
 
+def _cmd_task_revoke_credentials(project_id: str, task_id: str) -> None:
+    """Run ``terok task revoke-credentials`` — DB-side phantom-token nuke.
+
+    Leaves the container alive so the operator can inspect forensic
+    state (audit lines, container logs, mounted workspace) after
+    deciding the agent has misbehaved.  The next request the agent
+    issues from inside the container gets a 401; in-flight proxy
+    calls already past
+    [`lookup_token`][terok_sandbox.credentials.db.CredentialDB.lookup_token]
+    complete on their real credential, which is the intended
+    semantics.
+    """
+    from ...lib.domain.task_credentials import revoke_credentials
+
+    count = revoke_credentials(project_id, task_id)
+    if count == 0:
+        print(f"No phantom tokens found for {project_id}/{task_id}.")
+    else:
+        suffix = "" if count == 1 else "s"
+        print(f"Revoked {count} phantom token{suffix} for {project_id}/{task_id}.")
+
+
+def _cmd_task_audit_credentials(project_id: str, task_id: str, args: argparse.Namespace) -> None:
+    """Run ``terok task audit-credentials`` — filtered tail of the broker's audit JSONL."""
+    from datetime import datetime
+
+    from ...lib.domain.task_credentials import audit_credentials
+
+    since: datetime | None = None
+    if since_arg := getattr(args, "since", None):
+        try:
+            since = datetime.fromisoformat(since_arg)
+        except ValueError as exc:
+            raise SystemExit(f"Invalid --since timestamp {since_arg!r}: {exc}") from exc
+        if since.tzinfo is None:
+            raise SystemExit(
+                f"--since {since_arg!r} is naive (no timezone offset).  Audit "
+                "lines record UTC; pass an offset-aware ISO-8601 timestamp "
+                "(append '+00:00' for UTC, or your local offset)."
+            )
+
+    entries = audit_credentials(
+        project_id,
+        task_id,
+        provider=getattr(args, "provider", None),
+        since=since,
+        tail=getattr(args, "tail", None),
+    )
+
+    if getattr(args, "json_output", False):
+        for entry in entries:
+            print(json.dumps(entry, separators=(",", ":")))
+        return
+
+    rows = list(entries)
+    if not rows:
+        print(f"No credential-audit entries for {project_id}/{task_id}.")
+        return
+    for row in rows:
+        ts = row.get("ts", "?")
+        provider = row.get("provider", "?")
+        method = row.get("method", "?")
+        path = row.get("path", "?")
+        status = row.get("status", "?")
+        outcome = row.get("outcome", "?")
+        duration = row.get("duration_ms", "?")
+        print(f"{ts}  {provider:10s} {method:6s} {status} {outcome:25s} {duration}ms  {path}")
+
+
 def _dispatch_task_sub(args: argparse.Namespace) -> bool:
     """Dispatch ``task <subcommand>`` to the right handler."""
     # ``task run`` creates a new task (no task_id to resolve yet).
@@ -593,6 +702,10 @@ def _dispatch_task_sub(args: argparse.Namespace) -> bool:
         task_rename(pid, tid, args.name)
     elif args.task_cmd == "status":
         task_status(pid, tid)
+    elif args.task_cmd == "revoke-credentials":
+        _cmd_task_revoke_credentials(pid, tid)
+    elif args.task_cmd == "audit-credentials":
+        _cmd_task_audit_credentials(pid, tid, args)
     elif args.task_cmd == "logs":
         # Resolve streaming: CLI flag → config → default (True)
         if getattr(args, "no_stream", None):
