@@ -18,11 +18,12 @@ This module owns only the orchestration glue terok adds on top of
   stdio to that socket so an ACP client (Zed, Toad, …) launching us
   as its agent server speaks JSON-RPC straight through.
 
-Errors raised before the bridge is up are surfaced both on stderr
-*and* as a single JSON-RPC error frame on stdout: most ACP clients
-launch the agent as a subprocess and never display its stderr, so
-the error frame is what makes "ACP daemon could not start" visible
-in the client UI.
+Errors raised before the bridge is up are written to stderr only;
+stdout stays clean.  ACP clients that launch us as a subprocess
+typically capture stderr at WARN level (Zed does), which is the
+right channel for these failures.  An earlier draft also emitted an
+``id: null`` JSON-RPC error frame on stdout, but Zed's parser
+rejected those as "neither id nor method".
 """
 
 from __future__ import annotations
@@ -37,7 +38,7 @@ import time
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from terok_executor.acp.daemon import acp_socket_is_live
+from terok_executor import acp_socket_is_live
 
 from ...lib.core.config import is_experimental
 from ...lib.core.paths import acp_log_path, acp_socket_path
@@ -208,7 +209,7 @@ def _spawn_daemon(
     log_path.parent.mkdir(parents=True, exist_ok=True)
     log_fd = open(log_path, "ab", buffering=0)  # noqa: SIM115 — handed to Popen
     try:
-        return subprocess.Popen(  # nosec B603 — argv = [interpreter, -m, module, container, sock]
+        proc = subprocess.Popen(  # nosec B603 — argv = [interpreter, -m, module, container, sock]
             [sys.executable, "-m", "terok_executor.acp.daemon", cname, str(sock_path)],
             stdin=subprocess.DEVNULL,
             stdout=subprocess.DEVNULL,
@@ -217,10 +218,13 @@ def _spawn_daemon(
             close_fds=True,
         )
     except Exception:
-        # Popen never inherited the fd — close it ourselves before
-        # the exception propagates so we don't leak it on the host.
-        log_fd.close()
+        log_fd.close()  # Popen never inherited it; don't leak on the host.
         raise
+    # Popen has dup2'd the fd into the child; the parent's reference
+    # is just a leak waiting to happen if we hold on to it for the
+    # lifetime of the calling process.
+    log_fd.close()
+    return proc
 
 
 def _wait_for_socket(
@@ -256,14 +260,12 @@ def _wait_for_socket(
 def _fail(message: str) -> None:
     """Print *message* on stderr and exit with code 1.
 
-    Earlier this also wrote a JSON-RPC ``{id: null, error: …}`` frame
-    on stdout so a launching client (Zed) would surface the cause in
-    its UI.  But that frame is malformed under JSON-RPC 2.0 — Zed's
-    parser logs ``received message with neither id nor method`` and
-    drops it.  Stderr is the right channel for unsolicited errors
-    here: ACP clients that capture the agent subprocess's stderr
-    (Zed does, at WARN level) get the message verbatim, and a real
-    terminal user sees it directly.
+    Stderr-only, stdout stays clean.  ACP clients that capture the
+    agent subprocess's stderr (Zed: WARN level) surface the message
+    in their UI; a real terminal user sees it directly.  An
+    unsolicited ``{id: null, error: …}`` frame on stdout is *not* a
+    valid JSON-RPC 2.0 message — Zed's parser drops it as "neither
+    id nor method" — so don't add one back.
     """
     print(f"terok: {message}", file=sys.stderr)
     raise SystemExit(1)
@@ -285,9 +287,9 @@ def _inprocess_pump(sock_path: Path, *, log_path: Path) -> None:
     A ``ConnectionResetError`` from ``recv`` means the daemon's
     process ended abruptly mid-session — the kernel sends RST when
     there are unread bytes the daemon will never process.  That gets
-    surfaced via :func:`_fail` so the ACP client sees a JSON-RPC
-    error pointing at *log_path* (where the daemon's traceback lives)
-    rather than a bare Python stack from the bridge.
+    surfaced via :func:`_fail` (stderr-only, exit 1) pointing the
+    user at *log_path* where the daemon's traceback lives, rather
+    than letting a bare Python stack from the bridge escape.
     """
     sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
     sock.connect(str(sock_path))
@@ -353,8 +355,8 @@ def _forward_socket_to_stdout(sock: socket.socket, stdout_fd: int, log_path: Pat
 
     A ``ConnectionResetError`` from ``recv`` means the daemon process
     died with bytes still in its receive buffer (kernel sends RST,
-    not FIN).  Surface it as a JSON-RPC error frame pointing at
-    *log_path* — never escapes as a bare Python traceback.
+    not FIN).  Surface it via :func:`_fail` so the user sees a
+    pointer to *log_path* on stderr — never a bare Python traceback.
     """
     try:
         data = sock.recv(4096)

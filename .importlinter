@@ -36,7 +36,6 @@ name = terok_sandbox access restricted to designated modules
 type = protected
 protected_modules = terok_sandbox
 allowed_importers =
-    terok.cli.acp_proxy
     terok.cli.commands.project
     terok.cli.commands.setup
     terok.cli.commands.shield
@@ -76,7 +75,6 @@ name = terok_executor access restricted to designated modules
 type = protected
 protected_modules = terok_executor
 allowed_importers =
-    terok.cli.acp_proxy
     terok.cli.commands.acp
     terok.cli.commands.agents
     terok.cli.commands.auth
