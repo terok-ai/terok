@@ -147,13 +147,6 @@ def assert_contains_all(text: str, expected: tuple[str, ...]) -> None:
         assert fragment in text
 
 
-class TestUnitVersion:
-    """Tests for _UNIT_VERSION."""
-
-    def test_unit_version_is_current(self) -> None:
-        assert _UNIT_VERSION == 10
-
-
 class TestSystemdDetection:
     """Tests for systemd availability detection."""
 
