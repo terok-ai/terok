@@ -34,6 +34,7 @@ except ImportError:  # optional dependency
 
 APP_NAME = "terok"
 _VAULT_SUBDIR = "vault"
+_ACP_RUNTIME_SUBDIR = "acp"
 
 
 # ── Configuration ──────────────────────────────────────────────────────
@@ -90,6 +91,50 @@ def core_state_dir() -> Path:
 
 
 # ── Vault ──────────────────────────────────────────────────────────────
+
+
+def _acp_runtime_path(project_id: str, task_id: str, *, suffix: str) -> Path:
+    """Per-task ACP runtime artefact path with the given file suffix.
+
+    All ACP daemon files (socket, bound-agent sidecar, future log /
+    pid files) live under ``runtime_dir() / "acp" / <project>`` with
+    the same ``<task_id><suffix>`` shape, so they move together.
+    """
+    return runtime_dir() / _ACP_RUNTIME_SUBDIR / project_id / f"{task_id}{suffix}"
+
+
+def acp_socket_path(project_id: str, task_id: str) -> Path:
+    """Return the per-task ACP listener socket path on the host.
+
+    The proxy daemon binds this Unix socket on first
+    ``terok acp connect`` and tears it down when the task's container
+    exits.  Path layout matches the askpass-service convention
+    (``runtime_dir() / <subdir> / …``) so all transient sockets live
+    under a single XDG-compliant root.
+    """
+    return _acp_runtime_path(project_id, task_id, suffix=".sock")
+
+
+def acp_bound_path(project_id: str, task_id: str) -> Path:
+    """Return the per-task ACP "bound agent" sidecar JSON path.
+
+    Written atomically by the proxy daemon when an agent is bound to a
+    session; read by the host-side discovery surface to surface the
+    bound-agent name in ``acp list`` output.
+    """
+    return _acp_runtime_path(project_id, task_id, suffix=".bound")
+
+
+def acp_log_path(project_id: str, task_id: str) -> Path:
+    """Return the per-task ACP daemon stderr log path.
+
+    ``terok acp connect`` redirects the spawned daemon's stderr here
+    so its tracebacks survive the detached spawn — without it the
+    daemon's only error surface would be the kernel sending RST mid-
+    session, and the user would see a bare Python stack trace from
+    the bridge with no hint at the underlying cause.
+    """
+    return _acp_runtime_path(project_id, task_id, suffix=".log")
 
 
 def vault_root() -> Path:
