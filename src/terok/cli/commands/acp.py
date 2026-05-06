@@ -207,14 +207,20 @@ def _spawn_daemon(
     cname = resolve_container_name(project_id, task_meta.mode, task_id)
     log_path.parent.mkdir(parents=True, exist_ok=True)
     log_fd = open(log_path, "ab", buffering=0)  # noqa: SIM115 — handed to Popen
-    return subprocess.Popen(  # nosec B603 — argv = [interpreter, -m, module, container, sock]
-        [sys.executable, "-m", "terok_executor.acp.daemon", cname, str(sock_path)],
-        stdin=subprocess.DEVNULL,
-        stdout=subprocess.DEVNULL,
-        stderr=log_fd,
-        start_new_session=True,
-        close_fds=True,
-    )
+    try:
+        return subprocess.Popen(  # nosec B603 — argv = [interpreter, -m, module, container, sock]
+            [sys.executable, "-m", "terok_executor.acp.daemon", cname, str(sock_path)],
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.DEVNULL,
+            stderr=log_fd,
+            start_new_session=True,
+            close_fds=True,
+        )
+    except Exception:
+        # Popen never inherited the fd — close it ourselves before
+        # the exception propagates so we don't leak it on the host.
+        log_fd.close()
+        raise
 
 
 def _wait_for_socket(
@@ -263,7 +269,7 @@ def _fail(message: str) -> None:
     raise SystemExit(1)
 
 
-# ── stdio ↔ socket bridge (sole transport, no socat fallback) ─────────────
+# ── stdio ↔ socket bridge ─────────────────────────────────────────────────
 
 
 def _inprocess_pump(sock_path: Path, *, log_path: Path) -> None:

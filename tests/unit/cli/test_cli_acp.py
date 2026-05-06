@@ -15,7 +15,6 @@ from __future__ import annotations
 
 import os
 import socket
-from pathlib import Path
 
 import pytest
 
@@ -27,6 +26,10 @@ from terok.cli.commands.acp import (
     _forward_stdin_to_socket,
     _send_all,
 )
+from tests.testfs import MOCK_BASE
+
+_TEST_LOG = MOCK_BASE / "terok-testing" / "test.log"
+_PROBE_LOG = MOCK_BASE / "terok-testing" / "probe.log"
 
 
 @pytest.fixture
@@ -127,7 +130,7 @@ class TestForwardSocketToStdout:
         peer.send(b"reply\n")
         r, w = os.pipe()
         try:
-            keep_going = _forward_socket_to_stdout(caller, w, Path("/tmp/test.log"))
+            keep_going = _forward_socket_to_stdout(caller, w, _TEST_LOG)
             os.close(w)
             assert keep_going is True
             assert os.read(r, 64) == b"reply\n"
@@ -139,7 +142,7 @@ class TestForwardSocketToStdout:
         caller, _peer = sock_pair
         r, w = os.pipe()
         try:
-            assert _forward_socket_to_stdout(caller, w, Path("/tmp/test.log")) is True
+            assert _forward_socket_to_stdout(caller, w, _TEST_LOG) is True
         finally:
             os.close(r)
             os.close(w)
@@ -150,7 +153,7 @@ class TestForwardSocketToStdout:
         peer.close()
         r, w = os.pipe()
         try:
-            keep_going = _forward_socket_to_stdout(caller, w, Path("/tmp/test.log"))
+            keep_going = _forward_socket_to_stdout(caller, w, _TEST_LOG)
         finally:
             os.close(r)
             os.close(w)
@@ -171,11 +174,11 @@ class TestForwardSocketToStdout:
                 raise ConnectionResetError(104, "Connection reset by peer")
 
         with pytest.raises(SystemExit) as excinfo:
-            _forward_socket_to_stdout(ResetSock(), 1, Path("/tmp/probe.log"))  # type: ignore[arg-type]
+            _forward_socket_to_stdout(ResetSock(), 1, _PROBE_LOG)  # type: ignore[arg-type]
         assert excinfo.value.code == 1
         captured = capsys.readouterr()
         assert captured.out == ""  # no malformed JSON-RPC frame
-        assert "/tmp/probe.log" in captured.err
+        assert str(_PROBE_LOG) in captured.err
         assert "connection reset" in captured.err.lower()
 
 

@@ -5,8 +5,9 @@
 
 from __future__ import annotations
 
-import os
 from pathlib import Path
+
+import pytest
 
 from terok.lib.core.paths import acp_bound_path, acp_socket_path, runtime_dir
 
@@ -49,13 +50,10 @@ class TestACPBoundPath:
         assert sock.parent == bound.parent
         assert bound.name == "task-1.bound"
 
-    def test_path_does_not_create_directories(self, tmp_path: Path) -> None:
+    def test_path_does_not_create_directories(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         """Path construction is pure — no filesystem side effects."""
-        # Redirect runtime_dir() so we can verify nothing gets created.
-        os.environ["XDG_RUNTIME_DIR"] = str(tmp_path)
-        try:
-            acp_bound_path("proj", "task-1")
-            # Nothing created — the helpers are pure path arithmetic.
-            assert not (tmp_path / "terok" / "acp").exists()
-        finally:
-            os.environ.pop("XDG_RUNTIME_DIR", None)
+        monkeypatch.setenv("XDG_RUNTIME_DIR", str(tmp_path))
+        acp_bound_path("proj", "task-1")
+        assert not (tmp_path / "terok" / "acp").exists()
