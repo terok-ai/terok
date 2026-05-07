@@ -28,6 +28,7 @@ import contextlib
 import enum
 import io
 import os
+from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
 
@@ -223,7 +224,7 @@ class WizardFormScreen(ModalScreen["dict[str, str] | None"]):
                 pressed = rs.pressed_button
                 # ``RadioSet`` always has a pressed button because we
                 # initialised the first one pressed; name holds the slug.
-                return pressed.name if pressed is not None else ""
+                return (pressed.name or "") if pressed is not None else ""
             case "text":
                 return self.query_one(widget_id, Input).value
             case "editor":
@@ -628,18 +629,17 @@ class InitProgressScreen(ModalScreen[InitOutcome]):
         """Show the shared ``ConfirmDestructiveScreen`` for a project.yml overwrite."""
         from .screens import ConfirmDestructiveScreen
 
-        return bool(
-            await self.app.push_screen_wait(
-                ConfirmDestructiveScreen(
-                    message=(
-                        f"A configuration for project '{self._project_id}' already "
-                        f"exists at:\n\n{path}\n\nOverwrite with the reviewed content?"
-                    ),
-                    title=f"Overwrite project.yml — {self._project_id}",
-                    confirm_label="Overwrite",
-                )
-            )
+        # textual.App.push_screen_wait is typed Screen[object] but Screen is
+        # invariant — Screen[bool] doesn't satisfy it. Stubs issue.
+        screen_obj: Any = ConfirmDestructiveScreen(
+            message=(
+                f"A configuration for project '{self._project_id}' already "
+                f"exists at:\n\n{path}\n\nOverwrite with the reviewed content?"
+            ),
+            title=f"Overwrite project.yml — {self._project_id}",
+            confirm_label="Overwrite",
         )
+        return bool(await self.app.push_screen_wait(screen_obj))
 
     def _finish_with_close_button(self) -> None:
         """Enable the Close button after the screen reaches a terminal state.
@@ -723,7 +723,8 @@ class InitProgressScreen(ModalScreen[InitOutcome]):
             # User's GUI helper wins — still enforce REQUIRE=force so
             # ssh doesn't fall back to /dev/tty on tty-bearing sessions.
             return {**os.environ, "SSH_ASKPASS_REQUIRE": "force"}
-        service = await self.app.ensure_askpass_service()
+        # ensure_askpass_service is on TerokTUI, not the base App[Any] type.
+        service = await self.app.ensure_askpass_service()  # type: ignore[attr-defined]
         return build_askpass_env(
             os.environ,
             socket_path=service.socket_path,
@@ -861,7 +862,8 @@ class InitProgressScreen(ModalScreen[InitOutcome]):
             # Mark the currently-running step failed (whichever one raised).
             for key in self._STEP_KEYS:
                 widget = self.query_one(f"#{self._step_id(key)}", Static)
-                if "⋯" in str(widget.renderable):
+                # `renderable` is on Static at runtime but missing from textual stubs.
+                if "⋯" in str(widget.renderable):  # type: ignore[attr-defined]
                     self._mark(key, "failed", str(exc))
                     break
         # Close-button enabling is consolidated in the outer
@@ -964,7 +966,7 @@ class InitProgressScreen(ModalScreen[InitOutcome]):
 
 
 @contextlib.contextmanager
-def _log_capture(log: RichLog):
+def _log_capture(log: RichLog) -> Iterator[None]:
     """Redirect Python-level stdout into *log* for the duration of the block.
 
     Python-level ``print()`` calls from the facade land in the log

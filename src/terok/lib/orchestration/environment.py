@@ -16,8 +16,10 @@ from __future__ import annotations
 import logging
 import os
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from terok_sandbox import (
+    SandboxConfig,
     VolumeSpec,
     create_token,
     ensure_server_reachable,
@@ -32,6 +34,11 @@ from ..core.config import (
 )
 from ..core.projects import ProjectConfig
 from ..util.host_cmd import WORKSPACE_DANGEROUS_DIRNAME
+
+if TYPE_CHECKING:
+    # Type-only import: terok_executor doesn't re-export AgentRoster at the
+    # top level, but the runtime convention only applies to actual imports.
+    from terok_executor.roster import AgentRoster
 
 _logger = logging.getLogger(__name__)
 
@@ -78,7 +85,7 @@ def _gate_url(
 def _security_mode_env_and_volumes(
     project: ProjectConfig,
     task_id: str,
-    cfg: object,
+    cfg: SandboxConfig,
     *,
     use_socket: bool = False,
 ) -> tuple[dict[str, str], list[str]]:
@@ -91,7 +98,16 @@ def _security_mode_env_and_volumes(
     # In socket mode the container reaches the gate via an in-container
     # socat bridge that listens on a fixed port (see ensure-bridges.sh);
     # in TCP mode the container reaches the host's gate server directly.
-    gate_port = _CONTAINER_GATE_PORT if use_socket else get_gate_server_port(cfg)
+    if use_socket:
+        gate_port = _CONTAINER_GATE_PORT
+    else:
+        host_port = get_gate_server_port(cfg)
+        if host_port is None:
+            raise SystemExit(
+                "Gate server port not configured — required in TCP mode. "
+                "Check sandbox config or switch to socket mode."
+            )
+        gate_port = host_port
 
     if project.security_class == "gatekeeping":
         if not gate_repo.exists():
@@ -267,7 +283,7 @@ def _apply_claude_oauth_overrides(env: dict[str, str]) -> None:
             env.pop(key, None)
 
 
-def _shared_config_patch_providers(roster: object) -> frozenset[str]:
+def _shared_config_patch_providers(roster: AgentRoster) -> frozenset[str]:
     """Return providers that declare shared config patches in the roster."""
     return frozenset(
         name for name, route in roster.vault_routes.items() if route.shared_config_patch
@@ -275,7 +291,7 @@ def _shared_config_patch_providers(roster: object) -> frozenset[str]:
 
 
 def _vault_patch_provider_sets(
-    roster: object, *, vault_bypass: bool = False
+    roster: AgentRoster, *, vault_bypass: bool = False
 ) -> tuple[frozenset[str], frozenset[str]]:
     """Return ``(enabled, disabled)`` shared-config patch provider sets.
 
@@ -292,7 +308,7 @@ def _vault_patch_provider_sets(
         return frozenset(), providers
 
     enabled = providers
-    disabled = frozenset()
+    disabled: frozenset[str] = frozenset()
     if not is_codex_oauth_proxied():
         enabled -= {"codex"}
         disabled |= providers & {"codex"}

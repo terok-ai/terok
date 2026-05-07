@@ -8,9 +8,11 @@
 import inspect
 import os
 import sys
+from collections.abc import Iterator
+from typing import Any, Literal
 
 
-def enable_pycharm_debugger():
+def enable_pycharm_debugger() -> None:
     """Attach the PyCharm remote debugger when PYCHARM_DEBUG is set."""
     import os
 
@@ -322,7 +324,7 @@ if _HAS_TEXTUAL:
             # ⏳ badge via ``TaskMeta.starting``.
             self._launching_tasks: set[tuple[str, str]] = set()
 
-        def _update_title(self):
+        def _update_title(self) -> None:
             """Update the TUI title with version and branch information."""
             version, branch_name = _get_version_info()
             display_ver = _short_version(version)
@@ -813,7 +815,7 @@ if _HAS_TEXTUAL:
             project_id = self.current_project_id
             project = self._projects_by_id.get(project_id)
             if project is not None:
-                state_widget.set_loading(project, self._last_task_count)
+                state_widget.show_loading(project, self._last_task_count)
             else:
                 state_widget.update("Loading project details...")
 
@@ -833,9 +835,14 @@ if _HAS_TEXTUAL:
                 from ..lib.domain.project import make_git_gate
 
                 gate = make_git_gate(project)
+
+                def _gate_commit_provider(_pid: str) -> dict | None:
+                    info = gate.last_commit()
+                    return dict(info) if info is not None else None
+
                 state = get_project_state(
                     project_id,
-                    gate_commit_provider=lambda _pid, _g=gate: _g.last_commit(),
+                    gate_commit_provider=_gate_commit_provider,
                     project=project,
                 )
                 staleness = None
@@ -1216,7 +1223,9 @@ if _HAS_TEXTUAL:
                     return
                 self._last_panic_result = panic_result
                 report = format_panic_report(panic_result)
-                severity = "error" if panic_result.has_errors else "warning"
+                severity: Literal["error", "warning"] = (
+                    "error" if panic_result.has_errors else "warning"
+                )
                 self.notify(report, severity=severity, timeout=30)
                 await self.refresh_tasks()
                 self._refresh_project_state()
@@ -1286,7 +1295,7 @@ if _HAS_TEXTUAL:
                 exit_on_error=False,
             )
 
-        async def _on_panic_stop_confirmed(self, confirmed: bool) -> None:
+        async def _on_panic_stop_confirmed(self, confirmed: bool | None) -> None:
             """Handle the container-stop confirmation after panic lockdown."""
             if not confirmed:
                 pr = getattr(self, "_last_panic_result", None)
@@ -1406,7 +1415,7 @@ if _HAS_TEXTUAL:
 
         # ---------- Command palette ----------
 
-        def get_system_commands(self, screen):
+        def get_system_commands(self, screen: Any) -> "Iterator[Any]":
             """Add gate, shield, and proxy management to the command palette."""
             from textual.app import SystemCommand
 

@@ -5,11 +5,16 @@
 
 from __future__ import annotations
 
+from collections.abc import Iterator
 from contextlib import contextmanager
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from terok_sandbox import CredentialDB
 
 
 @contextmanager
-def vault_db():
+def vault_db() -> Iterator[CredentialDB]:
     """Open the shared vault `CredentialDB` and close it on exit."""
     from terok_sandbox import CredentialDB
 

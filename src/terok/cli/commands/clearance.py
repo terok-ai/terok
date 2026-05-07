@@ -29,4 +29,4 @@ def dispatch(args: argparse.Namespace) -> bool:
     import os
 
     os.execlp("terok-clearance", "terok-clearance")
-    return True  # pragma: no cover — execlp never returns
+    return True  # type: ignore[unreachable]  # in tests os.execlp is mocked

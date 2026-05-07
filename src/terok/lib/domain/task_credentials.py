@@ -27,7 +27,7 @@ about what those labels identify.
 from __future__ import annotations
 
 import json
-from collections.abc import Iterator
+from collections.abc import Iterable, Iterator
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -92,7 +92,9 @@ def audit_credentials(
     from ..core.config import make_sandbox_config
 
     audit_path = make_sandbox_config().credential_audit_log_path
-    matches = _filtered_lines(audit_path, project_id, task_id, provider=provider, since=since)
+    matches: Iterable[dict] = _filtered_lines(
+        audit_path, project_id, task_id, provider=provider, since=since
+    )
     if tail is not None and tail > 0:
         # Materialise to slice from the tail; full-history scans rarely
         # outpace the operator's terminal so the cost is negligible.

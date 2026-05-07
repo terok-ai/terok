@@ -317,6 +317,8 @@ def _image_agents_for_task(
     gone, image absent) so the caller can classify the endpoint
     cleanly; any other error propagates so real bugs surface.
     """
+    if task.mode is None:
+        return set()
     try:
         cname = container_name(project_id, task.mode, task.id)
         container = sandbox.runtime.container(cname)
@@ -455,9 +457,9 @@ def delete_project(project_id: str) -> DeleteProjectResult:
     # 1. Stop + remove all tasks
     for task in get_tasks(pid):
         try:
-            task_delete(pid, task.id)
+            task_delete(pid, task.task_id)
         except Exception as exc:
-            _logger.warning("Failed to delete task %s: %s", task.id, exc)
+            _logger.warning("Failed to delete task %s: %s", task.task_id, exc)
 
     # 2. Remove tasks root (may be user-configured path)
     _rmtree_managed(project.tasks_root, "Tasks root", deleted, skipped)
@@ -714,8 +716,12 @@ class Project:
         return get_project_state(self._config.id, project=self._config)
 
     def is_task_image_old(self, task: TaskMeta) -> bool:
-        """Check whether the task's container image is outdated."""
-        return is_task_image_old(self._config.id, task)
+        """Check whether the task's container image is outdated.
+
+        The underlying helper can return ``None`` when the comparison is
+        indeterminate (e.g. image deleted) — we treat that as "not stale".
+        """
+        return bool(is_task_image_old(self._config.id, task))
 
     # --- Security setup ---
 

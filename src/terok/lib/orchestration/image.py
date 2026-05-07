@@ -57,11 +57,11 @@ def _image_exists(image: str) -> bool:
 # ---------- Hashing ----------
 
 
-def _hash_traversable_tree(root) -> str:
+def _hash_traversable_tree(root: Any) -> str:
     """Compute a SHA-256 digest over all files in a Traversable tree."""
     hasher = hashlib.sha256()
 
-    def _walk(node, prefix: str) -> None:
+    def _walk(node: Any, prefix: str) -> None:
         """Walk a Traversable tree and feed file contents into the hasher."""
         for child in sorted(node.iterdir(), key=lambda item: item.name):
             rel = f"{prefix}{child.name}"

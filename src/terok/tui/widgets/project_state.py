@@ -257,8 +257,12 @@ class ProjectState(Static):
         """Initialize the project state panel."""
         super().__init__(**kwargs)
 
-    def set_loading(self, project: ProjectConfig | None, task_count: int | None = None) -> None:
-        """Show a loading placeholder while project state is being fetched."""
+    def show_loading(self, project: ProjectConfig | None, task_count: int | None = None) -> None:
+        """Show a loading placeholder while project state is being fetched.
+
+        Named *show_loading* (not *set_loading*) to avoid clashing with
+        textual.Widget's identically-named bool toggle — different semantics.
+        """
         self.update(render_project_loading(project, task_count))
 
     def set_state(

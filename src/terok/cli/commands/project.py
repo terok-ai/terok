@@ -6,6 +6,7 @@
 from __future__ import annotations
 
 import argparse
+from typing import Any
 
 from ...lib.core.projects import list_presets, list_projects, load_project
 from ...lib.domain.facade import (
@@ -23,7 +24,7 @@ from ._completers import complete_project_ids as _complete_project_ids, set_comp
 from .setup import cmd_project_init
 
 
-def _add_project_arg(parser: argparse.ArgumentParser, **kwargs: object) -> None:
+def _add_project_arg(parser: argparse.ArgumentParser, **kwargs: Any) -> None:
     """Add a ``project_id`` positional with project-ID completion."""
     set_completer(parser.add_argument("project_id", **kwargs), _complete_project_ids)
 

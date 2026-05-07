@@ -21,8 +21,10 @@ from ...lib.util.text_wrap import wrap_with_hanging_indent
 
 def _get_css_variables(widget: Static) -> dict[str, str]:
     """Extract CSS theme variables from a widget's parent app."""
+    # widget.app is Optional at runtime even though textual's stubs declare
+    # it non-None — pre-mount widgets and tests can still hit the None path.
     if widget.app is None:
-        return {}
+        return {}  # type: ignore[unreachable]
     try:
         return widget.app.get_css_variables()
     except Exception:
@@ -187,7 +189,10 @@ class TaskDetails(Static):
         if task is None:
             self.current_project_id = None
         else:
-            self.current_project_id = self.app.current_project_id if self.app else None
+            # current_project_id lives on TerokTUI, not the base App[Any] type.
+            self.current_project_id = (
+                getattr(self.app, "current_project_id", None) if self.app else None
+            )
 
         self._current_task = task
         self._current_empty_message = empty_message

@@ -21,15 +21,17 @@ The four families:
 import getpass
 import os
 import warnings
+from collections.abc import Callable
 from pathlib import Path
 
 try:
-    from platformdirs import (
-        user_config_dir as _user_config_dir,
-        user_data_dir as _user_data_dir,
-    )
+    from platformdirs import user_config_dir, user_data_dir
+
+    _user_config_dir: Callable[..., str] | None = user_config_dir
+    _user_data_dir: Callable[..., str] | None = user_data_dir
 except ImportError:  # optional dependency
-    _user_config_dir = _user_data_dir = None  # type: ignore[assignment]
+    _user_config_dir = None
+    _user_data_dir = None
 
 
 APP_NAME = "terok"
@@ -217,6 +219,6 @@ def runtime_dir() -> Path:
 def _is_root() -> bool:
     """Return True if the current process is running as root."""
     try:
-        return os.geteuid() == 0  # type: ignore[attr-defined]
+        return os.geteuid() == 0
     except AttributeError:
         return getpass.getuser() == "root"

@@ -12,6 +12,7 @@ import os
 import shlex
 import subprocess
 from collections.abc import Callable
+from typing import TYPE_CHECKING
 
 from terok_sandbox import (
     GateServerManager,
@@ -37,6 +38,13 @@ from ..lib.domain.facade import (
 from ..lib.domain.project import make_git_gate
 from .shell_launch import launch_login
 
+if TYPE_CHECKING:
+    from textual.app import App
+
+    _MixinBase = App
+else:
+    _MixinBase = object
+
 
 def _lookup_vault_pub_line(scope: str) -> str | None:
     """Return the scope's most-recent public key line, or ``None`` if unassigned."""
@@ -49,7 +57,7 @@ def _lookup_vault_pub_line(scope: str) -> str | None:
     return public_line_of(records[-1]) if records else None
 
 
-class ProjectActionsMixin:
+class ProjectActionsMixin(_MixinBase):
     """Project infrastructure and shared action helpers for TerokTUI.
 
     Provides ``action_*`` methods for project-level operations (Dockerfile
@@ -57,6 +65,14 @@ class ProjectActionsMixin:
     as reusable helpers (``_run_suspended``, ``_launch_terminal_session``)
     used by both project and task actions.
     """
+
+    if TYPE_CHECKING:
+        # TerokTUI-specific state and helpers (not on textual.App).
+        current_project_id: str | None
+
+        async def refresh_projects(self) -> None: ...
+        async def refresh_tasks(self) -> None: ...
+        def _refresh_project_state(self) -> None: ...
 
     # ---------- Shared helpers ----------
 
@@ -550,14 +566,19 @@ class ProjectActionsMixin:
             if review_result is REVIEW_BACK:
                 continue  # loop back to the form, prefilled
             # review_result is the (possibly edited) YAML string.
+            if not isinstance(review_result, str):
+                raise RuntimeError(
+                    f"review screen returned unexpected type: {type(review_result).__name__}"
+                )
             final_yaml = review_result
             break
 
-        outcome = await self.push_screen_wait(InitProgressScreen(values["project_id"], final_yaml))
+        project_id = str(values["project_id"])
+        outcome = await self.push_screen_wait(InitProgressScreen(project_id, final_yaml))
 
         match outcome:
             case InitOutcome.SUCCESS:
-                self.notify(f"Project '{values['project_id']}' is ready.")
+                self.notify(f"Project '{project_id}' is ready.")
             case InitOutcome.DECLINED:
                 # User chose to keep the existing project.yml — benign
                 # no-op, not an error.  No notification needed; the log
@@ -628,7 +649,7 @@ class ProjectActionsMixin:
             self._on_delete_project_confirmed,
         )
 
-    async def _on_delete_project_confirmed(self, confirmed: bool) -> None:
+    async def _on_delete_project_confirmed(self, confirmed: bool | None) -> None:
         """Handle the result of the delete confirmation dialog."""
         if not confirmed or not self.current_project_id:
             return

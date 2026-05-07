@@ -67,6 +67,7 @@ reuse = "^6.2.0"
 bandit = ">=1.7"
 pre-commit = ">=4.0"
 import-linter = ">=2.1"
+mypy = ">=1.13,<2.0"
 
 [tool.poetry.group.test.dependencies]
 pytest = ">=7.0"
@@ -143,6 +144,22 @@ combine-as-imports = true
 quote-style = "double"
 indent-style = "space"
 docstring-code-format = true
+
+# Static type checking — see `make typecheck`.
+[tool.mypy]
+python_version = "3.12"
+files = ["src/terok"]
+ignore_missing_imports = true
+check_untyped_defs = true
+warn_unused_ignores = true
+warn_redundant_casts = true
+warn_unreachable = true
+no_implicit_optional = true
+strict_equality = true
+disallow_untyped_defs = true
+disallow_incomplete_defs = true
+pretty = false
+show_error_codes = true
 
 [tool.poetry-dynamic-versioning]
 enable = true

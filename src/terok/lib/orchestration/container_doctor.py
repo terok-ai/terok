@@ -272,6 +272,12 @@ def _collect_all_checks(
     ssh_signer_port = get_ssh_signer_port(cfg)
     desired_shield = _read_desired_shield_state(task_dir)
 
+    if cfg.gate_port is None:
+        raise SystemExit(
+            "Gate server port is not configured — sickbay needs an explicit "
+            "gate.port in config.yml or auto-allocation enabled."
+        )
+
     checks: list[DoctorCheck] = []
     checks.extend(
         sandbox_doctor_checks(
@@ -475,10 +481,11 @@ def _stream_checks(
                 label_prefix=label_prefix,
             )
         else:
-            heading = payload  # type: ignore[assignment]
+            if not isinstance(payload, str):  # plan kind == "group" carries a heading
+                raise RuntimeError(f"unexpected plan entry: kind=group payload={payload!r}")
             _emit_group(
-                slots[heading],
-                heading,
+                slots[payload],
+                payload,
                 cname,
                 task_dir,
                 fix=fix,

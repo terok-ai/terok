@@ -5,47 +5,60 @@
 
 """Full-page and modal Textual screens for the terok TUI."""
 
-from typing import TypedDict
+from typing import TYPE_CHECKING, Any, TypedDict
 
 from textual import events, screen
 from textual.app import ComposeResult
 from textual.containers import Horizontal, Vertical
 from textual.widgets import Button, Static
 
-try:  # pragma: no cover - optional import for test stubs
-    from textual.widgets import OptionList
-except Exception:  # pragma: no cover - textual may be a stub module
-    OptionList = None  # type: ignore[assignment,misc]
-
-try:  # pragma: no cover - optional import for test stubs
-    from textual.widgets.option_list import Option
-except Exception:  # pragma: no cover - textual may be a stub module
-    Option = None  # type: ignore[assignment,misc]
-
-try:  # pragma: no cover - optional import for test stubs
+# Optional textual widget imports: TUI tests build a stub textual module
+# without all widgets, so each import is wrapped in try/except. The real
+# (non-stub) types are exposed under TYPE_CHECKING so static analysis sees
+# concrete classes instead of `<class> | None`.
+if TYPE_CHECKING:
     from textual.binding import Binding
-except Exception:  # pragma: no cover - textual may be a stub module
-    Binding = None  # type: ignore[assignment]
+    from textual.timer import Timer
+    from textual.widgets import Input, OptionList, SelectionList, TextArea
+    from textual.widgets.option_list import Option
+else:
+    try:  # pragma: no cover - optional import for test stubs
+        from textual.widgets import OptionList
+    except Exception:  # pragma: no cover - textual may be a stub module
+        OptionList = None
 
-try:  # pragma: no cover - optional import for test stubs
-    from textual.widgets import TextArea
-except Exception:  # pragma: no cover - textual may be a stub module
-    TextArea = None  # type: ignore[assignment,misc]
+    try:  # pragma: no cover - optional import for test stubs
+        from textual.widgets.option_list import Option
+    except Exception:  # pragma: no cover - textual may be a stub module
+        Option = None
 
-try:  # pragma: no cover - optional import for test stubs
-    from textual.widgets import SelectionList
-except Exception:  # pragma: no cover - textual may be a stub module
-    SelectionList = None  # type: ignore[assignment,misc]
+    try:  # pragma: no cover - optional import for test stubs
+        from textual.binding import Binding
+    except Exception:  # pragma: no cover - textual may be a stub module
+        Binding = None
 
-try:  # pragma: no cover - optional import for test stubs
-    from textual.widgets import Input
-except Exception:  # pragma: no cover - textual may be a stub module
-    Input = None  # type: ignore[assignment,misc]
+    try:  # pragma: no cover - optional import for test stubs
+        from textual.widgets import TextArea
+    except Exception:  # pragma: no cover - textual may be a stub module
+        TextArea = None
 
-try:  # pragma: no cover - optional import for test stubs
+    try:  # pragma: no cover - optional import for test stubs
+        from textual.widgets import SelectionList
+    except Exception:  # pragma: no cover - textual may be a stub module
+        SelectionList = None
+
+    try:  # pragma: no cover - optional import for test stubs
+        from textual.widgets import Input
+    except Exception:  # pragma: no cover - textual may be a stub module
+        Input = None
+
+if TYPE_CHECKING:
     from textual.widgets import Select
-except Exception:  # pragma: no cover - textual may be a stub module
-    Select = None  # type: ignore[assignment,misc]
+else:
+    try:  # pragma: no cover - optional import for test stubs
+        from textual.widgets import Select
+    except Exception:  # pragma: no cover - textual may be a stub module
+        Select = None
 
 from rich.style import Style
 from rich.text import Text
@@ -64,7 +77,7 @@ from ..lib.orchestration.tasks import sanitize_task_name, validate_task_name
 from .widgets import TaskMeta, render_project_details, render_project_loading, render_task_details
 
 
-def _modal_binding(key: str, action: str, description: str) -> tuple | object:
+def _modal_binding(key: str, action: str, description: str) -> Any:
     """Create a Binding (or plain tuple fallback) for modal screen key shortcuts."""
     if Binding is None:
         return (key, action, description)
@@ -249,9 +262,9 @@ class GateServerScreen(screen.Screen[str | None]):
         elif option_id:
             self.dismiss(option_id)
 
-    def action_dismiss(self) -> None:
+    async def action_dismiss(self, result: str | None = None) -> None:
         """Close the screen without selecting an action."""
-        self.dismiss(None)
+        self.dismiss(result)
 
     def action_gate_install(self) -> None:
         """Trigger systemd socket installation."""
@@ -384,9 +397,9 @@ class ProjectDetailsScreen(screen.Screen[str | None]):
             self.dismiss(result)
 
     # Action methods invoked by BINDINGS
-    def action_dismiss(self) -> None:
+    async def action_dismiss(self, result: str | None = None) -> None:
         """Close the screen without selecting an action."""
-        self.dismiss(None)
+        self.dismiss(result)
 
     def action_project_init(self) -> None:
         """Trigger the full project initialization pipeline."""
@@ -520,9 +533,9 @@ class AuthActionsScreen(screen.ModalScreen[str | None]):
                 self.dismiss("import_opencode_config")
                 event.stop()
 
-    def action_dismiss(self) -> None:
+    async def action_dismiss(self, result: str | None = None) -> None:
         """Close the auth modal without selecting a provider."""
-        self.dismiss(None)
+        self.dismiss(result)
 
 
 # ---------------------------------------------------------------------------
@@ -597,7 +610,7 @@ class OpenCodeConfigScreen(screen.ModalScreen[str | None]):
         elif event.button.id == "btn-cancel":
             self.dismiss(None)
 
-    def on_input_submitted(self, event: "Input.Submitted") -> None:  # type: ignore[name-defined]
+    def on_input_submitted(self, event: "Input.Submitted") -> None:
         """Accept on Enter key press."""
         self._submit()
 
@@ -1018,7 +1031,7 @@ class TaskNameScreen(screen.ModalScreen[str | None]):
         elif event.button.id == "btn-cancel":
             self.dismiss(None)
 
-    def on_input_submitted(self, event: "Input.Submitted") -> None:  # type: ignore[name-defined]
+    def on_input_submitted(self, event: "Input.Submitted") -> None:
         """Accept the name on Enter key press."""
         self._submit()
 
@@ -1121,7 +1134,7 @@ class TaskCreateScreen(screen.ModalScreen["tuple[str, str] | None"]):
         inp = self.query_one("#create-name-input", Input)
         inp.focus()
 
-    def on_input_submitted(self, event: "Input.Submitted") -> None:  # type: ignore[name-defined]
+    def on_input_submitted(self, event: "Input.Submitted") -> None:
         """On Enter in the name input, submit with the highlighted mode."""
         self._submit_with_highlighted_mode()
 
@@ -1142,7 +1155,7 @@ class TaskCreateScreen(screen.ModalScreen["tuple[str, str] | None"]):
         idx = mode_list.highlighted
         if idx is not None and 0 <= idx < mode_list.option_count:
             option = mode_list.get_option_at_index(idx)
-            self._submit(option.id)
+            self._submit(option.id or "cli")
         else:
             self._submit("cli")
 
@@ -1249,7 +1262,7 @@ class TaskLaunchScreen(screen.ModalScreen["tuple[str, str, str, str, str, str | 
         self._default_login = default_login
         self._installed = installed
         self._container_ready = False
-        self._poll_timer = None
+        self._poll_timer: Timer | None = None
         self._probe_in_flight = False
         self._start_time = 0.0
 
@@ -1358,7 +1371,7 @@ class TaskLaunchScreen(screen.ModalScreen["tuple[str, str, str, str, str, str | 
         elif stalled:
             status_widget.update("Status: Launch may have failed \u2014 check notifications")
 
-    def on_input_submitted(self, event: "Input.Submitted") -> None:  # type: ignore[name-defined]
+    def on_input_submitted(self, event: "Input.Submitted") -> None:
         """Treat Enter in the prompt input as Login if container is ready."""
         if self._container_ready:
             self._do_login()
@@ -1372,8 +1385,13 @@ class TaskLaunchScreen(screen.ModalScreen["tuple[str, str, str, str, str, str | 
 
     def _do_login(self) -> None:
         """Dismiss with launch context + selected agent and optional prompt."""
+        from textual.widgets.select import NoSelection
+
         agent_select = self.query_one("#login-agent", Select)
         agent = agent_select.value
+        if isinstance(agent, NoSelection):
+            self.app.notify("Pick an agent first.")
+            return
         prompt_input = self.query_one("#launch-prompt", Input)
         prompt = prompt_input.value.strip() or None
         self.dismiss(
@@ -1382,7 +1400,7 @@ class TaskLaunchScreen(screen.ModalScreen["tuple[str, str, str, str, str, str | 
                 self._task_id,
                 self._task_name,
                 self._container_name,
-                agent,
+                str(agent),
                 prompt,
             )
         )
@@ -1664,9 +1682,9 @@ class TaskDetailsScreen(screen.Screen[str | None]):
                 self.dismiss("follow_logs")
                 event.stop()
 
-    def action_dismiss(self) -> None:
+    async def action_dismiss(self, result: str | None = None) -> None:
         """Close the task details screen without selecting an action."""
-        self.dismiss(None)
+        self.dismiss(result)
 
 
 # ---------------------------------------------------------------------------
@@ -1720,7 +1738,7 @@ def render_shield_status(
         lines.append(Text(""))
         lines.append(Text("Issues:"))
         for issue in env_check.issues:
-            style = Style(color="red", bold=True) if "bypass" in issue else None
+            style = Style(color="red", bold=True) if "bypass" in issue else Style()
             lines.append(Text(f"  - {issue}", style=style))
 
     if env_check.setup_hint:
@@ -1852,7 +1870,7 @@ class ShieldScreen(screen.Screen[str | None]):
             pass
         return env, info
 
-    def on_worker_state_changed(self, event) -> None:
+    def on_worker_state_changed(self, event: Any) -> None:
         """Handle background worker completion."""
         if event.state.name != "SUCCESS":
             self._loading = False
@@ -1873,9 +1891,9 @@ class ShieldScreen(screen.Screen[str | None]):
         elif option_id:
             self.dismiss(option_id)
 
-    def action_dismiss(self) -> None:
+    async def action_dismiss(self, result: str | None = None) -> None:
         """Close the screen without selecting an action."""
-        self.dismiss(None)
+        self.dismiss(result)
 
     def action_shield_setup(self) -> None:
         """Trigger shield setup flow (only if needed)."""
@@ -1952,9 +1970,9 @@ class ShieldSetupScreen(screen.ModalScreen[str | None]):
             self.dismiss("user")
             event.stop()
 
-    def action_dismiss(self) -> None:
+    async def action_dismiss(self, result: str | None = None) -> None:
         """Cancel without choosing."""
-        self.dismiss(None)
+        self.dismiss(result)
 
 
 # ---------------------------------------------------------------------------
@@ -2120,9 +2138,9 @@ class VaultScreen(screen.Screen[str | None]):
         elif option_id:
             self.dismiss(option_id)
 
-    def action_dismiss(self) -> None:
+    async def action_dismiss(self, result: str | None = None) -> None:
         """Close the screen without selecting an action."""
-        self.dismiss(None)
+        self.dismiss(result)
 
     def action_vault_install(self) -> None:
         """Trigger systemd socket installation."""
