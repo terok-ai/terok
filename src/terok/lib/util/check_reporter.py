@@ -23,6 +23,7 @@ from __future__ import annotations
 import sys
 from collections.abc import Iterator
 from contextlib import contextmanager
+from typing import Any
 
 #: Default label column — dots pad the label up to this width so ``ok``
 #: or ``ERROR`` always lands at the same column on clean output.
@@ -58,7 +59,7 @@ class CheckReporter:
     without touching stdout.
     """
 
-    def __init__(self, *, width: int = DEFAULT_LABEL_WIDTH, stream=None) -> None:
+    def __init__(self, *, width: int = DEFAULT_LABEL_WIDTH, stream: Any = None) -> None:
         self._width = width
         self._stream = stream if stream is not None else sys.stdout
         self._worst = "ok"

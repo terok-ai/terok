@@ -20,6 +20,7 @@ import subprocess
 import threading
 from dataclasses import dataclass
 from enum import Enum, auto
+from typing import Any
 
 from rich.style import Style
 from rich.text import Text
@@ -81,7 +82,7 @@ class _TuiLogFormatter:
         self._tool_input_buf: list[str] = []
         self._current_tool_name: str = ""
         self._text_buf: list[str] = []
-        self._result: dict[str, object] | None = None
+        self._result: dict[str, Any] | None = None
 
     def feed_line(self, line: str) -> list[Text]:
         """Process one log line and return zero or more ``Text`` objects."""
@@ -447,6 +448,7 @@ class LogViewerScreen(screen.Screen[None]):
                     ready, _, _ = select.select([stdout], [], [], 0.2)
                     if not ready:
                         continue
+                    # read1 is BufferedReader-only; subprocess Popen pipes are buffered.
                     chunk = stdout.read1(4096) if hasattr(stdout, "read1") else stdout.read(4096)
                     if not chunk:
                         continue

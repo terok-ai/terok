@@ -171,8 +171,11 @@ def _print_read_paths(color: bool) -> None:
     projs = list_projects()
     if projs:
         print("- Project configs:")
-        for p in projs:
-            print(f"  • {_violet(str(p.id), color)}: {_gray(str(p.root / 'project.yml'), color)}")
+        for proj in projs:
+            print(
+                f"  • {_violet(str(proj.id), color)}: "
+                f"{_gray(str(proj.root / 'project.yml'), color)}"
+            )
     else:
         print("- Project configs: none found")
 

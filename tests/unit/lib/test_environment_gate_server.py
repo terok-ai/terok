@@ -168,3 +168,26 @@ def test_gatekeeping_does_not_set_gate_remote_url() -> None:
         token="deadbeef" * 4,
     )
     assert "GATE_REMOTE_URL" not in env
+
+
+def test_tcp_mode_without_gate_port_raises() -> None:
+    """Regression: TCP mode with a ``None`` gate port now fails fast.
+
+    Previously the function silently built ``http://...@host:None/repo``,
+    which only surfaced as an opaque clone failure inside the container.
+    """
+    from unittest.mock import MagicMock
+
+    from terok.lib.orchestration.environment import _security_mode_env_and_volumes
+
+    with (
+        mock_git_config(),
+        project_env(_GATEKEEPING_YAML, project_id="gk-proj", with_gate=True),
+        patch("terok.lib.orchestration.environment.ensure_server_reachable"),
+        patch("terok.lib.orchestration.environment.get_gate_server_port", return_value=None),
+        patch("terok.lib.orchestration.environment.get_gate_base_path"),
+        patch("terok.lib.orchestration.environment.create_token", return_value="t" * 32),
+    ):
+        project = load_project("gk-proj")
+        with pytest.raises(SystemExit, match="Gate server port"):
+            _security_mode_env_and_volumes(project, "1", MagicMock(), use_socket=False)

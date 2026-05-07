@@ -18,7 +18,7 @@ import argparse
 _SENTINEL = "vault_serve"
 
 
-def register(group_sub: argparse._SubParsersAction) -> None:  # type: ignore[type-arg]
+def register(group_sub: argparse._SubParsersAction) -> None:
     """Attach ``serve`` under the sibling-wired ``vault`` group.
 
     Must be called with the ``group_sub`` returned by

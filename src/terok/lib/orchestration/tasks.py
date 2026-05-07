@@ -39,6 +39,7 @@ from collections.abc import Iterator
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import Any
 
 from terok_executor import AgentRunner
 
@@ -257,7 +258,7 @@ def _atomic_write(path: Path, text: str) -> None:
     os.replace(tmp, path)
 
 
-def _to_plain(obj: object) -> object:
+def _to_plain(obj: Any) -> Any:
     """Recursively unwrap ruamel ``CommentedMap`` / ``CommentedSeq`` to plain types.
 
     Round-trip-mode YAML hands back commented containers that are dict/list
@@ -945,7 +946,9 @@ def get_all_task_states(
     Returns:
         ``{task_id: container_state_or_None}`` dict.
     """
-    container_states = _rt.get_runtime().container_states(project_id)
+    # container_states isn't on the ContainerRuntime Protocol (only the
+    # concrete podman impl) — upstream surface gap; the call works at runtime.
+    container_states = _rt.get_runtime().container_states(project_id)  # type: ignore[attr-defined]
     result: dict[str, str | None] = {}
     for t in tasks:
         if t.mode:

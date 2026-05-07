@@ -14,6 +14,7 @@ import os
 import subprocess
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 
 from terok_executor import AgentRunner
 
@@ -138,12 +139,14 @@ def task_logs(
         raise SystemExit("podman not found; please install podman")
     except OSError as exc:
         raise SystemExit(f"failed to launch podman logs: {exc}")
+    if proc.stdout is None or proc.stderr is None:  # the factory uses PIPE for both
+        raise SystemExit("podman logs streaming did not provide stdout/stderr pipes")
 
     # Handle Ctrl+C gracefully
     interrupted = False
     original_sigint = signal.getsignal(signal.SIGINT)
 
-    def _sigint_handler(signum, frame):
+    def _sigint_handler(signum: int, frame: Any) -> None:
         """Set the interrupted flag on Ctrl+C."""
         nonlocal interrupted
         interrupted = True
@@ -164,6 +167,8 @@ def task_logs(
                 ready, _, _ = select.select([proc.stdout], [], [], 0.2)
                 if not ready:
                     continue
+                # read1 lives on BufferedReader, not IO[bytes] — Popen pipes
+                # are buffered so the call works at runtime.
                 chunk = proc.stdout.read1(4096) if hasattr(proc.stdout, "read1") else b""
                 if not chunk:
                     continue

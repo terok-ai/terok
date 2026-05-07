@@ -88,7 +88,7 @@ def set_completer(action: argparse.Action, fn: Callable[..., Any]) -> None:
     action.completer = fn  # type: ignore[attr-defined]
 
 
-def add_project_id(parser: argparse.ArgumentParser, **kwargs: object) -> argparse.Action:
+def add_project_id(parser: argparse.ArgumentParser, **kwargs: Any) -> argparse.Action:
     """Add a ``project_id`` positional with the project-ID completer attached.
 
     Returns the argparse action so callers can further customise it.
@@ -99,7 +99,7 @@ def add_project_id(parser: argparse.ArgumentParser, **kwargs: object) -> argpars
     return action
 
 
-def add_task_id(parser: argparse.ArgumentParser, **kwargs: object) -> argparse.Action:
+def add_task_id(parser: argparse.ArgumentParser, **kwargs: Any) -> argparse.Action:
     """Add a ``task_id`` positional with the task-ID completer attached.
 
     Returns the argparse action.  Callers should typically precede this
