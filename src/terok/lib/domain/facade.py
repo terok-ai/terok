@@ -29,6 +29,7 @@ used by CLI commands that operate on ``project_id`` strings directly.
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from typing import TYPE_CHECKING
 
 from terok_executor import (
@@ -196,9 +197,12 @@ def authenticate(provider: str, project_id: str | None = None) -> None:
     (shared across projects that build on the same base) and offers to
     build one if none exists — the "fresh install, no project yet" path.
 
-    Vault storage is provider-scoped in both modes, so switching from a
-    per-project auth to a host-wide one later (or vice versa) does not
-    duplicate or overwrite credentials.
+    Image resolution is **deferred**: the executor only invokes the
+    resolver after the user has chosen the OAuth path from the
+    OAuth-vs-API-key prompt, so picking API key never triggers an L1
+    build.  Vault storage is provider-scoped in both modes, so switching
+    from a per-project auth to a host-wide one later (or vice versa)
+    does not duplicate or overwrite credentials.
     """
     from ..core.config import (
         is_claude_oauth_exposed,
@@ -210,8 +214,9 @@ def authenticate(provider: str, project_id: str | None = None) -> None:
         provider == "codex" and is_codex_oauth_exposed()
     )
 
+    image: str | Callable[[], str]
     if project_id is None:
-        image = _resolve_host_auth_image(provider)
+        image = lambda: _resolve_host_auth_image(provider)  # noqa: E731 — lazy by design
     else:
         image = project_cli_image(project_id)
 
@@ -227,36 +232,56 @@ def authenticate(provider: str, project_id: str | None = None) -> None:
 def _resolve_host_auth_image(provider: str) -> str:
     """Pick (or build) an L1 image suitable for host-wide ``terok auth``.
 
-    Prefers the default full-roster L1 when present — it has every agent
-    installed, so repeated ``terok auth`` calls for different providers
-    share one image.  Falls back to a per-provider L1 that gets built on
-    demand.  For API-key-only providers no container is ever launched, so
-    any tag is acceptable; we return the full-roster name without
-    verifying it exists.
+    Reads ``image.base_image`` and ``image.agents`` from the user's
+    global config so a Fedora-projects user doesn't end up with a stray
+    ``terok-l1-cli:ubuntu-24.04`` just for auth.  The L1 default-alias
+    is *only* set by builds invoked with ``tag_as_default=True``, so if
+    it exists we know it contains the user's configured agent set —
+    we still verify via the ``ai.terok.agents`` OCI label and fall
+    through to a build if the alias is stale.
+
+    When a build is required, the user gets a three-way prompt:
+
+    - **[Y]** (default, recommended) — build the full default L1 with
+      every agent the user has enabled.  Subsequent ``terok auth``
+      calls for any other provider share this image.
+    - **[1]** — build a minimal per-agent L1.  Cheaper if the user
+      truly only needs one provider authenticated.
+    - **[n]** — abort with a hint about how to build manually.
     """
     import sys
 
+    from rich.console import Console
     from terok_executor import (
         AUTH_PROVIDERS,
-        DEFAULT_BASE_IMAGE,
         build_base_images,
+        ensure_default_l1,
+        image_agents,
         l1_image_tag,
+    )
+
+    from ..core.config import (
+        get_global_image_agents,
+        get_global_image_base_image,
     )
 
     info = AUTH_PROVIDERS.get(provider)
     needs_container = info is not None and info.supports_oauth
 
-    full_roster = l1_image_tag(DEFAULT_BASE_IMAGE)
-    if image_exists(full_roster):
-        return full_roster
+    base = get_global_image_base_image()
+    agents = get_global_image_agents()
+    default_alias = l1_image_tag(base)
+    per_agent = l1_image_tag(base, agents=(provider,))
 
-    per_agent = l1_image_tag(DEFAULT_BASE_IMAGE, agents=(provider,))
+    # Default alias is reserved for the user's configured set; trust it
+    # iff it actually contains the requested provider.
+    if image_exists(default_alias) and provider in image_agents(default_alias):
+        return default_alias
     if image_exists(per_agent):
         return per_agent
-
     if not needs_container:
-        # API-key-only providers never launch the image, so any tag is fine.
-        return full_roster
+        # API-key-only providers never launch a container, so any tag is fine.
+        return default_alias
 
     hint = (
         "No agent image present.  Build one with: "
@@ -266,15 +291,22 @@ def _resolve_host_auth_image(provider: str) -> str:
     if not (sys.stdin.isatty() and sys.stdout.isatty()):
         raise SystemExit(hint)
 
+    # ``highlight=False`` keeps Rich's default highlighter from auto-styling
+    # the parentheses, version numbers, and brackets in our literal text —
+    # we already mark up exactly what we want emphasized.
+    err = Console(stderr=True, highlight=False)
+    err.print(f"\nAuth for [bold]{provider}[/bold] needs an agent image.  Build now?")
+    err.print(
+        f"  [bold green]\\[Y][/bold green] (default, recommended) "
+        f"full L1 with every configured agent — [dim]{default_alias}[/dim]"
+    )
+    err.print(
+        f"  [bold yellow]\\[1][/bold yellow] minimal L1 with just "
+        f"[bold]{provider}[/bold] — [dim]{per_agent}[/dim]"
+    )
+    err.print("  [bold red]\\[n][/bold red] abort")
     try:
-        answer = (
-            input(
-                f"Auth for {provider!r} needs an agent image.  "
-                f"Build the minimal L1 ({per_agent}) now? [Y/n]: "
-            )
-            .strip()
-            .lower()
-        )
+        answer = input("[Y/1/n]: ").strip().lower()
     except EOFError:
         print()
         raise SystemExit(hint) from None
@@ -284,9 +316,11 @@ def _resolve_host_auth_image(provider: str) -> str:
 
     if answer in ("n", "no"):
         raise SystemExit(hint)
-
-    build_base_images(DEFAULT_BASE_IMAGE, agents=(provider,))
-    return per_agent
+    if answer == "1":
+        build_base_images(base, agents=(provider,))
+        return per_agent
+    # Anything else (including empty input) → recommended path.
+    return ensure_default_l1(base, agents=agents)
 
 
 __all__ = [

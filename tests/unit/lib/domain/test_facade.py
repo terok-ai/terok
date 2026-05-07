@@ -241,8 +241,9 @@ class TestAuthenticate:
         assert mock_auth.call_args.kwargs["image"] == "terok-p1:latest"
         assert mock_auth.call_args.kwargs["expose_token"] is False
 
-    def test_host_wide_resolves_l1_and_passes_none_scope(self) -> None:
-        """``authenticate(provider)`` (no project) passes ``None`` scope and an L1 image."""
+    def test_host_wide_passes_lazy_resolver_as_image(self) -> None:
+        """``authenticate(provider)`` passes a callable so the L1 build defers
+        past the OAuth-vs-API-key prompt — picking API key never triggers it."""
         from terok.lib.domain import facade
 
         with (
@@ -257,9 +258,17 @@ class TestAuthenticate:
         ):
             facade.authenticate("claude")
 
-        mock_resolve.assert_called_once_with("claude")
-        assert mock_auth.call_args.args[0] is None
-        assert mock_auth.call_args.kwargs["image"] == "terok-l1-cli:ubuntu-24.04"
+            # Resolver isn't invoked here — `_authenticate_raw` is patched, so
+            # the executor never reaches the OAuth branch that would call the
+            # lambda.
+            mock_resolve.assert_not_called()
+            assert mock_auth.call_args.args[0] is None
+            passed_image = mock_auth.call_args.kwargs["image"]
+            assert callable(passed_image), "host-wide auth must pass a lazy callable"
+            # Calling it threads the provider into _resolve_host_auth_image —
+            # done inside the patch context so the mock is still in effect.
+            assert passed_image() == "terok-l1-cli:ubuntu-24.04"
+            mock_resolve.assert_called_once_with("claude")
 
     def test_codex_expose_flag_forwards_expose_token(self) -> None:
         """``is_codex_oauth_exposed()`` True → ``expose_token=True`` for codex."""
@@ -301,15 +310,39 @@ class TestAuthenticate:
 class TestResolveHostAuthImage:
     """_resolve_host_auth_image prefers an existing L1 and builds on demand."""
 
-    def test_prefers_existing_full_roster_image(self) -> None:
+    def test_prefers_default_alias_when_provider_label_present(self) -> None:
+        """Default alias wins iff the OCI label confirms it has the provider."""
         from terok.lib.domain import facade
 
         def exists(tag: str) -> bool:
             return tag == "terok-l1-cli:ubuntu-24.04"
 
-        with patch("terok.lib.domain.facade.image_exists", side_effect=exists):
+        with (
+            patch("terok.lib.domain.facade.image_exists", side_effect=exists),
+            patch("terok_executor.image_agents", return_value={"claude", "codex", "gh"}),
+        ):
             image = facade._resolve_host_auth_image("claude")
         assert image == "terok-l1-cli:ubuntu-24.04"
+
+    def test_alias_present_but_label_missing_provider_falls_through(self) -> None:
+        """Stale alias from a partial build must not silently route auth at it."""
+        from terok.lib.domain import facade
+
+        # Stale alias points at a claude-only image; per-agent for codex
+        # was previously built too.  Asking for codex must skip the alias
+        # (label says "claude" only) and pick up the per-agent codex tag.
+        def exists(tag: str) -> bool:
+            return tag in {
+                "terok-l1-cli:ubuntu-24.04",
+                "terok-l1-cli:ubuntu-24.04-codex",
+            }
+
+        with (
+            patch("terok.lib.domain.facade.image_exists", side_effect=exists),
+            patch("terok_executor.image_agents", return_value={"claude"}),
+        ):
+            image = facade._resolve_host_auth_image("codex")
+        assert image == "terok-l1-cli:ubuntu-24.04-codex"
 
     def test_falls_back_to_per_agent_l1(self) -> None:
         from terok.lib.domain import facade
@@ -317,7 +350,10 @@ class TestResolveHostAuthImage:
         def exists(tag: str) -> bool:
             return tag == "terok-l1-cli:ubuntu-24.04-claude"
 
-        with patch("terok.lib.domain.facade.image_exists", side_effect=exists):
+        with (
+            patch("terok.lib.domain.facade.image_exists", side_effect=exists),
+            patch("terok_executor.image_agents", return_value=set()),
+        ):
             image = facade._resolve_host_auth_image("claude")
         assert image == "terok-l1-cli:ubuntu-24.04-claude"
 
@@ -325,7 +361,10 @@ class TestResolveHostAuthImage:
         """API-key-only providers never launch a container; any tag is fine."""
         from terok.lib.domain import facade
 
-        with patch("terok.lib.domain.facade.image_exists", return_value=False):
+        with (
+            patch("terok.lib.domain.facade.image_exists", return_value=False),
+            patch("terok_executor.image_agents", return_value=set()),
+        ):
             # sonar is api-key-only — no prompt, no build, just a tag.
             image = facade._resolve_host_auth_image("sonar")
         assert image.startswith("terok-l1-cli:")
@@ -336,9 +375,103 @@ class TestResolveHostAuthImage:
 
         with (
             patch("terok.lib.domain.facade.image_exists", return_value=False),
+            patch("terok_executor.image_agents", return_value=set()),
             patch("sys.stdin.isatty", return_value=False),
             patch("sys.stdout.isatty", return_value=False),
             pytest.raises(SystemExit) as exc,
         ):
             facade._resolve_host_auth_image("claude")
         assert "terok project build" in str(exc.value) or "terok executor" in str(exc.value)
+
+    def test_y_choice_builds_full_default(self) -> None:
+        """[Y] (default) routes to ensure_default_l1 with the user's agent set."""
+        from terok.lib.domain import facade
+
+        with (
+            patch("terok.lib.domain.facade.image_exists", return_value=False),
+            patch("terok_executor.image_agents", return_value=set()),
+            patch("sys.stdin.isatty", return_value=True),
+            patch("sys.stdout.isatty", return_value=True),
+            patch("terok.lib.core.config.get_global_image_agents", return_value="all"),
+            patch(
+                "terok.lib.core.config.get_global_image_base_image",
+                return_value="ubuntu:24.04",
+            ),
+            patch("builtins.input", return_value=""),  # empty → default Y
+            patch(
+                "terok_executor.ensure_default_l1",
+                return_value="terok-l1-cli:ubuntu-24.04",
+            ) as mock_ensure,
+            patch("terok_executor.build_base_images") as mock_per_agent,
+        ):
+            tag = facade._resolve_host_auth_image("claude")
+        assert tag == "terok-l1-cli:ubuntu-24.04"
+        mock_ensure.assert_called_once()
+        mock_per_agent.assert_not_called()
+
+    def test_one_choice_builds_minimal_per_agent(self) -> None:
+        """[1] builds only the per-agent L1, not the full default."""
+        from terok.lib.domain import facade
+
+        with (
+            patch("terok.lib.domain.facade.image_exists", return_value=False),
+            patch("terok_executor.image_agents", return_value=set()),
+            patch("sys.stdin.isatty", return_value=True),
+            patch("sys.stdout.isatty", return_value=True),
+            patch("terok.lib.core.config.get_global_image_agents", return_value="all"),
+            patch(
+                "terok.lib.core.config.get_global_image_base_image",
+                return_value="ubuntu:24.04",
+            ),
+            patch("builtins.input", return_value="1"),
+            patch("terok_executor.ensure_default_l1") as mock_ensure,
+            patch("terok_executor.build_base_images") as mock_per_agent,
+        ):
+            tag = facade._resolve_host_auth_image("codex")
+        assert tag == "terok-l1-cli:ubuntu-24.04-codex"
+        mock_per_agent.assert_called_once()
+        # Per-agent build with just the requested provider, no alias retag
+        kwargs = mock_per_agent.call_args.kwargs
+        assert kwargs.get("agents") == ("codex",) or mock_per_agent.call_args.args[1:] == (
+            ("codex",),
+        )
+        mock_ensure.assert_not_called()
+
+    def test_n_choice_aborts(self) -> None:
+        """[n] exits with the build-hint message."""
+        from terok.lib.domain import facade
+
+        with (
+            patch("terok.lib.domain.facade.image_exists", return_value=False),
+            patch("terok_executor.image_agents", return_value=set()),
+            patch("sys.stdin.isatty", return_value=True),
+            patch("sys.stdout.isatty", return_value=True),
+            patch("terok.lib.core.config.get_global_image_agents", return_value="all"),
+            patch(
+                "terok.lib.core.config.get_global_image_base_image",
+                return_value="ubuntu:24.04",
+            ),
+            patch("builtins.input", return_value="n"),
+            pytest.raises(SystemExit) as exc,
+        ):
+            facade._resolve_host_auth_image("codex")
+        assert "terok project build" in str(exc.value) or "terok executor" in str(exc.value)
+
+    def test_uses_configured_base_image(self) -> None:
+        """Honors ``image.base_image`` from config — not hardcoded ubuntu."""
+        from terok.lib.domain import facade
+
+        def exists(tag: str) -> bool:
+            return tag == "terok-l1-cli:fedora-43"
+
+        with (
+            patch("terok.lib.domain.facade.image_exists", side_effect=exists),
+            patch("terok_executor.image_agents", return_value={"claude", "codex", "gh"}),
+            patch(
+                "terok.lib.core.config.get_global_image_base_image",
+                return_value="fedora:43",
+            ),
+            patch("terok.lib.core.config.get_global_image_agents", return_value="all"),
+        ):
+            image = facade._resolve_host_auth_image("claude")
+        assert image == "terok-l1-cli:fedora-43"
