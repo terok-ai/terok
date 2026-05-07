@@ -1,6 +1,6 @@
 # Agent Configuration Compatibility Matrix
 
-Last verified: 2026-03-15. Re-verify quarterly and whenever an agent version
+Last verified: 2026-05-07. Re-verify quarterly and whenever an agent version
 update breaks the existing integration.
 
 Per-agent reference for permission control, instruction delivery, and ACP
@@ -95,6 +95,34 @@ No env var or managed config (`/etc/codex/`) for permissions in v0.114.0.
 Only `--yolo` CLI flag works, injected by the shell wrapper. This means
 Codex permissions only apply via CLI wrappers, not ACP. `codex-acp`
 accepts `-c key=value` overrides which could be used at ACP spawn time.
+
+#### Synthetic auth.json — required JWT claims
+
+Codex's vault-routed credential containment writes a shared synthetic
+`auth.json` (`_codex-config/auth.json`) into every task container.  The
+real `access_token` and `refresh_token` are replaced with the
+`CODEX_SHARED_OAUTH_MARKER` sentinel; only the `id_token` JWT carries
+metadata over.  See
+[`_build_codex_shared_id_token`](https://github.com/terok-ai/terok-executor/blob/master/src/terok_executor/credentials/auth.py)
+in terok-executor.
+
+The JWT must satisfy two claim-shape contracts at startup, both of which
+are enforced by Codex internally — no upstream HTTP call:
+
+| Claim | Required by | Source code |
+|---|---|---|
+| `email` (top-level) **or** `https://api.openai.com/profile.email` | `account/read` JSON-RPC during TUI bootstrap | `codex-rs/login/src/token_data.rs` (`parse_chatgpt_jwt_claims`), `codex-rs/app-server/src/request_processors/account_processor.rs` (`get_account_response`) |
+| `https://api.openai.com/auth.chatgpt_plan_type` | same | `codex-rs/model-provider/src/provider.rs` (`account_state` returns `MissingChatgptAccountDetails` when either is absent) |
+
+Symptom of a missing claim: `Error: account/read failed during TUI
+bootstrap`.  Codex serves this from its own app-server, so the failure
+is visible immediately at `codex` startup before any model call.
+
+terok-executor's writer preserves these plus a few non-PII identifiers
+(`chatgpt_user_id`, `chatgpt_account_id`, `user_id`,
+`chatgpt_account_is_fedramp`) and strips everything else.  The synthetic
+JWT is unsigned (`alg: "none"`) — Codex doesn't verify the signature
+locally, only that `account_state()` resolves cleanly.
 
 ### Copilot
 
