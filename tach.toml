@@ -698,6 +698,7 @@ expose = [
     "get_global_default_agent",
     "get_global_default_login",
     "get_global_image_agents",
+    "get_global_image_base_image",
     "global_config_path",
     "global_config_search_paths",
     "load_global_config",

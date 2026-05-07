@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: 2026 Jiri Vyskocil
 # SPDX-License-Identifier: Apache-2.0
 
-"""Image management commands: list, cleanup, usage."""
+"""Image management commands: build, list, cleanup, usage."""
 
 from __future__ import annotations
 
@@ -16,6 +16,50 @@ def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) ->
     """Register the ``image`` subcommand group."""
     p_image = subparsers.add_parser("image", help="Manage terok container images")
     image_sub = p_image.add_subparsers(dest="image_cmd", required=True)
+
+    # image build — host-wide L0+L1 build, defaults from config.image.*
+    p_build = image_sub.add_parser(
+        "build",
+        help="Build the host-wide default L0+L1 images (no project required)",
+        description=(
+            "Build the user's default L0+L1 images.  Defaults to the agent set "
+            "and base image declared in ~/.config/terok/config.yml "
+            "(image.agents, image.base_image), falling back to ``all`` agents "
+            "on ubuntu:24.04.  Use --rebuild to refresh agent versions; "
+            "--full-rebuild also re-pulls the base OS and rebuilds L0 from "
+            "scratch."
+        ),
+    )
+    p_build.add_argument(
+        "--base",
+        default=None,
+        help="Override the configured base image for this build only.",
+    )
+    p_build.add_argument(
+        "--agents",
+        default=None,
+        help='Comma-separated roster entries to install, or "all".  Overrides config.',
+    )
+    p_build.add_argument(
+        "--family",
+        default=None,
+        help="Override package family (deb/rpm) for unknown bases.",
+    )
+    p_build.add_argument(
+        "--rebuild",
+        action="store_true",
+        help="Cache-bust the agent install layers — refreshes agent versions.",
+    )
+    p_build.add_argument(
+        "--full-rebuild",
+        action="store_true",
+        help="Force --no-cache --pull=always — re-pulls base OS, rebuilds L0+L1.",
+    )
+    p_build.add_argument(
+        "--sidecar",
+        action="store_true",
+        help="Also build the sidecar L1 image (used by CodeRabbit).",
+    )
 
     # image list
     p_list = image_sub.add_parser("list", help="List terok images with sizes")
@@ -59,6 +103,15 @@ def dispatch(args: argparse.Namespace) -> bool:
         return False
 
     match args.image_cmd:
+        case "build":
+            _cmd_build(
+                base=getattr(args, "base", None),
+                agents=getattr(args, "agents", None),
+                family=getattr(args, "family", None),
+                rebuild=getattr(args, "rebuild", False),
+                full_rebuild=getattr(args, "full_rebuild", False),
+                sidecar=getattr(args, "sidecar", False),
+            )
         case "list":
             _cmd_list(getattr(args, "project_id", None))
         case "cleanup":
@@ -71,6 +124,57 @@ def dispatch(args: argparse.Namespace) -> bool:
         case _:  # pragma: no cover — required=True makes argparse enforce this
             return False
     return True
+
+
+def _cmd_build(
+    *,
+    base: str | None,
+    agents: str | None,
+    family: str | None,
+    rebuild: bool,
+    full_rebuild: bool,
+    sidecar: bool,
+) -> None:
+    """Build the host-wide default L0+L1 images via the executor primitive."""
+    from terok_executor import (
+        BuildError,
+        build_base_images,
+        build_sidecar_image,
+        parse_agent_selection,
+    )
+
+    from ...lib.core.config import (
+        get_global_image_agents,
+        get_global_image_base_image,
+    )
+
+    try:
+        resolved_base = base or get_global_image_base_image()
+        resolved_agents = parse_agent_selection(agents or get_global_image_agents())
+        images = build_base_images(
+            base_image=resolved_base,
+            family=family,
+            agents=resolved_agents,
+            rebuild=rebuild,
+            full_rebuild=full_rebuild,
+            tag_as_default=True,
+        )
+    except (BuildError, ValueError) as exc:
+        raise SystemExit(str(exc)) from exc
+    print(f"\nL0: {images.l0}")
+    print(f"L1: {images.l1}")
+
+    if sidecar:
+        try:
+            sidecar_tag = build_sidecar_image(
+                base_image=resolved_base,
+                family=family,
+                rebuild=rebuild,
+                full_rebuild=full_rebuild,
+            )
+        except BuildError as exc:
+            raise SystemExit(str(exc)) from exc
+        print(f"L1 (sidecar): {sidecar_tag}")
 
 
 def _cmd_usage(*, project_id: str | None, json_output: bool) -> None:
