@@ -132,3 +132,160 @@ class TestImageDispatch:
         with patch("terok.cli.commands.image._cmd_usage") as mock:
             assert dispatch(args) is True
         mock.assert_called_once_with(project_id="myproj", json_output=True)
+
+    def test_build_dispatch_forwards_flags(self) -> None:
+        """``image build --rebuild --sidecar`` routes to the build helper."""
+        import argparse
+
+        from terok.cli.commands.image import dispatch
+
+        args = argparse.Namespace(
+            cmd="image",
+            image_cmd="build",
+            base=None,
+            agents=None,
+            family=None,
+            rebuild=True,
+            full_rebuild=False,
+            sidecar=True,
+        )
+        with patch("terok.cli.commands.image._cmd_build") as mock:
+            assert dispatch(args) is True
+        mock.assert_called_once_with(
+            base=None,
+            agents=None,
+            family=None,
+            rebuild=True,
+            full_rebuild=False,
+            sidecar=True,
+        )
+
+
+class TestCmdBuild:
+    """``_cmd_build`` reads config defaults and delegates to the executor primitive."""
+
+    def test_uses_config_defaults_when_no_overrides(
+        self, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        from unittest.mock import MagicMock
+
+        from terok.cli.commands.image import _cmd_build
+
+        fake_images = MagicMock(l0="terok-l0:fedora-43", l1="terok-l1-cli:fedora-43")
+        with (
+            patch(
+                "terok.lib.core.config.get_global_image_base_image",
+                return_value="fedora:43",
+            ),
+            patch("terok.lib.core.config.get_global_image_agents", return_value="all"),
+            patch("terok_executor.parse_agent_selection", side_effect=lambda v: v) as mock_parse,
+            patch("terok_executor.build_base_images", return_value=fake_images) as mock_build,
+            patch("terok_executor.build_sidecar_image"),
+        ):
+            _cmd_build(
+                base=None,
+                agents=None,
+                family=None,
+                rebuild=False,
+                full_rebuild=False,
+                sidecar=False,
+            )
+
+        mock_parse.assert_called_once_with("all")
+        kwargs = mock_build.call_args.kwargs
+        assert kwargs["base_image"] == "fedora:43"
+        assert kwargs["agents"] == "all"
+        assert kwargs["tag_as_default"] is True
+        out = capsys.readouterr().out
+        assert "terok-l0:fedora-43" in out
+        assert "terok-l1-cli:fedora-43" in out
+
+    def test_overrides_take_precedence_over_config(self) -> None:
+        from unittest.mock import MagicMock
+
+        from terok.cli.commands.image import _cmd_build
+
+        fake_images = MagicMock(l0="terok-l0:test", l1="terok-l1-cli:test")
+        with (
+            patch(
+                "terok.lib.core.config.get_global_image_base_image",
+                return_value="fedora:43",  # would normally be picked
+            ),
+            patch("terok.lib.core.config.get_global_image_agents", return_value="all"),
+            patch("terok_executor.parse_agent_selection", side_effect=lambda v: v),
+            patch("terok_executor.build_base_images", return_value=fake_images) as mock_build,
+            patch("terok_executor.build_sidecar_image"),
+        ):
+            _cmd_build(
+                base="ubuntu:24.04",
+                agents="claude,codex",
+                family="deb",
+                rebuild=True,
+                full_rebuild=False,
+                sidecar=False,
+            )
+
+        kwargs = mock_build.call_args.kwargs
+        # CLI overrides win over config
+        assert kwargs["base_image"] == "ubuntu:24.04"
+        assert kwargs["agents"] == "claude,codex"
+        assert kwargs["family"] == "deb"
+        assert kwargs["rebuild"] is True
+
+    def test_sidecar_flag_triggers_sidecar_build(self, capsys: pytest.CaptureFixture[str]) -> None:
+        from unittest.mock import MagicMock
+
+        from terok.cli.commands.image import _cmd_build
+
+        fake_images = MagicMock(l0="L0", l1="L1")
+        with (
+            patch(
+                "terok.lib.core.config.get_global_image_base_image",
+                return_value="ubuntu:24.04",
+            ),
+            patch("terok.lib.core.config.get_global_image_agents", return_value="all"),
+            patch("terok_executor.parse_agent_selection", side_effect=lambda v: v),
+            patch("terok_executor.build_base_images", return_value=fake_images),
+            patch(
+                "terok_executor.build_sidecar_image",
+                return_value="terok-l1-sidecar:ubuntu-24.04",
+            ) as mock_sidecar,
+        ):
+            _cmd_build(
+                base=None,
+                agents=None,
+                family=None,
+                rebuild=False,
+                full_rebuild=False,
+                sidecar=True,
+            )
+
+        mock_sidecar.assert_called_once()
+        assert "terok-l1-sidecar:ubuntu-24.04" in capsys.readouterr().out
+
+    def test_build_error_exits_cleanly(self) -> None:
+        from terok_executor import BuildError
+
+        from terok.cli.commands.image import _cmd_build
+
+        with (
+            patch(
+                "terok.lib.core.config.get_global_image_base_image",
+                return_value="ubuntu:24.04",
+            ),
+            patch("terok.lib.core.config.get_global_image_agents", return_value="all"),
+            patch("terok_executor.parse_agent_selection", side_effect=lambda v: v),
+            patch(
+                "terok_executor.build_base_images",
+                side_effect=BuildError("podman missing"),
+            ),
+        ):
+            with pytest.raises(SystemExit, match="podman missing"):
+                _cmd_build(
+                    base=None,
+                    agents=None,
+                    family=None,
+                    rebuild=False,
+                    full_rebuild=False,
+                    sidecar=False,
+                )

@@ -284,8 +284,8 @@ def _resolve_host_auth_image(provider: str) -> str:
         return default_alias
 
     hint = (
-        "No agent image present.  Build one with: "
-        "terok project build <project>  (or terok executor build), "
+        "No agent image present.  Build one with: terok image build "
+        "(or terok project build <project>), "
         "or pass --project <id> to reuse an existing project's image."
     )
     if not (sys.stdin.isatty() and sys.stdout.isatty()):
