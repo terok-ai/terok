@@ -506,12 +506,16 @@ if _HAS_TEXTUAL:
             )
             return False
 
+        @work(exclusive=True, group="first-run-flow", exit_on_error=False)
         async def action_run_setup(self) -> None:
             """Open the setup flow on demand (command palette / re-run).
 
             Always probes the current verdict so the user sees the live
             state — useful even on a healthy install when they want to
             re-apply the (idempotent) systemd cycle after an upgrade.
+
+            Runs on a worker because ``_run_setup_flow`` calls
+            ``push_screen_wait``, which requires a worker context.
             """
             try:
                 verdict = needs_setup()
