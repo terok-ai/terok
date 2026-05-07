@@ -3121,7 +3121,7 @@ tomli-w = ">=1.0"
 type = "git"
 url = "https://github.com/sliwowitz/terok-executor.git"
 reference = "refactor/credential-vendor-models"
-resolved_reference = "dc26bc808ecd73673ed0e6647f7ff8facf6bc943"
+resolved_reference = "33114b8cccfe75250458ff98a6b54fe1a5b5cba5"
 
 [[package]]
 name = "terok-sandbox"

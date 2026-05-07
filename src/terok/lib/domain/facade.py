@@ -207,6 +207,7 @@ def authenticate(provider: str, project_id: str | None = None) -> None:
     from ..core.config import (
         is_claude_oauth_exposed,
         is_codex_oauth_exposed,
+        is_oauth_enabled_for,
         sandbox_live_mounts_dir,
     )
 
@@ -220,12 +221,18 @@ def authenticate(provider: str, project_id: str | None = None) -> None:
     else:
         image = project_cli_image(project_id)
 
+    # The roster declares which auth modes a provider supports; terok's
+    # config can disable the OAuth path (experimental flag + per-provider
+    # ``allow_oauth``).  The listing screen already filters on this; pass
+    # the same gate into the executor's auth flow so the per-provider
+    # prompt agrees.
     _authenticate_raw(
         project_id,
         provider,
         mounts_dir=sandbox_live_mounts_dir(),
         image=image,
         expose_token=expose,
+        oauth_enabled=is_oauth_enabled_for(provider),
     )
 
 

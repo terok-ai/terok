@@ -306,6 +306,46 @@ class TestAuthenticate:
 
         assert mock_auth.call_args.kwargs["expose_token"] is False
 
+    def test_oauth_gate_is_passed_to_executor(self) -> None:
+        """``is_oauth_enabled_for`` is forwarded as ``oauth_enabled`` so the
+        per-provider prompt agrees with the listing screen's filter."""
+        from terok.lib.domain import facade
+
+        with (
+            patch(
+                "terok.lib.domain.facade._resolve_host_auth_image",
+                return_value="terok-l1-cli:ubuntu-24.04",
+            ),
+            patch("terok.lib.core.config.sandbox_live_mounts_dir", return_value="/mnt"),
+            patch("terok.lib.core.config.is_claude_oauth_exposed", return_value=False),
+            patch("terok.lib.core.config.is_codex_oauth_exposed", return_value=False),
+            patch("terok.lib.core.config.is_oauth_enabled_for", return_value=False) as mock_gate,
+            patch("terok.lib.domain.facade._authenticate_raw") as mock_auth,
+        ):
+            facade.authenticate("codex")
+
+        mock_gate.assert_called_once_with("codex")
+        assert mock_auth.call_args.kwargs["oauth_enabled"] is False
+
+    def test_oauth_gate_open_passes_true(self) -> None:
+        """When the gate is open, ``oauth_enabled=True`` reaches the executor."""
+        from terok.lib.domain import facade
+
+        with (
+            patch(
+                "terok.lib.domain.facade._resolve_host_auth_image",
+                return_value="terok-l1-cli:ubuntu-24.04",
+            ),
+            patch("terok.lib.core.config.sandbox_live_mounts_dir", return_value="/mnt"),
+            patch("terok.lib.core.config.is_claude_oauth_exposed", return_value=False),
+            patch("terok.lib.core.config.is_codex_oauth_exposed", return_value=False),
+            patch("terok.lib.core.config.is_oauth_enabled_for", return_value=True),
+            patch("terok.lib.domain.facade._authenticate_raw") as mock_auth,
+        ):
+            facade.authenticate("claude")
+
+        assert mock_auth.call_args.kwargs["oauth_enabled"] is True
+
 
 class TestResolveHostAuthImage:
     """_resolve_host_auth_image prefers an existing L1 and builds on demand."""
