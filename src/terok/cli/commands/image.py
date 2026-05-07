@@ -148,10 +148,9 @@ def _cmd_build(
         get_global_image_base_image,
     )
 
-    resolved_base = base or get_global_image_base_image()
-    resolved_agents = parse_agent_selection(agents or get_global_image_agents())
-
     try:
+        resolved_base = base or get_global_image_base_image()
+        resolved_agents = parse_agent_selection(agents or get_global_image_agents())
         images = build_base_images(
             base_image=resolved_base,
             family=family,

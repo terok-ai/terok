@@ -80,10 +80,12 @@ allowed_importers =
     terok.cli.commands.acp
     terok.cli.commands.agents
     terok.cli.commands.auth
+    terok.cli.commands.image
     terok.cli.commands.setup
     terok.cli.commands.task
     terok.cli.main
     terok.cli.wiring
+    terok.lib.core.config
     terok.lib.core.images
     terok.lib.core.yaml_schema
     terok.lib.domain.facade
