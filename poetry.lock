@@ -2222,7 +2222,7 @@ version = "3.0.52"
 description = "Library for building powerful interactive command lines in Python"
 optional = false
 python-versions = ">=3.8"
-groups = ["dev"]
+groups = ["main", "dev"]
 files = [
     {file = "prompt_toolkit-3.0.52-py3-none-any.whl", hash = "sha256:9aac639a3bbd33284347de5ad8d68ecc044b91a762dc39b7c21095fcd6a19955"},
     {file = "prompt_toolkit-3.0.52.tar.gz", hash = "sha256:28cde192929c8e7321de85de1ddbe736f1375148b02f2e17edd840042b1be855"},
@@ -2391,17 +2391,6 @@ watchdog = ">=2.0"
 
 [package.extras]
 i18n = ["babel (>=2.9.0)"]
-
-[[package]]
-name = "pwinput"
-version = "1.0.3"
-description = "A cross-platform Python module that displays **** for password input. Works on Windows, unlike getpass. Formerly called stdiomask."
-optional = false
-python-versions = "*"
-groups = ["main"]
-files = [
-    {file = "pwinput-1.0.3.tar.gz", hash = "sha256:ca1a8bd06e28872d751dbd4132d8637127c25b408ea3a349377314a5491426f3"},
-]
 
 [[package]]
 name = "pycparser"
@@ -3079,13 +3068,13 @@ tomli-w = ">=1.0,<2.0"
 
 [[package]]
 name = "terok-clearance"
-version = "0.6.9"
+version = "0.6.10"
 description = "Shield clearance and desktop notifications for terok"
 optional = false
 python-versions = ">=3.12,<4.0"
 groups = ["main"]
 files = [
-    {file = "terok_clearance-0.6.9-py3-none-any.whl", hash = "sha256:6e0a7c877d4e71543e02d172078004418acb9f5a8df117375f41725ea9995564"},
+    {file = "terok_clearance-0.6.10-py3-none-any.whl", hash = "sha256:3ba9e59b1c01f31f13340df55c0ffe553094e9b6a1a96a180c166d4dec4d8365"},
 ]
 
 [package.dependencies]
@@ -3095,42 +3084,42 @@ pyyaml = ">=6.0,<7.0"
 
 [package.source]
 type = "url"
-url = "https://github.com/terok-ai/terok-clearance/releases/download/v0.6.9/terok_clearance-0.6.9-py3-none-any.whl"
+url = "https://github.com/terok-ai/terok-clearance/releases/download/v0.6.10/terok_clearance-0.6.10-py3-none-any.whl"
 
 [[package]]
 name = "terok-executor"
-version = "0.0.136"
+version = "0.0.137"
 description = "Single-agent task runner for hardened Podman containers"
 optional = false
 python-versions = ">=3.12,<3.15"
 groups = ["main"]
 files = [
-    {file = "terok_executor-0.0.136-py3-none-any.whl", hash = "sha256:c4ef32c64e8b65f3cbb89dc7bdb51e66af94fe806eb31571fd66ebdf8b3d6ada"},
+    {file = "terok_executor-0.0.137-py3-none-any.whl", hash = "sha256:a9cce99c550ae0e6851fe6e37915fe85c06b5e6f8973c7e3c17187f9fdfcc266"},
 ]
 
 [package.dependencies]
 agent-client-protocol = ">=0.7"
 Jinja2 = ">=3.1"
-pwinput = ">=1.0.3"
+prompt-toolkit = ">=3.0"
 pydantic = ">=2.9"
 rich = ">=13.0"
 "ruamel.yaml" = ">=0.18"
-terok_sandbox = {url = "https://github.com/terok-ai/terok-sandbox/releases/download/v0.0.112/terok_sandbox-0.0.112-py3-none-any.whl"}
+terok_sandbox = {url = "https://github.com/terok-ai/terok-sandbox/releases/download/v0.0.113/terok_sandbox-0.0.113-py3-none-any.whl"}
 tomli-w = ">=1.0"
 
 [package.source]
 type = "url"
-url = "https://github.com/terok-ai/terok-executor/releases/download/v0.0.136/terok_executor-0.0.136-py3-none-any.whl"
+url = "https://github.com/terok-ai/terok-executor/releases/download/v0.0.137/terok_executor-0.0.137-py3-none-any.whl"
 
 [[package]]
 name = "terok-sandbox"
-version = "0.0.112"
+version = "0.0.113"
 description = "Hardened Podman container runner with gate server and shield integration"
 optional = false
 python-versions = ">=3.12,<4.0"
 groups = ["main"]
 files = [
-    {file = "terok_sandbox-0.0.112-py3-none-any.whl", hash = "sha256:c8d47277fcf6b296115dad932272a9c14c6fdfd9b29e16193d52608528da06db"},
+    {file = "terok_sandbox-0.0.113-py3-none-any.whl", hash = "sha256:a136e3b5dca3cc6a08b580d4784a4f0a408e3fab86062c8018f4f3ad45245a4d"},
 ]
 
 [package.dependencies]
@@ -3139,22 +3128,22 @@ cryptography = ">=46.0.7"
 packaging = ">=24"
 platformdirs = ">=4.9.6"
 pydantic = ">=2.9"
-terok_clearance = {url = "https://github.com/terok-ai/terok-clearance/releases/download/v0.6.9/terok_clearance-0.6.9-py3-none-any.whl"}
-terok_shield = {url = "https://github.com/terok-ai/terok-shield/releases/download/v0.6.37/terok_shield-0.6.37-py3-none-any.whl"}
+terok_clearance = {url = "https://github.com/terok-ai/terok-clearance/releases/download/v0.6.10/terok_clearance-0.6.10-py3-none-any.whl"}
+terok_shield = {url = "https://github.com/terok-ai/terok-shield/releases/download/v0.6.38/terok_shield-0.6.38-py3-none-any.whl"}
 
 [package.source]
 type = "url"
-url = "https://github.com/terok-ai/terok-sandbox/releases/download/v0.0.112/terok_sandbox-0.0.112-py3-none-any.whl"
+url = "https://github.com/terok-ai/terok-sandbox/releases/download/v0.0.113/terok_sandbox-0.0.113-py3-none-any.whl"
 
 [[package]]
 name = "terok-shield"
-version = "0.6.37"
+version = "0.6.38"
 description = "nftables-based egress firewalling for Podman containers"
 optional = false
 python-versions = ">=3.12,<4.0"
 groups = ["main"]
 files = [
-    {file = "terok_shield-0.6.37-py3-none-any.whl", hash = "sha256:3bace72f76f8ff24189519e4dcfc77e1bb0cc4ca3f6fe9311110549900cd752b"},
+    {file = "terok_shield-0.6.38-py3-none-any.whl", hash = "sha256:ebf08444ae0ff7ccc85bf691e5520fc4c3c4068df27aeb12747ea429f46acfef"},
 ]
 
 [package.dependencies]
@@ -3163,7 +3152,7 @@ PyYAML = ">=6.0"
 
 [package.source]
 type = "url"
-url = "https://github.com/terok-ai/terok-shield/releases/download/v0.6.37/terok_shield-0.6.37-py3-none-any.whl"
+url = "https://github.com/terok-ai/terok-shield/releases/download/v0.6.38/terok_shield-0.6.38-py3-none-any.whl"
 
 [[package]]
 name = "textual"
@@ -3891,7 +3880,7 @@ version = "0.7.0"
 description = "Measures the displayed width of unicode strings in a terminal"
 optional = false
 python-versions = ">=3.8"
-groups = ["dev"]
+groups = ["main", "dev"]
 files = [
     {file = "wcwidth-0.7.0-py3-none-any.whl", hash = "sha256:5d69154c429a82910e241c738cd0e2976fac8a2dd47a1a805f4afed1c0f136f2"},
     {file = "wcwidth-0.7.0.tar.gz", hash = "sha256:90e3a7ea092341c44b99562e75d09e4d5160fe7a3974c6fb842a101a95e7eed0"},
@@ -4043,4 +4032,4 @@ propcache = ">=0.2.1"
 [metadata]
 lock-version = "2.1"
 python-versions = ">=3.12,<3.15"
-content-hash = "6c1d7b1af55556265fc2a397a285b0eb2dd43a0669329ec9eab099bd9dbec5f0"
+content-hash = "9505187b78368f44dc07ece37197f4dcb951f499d2bfec9031655ddb2c9da1b8"
