@@ -15,6 +15,7 @@ import logging
 import os
 import subprocess  # nosec B404 — hooks execute user-configured commands by design
 from pathlib import Path
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -113,7 +114,7 @@ def _bookkeeping_yml_for(dossier_path: Path) -> Path:
     return dossier_path.parent / f"{dossier_path.stem}{_BOOKKEEPING_SUFFIXES[0]}"
 
 
-def _plain(obj: object) -> object:
+def _plain(obj: Any) -> Any:
     """Recursively unwrap commented containers to plain dict/list."""
     if isinstance(obj, dict):
         return {str(k): _plain(v) for k, v in obj.items()}

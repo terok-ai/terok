@@ -14,9 +14,11 @@ shields + stopped services already cut access.
 from __future__ import annotations
 
 import logging
-from concurrent.futures import ThreadPoolExecutor, as_completed
+from concurrent.futures import Future, ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
+from pathlib import Path
+from typing import Any
 
 from ..core.config import get_shield_bypass_firewall_no_protection
 from ..core.paths import core_state_dir
@@ -33,7 +35,7 @@ logger = logging.getLogger(__name__)
 _LOCK_FILENAME = "panic.lock"
 
 # (project_id, task_id, mode, cname, task_dir)
-type _Target = tuple[str, str, str, str, object]
+type _Target = tuple[str, str, str, str, Path]
 
 
 # ---------------------------------------------------------------------------
@@ -144,22 +146,36 @@ def _phase1_lockdown(result: PanicResult, targets: list[_Target]) -> None:
             _collect_phase1_result(result, kind, label, fut)
 
 
-def _collect_phase1_result(result: PanicResult, kind: str, label: str, fut) -> None:
+def _collect_phase1_result(result: PanicResult, kind: str, label: str, fut: Future[Any]) -> None:
     """Collect a single Phase 1 future result into the PanicResult."""
     try:
         res = fut.result(timeout=60)
     except Exception as exc:
-        res = (label or False, str(exc))
+        # Treat any unhandled exception as failure for this kind.
+        if kind == "shield":
+            result.shield_errors.append((label, str(exc)))
+        elif kind == "vault":
+            result.vault_stopped = False
+            result.vault_error = str(exc)
+        else:
+            result.gate_stopped = False
+            result.gate_error = str(exc)
+        return
 
     if kind == "shield":
         cname, err = res
-        (result.shield_errors if err else result.shields_raised).append(
-            (cname, err) if err else cname
-        )
+        if err:
+            result.shield_errors.append((cname, err))
+        else:
+            result.shields_raised.append(cname)
     elif kind == "vault":
-        result.vault_stopped, result.vault_error = res
+        stopped, err = res
+        result.vault_stopped = bool(stopped)
+        result.vault_error = err
     else:
-        result.gate_stopped, result.gate_error = res
+        stopped, err = res
+        result.gate_stopped = bool(stopped)
+        result.gate_error = err
 
 
 def _format_shield_status(result: PanicResult) -> str:

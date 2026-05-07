@@ -11,7 +11,7 @@ import shlex
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from terok_executor import (
     AgentConfigSpec,
@@ -272,7 +272,7 @@ def _prepare_agent_config(
         project_root=project.root,
         preset=preset,
     )
-    subagents = list(effective.get("subagents") or [])
+    subagents = tuple(effective.get("subagents") or ())
     from terok_executor import get_provider as _get_provider
 
     resolved = _get_provider(provider_name, default_agent=project.default_agent)
@@ -282,7 +282,7 @@ def _prepare_agent_config(
             tasks_root=project.tasks_root,
             task_id=task_id,
             subagents=subagents,
-            selected_agents=agents,
+            selected_agents=tuple(agents) if agents is not None else None,
             provider=resolved.name,
             instructions=instr_text,
             default_agent=project.default_agent,
@@ -424,7 +424,7 @@ def _auth_protect_hosts() -> dict[str, frozenset[str]]:
     return out
 
 
-def _resolved_allow_entries(shield_obj: object) -> frozenset[str]:
+def _resolved_allow_entries(shield_obj: Any) -> frozenset[str]:
     """Return the set of domain/IP entries in the active allow profiles.
 
     The set is the union of every line in every profile listed in
@@ -1013,7 +1013,7 @@ def task_run_headless(request: HeadlessRunRequest) -> str:
     task_id = task_new(request.project_id, name=request.name)
 
     # Collect subagents from resolved config
-    subagents = list(effective.get("subagents") or [])
+    subagents = tuple(effective.get("subagents") or ())
 
     # Prepare agent-config dir with wrapper, agents.json, prompt.txt, instructions.md
     task_dir = project.tasks_root / str(task_id)
@@ -1022,7 +1022,7 @@ def task_run_headless(request: HeadlessRunRequest) -> str:
             tasks_root=project.tasks_root,
             task_id=task_id,
             subagents=subagents,
-            selected_agents=request.agents,
+            selected_agents=tuple(request.agents) if request.agents is not None else None,
             prompt=effective_prompt,
             provider=resolved.name,
             instructions=instr_text,

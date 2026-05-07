@@ -8,8 +8,13 @@ The button sits in the main layout but is excluded from the Tab focus chain
 auto-disarm timer); a second click fires the emergency panic sequence.
 """
 
+from typing import TYPE_CHECKING, Any
+
 from textual.message import Message
 from textual.widgets import Static
+
+if TYPE_CHECKING:
+    from textual.timer import Timer
 
 _LABEL_IDLE = "PANIC"
 _LABEL_ARMED = "PRESS AGAIN TO PANIC"
@@ -41,11 +46,11 @@ class PanicButton(Static):
     class Fired(Message):
         """Posted when the arm-then-fire sequence completes."""
 
-    def __init__(self, **kwargs: object) -> None:
+    def __init__(self, **kwargs: Any) -> None:
         """Initialize in idle (disarmed) state."""
         super().__init__(**kwargs)
         self._armed = False
-        self._disarm_timer = None
+        self._disarm_timer: Timer | None = None
 
     def on_mount(self) -> None:
         """Set the idle label once the widget is mounted."""

@@ -36,7 +36,7 @@ import subprocess  # nosec B404 — only used with explicit argv (no shell, no u
 import sys
 import time
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, NoReturn
 
 from terok_executor import acp_socket_is_live
 
@@ -205,6 +205,8 @@ def _spawn_daemon(
     )
 
     task_meta = get_task_meta(project_id, task_id)
+    if task_meta.mode is None:
+        raise SystemExit(f"task {task_id} has no mode set; cannot resolve container name")
     cname = resolve_container_name(project_id, task_meta.mode, task_id)
     log_path.parent.mkdir(parents=True, exist_ok=True)
     log_fd = open(log_path, "ab", buffering=0)  # noqa: SIM115 — handed to Popen
@@ -257,7 +259,7 @@ def _wait_for_socket(
     _fail(f"ACP daemon did not bind {path} within {timeout:.1f}s; see {log_path}")
 
 
-def _fail(message: str) -> None:
+def _fail(message: str) -> NoReturn:
     """Print *message* on stderr and exit with code 1.
 
     Stderr-only, stdout stays clean.  ACP clients that capture the

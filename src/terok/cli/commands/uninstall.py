@@ -130,6 +130,7 @@ def _uninstall_desktop_entry() -> bool:
             return False
         s.ok("removed")
         return True
+    return False  # stage_line suppressed an unforeseen exception
 
 
 def _uninstall_sandbox_stack(*, root: bool) -> bool:
@@ -152,6 +153,7 @@ def _uninstall_sandbox_stack(*, root: bool) -> bool:
             return False
         s.ok("clearance + gate + vault + shield removed")
         return True
+    return False  # stage_line suppressed an unforeseen exception
 
 
 def _purge_credential_db() -> bool:
@@ -170,3 +172,4 @@ def _purge_credential_db() -> bool:
             return False
         s.ok(f"removed {db_path}")
         return True
+    return False  # stage_line suppressed an unforeseen exception

@@ -33,6 +33,7 @@ from __future__ import annotations
 
 import argparse
 import inspect
+from collections.abc import Sequence
 from typing import Any, Protocol, runtime_checkable
 
 _CFG_PARAM = "cfg"
@@ -58,7 +59,11 @@ class CmdProto(Protocol):
     name: str
     help: str
     handler: Any  # Callable[..., None] | None
-    args: tuple[ArgProto, ...]
+
+    @property
+    def args(self) -> Sequence[ArgProto]:
+        """Argument definitions for this command."""
+        ...
 
 
 def _arg_key(arg: ArgProto) -> str:
@@ -66,7 +71,7 @@ def _arg_key(arg: ArgProto) -> str:
     return arg.dest or arg.name.lstrip("-").replace("-", "_")
 
 
-def wire(sub: argparse._SubParsersAction, cmd: CmdProto) -> None:  # type: ignore[type-arg]
+def wire(sub: argparse._SubParsersAction, cmd: CmdProto) -> None:
     """Add a single command definition to an argparse subparser group."""
     p = sub.add_parser(cmd.name, help=cmd.help)
     for arg in cmd.args:
@@ -90,14 +95,18 @@ def wire(sub: argparse._SubParsersAction, cmd: CmdProto) -> None:  # type: ignor
 
 
 def wire_group(
-    sub: argparse._SubParsersAction,  # type: ignore[type-arg]
+    sub: argparse._SubParsersAction,
     name: str,
-    commands: tuple[CmdProto, ...],
+    # Cross-package CommandDef tuples don't structurally satisfy
+    # `Sequence[CmdProto]` even though they should — mypy is conservative
+    # about cross-package Protocol matching with class-attribute tuples.
+    # The Protocols above still document the structural contract for readers.
+    commands: Sequence[Any],
     *,
     help: str = "",
     config_factory: Any = None,
     return_action: bool = False,
-) -> tuple[argparse.ArgumentParser, argparse._SubParsersAction] | None:  # type: ignore[type-arg]
+) -> tuple[argparse.ArgumentParser, argparse._SubParsersAction] | None:
     """Mount a tuple of command definitions under a named subparser group.
 
     Creates ``<prog> <name> <subcommand>`` paths for each command in *commands*.

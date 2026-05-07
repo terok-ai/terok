@@ -8,10 +8,13 @@ import sys
 from collections.abc import Callable
 from importlib import resources as _pkg_resources
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any, Literal
 
 from pydantic import ValidationError
 from terok_sandbox import ServicesMode
+
+if TYPE_CHECKING:
+    from terok_sandbox import ConfigStack, SandboxConfig
 
 from ..util.yaml import YAMLError, load as _yaml_load
 from .paths import config_root as _config_root_base
@@ -107,7 +110,7 @@ _validated_config_cache: RawGlobalConfig | None = None
 _raw_config_cache: dict[str, Any] | None = None
 
 
-def _build_config_stack():
+def _build_config_stack() -> "ConfigStack":
     """Build a `ConfigStack` from all existing config layer files.
 
     Loads each layer independently; unreadable or malformed files are
@@ -363,7 +366,7 @@ def vault_dir() -> Path:
     )
 
 
-def make_sandbox_config() -> "SandboxConfig":  # noqa: F821 — forward ref
+def make_sandbox_config() -> "SandboxConfig":
     """Construct a `SandboxConfig` for sandbox operations.
 
     Bridges terok's config layer (env vars → config.yml → XDG defaults) to
@@ -494,7 +497,7 @@ def get_services_mode() -> ServicesMode:
     return _load_validated().services.mode
 
 
-def get_vault_transport() -> str:
+def get_vault_transport() -> Literal["direct", "socket"]:
     """Return the vault transport mode (``"direct"`` or ``"socket"``).
 
     Derived from ``services.mode``: ``socket`` → ``"socket"`` (containers

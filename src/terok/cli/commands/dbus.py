@@ -53,6 +53,8 @@ def dispatch(args: argparse.Namespace) -> bool:
         return False
 
     cmd_name = getattr(args, "dbus_cmd", None)
+    if cmd_name is None:
+        return False
     cmd_lookup = {cmd.name: cmd for cmd in COMMANDS}
     cmd_def = cmd_lookup.get(cmd_name)
     if cmd_def is None or cmd_def.handler is None:
