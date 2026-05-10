@@ -129,6 +129,16 @@ def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) ->
         help="Rotate — unassign existing keys from the project and generate fresh",
     )
 
+    # gate-path
+    p_gate_path = sub.add_parser(
+        "gate-path",
+        help=(
+            "Print the absolute path of the project's host-side git gate "
+            "(suitable for use as a git remote URL via ssh://host<path>)"
+        ),
+    )
+    _add_project_arg(p_gate_path)
+
     # gate-sync
     p_gate = sub.add_parser(
         "gate-sync",
@@ -187,6 +197,8 @@ def dispatch(args: argparse.Namespace) -> bool:
             )
         case "ssh-init":
             _cmd_ssh_init(args)
+        case "gate-path":
+            _cmd_gate_path(args.project_id)
         case "gate-sync":
             _cmd_gate_sync(args)
         case "presets":
@@ -282,6 +294,20 @@ def _cmd_ssh_init(args: argparse.Namespace) -> None:
         force=getattr(args, "force", False),
     )
     summarize_ssh_init(result)
+
+
+def _cmd_gate_path(project_id: str) -> None:
+    """Print the absolute path of the project's host-side git gate.
+
+    Plain stdout so callers can splice the path into a git URL, e.g.::
+
+        git remote add spark "ssh://you@host$(terok project gate-path myproj)"
+
+    The path is computed deterministically from project config — it is
+    printed even if the bare repo doesn't exist yet (run ``gate-sync``
+    to create it).
+    """
+    print(load_project(project_id).gate_path)
 
 
 def _cmd_gate_sync(args: argparse.Namespace) -> None:

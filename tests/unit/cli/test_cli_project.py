@@ -12,6 +12,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from terok.cli.commands.project import (
+    _cmd_gate_path,
     _cmd_gate_sync,
     _cmd_presets,
     _cmd_project_delete,
@@ -92,6 +93,13 @@ from terok.cli.commands.project import (
             "terok.cli.commands.project._cmd_ssh_init",
             {"positional_is_args": True},
             id="ssh-init",
+        ),
+        pytest.param(
+            "gate-path",
+            {"project_id": "p1"},
+            "terok.cli.commands.project._cmd_gate_path",
+            {"positional": ("p1",)},
+            id="gate-path",
         ),
         pytest.param(
             "gate-sync",
@@ -339,6 +347,19 @@ def test_delete_lists_removed_and_skipped(
     out = capsys.readouterr().out
     assert "Removed:" in out and "/path/a" in out and "/path/b" in out
     assert "Skipped:" in out and "in use by task 1" in out
+
+
+# ---------------------------------------------------------------------------
+# _cmd_gate_path — bare path passthrough
+# ---------------------------------------------------------------------------
+
+
+def test_gate_path_prints_project_gate_path(capsys: pytest.CaptureFixture[str]) -> None:
+    """Output is the gate path verbatim — pipeable into ``git remote add``."""
+    fake = MagicMock(gate_path="/var/lib/terok/gate/p1.git")
+    with patch("terok.cli.commands.project.load_project", return_value=fake):
+        _cmd_gate_path("p1")
+    assert capsys.readouterr().out.strip() == "/var/lib/terok/gate/p1.git"
 
 
 # ---------------------------------------------------------------------------
