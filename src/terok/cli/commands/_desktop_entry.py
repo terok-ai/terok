@@ -60,7 +60,7 @@ from importlib import resources as importlib_resources
 from importlib.resources.abc import Traversable
 from pathlib import Path
 
-from ...lib.util.template_utils import render_template
+from ...lib.util.template_utils import render_resource_template
 
 _log = logging.getLogger(__name__)
 
@@ -138,9 +138,7 @@ def install_desktop_entry(bin_path: str | Path) -> DesktopBackend:
         knows ``xdg-utils`` is missing.
     """
     variables = _pick_template_variables(str(bin_path))
-    traversable = _resource_dir().joinpath(_TEMPLATE_NAME)
-    with importlib_resources.as_file(traversable) as template_path:
-        rendered = render_template(template_path, variables)
+    rendered = render_resource_template(_resource_dir().joinpath(_TEMPLATE_NAME), variables)
     logo_bytes = _resource_dir().joinpath(_LOGO_NAME).read_bytes()
     if xdg_utils_available() and _install_via_xdg_utils(rendered, logo_bytes):
         return DesktopBackend.XDG_UTILS
@@ -156,32 +154,24 @@ def _pick_template_variables(terok_tui_bin: str) -> dict[str, str]:
     """Return the placeholder dict for the ``.desktop`` template.
 
     Picks between the **standard** form (today's behaviour) and the
-    **Ptyxis-gate** form documented in the module docstring.  The gate
-    requires *both* the Ptyxis terminal and an introspectable
-    ``xdg-terminal-exec`` (the shim relies on ``--print-id``); either
-    missing collapses to the standard form so KDE / XFCE / generic
-    setups remain unchanged.
-
-    The shim path is resolved via ``shutil.which`` with a fall-back to
-    the bare binary name, mirroring how *terok_tui_bin* itself is
-    resolved by the caller — pipx installs land under ``~/.local/bin``
-    which isn't always on the launcher's minimal PATH at click time.
+    **Ptyxis-shim** form documented in the module docstring.  The shim
+    path is resolved via ``shutil.which`` with a fall-back to the bare
+    binary name, mirroring how *terok_tui_bin* itself is resolved by
+    the caller — pipx installs land under ``~/.local/bin`` which isn't
+    always on the launcher's minimal PATH at click time.
     """
-    if _ptyxis_gate_active():
-        shim_path = shutil.which(_TEROK_TERMINAL_SHIM) or _TEROK_TERMINAL_SHIM
-        return {
-            "TERMINAL": "false",
-            "EXEC": f"{shim_path} {terok_tui_bin}",
-            "TRY_EXEC": shim_path,
-        }
-    return {
-        "TERMINAL": "true",
-        "EXEC": terok_tui_bin,
-        "TRY_EXEC": terok_tui_bin,
-    }
+    if _should_use_ptyxis_shim():
+        try_exec = shutil.which(_TEROK_TERMINAL_SHIM) or _TEROK_TERMINAL_SHIM
+        exec_line = f"{try_exec} {terok_tui_bin}"
+        terminal = "false"
+    else:
+        try_exec = terok_tui_bin
+        exec_line = terok_tui_bin
+        terminal = "true"
+    return {"TERMINAL": terminal, "EXEC": exec_line, "TRY_EXEC": try_exec}
 
 
-def _ptyxis_gate_active() -> bool:
+def _should_use_ptyxis_shim() -> bool:
     """Return True when both Ptyxis and xdg-terminal-exec are on PATH.
 
     Both are required: the shim needs ``xdg-terminal-exec --print-id``

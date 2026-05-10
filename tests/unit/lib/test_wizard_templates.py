@@ -92,10 +92,6 @@ class TestWizardTemplates:
     def test_render_template_raises_on_missing_variable(self) -> None:
         """A typo or forgotten variable surfaces at render time, not silently."""
         traversable = TEMPLATE_DIR / "online-ubuntu.yml"
-        # Drop PROJECT_ID to simulate a forgotten key — the prior
-        # str.replace() implementation would have left "{{PROJECT_ID}}"
-        # in the YAML and someone downstream would have hit a confusing
-        # parse error.  Jinja2's StrictUndefined catches it here.
         variables = {
             "UPSTREAM_URL": "https://example.test/repo.git",
             "DEFAULT_BRANCH": "main",

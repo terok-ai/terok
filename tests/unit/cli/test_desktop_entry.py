@@ -13,6 +13,8 @@ import pytest
 
 from terok.cli.commands import _desktop_entry as desktop
 
+from .conftest import which_factory as _which_factory
+
 
 @pytest.fixture
 def xdg_data_home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
@@ -502,15 +504,6 @@ class TestBackendSelection:
 # ── Ptyxis-gate render-form selection ─────────────────────────────────
 
 
-def _which_factory(present: set[str]) -> object:
-    """``shutil.which`` side-effect: return ``/usr/bin/<name>`` only for names in *present*."""
-
-    def _which(name: str) -> str | None:
-        return f"/usr/bin/{name}" if name in present else None
-
-    return _which
-
-
 class TestPtyxisGate:
     """``_pick_template_variables`` flips Exec=/Terminal= on the install-time gate.
 
@@ -545,8 +538,6 @@ class TestPtyxisGate:
         assert "Terminal=true" in content
         assert "Exec=/usr/local/bin/terok-tui" in content
         assert "TryExec=/usr/local/bin/terok-tui" in content
-        # Hard-stop regression check: the shim must NOT appear in the
-        # rendered Exec when the gate is inactive.
         assert "terok-xdg-terminal-exec" not in content
 
     def test_gate_active_renders_wrapper_form(self, xdg_data_home: Path) -> None:
@@ -559,8 +550,6 @@ class TestPtyxisGate:
             desktop.install_desktop_entry("/usr/local/bin/terok-tui")
         content = (xdg_data_home / "applications" / "terok.desktop").read_text()
         assert "Terminal=false" in content
-        # The shim wraps terok-tui — both paths land in the Exec line,
-        # shim first so the desktop launcher resolves it as the binary.
         assert "Exec=/usr/bin/terok-xdg-terminal-exec /usr/local/bin/terok-tui" in content
         assert "TryExec=/usr/bin/terok-xdg-terminal-exec" in content
 

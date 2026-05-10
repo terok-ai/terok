@@ -34,6 +34,7 @@ import os
 import shutil
 import subprocess  # nosec B404 — we only invoke the system xdg-terminal-exec
 import sys
+from typing import NoReturn
 
 #: Binary name we shim around.
 _XDG_TERMINAL_EXEC = "xdg-terminal-exec"
@@ -49,18 +50,19 @@ _PTYXIS_DESKTOP_ID_PREFIX = "org.gnome.Ptyxis"
 #: Window title applied to the launched Terok window.
 _WINDOW_TITLE = "Terok"
 
-#: Timeout for the ``--print-id`` introspection probe.
-_PROBE_TIMEOUT_S = 5
+#: Timeout for the ``--print-id`` introspection probe.  The probe reads
+#: a small config file and prints a string — anything past 1s indicates
+#: a stuck binary, and waiting longer would silently freeze the GNOME
+#: launcher with no visual feedback.
+_PROBE_TIMEOUT_S = 1
 
 
-def main() -> int:
+def main() -> NoReturn:
     """Resolve the user's default terminal and exec into it.
 
-    Returns:
-        On success this function does not return — control is handed
-        off via ``os.execvp`` to the chosen terminal.  On hard failure
-        (no ``xdg-terminal-exec`` on PATH) returns 127, the standard
-        "command not found" exit code.
+    Never returns: every successful path replaces the process via
+    ``os.execvp``; the only failure (``xdg-terminal-exec`` missing)
+    raises ``SystemExit(127)``, the standard "command not found" code.
     """
     args = sys.argv[1:]
 
@@ -74,16 +76,19 @@ def main() -> int:
             "in config.yml and re-run 'terok setup' to drop the desktop entry.",
             file=sys.stderr,
         )
-        return 127
+        raise SystemExit(127)
 
+    # Both execvp argv lists are our literal flags + the caller's args
+    # forwarded verbatim.  S606/B606 fire on any os.exec*; suppression
+    # is per-call rather than blanket so a future addition has to make
+    # the same conscious choice.
     if _resolved_terminal_is_ptyxis(xdg) and (ptyxis := shutil.which(_PTYXIS)):
-        os.execvp(  # noqa: S606  # nosec B606 — argv is our literal flags + caller args
+        os.execvp(  # noqa: S606  # nosec B606
             ptyxis,
             [ptyxis, "--new-window", "--title", _WINDOW_TITLE, "--", *args],
         )
     else:
         os.execvp(xdg, [xdg, *args])  # noqa: S606  # nosec B606
-    return 0  # unreachable in production (execvp replaces the process); satisfies the type checker
 
 
 def _resolved_terminal_is_ptyxis(xdg_path: str) -> bool:

@@ -35,7 +35,7 @@ from ..core.images import project_cli_image, project_dev_image
 from ..core.project_model import ProjectConfig
 from ..core.projects import load_project
 from ..util.fs import ensure_dir
-from ..util.template_utils import render_template
+from ..util.template_utils import render_resource_template
 
 # ---------- helpers ----------
 
@@ -143,8 +143,7 @@ def _render_l2(project: ProjectConfig) -> str:
     traversable = (
         resources.files("terok") / "resources" / "templates" / "l2.project.Dockerfile.template"
     )
-    with resources.as_file(traversable) as template_path:
-        return render_template(template_path, variables)
+    return render_resource_template(traversable, variables)
 
 
 def render_all_dockerfiles(project: ProjectConfig, *, family: str | None = None) -> dict[str, str]:

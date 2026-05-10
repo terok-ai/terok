@@ -13,21 +13,13 @@ transparently to ``xdg-terminal-exec`` (anything else).
 from __future__ import annotations
 
 import subprocess
-from collections.abc import Callable
 from unittest import mock
 
 import pytest
 
 from terok.cli import xdg_terminal_exec as shim
 
-
-def _which_factory(present: set[str]) -> Callable[[str], str | None]:
-    """``shutil.which`` side-effect: return ``/usr/bin/<name>`` only for names in *present*."""
-
-    def _which(name: str) -> str | None:
-        return f"/usr/bin/{name}" if name in present else None
-
-    return _which
+from .conftest import which_factory as _which_factory
 
 
 def _completed(stdout: str = "", returncode: int = 0) -> subprocess.CompletedProcess[str]:
@@ -38,18 +30,21 @@ def _completed(stdout: str = "", returncode: int = 0) -> subprocess.CompletedPro
 class TestMissingXdgTerminalExec:
     """Without ``xdg-terminal-exec`` the shim has nothing to relay to — exit 127."""
 
-    def test_returns_127_and_prints_actionable_error(
+    def test_exits_127_with_actionable_error(
         self,
         capsys: pytest.CaptureFixture[str],
     ) -> None:
-        with mock.patch(
-            "terok.cli.xdg_terminal_exec.shutil.which",
-            side_effect=_which_factory(set()),
+        with (
+            mock.patch(
+                "terok.cli.xdg_terminal_exec.shutil.which",
+                side_effect=_which_factory(set()),
+            ),
+            pytest.raises(SystemExit) as exc_info,
         ):
-            assert shim.main() == 127
+            shim.main()
+        assert exc_info.value.code == 127
         err = capsys.readouterr().err
         assert "xdg-terminal-exec" in err
-        # Operator-actionable: name the package or the opt-out, not just "missing".
         assert "dnf install" in err or "apt install" in err
         assert "tui.desktop_entry: skip" in err
 
@@ -72,9 +67,6 @@ class TestPtyxisDispatch:
             mock.patch("terok.cli.xdg_terminal_exec.os.execvp") as execvp,
         ):
             shim.main()
-        # The crucial assertion: --new-window appears, NOT plain --tab or
-        # bare ptyxis (which would re-trigger standalone mode via the --
-        # token).
         execvp.assert_called_once_with(
             "/usr/bin/ptyxis",
             ["/usr/bin/ptyxis", "--new-window", "--title", "Terok", "--", "terok-tui"],
@@ -99,10 +91,11 @@ class TestPtyxisDispatch:
         assert "--new-window" in called_argv
 
     def test_falls_through_when_ptyxis_disappeared_after_print_id(self) -> None:
-        """``--print-id`` says Ptyxis but ptyxis itself is missing → relay to xdg-terminal-exec."""
-        # Pathological case (race or broken setup), but the shim should
-        # never break the launch — it falls through to the system tool
-        # rather than crashing with "FileNotFoundError: ptyxis".
+        """``--print-id`` says Ptyxis but ptyxis itself is missing → relay to xdg-terminal-exec.
+
+        Pathological case (race or broken setup), but the shim should
+        never crash the launch with FileNotFoundError.
+        """
         with (
             mock.patch.object(shim.sys, "argv", ["terok-xdg-terminal-exec", "terok-tui"]),
             mock.patch(
