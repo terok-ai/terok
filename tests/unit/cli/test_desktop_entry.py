@@ -13,8 +13,6 @@ import pytest
 
 from terok.cli.commands import _desktop_entry as desktop
 
-from .conftest import which_factory as _which_factory
-
 
 @pytest.fixture
 def xdg_data_home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
@@ -504,23 +502,17 @@ class TestBackendSelection:
 # ── Ptyxis-gate render-form selection ─────────────────────────────────
 
 
-class TestPtyxisGate:
-    """``_pick_template_variables`` flips Exec=/Terminal= on the install-time gate.
+def _which_only(present: set[str]) -> object:
+    """``shutil.which`` side-effect: report only the names in *present*."""
+    return lambda name: f"/usr/bin/{name}" if name in present else None
 
-    Gate condition: *both* ``ptyxis`` and ``xdg-terminal-exec`` on PATH.
-    Either missing collapses to today's standard ``Terminal=true`` form so
-    KDE / XFCE / generic ``xdg-terminal-exec`` setups stay unchanged.  When
-    both are present we route through ``terok-xdg-terminal-exec`` so the
-    shim can dodge Ptyxis's standalone-mode tab-bar lockout.
-    """
+
+class TestPtyxisGate:
+    """When both ptyxis and xdg-terminal-exec are on PATH, route Exec through the shim."""
 
     @pytest.mark.parametrize(
         "present",
-        [
-            set(),
-            {"ptyxis"},
-            {"xdg-terminal-exec"},
-        ],
+        [set(), {"ptyxis"}, {"xdg-terminal-exec"}],
         ids=["nothing", "only-ptyxis", "only-xdg-terminal-exec"],
     )
     def test_gate_inactive_renders_standard_form(
@@ -528,10 +520,9 @@ class TestPtyxisGate:
         xdg_data_home: Path,
         present: set[str],
     ) -> None:
-        """Either binary missing → today's Terminal=true / Exec=terok-tui form."""
         with mock.patch(
             "terok.cli.commands._desktop_entry.shutil.which",
-            side_effect=_which_factory(present),
+            side_effect=_which_only(present),
         ):
             desktop.install_desktop_entry("/usr/local/bin/terok-tui")
         content = (xdg_data_home / "applications" / "terok.desktop").read_text()
@@ -540,31 +531,16 @@ class TestPtyxisGate:
         assert "TryExec=/usr/local/bin/terok-tui" in content
         assert "terok-xdg-terminal-exec" not in content
 
-    def test_gate_active_renders_wrapper_form(self, xdg_data_home: Path) -> None:
-        """Both binaries present → Terminal=false, Exec runs through the shim."""
-        present = {"ptyxis", "xdg-terminal-exec", "terok-xdg-terminal-exec"}
+    def test_gate_active_routes_through_shim(self, xdg_data_home: Path) -> None:
         with mock.patch(
             "terok.cli.commands._desktop_entry.shutil.which",
-            side_effect=_which_factory(present),
+            side_effect=_which_only({"ptyxis", "xdg-terminal-exec"}),
         ):
             desktop.install_desktop_entry("/usr/local/bin/terok-tui")
         content = (xdg_data_home / "applications" / "terok.desktop").read_text()
+        # Shim path is the bundled resource; assert by suffix to stay
+        # site-packages-layout-agnostic.
         assert "Terminal=false" in content
-        assert "Exec=/usr/bin/terok-xdg-terminal-exec /usr/local/bin/terok-tui" in content
-        assert "TryExec=/usr/bin/terok-xdg-terminal-exec" in content
-
-    def test_gate_active_falls_back_to_bare_shim_name(self, xdg_data_home: Path) -> None:
-        """Shim missing from PATH at install time → bare name, resolved at launcher click."""
-        # Mirror the same fall-back terok already uses for terok-tui itself
-        # (pipx puts binaries under ~/.local/bin which isn't on the
-        # setup-script's minimal PATH on every distro).
-        present = {"ptyxis", "xdg-terminal-exec"}
-        with mock.patch(
-            "terok.cli.commands._desktop_entry.shutil.which",
-            side_effect=_which_factory(present),
-        ):
-            desktop.install_desktop_entry("/usr/local/bin/terok-tui")
-        content = (xdg_data_home / "applications" / "terok.desktop").read_text()
-        assert "Terminal=false" in content
-        assert "Exec=terok-xdg-terminal-exec /usr/local/bin/terok-tui" in content
-        assert "TryExec=terok-xdg-terminal-exec" in content
+        assert "/terok-xdg-terminal-exec.sh /usr/local/bin/terok-tui" in content
+        assert "Exec=/bin/sh " in content
+        assert "/terok-xdg-terminal-exec.sh\n" in content  # TryExec line

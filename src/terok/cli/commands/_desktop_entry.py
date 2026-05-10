@@ -30,22 +30,21 @@ when the fallback kicks in.
 
 The passive assets (``.desktop`` template, logo PNG) live under
 ``terok/resources/desktop/`` — this module is the *builder* that reads
-them, renders the placeholders via Jinja2, stages them to a tempdir,
+them, renders the ``{{BIN}}`` placeholder, stages them to a tempdir,
 and delegates to the XDG tool of choice.
 
-Two render forms exist, picked by `_pick_template_variables` at install
-time:
-
-* **Standard** (default): ``Terminal=true`` and ``Exec=terok-tui``.
-  The desktop environment wraps the launch in whatever terminal it
-  picks — same behaviour terok has always shipped, and what KDE / XFCE
-  / generic ``xdg-terminal-exec`` users get.
-* **Ptyxis-gate**: ``Terminal=false`` and
-  ``Exec=terok-xdg-terminal-exec terok-tui``, picked only when *both*
-  ``ptyxis`` and ``xdg-terminal-exec`` are on PATH.  Routes through
-  the `terok.cli.xdg_terminal_exec` shim, which detects when Ptyxis is
-  the resolved default and calls ``ptyxis --new-window`` to dodge the
-  standalone-mode tab-bar lockout.
+When *both* ``ptyxis`` and ``xdg-terminal-exec`` are on PATH at install
+time, `_apply_ptyxis_shim` rewrites the rendered ``Exec=`` /
+``TryExec=`` / ``Terminal=`` lines to route the launch through the
+`terok-xdg-terminal-exec.sh` shim (also in ``resources/desktop/``).
+This works around a Ptyxis-specific bug: ``Terminal=true`` causes
+``xdg-terminal-exec`` to invoke Ptyxis as ``ptyxis -- terok-tui``,
+which forces standalone mode (chrome-less window, tab bar permanently
+hidden, ``ptyxis --tab`` from inside Terok lands in unrelated
+windows).  The shim invokes ``ptyxis --new-window`` instead, dodging
+the trigger.  For everyone else (KDE, XFCE, GNOME without Ptyxis,
+generic xdg-terminal-exec users) the gate is inactive and the
+``Terminal=true`` / ``Exec=terok-tui`` form lands unchanged.
 """
 
 from __future__ import annotations
@@ -60,8 +59,6 @@ from importlib import resources as importlib_resources
 from importlib.resources.abc import Traversable
 from pathlib import Path
 
-from ...lib.util.template_utils import render_resource_template
-
 _log = logging.getLogger(__name__)
 
 #: Base name of the application launcher and icon — must match
@@ -73,13 +70,7 @@ _ICON_FILE = f"{APP_NAME}.png"
 _ICON_SIZE = "256"  # logo is 283x283, close enough for the 256x256 bucket
 _TEMPLATE_NAME = "terok.desktop.template"
 _LOGO_NAME = "terok-logo.png"
-
-#: Binaries whose simultaneous presence triggers the Ptyxis-gate
-#: render form (see module docstring).  Both must be on PATH at install
-#: time; either missing → standard ``Terminal=true`` form.
-_PTYXIS_BINARY = "ptyxis"
-_XDG_TERMINAL_EXEC_BINARY = "xdg-terminal-exec"
-_TEROK_TERMINAL_SHIM = "terok-xdg-terminal-exec"
+_PTYXIS_SHIM_NAME = "terok-xdg-terminal-exec.sh"
 
 # XDG Base Directory + Icon Theme spec path fragments.  Named so a
 # future theme-dir shift (e.g. an Adwaita-symbolic install path) is a
@@ -122,6 +113,11 @@ def _resource_dir() -> Traversable:
     return importlib_resources.files("terok").joinpath("resources", "desktop")
 
 
+def _load_template() -> str:
+    """Read the bundled ``terok.desktop.template`` as text."""
+    return _resource_dir().joinpath(_TEMPLATE_NAME).read_text(encoding="utf-8")
+
+
 def install_desktop_entry(bin_path: str | Path) -> DesktopBackend:
     """Render the launcher + copy the icon, via xdg-utils when available.
 
@@ -137,8 +133,10 @@ def install_desktop_entry(bin_path: str | Path) -> DesktopBackend:
         a status-line warning when the fallback kicks in so the operator
         knows ``xdg-utils`` is missing.
     """
-    variables = _pick_template_variables(str(bin_path))
-    rendered = render_resource_template(_resource_dir().joinpath(_TEMPLATE_NAME), variables)
+    bin_str = str(bin_path)
+    rendered = _load_template().replace("{{BIN}}", bin_str).replace("{{TRY_EXEC}}", bin_str)
+    if _should_use_ptyxis_shim():
+        rendered = _apply_ptyxis_shim(rendered, bin_str)
     logo_bytes = _resource_dir().joinpath(_LOGO_NAME).read_bytes()
     if xdg_utils_available() and _install_via_xdg_utils(rendered, logo_bytes):
         return DesktopBackend.XDG_UTILS
@@ -150,35 +148,19 @@ def install_desktop_entry(bin_path: str | Path) -> DesktopBackend:
     return DesktopBackend.FALLBACK
 
 
-def _pick_template_variables(terok_tui_bin: str) -> dict[str, str]:
-    """Return the placeholder dict for the ``.desktop`` template.
-
-    Picks between the **standard** form (today's behaviour) and the
-    **Ptyxis-shim** form documented in the module docstring.  The shim
-    path is resolved via ``shutil.which`` with a fall-back to the bare
-    binary name, mirroring how *terok_tui_bin* itself is resolved by
-    the caller — pipx installs land under ``~/.local/bin`` which isn't
-    always on the launcher's minimal PATH at click time.
-    """
-    if _should_use_ptyxis_shim():
-        try_exec = shutil.which(_TEROK_TERMINAL_SHIM) or _TEROK_TERMINAL_SHIM
-        exec_line = f"{try_exec} {terok_tui_bin}"
-        terminal = "false"
-    else:
-        try_exec = terok_tui_bin
-        exec_line = terok_tui_bin
-        terminal = "true"
-    return {"TERMINAL": terminal, "EXEC": exec_line, "TRY_EXEC": try_exec}
-
-
 def _should_use_ptyxis_shim() -> bool:
-    """Return True when both Ptyxis and xdg-terminal-exec are on PATH.
+    """Return True when both Ptyxis and xdg-terminal-exec are on PATH."""
+    return bool(shutil.which("ptyxis") and shutil.which("xdg-terminal-exec"))
 
-    Both are required: the shim needs ``xdg-terminal-exec --print-id``
-    to know whether the user's resolved default *is* Ptyxis (vs e.g.
-    gnome-terminal, in which case it passes through unchanged).
-    """
-    return bool(shutil.which(_PTYXIS_BINARY) and shutil.which(_XDG_TERMINAL_EXEC_BINARY))
+
+def _apply_ptyxis_shim(rendered: str, bin_str: str) -> str:
+    """Rewrite Exec/TryExec/Terminal lines to route through the shim."""
+    shim = str(_resource_dir().joinpath(_PTYXIS_SHIM_NAME))
+    return (
+        rendered.replace(f"Exec={bin_str}", f"Exec=/bin/sh {shim} {bin_str}", 1)
+        .replace(f"TryExec={bin_str}", f"TryExec={shim}", 1)
+        .replace("Terminal=true", "Terminal=false", 1)
+    )
 
 
 def uninstall_desktop_entry() -> DesktopBackend:

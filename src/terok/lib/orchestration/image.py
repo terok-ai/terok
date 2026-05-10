@@ -35,7 +35,6 @@ from ..core.images import project_cli_image, project_dev_image
 from ..core.project_model import ProjectConfig
 from ..core.projects import load_project
 from ..util.fs import ensure_dir
-from ..util.template_utils import render_resource_template
 
 # ---------- helpers ----------
 
@@ -130,20 +129,26 @@ def _render_l2(project: ProjectConfig) -> str:
     Runtime env vars (CODE_REPO, GIT_BRANCH) are set by environment.py
     at container launch time.
     """
+    tmpl_pkg = resources.files("terok") / "resources" / "templates"
+    template = (tmpl_pkg / "l2.project.Dockerfile.template").read_text()
+
     variables = {
+        "PROJECT_ID": project.id,
+        "SECURITY_CLASS": project.security_class,
+        "UPSTREAM_URL": project.upstream_url or "",
+        "DEFAULT_BRANCH": project.default_branch or "",
+        "BASE_IMAGE": project.base_image,
         "CODE_REPO_DEFAULT": (
             "file:///git-gate/gate.git"
             if project.security_class == "gatekeeping"
             else (project.upstream_url or "")
         ),
-        "DEFAULT_BRANCH": project.default_branch or "",
         "USER_SNIPPET": _resolve_user_snippet(project),
     }
 
-    traversable = (
-        resources.files("terok") / "resources" / "templates" / "l2.project.Dockerfile.template"
-    )
-    return render_resource_template(traversable, variables)
+    for k, v in variables.items():
+        template = template.replace(f"{{{{{k}}}}}", str(v))
+    return template
 
 
 def render_all_dockerfiles(project: ProjectConfig, *, family: str | None = None) -> dict[str, str]:
