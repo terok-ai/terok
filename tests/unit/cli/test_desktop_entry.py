@@ -497,3 +497,85 @@ class TestBackendSelection:
             "terok.cli.commands._desktop_entry.shutil.which", side_effect=_which_everything
         ):
             assert desktop.xdg_utils_available() is True
+
+
+# ── Ptyxis-gate render-form selection ─────────────────────────────────
+
+
+def _which_factory(present: set[str]) -> object:
+    """``shutil.which`` side-effect: return ``/usr/bin/<name>`` only for names in *present*."""
+
+    def _which(name: str) -> str | None:
+        return f"/usr/bin/{name}" if name in present else None
+
+    return _which
+
+
+class TestPtyxisGate:
+    """``_pick_template_variables`` flips Exec=/Terminal= on the install-time gate.
+
+    Gate condition: *both* ``ptyxis`` and ``xdg-terminal-exec`` on PATH.
+    Either missing collapses to today's standard ``Terminal=true`` form so
+    KDE / XFCE / generic ``xdg-terminal-exec`` setups stay unchanged.  When
+    both are present we route through ``terok-xdg-terminal-exec`` so the
+    shim can dodge Ptyxis's standalone-mode tab-bar lockout.
+    """
+
+    @pytest.mark.parametrize(
+        "present",
+        [
+            set(),
+            {"ptyxis"},
+            {"xdg-terminal-exec"},
+        ],
+        ids=["nothing", "only-ptyxis", "only-xdg-terminal-exec"],
+    )
+    def test_gate_inactive_renders_standard_form(
+        self,
+        xdg_data_home: Path,
+        present: set[str],
+    ) -> None:
+        """Either binary missing → today's Terminal=true / Exec=terok-tui form."""
+        with mock.patch(
+            "terok.cli.commands._desktop_entry.shutil.which",
+            side_effect=_which_factory(present),
+        ):
+            desktop.install_desktop_entry("/usr/local/bin/terok-tui")
+        content = (xdg_data_home / "applications" / "terok.desktop").read_text()
+        assert "Terminal=true" in content
+        assert "Exec=/usr/local/bin/terok-tui" in content
+        assert "TryExec=/usr/local/bin/terok-tui" in content
+        # Hard-stop regression check: the shim must NOT appear in the
+        # rendered Exec when the gate is inactive.
+        assert "terok-xdg-terminal-exec" not in content
+
+    def test_gate_active_renders_wrapper_form(self, xdg_data_home: Path) -> None:
+        """Both binaries present → Terminal=false, Exec runs through the shim."""
+        present = {"ptyxis", "xdg-terminal-exec", "terok-xdg-terminal-exec"}
+        with mock.patch(
+            "terok.cli.commands._desktop_entry.shutil.which",
+            side_effect=_which_factory(present),
+        ):
+            desktop.install_desktop_entry("/usr/local/bin/terok-tui")
+        content = (xdg_data_home / "applications" / "terok.desktop").read_text()
+        assert "Terminal=false" in content
+        # The shim wraps terok-tui — both paths land in the Exec line,
+        # shim first so the desktop launcher resolves it as the binary.
+        assert "Exec=/usr/bin/terok-xdg-terminal-exec /usr/local/bin/terok-tui" in content
+        assert "TryExec=/usr/bin/terok-xdg-terminal-exec" in content
+
+    def test_gate_active_falls_back_to_bare_shim_name(self, xdg_data_home: Path) -> None:
+        """Shim missing from PATH at install time → bare name, resolved at launcher click."""
+        # Mirror the same fall-back terok already uses for terok-tui itself
+        # (pipx puts binaries under ~/.local/bin which isn't on the
+        # setup-script's minimal PATH on every distro).
+        present = {"ptyxis", "xdg-terminal-exec"}
+        with mock.patch(
+            "terok.cli.commands._desktop_entry.shutil.which",
+            side_effect=_which_factory(present),
+        ):
+            desktop.install_desktop_entry("/usr/local/bin/terok-tui")
+        content = (xdg_data_home / "applications" / "terok.desktop").read_text()
+        assert "Terminal=false" in content
+        assert "Exec=terok-xdg-terminal-exec /usr/local/bin/terok-tui" in content
+        assert "TryExec=terok-xdg-terminal-exec" in content
