@@ -299,9 +299,15 @@ def _cmd_ssh_init(args: argparse.Namespace) -> None:
 def _cmd_gate_path(project_id: str) -> None:
     """Print the absolute path of the project's host-side git gate.
 
-    Plain stdout so callers can splice the path into a git URL, e.g.::
+    Plain stdout so callers can paste the path into a git remote URL.
+    Typical flow when terok lives on a different host than the IDE::
 
-        git remote add spark "ssh://you@host$(terok project gate-path myproj)"
+        # On the host running terok:
+        $ terok project gate-path myproj
+        /home/you/.local/share/terok/core/gate/myproj.git
+
+        # On your workstation:
+        $ git remote add spark ssh://you@host/home/you/.local/share/terok/core/gate/myproj.git
 
     The path is computed deterministically from project config — it is
     printed even if the bare repo doesn't exist yet (run ``gate-sync``
