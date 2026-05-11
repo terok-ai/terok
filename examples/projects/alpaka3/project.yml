@@ -24,11 +24,6 @@ image:
     RUN update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-14 140 \
      && update-alternatives --install /usr/bin/g++ g++ /usr/bin/g++-14 140
 
-# SSH keys are generated on the host and served via the SSH agent proxy.
-# They are used for gate mirroring/promotions — not mounted in containers.
-ssh:
-  key_name: "id_ed25519_alpaka3"
-
 # Gatekeeping mode settings
 gatekeeping:
   # Expose the upstream URL as a remote named "external" inside the container.
