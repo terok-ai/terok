@@ -272,10 +272,11 @@ def _collect_all_checks(
     ssh_signer_port = get_ssh_signer_port(cfg)
     desired_shield = _read_desired_shield_state(task_dir)
 
-    if cfg.gate_port is None:
+    if cfg.gate_port is None or token_broker_port is None or ssh_signer_port is None:
         raise SystemExit(
-            "Gate server port is not configured — sickbay needs an explicit "
-            "gate.port in config.yml or auto-allocation enabled."
+            "Sandbox service ports are not all configured — sickbay needs "
+            "gate.port / vault.token_broker_port / vault.ssh_signer_port in "
+            "config.yml or auto-allocation enabled."
         )
 
     checks: list[DoctorCheck] = []
