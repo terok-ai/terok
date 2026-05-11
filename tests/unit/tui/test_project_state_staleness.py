@@ -31,7 +31,7 @@ def test_staleness_checked_for_online_and_gatekeeping(security_class: str) -> No
     with (
         mock.patch.object(app, "load_project", return_value=project),
         mock.patch.object(app, "get_project_state", return_value=state),
-        mock.patch("terok.lib.domain.project.make_git_gate", return_value=mock_gate),
+        mock.patch.object(app, "make_git_gate", return_value=mock_gate),
     ):
         result = app.TerokTUI._load_project_state(mock.Mock(), "proj1")
 

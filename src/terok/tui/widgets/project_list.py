@@ -11,8 +11,14 @@ from textual.containers import Horizontal
 from textual.message import Message
 from textual.widgets import Button, ListItem, ListView, Static
 
-from ...lib.core.projects import BrokenProject, ProjectConfig
-from ...lib.core.task_display import GPU_DISPLAY, SECURITY_CLASS_DISPLAY, StatusInfo, has_gpu
+from ...lib.api import (
+    GPU_DISPLAY,
+    SECURITY_CLASS_DISPLAY,
+    BrokenProject,
+    ProjectConfig,
+    StatusInfo,
+    has_gpu,
+)
 from ...lib.util.emoji import render_emoji
 
 # Reuse the existing "failed" status badge for broken-project rows so the

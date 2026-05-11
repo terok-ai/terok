@@ -447,8 +447,8 @@ async def test_ssh_panel_shows_fingerprint_alongside_pubkey() -> None:
         patch.object(InitProgressScreen, "_existing_project_yaml_path", return_value=None),
         patch("terok.tui.wizard_screens.write_project_yaml"),
         patch("terok.tui.wizard_screens.project_needs_key_registration", return_value=True),
-        patch("terok.lib.domain.facade.provision_ssh_key", return_value=minted),
-        patch("terok.lib.domain.facade.summarize_ssh_init"),
+        patch("terok.lib.api.provision_ssh_key", return_value=minted),
+        patch("terok.lib.api.summarize_ssh_init"),
     ):
         async with app.run_test() as pilot:
             # Give the worker a chance to reach the ssh_continue wait.
@@ -509,8 +509,8 @@ async def test_init_screen_esc_cancels_mid_run() -> None:
         patch.object(InitProgressScreen, "_existing_project_yaml_path", return_value=None),
         patch("terok.tui.wizard_screens.write_project_yaml"),
         patch("terok.tui.wizard_screens.project_needs_key_registration", return_value=True),
-        patch("terok.lib.domain.facade.provision_ssh_key", return_value=minted),
-        patch("terok.lib.domain.facade.summarize_ssh_init"),
+        patch("terok.lib.api.provision_ssh_key", return_value=minted),
+        patch("terok.lib.api.summarize_ssh_init"),
     ):
         async with app.run_test() as pilot:
             # Let the worker reach the ssh_continue.wait() park state —

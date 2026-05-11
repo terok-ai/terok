@@ -12,8 +12,13 @@ from rich.text import Text
 from terok_sandbox import EnvironmentCheck, GateServerStatus, GateStalenessInfo
 from textual.widgets import Static
 
-from ...lib.core.projects import BrokenProject, ProjectConfig
-from ...lib.core.task_display import GPU_DISPLAY, SECURITY_CLASS_DISPLAY, has_gpu
+from ...lib.api import (
+    GPU_DISPLAY,
+    SECURITY_CLASS_DISPLAY,
+    BrokenProject,
+    ProjectConfig,
+    has_gpu,
+)
 from ...lib.util.emoji import render_emoji
 from .task_detail import _get_css_variables
 

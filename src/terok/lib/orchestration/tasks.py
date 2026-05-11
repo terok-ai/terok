@@ -24,8 +24,9 @@ both files atomically.  Pre-self-describing names (``<id>.json`` /
 
 Container runner functions (``task_run_cli``, ``task_run_headless``,
 ``task_restart``) live in the companion ``task_runners`` module.
-Display types and status computation live in ``task_display``.  Log
-viewing lives in ``task_logs``.
+Status computation and domain value objects live in ``task_state``;
+their presentation tables live in ``task_display``.  Log viewing lives
+in ``task_logs``.
 """
 
 import json
@@ -47,13 +48,12 @@ from ..core import runtime as _rt
 from ..core.config import archive_dir
 from ..core.paths import core_state_dir
 from ..core.projects import ProjectConfig, load_project
-from ..core.task_display import (
+from ..core.task_display import STATUS_DISPLAY, mode_info
+from ..core.task_state import (
     CONTAINER_MODES,
-    STATUS_DISPLAY,
     TaskState,
     container_name,
     effective_status,
-    mode_info,
 )
 from ..core.work_status import read_work_status
 from ..util.ansi import (
@@ -484,7 +484,7 @@ class TaskMeta(TaskState):
     """Lightweight metadata snapshot for a single task.
 
     Inherits lifecycle fields (``container_state``, ``exit_code``,
-    ``deleting``, ``initialized``) from [`TaskState`][terok.lib.core.task_display.TaskState].
+    ``deleting``, ``initialized``) from [`TaskState`][terok.lib.core.task_state.TaskState].
     """
 
     task_id: str

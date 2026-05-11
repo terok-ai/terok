@@ -9,8 +9,7 @@ from textual import events
 from textual.message import Message
 from textual.widgets import ListItem, ListView, Static
 
-from ...lib.core.task_display import STATUS_DISPLAY, mode_info
-from ...lib.orchestration.tasks import TaskMeta
+from ...lib.api import STATUS_DISPLAY, TaskMeta, mode_info
 from ...lib.util.emoji import render_emoji
 from ...lib.util.text_wrap import wrap_with_hanging_indent
 

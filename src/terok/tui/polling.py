@@ -12,11 +12,11 @@ from the main app module into a reusable mixin class.
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
+    from terok_sandbox import GateStalenessInfo
     from textual.app import App
     from textual.timer import Timer
 
-    from ..lib.domain.staleness import GateStalenessInfo
-    from ..lib.orchestration.tasks import TaskMeta
+    from ..lib.api import TaskMeta
 
     # At type-check time only, inherit from textual.App so all of its methods
     # (run_worker, set_interval, notify, …) resolve naturally on `self` with
@@ -56,7 +56,7 @@ class PollingMixin(_MixinBase):
 
         Only polls for gatekeeping projects with polling enabled and a gate initialized.
         """
-        from ..lib.core.projects import load_project
+        from ..lib.api import load_project
 
         self._stop_upstream_polling()  # Stop any existing timer
         self._staleness_info = None
@@ -166,7 +166,7 @@ class PollingMixin(_MixinBase):
         """Background worker to batch-query all container states for a project."""
         import asyncio
 
-        from ..lib.orchestration.tasks import get_all_task_states, get_tasks
+        from ..lib.api import get_all_task_states, get_tasks
 
         try:
             tasks = await asyncio.get_event_loop().run_in_executor(None, get_tasks, project_id)
@@ -200,8 +200,7 @@ class PollingMixin(_MixinBase):
         """Background worker to check upstream (runs in thread pool)."""
         import asyncio
 
-        from ..lib.core.projects import load_project
-        from ..lib.domain.project import make_git_gate
+        from ..lib.api import load_project, make_git_gate
 
         try:
             # Run blocking call in thread pool
@@ -254,7 +253,7 @@ class PollingMixin(_MixinBase):
         """
         import time
 
-        from ..lib.core.projects import load_project
+        from ..lib.api import load_project
 
         if not project_id or project_id != self.current_project_id:
             return
@@ -294,8 +293,7 @@ class PollingMixin(_MixinBase):
         """Background worker to sync gate from upstream."""
         import asyncio
 
-        from ..lib.core.projects import load_project
-        from ..lib.domain.project import make_git_gate
+        from ..lib.api import load_project, make_git_gate
 
         try:
             # Run blocking sync in thread pool

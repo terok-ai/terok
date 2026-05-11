@@ -11,12 +11,8 @@ from unittest.mock import patch
 import pytest
 from terok_sandbox import PodmanRuntime
 
-from terok.lib.core.task_display import (
-    STATUS_DISPLAY,
-    TaskState,
-    effective_status,
-    mode_info,
-)
+from terok.lib.core.task_display import STATUS_DISPLAY, mode_info
+from terok.lib.core.task_state import TaskState, effective_status
 from terok.lib.orchestration.tasks import TaskMeta, get_all_task_states
 
 

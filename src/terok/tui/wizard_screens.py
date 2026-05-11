@@ -41,10 +41,10 @@ from textual.css.query import NoMatches
 from textual.screen import ModalScreen
 from textual.widgets import Button, Input, Label, RadioButton, RadioSet, RichLog, Static, TextArea
 
-from ..lib.domain.facade import project_needs_key_registration
-from ..lib.domain.wizards.new_project import (
+from ..lib.api import (
     QUESTIONS,
     Question,
+    project_needs_key_registration,
     validate_answer,
     write_project_yaml,
 )
@@ -620,9 +620,9 @@ class InitProgressScreen(ModalScreen[InitOutcome]):
 
     def _existing_project_yaml_path(self) -> Path | None:
         """Return the on-disk ``project.yml`` path if it already exists, else None."""
-        from ..lib.core.config import user_projects_dir
+        from ..lib.api import get_config
 
-        candidate = user_projects_dir() / self._project_id / "project.yml"
+        candidate = get_config().user_projects_dir / self._project_id / "project.yml"
         return candidate if candidate.is_file() else None
 
     async def _confirm_overwrite(self, path: Path) -> bool:
@@ -742,9 +742,9 @@ class InitProgressScreen(ModalScreen[InitOutcome]):
         """
         import asyncio
 
-        from terok.lib.core.projects import load_project
-        from terok.lib.domain.facade import (
+        from ..lib.api import (
             generate_dockerfiles,
+            load_project,
             provision_ssh_key,
             summarize_ssh_init,
         )
@@ -1048,7 +1048,7 @@ def _run_isolated(
 def _build_in_subprocess(project_id: str, *, env: dict[str, str] | None = None) -> None:
     """Run [`build_images`][terok.cli.commands.project.build_images] in a child Python process."""
     # Literal repr keeps project_id safely escaped into the -c body.
-    child_body = f"from terok.lib.domain.facade import build_images; build_images({project_id!r})"
+    child_body = f"from terok.lib.api import build_images; build_images({project_id!r})"
     _run_isolated(child_body, label="build_images", env=env)
 
 
@@ -1070,8 +1070,7 @@ def _gate_sync_in_subprocess(
     try:
         child_body = (
             "import json\n"
-            "from terok.lib.core.projects import load_project\n"
-            "from terok.lib.domain.facade import make_git_gate\n"
+            "from terok.lib.api import load_project, make_git_gate\n"
             f"_project = load_project({project_id!r})\n"
             "_result = make_git_gate(_project).sync()\n"
             f"json.dump(_result, open({str(result_path)!r}, 'w'))\n"

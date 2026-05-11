@@ -114,10 +114,29 @@ class TestSocketPath:
     """Per-process socket path under terok's namespace runtime dir.
 
     We delegate to [`terok_sandbox.paths.namespace_runtime_dir`][terok_sandbox.paths.namespace_runtime_dir]
-    for the XDG resolution order — patching it out lets us pin the
-    path regardless of the host's env and ensures no ``/tmp`` fallback
-    leaks back in.
+    for the XDG resolution order — patching the [`Config`][terok.lib.api.Config]
+    snapshot lets us pin the path regardless of the host's env and
+    ensures no ``/tmp`` fallback leaks back in.
     """
+
+    @staticmethod
+    def _config_with_runtime_dir(tmp_path: Path) -> object:
+        """Build a minimal [`Config`][terok.lib.api.Config] with ``runtime_dir`` pinned."""
+        from terok.lib.api import Config
+
+        return Config(
+            config_root=tmp_path,
+            core_state_dir=tmp_path,
+            runtime_dir=tmp_path,
+            archive_dir=tmp_path,
+            vault_dir=tmp_path,
+            user_projects_dir=tmp_path,
+            global_config_path=tmp_path / "config.yml",
+            public_host="127.0.0.1",
+            shield_bypass_firewall_no_protection=False,
+            tui_default_tmux=False,
+            shield_security_hint="",
+        )
 
     def test_uses_namespace_runtime_dir(self, tmp_path: Path) -> None:
         """Socket sits inside whatever ``namespace_runtime_dir`` returns — always.
@@ -129,7 +148,8 @@ class TestSocketPath:
         ``~/.local/state/terok``).  Delegating here means any future
         change to that chain lands transparently.
         """
-        with patch("terok.tui.askpass_service.runtime_dir", return_value=tmp_path):
+        cfg = self._config_with_runtime_dir(tmp_path)
+        with patch("terok.tui.askpass_service.get_config", return_value=cfg):
             path = default_socket_path(pid=12345)
         assert path == tmp_path / "askpass-12345.sock"
 
@@ -141,7 +161,8 @@ class TestSocketPath:
         Proves we're not reimplementing the XDG chain locally.
         """
         monkeypatch.setenv("XDG_RUNTIME_DIR", "/tmp/unused-should-be-ignored")
-        with patch("terok.tui.askpass_service.runtime_dir", return_value=tmp_path):
+        cfg = self._config_with_runtime_dir(tmp_path)
+        with patch("terok.tui.askpass_service.get_config", return_value=cfg):
             assert default_socket_path(pid=1).parent == tmp_path
 
 
