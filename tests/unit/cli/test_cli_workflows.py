@@ -138,8 +138,11 @@ class TestProjectInit:
 
         from terok.cli.commands.setup import cmd_project_init
 
-        with pytest.raises(SystemExit, match="Gate sync failed"):
+        with pytest.raises(SystemExit, match="Gate sync failed") as exc_info:
             cmd_project_init("badproj")
+        # The hint pointing at gate.enabled: false is what makes the
+        # failure actionable for users in Andreas' situation (#790).
+        assert "gate.enabled: false" in str(exc_info.value)
 
     @_patch_init_steps
     def test_cmd_project_init_skips_gate_sync_when_disabled(

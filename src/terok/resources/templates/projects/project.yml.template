@@ -15,6 +15,13 @@ git:
   upstream_url: "{{UPSTREAM_URL}}"
   default_branch: "{{DEFAULT_BRANCH}}"
 
+# gate:
+#   enabled: false   # uncomment if the host cannot reach upstream
+#                    # (firewall, corporate proxy, offline laptop) but
+#                    # the container's own network path can — terok will
+#                    # then skip the host-side mirror and let the
+#                    # container fetch directly from upstream.
+
 image:
   base_image: "{{BASE_IMAGE}}"
   # Optional: extra Dockerfile commands injected into the project image.
