@@ -1585,18 +1585,16 @@ if _HAS_TEXTUAL:
                 ],
             )
 
-    def main() -> None:
-        """CLI entry-point for launching the terok TUI.
+    import argparse
 
-        Supports ``--tmux`` to wrap the TUI in a managed host tmux session
-        (blue status bar, login windows as extra tmux windows).  Without the
-        flag the TUI runs directly in the current terminal.
+    def _build_arg_parser() -> argparse.ArgumentParser:
+        """Build the ``terok-tui`` argument parser.
 
-        If neither --tmux nor --no-tmux is specified, the behavior is controlled
-        by the global config setting `tui.default_tmux` (defaults to False).
+        ``--tmux`` / ``--no-tmux`` share a single tri-state destination:
+        ``None`` means "user passed neither flag — fall back to config".
+        ``store_true``/``store_false`` would otherwise leave a bool there
+        and mask the fallback in [`main`][terok.tui.app.main].
         """
-        import argparse
-
         parser = argparse.ArgumentParser(prog="terok-tui")
         parser.add_argument(
             "--tmux",
@@ -1609,6 +1607,7 @@ if _HAS_TEXTUAL:
             action="store_false",
             help="Launch TUI directly in current terminal (default if not configured)",
         )
+        parser.set_defaults(tmux=None)
         parser.add_argument(
             "--experimental",
             action="store_true",
@@ -1621,7 +1620,19 @@ if _HAS_TEXTUAL:
             default=False,
             help="Replace emojis with text labels (e.g. [gate] instead of \U0001f6aa)",
         )
-        args = parser.parse_args()
+        return parser
+
+    def main() -> None:
+        """CLI entry-point for launching the terok TUI.
+
+        Supports ``--tmux`` to wrap the TUI in a managed host tmux session
+        (blue status bar, login windows as extra tmux windows).  Without the
+        flag the TUI runs directly in the current terminal.
+
+        If neither --tmux nor --no-tmux is specified, the behavior is controlled
+        by the global config setting `tui.default_tmux` (defaults to False).
+        """
+        args = _build_arg_parser().parse_args()
         set_experimental(args.experimental)
 
         if args.no_emoji:
