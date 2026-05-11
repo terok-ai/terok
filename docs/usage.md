@@ -25,14 +25,13 @@ Complete guide to installing, configuring, and using terok.
 ### Recommended: pipx
 
 ```bash
-# Download the latest .whl from the GitHub Releases page, then:
-pipx install ./terok-*.whl
+pipx install terok
 ```
 
 ### Alternative: pip
 
 ```bash
-pip install ./terok-*.whl
+pip install terok
 ```
 
 After install, the `terok` command is on `$PATH`.  Run it with no arguments

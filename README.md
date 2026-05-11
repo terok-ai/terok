@@ -83,8 +83,7 @@ Optional but recommended:
 ### Installation
 
 ```bash
-# Install the latest release wheel (download from GitHub Releases page)
-pipx install ./terok-*.whl
+pipx install terok
 ```
 
 ### One-time setup

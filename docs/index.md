@@ -57,8 +57,7 @@ Python packages.
 ### Installation
 
 ```bash
-# Download the latest .whl from the GitHub Releases page, then:
-pipx install ./terok-*.whl
+pipx install terok
 ```
 
 ### One-time setup
