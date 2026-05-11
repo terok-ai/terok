@@ -8,6 +8,8 @@ on:
 jobs:
   scan:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     steps:
       - uses: actions/checkout@v6
       - name: Scan pyproject.toml for git sources
@@ -20,9 +22,13 @@ jobs:
 
           def scan(label, deps):
               for name, spec in deps.items():
-                  if isinstance(spec, dict) and "git" in spec:
+                  if not isinstance(spec, dict):
+                      continue
+                  if "git" in spec:
                       ref = spec.get("branch") or spec.get("rev") or spec.get("tag") or "?"
                       offenders.append(f"{label}.{name} -> {spec['git']}@{ref}")
+                  elif "url" in spec and str(spec["url"]).startswith("git+"):
+                      offenders.append(f"{label}.{name} -> {spec['url']}")
 
           poetry = data.get("tool", {}).get("poetry", {})
           for key in ("dependencies", "dev-dependencies"):

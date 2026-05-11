@@ -4,6 +4,11 @@
 [![REUSE compliant](https://api.reuse.software/badge/github.com/terok-ai/terok)](https://api.reuse.software/info/github.com/terok-ai/terok)
 [![Quality Gate Status](https://sonarcloud.io/api/project_badges/measure?project=terok-ai_terok&metric=alert_status)](https://sonarcloud.io/summary/new_code?id=terok-ai_terok)
 
+> [!WARNING]
+> Terok is **alpha**. It is under active development and until version
+> 1.0.0 is released, APIs, internals, and security boundaries may change
+> without deprecation notice. Not recommended for production.
+
 An open, Podman-native runtime for AI coding agents you can let off
 the leash — without giving them the leash to your machine.
 

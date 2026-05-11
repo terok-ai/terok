@@ -5,17 +5,22 @@ build-backend = "poetry_dynamic_versioning.backend"
 [tool.poetry]
 name = "terok"
 version = "0.7.7"
-description = "Manage containerized projects and per-run tasks with Podman"
+description = "Sandboxing for AI coding agents, built on Podman."
 readme = "README.md"
 license = "Apache-2.0"
-authors = ["terok maintainers"]
+authors = ["Jiri Vyskocil <jiri@vyskocil.com>"]
 keywords = ["podman", "containers", "tasks", "developer-tools", "cli"]
 classifiers = [
-  "Programming Language :: Python :: 3",
-  "License :: OSI Approved :: Apache Software License",
-  "Environment :: Console",
-  "Operating System :: POSIX :: Linux",
-  "Topic :: System :: Systems Administration",
+    "Development Status :: 3 - Alpha",
+    "Environment :: Console",
+    "Intended Audience :: Developers",
+    "Intended Audience :: System Administrators",
+    "License :: OSI Approved :: Apache Software License",
+    "Operating System :: POSIX :: Linux",
+    "Programming Language :: Python",
+    "Topic :: Security",
+    "Topic :: System :: Systems Administration",
+    "Typing :: Typed",
 ]
 
 # Use the src/ layout
@@ -32,6 +37,10 @@ include = [
   { path = "docs/*.md" },
   { path = "examples/**" },
 ]
+maintainers = ["Jiri Vyskocil <jiri@vyskocil.com>"]
+homepage = "https://terok.ai/"
+repository = "https://github.com/terok-ai/terok"
+documentation = "https://terok-ai.github.io/terok/"
 
 [tool.poetry.dependencies]
 python = ">=3.12,<3.15"
@@ -83,6 +92,12 @@ mkdocs-gen-files = ">=0.5"
 mkdocs-literate-nav = ">=0.6"
 mkdocs-section-index = ">=0.3"
 mkdocs-terok = {url = "https://github.com/terok-ai/mkdocs-terok/releases/download/v0.5.0/mkdocs_terok-0.5.0-py3-none-any.whl"}
+
+
+[tool.poetry.urls]
+Issues = "https://github.com/terok-ai/terok/issues"
+Changelog = "https://github.com/terok-ai/terok/releases"
+Security = "https://github.com/terok-ai/terok/security/policy"
 
 [tool.pytest.ini_options]
 testpaths = ["tests/unit", "tests/integration"]
