@@ -19,7 +19,7 @@ REQUIRED_PLACEHOLDERS: list[str] = [
     "{{PROJECT_ID}}",
     "{{UPSTREAM_URL}}",
     "{{DEFAULT_BRANCH}}",
-    "{{USER_SNIPPET}}",
+    "{{USER_SNIPPET | indent(4)}}",
     "{{BASE_IMAGE}}",
     '"{{SECURITY_CLASS}}"',
 ]
@@ -81,6 +81,15 @@ class TestProjectTemplate:
     def test_renders_user_snippet_inline(self) -> None:
         rendered = _render("online", "ubuntu", user_snippet="RUN apt-get update")
         assert "RUN apt-get update" in rendered
+
+    def test_multi_line_user_snippet_keeps_block_scalar_valid(self) -> None:
+        """Lines 2+ of USER_SNIPPET must inherit the block scalar's indent."""
+        snippet = "RUN apt-get update\nRUN apt-get install -y curl\nRUN echo done"
+        rendered = _render("online", "ubuntu", user_snippet=snippet)
+        # Round-trip through yaml.safe_load to prove the block scalar is valid
+        # and the snippet is preserved verbatim.
+        parsed = yaml.safe_load(rendered)
+        assert parsed["image"]["user_snippet_inline"].rstrip("\n") == snippet
 
     def test_raises_on_missing_variable(self) -> None:
         """A typo or forgotten variable surfaces at render time, not silently."""
