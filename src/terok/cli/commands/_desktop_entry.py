@@ -30,21 +30,11 @@ when the fallback kicks in.
 
 The passive assets (``.desktop`` template, logo PNG) live under
 ``terok/resources/desktop/`` — this module is the *builder* that
-renders the template's ``{{EXEC}}`` / ``{{TRY_EXEC}}`` / ``{{TERMINAL}}``
-placeholders via Jinja2, stages the file to a tempdir, and delegates
-to the XDG tool of choice.
-
-When *both* ``ptyxis`` and ``xdg-terminal-exec`` are on PATH at install
-time, the rendered values route the launch through the
-`terok-xdg-terminal-exec.sh` shim (also in ``resources/desktop/``).
-This works around a Ptyxis-specific bug: ``Terminal=true`` causes
-``xdg-terminal-exec`` to invoke Ptyxis as ``ptyxis -- terok-tui``,
-which forces standalone mode (chrome-less window, tab bar permanently
-hidden, ``ptyxis --tab`` from inside Terok lands in unrelated
-windows).  The shim invokes ``ptyxis --new-window`` instead, dodging
-the trigger.  For everyone else (KDE, XFCE, GNOME without Ptyxis,
-generic xdg-terminal-exec users) the gate is inactive and the
-``Terminal=true`` / ``Exec=terok-tui`` form lands unchanged.
+renders them and delegates to the XDG tool of choice.  When both
+``ptyxis`` and ``xdg-terminal-exec`` are on PATH, `_render_desktop_file`
+routes the launch through the bundled ``terok-xdg-terminal-exec.sh``
+shim to dodge a Ptyxis standalone-mode bug; see that helper and the
+shim's header for the rationale.
 """
 
 from __future__ import annotations
@@ -59,7 +49,7 @@ from importlib import resources as importlib_resources
 from importlib.resources.abc import Traversable
 from pathlib import Path
 
-from ...lib.util.template_utils import render_template
+from ...lib.util.template_utils import render_resource_template
 
 _log = logging.getLogger(__name__)
 
@@ -140,22 +130,6 @@ def install_desktop_entry(bin_path: str | Path) -> DesktopBackend:
     # warn.  The DEBUG log carries the xdg-utils failure detail.
     _install_manually(rendered, logo_bytes)
     return DesktopBackend.FALLBACK
-
-
-def _render_desktop_file(bin_str: str) -> str:
-    """Render ``terok.desktop`` with the right Exec / TryExec / Terminal values."""
-    if shutil.which("ptyxis") and shutil.which("xdg-terminal-exec"):
-        shim = str(_resource_dir().joinpath(_PTYXIS_SHIM_NAME))
-        variables = {
-            "EXEC": f"/bin/sh {shim} {bin_str}",
-            "TRY_EXEC": shim,
-            "TERMINAL": "false",
-        }
-    else:
-        variables = {"EXEC": bin_str, "TRY_EXEC": bin_str, "TERMINAL": "true"}
-    template = _resource_dir().joinpath(_TEMPLATE_NAME)
-    with importlib_resources.as_file(template) as template_path:
-        return render_template(template_path, variables)
 
 
 def uninstall_desktop_entry() -> DesktopBackend:
@@ -344,6 +318,23 @@ def _data_home() -> Path:
     """Return the user's XDG data home, honouring ``$XDG_DATA_HOME`` when set."""
     override = os.environ.get("XDG_DATA_HOME")
     return Path(override) if override else Path.home().joinpath(*_DEFAULT_DATA_HOME)
+
+
+# ── Template rendering ────────────────────────────────────────────────
+
+
+def _render_desktop_file(bin_str: str) -> str:
+    """Render ``terok.desktop`` with the right Exec / TryExec / Terminal values."""
+    if shutil.which("ptyxis") and shutil.which("xdg-terminal-exec"):
+        shim = str(_resource_dir().joinpath(_PTYXIS_SHIM_NAME))
+        variables = {
+            "EXEC": f"/bin/sh {shim} {bin_str}",
+            "TRY_EXEC": shim,
+            "TERMINAL": "false",
+        }
+    else:
+        variables = {"EXEC": bin_str, "TRY_EXEC": bin_str, "TERMINAL": "true"}
+    return render_resource_template(_resource_dir().joinpath(_TEMPLATE_NAME), variables)
 
 
 # ── Manual cache refresh (fallback backend only) ──────────────────────

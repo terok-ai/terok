@@ -8,6 +8,7 @@ from importlib.resources.abc import Traversable
 
 import jinja2
 import pytest
+import yaml
 
 from terok.lib.domain.wizards.new_project import BASE_IMAGES, BASES, SECURITY_CLASSES
 from terok.lib.util.template_utils import render_template
@@ -15,12 +16,12 @@ from terok.lib.util.template_utils import render_template
 TEMPLATE_DIR: Traversable = resources.files("terok") / "resources" / "templates" / "projects"
 TEMPLATE_NAME = "project.yml.template"
 REQUIRED_PLACEHOLDERS: list[str] = [
-    "{{ PROJECT_ID }}",
-    "{{ UPSTREAM_URL }}",
-    "{{ DEFAULT_BRANCH }}",
-    "{{ USER_SNIPPET }}",
-    "{{ base_image }}",
-    '"{{ security_class }}"',
+    "{{PROJECT_ID}}",
+    "{{UPSTREAM_URL}}",
+    "{{DEFAULT_BRANCH}}",
+    "{{USER_SNIPPET}}",
+    "{{BASE_IMAGE}}",
+    '"{{SECURITY_CLASS}}"',
 ]
 
 
@@ -31,9 +32,9 @@ def _full_variables(*, security_class: str, base: str, **overrides: str) -> dict
         "UPSTREAM_URL": overrides.get("upstream_url", "https://example.test/repo.git"),
         "DEFAULT_BRANCH": overrides.get("default_branch", "main"),
         "USER_SNIPPET": overrides.get("user_snippet", ""),
-        "security_class": security_class,
-        "base": base,
-        "base_image": BASE_IMAGES[base],
+        "SECURITY_CLASS": security_class,
+        "BASE": base,
+        "BASE_IMAGE": BASE_IMAGES[base],
     }
 
 
@@ -63,10 +64,11 @@ class TestProjectTemplate:
         # Every placeholder must be substituted away.
         assert "{{" not in rendered
         assert "{%" not in rendered
-        # Every combination produces a security_class line and a base_image
-        # line that match the inputs.
-        assert f'security_class: "{security_class}"' in rendered
-        assert f'base_image: "{BASE_IMAGES[base]}"' in rendered
+        # Output must be parseable YAML — Jinja whitespace/trim mistakes
+        # would silently produce malformed indentation.
+        parsed = yaml.safe_load(rendered)
+        assert parsed["project"]["security_class"] == security_class
+        assert parsed["image"]["base_image"] == BASE_IMAGES[base]
 
     def test_gatekeeping_section_only_for_gatekeeping(self) -> None:
         assert "gatekeeping:" in _render("gatekeeping", "ubuntu")
@@ -83,7 +85,7 @@ class TestProjectTemplate:
     def test_raises_on_missing_variable(self) -> None:
         """A typo or forgotten variable surfaces at render time, not silently."""
         traversable = TEMPLATE_DIR / TEMPLATE_NAME
-        # Drop project_id to trigger the StrictUndefined guard.
+        # Drop PROJECT_ID to trigger the StrictUndefined guard.
         variables = _full_variables(security_class="online", base="ubuntu")
         del variables["PROJECT_ID"]
         with resources.as_file(traversable) as path, pytest.raises(jinja2.UndefinedError):

@@ -36,7 +36,7 @@ from terok.ui_utils.editor import open_in_editor
 from ...core.config import user_projects_dir
 from ...core.project_model import validate_project_id
 from ...util.fs import ensure_dir_writable
-from ...util.template_utils import render_template
+from ...util.template_utils import render_resource_template
 
 # ── Vocabulary ────────────────────────────────────────────────────────
 
@@ -403,20 +403,18 @@ def generate_config(values: dict) -> Path:
 
 def render_project_yaml(values: dict) -> str:
     """Render ``project.yml`` without writing it — used by the TUI review screen."""
-    traversable = _TEMPLATE_DIR / _TEMPLATE_NAME
-    with resources.as_file(traversable) as template_path:
-        return render_template(
-            template_path,
-            {
-                "PROJECT_ID": values["project_id"],
-                "UPSTREAM_URL": values["upstream_url"],
-                "DEFAULT_BRANCH": values["default_branch"],
-                "USER_SNIPPET": values["user_snippet"],
-                "security_class": values["security_class"],
-                "base": values["base"],
-                "base_image": BASE_IMAGES[values["base"]],
-            },
-        )
+    return render_resource_template(
+        _TEMPLATE_DIR / _TEMPLATE_NAME,
+        {
+            "PROJECT_ID": values["project_id"],
+            "UPSTREAM_URL": values["upstream_url"],
+            "DEFAULT_BRANCH": values["default_branch"],
+            "USER_SNIPPET": values["user_snippet"],
+            "SECURITY_CLASS": values["security_class"],
+            "BASE": values["base"],
+            "BASE_IMAGE": BASE_IMAGES[values["base"]],
+        },
+    )
 
 
 def write_project_yaml(project_id: str, rendered: str, *, overwrite: bool = False) -> Path:

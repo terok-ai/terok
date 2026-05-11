@@ -11,6 +11,8 @@ left in the rendered output) to a hard `jinja2.UndefinedError` at
 render time.
 """
 
+from importlib import resources
+from importlib.resources.abc import Traversable
 from pathlib import Path
 
 from jinja2 import Environment, FileSystemLoader, StrictUndefined
@@ -28,3 +30,9 @@ def render_template(template_path: Path, variables: dict) -> str:
         autoescape=False,
     )
     return env.get_template(template_path.name).render(**variables)
+
+
+def render_resource_template(traversable: Traversable, variables: dict) -> str:
+    """Render a packaged-resource template, handling the ``as_file`` dance."""
+    with resources.as_file(traversable) as template_path:
+        return render_template(template_path, variables)

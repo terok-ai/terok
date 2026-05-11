@@ -1,34 +1,34 @@
-{%- if security_class == "online" -%}
-# Online project template ({{ base }} base).
+{%- if SECURITY_CLASS == "online" -%}
+# Online project template ({{BASE}} base).
 # Security class "online": the agent can push directly to upstream.
 {%- else -%}
-# Gatekeeping project template ({{ base }} base).
+# Gatekeeping project template ({{BASE}} base).
 # Security class "gatekeeping": tasks push to a host-side staging repo;
 # a human must review and promote changes to upstream.
 {%- endif %}
 
 project:
-  id: "{{ PROJECT_ID }}"
-  security_class: "{{ security_class }}"
+  id: "{{PROJECT_ID}}"
+  security_class: "{{SECURITY_CLASS}}"
 
 git:
-  upstream_url: "{{ UPSTREAM_URL }}"
-  default_branch: "{{ DEFAULT_BRANCH }}"
+  upstream_url: "{{UPSTREAM_URL}}"
+  default_branch: "{{DEFAULT_BRANCH}}"
 
 image:
-  base_image: "{{ base_image }}"
+  base_image: "{{BASE_IMAGE}}"
   # Optional: extra Dockerfile commands injected into the project image.
   # Use user_snippet_file to point to an external .dockerinclude file.
   # Both can be set — file is included first, inline appended.
   user_snippet_inline: |
-    {{ USER_SNIPPET }}
-{%- if base == "nvidia" %}
+    {{USER_SNIPPET}}
+{%- if BASE == "nvidia" %}
 
 run:
   # Enable GPU passthrough for NVIDIA containers.
   gpus: all
 {%- endif %}
-{%- if security_class == "gatekeeping" %}
+{%- if SECURITY_CLASS == "gatekeeping" %}
 
 gatekeeping:
   expose_external_remote: true
