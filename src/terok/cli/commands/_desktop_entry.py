@@ -29,13 +29,13 @@ layout drift.  `install_desktop_entry` returns a
 when the fallback kicks in.
 
 The passive assets (``.desktop`` template, logo PNG) live under
-``terok/resources/desktop/`` — this module is the *builder* that reads
-them, renders the ``{{BIN}}`` placeholder, stages them to a tempdir,
-and delegates to the XDG tool of choice.
+``terok/resources/desktop/`` — this module is the *builder* that
+renders the template's ``{{EXEC}}`` / ``{{TRY_EXEC}}`` / ``{{TERMINAL}}``
+placeholders via Jinja2, stages the file to a tempdir, and delegates
+to the XDG tool of choice.
 
 When *both* ``ptyxis`` and ``xdg-terminal-exec`` are on PATH at install
-time, `_apply_ptyxis_shim` rewrites the rendered ``Exec=`` /
-``TryExec=`` / ``Terminal=`` lines to route the launch through the
+time, the rendered values route the launch through the
 `terok-xdg-terminal-exec.sh` shim (also in ``resources/desktop/``).
 This works around a Ptyxis-specific bug: ``Terminal=true`` causes
 ``xdg-terminal-exec`` to invoke Ptyxis as ``ptyxis -- terok-tui``,
@@ -58,6 +58,8 @@ from enum import StrEnum
 from importlib import resources as importlib_resources
 from importlib.resources.abc import Traversable
 from pathlib import Path
+
+from ...lib.util.template_utils import render_template
 
 _log = logging.getLogger(__name__)
 
@@ -113,11 +115,6 @@ def _resource_dir() -> Traversable:
     return importlib_resources.files("terok").joinpath("resources", "desktop")
 
 
-def _load_template() -> str:
-    """Read the bundled ``terok.desktop.template`` as text."""
-    return _resource_dir().joinpath(_TEMPLATE_NAME).read_text(encoding="utf-8")
-
-
 def install_desktop_entry(bin_path: str | Path) -> DesktopBackend:
     """Render the launcher + copy the icon, via xdg-utils when available.
 
@@ -133,10 +130,7 @@ def install_desktop_entry(bin_path: str | Path) -> DesktopBackend:
         a status-line warning when the fallback kicks in so the operator
         knows ``xdg-utils`` is missing.
     """
-    bin_str = str(bin_path)
-    rendered = _load_template().replace("{{BIN}}", bin_str).replace("{{TRY_EXEC}}", bin_str)
-    if _should_use_ptyxis_shim():
-        rendered = _apply_ptyxis_shim(rendered, bin_str)
+    rendered = _render_desktop_file(str(bin_path))
     logo_bytes = _resource_dir().joinpath(_LOGO_NAME).read_bytes()
     if xdg_utils_available() and _install_via_xdg_utils(rendered, logo_bytes):
         return DesktopBackend.XDG_UTILS
@@ -148,19 +142,25 @@ def install_desktop_entry(bin_path: str | Path) -> DesktopBackend:
     return DesktopBackend.FALLBACK
 
 
+def _render_desktop_file(bin_str: str) -> str:
+    """Render ``terok.desktop`` with the right Exec / TryExec / Terminal values."""
+    if _should_use_ptyxis_shim():
+        shim = str(_resource_dir().joinpath(_PTYXIS_SHIM_NAME))
+        variables = {
+            "EXEC": f"/bin/sh {shim} {bin_str}",
+            "TRY_EXEC": shim,
+            "TERMINAL": "false",
+        }
+    else:
+        variables = {"EXEC": bin_str, "TRY_EXEC": bin_str, "TERMINAL": "true"}
+    template = _resource_dir().joinpath(_TEMPLATE_NAME)
+    with importlib_resources.as_file(template) as template_path:
+        return render_template(template_path, variables)
+
+
 def _should_use_ptyxis_shim() -> bool:
     """Return True when both Ptyxis and xdg-terminal-exec are on PATH."""
     return bool(shutil.which("ptyxis") and shutil.which("xdg-terminal-exec"))
-
-
-def _apply_ptyxis_shim(rendered: str, bin_str: str) -> str:
-    """Rewrite Exec/TryExec/Terminal lines to route through the shim."""
-    shim = str(_resource_dir().joinpath(_PTYXIS_SHIM_NAME))
-    return (
-        rendered.replace(f"Exec={bin_str}", f"Exec=/bin/sh {shim} {bin_str}", 1)
-        .replace(f"TryExec={bin_str}", f"TryExec={shim}", 1)
-        .replace("Terminal=true", "Terminal=false", 1)
-    )
 
 
 def uninstall_desktop_entry() -> DesktopBackend:
