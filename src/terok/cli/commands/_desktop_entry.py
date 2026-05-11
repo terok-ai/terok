@@ -144,7 +144,7 @@ def install_desktop_entry(bin_path: str | Path) -> DesktopBackend:
 
 def _render_desktop_file(bin_str: str) -> str:
     """Render ``terok.desktop`` with the right Exec / TryExec / Terminal values."""
-    if _should_use_ptyxis_shim():
+    if shutil.which("ptyxis") and shutil.which("xdg-terminal-exec"):
         shim = str(_resource_dir().joinpath(_PTYXIS_SHIM_NAME))
         variables = {
             "EXEC": f"/bin/sh {shim} {bin_str}",
@@ -156,11 +156,6 @@ def _render_desktop_file(bin_str: str) -> str:
     template = _resource_dir().joinpath(_TEMPLATE_NAME)
     with importlib_resources.as_file(template) as template_path:
         return render_template(template_path, variables)
-
-
-def _should_use_ptyxis_shim() -> bool:
-    """Return True when both Ptyxis and xdg-terminal-exec are on PATH."""
-    return bool(shutil.which("ptyxis") and shutil.which("xdg-terminal-exec"))
 
 
 def uninstall_desktop_entry() -> DesktopBackend:
