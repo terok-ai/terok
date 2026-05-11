@@ -1003,6 +1003,38 @@ class TestTask:
             assert "http://" in env["CODE_REPO"]
             assert _gate_repo_fragment(project_id) in env["CODE_REPO"]
 
+    @unittest.mock.patch("terok.lib.orchestration.environment.ensure_server_reachable")
+    @unittest.mock.patch(
+        "terok.lib.orchestration.environment.get_gate_server_port",
+        return_value=GATE_PORT,
+    )
+    @unittest.mock.patch("terok_sandbox.create_token", return_value="tok" * 10 + "ab")
+    def test_build_task_env_online_propagates_gate_remote_url(self, *_mocks) -> None:
+        """Online mode forwards GATE_REMOTE_URL through to the container env.
+
+        Regression: ``_security_mode_env_and_volumes`` set the var but the
+        outer ``build_task_env_and_volumes`` only forwards an explicit
+        allowlist of keys from ``sec_env``.  Missing the var here means
+        the init script never adds the ``gate`` remote.
+        """
+        project_id = "proj_gate_remote_online"
+        upstream_url = "https://github.com/example/repo.git"
+        with project_env(
+            f"project:\n  id: {project_id}\n  security_class: online\ngit:\n  upstream_url: {upstream_url}\n  default_branch: main\n",
+            project_id=project_id,
+            with_config_file=True,
+            with_gate=True,
+        ):
+            env, _ = build_task_env_and_volumes(
+                project=load_project(project_id),
+                task_id="13",
+            )
+
+            assert "http://" in env["GATE_REMOTE_URL"]
+            assert _gate_repo_fragment(project_id) in env["GATE_REMOTE_URL"]
+            # Origin still points at upstream — gate is the secondary remote.
+            assert env["CODE_REPO"] == upstream_url
+
 
 class TestToadHelpers:
     """Tests for the toad-token + URL helpers that gate Caddy ingress."""

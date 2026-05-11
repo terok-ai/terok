@@ -488,7 +488,7 @@ def build_task_env_and_volumes(
     env["PROJECT_ID"] = project.id
     env["GIT_RESET_MODE"] = os.environ.get("TEROK_GIT_RESET_MODE", "none")
     # Merge gate/security env vars not consumed by ContainerEnvSpec
-    for key in ("EXTERNAL_REMOTE_URL", "TEROK_GATE_SOCKET"):
+    for key in ("EXTERNAL_REMOTE_URL", "GATE_REMOTE_URL", "TEROK_GATE_SOCKET"):
         if key in sec_env:
             env[key] = sec_env[key]
 
