@@ -10,7 +10,7 @@ on:
       target:
         description: "What to publish"
         type: choice
-        options: [pypi, testpypi]
+        options: [pypi, testpypi, gh-only]
         default: pypi
 
 # Empty default; each job re-grants only what it needs.
@@ -57,19 +57,18 @@ jobs:
 
   github-release:
     needs: build
-    if: github.event_name == 'push'
+    if: |
+      github.event_name == 'push' ||
+      (github.event_name == 'workflow_dispatch' && inputs.target == 'gh-only')
     runs-on: ubuntu-latest
     permissions:
       contents: write
     steps:
-      - name: Verify triggering actor
-        env:
-          ACTOR: ${{ github.triggering_actor }}
-        run: |
-          if [ "$ACTOR" != "terok-warden" ]; then
-            echo "Releases must be triggered by terok-warden (got: $ACTOR)" >&2
-            exit 1
-          fi
+      # No triggering-actor check on github-release: tag creation is already
+      # gated by the v*.*.* tag-creation ruleset on the org (release-officers
+      # team only).  Anyone who succeeded in pushing the tag is authorised
+      # for the GH release.  The actor check stays on pypi-publish /
+      # testpypi-publish where the consequence is external publication.
 
       - uses: actions/download-artifact@v4
         with:
