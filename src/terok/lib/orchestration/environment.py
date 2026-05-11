@@ -46,6 +46,13 @@ bridge forwards to the mounted host ``gate-server.sock``, so the CODE_REPO /
 CLONE_FROM URL the container sees is ``http://localhost:9418/<repo>``.
 """
 
+_SPEC_CONSUMED_SEC_ENV_KEYS = frozenset({"CODE_REPO", "CLONE_FROM", "GIT_BRANCH"})
+"""``sec_env`` keys already routed via ``ContainerEnvSpec`` (see
+[`build_task_env_and_volumes`][terok.lib.orchestration.environment.build_task_env_and_volumes]
+~line 458).  Everything else from ``sec_env`` is forwarded to the container
+verbatim — keep this set in sync with the spec field assignments, not with
+each new gate env var added downstream."""
+
 
 def _gate_url(
     gate_repo: Path, gate_base: Path, port: int, token: str, *, use_socket: bool = False
@@ -487,10 +494,11 @@ def build_task_env_and_volumes(
     # terok-specific env vars not covered by the shared assembly
     env["PROJECT_ID"] = project.id
     env["GIT_RESET_MODE"] = os.environ.get("TEROK_GIT_RESET_MODE", "none")
-    # Merge gate/security env vars not consumed by ContainerEnvSpec
-    for key in ("EXTERNAL_REMOTE_URL", "GATE_REMOTE_URL", "TEROK_GATE_SOCKET"):
-        if key in sec_env:
-            env[key] = sec_env[key]
+    # Forward every sec_env key the spec didn't already consume.  Inverted
+    # from a closed allowlist after a leak: each new gate env var added
+    # in _security_mode_env_and_volumes had to be redundantly listed here
+    # too, and forgetting silently dropped the value (#902).
+    env.update({k: v for k, v in sec_env.items() if k not in _SPEC_CONSUMED_SEC_ENV_KEYS})
 
     # Socket mode: mount host runtime dir so socat bridges can reach sockets
     if use_socket:
