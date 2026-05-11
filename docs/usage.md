@@ -297,22 +297,9 @@ Transitive dependencies are expanded automatically — picking `blablador` or `k
 terok project ssh-init myproj
 ```
 
-This creates:
-- An ed25519 keypair named `id_ed25519_myproj`
-- A default SSH config with:
-  - `IdentitiesOnly yes`
-  - `StrictHostKeyChecking accept-new` (avoids interactive prompts)
-  - `IdentityFile <generated_private_key>`
-  - Host github.com section with `User git`
-
-Use the printed `.pub` key to add a deploy key on your Git host.
-
-**Advanced:** Customize SSH config via template in `project.yml`:
-```yaml
-ssh:
-  config_template: ssh_config.template  # relative or absolute path
-```
-Supported tokens: `{{IDENTITY_FILE}}`, `{{KEY_NAME}}`, `{{PROJECT_ID}}`
+Mints an ed25519 keypair into the vault credential database (no on-disk
+key files in the project directory).  The public key is printed on
+success — register it as a deploy key on your Git host.
 
 ### Step 7: Create and Run a Task
 

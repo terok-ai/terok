@@ -115,9 +115,6 @@ git:
   upstream_url: "git@github.com:org/repo.git"
   default_branch: "main"
 
-ssh:
-  key_name: "id_ed25519_myproject"
-
 gatekeeping:
   expose_external_remote: true
 
