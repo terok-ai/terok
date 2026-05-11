@@ -12,13 +12,15 @@ legacy call shape so existing call sites stay untouched.
 
 from __future__ import annotations
 
+from pathlib import Path
+
 from terok_sandbox import BestEffortLogger
 
 LOG_FILENAME = "terok.log"
 """Filename for the best-effort terok library log (written under ``core_state_dir()``)."""
 
 
-def _terok_log_path():
+def _terok_log_path() -> Path:
     """Resolve terok's log path lazily so XDG / env-var overrides take effect."""
     from ..core.paths import core_state_dir
 

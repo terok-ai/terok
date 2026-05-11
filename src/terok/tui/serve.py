@@ -152,7 +152,7 @@ def _build_server(
         app.middlewares.insert(0, mw)
         return app
 
-    server._make_app = _make_app_with_auth
+    server._make_app = _make_app_with_auth  # type: ignore[method-assign]
     return server
 
 

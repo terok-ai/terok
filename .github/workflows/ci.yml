@@ -135,6 +135,43 @@ jobs:
       - name: Check cross-package import boundaries
         run: poetry run lint-imports
 
+  # Static type checking via mypy.  Needs the full Poetry venv so mypy can
+  # see the actual type signatures of sibling packages (terok-sandbox,
+  # terok-executor, terok-shield) — without them the cross-package surface
+  # collapses to Any and most checks become trivial.
+  typecheck:
+    if: github.repository == 'terok-ai/terok'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Set up Python
+        id: setup-python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Install Poetry
+        uses: snok/install-poetry@76e04a911780d5b312d89783f7b1cd627778900a # v1.4.1
+        with:
+          version: "2.3.3"
+          virtualenvs-create: true
+          virtualenvs-in-project: true
+          plugins: poetry-dynamic-versioning[plugin]
+
+      - name: Load cached venv
+        id: cached-poetry-dependencies
+        uses: actions/cache@v5
+        with:
+          path: .venv
+          key: venv-${{ runner.os }}-py${{ steps.setup-python.outputs.python-version }}-typecheck-${{ hashFiles('**/pyproject.toml', '**/poetry.lock') }}
+
+      - name: Install project (with dev for mypy)
+        run: poetry install --with dev --no-interaction
+
+      - name: Run mypy
+        run: make typecheck
+
   # Keep host-only integration tests in CI, but outside the Sonar-producing workflow.
   # That keeps the Sonar path fast while still exercising Linux host features on PRs.
   integration-tests-host:

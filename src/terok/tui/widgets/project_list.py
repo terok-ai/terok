@@ -104,7 +104,7 @@ class ProjectList(ListView):
                 self.index = offset + idx
                 return
 
-    def on_list_view_highlighted(self, event: ListView.Highlighted) -> None:  # type: ignore[override]
+    def on_list_view_highlighted(self, event: ListView.Highlighted) -> None:
         """Update selection immediately when highlight changes."""
         if event.item is None:
             return
@@ -142,7 +142,7 @@ class ProjectActions(Static):
             yield Button("[yellow]w[/yellow] toad", id="btn-task-run-toad", compact=True)
             yield Button("[yellow]d[/yellow]el", id="btn-task-delete", compact=True)
 
-    async def on_button_pressed(self, event: Button.Pressed) -> None:  # type: ignore[override]
+    async def on_button_pressed(self, event: Button.Pressed) -> None:
         """Route button presses to the corresponding App action method."""
         btn_id = event.button.id
         app = self.app
@@ -166,6 +166,6 @@ class ProjectActions(Static):
             return
 
         method = getattr(app, method_name)
-        result = method()  # type: ignore[misc]
+        result = method()
         if inspect.isawaitable(result):
             await result

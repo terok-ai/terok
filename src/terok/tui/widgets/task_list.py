@@ -161,7 +161,7 @@ class TaskList(ListView):
 
         return found
 
-    def on_list_view_highlighted(self, event: ListView.Highlighted) -> None:  # type: ignore[override]
+    def on_list_view_highlighted(self, event: ListView.Highlighted) -> None:
         """Update selection immediately when highlight changes."""
         if event.item is None:
             return

@@ -9,27 +9,45 @@ Extracts upstream polling, container status polling, and auto-sync logic
 from the main app module into a reusable mixin class.
 """
 
+from typing import TYPE_CHECKING
 
-class PollingMixin:
-    """Mixin providing upstream, container status, and gate server polling for the TUI app.
+if TYPE_CHECKING:
+    from textual.app import App
+    from textual.timer import Timer
 
-    Expects the host class to provide:
-    - self.current_project_id: str | None
-    - self.current_task: TaskMeta | None
-    - self._staleness_info: GateStalenessInfo | None
-    - self._polling_timer
-    - self._polling_project_id: str | None
-    - self._last_notified_stale: bool
-    - self._auto_sync_cooldown: dict[str, float]
-    - self._container_status_timer
-    - self._gate_server_timer
-    - self._last_gate_server_running: bool | None
-    - self.run_worker(...)
-    - self.set_interval(...)
-    - self.notify(...)
-    - self._log_debug(...)
-    - self._refresh_project_state(...)
-    """
+    from ..lib.domain.staleness import GateStalenessInfo
+    from ..lib.orchestration.tasks import TaskMeta
+
+    # At type-check time only, inherit from textual.App so all of its methods
+    # (run_worker, set_interval, notify, …) resolve naturally on `self` with
+    # the *real* signatures — no risk of MRO conflicts on TerokTUI. At
+    # runtime the mixin still inherits from `object`.
+    _MixinBase = App
+else:
+    _MixinBase = object
+
+
+class PollingMixin(_MixinBase):
+    """Mixin providing upstream, container status, and gate server polling for the TUI app."""
+
+    if TYPE_CHECKING:
+        # State the host (TerokTUI) initialises — the mixin owns the polling
+        # lifecycle but stores its bookkeeping on the host instance.
+        current_task: "TaskMeta | None"
+        _staleness_info: "GateStalenessInfo | None"
+        _polling_timer: "Timer | None"
+        _polling_project_id: str | None
+        _last_notified_stale: bool
+        _auto_sync_cooldown: dict[str, float]
+        _container_status_timer: "Timer | None"
+        _gate_server_timer: "Timer | None"
+        _last_gate_server_running: bool | None
+
+        # TerokTUI helpers (not on textual.App).
+        current_project_id: str | None
+
+        def _log_debug(self, message: str) -> None: ...
+        def _refresh_project_state(self) -> None: ...
 
     # ---------- Upstream polling ----------
 
@@ -200,7 +218,7 @@ class PollingMixin:
         except (Exception, SystemExit) as e:  # noqa: BLE001 — background worker; must not crash TUI
             self._log_debug(f"upstream poll error: {e}")
 
-    def _on_staleness_updated(self, project_id: str, staleness) -> None:
+    def _on_staleness_updated(self, project_id: str, staleness: "GateStalenessInfo") -> None:
         """Handle updated staleness info."""
         # Double-check project hasn't changed
         if project_id != self.current_project_id:
@@ -271,7 +289,7 @@ class PollingMixin:
             self._log_debug(f"auto-sync error: {e}")
 
     async def _sync_worker(
-        self, project_id: str, branches: list = None, is_auto: bool = False
+        self, project_id: str, branches: list[str] | None = None, is_auto: bool = False
     ) -> None:
         """Background worker to sync gate from upstream."""
         import asyncio

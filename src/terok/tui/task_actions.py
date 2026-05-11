@@ -11,6 +11,7 @@ import io
 from collections.abc import Callable
 from contextlib import redirect_stdout
 from pathlib import Path
+from typing import TYPE_CHECKING, Any
 
 from terok_executor import parse_md_agent
 from terok_sandbox import down as shield_down, up as shield_up
@@ -51,6 +52,17 @@ from .screens import (
 )
 from .widgets import TaskList
 
+if TYPE_CHECKING:
+    from textual.app import App
+
+    # At type-check time, the mixin "is-an" App so all of its methods resolve
+    # naturally on `self`. At runtime it's plain `object` — the actual host
+    # composes the multiple inheritance.
+    _MixinBase = App
+else:
+    _MixinBase = object
+
+
 # Per-task file the agent wrappers (terok-executor) consume one-shot, and the
 # bashrc banner (also from terok-executor) displays after the help banner.
 # Filename is the contract; the wrapper hard-codes the same path.
@@ -70,7 +82,7 @@ def _login_title(project_id: str, task_id: str, task_name: str) -> str:
     return f"{project_id}:{task_id}:{task_name}"
 
 
-class TaskActionsMixin:
+class TaskActionsMixin(_MixinBase):
     """Task-related action handlers for the TerokTUI application.
 
     Provides all ``action_*`` and ``_action_*`` methods for task lifecycle
@@ -79,6 +91,27 @@ class TaskActionsMixin:
     """
 
     _autopilot_pending_name: str | None = None
+
+    if TYPE_CHECKING:
+        # TerokTUI-specific state and helpers (not on textual.App).
+        current_project_id: str | None
+        current_task: Any
+        _last_selected_tasks: dict[str, str]
+
+        async def refresh_tasks(self) -> None: ...
+        def _log_debug(self, message: str) -> None: ...
+        def _refresh_project_state(self) -> None: ...
+        def _run_suspended(
+            self,
+            fn: Callable[[], None],
+            *,
+            success_msg: str | None = ...,
+            refresh: str | None = ...,
+        ) -> Any: ...
+        def _launch_terminal_session(self, *args: Any, **kwargs: Any) -> Any: ...
+        def _save_selection_state(self) -> None: ...
+        def _update_task_details(self) -> None: ...
+        def _mark_launching(self, project_id: str, task_id: str) -> None: ...
 
     # ---------- Helpers ----------
 

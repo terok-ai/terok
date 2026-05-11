@@ -134,6 +134,35 @@ def test_delete_project_returns_deleted_paths() -> None:
         assert any(project_id in path for path in result["deleted"])
 
 
+def test_delete_project_uses_task_task_id_not_id(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Regression: each ``TaskMeta`` exposes ``task_id``, not ``id``.
+
+    The earlier code read ``task.id`` which only exists on the higher-level
+    ``Task`` wrapper.  The ``AttributeError`` was silently caught by the
+    surrounding ``except Exception``, so individual task containers were
+    never actually torn down — only the surrounding state dirs were
+    rmtree-d in step 2.
+    """
+    from terok.lib.orchestration.tasks import TaskMeta
+
+    project_id = "del-task-ids"
+    fake_tasks = [
+        TaskMeta(task_id="42", mode="cli", workspace="", web_port=None, name="t42"),
+        TaskMeta(task_id="7", mode="cli", workspace="", web_port=None, name="t7"),
+    ]
+    seen: list[tuple[str, str]] = []
+
+    def fake_task_delete(pid: str, tid: str) -> None:
+        seen.append((pid, tid))
+
+    with project_env(project_yaml(project_id), project_id=project_id):
+        monkeypatch.setattr("terok.lib.domain.project.get_tasks", lambda _pid: fake_tasks)
+        monkeypatch.setattr("terok.lib.domain.project.task_delete", fake_task_delete)
+        delete_project(project_id)
+
+    assert seen == [(project_id, "42"), (project_id, "7")]
+
+
 # ---------- _is_under_terok_root safety guard ----------
 
 

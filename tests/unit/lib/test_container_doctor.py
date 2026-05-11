@@ -8,6 +8,7 @@ from __future__ import annotations
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
+import pytest
 from terok_sandbox import ExecResult
 from terok_sandbox.doctor import CheckVerdict, DoctorCheck
 
@@ -391,6 +392,28 @@ class TestRunContainerDoctor:
         assert results[0][0] == "warn"
         assert "unknown host-side check" in results[0][2]
         mock_exec.assert_not_called()
+
+    @patch("terok.lib.orchestration.container_doctor.get_ssh_signer_port", return_value=2222)
+    @patch("terok.lib.orchestration.container_doctor.get_token_broker_port", return_value=8080)
+    @patch("terok.lib.orchestration.container_doctor.make_sandbox_config")
+    def test_collect_all_checks_raises_when_gate_port_unset(
+        self,
+        mock_sandbox_cfg: MagicMock,
+        _broker_port: MagicMock,
+        _ssh_port: MagicMock,
+        tmp_path: Path,
+    ) -> None:
+        """Regression: ``_terok_doctor_checks`` requires a non-``None`` gate port.
+
+        Previously the call passed ``cfg.gate_port`` directly into a function
+        typed as ``int``, building checks that talked to ``host:None`` and
+        only failed deep inside the probe path with an opaque error.
+        """
+        from terok.lib.orchestration.container_doctor import _collect_all_checks
+
+        mock_sandbox_cfg.return_value = MagicMock(gate_port=None)
+        with pytest.raises(SystemExit, match="gate server port|gate.port"):
+            _collect_all_checks("proj", tmp_path)
 
 
 class TestStreamingGrouping:

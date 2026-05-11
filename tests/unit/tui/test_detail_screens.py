@@ -985,7 +985,7 @@ class TestGateServerScreen:
         screens, _ = import_screens()
         screen = screens.GateServerScreen()
         screen.dismiss = mock.Mock()
-        screen.action_dismiss()
+        run(screen.action_dismiss())
         screen.dismiss.assert_called_once_with(None)
 
     @pytest.mark.parametrize(
@@ -1321,7 +1321,7 @@ class TestVaultScreen:
         screens, _ = import_screens()
         screen = screens.VaultScreen()
         screen.dismiss = mock.Mock()
-        screen.action_dismiss()
+        run(screen.action_dismiss())
         screen.dismiss.assert_called_once_with(None)
 
     @pytest.mark.parametrize(

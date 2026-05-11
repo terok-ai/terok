@@ -37,9 +37,9 @@ from .wiring import wire_dispatch, wire_group
 
 # Optional: bash completion via argcomplete
 try:
-    import argcomplete  # type: ignore
+    import argcomplete
 except ImportError:  # pragma: no cover - optional dep
-    argcomplete = None  # type: ignore
+    argcomplete = None  # type: ignore[assignment]
 
 # Dispatch chain — tried in order; first True wins.
 # wire_dispatch handles commands mounted via wire_group (agent, gate).
@@ -89,7 +89,7 @@ def main(prog: str = "terok") -> None:
 
         try:
             os.execlp("terok-tui", "terok-tui")
-            return  # pragma: no cover — execlp never returns on success
+            return  # type: ignore[unreachable]  # in tests os.execlp is mocked
         except FileNotFoundError:
             pass
 
@@ -204,7 +204,7 @@ def main(prog: str = "terok") -> None:
     # Enable bash completion if argcomplete is present and activated
     if argcomplete is not None:  # pragma: no cover - shell integration
         try:
-            argcomplete.autocomplete(parser)  # type: ignore[attr-defined]
+            argcomplete.autocomplete(parser)
         except (TypeError, AttributeError):
             pass
 
@@ -216,7 +216,7 @@ def main(prog: str = "terok") -> None:
         import os
 
         os.execlp("terok-tui", "terok-tui", *sys.argv[2:])
-        return  # pragma: no cover — execlp never returns
+        return  # type: ignore[unreachable]  # in tests os.execlp is mocked
 
     args = parser.parse_args()
     set_experimental(args.experimental)
@@ -232,7 +232,7 @@ def main(prog: str = "terok") -> None:
         import os
 
         os.execlp("terok-tui", "terok-tui", *sys.argv[sys.argv.index("tui") + 1 :])
-        return  # pragma: no cover — execlp never returns
+        return  # type: ignore[unreachable]  # in tests os.execlp is mocked
 
     for dispatch in _DISPATCHERS:
         if dispatch(args):

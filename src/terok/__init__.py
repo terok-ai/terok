@@ -18,14 +18,14 @@ __all__ = [
 ]
 
 # Version information - single source of truth using importlib.metadata
-try:
-    from importlib.metadata import PackageNotFoundError, version
+import tomllib
+from importlib.metadata import PackageNotFoundError, version
 
+try:
     __version__ = version("terok")
 except PackageNotFoundError:
     # Fallback for development mode when package is not installed
     try:
-        import tomllib
         from pathlib import Path
 
         pyproject_path = Path(__file__).parent.parent.parent / "pyproject.toml"
@@ -35,5 +35,5 @@ except PackageNotFoundError:
                 __version__ = pyproject_data["tool"]["poetry"]["version"]
         else:
             __version__ = "unknown"
-    except (FileNotFoundError, KeyError, tomllib.TOMLDecodeError):
+    except (OSError, KeyError, tomllib.TOMLDecodeError):
         __version__ = "unknown"
