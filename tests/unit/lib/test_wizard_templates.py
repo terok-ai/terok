@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: 2026 Jiri Vyskocil
 # SPDX-License-Identifier: Apache-2.0
 
-"""Tests for project wizard YAML templates."""
+"""Tests for the unified project wizard YAML template."""
 
 from importlib import resources
 from importlib.resources.abc import Traversable
@@ -9,93 +9,82 @@ from importlib.resources.abc import Traversable
 import jinja2
 import pytest
 
-from terok.lib.domain.wizards.new_project import BASES, SECURITY_CLASSES
+from terok.lib.domain.wizards.new_project import BASE_IMAGES, BASES, SECURITY_CLASSES
 from terok.lib.util.template_utils import render_template
 
 TEMPLATE_DIR: Traversable = resources.files("terok") / "resources" / "templates" / "projects"
-EXPECTED_TEMPLATES: list[str] = [
-    f"{sec_slug}-{base_slug}.yml" for sec_slug, _ in SECURITY_CLASSES for base_slug, _ in BASES
-]
+TEMPLATE_NAME = "project.yml.template"
 REQUIRED_PLACEHOLDERS: list[str] = [
-    "{{PROJECT_ID}}",
-    "{{UPSTREAM_URL}}",
-    "{{DEFAULT_BRANCH}}",
-    "{{USER_SNIPPET}}",
+    "{{ PROJECT_ID }}",
+    "{{ UPSTREAM_URL }}",
+    "{{ DEFAULT_BRANCH }}",
+    "{{ USER_SNIPPET }}",
+    "{{ base_image }}",
+    '"{{ security_class }}"',
 ]
 
 
-def template_text(name: str) -> str:
-    """Read a wizard template from the package resources."""
-    return (TEMPLATE_DIR / name).read_text(encoding="utf-8")
+def _full_variables(*, security_class: str, base: str, **overrides: str) -> dict[str, str]:
+    """Build a complete variables dict for the unified template."""
+    return {
+        "PROJECT_ID": overrides.get("project_id", "my-project"),
+        "UPSTREAM_URL": overrides.get("upstream_url", "https://example.test/repo.git"),
+        "DEFAULT_BRANCH": overrides.get("default_branch", "main"),
+        "USER_SNIPPET": overrides.get("user_snippet", ""),
+        "security_class": security_class,
+        "base": base,
+        "base_image": BASE_IMAGES[base],
+    }
 
 
-class TestWizardTemplates:
-    """Tests for project wizard YAML templates."""
+def _render(security_class: str, base: str, **overrides: str) -> str:
+    traversable = TEMPLATE_DIR / TEMPLATE_NAME
+    with resources.as_file(traversable) as path:
+        return render_template(
+            path, _full_variables(security_class=security_class, base=base, **overrides)
+        )
 
-    @pytest.mark.parametrize("name", EXPECTED_TEMPLATES)
-    def test_all_template_files_exist(self, name: str) -> None:
-        assert (TEMPLATE_DIR / name).is_file()
 
-    @pytest.mark.parametrize("name", EXPECTED_TEMPLATES)
-    def test_templates_contain_required_placeholders(self, name: str) -> None:
-        content = template_text(name)
+class TestProjectTemplate:
+    """Tests for the unified project.yml.template."""
+
+    def test_template_file_exists(self) -> None:
+        assert (TEMPLATE_DIR / TEMPLATE_NAME).is_file()
+
+    def test_template_contains_required_placeholders(self) -> None:
+        content = (TEMPLATE_DIR / TEMPLATE_NAME).read_text(encoding="utf-8")
         for placeholder in REQUIRED_PLACEHOLDERS:
-            assert placeholder in content, f"{name} missing placeholder {placeholder}"
+            assert placeholder in content, f"missing placeholder: {placeholder}"
 
-    @pytest.mark.parametrize(
-        ("name", "expected_fragments"),
-        [
-            ("online-ubuntu.yml", ['security_class: "online"', "ubuntu:24.04"]),
-            ("online-nvidia.yml", ['security_class: "online"', "nvcr.io/nvidia/", "gpus: all"]),
-            (
-                "gatekeeping-ubuntu.yml",
-                ['security_class: "gatekeeping"', "ubuntu:24.04", "gatekeeping:"],
-            ),
-            (
-                "gatekeeping-nvidia.yml",
-                [
-                    'security_class: "gatekeeping"',
-                    "nvcr.io/nvidia/",
-                    "gpus: all",
-                    "gatekeeping:",
-                    "expose_external_remote:",
-                ],
-            ),
-        ],
-    )
-    def test_template_variants_contain_expected_fragments(
-        self,
-        name: str,
-        expected_fragments: list[str],
-    ) -> None:
-        content = template_text(name)
-        for fragment in expected_fragments:
-            assert fragment in content
+    @pytest.mark.parametrize("security_class", [s for s, _ in SECURITY_CLASSES])
+    @pytest.mark.parametrize("base", [b for b, _ in BASES])
+    def test_renders_for_every_combination(self, security_class: str, base: str) -> None:
+        rendered = _render(security_class, base, project_id=f"proj-{security_class}-{base}")
+        # Every placeholder must be substituted away.
+        assert "{{" not in rendered
+        assert "{%" not in rendered
+        # Every combination produces a security_class line and a base_image
+        # line that match the inputs.
+        assert f'security_class: "{security_class}"' in rendered
+        assert f'base_image: "{BASE_IMAGES[base]}"' in rendered
 
-    def test_render_template_replaces_all_placeholders(self) -> None:
-        traversable = TEMPLATE_DIR / "online-ubuntu.yml"
-        variables = {
-            "PROJECT_ID": "my-project",
-            "UPSTREAM_URL": "https://github.com/user/repo.git",
-            "DEFAULT_BRANCH": "main",
-            "USER_SNIPPET": "RUN apt-get update",
-        }
-        with resources.as_file(traversable) as path:
-            rendered = render_template(path, variables)
-        assert 'id: "my-project"' in rendered
-        assert 'upstream_url: "https://github.com/user/repo.git"' in rendered
-        assert 'default_branch: "main"' in rendered
+    def test_gatekeeping_section_only_for_gatekeeping(self) -> None:
+        assert "gatekeeping:" in _render("gatekeeping", "ubuntu")
+        assert "gatekeeping:" not in _render("online", "ubuntu")
+
+    def test_run_gpus_section_only_for_nvidia(self) -> None:
+        assert "gpus: all" in _render("online", "nvidia")
+        assert "gpus: all" not in _render("online", "ubuntu")
+
+    def test_renders_user_snippet_inline(self) -> None:
+        rendered = _render("online", "ubuntu", user_snippet="RUN apt-get update")
         assert "RUN apt-get update" in rendered
-        for placeholder in REQUIRED_PLACEHOLDERS:
-            assert placeholder not in rendered
 
-    def test_render_template_raises_on_missing_variable(self) -> None:
+    def test_raises_on_missing_variable(self) -> None:
         """A typo or forgotten variable surfaces at render time, not silently."""
-        traversable = TEMPLATE_DIR / "online-ubuntu.yml"
-        variables = {
-            "UPSTREAM_URL": "https://example.test/repo.git",
-            "DEFAULT_BRANCH": "main",
-            "USER_SNIPPET": "",
-        }
+        traversable = TEMPLATE_DIR / TEMPLATE_NAME
+        # Drop project_id to trigger the StrictUndefined guard.
+        variables = _full_variables(security_class="online", base="ubuntu")
+        del variables["PROJECT_ID"]
         with resources.as_file(traversable) as path, pytest.raises(jinja2.UndefinedError):
             render_template(path, variables)
