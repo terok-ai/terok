@@ -366,5 +366,11 @@ def cmd_project_init(project_id: str) -> None:
     print("==> Syncing git gate...")
     res = make_git_gate(project).sync()
     if not res["success"]:
-        raise SystemExit(f"Gate sync failed: {', '.join(res['errors'])}")
+        raise SystemExit(
+            f"Gate sync failed: {', '.join(res['errors'])}\n\n"
+            "Hint: if the host can't reach upstream but the container can "
+            "(firewall, corporate proxy, offline laptop), set "
+            "'gate.enabled: false' in project.yml to skip the host-side "
+            "mirror entirely."
+        )
     print(f"Gate ready at {res['path']}")
