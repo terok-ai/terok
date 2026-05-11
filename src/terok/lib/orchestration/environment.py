@@ -128,6 +128,13 @@ def _security_mode_env_and_volumes(
                 token = create_token(project.id, task_id, cfg)
                 gate_url = _gate_url(gate_repo, gate_base, gate_port, token, use_socket=use_socket)
                 env["CLONE_FROM"] = gate_url
+                # Surface the gate as a named "gate" remote alongside origin
+                # (which points at upstream).  The agent can push WIP branches
+                # host-locally without going to upstream — a free checkpoint
+                # that makes the gate's role coherent across both modes.  In
+                # gatekeeping mode the gate is already origin, so this env var
+                # is online-mode-only.  Consumed by init-ssh-and-repo.sh.
+                env["GATE_REMOTE_URL"] = gate_url
         if project.upstream_url:
             env["CODE_REPO"] = project.upstream_url
             if project.default_branch:

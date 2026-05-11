@@ -3093,9 +3093,8 @@ description = "Single-agent task runner for hardened Podman containers"
 optional = false
 python-versions = ">=3.12,<3.15"
 groups = ["main"]
-files = [
-    {file = "terok_executor-0.0.137-py3-none-any.whl", hash = "sha256:a9cce99c550ae0e6851fe6e37915fe85c06b5e6f8973c7e3c17187f9fdfcc266"},
-]
+files = []
+develop = false
 
 [package.dependencies]
 agent-client-protocol = ">=0.7"
@@ -3104,12 +3103,14 @@ prompt-toolkit = ">=3.0"
 pydantic = ">=2.9"
 rich = ">=13.0"
 "ruamel.yaml" = ">=0.18"
-terok_sandbox = {url = "https://github.com/terok-ai/terok-sandbox/releases/download/v0.0.113/terok_sandbox-0.0.113-py3-none-any.whl"}
+terok-sandbox = {url = "https://github.com/terok-ai/terok-sandbox/releases/download/v0.0.113/terok_sandbox-0.0.113-py3-none-any.whl"}
 tomli-w = ">=1.0"
 
 [package.source]
-type = "url"
-url = "https://github.com/terok-ai/terok-executor/releases/download/v0.0.137/terok_executor-0.0.137-py3-none-any.whl"
+type = "git"
+url = "https://github.com/sliwowitz/terok-executor.git"
+reference = "feat/online-gate-remote"
+resolved_reference = "6fa2776b226c0715b34553bb58844eab45f4ba37"
 
 [[package]]
 name = "terok-sandbox"
@@ -4032,4 +4033,4 @@ propcache = ">=0.2.1"
 [metadata]
 lock-version = "2.1"
 python-versions = ">=3.12,<3.15"
-content-hash = "707a4e969c7913764db722f30f359aaa4f024fe0ba4d53652e1f96f68b710245"
+content-hash = "b15579ec6b223974cddb4136a95be6126156dda3c16542cf35cfed95b7010a4e"
