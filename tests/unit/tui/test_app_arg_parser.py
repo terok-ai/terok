@@ -31,6 +31,12 @@ class TestTmuxTriState:
         """No flag → ``None`` so ``main`` can fall back to ``tui.default_tmux``."""
         assert _build_arg_parser().parse_args(argv).tmux is expected
 
+    def test_passing_both_flags_is_rejected(self, capsys: pytest.CaptureFixture[str]) -> None:
+        """Mutual exclusion: ``--tmux`` and ``--no-tmux`` together is an argparse error."""
+        with pytest.raises(SystemExit):
+            _build_arg_parser().parse_args(["--tmux", "--no-tmux"])
+        assert "not allowed with" in capsys.readouterr().err
+
 
 class TestOtherFlags:
     """Sibling flags use their natural argparse defaults — covered to lock the contract."""

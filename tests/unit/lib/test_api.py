@@ -31,21 +31,37 @@ class TestGetConfig:
     """``get_config()`` should snapshot each underlying getter exactly once."""
 
     def test_returns_frozen_config_with_all_fields(self) -> None:
-        """Snapshot is a frozen dataclass with every field populated."""
+        """Snapshot populates every field by calling each getter exactly once."""
         with (
-            patch("terok.lib.api._paths.config_root", return_value=Path("/cfg")),
-            patch("terok.lib.api._paths.core_state_dir", return_value=Path("/state")),
-            patch("terok.lib.api._paths.runtime_dir", return_value=Path("/run")),
-            patch("terok.lib.api._config.archive_dir", return_value=Path("/arch")),
-            patch("terok.lib.api._config.vault_dir", return_value=Path("/vault")),
-            patch("terok.lib.api._config.user_projects_dir", return_value=Path("/proj")),
-            patch("terok.lib.api._config.global_config_path", return_value=Path("/cfg/g.yml")),
-            patch("terok.lib.api._config.get_public_host", return_value="1.2.3.4"),
+            patch(
+                "terok.lib.api._paths.config_root", return_value=Path("/cfg")
+            ) as config_root_mock,
+            patch(
+                "terok.lib.api._paths.core_state_dir", return_value=Path("/state")
+            ) as core_state_dir_mock,
+            patch(
+                "terok.lib.api._paths.runtime_dir", return_value=Path("/run")
+            ) as runtime_dir_mock,
+            patch(
+                "terok.lib.api._config.archive_dir", return_value=Path("/arch")
+            ) as archive_dir_mock,
+            patch("terok.lib.api._config.vault_dir", return_value=Path("/vault")) as vault_dir_mock,
+            patch(
+                "terok.lib.api._config.user_projects_dir", return_value=Path("/proj")
+            ) as user_projects_dir_mock,
+            patch(
+                "terok.lib.api._config.global_config_path", return_value=Path("/cfg/g.yml")
+            ) as global_config_path_mock,
+            patch(
+                "terok.lib.api._config.get_public_host", return_value="1.2.3.4"
+            ) as get_public_host_mock,
             patch(
                 "terok.lib.api._config.get_shield_bypass_firewall_no_protection",
                 return_value=True,
-            ),
-            patch("terok.lib.api._config.get_tui_default_tmux", return_value=True),
+            ) as get_shield_bypass_firewall_no_protection_mock,
+            patch(
+                "terok.lib.api._config.get_tui_default_tmux", return_value=True
+            ) as get_tui_default_tmux_mock,
             patch("terok.lib.api._config.SHIELD_SECURITY_HINT", "HINT"),
         ):
             cfg = get_config()
@@ -62,6 +78,21 @@ class TestGetConfig:
         assert cfg.shield_bypass_firewall_no_protection is True
         assert cfg.tui_default_tmux is True
         assert cfg.shield_security_hint == "HINT"
+
+        # ``SHIELD_SECURITY_HINT`` is a constant, not a callable — exclude it.
+        for getter_mock in (
+            config_root_mock,
+            core_state_dir_mock,
+            runtime_dir_mock,
+            archive_dir_mock,
+            vault_dir_mock,
+            user_projects_dir_mock,
+            global_config_path_mock,
+            get_public_host_mock,
+            get_shield_bypass_firewall_no_protection_mock,
+            get_tui_default_tmux_mock,
+        ):
+            getter_mock.assert_called_once()
 
     def test_config_is_immutable(self) -> None:
         """``Config`` is frozen — callers can't mutate the snapshot."""
@@ -80,8 +111,11 @@ class TestGetContainerState:
         fake_container = MagicMock(state="running")
         fake_runtime = MagicMock()
         fake_runtime.container.return_value = fake_container
-        with patch("terok.lib.api._runtime.get_runtime", return_value=fake_runtime):
+        with patch(
+            "terok.lib.api._runtime.get_runtime", return_value=fake_runtime
+        ) as mock_get_runtime:
             assert get_container_state("proj-cli-42") == "running"
+        mock_get_runtime.assert_called_once()
         fake_runtime.container.assert_called_once_with("proj-cli-42")
 
     def test_returns_none_when_container_absent(self) -> None:
@@ -89,5 +123,9 @@ class TestGetContainerState:
         fake_container = MagicMock(state=None)
         fake_runtime = MagicMock()
         fake_runtime.container.return_value = fake_container
-        with patch("terok.lib.api._runtime.get_runtime", return_value=fake_runtime):
+        with patch(
+            "terok.lib.api._runtime.get_runtime", return_value=fake_runtime
+        ) as mock_get_runtime:
             assert get_container_state("ghost") is None
+        mock_get_runtime.assert_called_once()
+        fake_runtime.container.assert_called_once_with("ghost")

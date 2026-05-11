@@ -1596,12 +1596,16 @@ if _HAS_TEXTUAL:
         and mask the fallback in [`main`][terok.tui.app.main].
         """
         parser = argparse.ArgumentParser(prog="terok-tui")
-        parser.add_argument(
+        # Mutually exclusive: passing both raises before parse_args returns.
+        # ``set_defaults(tmux=None)`` keeps the destination tri-state when
+        # neither flag is passed so ``main`` can defer to the config setting.
+        tmux_group = parser.add_mutually_exclusive_group()
+        tmux_group.add_argument(
             "--tmux",
             action="store_true",
             help="Launch TUI inside a managed tmux session",
         )
-        parser.add_argument(
+        tmux_group.add_argument(
             "--no-tmux",
             dest="tmux",
             action="store_false",
@@ -1625,12 +1629,14 @@ if _HAS_TEXTUAL:
     def main() -> None:
         """CLI entry-point for launching the terok TUI.
 
-        Supports ``--tmux`` to wrap the TUI in a managed host tmux session
-        (blue status bar, login windows as extra tmux windows).  Without the
-        flag the TUI runs directly in the current terminal.
+        Three-way control of tmux wrapping:
 
-        If neither --tmux nor --no-tmux is specified, the behavior is controlled
-        by the global config setting `tui.default_tmux` (defaults to False).
+        - ``--tmux`` forces the TUI into a managed host tmux session
+          (blue status bar, login windows as extra tmux windows).
+        - ``--no-tmux`` forces the TUI to run directly in the current
+          terminal.
+        - When neither flag is passed, the global config setting
+          ``tui.default_tmux`` decides (defaults to ``False``).
         """
         args = _build_arg_parser().parse_args()
         set_experimental(args.experimental)
