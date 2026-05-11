@@ -10,7 +10,7 @@ on:
       target:
         description: "What to publish"
         type: choice
-        options: [pypi, testpypi, gh-only]
+        options: [pypi, testpypi]
         default: pypi
 
 # Empty default; each job re-grants only what it needs.
@@ -24,6 +24,8 @@ concurrency:
 jobs:
   no-git-deps:
     uses: ./.github/workflows/no-git-deps.yml
+    permissions:
+      contents: read
 
   build:
     needs: no-git-deps
@@ -55,9 +57,7 @@ jobs:
 
   github-release:
     needs: build
-    if: |
-      github.event_name == 'push' ||
-      (github.event_name == 'workflow_dispatch' && inputs.target == 'gh-only')
+    if: github.event_name == 'push'
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -82,9 +82,7 @@ jobs:
 
   pypi-publish:
     needs: build
-    if: |
-      github.event_name == 'push' ||
-      (github.event_name == 'workflow_dispatch' && inputs.target == 'pypi')
+    if: github.event_name == 'workflow_dispatch' && inputs.target == 'pypi'
     runs-on: ubuntu-latest
     environment: pypi   # OIDC subject narrowing + required-reviewer gate
     permissions:
