@@ -147,7 +147,6 @@ Auth containers are ephemeral because:
 │ ┌───────────────────────────┐ │
 │ │ + Project-specific env    │ │
 │ │ + CODE_REPO, GIT_BRANCH   │ │
-│ │ + SSH_KEY_NAME            │ │
 │ │ + User snippet            │ │
 │ └───────────────────────────┘ │
 └───────────────────────────────┘

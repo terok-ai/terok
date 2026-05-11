@@ -56,23 +56,12 @@ authenticated).  Public HTTPS repos don't need SSH setup at all.
 ### Setup
 
 ```bash
-terok project ssh-init <project_id> [--key-type ed25519|rsa] [--key-name NAME] [--force]
+terok project ssh-init <project_id> [--key-type ed25519|rsa] [--comment STRING] [--force]
 ```
 
-This generates an ed25519 keypair stored at `<state_dir>/ssh-keys/<project_id>/`
-and registers it in `ssh-keys.json` for the vault SSH signer.
-
-Use the printed `.pub` key to register a deploy key on your Git host.
-
-### Custom SSH Config Template
-
-```yaml
-# project.yml
-ssh:
-  config_template: ssh_config.template  # relative or absolute path
-```
-
-Supported tokens: `{{IDENTITY_FILE}}`, `{{KEY_NAME}}`, `{{PROJECT_ID}}`
+Mints a keypair directly into the vault credential database; no on-disk
+key files are created.  The public key is printed for registration as a
+deploy key on the Git host.
 
 ## Vault
 

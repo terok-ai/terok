@@ -29,9 +29,12 @@ layout drift.  `install_desktop_entry` returns a
 when the fallback kicks in.
 
 The passive assets (``.desktop`` template, logo PNG) live under
-``terok/resources/desktop/`` — this module is the *builder* that reads
-them, renders the ``{{BIN}}`` placeholder, stages them to a tempdir,
-and delegates to the XDG tool of choice.
+``terok/resources/desktop/`` — this module is the *builder* that
+renders them and delegates to the XDG tool of choice.  When both
+``ptyxis`` and ``xdg-terminal-exec`` are on PATH, `_render_desktop_file`
+routes the launch through the bundled ``terok-xdg-terminal-exec.sh``
+shim to dodge a Ptyxis standalone-mode bug; see that helper and the
+shim's header for the rationale.
 """
 
 from __future__ import annotations
@@ -46,6 +49,8 @@ from importlib import resources as importlib_resources
 from importlib.resources.abc import Traversable
 from pathlib import Path
 
+from ...lib.util.template_utils import render_resource_template
+
 _log = logging.getLogger(__name__)
 
 #: Base name of the application launcher and icon — must match
@@ -57,6 +62,7 @@ _ICON_FILE = f"{APP_NAME}.png"
 _ICON_SIZE = "256"  # logo is 283x283, close enough for the 256x256 bucket
 _TEMPLATE_NAME = "terok.desktop.template"
 _LOGO_NAME = "terok-logo.png"
+_PTYXIS_SHIM_NAME = "terok-xdg-terminal-exec.sh"
 
 # XDG Base Directory + Icon Theme spec path fragments.  Named so a
 # future theme-dir shift (e.g. an Adwaita-symbolic install path) is a
@@ -114,9 +120,7 @@ def install_desktop_entry(bin_path: str | Path) -> DesktopBackend:
         a status-line warning when the fallback kicks in so the operator
         knows ``xdg-utils`` is missing.
     """
-    rendered = (
-        _load_template().replace("{{BIN}}", str(bin_path)).replace("{{TRY_EXEC}}", str(bin_path))
-    )
+    rendered = _render_desktop_file(str(bin_path))
     logo_bytes = _resource_dir().joinpath(_LOGO_NAME).read_bytes()
     if xdg_utils_available() and _install_via_xdg_utils(rendered, logo_bytes):
         return DesktopBackend.XDG_UTILS
@@ -316,12 +320,21 @@ def _data_home() -> Path:
     return Path(override) if override else Path.home().joinpath(*_DEFAULT_DATA_HOME)
 
 
-# ── Template loading ──────────────────────────────────────────────────
+# ── Template rendering ────────────────────────────────────────────────
 
 
-def _load_template() -> str:
-    """Read the bundled ``terok.desktop.template`` as text."""
-    return _resource_dir().joinpath(_TEMPLATE_NAME).read_text(encoding="utf-8")
+def _render_desktop_file(bin_str: str) -> str:
+    """Render ``terok.desktop`` with the right Exec / TryExec / Terminal values."""
+    if shutil.which("ptyxis") and shutil.which("xdg-terminal-exec"):
+        shim = str(_resource_dir().joinpath(_PTYXIS_SHIM_NAME))
+        variables = {
+            "EXEC": f"/bin/sh {shim} {bin_str}",
+            "TRY_EXEC": shim,
+            "TERMINAL": "false",
+        }
+    else:
+        variables = {"EXEC": bin_str, "TRY_EXEC": bin_str, "TERMINAL": "true"}
+    return render_resource_template(_resource_dir().joinpath(_TEMPLATE_NAME), variables)
 
 
 # ── Manual cache refresh (fallback backend only) ──────────────────────

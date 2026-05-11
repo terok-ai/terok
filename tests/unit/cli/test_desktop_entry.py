@@ -497,3 +497,50 @@ class TestBackendSelection:
             "terok.cli.commands._desktop_entry.shutil.which", side_effect=_which_everything
         ):
             assert desktop.xdg_utils_available() is True
+
+
+# ── Ptyxis-gate render-form selection ─────────────────────────────────
+
+
+def _which_only(present: set[str]) -> object:
+    """``shutil.which`` side-effect: report only the names in *present*."""
+    return lambda name: f"/usr/bin/{name}" if name in present else None
+
+
+class TestPtyxisGate:
+    """When both ptyxis and xdg-terminal-exec are on PATH, route Exec through the shim."""
+
+    @pytest.mark.parametrize(
+        "present",
+        [set(), {"ptyxis"}, {"xdg-terminal-exec"}],
+        ids=["nothing", "only-ptyxis", "only-xdg-terminal-exec"],
+    )
+    def test_gate_inactive_renders_standard_form(
+        self,
+        xdg_data_home: Path,
+        present: set[str],
+    ) -> None:
+        with mock.patch(
+            "terok.cli.commands._desktop_entry.shutil.which",
+            side_effect=_which_only(present),
+        ):
+            desktop.install_desktop_entry("/usr/local/bin/terok-tui")
+        content = (xdg_data_home / "applications" / "terok.desktop").read_text()
+        assert "Terminal=true" in content
+        assert "Exec=/usr/local/bin/terok-tui" in content
+        assert "TryExec=/usr/local/bin/terok-tui" in content
+        assert "terok-xdg-terminal-exec" not in content
+
+    def test_gate_active_routes_through_shim(self, xdg_data_home: Path) -> None:
+        with mock.patch(
+            "terok.cli.commands._desktop_entry.shutil.which",
+            side_effect=_which_only({"ptyxis", "xdg-terminal-exec"}),
+        ):
+            desktop.install_desktop_entry("/usr/local/bin/terok-tui")
+        content = (xdg_data_home / "applications" / "terok.desktop").read_text()
+        # Shim path is the bundled resource; assert by suffix to stay
+        # site-packages-layout-agnostic.
+        assert "Terminal=false" in content
+        assert "/terok-xdg-terminal-exec.sh /usr/local/bin/terok-tui" in content
+        assert "Exec=/bin/sh " in content
+        assert "/terok-xdg-terminal-exec.sh\n" in content  # TryExec line

@@ -11,10 +11,6 @@ image:
   base_image: "ubuntu:24.04"
   user_snippet_file: "user.dockerinclude"
 
-ssh:
-  key_name: "id_ed25519_uc"
-  host_dir: "/virt/podman/state/ssh-keys/uc"
-
 agent:
   instructions:
     - _inherit

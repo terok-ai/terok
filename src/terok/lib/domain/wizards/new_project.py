@@ -36,7 +36,7 @@ from terok.ui_utils.editor import open_in_editor
 from ...core.config import user_projects_dir
 from ...core.project_model import validate_project_id
 from ...util.fs import ensure_dir_writable
-from ...util.template_utils import render_template
+from ...util.template_utils import render_resource_template
 
 # ── Vocabulary ────────────────────────────────────────────────────────
 
@@ -56,8 +56,15 @@ BASES: list[tuple[str, str]] = sorted(
     ],
     key=lambda b: b[1].casefold(),
 )
+BASE_IMAGES: dict[str, str] = {
+    "ubuntu": "ubuntu:24.04",
+    "fedora": "fedora:43",
+    "podman": "quay.io/podman/stable:latest",
+    "nvidia": "nvcr.io/nvidia/nvhpc:25.9-devel-cuda13.0-ubuntu24.04",
+}
 
 _TEMPLATE_DIR: Traversable = resources.files("terok") / "resources" / "templates" / "projects"
+_TEMPLATE_NAME = "project.yml.template"
 
 
 # ── Question declarations ─────────────────────────────────────────────
@@ -357,24 +364,12 @@ def collect_wizard_inputs() -> dict | None:
 
 
 def generate_config(values: dict) -> Path:
-    """Render the chosen template and write ``project.yml``.
+    """Render the project template and write ``project.yml``.
 
     *values* is the dict returned by [`collect_wizard_inputs`][terok.lib.domain.wizards.new_project.collect_wizard_inputs].
     Returns the path to the created ``project.yml`` file.
     """
-    filename = f"{values['security_class']}-{values['base']}.yml"
-    traversable = _TEMPLATE_DIR / filename
-
-    with resources.as_file(traversable) as template_path:
-        rendered = render_template(
-            template_path,
-            {
-                "PROJECT_ID": values["project_id"],
-                "UPSTREAM_URL": values["upstream_url"],
-                "DEFAULT_BRANCH": values["default_branch"],
-                "USER_SNIPPET": values["user_snippet"],
-            },
-        )
+    rendered = render_project_yaml(values)
 
     project_dir = user_projects_dir() / values["project_id"]
     ensure_dir_writable(project_dir, "Project")
@@ -408,18 +403,18 @@ def generate_config(values: dict) -> Path:
 
 def render_project_yaml(values: dict) -> str:
     """Render ``project.yml`` without writing it — used by the TUI review screen."""
-    filename = f"{values['security_class']}-{values['base']}.yml"
-    traversable = _TEMPLATE_DIR / filename
-    with resources.as_file(traversable) as template_path:
-        return render_template(
-            template_path,
-            {
-                "PROJECT_ID": values["project_id"],
-                "UPSTREAM_URL": values["upstream_url"],
-                "DEFAULT_BRANCH": values["default_branch"],
-                "USER_SNIPPET": values["user_snippet"],
-            },
-        )
+    return render_resource_template(
+        _TEMPLATE_DIR / _TEMPLATE_NAME,
+        {
+            "PROJECT_ID": values["project_id"],
+            "UPSTREAM_URL": values["upstream_url"],
+            "DEFAULT_BRANCH": values["default_branch"],
+            "USER_SNIPPET": values["user_snippet"],
+            "SECURITY_CLASS": values["security_class"],
+            "BASE": values["base"],
+            "BASE_IMAGE": BASE_IMAGES[values["base"]],
+        },
+    )
 
 
 def write_project_yaml(project_id: str, rendered: str, *, overwrite: bool = False) -> Path:

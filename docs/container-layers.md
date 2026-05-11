@@ -35,7 +35,7 @@ Built `FROM` L0.
 
 Built `FROM` the L1 image.
 
-- Adds project-specific defaults (`CODE_REPO`, `SSH_KEY_NAME`, `GIT_BRANCH`) and the user snippet.
+- Adds project-specific defaults (`CODE_REPO`, `GIT_BRANCH`) and the user snippet.
 - Optional dev image (`<project>:l2-dev`) built `FROM` L0 when `--dev` is used.
 
 ## Build Flow
