@@ -134,9 +134,14 @@ def test_online_gate_server_fallback(server_reachable: bool) -> None:
     )
 
     if server_reachable:
-        assert env["CLONE_FROM"] == gate_repo_url("online-proj", "cafebabe" * 4)
+        expected_url = gate_repo_url("online-proj", "cafebabe" * 4)
+        assert env["CLONE_FROM"] == expected_url
+        # Gate is also surfaced as a named "gate" remote in online mode
+        # so the agent can push WIP host-locally without going upstream.
+        assert env["GATE_REMOTE_URL"] == expected_url
     else:
         assert "CLONE_FROM" not in env
+        assert "GATE_REMOTE_URL" not in env
     assert env["CODE_REPO"] == "https://example.com/repo.git"
     assert gate_mounts(volumes) == []
 
@@ -149,5 +154,17 @@ def test_online_without_gate_has_no_clone_from() -> None:
         with_gate=False,
     )
     assert "CLONE_FROM" not in env
+    assert "GATE_REMOTE_URL" not in env
     assert env["CODE_REPO"] == "https://example.com/repo.git"
     assert gate_mounts(volumes) == []
+
+
+def test_gatekeeping_does_not_set_gate_remote_url() -> None:
+    """Gatekeeping mode keeps the gate as origin — no separate "gate" remote."""
+    _project, env, _volumes = resolve_security_env(
+        _GATEKEEPING_YAML,
+        project_id="gk-proj",
+        with_gate=True,
+        token="deadbeef" * 4,
+    )
+    assert "GATE_REMOTE_URL" not in env
