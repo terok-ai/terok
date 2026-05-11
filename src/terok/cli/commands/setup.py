@@ -217,7 +217,6 @@ def _run_image_build(*, base: str, family: str | None) -> bool:
             return False
         s.ok("built")
         return True
-    return False  # stage_line suppressed an unforeseen exception
 
 
 # ── Desktop entry phase (terok-specific, not in sandbox aggregator) ───
@@ -296,7 +295,6 @@ def _ensure_desktop_entry(*, policy: str) -> bool:
                 "install it for standard XDG registration"
             )
         return True
-    return False  # stage_line suppressed an unforeseen exception
 
 
 # ── Shell completions phase (best-effort, skipped silently if installed) ──
