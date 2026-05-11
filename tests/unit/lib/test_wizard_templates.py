@@ -6,6 +6,7 @@
 from importlib import resources
 from importlib.resources.abc import Traversable
 
+import jinja2
 import pytest
 
 from terok.lib.domain.wizards.new_project import BASES, SECURITY_CLASSES
@@ -87,3 +88,14 @@ class TestWizardTemplates:
         assert "RUN apt-get update" in rendered
         for placeholder in REQUIRED_PLACEHOLDERS:
             assert placeholder not in rendered
+
+    def test_render_template_raises_on_missing_variable(self) -> None:
+        """A typo or forgotten variable surfaces at render time, not silently."""
+        traversable = TEMPLATE_DIR / "online-ubuntu.yml"
+        variables = {
+            "UPSTREAM_URL": "https://example.test/repo.git",
+            "DEFAULT_BRANCH": "main",
+            "USER_SNIPPET": "",
+        }
+        with resources.as_file(traversable) as path, pytest.raises(jinja2.UndefinedError):
+            render_template(path, variables)
