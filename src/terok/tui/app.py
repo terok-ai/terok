@@ -79,16 +79,22 @@ if _HAS_TEXTUAL:
     from textual.widgets import Footer, Header
     from textual.worker import Worker, WorkerState
 
-    from ..lib.core.config import (
-        get_tui_default_tmux,
-        set_experimental,
-    )
-    from ..lib.core.paths import core_state_dir
-    from ..lib.core.projects import (
+    from ..lib.api import (
         BrokenProject,
+        Config,
         ProjectConfig,
+        container_name,
         discover_projects,
+        execute_panic,
+        format_panic_report,
+        get_config,
+        get_project_state,
+        get_tasks,
+        is_task_image_old,
         load_project,
+        make_git_gate,
+        panic_stop_containers,
+        set_experimental,
     )
 
     # Import version info function (shared with CLI --version)
@@ -96,11 +102,6 @@ if _HAS_TEXTUAL:
         get_version_info as _get_version_info,
         short_version as _short_version,
     )
-    from ..lib.domain.facade import (
-        get_project_state,
-        is_task_image_old,
-    )
-    from ..lib.orchestration.tasks import get_tasks
 
     @dataclass(frozen=True)
     class ProjectStateResult:
@@ -280,6 +281,8 @@ if _HAS_TEXTUAL:
         def __init__(self) -> None:
             """Initialize the TUI, setting up internal state and dynamic title."""
             super().__init__()
+            # Snapshot the global config once; reuse via ``self._config``.
+            self._config: Config = get_config()
             # Set dynamic title with version and branch info
             self._update_title()
 
@@ -532,7 +535,7 @@ if _HAS_TEXTUAL:
             not be visible even though the widgets exist.
             """
             try:
-                log_path = core_state_dir() / "terok.log"
+                log_path = self._config.core_state_dir / "terok.log"
                 log_path.parent.mkdir(parents=True, exist_ok=True)
 
                 left_pane = self.query_one("#left-pane")
@@ -570,7 +573,7 @@ if _HAS_TEXTUAL:
             try:
                 from datetime import datetime as _dt
 
-                log_path = core_state_dir() / "terok.log"
+                log_path = self._config.core_state_dir / "terok.log"
                 log_path.parent.mkdir(parents=True, exist_ok=True)
                 ts = _dt.now().isoformat(timespec="seconds")
                 with log_path.open("a", encoding="utf-8") as _f:
@@ -584,7 +587,7 @@ if _HAS_TEXTUAL:
             try:
                 import json
 
-                state_path = core_state_dir() / "terok-state.json"
+                state_path = self._config.core_state_dir / "terok-state.json"
                 if state_path.exists():
                     with state_path.open("r", encoding="utf-8") as f:
                         state = json.load(f)
@@ -602,7 +605,7 @@ if _HAS_TEXTUAL:
             try:
                 import json
 
-                state_path = core_state_dir() / "terok-state.json"
+                state_path = self._config.core_state_dir / "terok-state.json"
                 state_path.parent.mkdir(parents=True, exist_ok=True)
                 state = {
                     "last_project": self.current_project_id,
@@ -836,8 +839,6 @@ if _HAS_TEXTUAL:
             """Load project infrastructure state in a background thread."""
             try:
                 project = load_project(project_id)
-                from ..lib.domain.project import make_git_gate
-
                 gate = make_git_gate(project)
 
                 def _gate_commit_provider(_pid: str) -> dict | None:
@@ -920,8 +921,6 @@ if _HAS_TEXTUAL:
             try:
                 project = load_project(project_id)
                 mode = task.mode or "cli"
-                from ..lib.orchestration.tasks import container_name
-
                 cname = container_name(project_id, mode, task.task_id)
                 task_dir = project.tasks_root / str(task.task_id)
                 st = _shield_state(cname, task_dir)
@@ -1191,9 +1190,9 @@ if _HAS_TEXTUAL:
                     parts = (worker.name or "").split(":")
                     action = parts[1] if len(parts) >= 2 else ""
                     if action == "down":
-                        from ..lib.core.config import SHIELD_SECURITY_HINT
-
-                        self.notify(f"Shield dropped for task {task_id}. {SHIELD_SECURITY_HINT}")
+                        self.notify(
+                            f"Shield dropped for task {task_id}. {self._config.shield_security_hint}"
+                        )
                     elif action == "up":
                         self.notify(f"Shield up for task {task_id}")
                 # Refresh shield state after action
@@ -1220,8 +1219,6 @@ if _HAS_TEXTUAL:
                 return
 
             if worker.group == "panic":
-                from ..lib.domain.panic import format_panic_report
-
                 panic_result = worker.result
                 if not panic_result:
                     return
@@ -1289,8 +1286,6 @@ if _HAS_TEXTUAL:
 
         async def _execute_panic_phase1(self) -> None:
             """Launch Phase 1 panic: shields up, stop proxy and gate."""
-            from ..lib.domain.panic import execute_panic
-
             self.run_worker(
                 lambda: execute_panic(stop_containers=False),
                 name="panic-lockdown",
@@ -1310,8 +1305,6 @@ if _HAS_TEXTUAL:
                 else:
                     self.notify("Containers left running (shields are up)")
                 return
-            from ..lib.domain.panic import panic_stop_containers
-
             self.run_worker(
                 panic_stop_containers,
                 name="panic-stop-containers",
@@ -1592,30 +1585,33 @@ if _HAS_TEXTUAL:
                 ],
             )
 
-    def main() -> None:
-        """CLI entry-point for launching the terok TUI.
+    import argparse
 
-        Supports ``--tmux`` to wrap the TUI in a managed host tmux session
-        (blue status bar, login windows as extra tmux windows).  Without the
-        flag the TUI runs directly in the current terminal.
+    def _build_arg_parser() -> argparse.ArgumentParser:
+        """Build the ``terok-tui`` argument parser.
 
-        If neither --tmux nor --no-tmux is specified, the behavior is controlled
-        by the global config setting `tui.default_tmux` (defaults to False).
+        ``--tmux`` / ``--no-tmux`` share a single tri-state destination:
+        ``None`` means "user passed neither flag — fall back to config".
+        ``store_true``/``store_false`` would otherwise leave a bool there
+        and mask the fallback in [`main`][terok.tui.app.main].
         """
-        import argparse
-
         parser = argparse.ArgumentParser(prog="terok-tui")
-        parser.add_argument(
+        # Mutually exclusive: passing both raises before parse_args returns.
+        # ``set_defaults(tmux=None)`` keeps the destination tri-state when
+        # neither flag is passed so ``main`` can defer to the config setting.
+        tmux_group = parser.add_mutually_exclusive_group()
+        tmux_group.add_argument(
             "--tmux",
             action="store_true",
             help="Launch TUI inside a managed tmux session",
         )
-        parser.add_argument(
+        tmux_group.add_argument(
             "--no-tmux",
             dest="tmux",
             action="store_false",
             help="Launch TUI directly in current terminal (default if not configured)",
         )
+        parser.set_defaults(tmux=None)
         parser.add_argument(
             "--experimental",
             action="store_true",
@@ -1628,7 +1624,21 @@ if _HAS_TEXTUAL:
             default=False,
             help="Replace emojis with text labels (e.g. [gate] instead of \U0001f6aa)",
         )
-        args = parser.parse_args()
+        return parser
+
+    def main() -> None:
+        """CLI entry-point for launching the terok TUI.
+
+        Three-way control of tmux wrapping:
+
+        - ``--tmux`` forces the TUI into a managed host tmux session
+          (blue status bar, login windows as extra tmux windows).
+        - ``--no-tmux`` forces the TUI to run directly in the current
+          terminal.
+        - When neither flag is passed, the global config setting
+          ``tui.default_tmux`` decides (defaults to ``False``).
+        """
+        args = _build_arg_parser().parse_args()
         set_experimental(args.experimental)
 
         if args.no_emoji:
@@ -1639,7 +1649,9 @@ if _HAS_TEXTUAL:
         # Determine tmux mode: explicit flag > config default > False
         # Web mode (textual-serve) is never wrapped in tmux.
         use_tmux = (
-            args.tmux if hasattr(args, "tmux") and args.tmux is not None else get_tui_default_tmux()
+            args.tmux
+            if hasattr(args, "tmux") and args.tmux is not None
+            else get_config().tui_default_tmux
         )
 
         from .shell_launch import is_web_mode

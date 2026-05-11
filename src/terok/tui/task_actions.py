@@ -16,12 +16,18 @@ from typing import TYPE_CHECKING, Any
 from terok_executor import parse_md_agent
 from terok_sandbox import down as shield_down, up as shield_up
 
-from ..lib.core import runtime as _rt
-from ..lib.core.config import get_shield_bypass_firewall_no_protection
-from ..lib.core.projects import load_project
-from ..lib.core.task_display import effective_status
-from ..lib.domain.facade import (
+from ..lib.api import (
     HeadlessRunRequest,
+    agent_config_dir,
+    container_name,
+    effective_status,
+    generate_task_name,
+    get_config,
+    get_container_state,
+    get_login_command,
+    get_workspace_git_diff,
+    load_project,
+    mark_task_deleting,
     task_delete,
     task_followup_headless,
     task_new,
@@ -31,15 +37,7 @@ from ..lib.domain.facade import (
     task_run_headless,
     task_run_toad,
     task_stop,
-)
-from ..lib.orchestration.autopilot import wait_for_container_exit
-from ..lib.orchestration.tasks import (
-    agent_config_dir,
-    container_name,
-    generate_task_name,
-    get_login_command,
-    get_workspace_git_diff,
-    mark_task_deleting,
+    wait_for_container_exit,
 )
 from .clipboard import copy_to_clipboard_detailed
 from .screens import (
@@ -254,7 +252,7 @@ class TaskActionsMixin(_MixinBase):
             # podman inspect would block the event loop; offload it.
             import asyncio
 
-            from terok.lib.core.images import installed_agents_for_project
+            from ..lib.api import installed_agents_for_project
 
             installed = await asyncio.to_thread(installed_agents_for_project, project)
         except (SystemExit, Exception):
@@ -398,7 +396,7 @@ class TaskActionsMixin(_MixinBase):
         # podman inspect would block the event loop; offload it.
         import asyncio
 
-        from terok.lib.core.images import installed_agents_for_project
+        from ..lib.api import installed_agents_for_project
 
         installed: frozenset[str] | None = None
         try:
@@ -573,7 +571,7 @@ class TaskActionsMixin(_MixinBase):
         tid = task.task_id
         cname = container_name(pid, task.mode, tid)
 
-        state = _rt.get_runtime().container(cname).state
+        state = get_container_state(cname)
         if state is None:
             self.notify(f"No container found for task {tid}.")
             return
@@ -768,11 +766,12 @@ class TaskActionsMixin(_MixinBase):
 
     def _notify_shield_bypassed(self) -> bool:
         """Warn the user and return ``True`` if the shield bypass is active."""
-        if not get_shield_bypass_firewall_no_protection():
+        cfg = get_config()
+        if not cfg.shield_bypass_firewall_no_protection:
             return False
-        from ..lib.core.config import SHIELD_SECURITY_HINT
-
-        self.notify(f"Shield unavailable (bypass_firewall_no_protection). {SHIELD_SECURITY_HINT}")
+        self.notify(
+            f"Shield unavailable (bypass_firewall_no_protection). {cfg.shield_security_hint}"
+        )
         return True
 
     def _action_shield_up(self) -> None:

@@ -10,7 +10,7 @@ import unittest.mock
 
 import pytest
 
-from terok.lib.core.task_display import CONTAINER_MODES, container_name
+from terok.lib.core.task_state import CONTAINER_MODES, container_name
 from terok.lib.orchestration.tasks import (
     _TASK_ID_BODY_CHARS,
     _TASK_ID_HEAD_CHARS,

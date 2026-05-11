@@ -66,21 +66,22 @@ depends_on = [
 ]
 
 # TUI frontend
+#
+# The TUI talks to the library only through the [`terok.lib.api`][terok.lib.api]
+# front door, plus pure utilities (``util.*``) and the version helpers.
+# New TUI features that need internal modules should extend ``api`` first;
+# extending this allowlist is a design smell.
 [[modules]]
 path = "terok.tui"
 layer = "presentation"
 depends_on = [
-    "terok.lib.orchestration.autopilot",
-    "terok.lib.core.task_display",
-    "terok.lib.domain.panic",
-    "terok.lib.orchestration.tasks",
-    "terok.lib.core.config",
-    "terok.lib.core.projects",
-    "terok.lib.core.runtime",
+    "terok.lib.api",
     "terok.lib.core.version",
-    "terok.lib.domain.facade",
-    "terok.lib.domain.wizards.new_project",
+    "terok.lib.util.ansi",
     "terok.lib.util.emoji",
+    "terok.lib.util.logging_utils",
+    "terok.lib.util.net",
+    "terok.lib.util.text_wrap",
     "terok.lib.util.yaml",
 ]
 
@@ -117,6 +118,30 @@ depends_on = [
     "terok.lib.core.projects",
     "terok.lib.domain.project",
     "terok.lib.domain.task",
+]
+
+# Public library API — single stable import boundary for presentation layers.
+# Re-exports operations from the facade, the domain types they manipulate,
+# the presentation tables, and a snapshot ``Config`` so consumers never
+# need to reach into internal modules.  Extending this is a design decision;
+# it should not grow opportunistically.
+[[modules]]
+path = "terok.lib.api"
+layer = "domain"
+depends_on = [
+    "terok.lib.domain.facade",
+    "terok.lib.domain.panic",
+    "terok.lib.domain.wizards.new_project",
+    "terok.lib.orchestration.agent_config",
+    "terok.lib.orchestration.autopilot",
+    "terok.lib.orchestration.tasks",
+    "terok.lib.core.config",
+    "terok.lib.core.images",
+    "terok.lib.core.paths",
+    "terok.lib.core.projects",
+    "terok.lib.core.runtime",
+    "terok.lib.core.task_display",
+    "terok.lib.core.task_state",
 ]
 
 # Vault access primitive (shared open/close handshake)
@@ -222,7 +247,7 @@ depends_on = [
     "terok.lib.core.images",
     "terok.lib.core.projects",
     "terok.lib.core.runtime",
-    "terok.lib.core.task_display",
+    "terok.lib.core.task_state",
     "terok.lib.domain.vault",
 ]
 
@@ -257,7 +282,7 @@ depends_on = [
     "terok.lib.core.images",
     "terok.lib.core.projects",
     "terok.lib.core.runtime",
-    "terok.lib.core.task_display",
+    "terok.lib.core.task_state",
     "terok.lib.util.ansi",
     "terok.lib.util.yaml",
 ]
@@ -272,6 +297,7 @@ depends_on = [
     "terok.lib.orchestration.ports",
     "terok.lib.core.runtime",
     "terok.lib.core.task_display",
+    "terok.lib.core.task_state",
     "terok.lib.core.work_status",
     "terok.lib.core.config",
     "terok.lib.core.projects",
@@ -324,7 +350,7 @@ path = "terok.lib.orchestration.container_exec"
 layer = "orchestration"
 depends_on = [
     "terok.lib.core.runtime",
-    "terok.lib.core.task_display",
+    "terok.lib.core.task_state",
     "terok.lib.util.logging_utils",
 ]
 
@@ -421,11 +447,17 @@ path = "terok.lib.core.runtime"
 layer = "core"
 depends_on = []
 
-# Task display types and status computation
+# Task lifecycle state — domain value object, status computation, container naming
+[[modules]]
+path = "terok.lib.core.task_state"
+layer = "core"
+depends_on = ["terok.lib.util.yaml"]
+
+# Presentation tables for task lifecycle, mode, and project badges
 [[modules]]
 path = "terok.lib.core.task_display"
 layer = "core"
-depends_on = ["terok.lib.util.yaml"]
+depends_on = []
 
 # Agent work status reading
 [[modules]]
@@ -547,18 +579,24 @@ expose = [
     "StatusInfo",
     "ModeInfo",
     "ProjectBadge",
-    "TaskState",
     "STATUS_DISPLAY",
     "MODE_DISPLAY",
     "SECURITY_CLASS_DISPLAY",
+    "ISOLATION_DISPLAY",
     "GPU_DISPLAY",
-    "effective_status",
     "mode_info",
+]
+from = ["terok.lib.core.task_display"]
+
+[[interfaces]]
+expose = [
+    "TaskState",
+    "effective_status",
     "has_gpu",
     "CONTAINER_MODES",
     "container_name",
 ]
-from = ["terok.lib.core.task_display"]
+from = ["terok.lib.core.task_state"]
 
 [[interfaces]]
 expose = [

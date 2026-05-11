@@ -27,7 +27,7 @@ from base64 import b64decode, urlsafe_b64decode, urlsafe_b64encode
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from ..lib.core.paths import config_root
+from ..lib.api import get_config
 from ..lib.util.ansi import red, supports_color
 from ..lib.util.net import url_host
 
@@ -310,7 +310,7 @@ def _prompt_password() -> str:
 
 def _password_path() -> Path:
     """Path of the scrypt-hashed serve password (creating its config dir if needed)."""
-    root = config_root()
+    root = get_config().config_root
     root.mkdir(mode=0o700, parents=True, exist_ok=True)
     return root / "serve.password"
 

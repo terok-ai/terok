@@ -24,18 +24,18 @@ from terok_sandbox import (
 )
 from textual import work
 
-from ..lib.core.projects import load_project
-from ..lib.domain.facade import (
+from ..lib.api import (
     authenticate,
     build_images,
     delete_project,
     find_projects_sharing_gate,
     generate_dockerfiles,
+    load_project,
+    make_git_gate,
     maybe_pause_for_ssh_key_registration,
     provision_ssh_key,
     summarize_ssh_init,
 )
-from ..lib.domain.project import make_git_gate
 from .shell_launch import launch_login
 
 if TYPE_CHECKING:
@@ -50,7 +50,7 @@ def _lookup_vault_pub_line(scope: str) -> str | None:
     """Return the scope's most-recent public key line, or ``None`` if unassigned."""
     from terok_sandbox import public_line_of
 
-    from ..lib.domain.facade import vault_db
+    from ..lib.api import vault_db
 
     with vault_db() as db:
         records = db.load_ssh_keys_for_scope(scope)
@@ -247,7 +247,7 @@ class ProjectActionsMixin(_MixinBase):
         which a rebuild reuses — so without this, the picker would keep
         showing the previous agent set until the TUI restarts.
         """
-        from terok.lib.core.images import installed_agents
+        from ..lib.api import installed_agents
 
         installed_agents.cache_clear()
 
@@ -442,7 +442,7 @@ class ProjectActionsMixin(_MixinBase):
             """Resolve and print the effective instructions."""
             from terok_executor import resolve_instructions
 
-            from ..lib.orchestration.agent_config import resolve_agent_config
+            from ..lib.api import resolve_agent_config
 
             project = load_project(pid)
             effective = resolve_agent_config(
@@ -463,9 +463,9 @@ class ProjectActionsMixin(_MixinBase):
 
         def work() -> None:
             """Open global instructions file in $EDITOR."""
-            from ..lib.core.config import global_config_path
+            from ..lib.api import get_config
 
-            global_instr = global_config_path().parent / "instructions.md"
+            global_instr = get_config().global_config_path.parent / "instructions.md"
             global_instr.parent.mkdir(parents=True, exist_ok=True)
             editor = os.environ.get("EDITOR", "").strip() or "vi"
             editor_cmd = shlex.split(editor)
@@ -542,7 +542,7 @@ class ProjectActionsMixin(_MixinBase):
 
     async def _run_wizard_flow_body(self) -> None:
         """Inner wizard orchestration — see the decorator wrapper for docs."""
-        from ..lib.domain.wizards.new_project import render_project_yaml
+        from ..lib.api import render_project_yaml
         from .wizard_screens import (
             REVIEW_BACK,
             InitOutcome,
@@ -632,9 +632,9 @@ class ProjectActionsMixin(_MixinBase):
             names = ", ".join(p for p, _ in sharing)
             lines.append(f"\nNote: gate is shared with: {names} (will NOT be deleted)")
 
-        from ..lib.core.config import archive_dir as _archive_dir
+        from ..lib.api import get_config
 
-        archive_path = _archive_dir()
+        archive_path = get_config().archive_dir
         lines.append("\nAll project data will be permanently deleted.")
         lines.append("Project config, task data, and build artifacts will be archived at:")
         lines.append(f"{archive_path}")
@@ -675,7 +675,7 @@ class ProjectActionsMixin(_MixinBase):
 
     async def _action_gate_install(self) -> None:
         """Install systemd socket units for the gate server."""
-        from ..lib.core.config import make_sandbox_config
+        from ..lib.api import make_sandbox_config
 
         await self._run_suspended(
             lambda: GateServerManager(make_sandbox_config()).install_systemd_units(),
@@ -684,7 +684,7 @@ class ProjectActionsMixin(_MixinBase):
 
     async def _action_gate_uninstall(self) -> None:
         """Uninstall systemd units for the gate server."""
-        from ..lib.core.config import make_sandbox_config
+        from ..lib.api import make_sandbox_config
 
         await self._run_suspended(
             lambda: GateServerManager(make_sandbox_config()).uninstall_systemd_units(),
@@ -730,7 +730,7 @@ class ProjectActionsMixin(_MixinBase):
         """Install systemd socket activation for the vault."""
         from terok_executor import ensure_vault_routes
 
-        from ..lib.core.config import make_sandbox_config
+        from ..lib.api import make_sandbox_config
 
         def _install() -> None:
             cfg = make_sandbox_config()
@@ -744,7 +744,7 @@ class ProjectActionsMixin(_MixinBase):
 
     async def _action_vault_uninstall(self) -> None:
         """Uninstall vault systemd units."""
-        from ..lib.core.config import make_sandbox_config
+        from ..lib.api import make_sandbox_config
 
         await self._run_suspended(
             lambda: VaultManager(make_sandbox_config()).uninstall_systemd_units(),
@@ -755,7 +755,7 @@ class ProjectActionsMixin(_MixinBase):
         """Generate routes and start the vault daemon."""
         from terok_executor import ensure_vault_routes
 
-        from ..lib.core.config import make_sandbox_config
+        from ..lib.api import make_sandbox_config
 
         def _start() -> None:
             ensure_vault_routes(cfg=make_sandbox_config())

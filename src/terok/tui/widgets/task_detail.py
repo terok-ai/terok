@@ -11,9 +11,7 @@ from textual import events
 from textual.app import ComposeResult
 from textual.widgets import Static
 
-from ...lib.core.config import SHIELD_SECURITY_HINT, get_public_host
-from ...lib.core.task_display import STATUS_DISPLAY, mode_info
-from ...lib.orchestration.tasks import TaskMeta
+from ...lib.api import STATUS_DISPLAY, TaskMeta, get_config, mode_info
 from ...lib.util.emoji import render_emoji
 from ...lib.util.net import url_host
 from ...lib.util.text_wrap import wrap_with_hanging_indent
@@ -86,7 +84,7 @@ def render_task_details(
     if task.status == "running" and image_old:
         lines.append(Text.assemble("Image:     ", Text("old", style=warning_style)))
     if task.web_port:
-        base_url = f"http://{url_host(get_public_host())}:{task.web_port}/"
+        base_url = f"http://{url_host(get_config().public_host)}:{task.web_port}/"
         # Token in the query is what Caddy trades for its auth cookie.
         # Render the full URL verbatim so users without OSC-8 support
         # (and copy-paste) still get the tokenised URL.
@@ -144,7 +142,10 @@ def render_task_details(
             )
             if task.shield_state in {"DISABLED", "INACTIVE"}:
                 lines.append(
-                    Text(f"           {SHIELD_SECURITY_HINT}", style=Style(color=error_color))
+                    Text(
+                        f"           {get_config().shield_security_hint}",
+                        style=Style(color=error_color),
+                    )
                 )
     if task.mode == "run":
         if task.exit_code is not None:

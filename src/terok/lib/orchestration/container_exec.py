@@ -11,7 +11,7 @@ poisoned git hooks or scripts executing with host privileges.
 from subprocess import TimeoutExpired
 
 from ..core import runtime as _rt
-from ..core.task_display import container_name as _container_name
+from ..core.task_state import container_name as _container_name
 from ..util.logging_utils import _log_debug
 
 

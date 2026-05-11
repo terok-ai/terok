@@ -15,7 +15,7 @@ from ..core import runtime as _rt
 from ..core.config import build_dir
 from ..core.images import project_cli_image
 from ..core.projects import load_project
-from ..core.task_display import container_name as _container_name
+from ..core.task_state import container_name as _container_name
 
 
 def _scope_has_vault_key(scope: str) -> bool:

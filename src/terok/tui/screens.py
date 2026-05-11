@@ -72,8 +72,7 @@ from terok_sandbox import (
     is_systemd_available,
 )
 
-from ..lib.core.projects import ProjectConfig
-from ..lib.orchestration.tasks import sanitize_task_name, validate_task_name
+from ..lib.api import ProjectConfig, sanitize_task_name, validate_task_name
 from .widgets import TaskMeta, render_project_details, render_project_loading, render_task_details
 
 
@@ -620,7 +619,7 @@ class OpenCodeConfigScreen(screen.ModalScreen[str | None]):
         import shutil
         from pathlib import Path
 
-        from ..lib.core.config import vault_dir
+        from ..lib.api import get_config
 
         inp = self.query_one("#opencode-config-input", Input)
         raw = inp.value.strip()
@@ -643,7 +642,7 @@ class OpenCodeConfigScreen(screen.ModalScreen[str | None]):
             return
 
         try:
-            dest_dir = vault_dir() / "_opencode-config"
+            dest_dir = get_config().vault_dir / "_opencode-config"
             dest_dir.mkdir(parents=True, exist_ok=True)
             dest = dest_dir / "opencode.json"
             shutil.copy2(str(src), str(dest))
@@ -1312,10 +1311,9 @@ class TaskLaunchScreen(screen.ModalScreen["tuple[str, str, str, str, str, str | 
         freshly built image is referenced; doing it here keeps the event
         loop free so the modal stays dismissible.
         """
-        from ..lib.core import runtime as _rt
-        from ..lib.orchestration.tasks import get_task_meta
+        from ..lib.api import get_container_state, get_task_meta
 
-        state = _rt.get_runtime().container(self._container_name).state
+        state = get_container_state(self._container_name)
         has_mode = False
         if state == "running":
             try:
@@ -1572,11 +1570,11 @@ class TaskDetailsScreen(screen.Screen[str | None]):
             options.append(Option("re\\[n]ame task", id="rename"))
             options.append(Option("delete task  \\[X]", id="delete"))
             options.append(None)
-            from ..lib.core.config import get_shield_bypass_firewall_no_protection
+            from ..lib.api import get_config
 
             options.append(Option("shield \\[d]own (bypass)", id="shield_down"))
             options.append(Option("shield \\[D]own --all (+ private ranges)", id="shield_down_all"))
-            if not get_shield_bypass_firewall_no_protection():
+            if not get_config().shield_bypass_firewall_no_protection:
                 options.append(Option("\\[s]hield up (deny-all)", id="shield_up"))
             options.append(
                 Option("shield \\[i]nteractive (verdict handler)", id="shield_interactive")

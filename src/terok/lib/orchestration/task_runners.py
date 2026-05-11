@@ -39,7 +39,7 @@ from ..core.config import (
 )
 from ..core.images import project_cli_image, require_agent_installed
 from ..core.projects import load_project
-from ..core.task_display import has_gpu
+from ..core.task_state import has_gpu
 from ..util.ansi import (
     blue as _blue,
     green as _green,
