@@ -19,10 +19,19 @@ from ..core.task_state import container_name as _container_name
 
 
 def _scope_has_vault_key(scope: str) -> bool:
-    """Return ``True`` iff the vault has at least one SSH key assigned to *scope*."""
-    from .vault import vault_db
+    """Return ``True`` iff the vault has at least one SSH key assigned to *scope*.
 
-    with vault_db() as db:
+    A locked vault (no resolvable passphrase) reports ``False`` rather
+    than raising — the project overview can still render every other
+    tile.  The dedicated "vault locked" surface (issue terok#877) takes
+    care of nudging the operator to unlock; for the SSH-tile readout
+    "no keys visible right now" is the truthful answer.
+    """
+    from .vault import maybe_vault_db
+
+    with maybe_vault_db() as db:
+        if db is None:
+            return False
         return bool(db.list_ssh_keys_for_scope(scope))
 
 

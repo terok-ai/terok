@@ -211,7 +211,9 @@ def make_ssh_manager(config: ProjectConfig) -> SSHManager:
     Use it as a context manager (``with make_ssh_manager(cfg) as m: ...``);
     the DB connection closes on exit.
     """
-    return SSHManager.open(scope=config.id, db_path=make_sandbox_config().db_path)
+    return SSHManager.open_for_config(
+        scope=config.id, cfg=make_sandbox_config(), prompt_on_tty=True
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -410,11 +412,30 @@ def _archive_project(project_id: str) -> str | None:
         return None
 
 
-def _unassign_vault_ssh_keys(scope: str, deleted: list[str]) -> None:
-    """Drop every SSH-key assignment for *scope*; record the count in *deleted*."""
-    from .vault import vault_db
+def _unassign_vault_ssh_keys(scope: str, deleted: list[str], skipped: list[str]) -> None:
+    """Drop every SSH-key assignment for *scope*; record the count in *deleted*.
 
-    with vault_db() as db:
+    A locked vault (no resolvable passphrase) skips the unassignment
+    and records into *skipped* so the operator knows residual key
+    assignments remain in the encrypted DB — they can be cleaned up
+    after a ``terok-sandbox vault unlock``.  *deleted* is reserved
+    for actual deletions; conflating the two lists would surface
+    the locked-vault notice as if it were a successful drop.
+
+    Blocking project deletion behind a locked vault would be worse:
+    the on-disk project state would stay intact, the operator may not
+    even know which passphrase the DB was encrypted with, and the
+    project they're trying to delete can include the very SSH key
+    they would have needed.
+    """
+    from .vault import maybe_vault_db
+
+    with maybe_vault_db() as db:
+        if db is None:
+            skipped.append(
+                f"vault locked — SSH key assignments for scope {scope!r} remain in the encrypted DB"
+            )
+            return
         count = db.unassign_all_ssh_keys(scope)
     if count:
         deleted.append(f"{count} SSH key assignment(s) for project (scope) {scope!r}")
@@ -471,7 +492,7 @@ def delete_project(project_id: str) -> DeleteProjectResult:
             deleted.append(str(d))
 
     # 5. SSH credentials — unassign from vault; orphan keys cascade-delete.
-    _unassign_vault_ssh_keys(pid, deleted)
+    _unassign_vault_ssh_keys(pid, deleted, skipped)
 
     # 6. Git gate (skip if shared with other projects)
     sharing = find_projects_sharing_gate(project.gate_path, exclude_project=pid)

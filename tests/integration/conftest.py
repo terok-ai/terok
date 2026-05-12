@@ -373,6 +373,19 @@ def terok_env(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> TerokIntegrati
         "vault:\n  bypass_no_secret_protection: true\n",
         encoding="utf-8",
     )
+    # Sandbox reads ``credentials.passphrase`` from the user-tier
+    # config (``$XDG_CONFIG_HOME/terok/config.yml``) — system-tier
+    # paths point at ``/etc/terok`` on the real filesystem and won't
+    # see our tmp-rooted config.yml.  Seeding a deterministic
+    # passphrase makes the resolution chain hit the config tier and
+    # lets ``CredentialDB`` open the encrypted DB without a daemon,
+    # keyring, or interactive prompt — the realistic shape for
+    # subprocess-based integration tests.
+    (xdg_config_home / "terok").mkdir(parents=True, exist_ok=True)
+    (xdg_config_home / "terok" / "config.yml").write_text(
+        "credentials:\n  passphrase: integration-test-passphrase\n",
+        encoding="utf-8",
+    )
 
     env = TerokIntegrationEnv(
         base_dir=tmp_path,

@@ -871,7 +871,7 @@ expose = [
 from = ["terok.lib.domain.facade"]
 
 [[interfaces]]
-expose = ["vault_db"]
+expose = ["maybe_vault_db", "vault_db"]
 from = ["terok.lib.domain.vault"]
 
 [[interfaces]]

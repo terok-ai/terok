@@ -50,10 +50,15 @@ class TestCheckSshSigner:
         return p
 
     def _patch_vault(self, assigned_scopes: list[str]):
-        """Patch ``CredentialDB`` to report the given assigned scopes."""
+        """Patch ``cfg.open_credential_db`` to yield the given assigned scopes."""
         db = unittest.mock.MagicMock()
         db.list_scopes_with_ssh_keys.return_value = assigned_scopes
-        return unittest.mock.patch("terok_sandbox.CredentialDB", return_value=db)
+        return unittest.mock.patch(
+            "terok.lib.core.config.make_sandbox_config",
+            return_value=unittest.mock.MagicMock(
+                open_credential_db=unittest.mock.MagicMock(return_value=db)
+            ),
+        )
 
     def test_no_projects(self) -> None:
         """No projects configured → ok (nothing to check)."""
@@ -118,7 +123,12 @@ class TestCheckSshSigner:
                 return_value=[self._mock_project("proj")],
             ),
             unittest.mock.patch(
-                "terok_sandbox.CredentialDB", side_effect=RuntimeError("db locked")
+                "terok.lib.core.config.make_sandbox_config",
+                return_value=unittest.mock.MagicMock(
+                    open_credential_db=unittest.mock.MagicMock(
+                        side_effect=RuntimeError("db locked")
+                    )
+                ),
             ),
         ):
             sev, _, detail = _check_ssh_signer()
