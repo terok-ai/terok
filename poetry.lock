@@ -3573,14 +3573,14 @@ prompt-toolkit = ">=3.0"
 pydantic = ">=2.9"
 rich = ">=13.0"
 "ruamel.yaml" = ">=0.18"
-terok-sandbox = {git = "https://github.com/sliwowitz/terok-sandbox.git", rev = "feat/credentials-encryption"}
+terok-sandbox = {git = "https://github.com/sliwowitz/terok-sandbox.git", rev = "7937e5c1dc4737831c4d322c7c17aa685d30d064"}
 tomli-w = ">=1.0"
 
 [package.source]
 type = "git"
 url = "https://github.com/sliwowitz/terok-executor.git"
-reference = "chore/sandbox-encryption-pin"
-resolved_reference = "fd4a00b87d1288d7cac1c85a99af794663d74aeb"
+reference = "221a840"
+resolved_reference = "221a840ba6d40770160b9640abe22b04c2d1aa3e"
 
 [[package]]
 name = "terok-sandbox"
@@ -3608,8 +3608,8 @@ terok-shield = {url = "https://github.com/terok-ai/terok-shield/releases/downloa
 [package.source]
 type = "git"
 url = "https://github.com/sliwowitz/terok-sandbox.git"
-reference = "feat/credentials-encryption"
-resolved_reference = "254595378f3172b8487dbb72e9d17085a9c32045"
+reference = "7937e5c1dc4737831c4d322c7c17aa685d30d064"
+resolved_reference = "7937e5c1dc4737831c4d322c7c17aa685d30d064"
 
 [[package]]
 name = "terok-shield"
@@ -4508,4 +4508,4 @@ propcache = ">=0.2.1"
 [metadata]
 lock-version = "2.1"
 python-versions = ">=3.12,<3.15"
-content-hash = "5e46990192786cc5643ac614f2ea1258dda277f99d87d0dd6c860db0181303e2"
+content-hash = "a3da1a24ec1c8b1f4d0deb71ab06807227a7e7ba39b78dc98019b8d03241549c"
