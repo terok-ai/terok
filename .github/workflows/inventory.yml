@@ -14,11 +14,16 @@ on:
     branches: [master]
   workflow_dispatch:
 
-permissions: {}
+# `contents: read` here is required so the called reusable workflow can
+# request the same — GitHub Actions rejects a called workflow that asks
+# for permissions outside the caller's grant, which manifests as
+# ``startup_failure`` with no jobs spawned.
+permissions:
+  contents: read
 
 jobs:
   publish:
     if: github.repository == 'terok-ai/terok' && github.ref == 'refs/heads/master'
-    uses: terok-ai/mkdocs-terok/.github/workflows/publish-inventory.yml@v0.5.7a1
+    uses: terok-ai/mkdocs-terok/.github/workflows/publish-inventory.yml@v0.5.7a3
     secrets:
       INVENTORY_WRITE_TOKEN: ${{ secrets.INVENTORY_WRITE_TOKEN }}
