@@ -30,11 +30,13 @@ when the fallback kicks in.
 
 The passive assets (``.desktop`` template, logo PNG) live under
 ``terok/resources/desktop/`` — this module is the *builder* that
-renders them and delegates to the XDG tool of choice.  When both
-``ptyxis`` and ``xdg-terminal-exec`` are on PATH, `_render_desktop_file`
-routes the launch through the bundled ``terok-xdg-terminal-exec.sh``
-shim to dodge a Ptyxis standalone-mode bug; see that helper and the
-shim's header for the rationale.
+renders them and delegates to the XDG tool of choice.  When ``ptyxis``
+is on PATH, `_render_desktop_file` routes the launch through the
+bundled ``terok-xdg-terminal-exec.sh`` shim to dodge a Ptyxis
+standalone-mode bug — Fedora patches GLib to inject ``ptyxis`` into
+GIO's hardcoded ``known_terminals[]`` (right after ``xdg-terminal-exec``)
+so a vanilla ``Terminal=true`` launcher ends up as ``ptyxis -- terok-tui``,
+which trips the bug.  See the shim's header for the rationale.
 """
 
 from __future__ import annotations
@@ -325,7 +327,19 @@ def _data_home() -> Path:
 
 def _render_desktop_file(bin_str: str) -> str:
     """Render ``terok.desktop`` with the right Exec / TryExec / Terminal values."""
-    if shutil.which("ptyxis") and shutil.which("xdg-terminal-exec"):
+    # We gate on `ptyxis` alone.  A more precise "is this a Fedora-
+    # patched glib" probe exists — `grep -aow ptyxis /lib64/libgio-2.0.so.0`
+    # exits 0 iff Fedora's `default-terminal.patch` injected
+    # { "ptyxis", "--" } into gio's hardcoded `known_terminals[]` — but
+    # it's (a) un-pythonic (shelling out to grep at a fixed sopath) and
+    # (b) not actually sufficient: when `xdg-terminal-exec` is installed
+    # it precedes ptyxis in the glib list and consults the user's
+    # `xdg-terminals.list`, so the rodata literal mis-predicts the
+    # real launch.  Hijacking on PATH-presence is over-eager on hosts
+    # where vanilla glib wouldn't pick ptyxis anyway, but that's fine
+    # — the user installed Ptyxis on purpose; the shim gives them the
+    # container-tabs UI they want.
+    if shutil.which("ptyxis"):
         shim = str(_resource_dir().joinpath(_PTYXIS_SHIM_NAME))
         variables = {
             "EXEC": f"/bin/sh {shim} {bin_str}",

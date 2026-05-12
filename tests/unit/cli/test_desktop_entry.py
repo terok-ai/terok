@@ -508,12 +508,18 @@ def _which_only(present: set[str]) -> object:
 
 
 class TestPtyxisGate:
-    """When both ptyxis and xdg-terminal-exec are on PATH, route Exec through the shim."""
+    """When ptyxis is on PATH, route Exec through the shim — else standard form.
+
+    The gate fires on ptyxis alone because Fedora patches GLib to inject
+    ptyxis into GIO's hardcoded ``known_terminals[]`` table, so any
+    ``Terminal=true`` launcher on F40+ becomes ``ptyxis -- terok-tui``
+    and trips Ptyxis's standalone-mode bug (no container tabs).
+    """
 
     @pytest.mark.parametrize(
         "present",
-        [set(), {"ptyxis"}, {"xdg-terminal-exec"}],
-        ids=["nothing", "only-ptyxis", "only-xdg-terminal-exec"],
+        [set(), {"xdg-terminal-exec"}],
+        ids=["nothing", "no-ptyxis"],
     )
     def test_gate_inactive_renders_standard_form(
         self,
@@ -531,10 +537,19 @@ class TestPtyxisGate:
         assert "TryExec=/usr/local/bin/terok-tui" in content
         assert "terok-xdg-terminal-exec" not in content
 
-    def test_gate_active_routes_through_shim(self, xdg_data_home: Path) -> None:
+    @pytest.mark.parametrize(
+        "present",
+        [{"ptyxis"}, {"ptyxis", "xdg-terminal-exec"}],
+        ids=["only-ptyxis", "ptyxis-and-xdg-terminal-exec"],
+    )
+    def test_gate_active_routes_through_shim(
+        self,
+        xdg_data_home: Path,
+        present: set[str],
+    ) -> None:
         with mock.patch(
             "terok.cli.commands._desktop_entry.shutil.which",
-            side_effect=_which_only({"ptyxis", "xdg-terminal-exec"}),
+            side_effect=_which_only(present),
         ):
             desktop.install_desktop_entry("/usr/local/bin/terok-tui")
         content = (xdg_data_home / "applications" / "terok.desktop").read_text()
