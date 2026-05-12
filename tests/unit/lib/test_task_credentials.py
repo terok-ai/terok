@@ -29,12 +29,15 @@ from terok.lib.domain.task_credentials import (
 # ── Shared fixtures ────────────────────────────────────────────────────
 
 
+_TEST_VAULT_PASSPHRASE = "test-vault-passphrase"  # nosec: B105 — test fixture
+
+
 @pytest.fixture
 def vault_db_path(tmp_path: Path) -> Path:
     """Spin up a real CredentialDB at a tmp path and return the file path."""
     from terok_sandbox import CredentialDB
 
-    db = CredentialDB(tmp_path / "credentials.db")
+    db = CredentialDB(tmp_path / "credentials.db", passphrase=_TEST_VAULT_PASSPHRASE)
     db.close()
     return tmp_path / "credentials.db"
 
@@ -48,11 +51,25 @@ def patched_sandbox_config(tmp_path: Path, vault_db_path: Path):
     import ``make_sandbox_config`` lazily inside the function body, so
     the patch target is the canonical definition site rather than the
     callers' module namespace.
+
+    ``open_credential_db`` is wired to re-open the on-disk file with the
+    fixture's known passphrase, so the helpers' encrypted-DB code path
+    runs end-to-end against a real SQLCipher file.
     """
     from types import SimpleNamespace
 
+    from terok_sandbox import CredentialDB
+
     audit_path = tmp_path / "credential_audit.jsonl"
-    cfg = SimpleNamespace(db_path=vault_db_path, credential_audit_log_path=audit_path)
+
+    def _open_db(*, prompt_on_tty: bool = False) -> CredentialDB:
+        return CredentialDB(vault_db_path, passphrase=_TEST_VAULT_PASSPHRASE)
+
+    cfg = SimpleNamespace(
+        db_path=vault_db_path,
+        credential_audit_log_path=audit_path,
+        open_credential_db=_open_db,
+    )
     with patch("terok.lib.core.config.make_sandbox_config", return_value=cfg):
         yield cfg
 
@@ -75,7 +92,7 @@ class TestRevokeCredentials:
         """Two minted tokens for the same task → two revoked."""
         from terok_sandbox import CredentialDB
 
-        db = CredentialDB(patched_sandbox_config.db_path)
+        db = CredentialDB(patched_sandbox_config.db_path, passphrase=_TEST_VAULT_PASSPHRASE)
         try:
             db.create_token("proj", "task-1", "default", "claude")
             db.create_token("proj", "task-1", "default", "openai")

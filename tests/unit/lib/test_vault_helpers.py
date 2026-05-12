@@ -16,9 +16,9 @@ class TestScopeHasVaultKey:
 
         db = MagicMock()
         db.list_ssh_keys_for_scope.return_value = [MagicMock(id=1)]
-        with (
-            patch("terok_sandbox.CredentialDB", return_value=db),
-            patch("terok.lib.core.config.make_sandbox_config"),
+        with patch(
+            "terok.lib.core.config.make_sandbox_config",
+            return_value=MagicMock(open_credential_db=MagicMock(return_value=db)),
         ):
             assert _scope_has_vault_key("proj") is True
         db.list_ssh_keys_for_scope.assert_called_once_with("proj")
@@ -29,9 +29,9 @@ class TestScopeHasVaultKey:
 
         db = MagicMock()
         db.list_ssh_keys_for_scope.return_value = []
-        with (
-            patch("terok_sandbox.CredentialDB", return_value=db),
-            patch("terok.lib.core.config.make_sandbox_config"),
+        with patch(
+            "terok.lib.core.config.make_sandbox_config",
+            return_value=MagicMock(open_credential_db=MagicMock(return_value=db)),
         ):
             assert _scope_has_vault_key("proj") is False
         db.close.assert_called_once()
@@ -46,9 +46,9 @@ class TestUnassignVaultSshKeys:
         db = MagicMock()
         db.unassign_all_ssh_keys.return_value = 3
         deleted: list[str] = []
-        with (
-            patch("terok_sandbox.CredentialDB", return_value=db),
-            patch("terok.lib.core.config.make_sandbox_config"),
+        with patch(
+            "terok.lib.core.config.make_sandbox_config",
+            return_value=MagicMock(open_credential_db=MagicMock(return_value=db)),
         ):
             _unassign_vault_ssh_keys("proj", deleted)
         db.unassign_all_ssh_keys.assert_called_once_with("proj")
@@ -63,9 +63,9 @@ class TestUnassignVaultSshKeys:
         db = MagicMock()
         db.unassign_all_ssh_keys.return_value = 0
         deleted: list[str] = []
-        with (
-            patch("terok_sandbox.CredentialDB", return_value=db),
-            patch("terok.lib.core.config.make_sandbox_config"),
+        with patch(
+            "terok.lib.core.config.make_sandbox_config",
+            return_value=MagicMock(open_credential_db=MagicMock(return_value=db)),
         ):
             _unassign_vault_ssh_keys("proj", deleted)
         assert deleted == []
@@ -83,9 +83,9 @@ class TestLookupVaultPubLine:
         record.comment = "tk-main:proj"
         db = MagicMock()
         db.load_ssh_keys_for_scope.return_value = [record]
-        with (
-            patch("terok_sandbox.CredentialDB", return_value=db),
-            patch("terok.lib.core.config.make_sandbox_config"),
+        with patch(
+            "terok.lib.core.config.make_sandbox_config",
+            return_value=MagicMock(open_credential_db=MagicMock(return_value=db)),
         ):
             line = _lookup_vault_pub_line("proj")
         assert line is not None
@@ -98,9 +98,9 @@ class TestLookupVaultPubLine:
 
         db = MagicMock()
         db.load_ssh_keys_for_scope.return_value = []
-        with (
-            patch("terok_sandbox.CredentialDB", return_value=db),
-            patch("terok.lib.core.config.make_sandbox_config"),
+        with patch(
+            "terok.lib.core.config.make_sandbox_config",
+            return_value=MagicMock(open_credential_db=MagicMock(return_value=db)),
         ):
             assert _lookup_vault_pub_line("ghost") is None
 
@@ -113,9 +113,9 @@ class TestLookupVaultPubLine:
         record.comment = ""
         db = MagicMock()
         db.load_ssh_keys_for_scope.return_value = [record]
-        with (
-            patch("terok_sandbox.CredentialDB", return_value=db),
-            patch("terok.lib.core.config.make_sandbox_config"),
+        with patch(
+            "terok.lib.core.config.make_sandbox_config",
+            return_value=MagicMock(open_credential_db=MagicMock(return_value=db)),
         ):
             line = _lookup_vault_pub_line("proj")
         assert line is not None

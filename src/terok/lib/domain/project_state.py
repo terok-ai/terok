@@ -27,15 +27,12 @@ def _scope_has_vault_key(scope: str) -> bool:
     care of nudging the operator to unlock; for the SSH-tile readout
     "no keys visible right now" is the truthful answer.
     """
-    from terok_sandbox.credentials.db import NoPassphraseError, WrongPassphraseError
+    from .vault import maybe_vault_db
 
-    from .vault import vault_db
-
-    try:
-        with vault_db() as db:
-            return bool(db.list_ssh_keys_for_scope(scope))
-    except (NoPassphraseError, WrongPassphraseError):
-        return False
+    with maybe_vault_db() as db:
+        if db is None:
+            return False
+        return bool(db.list_ssh_keys_for_scope(scope))
 
 
 if TYPE_CHECKING:

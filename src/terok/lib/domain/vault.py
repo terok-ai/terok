@@ -34,4 +34,25 @@ def vault_db(*, prompt_on_tty: bool = False) -> Iterator[CredentialDB]:
         db.close()
 
 
-__all__ = ["vault_db"]
+@contextmanager
+def maybe_vault_db(*, prompt_on_tty: bool = False) -> Iterator[CredentialDB | None]:
+    """Open the vault DB, yielding ``None`` if the vault is locked.
+
+    Wraps ``vault_db`` for read-only callers that don't need to
+    distinguish "no entries" from "vault locked" at their level —
+    e.g. project-state tiles that render across the full host.  The
+    cross-package exception imports stay confined to this module so
+    ``import-linter``'s "terok_sandbox access restricted to designated
+    modules" contract holds (only ``vault.py`` reaches into
+    ``terok_sandbox``).
+    """
+    from terok_sandbox.credentials.db import NoPassphraseError, WrongPassphraseError
+
+    try:
+        with vault_db(prompt_on_tty=prompt_on_tty) as db:
+            yield db
+    except (NoPassphraseError, WrongPassphraseError):
+        yield None
+
+
+__all__ = ["maybe_vault_db", "vault_db"]
