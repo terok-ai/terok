@@ -2,6 +2,7 @@
 
 REPORTS_DIR ?= reports
 COVERAGE_XML ?= $(REPORTS_DIR)/coverage.xml
+COVERAGE_JSON ?= $(REPORTS_DIR)/coverage.json
 UNIT_JUNIT_XML ?= $(REPORTS_DIR)/unit.junit.xml
 INTEGRATION_HOST_JUNIT_XML ?= $(REPORTS_DIR)/integration-host.junit.xml
 INTEGRATION_NETWORK_JUNIT_XML ?= $(REPORTS_DIR)/integration-network.junit.xml
@@ -29,7 +30,7 @@ test: test-unit
 
 test-unit:
 	mkdir -p $(REPORTS_DIR)
-	poetry run pytest tests/unit/ --cov=terok --cov-report=term-missing --cov-report=xml:$(COVERAGE_XML) --junitxml=$(UNIT_JUNIT_XML) -o junit_family=legacy
+	poetry run pytest tests/unit/ --cov=terok --cov-report=term-missing --cov-report=xml:$(COVERAGE_XML) --cov-report=json:$(COVERAGE_JSON) --junitxml=$(UNIT_JUNIT_XML) -o junit_family=legacy
 
 # Write Ruff's JSON report without failing on findings.
 ruff-report:

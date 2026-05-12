@@ -51,11 +51,13 @@ jobs:
       - name: Run unit tests
         run: make test-unit
 
-      - name: Upload coverage for SonarQube Cloud
+      - name: Upload coverage for SonarQube Cloud and docs treemap
         uses: actions/upload-artifact@v7
         with:
           name: coverage
-          path: reports/coverage.xml
+          path: |
+            reports/coverage.xml
+            reports/coverage.json
           retention-days: 1
 
       - name: Save PR metadata

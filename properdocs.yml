@@ -62,6 +62,7 @@ plugins:
       code_metrics: true
       code_metrics_include_layer_overview: true
       code_metrics_include_graph_coarsening: true
+      code_metrics_coverage_json_path: reports/coverage.json
       code_metrics_src_label: "Source (`src/terok/`)"
       code_metrics_tests_label: "Tests (`tests/`)"
       test_map: true

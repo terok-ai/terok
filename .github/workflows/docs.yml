@@ -45,7 +45,7 @@ jobs:
           key: venv-${{ runner.os }}-py${{ steps.setup-python.outputs.python-version }}-docs-${{ hashFiles('**/pyproject.toml', '**/poetry.lock') }}
 
       - name: Install dependencies
-        run: poetry install --with dev,docs --no-interaction
+        run: poetry install --with dev,docs,test --no-interaction
 
       - name: Install scc (lines of code counter)
         run: |
@@ -54,13 +54,12 @@ jobs:
           echo "6c31f4d0cf3b7a8c5ca910fa4e451949434798f6541ec5dea4b83f4973e13772  scc_Linux_x86_64.tar.gz" | sha256sum -c
           sudo tar xzf scc_Linux_x86_64.tar.gz -C /usr/local/bin scc
 
-      - name: Fetch Codecov coverage treemap
-        run: |
-          mkdir -p docs/assets
-          curl -sfL "https://codecov.io/gh/terok-ai/terok/graphs/tree.svg?token=zfJUmuTAqG" \
-            -o docs/assets/coverage_treemap.svg
-          # Intentionally fatal: if the download fails, rerun the job manually.
-          [ -s docs/assets/coverage_treemap.svg ]
+      - name: Generate coverage data for treemap
+        # Unit tests produce reports/coverage.json, which mkdocs-terok's
+        # code_metrics generator turns into a local treemap SVG. Replaces
+        # the previous curl from codecov.io/.../tree.svg, which intermittently
+        # failed and required a manual workflow rerun.
+        run: make test-unit
 
       - name: Build documentation
         run: poetry run properdocs build --strict
