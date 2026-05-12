@@ -212,7 +212,7 @@ class TaskDetails(Static):
         """Render the cached task into the inner Static at the current width.
 
         Named ``_redraw_content`` (not ``_render``) because Textual's
-        :class:`~textual.widget.Widget` already defines ``_render(self) ->
+        [`Widget`][textual.widget.Widget] already defines ``_render(self) ->
         Visual`` as part of its rendering pipeline; shadowing that method
         crashes the renderer with ``'NoneType' has no attribute
         'render_strips'`` when this Widget gets repainted.

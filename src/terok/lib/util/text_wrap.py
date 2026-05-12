@@ -3,7 +3,7 @@
 
 """Hanging-indent wrapping for prefix-aligned TUI labels.
 
-Wrapping itself is delegated to :func:`textwrap.wrap` (which already breaks
+Wrapping itself is delegated to [`wrap`][textwrap.wrap] (which already breaks
 on hyphens and folds overlong dashless words). This helper exists only to
 stitch together a cell-aware *prefix* (which may contain wide characters
 like emoji that would throw off ``textwrap``'s char-count accounting), the
@@ -20,7 +20,7 @@ from rich.cells import cell_len
 def wrap_with_hanging_indent(prefix: str, body: str, suffix: str, width: int) -> str:
     """Render ``prefix + body + suffix`` with continuation lines hanging-indented.
 
-    *body* wraps with :func:`textwrap.wrap` (so dashes are break points and
+    *body* wraps with [`wrap`][textwrap.wrap] (so dashes are break points and
     overlong segments fold by character). Continuation lines are prepended
     with spaces aligning to the *cell* width of *prefix*, so they sit
     underneath the start of *body* even when *prefix* contains emoji.

@@ -231,7 +231,7 @@ class DeleteProjectResult(TypedDict):
 class ACPEndpoint:
     """One per-task ACP endpoint as visible from the host.
 
-    Constructed by :meth:`Project.acp_endpoints`; consumed by the CLI
+    Constructed by [`acp_endpoints`][terok.lib.domain.project.Project.acp_endpoints]; consumed by the CLI
     (``terok acp list``) and the TUI panel.  Carries enough state to
     render a status row without forcing the listing path to actually
     probe or open the socket.
@@ -247,7 +247,7 @@ class ACPEndpoint:
     """Where the proxy daemon would bind (or has bound) the socket.
 
     The path is computed deterministically from the task id and may not
-    yet exist on disk — :attr:`status` records whether it does.
+    yet exist on disk — [`status`][terok.lib.domain.task.Task.status] records whether it does.
     """
 
     status: ACPEndpointStatus
@@ -628,7 +628,7 @@ class Project:
         return [Task(self._config, m) for m in metas]
 
     def acp_endpoints(self) -> list[ACPEndpoint]:
-        """Return one :class:`ACPEndpoint` per running task.
+        """Return one [`ACPEndpoint`][terok.lib.domain.project.ACPEndpoint] per running task.
 
         Cheap discovery surface — walks running tasks, classifies each
         endpoint as ``active`` (daemon up, socket bound), ``ready``

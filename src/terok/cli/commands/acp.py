@@ -146,7 +146,7 @@ def _check_experimental_ack() -> None:
     here is limited.
 
     Gates on the codebase's standard experimental axis
-    (:func:`is_experimental` — ``--experimental`` flag or
+    ([`is_experimental`][terok.lib.core.config.is_experimental] — ``--experimental`` flag or
     ``experimental: true`` in ``config.yml``); same axis as
     claude-OAuth-proxying, codex-vaulted-OAuth, and friends.
     """
@@ -168,7 +168,7 @@ def _check_experimental_ack() -> None:
 def _cmd_connect(project_id: str, task_id: str) -> None:
     """Bridge the caller's stdio to a task's ACP socket.
 
-    Refuses to run unless :func:`_check_experimental_ack` passes.
+    Refuses to run unless [`_check_experimental_ack`][terok.cli.commands.acp._check_experimental_ack] passes.
     Otherwise spawns the executor's per-container ACP daemon if the
     socket is not already live, waits for it to bind, then runs the
     in-process pump (stdin → AF_UNIX socket, socket → stdout) until
@@ -241,7 +241,7 @@ def _wait_for_socket(
     Polls *daemon* alongside the bind probe so a startup crash surfaces
     immediately with the daemon's exit code instead of stalling the
     full *timeout* and reporting a misleading "did not bind" error.
-    Both failure paths exit via :func:`_fail` so the message reaches
+    Both failure paths exit via [`_fail`][terok.cli.commands.acp._fail] so the message reaches
     stderr (and any ACP client that captures the agent subprocess's
     stderr, like Zed at WARN level), naming *log_path* so the user
     can read the daemon's traceback.
@@ -283,13 +283,13 @@ def _inprocess_pump(sock_path: Path, *, log_path: Path) -> None:
     stdin EOF triggers ``shutdown(SHUT_WR)`` so the daemon can drain
     its final reply; daemon EOF returns from the loop and the
     ``finally`` block closes the socket.  Non-blocking IO with
-    :func:`select` for multiplexing; partial sends/writes are looped
+    [`select`][] for multiplexing; partial sends/writes are looped
     until drained.
 
     A ``ConnectionResetError`` from ``recv`` means the daemon's
     process ended abruptly mid-session — the kernel sends RST when
     there are unread bytes the daemon will never process.  That gets
-    surfaced via :func:`_fail` (stderr-only, exit 1) pointing the
+    surfaced via [`_fail`][terok.cli.commands.acp._fail] (stderr-only, exit 1) pointing the
     user at *log_path* where the daemon's traceback lives, rather
     than letting a bare Python stack from the bridge escape.
     """
@@ -357,7 +357,7 @@ def _forward_socket_to_stdout(sock: socket.socket, stdout_fd: int, log_path: Pat
 
     A ``ConnectionResetError`` from ``recv`` means the daemon process
     died with bytes still in its receive buffer (kernel sends RST,
-    not FIN).  Surface it via :func:`_fail` so the user sees a
+    not FIN).  Surface it via [`_fail`][terok.cli.commands.acp._fail] so the user sees a
     pointer to *log_path* on stderr — never a bare Python traceback.
     """
     try:
