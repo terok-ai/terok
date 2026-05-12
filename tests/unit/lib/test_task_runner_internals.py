@@ -291,11 +291,17 @@ class TestApplyAuthProtectDenies:
     """Verify roster-driven deny for agent OAuth/API endpoints."""
 
     @staticmethod
-    def _route(upstream: str, oauth_refresh: dict | None = None) -> MagicMock:
+    def _route(
+        upstream: str,
+        oauth_refresh: dict | None = None,
+        *,
+        shared_domain: bool = False,
+    ) -> MagicMock:
         """Build a mock VaultRoute with the relevant fields set."""
         r = MagicMock()
         r.upstream = upstream
         r.oauth_refresh = oauth_refresh
+        r.shared_domain = shared_domain
         return r
 
     def _patches(
@@ -361,18 +367,29 @@ class TestApplyAuthProtectDenies:
 
         mock_shield.deny.assert_not_called()
 
-    def test_skips_glab(self, tmp_path: Path) -> None:
-        """glab is excluded — gitlab.com mixes git and API traffic."""
+    def test_skips_shared_domain_routes(self, tmp_path: Path) -> None:
+        """Routes flagged ``shared_domain`` (glab, sonar, …) are skipped.
+
+        The deny is host-level; for upstreams whose apex also serves
+        non-API traffic, blocking the host would overshoot.  The roster
+        carries the classification — see
+        [`VaultRoute.shared_domain`][terok_executor.roster.types.VaultRoute].
+        """
         from terok.lib.orchestration.task_runners import _apply_auth_protect_denies
 
         mock_shield = MagicMock()
-        routes = {"glab": self._route("https://gitlab.com")}
+        routes = {
+            "glab": self._route("https://gitlab.com", shared_domain=True),
+            "sonar": self._route("https://sonarcloud.io", shared_domain=True),
+            "claude": self._route("https://api.anthropic.com"),
+        }
         with contextlib.ExitStack() as stack:
             for p in self._patches(routes=routes, shield_obj=mock_shield):
                 stack.enter_context(p)
             _apply_auth_protect_denies("ctr", tmp_path)
 
-        mock_shield.deny.assert_not_called()
+        called_hosts = {c.args[1] for c in mock_shield.deny.call_args_list}
+        assert called_hosts == {"api.anthropic.com"}
 
     def test_opt_out_via_allow_profile(self, tmp_path: Path) -> None:
         """Hosts in the resolved allow profile set are skipped."""

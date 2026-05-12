@@ -406,18 +406,18 @@ def _auth_protect_hosts() -> dict[str, frozenset[str]]:
     socially-engineered agent from completing the OAuth handshake even
     when the shield is in ``down`` mode (terok-ai/terok#873).
 
-    Excluded from the table:
-
-    - ``glab`` — ``gitlab.com`` carries both API and ``git push`` traffic;
-      separating them at the host level isn't possible.  Read-only
-      credential containment alone covers it.
+    Routes with ``vault.shared_domain: true`` are skipped: their upstream
+    apex also serves docs, dashboards, ``git push`` and similar non-API
+    traffic, so a host-level deny would overshoot.  Credential containment
+    (read-only shadow over the on-disk token) is the actual containment
+    story for those providers.  See the field declaration on
+    [`VaultRoute`][terok_executor.roster.types.VaultRoute] for the rationale.
     """
     from terok_executor import get_roster
 
-    excluded = {"glab"}
     out: dict[str, frozenset[str]] = {}
     for name, route in get_roster().vault_routes.items():
-        if name in excluded:
+        if getattr(route, "shared_domain", False):
             continue
         if hosts := _collect_route_hosts(route):
             out[name] = hosts
