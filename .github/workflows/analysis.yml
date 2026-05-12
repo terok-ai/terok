@@ -16,6 +16,8 @@ jobs:
   # On pull requests they also capture a tiny PR metadata artifact so the
   # privileged workflow_run-based Sonar scan can analyze fork PRs safely.
   unit-tests:
+    # NOTE: display name "Unit tests" is referenced by docs.yml's master-gate
+    # fail-fast poll. Keep them in sync if renaming.
     name: Unit tests
     if: github.repository == 'terok-ai/terok'
     runs-on: ubuntu-latest
