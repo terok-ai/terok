@@ -16,8 +16,6 @@ jobs:
   # On pull requests they also capture a tiny PR metadata artifact so the
   # privileged workflow_run-based Sonar scan can analyze fork PRs safely.
   unit-tests:
-    # NOTE: display name "Unit tests" is referenced by docs.yml's master-gate
-    # fail-fast poll. Keep them in sync if renaming.
     name: Unit tests
     if: github.repository == 'terok-ai/terok'
     runs-on: ubuntu-latest
@@ -153,36 +151,8 @@ jobs:
           path: reports/bandit-report.json
           retention-days: 1
 
-  # Same-repo pushes and pull requests can scan directly here because the run has access
-  # to SONAR_TOKEN. Fork PRs are handled by sonar_pr.yml via workflow_run, using the
-  # artifacts uploaded above, because GitHub does not expose secrets to fork PR runs.
-  sonar:
-    name: SonarQube Cloud
-    if: github.repository == 'terok-ai/terok' && (github.event_name == 'push' || (github.actor != 'dependabot[bot]' && github.event.pull_request.head.repo.full_name == github.repository))
-    needs: [unit-tests, ruff, bandit]
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v6
-        with:
-          fetch-depth: 0
-
-      - uses: actions/download-artifact@v8
-        with:
-          name: coverage
-          path: reports
-
-      - uses: actions/download-artifact@v8
-        with:
-          name: ruff
-          path: reports
-
-      - uses: actions/download-artifact@v8
-        with:
-          name: bandit
-          path: reports
-
-      - name: SonarQube Cloud scan
-        uses: SonarSource/sonarqube-scan-action@59db25f34e16620e48ab4bb9e4a5dce155cb5432 # v8.0.0
-        env:
-          GITHUB_TOKEN: ${{ github.token }}
-          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+  # The SonarQube Cloud scan runs in sonar.yml (same-repo) and sonar_pr.yml
+  # (fork PRs) — both consume the coverage/ruff/bandit artifacts uploaded
+  # above. Splitting Sonar out keeps this workflow free of third-party wait
+  # time, so downstream consumers (docs.yml, sonar.yml) unblock as soon as
+  # the local jobs finish.
