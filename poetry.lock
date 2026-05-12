@@ -1902,22 +1902,23 @@ properdocs = ">=1.6.5"
 
 [[package]]
 name = "mkdocs-terok"
-version = "0.5.7a4"
+version = "0.5.7a5"
 description = "Shared ProperDocs documentation generators for terok projects"
 optional = false
 python-versions = ">=3.12,<4.0"
 groups = ["docs"]
 files = [
-    {file = "mkdocs_terok-0.5.7a4-py3-none-any.whl", hash = "sha256:24d74e20d15e948f5acdcded11a42fc2ab4a7fc437ba5207e5a5c88bc254f690"},
+    {file = "mkdocs_terok-0.5.7a5-py3-none-any.whl", hash = "sha256:71aa681d4b7f032c3660cc7015d86e25b3f1f4ce99020cadc598ec09fe37ac35"},
 ]
 
 [package.dependencies]
 properdocs = ">=1.6.7"
 PyYAML = ">=6.0"
+squarify = ">=0.4"
 
 [package.source]
 type = "url"
-url = "https://github.com/terok-ai/mkdocs-terok/releases/download/v0.5.7a4/mkdocs_terok-0.5.7a4-py3-none-any.whl"
+url = "https://github.com/terok-ai/mkdocs-terok/releases/download/v0.5.7a5/mkdocs_terok-0.5.7a5-py3-none-any.whl"
 
 [[package]]
 name = "mkdocstrings"
@@ -3198,6 +3199,18 @@ files = [
 ]
 
 [[package]]
+name = "squarify"
+version = "0.4.4"
+description = "Pure Python implementation of the squarify treemap layout algorithm"
+optional = false
+python-versions = "*"
+groups = ["docs"]
+files = [
+    {file = "squarify-0.4.4-py3-none-any.whl", hash = "sha256:d7597724e29d48aa14fd2f551060d6b09e1f0a67e4cd3ea329fe03b4c9a56f11"},
+    {file = "squarify-0.4.4.tar.gz", hash = "sha256:b8a110c8dc5f1cd1402ca12d79764a081e90bfc445346cfa166df929753ecb46"},
+]
+
+[[package]]
 name = "stevedore"
 version = "5.7.0"
 description = "Manage dynamic plugins for Python applications"
@@ -4213,4 +4226,4 @@ propcache = ">=0.2.1"
 [metadata]
 lock-version = "2.1"
 python-versions = ">=3.12,<3.15"
-content-hash = "8b171eee001665b1d3d32a1c4160f83aefec01fa681beffdad0a8867f02c0930"
+content-hash = "8327ce771de642886f1d8cc759f96095cef20da77ebab1ddb399c1b2c4051fc7"
