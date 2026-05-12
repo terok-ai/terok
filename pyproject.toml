@@ -91,7 +91,7 @@ mkdocstrings = {extras = ["python"], version = ">=0.24"}
 mkdocs-gen-files = ">=0.5"
 mkdocs-literate-nav = ">=0.6"
 mkdocs-section-index = ">=0.3"
-mkdocs-terok = "^0.5"
+mkdocs-terok = {url = "https://github.com/terok-ai/mkdocs-terok/releases/download/v0.5.7a1/mkdocs_terok-0.5.7a1-py3-none-any.whl"}
 
 
 [tool.poetry.urls]
