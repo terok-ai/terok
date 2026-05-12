@@ -558,4 +558,6 @@ class TestPtyxisGate:
         assert "Terminal=false" in content
         assert "/terok-xdg-terminal-exec.sh /usr/local/bin/terok-tui" in content
         assert "Exec=/bin/sh " in content
-        assert "/terok-xdg-terminal-exec.sh\n" in content  # TryExec line
+        # ``TryExec`` points at the binary, not the shim, so wheel-installed
+        # (non-executable) shims don't cause GNOME to hide the launcher.
+        assert "TryExec=/usr/local/bin/terok-tui\n" in content

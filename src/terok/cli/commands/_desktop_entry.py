@@ -341,9 +341,17 @@ def _render_desktop_file(bin_str: str) -> str:
     # container-tabs UI they want.
     if shutil.which("ptyxis"):
         shim = str(_resource_dir().joinpath(_PTYXIS_SHIM_NAME))
+        # ``TryExec`` points at the binary, not the shim: pipx (and any
+        # PEP 517 wheel installer) ships package data without the
+        # executable bit, and GNOME silently hides any launcher whose
+        # ``TryExec`` target isn't ``+x``.  ``Exec`` invokes the shim
+        # via ``/bin/sh``, so the shim doesn't need to be executable —
+        # and the semantic we want to gate on ("is terok-tui actually
+        # installed?") is best expressed by ``TryExec``-ing the binary
+        # anyway.
         variables = {
             "EXEC": f"/bin/sh {shim} {bin_str}",
-            "TRY_EXEC": shim,
+            "TRY_EXEC": bin_str,
             "TERMINAL": "false",
         }
     else:
