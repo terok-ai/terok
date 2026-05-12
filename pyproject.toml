@@ -180,5 +180,5 @@ show_error_codes = true
 [tool.poetry-dynamic-versioning]
 enable = true
 vcs = "git"
-pattern = "^v(?P<base>\\d+\\.\\d+\\.\\d+)$"
+pattern = "^v(?P<base>\\d+\\.\\d+\\.\\d+)(?:(?P<stage>a)(?P<revision>\\d+))?$"
 style = "pep440"
