@@ -64,7 +64,7 @@ terok-shield = {url = "https://github.com/terok-ai/terok-shield/releases/downloa
 terok-clearance = {url = "https://github.com/terok-ai/terok-clearance/releases/download/v0.6.10/terok_clearance-0.6.10-py3-none-any.whl"}
 
 [tool.poetry.group.dev.dependencies]
-pydevd-pycharm = "261.24374.39"
+pydevd-pycharm = "262.4852.46"
 ruff = ">=0.8"
 markdown-it-py = ">=4.0.0"
 mdit-py-plugins = ">=0.5.0"
@@ -77,7 +77,7 @@ reuse = "^6.2.0"
 bandit = ">=1.7"
 pre-commit = ">=4.0"
 import-linter = ">=2.1"
-mypy = ">=1.13,<2.0"
+mypy = ">=1.13,<3.0"
 
 [tool.poetry.group.test.dependencies]
 pytest = ">=7.0"
