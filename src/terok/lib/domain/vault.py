@@ -6,7 +6,7 @@
 from __future__ import annotations
 
 from collections.abc import Iterator
-from contextlib import contextmanager
+from contextlib import ExitStack, contextmanager
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -48,11 +48,19 @@ def maybe_vault_db(*, prompt_on_tty: bool = False) -> Iterator[CredentialDB | No
     """
     from terok_sandbox.credentials.db import NoPassphraseError, WrongPassphraseError
 
-    try:
-        with vault_db(prompt_on_tty=prompt_on_tty) as db:
-            yield db
-    except (NoPassphraseError, WrongPassphraseError):
-        yield None
+    # Catch exceptions raised on entry only — wrapping the entire
+    # ``with vault_db(): yield db`` in a try/except would also swallow
+    # any locked-vault error that escaped the consumer's block and
+    # cause a second yield, breaking the contextmanager contract.
+    # ``ExitStack`` lets us scope the catch to ``__enter__`` and still
+    # guarantee teardown of the inner context.
+    with ExitStack() as stack:
+        try:
+            db = stack.enter_context(vault_db(prompt_on_tty=prompt_on_tty))
+        except (NoPassphraseError, WrongPassphraseError):
+            yield None
+            return
+        yield db
 
 
 __all__ = ["maybe_vault_db", "vault_db"]
