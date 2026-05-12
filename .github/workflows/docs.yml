@@ -73,42 +73,57 @@ jobs:
           echo "6c31f4d0cf3b7a8c5ca910fa4e451949434798f6541ec5dea4b83f4973e13772  scc_Linux_x86_64.tar.gz" | sha256sum -c
           sudo tar xzf scc_Linux_x86_64.tar.gz -C /usr/local/bin scc
 
-      # On master we strictly require the Tests & Analysis run for *this* commit
-      # to have finished successfully — published docs must agree with published
-      # code. We poll the runs API instead of using workflow_run as the docs
-      # trigger so this build still surfaces as its own PR check elsewhere.
-      - name: Wait for Tests & Analysis on this commit (master)
+      # On master we strictly require the Unit tests job for *this* commit to
+      # have produced its coverage artifact — published docs must agree with
+      # published code. We poll for the artifact itself (not the workflow's
+      # overall completion) so the docs build can proceed as soon as the
+      # artifact appears, without waiting for slow parallel jobs like the
+      # SonarQube Cloud scan to finish. If Unit tests has already completed
+      # without producing an artifact, we fail fast instead of polling out
+      # the full timeout.
+      - name: Wait for coverage artifact on this commit (master)
         if: github.ref == 'refs/heads/master'
         uses: actions/github-script@v7
         with:
           script: |
             const deadline = Date.now() + 20 * 60 * 1000;
             const sleep = ms => new Promise(r => setTimeout(r, ms));
+            const { owner, repo } = context.repo;
+            const sha = context.sha;
             while (Date.now() < deadline) {
-              const { data } = await github.rest.actions.listWorkflowRuns({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
+              const { data: runs } = await github.rest.actions.listWorkflowRuns({
+                owner, repo,
                 workflow_id: 'analysis.yml',
-                head_sha: context.sha,
+                head_sha: sha,
                 per_page: 5,
               });
-              const run = data.workflow_runs[0];
-              if (run?.status === 'completed') {
-                if (run.conclusion === 'success') {
-                  core.info(`Tests & Analysis succeeded for ${context.sha}`);
-                  return;
-                }
+              const run = runs.workflow_runs[0];
+              if (!run) {
+                core.info(`Tests & Analysis for ${sha}: not yet started — waiting`);
+                await sleep(20_000);
+                continue;
+              }
+              const { data: arts } = await github.rest.actions.listWorkflowRunArtifacts({
+                owner, repo, run_id: run.id,
+              });
+              if (arts.artifacts.some(a => a.name === 'coverage' && !a.expired)) {
+                core.info(`Coverage artifact ready for ${sha}`);
+                return;
+              }
+              const { data: jobs } = await github.rest.actions.listJobsForWorkflowRun({
+                owner, repo, run_id: run.id,
+              });
+              const unitTests = jobs.jobs.find(j => j.name === 'Unit tests');
+              if (unitTests?.status === 'completed') {
                 core.setFailed(
-                  `Tests & Analysis ${run.conclusion} for ${context.sha} — refusing to publish docs with a mismatched treemap`
+                  `Unit tests ${unitTests.conclusion} for ${sha} and no coverage artifact — refusing to publish docs with a mismatched treemap`
                 );
                 return;
               }
-              core.info(
-                `Tests & Analysis for ${context.sha}: ${run?.status ?? 'not yet started'} — waiting`
-              );
+              core.info(`Unit tests for ${sha}: ${unitTests?.status ?? 'not yet visible'} — waiting`);
               await sleep(20_000);
             }
-            core.setFailed('Timed out after 20m waiting for Tests & Analysis');
+            core.setFailed('Timed out after 20m waiting for coverage artifact');
 
       - name: Coverage artifact (master — same SHA, required)
         if: github.ref == 'refs/heads/master'
