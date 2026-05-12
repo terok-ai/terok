@@ -211,7 +211,9 @@ def make_ssh_manager(config: ProjectConfig) -> SSHManager:
     Use it as a context manager (``with make_ssh_manager(cfg) as m: ...``);
     the DB connection closes on exit.
     """
-    return SSHManager.open(scope=config.id, db_path=make_sandbox_config().db_path)
+    return SSHManager.open_for_config(
+        scope=config.id, cfg=make_sandbox_config(), prompt_on_tty=True
+    )
 
 
 # ---------------------------------------------------------------------------

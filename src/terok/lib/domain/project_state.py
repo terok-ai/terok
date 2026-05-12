@@ -19,11 +19,23 @@ from ..core.task_state import container_name as _container_name
 
 
 def _scope_has_vault_key(scope: str) -> bool:
-    """Return ``True`` iff the vault has at least one SSH key assigned to *scope*."""
+    """Return ``True`` iff the vault has at least one SSH key assigned to *scope*.
+
+    A locked vault (no resolvable passphrase) reports ``False`` rather
+    than raising — the project overview can still render every other
+    tile.  The dedicated "vault locked" surface (issue terok#877) takes
+    care of nudging the operator to unlock; for the SSH-tile readout
+    "no keys visible right now" is the truthful answer.
+    """
+    from terok_sandbox.credentials.db import NoPassphraseError, WrongPassphraseError
+
     from .vault import vault_db
 
-    with vault_db() as db:
-        return bool(db.list_ssh_keys_for_scope(scope))
+    try:
+        with vault_db() as db:
+            return bool(db.list_ssh_keys_for_scope(scope))
+    except (NoPassphraseError, WrongPassphraseError):
+        return False
 
 
 if TYPE_CHECKING:

@@ -1979,19 +1979,23 @@ class ShieldSetupScreen(screen.ModalScreen[str | None]):
 
 
 def _format_credentials_typed(status: VaultStatus) -> str:
-    """Format stored credentials as ``name (type), ...`` for status display."""
-    try:
-        from terok_sandbox import CredentialDB
+    """Format stored credentials as ``name (type), ...`` for status display.
 
-        db = CredentialDB(status.db_path)
-        try:
+    Routes through ``vault_db`` so the four-tier passphrase resolution
+    chain runs; a locked vault (or any other open failure) degrades to
+    the bare ``status.credentials_stored`` names — the operator still
+    sees *which* credentials exist, just not their type, until the
+    vault is unlocked.
+    """
+    try:
+        from ..lib.domain.vault import vault_db
+
+        with vault_db() as db:
             parts = []
             for name in status.credentials_stored:
                 cred = db.load_credential("default", name)
                 ctype = cred.get("type", "unknown") if cred else "unknown"
                 parts.append(f"{name} ({ctype})")
-        finally:
-            db.close()
         return ", ".join(parts)
     except Exception:  # noqa: BLE001
         return ", ".join(status.credentials_stored)
