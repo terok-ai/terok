@@ -72,6 +72,35 @@ def _mock_infrastructure() -> Iterator[None]:
 
 
 @pytest.fixture(autouse=True)
+def _stub_credential_db(tmp_path_factory: pytest.TempPathFactory) -> Iterator[None]:
+    """Stub ``SandboxConfig.open_credential_db`` so tests never hit the resolution chain.
+
+    After at-rest encryption (terok-sandbox#268), opening the
+    credential DB requires a passphrase that resolves through the
+    chain (session-file → keyring → config → prompt).  Unit-test
+    runners have none of those, so every ``vault_db()`` /
+    ``maybe_vault_db()`` consumer would raise ``NoPassphraseError``
+    in CI.  Provision a real per-session ``CredentialDB`` backed by
+    a SQLCipher file with a known test passphrase — tests that mock
+    deeper (``cfg.open_credential_db.return_value = MagicMock()``)
+    override this stub.
+    """
+    from terok_sandbox import CredentialDB
+
+    db_path = tmp_path_factory.mktemp("unit-vault") / "credentials.db"
+    test_passphrase = "unit-test-passphrase"  # nosec: B105 — fixture, not a real secret
+
+    def _open(*, prompt_on_tty: bool = False) -> CredentialDB:
+        return CredentialDB(db_path, passphrase=test_passphrase)
+
+    with patch(
+        "terok_sandbox.config.SandboxConfig.open_credential_db",
+        new=lambda self, *, prompt_on_tty=False: _open(prompt_on_tty=prompt_on_tty),
+    ):
+        yield
+
+
+@pytest.fixture(autouse=True)
 def mock_runtime() -> Iterator[MagicMock]:
     """Install a fresh [`MagicMock`][unittest.mock.MagicMock] as the process-wide ``ContainerRuntime``.
 

@@ -413,10 +413,25 @@ def _archive_project(project_id: str) -> str | None:
 
 
 def _unassign_vault_ssh_keys(scope: str, deleted: list[str]) -> None:
-    """Drop every SSH-key assignment for *scope*; record the count in *deleted*."""
-    from .vault import vault_db
+    """Drop every SSH-key assignment for *scope*; record the count in *deleted*.
 
-    with vault_db() as db:
+    A locked vault (no resolvable passphrase) skips the unassignment
+    and records a one-liner so the operator knows residual key
+    assignments are still in the DB — they can be cleaned up after a
+    ``terok-sandbox vault unlock``.  Blocking project deletion behind
+    a locked vault would be worse: the on-disk project state would
+    stay intact, the operator may not even know which passphrase the
+    DB was encrypted with, and the project they're trying to delete
+    can include the very SSH key they would have needed.
+    """
+    from .vault import maybe_vault_db
+
+    with maybe_vault_db() as db:
+        if db is None:
+            deleted.append(
+                f"vault locked — SSH key assignments for scope {scope!r} remain in the encrypted DB"
+            )
+            return
         count = db.unassign_all_ssh_keys(scope)
     if count:
         deleted.append(f"{count} SSH key assignment(s) for project (scope) {scope!r}")
