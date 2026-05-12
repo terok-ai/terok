@@ -32,7 +32,12 @@ permissions:
 jobs:
   sonar:
     name: SonarQube Cloud
-    if: github.repository == 'terok-ai/terok' && (github.event_name == 'push' || (github.actor != 'dependabot[bot]' && github.event.pull_request.head.repo.full_name == github.repository))
+    if: >-
+      github.repository == 'terok-ai/terok' &&
+      (github.event_name == 'push'
+       || github.event_name == 'workflow_dispatch'
+       || (github.actor != 'dependabot[bot]'
+           && github.event.pull_request.head.repo.full_name == github.repository))
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
