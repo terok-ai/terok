@@ -23,6 +23,7 @@ _notify() {
             'Terok launcher' "$msg" 2>/dev/null || true
     fi
     printf 'terok-ptyxis-shim: %s\n' "$msg" >&2
+    return 0
 }
 
 if command -v ptyxis >/dev/null 2>&1; then
