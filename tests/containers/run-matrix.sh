@@ -220,7 +220,12 @@ run_tests() {
 
                 echo \"--- python version ---\"
                 python --version
-                poetry install --with test --no-interaction
+                # ``stories`` is an optional group — pulls python-dbusmock
+                # (and its dbus-python transitive) so the cross-package
+                # story tests run.  GitHub-hosted CI skips this group
+                # because dbus-python has no wheel and needs system
+                # headers we install in the matrix Containerfiles only.
+                poetry install --with test --with stories --no-interaction
                 echo \"--- deps installed ---\"
 
                 # ── Phase 1: tests without hooks ──

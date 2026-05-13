@@ -84,6 +84,23 @@ pytest = ">=7.0"
 pytest-asyncio = ">=0.24"
 pytest-cov = ">=4.0"
 
+# Optional group — only the matrix runner pulls this in.  Adding
+# python-dbusmock here (rather than to "test") keeps CI's default
+# ``poetry install`` clean: dbus-python (the transitive of
+# python-dbusmock) has no wheel and needs system-level libdbus-1-dev
+# headers to compile, which the GitHub-hosted Ubuntu runner doesn't
+# ship.  The matrix Containerfiles install those deps and the runner
+# script invokes ``poetry install --with test --with stories`` to
+# pull this group.
+[tool.poetry.group.stories]
+optional = true
+
+[tool.poetry.group.stories.dependencies]
+# Powers the mock org.freedesktop.Notifications daemon used by
+# tests/integration/stories/test_verdict_loop.py.  Same version
+# constraint as terok-clearance.
+python-dbusmock = ">=0.32"
+
 [tool.poetry.group.docs.dependencies]
 properdocs = ">=1.6.7"
 mkdocs-material = ">=9.0"
@@ -112,6 +129,7 @@ markers = [
   "needs_internet: requires outbound network connectivity",
   "needs_hooks: requires OCI global hooks installed via terok shield install-hooks",
   "needs_vault: exercises real vault (DB + token-broker daemon)",
+  "needs_dbus: requires a private D-Bus session bus (provided via python-dbusmock)",
 ]
 asyncio_mode = "auto"
 

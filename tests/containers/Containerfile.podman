@@ -9,6 +9,7 @@ FROM quay.io/podman/stable:latest
 RUN dnf install -y \
     nftables python3 python3-pip \
     git curl bind-utils openssh-clients \
+    dbus-daemon gcc python3-devel dbus-devel glib2-devel pkgconf meson \
     && dnf clean all
 
 # Disable per-container kernel keyring — prevents keyring leak / EDQUOT.

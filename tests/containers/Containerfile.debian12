@@ -8,6 +8,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     podman slirp4netns nftables uidmap fuse-overlayfs crun \
     python3 python3-venv \
     git curl ca-certificates dnsutils openssh-client \
+    dbus gcc python3-dev libdbus-1-dev libglib2.0-dev pkg-config meson \
     && rm -rf /var/lib/apt/lists/*
 
 # Debian 12 ships Python 3.11 — use uv to get 3.12+
