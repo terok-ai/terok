@@ -21,6 +21,22 @@ from .helpers import assert_blocked, assert_reachable, inspect_container_json
 pytestmark = pytest.mark.needs_podman
 
 
+def _nft_set(rules: str, name: str) -> str:
+    """Return the body of the ``set <name> { ... }`` block from an ``nft list`` dump.
+
+    Useful for assertions that need to know *which* set an IP lives in
+    (e.g. ``allow_v4`` vs ``deny_v4``) rather than just whether the IP
+    appears anywhere in the rule text.  Returns an empty string when
+    the named set isn't found.
+    """
+    head = f"set {name} "
+    if head not in rules:
+        return ""
+    _, _, after = rules.partition(head)
+    body, _, _ = after.partition("set ")
+    return body
+
+
 # ── TestShieldEndToEnd ───────────────────────────────────
 
 
@@ -46,16 +62,24 @@ class TestShieldEndToEnd:
         assert "terok_shield" in output
 
     def test_allow_then_deny(self, shielded_container: str, real_shield: Shield) -> None:
-        """shield.allow adds an IP; shield.deny removes it."""
+        """``shield.allow`` puts an IP into ``allow_v4``; ``shield.deny`` moves it to ``deny_v4``.
+
+        Per terok-shield PR #230 the deny.list is enforced as an explicit
+        nftables set (``deny_v4`` / ``deny_v6``) rather than silently
+        dropping the IP from ``allow_v4`` — the IP is still present in
+        the ruleset dump, just in a different set so packets get
+        actively rejected with a logged reason.
+        """
         allowed = real_shield.allow(shielded_container, TEST_IP_RFC5737)
         assert TEST_IP_RFC5737 in allowed
         rules_after_allow = real_shield.rules(shielded_container)
-        assert TEST_IP_RFC5737 in rules_after_allow
+        assert TEST_IP_RFC5737 in _nft_set(rules_after_allow, "allow_v4")
 
         denied = real_shield.deny(shielded_container, TEST_IP_RFC5737)
         assert TEST_IP_RFC5737 in denied
         rules_after_deny = real_shield.rules(shielded_container)
-        assert TEST_IP_RFC5737 not in rules_after_deny
+        assert TEST_IP_RFC5737 not in _nft_set(rules_after_deny, "allow_v4")
+        assert TEST_IP_RFC5737 in _nft_set(rules_after_deny, "deny_v4")
 
 
 # ── TestShieldEgress ──────────────────────────────────────
