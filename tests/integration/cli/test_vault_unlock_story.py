@@ -102,7 +102,11 @@ class TestVaultUnlockStory:
             f"expected exit 2 from locked-vault dispatch, got {locked.returncode}\n"
             f"stdout:\n{locked.stdout}\nstderr:\n{locked.stderr}"
         )
-        assert "no SQLCipher passphrase" in locked.stderr
+        # The diagnostic line owned by sandbox can be reworded freely (it
+        # was reworded once already in sandbox#278); the contract we lock
+        # in here is operator-observable: stderr names a passphrase
+        # problem and the actionable terok-side hint.
+        assert "passphrase" in locked.stderr
         assert "terok vault unlock" in locked.stderr
 
         # --- Act 2: drop the right passphrase into the session-unlock file
@@ -126,9 +130,9 @@ class TestVaultUnlockStory:
             f"expected derive to succeed after unlock, got {unlocked.returncode}\n"
             f"stdout:\n{unlocked.stdout}\nstderr:\n{unlocked.stderr}"
         )
-        # The vault-locked surfaces from Act 1 must not reappear once the
-        # session-file tier resolves cleanly.
-        assert "no SQLCipher passphrase" not in unlocked.stderr
+        # The dispatch-loop hint owned by terok must stay silent once the
+        # session-file tier resolves cleanly — absence is the contract,
+        # not the absence of any specific sandbox-side wording.
         assert "terok vault unlock" not in unlocked.stderr
         # The derived project lives where the CLI says it should.
         assert terok_env.project_root("gamma").is_dir()
