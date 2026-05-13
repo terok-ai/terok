@@ -505,11 +505,11 @@ class TestShareSshKeyAssignments:
         def _cm():
             yield db
 
-        return unittest.mock.patch("terok.lib.domain.facade.vault_db", _cm)
+        return unittest.mock.patch("terok.lib.domain.project.vault_db", _cm)
 
     def test_delegates_to_db_assign(self) -> None:
         """Every assignment on the source scope becomes an assignment on the new scope."""
-        from terok.lib.domain.facade import _share_ssh_key_assignments
+        from terok.lib.domain.project import _share_ssh_key_assignments
 
         row_a = unittest.mock.MagicMock(id=11)
         row_b = unittest.mock.MagicMock(id=22)
@@ -525,7 +525,7 @@ class TestShareSshKeyAssignments:
 
     def test_missing_source_entry_is_noop(self) -> None:
         """No assignments on source — derived project is left unregistered."""
-        from terok.lib.domain.facade import _share_ssh_key_assignments
+        from terok.lib.domain.project import _share_ssh_key_assignments
 
         db = unittest.mock.MagicMock()
         db.list_ssh_keys_for_scope.return_value = []

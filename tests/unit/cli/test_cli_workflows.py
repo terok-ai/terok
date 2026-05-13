@@ -199,7 +199,7 @@ class TestCliSshInit:
 class TestSshPause:
     """Tests for the SSH key registration pause helper."""
 
-    @unittest.mock.patch("terok.lib.domain.facade.load_project")
+    @unittest.mock.patch("terok.lib.domain.ssh.load_project")
     @unittest.mock.patch("builtins.input", return_value="")
     def test_pauses_for_ssh_upstream(self, mock_input, mock_load) -> None:
         from terok.lib.domain.facade import maybe_pause_for_ssh_key_registration
@@ -210,7 +210,7 @@ class TestSshPause:
             maybe_pause_for_ssh_key_registration("sshproj")
             mock_input.assert_called_once_with("Press Enter once the key is registered... ")
 
-    @unittest.mock.patch("terok.lib.domain.facade.load_project")
+    @unittest.mock.patch("terok.lib.domain.ssh.load_project")
     @unittest.mock.patch("builtins.input", return_value="")
     def test_no_pause_for_https_upstream(self, mock_input, mock_load) -> None:
         from terok.lib.domain.facade import maybe_pause_for_ssh_key_registration

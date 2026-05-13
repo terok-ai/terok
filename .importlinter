@@ -55,6 +55,7 @@ allowed_importers =
     terok.lib.domain.image_cleanup
     terok.lib.domain.panic
     terok.lib.domain.project
+    terok.lib.domain.ssh
     terok.lib.domain.task_credentials
     terok.lib.domain.vault
     terok.lib.util.logging_utils
@@ -88,6 +89,7 @@ allowed_importers =
     terok.lib.core.config
     terok.lib.core.images
     terok.lib.core.yaml_schema
+    terok.lib.domain.auth
     terok.lib.domain.facade
     terok.lib.domain.project
     terok.lib.domain.storage

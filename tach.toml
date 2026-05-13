@@ -108,16 +108,36 @@ path = "terok.lib.domain.facade"
 layer = "domain"
 depends_on = [
     "terok.lib.orchestration.image",
-    "terok.lib.orchestration.environment",
+    "terok.lib.domain.auth",
     "terok.lib.domain.image_cleanup",
     "terok.lib.domain.project_state",
+    "terok.lib.domain.ssh",
     "terok.lib.domain.task_logs",
     "terok.lib.domain.vault",
     "terok.lib.orchestration.task_runners",
     "terok.lib.orchestration.tasks",
-    "terok.lib.core.projects",
     "terok.lib.domain.project",
     "terok.lib.domain.task",
+]
+
+# SSH provisioning workflow — mint, bind, render, pause for deploy-key registration.
+[[modules]]
+path = "terok.lib.domain.ssh"
+layer = "domain"
+depends_on = [
+    "terok.lib.core.projects",
+    "terok.lib.domain.project",
+    "terok.lib.domain.vault",
+]
+
+# Host-wide and project-scoped auth flow.
+[[modules]]
+path = "terok.lib.domain.auth"
+layer = "domain"
+depends_on = [
+    "terok.lib.core.config",
+    "terok.lib.core.images",
+    "terok.lib.orchestration.image",
 ]
 
 # Public library API — single stable import boundary for presentation layers.
@@ -173,6 +193,7 @@ depends_on = [
     "terok.lib.orchestration.task_runners",
     "terok.lib.orchestration.tasks",
     "terok.lib.core.config",
+    "terok.lib.core.images",
     "terok.lib.core.project_model",
     "terok.lib.core.projects",
     "terok.lib.domain.task",
@@ -875,8 +896,35 @@ expose = ["maybe_vault_db", "vault_db"]
 from = ["terok.lib.domain.vault"]
 
 [[interfaces]]
-expose = ["Project", "AgentManager", "DeleteProjectResult", "delete_project", "find_projects_sharing_gate", "validate_gate_upstream_match", "make_git_gate", "make_ssh_manager"]
+expose = [
+    "Project",
+    "AgentManager",
+    "DeleteProjectResult",
+    "delete_project",
+    "derive_project",
+    "find_projects_sharing_gate",
+    "get_project",
+    "list_projects",
+    "make_git_gate",
+    "make_ssh_manager",
+    "project_image_exists",
+    "validate_gate_upstream_match",
+]
 from = ["terok.lib.domain.project"]
+
+[[interfaces]]
+expose = [
+    "maybe_pause_for_ssh_key_registration",
+    "project_needs_key_registration",
+    "provision_ssh_key",
+    "register_ssh_key",
+    "summarize_ssh_init",
+]
+from = ["terok.lib.domain.ssh"]
+
+[[interfaces]]
+expose = ["authenticate"]
+from = ["terok.lib.domain.auth"]
 
 [[interfaces]]
 expose = ["Task"]

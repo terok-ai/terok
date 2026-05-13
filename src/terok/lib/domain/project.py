@@ -18,7 +18,7 @@ project-scoped operations:
 
 The object graph follows DDD conventions::
 
-    facade.get_project("myproj")  →  Project (Aggregate Root)
+    get_project("myproj")         →  Project (Aggregate Root)
         .config                   →  ProjectConfig (Value Object)
         .gate                     →  GitGate (Repository + Gateway)
         .ssh                      →  SSHManager (Service)
@@ -35,7 +35,7 @@ handle the full teardown of a project including archiving, task cleanup,
 and safe removal of managed directories.
 
 See Also:
-    [`terok.lib.domain.facade`][terok.lib.domain.facade] — factory functions that return ``Project``
+    [`get_project`][terok.lib.domain.project.get_project] — factory that returns a rich ``Project``
     [`terok.lib.domain.task`][terok.lib.domain.task] — the ``Task`` entity contained by ``Project``
     [`terok.lib.core.project_model`][terok.lib.core.project_model] — the ``ProjectConfig`` value object
 """
@@ -68,11 +68,17 @@ from ..core.config import (
     user_projects_dir,
     vault_dir,
 )
+from ..core.images import project_cli_image
 from ..core.paths import acp_bound_path, acp_socket_path, core_state_dir
 from ..core.project_model import ProjectConfig
-from ..core.projects import list_presets, load_project
+from ..core.projects import (
+    derive_project as _derive_project,
+    list_presets,
+    list_projects as _list_projects,
+    load_project,
+)
 from ..orchestration.agent_config import resolve_agent_config
-from ..orchestration.image import build_images, generate_dockerfiles
+from ..orchestration.image import build_images, generate_dockerfiles, image_exists
 from ..orchestration.task_runners import HeadlessRunRequest, task_run_headless
 from ..orchestration.tasks import (
     TaskMeta,
@@ -86,6 +92,7 @@ from ..orchestration.tasks import (
 from ..util.fs import archive_timestamp, create_archive_file
 from .project_state import get_project_state, is_task_image_old
 from .task import Task
+from .vault import vault_db
 
 if TYPE_CHECKING:
     from terok_executor import AgentProvider
@@ -214,6 +221,42 @@ def make_ssh_manager(config: ProjectConfig) -> SSHManager:
     return SSHManager.open_for_config(
         scope=config.id, cfg=make_sandbox_config(), prompt_on_tty=True
     )
+
+
+# ---------------------------------------------------------------------------
+# Project factory functions — load a ProjectConfig and wrap it in a Project
+# aggregate.  These are the public entry points for code that operates on
+# rich Project objects rather than raw ProjectConfig value objects.
+# ---------------------------------------------------------------------------
+
+
+def get_project(project_id: str) -> Project:
+    """Load a project by ID and return a rich [`Project`][terok.lib.domain.project.Project] aggregate."""
+    return Project(load_project(project_id))
+
+
+def project_image_exists(project_id: str) -> bool:
+    """Return ``True`` when the project's L2 CLI image is present locally."""
+    return image_exists(project_cli_image(project_id))
+
+
+def list_projects() -> list[Project]:
+    """Return all known projects as rich [`Project`][terok.lib.domain.project.Project] aggregates."""
+    return [Project(cfg) for cfg in _list_projects()]
+
+
+def derive_project(source_id: str, new_id: str) -> Project:
+    """Copy *source_id*'s gate mirror and vault SSH assignments under *new_id*."""
+    _derive_project(source_id, new_id)
+    _share_ssh_key_assignments(source_id, new_id)
+    return Project(load_project(new_id))
+
+
+def _share_ssh_key_assignments(source_id: str, new_id: str) -> None:
+    """Copy every SSH key assignment from *source_id* to *new_id*."""
+    with vault_db() as db:
+        for row in db.list_ssh_keys_for_scope(source_id):
+            db.assign_ssh_key(new_id, row.id)
 
 
 # ---------------------------------------------------------------------------
@@ -584,8 +627,8 @@ class Project:
     efficiency; ``cached_property`` is not available because it requires
     ``__dict__``.
 
-    Obtain via [`get_project`][terok.lib.domain.facade.get_project] or
-    [`list_projects`][terok.lib.domain.facade.list_projects].
+    Obtain via [`get_project`][terok.lib.domain.project.get_project] or
+    [`list_projects`][terok.lib.domain.project.list_projects].
     """
 
     __slots__ = ("_config", "_gate", "_ssh", "_agents")
