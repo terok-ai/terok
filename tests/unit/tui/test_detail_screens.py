@@ -1287,8 +1287,17 @@ def make_vault_status(
     running: bool = True,
     routes_configured: int = 3,
     credentials_stored: tuple[str, ...] = ("claude", "gh"),
+    ssh_keys_stored: int = 0,
+    passphrase_source: str | None = "keyring",
+    locked: bool = False,
 ) -> mock.Mock:
-    """Build a vault status mock with common defaults."""
+    """Build a vault status mock with common defaults.
+
+    The post-#278 fields (``ssh_keys_stored``, ``passphrase_source``,
+    ``locked``) are set explicitly so ``mock.Mock`` truthiness doesn't
+    accidentally trip the locked branch in
+    [`render_vault_status`][terok.tui.screens.render_vault_status].
+    """
     status = mock.Mock()
     status.mode = mode
     status.running = running
@@ -1297,6 +1306,9 @@ def make_vault_status(
     status.routes_path = MOCK_VAULT_ROUTES
     status.routes_configured = routes_configured
     status.credentials_stored = credentials_stored
+    status.ssh_keys_stored = ssh_keys_stored
+    status.passphrase_source = passphrase_source
+    status.locked = locked
     return status
 
 
@@ -1399,6 +1411,21 @@ class TestRenderVaultStatus:
         status = make_vault_status(credentials_stored=())
         result = screens.render_vault_status(status)
         assert "none stored" in str(result)
+
+    def test_render_vault_status_shows_passphrase_source(self) -> None:
+        """Resolved tier surfaces as ``Passphrase: resolved via <source>``."""
+        screens, _ = import_screens()
+        status = make_vault_status(passphrase_source="systemd-creds", ssh_keys_stored=3)
+        text_str = str(screens.render_vault_status(status))
+        assert "resolved via systemd-creds" in text_str
+        assert "SSH keys:    3" in text_str
+
+    def test_render_vault_status_announces_locked(self) -> None:
+        """Locked vault prints an actionable label instead of an empty source."""
+        screens, _ = import_screens()
+        status = make_vault_status(locked=True, passphrase_source=None)
+        text_str = str(screens.render_vault_status(status))
+        assert "vault locked" in text_str
 
 
 class TestVaultScreenRefresh:

@@ -287,6 +287,15 @@ def build_textual_stubs() -> dict[str, types.ModuleType]:
 
     binding_mod.Binding = Binding
 
+    css_mod = types.ModuleType("textual.css")
+    css_query_mod = types.ModuleType("textual.css.query")
+
+    class NoMatches(Exception):
+        """Stub of ``textual.css.query.NoMatches``."""
+
+    css_query_mod.NoMatches = NoMatches
+    css_mod.query = css_query_mod
+
     textual.events = events_mod
     textual.screen = screen_mod
 
@@ -301,6 +310,8 @@ def build_textual_stubs() -> dict[str, types.ModuleType]:
         "textual.message": message_mod,
         "textual.worker": worker_mod,
         "textual.binding": binding_mod,
+        "textual.css": css_mod,
+        "textual.css.query": css_query_mod,
     }
 
 

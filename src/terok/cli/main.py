@@ -13,6 +13,8 @@ argcomplete integration, and top-level dispatch loop.
 import argparse
 import sys
 
+from terok_sandbox.credentials.encryption import NoPassphraseError as _NoPassphraseError
+
 from ..lib.core.config import set_experimental
 from ..lib.core.version import format_version_string, get_version_info
 from .commands import (
@@ -234,9 +236,20 @@ def main(prog: str = "terok") -> None:
         os.execlp("terok-tui", "terok-tui", *sys.argv[sys.argv.index("tui") + 1 :])
         return  # type: ignore[unreachable]  # in tests os.execlp is mocked
 
-    for dispatch in _DISPATCHERS:
-        if dispatch(args):
-            return
+    try:
+        for dispatch in _DISPATCHERS:
+            if dispatch(args):
+                return
+    except _NoPassphraseError as exc:
+        # sandbox#278 stripped CLI-hint text from the library raise sites so
+        # they stay diagnostic-only.  We're the operator-facing surface, so
+        # the actionable hint lives here.
+        print(
+            f"error: {exc}\n"
+            "hint:  run `terok vault unlock` to provision the vault passphrase for this session.",
+            file=sys.stderr,
+        )
+        sys.exit(2)
 
     parser.error("Unknown command")
 
