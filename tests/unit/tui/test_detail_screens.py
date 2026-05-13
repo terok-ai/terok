@@ -1290,12 +1290,13 @@ def make_vault_status(
     ssh_keys_stored: int = 0,
     passphrase_source: str | None = "keyring",
     locked: bool = False,
+    plaintext_passphrase_path: object | None = None,
 ) -> mock.Mock:
     """Build a vault status mock with common defaults.
 
-    The post-#278 fields (``ssh_keys_stored``, ``passphrase_source``,
-    ``locked``) are set explicitly so ``mock.Mock`` truthiness doesn't
-    accidentally trip the locked branch in
+    The post-#278 / #282 fields are set explicitly so ``mock.Mock``
+    truthiness doesn't accidentally trip the locked branch or the
+    plaintext-warning branch in
     [`render_vault_status`][terok.tui.screens.render_vault_status].
     """
     status = mock.Mock()
@@ -1309,6 +1310,7 @@ def make_vault_status(
     status.ssh_keys_stored = ssh_keys_stored
     status.passphrase_source = passphrase_source
     status.locked = locked
+    status.plaintext_passphrase_path = plaintext_passphrase_path
     return status
 
 
@@ -1426,6 +1428,26 @@ class TestRenderVaultStatus:
         status = make_vault_status(locked=True, passphrase_source=None)
         text_str = str(screens.render_vault_status(status))
         assert "vault locked" in text_str
+
+    def test_render_vault_status_surfaces_plaintext_warning(self) -> None:
+        """``plaintext_passphrase_path`` set → red WARNING line names the file (sandbox#282)."""
+        from pathlib import Path
+
+        screens, _ = import_screens()
+        config_path = Path("/etc/terok/config.yml")
+        status = make_vault_status(plaintext_passphrase_path=config_path)
+        text_str = str(screens.render_vault_status(status))
+        assert "WARNING" in text_str
+        assert "plaintext" in text_str
+        assert str(config_path) in text_str
+
+    def test_render_vault_status_no_plaintext_warning_when_unset(self) -> None:
+        """Default-None case keeps the render quiet — no WARNING line at all."""
+        screens, _ = import_screens()
+        status = make_vault_status(plaintext_passphrase_path=None)
+        text_str = str(screens.render_vault_status(status))
+        assert "WARNING" not in text_str
+        assert "plaintext" not in text_str
 
 
 class TestVaultUnlockModal:
@@ -1613,6 +1635,23 @@ class TestVaultStatusPill:
         status = make_vault_status(passphrase_source="keyring")
         app_class._render_status_pill(instance, status)
         bar.set_message.assert_called_once_with("Vault: unlocked (keyring)")
+
+    def test_render_pill_unlocked_appends_plaintext_marker(self) -> None:
+        """sandbox#282: pill flags plaintext-on-disk even when another tier unlocked."""
+        from pathlib import Path
+
+        _, app_class = import_app()
+        instance = mock.Mock(spec=app_class)
+        bar = mock.Mock()
+        instance.query_one = mock.Mock(return_value=bar)
+        status = make_vault_status(
+            passphrase_source="systemd-creds",
+            plaintext_passphrase_path=Path("/etc/terok/config.yml"),
+        )
+        app_class._render_status_pill(instance, status)
+        message = bar.set_message.call_args[0][0]
+        assert "systemd-creds" in message
+        assert "plaintext" in message
 
     def test_render_pill_unknown_source_clears(self) -> None:
         """Unlocked but no resolved tier means the pill goes blank."""

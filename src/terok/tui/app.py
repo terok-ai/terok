@@ -1580,10 +1580,16 @@ if _HAS_TEXTUAL:
             if status is None:
                 bar.set_message("")
                 return
+            plaintext = getattr(status, "plaintext_passphrase_path", None)
             if status.locked:
                 bar.set_message("Vault: LOCKED — press Ctrl+L to unlock")
             elif status.passphrase_source is not None:
-                bar.set_message(f"Vault: unlocked ({status.passphrase_source})")
+                # The plaintext-on-disk tier (sandbox#282) needs visibility
+                # even when a higher tier unlocked the call — fold it into
+                # the pill so the operator sees it without opening the
+                # vault status screen.
+                suffix = " — plaintext on disk" if plaintext is not None else ""
+                bar.set_message(f"Vault: unlocked ({status.passphrase_source}){suffix}")
             else:
                 bar.set_message("")
 

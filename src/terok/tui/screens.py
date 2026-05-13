@@ -2048,6 +2048,23 @@ def render_vault_status(status: VaultStatus | None) -> Text:
     else:
         lines.append(Text.assemble("Credentials: ", Text("none stored", style=dim)))
 
+    plaintext_path = getattr(status, "plaintext_passphrase_path", None)
+    if plaintext_path is not None:
+        lines.append(Text(""))
+        lines.append(
+            Text.assemble(
+                Text("WARNING: ", style=err),
+                Text(f"vault passphrase stored in plaintext at {plaintext_path}", style=warn),
+            )
+        )
+        lines.append(
+            Text(
+                "         accept on-disk plaintext as your trust boundary,"
+                " or migrate to keyring/systemd-creds.",
+                style=warn,
+            )
+        )
+
     if not status.running and not standby:
         lines.append(Text(""))
         lines.append(
