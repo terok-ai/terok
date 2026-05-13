@@ -15,10 +15,10 @@ from unittest.mock import patch
 
 import pytest
 
+from terok.lib.api import delete_project
 from terok.lib.core.config import archive_dir, build_dir
 from terok.lib.core.paths import core_state_dir
 from terok.lib.core.projects import load_project
-from terok.lib.domain.facade import delete_project
 from terok.lib.domain.project import _archive_project
 from terok.lib.util.fs import (
     archive_timestamp,

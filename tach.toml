@@ -21,7 +21,7 @@ ignore_type_checking_imports = true
 # ── Layer Architecture ──────────────────────────────────────────────
 #
 #   presentation      CLI and TUI frontends
-#   domain            Project/Task aggregates, facade, agent config, task CRUD
+#   domain            Project/Task aggregates, ssh/auth workflows, agent config, task CRUD
 #   orchestration     Container lifecycle, env/volumes, Dockerfile, ports
 #   core              Foundation types, config, and pure utilities
 #
@@ -87,7 +87,7 @@ depends_on = [
 
 # ── DOMAIN LAYER ──────────────────────────────────────────────────
 #
-# ·· aggregates ··  DDD Project/Task, facade, high-level queries
+# ·· aggregates ··  DDD Project/Task, ssh/auth workflows, high-level queries
 #
 
 # Emergency panic (cross-project lockdown)
@@ -100,24 +100,6 @@ depends_on = [
     "terok.lib.core.projects",
     "terok.lib.core.runtime",
     "terok.lib.orchestration.tasks",
-]
-
-# Service facade (aggregates shared cross-cutting operations)
-[[modules]]
-path = "terok.lib.domain.facade"
-layer = "domain"
-depends_on = [
-    "terok.lib.orchestration.image",
-    "terok.lib.domain.auth",
-    "terok.lib.domain.image_cleanup",
-    "terok.lib.domain.project_state",
-    "terok.lib.domain.ssh",
-    "terok.lib.domain.task_logs",
-    "terok.lib.domain.vault",
-    "terok.lib.orchestration.task_runners",
-    "terok.lib.orchestration.tasks",
-    "terok.lib.domain.project",
-    "terok.lib.domain.task",
 ]
 
 # SSH provisioning workflow — mint, bind, render, pause for deploy-key registration.
@@ -141,10 +123,10 @@ depends_on = [
 ]
 
 # Public library API — single stable import boundary for presentation layers.
-# Re-exports operations from the facade, the domain types they manipulate,
-# the presentation tables, and a snapshot ``Config`` so consumers never
-# need to reach into internal modules.  Extending this is a design decision;
-# it should not grow opportunistically.
+# Re-exports operations from the domain and orchestration modules, the
+# value types they manipulate, the presentation tables, and a snapshot
+# ``Config`` so consumers never need to reach into internal modules.
+# Extending this is a design decision; it should not grow opportunistically.
 [[modules]]
 path = "terok.lib.api"
 layer = "domain"
@@ -848,57 +830,6 @@ expose = [
     "write_project_yaml",
 ]
 from = ["terok.lib.domain.wizards.new_project"]
-
-# Facade interface (stable boundary for presentation layer)
-
-[[interfaces]]
-expose = [
-    "get_project",
-    "list_projects",
-    "derive_project",
-    "Project",
-    "Task",
-    "DeleteProjectResult",
-    "delete_project",
-    "generate_dockerfiles",
-    "build_images",
-    "project_image_exists",
-    "list_images",
-    "find_orphaned_images",
-    "cleanup_images",
-    "TaskDeleteResult",
-    "task_new",
-    "task_delete",
-    "task_rename",
-    "task_login",
-    "task_list",
-    "task_status",
-    "task_stop",
-    "task_archive_list",
-    "task_archive_logs",
-    "get_tasks",
-    "task_run_cli",
-    "task_run_toad",
-    "task_run_headless",
-    "HeadlessRunRequest",
-    "task_restart",
-    "task_followup_headless",
-    "task_logs",
-    "LogViewOptions",
-    "find_projects_sharing_gate",
-    "make_git_gate",
-    "make_ssh_manager",
-    "authenticate",
-    "get_project_state",
-    "is_task_image_old",
-    "register_ssh_key",
-    "maybe_pause_for_ssh_key_registration",
-    "project_needs_key_registration",
-    "provision_ssh_key",
-    "summarize_ssh_init",
-    "vault_db",
-]
-from = ["terok.lib.domain.facade"]
 
 [[interfaces]]
 expose = ["maybe_vault_db", "vault_db"]

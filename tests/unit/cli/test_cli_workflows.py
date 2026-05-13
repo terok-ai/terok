@@ -202,7 +202,7 @@ class TestSshPause:
     @unittest.mock.patch("terok.lib.domain.ssh.load_project")
     @unittest.mock.patch("builtins.input", return_value="")
     def test_pauses_for_ssh_upstream(self, mock_input, mock_load) -> None:
-        from terok.lib.domain.facade import maybe_pause_for_ssh_key_registration
+        from terok.lib.api import maybe_pause_for_ssh_key_registration
 
         for upstream in ("git@github.com:org/repo.git", "ssh://github.com/org/repo.git"):
             mock_input.reset_mock()
@@ -213,7 +213,7 @@ class TestSshPause:
     @unittest.mock.patch("terok.lib.domain.ssh.load_project")
     @unittest.mock.patch("builtins.input", return_value="")
     def test_no_pause_for_https_upstream(self, mock_input, mock_load) -> None:
-        from terok.lib.domain.facade import maybe_pause_for_ssh_key_registration
+        from terok.lib.api import maybe_pause_for_ssh_key_registration
 
         mock_load.return_value = unittest.mock.Mock(upstream_url="https://github.com/org/repo.git")
         maybe_pause_for_ssh_key_registration("httpsproj")
