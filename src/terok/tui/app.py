@@ -179,6 +179,9 @@ if _HAS_TEXTUAL:
         "vault_uninstall": "_action_vault_uninstall",
         "vault_start": "_action_vault_start",
         "vault_stop": "_action_vault_stop",
+        "vault_unlock": "_action_vault_unlock",
+        "vault_lock": "_action_vault_lock",
+        "vault_seal": "_action_vault_seal",
     }
 
     TASK_ACTION_HANDLERS: dict[str, str] = {
@@ -280,7 +283,6 @@ if _HAS_TEXTUAL:
             ("q", "quit", "Quit"),
             ("a", "authenticate", "Auth"),
             ("P", "panic", "PANIC"),
-            ("ctrl+l", "refresh_vault_status", "Re-probe vault"),
         ]
 
         def __init__(self) -> None:
@@ -1543,16 +1545,6 @@ if _HAS_TEXTUAL:
             if handler:
                 await getattr(self, handler)()
 
-        async def action_refresh_vault_status(self) -> None:
-            """Re-probe the vault and update the status pill.
-
-            Bound to ``Ctrl+L``.  Triggers an unlock modal if the
-            re-probe finds the vault locked — handy when the operator
-            ran ``terok-sandbox vault lock`` in a shell and wants to
-            re-unlock from the TUI without restarting it.
-            """
-            await self._refresh_vault_status(push_modal_if_locked=True)
-
         async def _refresh_vault_status(self, *, push_modal_if_locked: bool = False) -> None:
             """Read fresh ``VaultStatus``, update the pill, optionally push the unlock modal."""
             try:
@@ -1582,7 +1574,7 @@ if _HAS_TEXTUAL:
                 return
             plaintext = getattr(status, "plaintext_passphrase_path", None)
             if status.locked:
-                bar.set_message("Vault: LOCKED — press Ctrl+L to unlock")
+                bar.set_message("Vault: LOCKED — open Vault from the command palette to unlock")
             elif status.passphrase_source is not None:
                 # The plaintext-on-disk tier (sandbox#282) needs visibility
                 # even when a higher tier unlocked the call — fold it into

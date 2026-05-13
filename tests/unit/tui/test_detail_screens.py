@@ -1345,6 +1345,9 @@ class TestVaultScreen:
             pytest.param("action_vault_uninstall", "vault_uninstall", id="uninstall"),
             pytest.param("action_vault_start", "vault_start", id="start"),
             pytest.param("action_vault_stop", "vault_stop", id="stop"),
+            pytest.param("action_vault_unlock", "vault_unlock", id="unlock"),
+            pytest.param("action_vault_lock", "vault_lock", id="lock"),
+            pytest.param("action_vault_seal", "vault_seal", id="seal"),
         ],
     )
     def test_vault_screen_actions(self, method_name: str, expected: str) -> None:
@@ -1423,11 +1426,23 @@ class TestRenderVaultStatus:
         assert "SSH keys:    3" in text_str
 
     def test_render_vault_status_announces_locked(self) -> None:
-        """Locked vault prints an actionable label instead of an empty source."""
+        """Locked vault prints an explicit ``Locked: yes`` line with the no-tier reason."""
         screens, _ = import_screens()
         status = make_vault_status(locked=True, passphrase_source=None)
         text_str = str(screens.render_vault_status(status))
-        assert "vault locked" in text_str
+        assert "Locked:" in text_str
+        assert "yes" in text_str
+        assert "no tier resolved" in text_str
+        # And when locked, the Passphrase: line is suppressed (no tier to name).
+        assert "resolved via" not in text_str
+
+    def test_render_vault_status_marks_unlocked_explicitly(self) -> None:
+        """Resolved vault shows ``Locked: no`` plus which tier did it."""
+        screens, _ = import_screens()
+        status = make_vault_status(locked=False, passphrase_source="keyring")
+        text_str = str(screens.render_vault_status(status))
+        assert "Locked:      no" in text_str
+        assert "resolved via keyring" in text_str
 
     def test_render_vault_status_surfaces_plaintext_warning(self) -> None:
         """``plaintext_passphrase_path`` set → red WARNING line names the file (sandbox#282)."""
@@ -1590,6 +1605,9 @@ class TestVaultActionDispatch:
             ("vault_uninstall", "_action_vault_uninstall"),
             ("vault_start", "_action_vault_start"),
             ("vault_stop", "_action_vault_stop"),
+            ("vault_unlock", "_action_vault_unlock"),
+            ("vault_lock", "_action_vault_lock"),
+            ("vault_seal", "_action_vault_seal"),
         ],
     )
     def test_vault_action_dispatch_all(self, action: str, handler: str) -> None:
@@ -1728,14 +1746,6 @@ class TestRefreshVaultStatus:
         with mock.patch.object(app_mod, "get_vault_status", return_value=status):
             run(app_class._refresh_vault_status(instance, push_modal_if_locked=False))
         instance.push_screen.assert_not_called()
-
-    def test_action_refresh_vault_status_delegates(self) -> None:
-        """``Ctrl+L`` action defers to the same helper with ``push_modal_if_locked=True``."""
-        _, app_class = import_app()
-        instance = mock.Mock(spec=app_class)
-        instance._refresh_vault_status = mock.AsyncMock()
-        run(app_class.action_refresh_vault_status(instance))
-        instance._refresh_vault_status.assert_awaited_once_with(push_modal_if_locked=True)
 
 
 class TestOnVaultUnlockResult:
