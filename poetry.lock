@@ -3638,7 +3638,7 @@ terok-shield = {url = "https://github.com/terok-ai/terok-shield/releases/downloa
 type = "git"
 url = "https://github.com/sliwowitz/terok-sandbox.git"
 reference = "feat/vault-log-improvements"
-resolved_reference = "06fcd7790715d97c5a61553c0e881fb8b851e804"
+resolved_reference = "bdd39adcffb140c5eb1f4378e2861d166db01f78"
 
 [[package]]
 name = "terok-shield"
