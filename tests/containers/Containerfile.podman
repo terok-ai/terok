@@ -11,8 +11,12 @@ RUN dnf install -y \
     git curl bind-utils openssh-clients \
     && dnf clean all
 
-# Disable per-container kernel keyring — prevents keyring leak / EDQUOT
-RUN printf '\n[containers]\nkeyring = false\n' >> /etc/containers/containers.conf
+# Disable per-container kernel keyring — prevents keyring leak / EDQUOT.
+# Use a conf.d drop-in: the base image already defines [containers] in the
+# main file, and TOML rejects a duplicate section header.
+RUN mkdir -p /etc/containers/containers.conf.d \
+    && printf '[containers]\nkeyring = false\n' \
+        > /etc/containers/containers.conf.d/00-no-keyring.conf
 
 # Ensure runtime dir exists for the pre-existing 'podman' user
 RUN mkdir -p /run/user/$(id -u podman) && chown podman:podman /run/user/$(id -u podman)

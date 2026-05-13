@@ -73,7 +73,7 @@ test-integration-podman:
 test-integration-map:
 	poetry run python docs/test_map.py
 
-# Multi-distro integration test matrix (Debian 12/13, Ubuntu 24.04, Fedora 43)
+# Multi-distro integration test matrix (Debian 12/13, Ubuntu 24.04/26.04, Fedora 43/44, podman:stable)
 #   NO_CACHE=1 make test-matrix           — force full image rebuild
 #   BUILD_ONLY=1 make test-matrix         — build images only
 #   SCOPE=host-only make test-matrix      — run only needs_host_features tests
