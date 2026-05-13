@@ -16,8 +16,8 @@ import argparse
 from collections.abc import Callable
 from typing import Any
 
+from ...lib.api import get_tasks
 from ...lib.core.projects import list_presets, list_projects
-from ...lib.domain.facade import get_tasks
 from ...lib.orchestration.tasks import normalize_task_id_input
 
 

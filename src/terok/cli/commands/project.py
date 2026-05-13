@@ -8,8 +8,7 @@ from __future__ import annotations
 import argparse
 from typing import Any
 
-from ...lib.core.projects import list_presets, list_projects, load_project
-from ...lib.domain.facade import (
+from ...lib.api import (
     build_images,
     delete_project,
     derive_project,
@@ -18,6 +17,7 @@ from ...lib.domain.facade import (
     provision_ssh_key,
     summarize_ssh_init,
 )
+from ...lib.core.projects import list_presets, list_projects, load_project
 from ...lib.domain.project import make_git_gate
 from ...lib.domain.wizards.new_project import offer_edit_then_init, run_wizard
 from ._completers import complete_project_ids as _complete_project_ids, set_completer

@@ -34,14 +34,14 @@ import sys
 from terok_executor import AUTH_PROVIDERS
 from terok_sandbox import bold, red, stage_line, yellow
 
-from ...lib.core.projects import load_project
-from ...lib.domain.facade import (
+from ...lib.api import (
     build_images,
     generate_dockerfiles,
     maybe_pause_for_ssh_key_registration,
     provision_ssh_key,
     summarize_ssh_init,
 )
+from ...lib.core.projects import load_project
 from ...lib.domain.project import make_git_gate
 
 # ── CLI wiring ─────────────────────────────────────────────────────────

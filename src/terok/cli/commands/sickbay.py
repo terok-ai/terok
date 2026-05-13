@@ -391,7 +391,7 @@ def _abbreviate(ids: list[str], limit: int = 3) -> str:
 
 def _check_ssh_signer() -> _CheckResult:
     """Check SSH signer key registration against known projects."""
-    from ...lib.domain.facade import vault_db
+    from ...lib.api import vault_db
 
     label = "SSH signer"
     projects = list_projects()
