@@ -1445,14 +1445,24 @@ class TestRenderVaultStatus:
         assert "resolved via keyring" in text_str
 
     def test_render_vault_status_surfaces_plaintext_warning(self) -> None:
-        """``plaintext_passphrase_path`` set → red WARNING line names the file (sandbox#282)."""
+        """``plaintext_passphrase_path`` set → red WARNING line shows the basename only.
+
+        Aisle CR (terok#939, CWE-200): the TUI is screenshot- and
+        screen-share friendly, so rendering the full filesystem path
+        is more disclosure than the warning requires.  Surface the
+        basename — enough to recognise *which* file, not enough to
+        advertise its location.  The CLI ``vault status`` keeps
+        printing the full path for grep-friendly scripting.
+        """
         screens, _ = import_screens()
         config_path = MOCK_BASE / "etc" / "terok" / "config.yml"
         status = make_vault_status(plaintext_passphrase_path=config_path)
         text_str = str(screens.render_vault_status(status))
         assert "WARNING" in text_str
         assert "plaintext" in text_str
-        assert str(config_path) in text_str
+        # Basename surfaces; the full path does not.
+        assert "config.yml" in text_str
+        assert str(config_path.parent) not in text_str
 
     def test_render_vault_status_no_plaintext_warning_when_unset(self) -> None:
         """Default-None case keeps the render quiet — no WARNING line at all."""

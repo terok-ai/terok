@@ -2053,11 +2053,21 @@ def render_vault_status(status: VaultStatus | None) -> Text:
 
     plaintext_path = getattr(status, "plaintext_passphrase_path", None)
     if plaintext_path is not None:
+        # The TUI is screenshot- and screen-share-friendly; rendering
+        # the full filesystem path of the plaintext-passphrase file
+        # is more disclosure than the warning requires.  Surface
+        # just the basename — enough for the operator to recognise
+        # what's going on, not enough to advertise the file's
+        # location to a casual observer.  The CLI ``vault status``
+        # still prints the full path for grep-friendly scripting.
+        from pathlib import Path as _Path
+
+        redacted = _Path(str(plaintext_path)).name
         lines.append(Text(""))
         lines.append(
             Text.assemble(
                 Text("WARNING: ", style=err),
-                Text(f"vault passphrase stored in plaintext at {plaintext_path}", style=warn),
+                Text(f"vault passphrase stored in plaintext on disk ({redacted})", style=warn),
             )
         )
         lines.append(
