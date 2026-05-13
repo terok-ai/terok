@@ -451,6 +451,22 @@ Run `terok sickbay <project> <task>` to see a per-task auth report.
 Missing phantom env vars show up as warnings ("not set") and flag exactly
 which providers were unauthenticated when the container was created.
 
+### Vault passphrase backend
+
+The credentials DB itself is SQLCipher-encrypted; the passphrase
+travels through a resolver chain (session-unlock file → systemd-creds
+→ keyring → `credentials.passphrase` plaintext → interactive prompt).
+`terok vault unlock` writes to the session tier, `terok vault lock`
+clears it, and `terok-sandbox setup` picks the persistent tier at
+install time.  To move the passphrase between backends —
+**retrieve → lock --forget → reseed** — see the
+["Changing tiers" recipe](https://github.com/terok-ai/terok-sandbox/blob/master/docs/credentials-encryption.md)
+in terok-sandbox.
+
+Pressing PANIC also clears the session-unlock file so the daemon
+can't auto-resume from that tier; persistent tiers stay so the panic
+is reversible.
+
 ---
 
 ## Headless Agent Runs (Autopilot)

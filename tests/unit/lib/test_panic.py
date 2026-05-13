@@ -282,23 +282,62 @@ class TestRaiseShield:
 
 
 class TestStopVault:
-    """Tests for _stop_vault."""
+    """Tests for _stop_vault — the panic "lock + stop" step."""
 
     @patch("terok_sandbox.stop_vault")
-    def test_success(self, mock_stop: MagicMock) -> None:
+    @patch("terok_sandbox.SandboxConfig")
+    def test_success(self, mock_cfg: MagicMock, mock_stop: MagicMock) -> None:
         """Vault stop succeeds."""
         from terok.lib.domain.panic import _stop_vault
 
+        mock_cfg.return_value.vault_passphrase_file = MagicMock()
         ok, err = _stop_vault()
         assert ok and err is None
 
+    @patch("terok_sandbox.SandboxConfig")
     @patch("terok_sandbox.stop_vault", side_effect=Exception("no vault"))
-    def test_failure(self, mock_stop: MagicMock) -> None:
+    def test_failure(self, _stop: MagicMock, mock_cfg: MagicMock) -> None:
         """Vault stop failure returns error."""
         from terok.lib.domain.panic import _stop_vault
 
+        mock_cfg.return_value.vault_passphrase_file = MagicMock()
         ok, err = _stop_vault()
         assert not ok and "no vault" in err
+
+    def test_removes_session_unlock_file(self, tmp_path) -> None:
+        """Panic unlinks the tmpfs session-unlock file before stopping the daemon.
+
+        Without this, the daemon auto-resumes from the session tier on
+        next socket activation — a stopped-but-unlocked vault defeats
+        the point of pressing PANIC.
+        """
+        from terok.lib.domain.panic import _stop_vault
+
+        passphrase_file = tmp_path / "vault.passphrase"
+        passphrase_file.write_text("not-a-real-passphrase\n", encoding="utf-8")
+        fake_cfg = MagicMock()
+        fake_cfg.vault_passphrase_file = passphrase_file
+        with (
+            patch("terok_sandbox.SandboxConfig", return_value=fake_cfg),
+            patch("terok_sandbox.stop_vault"),
+        ):
+            ok, err = _stop_vault()
+        assert ok and err is None
+        assert not passphrase_file.exists()
+
+    def test_missing_session_file_is_not_an_error(self, tmp_path) -> None:
+        """No session file → still succeeds; missing_ok=True covers the cold-start path."""
+        from terok.lib.domain.panic import _stop_vault
+
+        missing = tmp_path / "never-created.passphrase"
+        fake_cfg = MagicMock()
+        fake_cfg.vault_passphrase_file = missing
+        with (
+            patch("terok_sandbox.SandboxConfig", return_value=fake_cfg),
+            patch("terok_sandbox.stop_vault"),
+        ):
+            ok, err = _stop_vault()
+        assert ok and err is None
 
 
 class TestStopGate:
@@ -352,7 +391,11 @@ class TestFormatReport:
         r = PanicResult(
             shields_raised=["c1"], vault_stopped=True, gate_stopped=True, total_running=1
         )
-        assert "FAILED" not in format_panic_report(r)
+        report = format_panic_report(r)
+        assert "FAILED" not in report
+        # Label reflects the lock-then-stop semantics introduced for panic so
+        # the operator can tell that the session tier is gone too.
+        assert "locked" in report
 
     def test_errors(self):
         """Failures shown."""
