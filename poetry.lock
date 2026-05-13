@@ -3602,14 +3602,14 @@ prompt-toolkit = ">=3.0"
 pydantic = ">=2.9"
 rich = ">=13.0"
 "ruamel.yaml" = ">=0.18"
-terok-sandbox = {git = "https://github.com/sliwowitz/terok-sandbox.git", branch = "feat/plaintext-passphrase-warning"}
+terok-sandbox = {git = "https://github.com/sliwowitz/terok-sandbox.git", branch = "feat/vault-log-improvements"}
 tomli-w = ">=1.0"
 
 [package.source]
 type = "git"
 url = "https://github.com/sliwowitz/terok-executor.git"
 reference = "feat/plaintext-passphrase-warning"
-resolved_reference = "758bd93e594d93c374b24c0931fd605655b1465e"
+resolved_reference = "d8a54f9ee3ec926043c15d7a907d598d270c1399"
 
 [[package]]
 name = "terok-sandbox"
@@ -3637,8 +3637,8 @@ terok-shield = {url = "https://github.com/terok-ai/terok-shield/releases/downloa
 [package.source]
 type = "git"
 url = "https://github.com/sliwowitz/terok-sandbox.git"
-reference = "feat/plaintext-passphrase-warning"
-resolved_reference = "d253c913db95f76c2d402d5e55e765228adcacdc"
+reference = "feat/vault-log-improvements"
+resolved_reference = "9c4a211b00a5c024c1773be62493c5d3cf6b80b0"
 
 [[package]]
 name = "terok-shield"
@@ -4537,4 +4537,4 @@ propcache = ">=0.2.1"
 [metadata]
 lock-version = "2.1"
 python-versions = ">=3.12,<3.15"
-content-hash = "acca2fa2324ea88683bd7a8e2bcb34bbb75deff7b8ecb82f534de4fa9dafe9fe"
+content-hash = "d2c13bf21eb84354c4ddf8b0a7ef2ce08570d57d0d39ef0dbbaaee7c31c1b299"
