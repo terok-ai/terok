@@ -1431,10 +1431,8 @@ class TestRenderVaultStatus:
 
     def test_render_vault_status_surfaces_plaintext_warning(self) -> None:
         """``plaintext_passphrase_path`` set → red WARNING line names the file (sandbox#282)."""
-        from pathlib import Path
-
         screens, _ = import_screens()
-        config_path = Path("/etc/terok/config.yml")
+        config_path = MOCK_BASE / "etc" / "terok" / "config.yml"
         status = make_vault_status(plaintext_passphrase_path=config_path)
         text_str = str(screens.render_vault_status(status))
         assert "WARNING" in text_str
@@ -1638,15 +1636,13 @@ class TestVaultStatusPill:
 
     def test_render_pill_unlocked_appends_plaintext_marker(self) -> None:
         """sandbox#282: pill flags plaintext-on-disk even when another tier unlocked."""
-        from pathlib import Path
-
         _, app_class = import_app()
         instance = mock.Mock(spec=app_class)
         bar = mock.Mock()
         instance.query_one = mock.Mock(return_value=bar)
         status = make_vault_status(
             passphrase_source="systemd-creds",
-            plaintext_passphrase_path=Path("/etc/terok/config.yml"),
+            plaintext_passphrase_path=MOCK_BASE / "etc" / "terok" / "config.yml",
         )
         app_class._render_status_pill(instance, status)
         message = bar.set_message.call_args[0][0]
