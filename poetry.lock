@@ -3609,7 +3609,7 @@ tomli-w = ">=1.0"
 type = "git"
 url = "https://github.com/sliwowitz/terok-executor.git"
 reference = "feat/plaintext-passphrase-warning"
-resolved_reference = "d8a54f9ee3ec926043c15d7a907d598d270c1399"
+resolved_reference = "3ec1871a560f4ce38619115500b8f64a4354a89c"
 
 [[package]]
 name = "terok-sandbox"
@@ -3638,7 +3638,7 @@ terok-shield = {url = "https://github.com/terok-ai/terok-shield/releases/downloa
 type = "git"
 url = "https://github.com/sliwowitz/terok-sandbox.git"
 reference = "feat/vault-log-improvements"
-resolved_reference = "9c4a211b00a5c024c1773be62493c5d3cf6b80b0"
+resolved_reference = "62f825175f71ab5913434f554a8dcaf93da341f8"
 
 [[package]]
 name = "terok-shield"

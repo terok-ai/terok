@@ -1628,6 +1628,99 @@ class TestVaultActionDispatch:
         instance._action_vault_stop.assert_not_called()
 
 
+class TestVaultActionImplementations:
+    """Verify the unlock / lock / seal handlers do the right thing under the hood.
+
+    The dispatch tests above prove the chooser callback routes to the
+    right method.  These tests prove the methods themselves invoke the
+    correct sandbox/system entry points — together they cover the
+    chain from VaultScreen selection through to side effects.
+    """
+
+    def _get_mixin(self) -> type:
+        from terok.tui.project_actions import ProjectActionsMixin
+
+        return ProjectActionsMixin
+
+    def test_unlock_pushes_modal_with_result_callback(self) -> None:
+        """``_action_vault_unlock`` opens VaultUnlockModal wired to ``_on_vault_unlock_result``."""
+        mixin = self._get_mixin()
+        instance = mock.Mock(spec=mixin)
+        instance.push_screen = mock.AsyncMock()
+        # ``_on_vault_unlock_result`` lives on the composed App, not on the
+        # mixin's TYPE_CHECKING stubs the spec sees — wire it explicitly so
+        # we can compare against the value passed as the callback.
+        instance._on_vault_unlock_result = mock.AsyncMock()
+        run(mixin._action_vault_unlock(instance))
+        instance.push_screen.assert_awaited_once()
+        modal_arg, callback_arg = instance.push_screen.call_args[0]
+        # The handler imports VaultUnlockModal from the real ``terok.tui.screens``
+        # module, distinct from the textual-stubbed copy ``import_screens``
+        # produces — compare by class name rather than identity.
+        assert type(modal_arg).__name__ == "VaultUnlockModal"
+        assert callback_arg is instance._on_vault_unlock_result
+
+    def test_lock_unlinks_session_file_stops_daemon_and_refreshes(self, tmp_path) -> None:
+        """``_action_vault_lock`` clears the session-file, stops the daemon, re-probes."""
+        mixin = self._get_mixin()
+        instance = mock.Mock(spec=mixin)
+        instance._refresh_vault_status = mock.AsyncMock()
+        # ``_run_suspended`` is the indirection that runs ``fn`` inside a
+        # terminal-suspended block; invoke it inline so we exercise the
+        # callable the handler passes through.
+        instance._run_suspended = mock.AsyncMock(side_effect=lambda fn, **kw: fn())
+
+        passphrase_file = tmp_path / "vault.passphrase"
+        passphrase_file.write_text("not-a-real-passphrase\n", encoding="utf-8")
+        fake_cfg = mock.Mock()
+        fake_cfg.vault_passphrase_file = passphrase_file
+        with (
+            mock.patch("terok.tui.project_actions.stop_vault") as m_stop,
+            mock.patch(
+                "terok.lib.api.make_sandbox_config",
+                return_value=fake_cfg,
+            ),
+        ):
+            run(mixin._action_vault_lock(instance))
+        assert not passphrase_file.exists()
+        m_stop.assert_called_once()
+        instance._refresh_vault_status.assert_awaited_once_with()
+
+    def test_lock_tolerates_missing_session_file(self, tmp_path) -> None:
+        """No session-file on disk is the cold-start path — must not blow up."""
+        mixin = self._get_mixin()
+        instance = mock.Mock(spec=mixin)
+        instance._refresh_vault_status = mock.AsyncMock()
+        instance._run_suspended = mock.AsyncMock(side_effect=lambda fn, **kw: fn())
+
+        missing = tmp_path / "never-created.passphrase"
+        fake_cfg = mock.Mock()
+        fake_cfg.vault_passphrase_file = missing
+        with (
+            mock.patch("terok.tui.project_actions.stop_vault") as m_stop,
+            mock.patch("terok.lib.api.make_sandbox_config", return_value=fake_cfg),
+        ):
+            run(mixin._action_vault_lock(instance))
+        m_stop.assert_called_once()
+        instance._refresh_vault_status.assert_awaited_once_with()
+
+    def test_seal_invokes_sandbox_with_key_auto_and_refreshes(self) -> None:
+        """``_action_vault_seal`` calls ``_handle_vault_seal(cfg=, key='auto')`` + re-probes."""
+        mixin = self._get_mixin()
+        instance = mock.Mock(spec=mixin)
+        instance._refresh_vault_status = mock.AsyncMock()
+        instance._run_suspended = mock.AsyncMock(side_effect=lambda fn, **kw: fn())
+
+        fake_cfg = mock.Mock()
+        with (
+            mock.patch("terok_sandbox.commands._handle_vault_seal") as m_seal,
+            mock.patch("terok.lib.api.make_sandbox_config", return_value=fake_cfg),
+        ):
+            run(mixin._action_vault_seal(instance))
+        m_seal.assert_called_once_with(cfg=fake_cfg, key="auto")
+        instance._refresh_vault_status.assert_awaited_once_with()
+
+
 class TestVaultStatusPill:
     """Bottom-of-app StatusBar pill driven by [`_render_status_pill`][terok.tui.app.TerokTUI._render_status_pill]."""
 
