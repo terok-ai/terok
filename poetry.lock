@@ -3609,7 +3609,7 @@ tomli-w = ">=1.0"
 type = "git"
 url = "https://github.com/sliwowitz/terok-executor.git"
 reference = "feat/plaintext-passphrase-warning"
-resolved_reference = "3a7b7de247c4a8a040d618c440738ec219121279"
+resolved_reference = "47b762e4f0c30a714a373bb8ae6556a016684c98"
 
 [[package]]
 name = "terok-sandbox"
