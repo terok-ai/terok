@@ -129,26 +129,45 @@ async def test_missing_executable_surfaces_in_log_with_exit_127() -> None:
 
 
 @pytest.mark.asyncio
-async def test_escape_before_completion_is_ignored() -> None:
+async def test_escape_before_completion_is_ignored(tmp_path) -> None:
     """Escape mid-run can't dismiss — Close-button enablement is the only exit.
 
     Prevents an accidental Escape from killing the view of a long-
     running ``podman build`` / ``terok setup`` before it finishes.
+
+    The subprocess blocks on a sentinel file (not a wall-clock sleep)
+    so the "still running" assertion is deterministic regardless of
+    CI speed — slow runners previously raced past a ``time.sleep(0.3)``
+    and saw the Close button already enabled.
     """
-    # A subprocess that takes a moment — long enough to send Escape to.
-    argv = [sys.executable, "-c", "import time; time.sleep(0.3); print('done')"]
+    sentinel = tmp_path / "release-the-worker"
+    sentinel.touch()
+    argv = [
+        sys.executable,
+        "-c",
+        (
+            "import os, sys, time\n"
+            f"p = {str(sentinel)!r}\n"
+            "while os.path.exists(p):\n"
+            "    time.sleep(0.05)\n"
+            "print('done')\n"
+        ),
+    ]
     app = _WorkerHost(argv)
     async with app.run_test() as pilot:
         await pilot.pause()
-        # Subprocess is in flight; Escape action runs but should be a no-op.
+        # Subprocess blocks on the sentinel; Escape should be a no-op.
         screen = pilot.app.screen
         assert isinstance(screen, WorkerLogScreen)
         screen.action_maybe_cancel()
         await pilot.pause()
-        # The modal is still up, the Close button still disabled.
+        # The modal is still up, the Close button still disabled — no race
+        # against a wall-clock timeout because the subprocess can't exit
+        # until we unlink the sentinel below.
         assert isinstance(pilot.app.screen, WorkerLogScreen)
         assert pilot.app.screen.query_one("#worker-log-close", Button).disabled is True
-        # Wait for natural completion, then dismiss.
+        # Release the subprocess; it exits cleanly and the Close button enables.
+        sentinel.unlink()
         await _wait_until_close_enabled(pilot)
         await pilot.click("#worker-log-close")
         await pilot.pause()
