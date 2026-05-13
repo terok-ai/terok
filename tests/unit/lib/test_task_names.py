@@ -16,10 +16,10 @@ import pytest
 from terok.lib.orchestration.tasks import (
     TASK_NAME_MAX_LEN,
     _default_categories_for_project,
-    _iter_task_ids,  # noqa: F401 — used in renamed assert
     _resolve_name_categories,
     generate_task_name,
     get_tasks,
+    iter_task_ids,  # noqa: F401 — used in renamed assert
     sanitize_task_name,
     task_new,
     task_rename,
@@ -137,7 +137,7 @@ def test_task_new_rejects_invalid_names(bad_name: str) -> None:
         with pytest.raises(SystemExit):
             task_new(project_id, name=bad_name)
         tasks_dir = ctx.state_dir / "projects" / project_id / "tasks"
-        assert not tasks_dir.exists() or not list(_iter_task_ids(tasks_dir))
+        assert not tasks_dir.exists() or not list(iter_task_ids(tasks_dir))
 
 
 def test_task_new_prints_name() -> None:

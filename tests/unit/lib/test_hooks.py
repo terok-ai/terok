@@ -99,7 +99,7 @@ class TestRecordHook:
 
         Tasks created before the rename to ``<id>_meta.yml`` keep
         receiving hook records until they're migrated by the next
-        ``_read_task_meta`` call.
+        ``read_task_meta`` call.
         """
         from terok.lib.util.yaml import dump as yaml_dump, load as yaml_load
 

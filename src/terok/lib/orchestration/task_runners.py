@@ -57,13 +57,13 @@ from .hooks import run_hook
 from .ports import assign_web_port, release_web_port
 from .tasks import (
     CONTAINER_TEROK_CONFIG,
-    _dossier_path,
-    _write_task_meta,
     container_name,
+    dossier_path,
     load_task_meta,
     task_new,
     tasks_meta_dir,
     update_task_exit_code,
+    write_task_meta,
 )
 
 if TYPE_CHECKING:
@@ -562,7 +562,7 @@ def _run_container(
     # the pointed-at JSON file as ``ClearanceEvent.dossier`` on every
     # event.  The JSON file IS the wire dossier — wire-shape keys, no
     # projection, no snapshot — so one annotation is enough.
-    task_dossier_path = _dossier_path(tasks_meta_dir(project.id), task_id)
+    task_dossier_path = dossier_path(tasks_meta_dir(project.id), task_id)
     annotations = [
         "--annotation",
         f"dossier.meta_path={task_dossier_path}",
@@ -658,7 +658,7 @@ def task_run_cli(
         _apply_shield_policy(project, cname, task_dir, is_restart=True)
         meta["mode"] = "cli"
         meta["ready_at"] = datetime.now(UTC).isoformat()
-        _write_task_meta(meta_path, meta)
+        write_task_meta(meta_path, meta)
         print("Container started.")
         _print_login_instructions(project.id, task_id, cname, color_enabled)
         return
@@ -746,7 +746,7 @@ def task_run_cli(
     meta["unrestricted"] = unrestricted
     if preset:
         meta["preset"] = preset
-    _write_task_meta(meta_path, meta)
+    write_task_meta(meta_path, meta)
 
     color_enabled = _supports_color()
     print(
@@ -825,7 +825,7 @@ def task_run_toad(
     meta["unrestricted"] = unrestricted
     if preset:
         meta["preset"] = preset
-    _write_task_meta(meta_path, meta)
+    write_task_meta(meta_path, meta)
 
     # Preserve the address family when the public host is a loopback — binding
     # ::1 to 127.0.0.1 would make the URL we print (``http://[::1]:…``)
@@ -908,7 +908,7 @@ def task_run_toad(
     )
 
     meta["ready_at"] = datetime.now(UTC).isoformat()
-    _write_task_meta(meta_path, meta)
+    write_task_meta(meta_path, meta)
 
     color_enabled = _supports_color()
     url = _toad_browser_url(pub_host, port, token)
@@ -1098,7 +1098,7 @@ def task_run_headless(request: HeadlessRunRequest) -> str:
     meta["unrestricted"] = unrestricted
     if request.preset:
         meta["preset"] = request.preset
-    _write_task_meta(meta_path, meta)
+    write_task_meta(meta_path, meta)
 
     color_enabled = _supports_color()
 
@@ -1237,7 +1237,7 @@ def task_followup_headless(
 
     # Clear previous exit_code so effective_status shows "running" until new exit
     meta["exit_code"] = None
-    _write_task_meta(meta_path, meta)
+    write_task_meta(meta_path, meta)
 
     color_enabled = _supports_color()
 

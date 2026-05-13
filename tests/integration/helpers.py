@@ -197,7 +197,7 @@ class TerokIntegrationEnv:
     def task_meta(self, project_id: str, task_id: str) -> dict:
         """Return the merged on-disk task meta — dossier (JSON) ∪ bookkeeping (YAML).
 
-        Mirrors the in-memory shape ``_read_task_meta`` produces for terok
+        Mirrors the in-memory shape ``read_task_meta`` produces for terok
         internal callers, so integration assertions can ask for ``name``
         / ``mode`` / ``web_port`` / etc. without caring which file each
         field actually lives in.

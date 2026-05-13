@@ -545,9 +545,9 @@ class TestRunContainer:
         # ``{project, task, name}``).  The shield reader rereads it on
         # every emit so renames surface live.  Caller-supplied extras come
         # after.
-        from terok.lib.orchestration.tasks import _dossier_path, tasks_meta_dir
+        from terok.lib.orchestration.tasks import dossier_path, tasks_meta_dir
 
-        expected_dossier_path = _dossier_path(tasks_meta_dir("p1"), "t1")
+        expected_dossier_path = dossier_path(tasks_meta_dir("p1"), "t1")
         assert spec.extra_args == (
             "--annotation",
             f"dossier.meta_path={expected_dossier_path}",

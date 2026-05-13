@@ -56,7 +56,7 @@ def _record_hook(dossier_path: Path, hook_name: str) -> None:
     """Append *hook_name* to the ``hooks_fired`` list in task bookkeeping.
 
     *dossier_path* is the dossier-file handle the caller already has
-    (returned by ``load_task_meta`` / ``_dossier_path``).  ``hooks_fired``
+    (returned by ``load_task_meta`` / ``dossier_path``).  ``hooks_fired``
     is bookkeeping (not wire dossier), so the actual write targets the
     sibling ``_meta.yml`` file.  Atomic-rename keeps an interrupted
     record from leaving a torn YAML behind.

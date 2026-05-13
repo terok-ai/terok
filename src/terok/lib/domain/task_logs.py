@@ -20,7 +20,7 @@ from terok_executor import AgentRunner
 
 from ..core import runtime as _rt
 from ..core.projects import load_project
-from ..orchestration.tasks import _read_task_meta, container_name, tasks_meta_dir
+from ..orchestration.tasks import container_name, read_task_meta, tasks_meta_dir
 from .log_format import auto_detect_formatter
 
 
@@ -80,7 +80,7 @@ def task_logs(
 
     project = load_project(project_id)
     meta_dir = tasks_meta_dir(project.id)
-    meta = _read_task_meta(meta_dir, task_id)
+    meta = read_task_meta(meta_dir, task_id)
     if meta is None:
         raise SystemExit(f"Unknown task {task_id}")
 

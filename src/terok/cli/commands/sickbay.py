@@ -51,11 +51,11 @@ from ...lib.core.projects import list_projects, load_project
 from ...lib.orchestration.container_doctor import run_container_doctor
 from ...lib.orchestration.hooks import run_hook
 from ...lib.orchestration.tasks import (
-    _iter_task_ids,
-    _meta_path,
-    _read_task_meta,
     container_name,
     is_task_id,
+    iter_task_ids,
+    meta_path,
+    read_task_meta,
     resolve_task_id,
     tasks_meta_dir,
 )
@@ -208,12 +208,12 @@ def _task_meta_path(pid: str, tid: str) -> Path | None:
     doesn't match the established project/task-ID grammars.
 
     The returned path always points at the JSON canonical name; YAML
-    files from earlier installs are migrated by ``_read_task_meta`` on
+    files from earlier installs are migrated by ``read_task_meta`` on
     the read path.
     """
     if not is_valid_project_id(pid) or not is_task_id(tid):
         return None
-    return _meta_path(tasks_meta_dir(pid), tid)
+    return meta_path(tasks_meta_dir(pid), tid)
 
 
 def _check_task_hook(
@@ -224,12 +224,12 @@ def _check_task_hook(
         return None
     meta_dir = tasks_meta_dir(pid)
     try:
-        meta = _read_task_meta(meta_dir, tid)
+        meta = read_task_meta(meta_dir, tid)
     except Exception:
-        return ("warn", f"Task {pid}/{tid}", f"bad metadata: {_meta_path(meta_dir, tid)}")
+        return ("warn", f"Task {pid}/{tid}", f"bad metadata: {meta_path(meta_dir, tid)}")
     if meta is None:
         return None
-    meta_path = _meta_path(meta_dir, tid)
+    meta_file = meta_path(meta_dir, tid)
 
     mode = meta.get("mode")
     if not mode:
@@ -247,7 +247,7 @@ def _check_task_hook(
     if not fix:
         return ("warn", label, "stopped without post_stop hook — run with --fix to reconcile")
 
-    return _reconcile_post_stop(pid, tid, mode, cname, project, meta_path, label)
+    return _reconcile_post_stop(pid, tid, mode, cname, project, meta_file, label)
 
 
 def _reconcile_post_stop(
@@ -289,7 +289,7 @@ def _check_task_shield_annotation(
         return None
     meta_dir = tasks_meta_dir(pid)
     try:
-        meta = _read_task_meta(meta_dir, tid)
+        meta = read_task_meta(meta_dir, tid)
     except Exception:  # noqa: BLE001
         return None
     if meta is None:
@@ -342,7 +342,7 @@ def _check_unfired_hooks(
         if not meta_dir.is_dir():
             continue
 
-        task_ids = list(_iter_task_ids(meta_dir)) if task_id is None else [task_id]
+        task_ids = list(iter_task_ids(meta_dir)) if task_id is None else [task_id]
         for tid in task_ids:
             result = _check_task_hook(pid, tid, project, fix=fix)
             if result:
@@ -364,7 +364,7 @@ def _check_shield_annotations(project_id: str | None, task_id: str | None) -> li
         meta_dir = tasks_meta_dir(pid)
         if not meta_dir.is_dir():
             continue
-        task_ids = list(_iter_task_ids(meta_dir)) if task_id is None else [task_id]
+        task_ids = list(iter_task_ids(meta_dir)) if task_id is None else [task_id]
         for tid in task_ids:
             result = _check_task_shield_annotation(pid, tid, project)
             if result:
@@ -452,7 +452,7 @@ def _stream_containers(
         meta_dir = tasks_meta_dir(pid)
         if not meta_dir.is_dir():
             continue
-        for tid in _iter_task_ids(meta_dir):
+        for tid in iter_task_ids(meta_dir):
             run_container_doctor(
                 pid,
                 tid,

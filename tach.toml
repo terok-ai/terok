@@ -669,16 +669,17 @@ expose = [
     "normalize_task_id_input",
     "CONTAINER_TEROK_CONFIG",
     "agent_config_dir",
-    # Meta-layer helpers — exported so the few writers outside tasks.py
+    # Meta-layer helpers — public so the writers outside tasks.py
     # (task_runners, sickbay) can land state via the same atomic-rename
-    # path tasks.py uses.  Underscore-prefixed because the on-disk
-    # shape isn't a public contract.
-    "_dossier_path",
-    "_meta_path",
-    "_read_task_meta",
-    "_write_task_meta",
-    "_iter_task_ids",
-    "_has_task_meta",
+    # path tasks.py uses.  The on-disk file layout is still subject to
+    # change; treat these as the "TaskMeta repository" boundary, not as
+    # a guarantee about file names.
+    "dossier_path",
+    "meta_path",
+    "read_task_meta",
+    "write_task_meta",
+    "iter_task_ids",
+    "task_exists",
 ]
 from = ["terok.lib.orchestration.tasks"]
 

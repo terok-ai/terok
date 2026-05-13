@@ -142,13 +142,13 @@ def read_task_meta(base: Path, project_id: str, task_id: str = "1") -> dict[str,
     """Load merged task metadata for a task — wire-dossier + bookkeeping.
 
     Live tasks store the wire-dossier triple in JSON (the file shield
-    consumers parse) and everything else in YAML; ``_read_task_meta``
+    consumers parse) and everything else in YAML; ``read_task_meta``
     composes them back into the orchestrator's logical dict shape.
     """
-    from terok.lib.orchestration.tasks import _read_task_meta
+    from terok.lib.orchestration.tasks import read_task_meta
 
     meta_dir = task_paths(base, project_id, task_id)[1].parent
-    return _read_task_meta(meta_dir, task_id) or {}
+    return read_task_meta(meta_dir, task_id) or {}
 
 
 def prepare_agent_config(
@@ -350,7 +350,7 @@ class TestTaskRunHeadless:
             )
 
             assert_task_id(result.task_id)
-            agent_config_dir, _meta_path = task_paths(base, "proj_hl", result.task_id)
+            agent_config_dir, meta_path = task_paths(base, "proj_hl", result.task_id)
             prompt_file = agent_config_dir / "prompt.txt"
             assert prompt_file.is_file()
             assert prompt_file.read_text() == "Fix the auth bug"
@@ -568,7 +568,7 @@ class TestTaskFollowupHeadless:
                 container_state=["exited", "running"],
             )
 
-            agent_cfg, _meta_path = task_paths(base, "proj_fu", task_id)
+            agent_cfg, meta_path = task_paths(base, "proj_fu", task_id)
             assert (agent_cfg / "prompt.txt").read_text() == "fix the remaining tests"
             history = (agent_cfg / "prompt-history.txt").read_text()
             assert "initial prompt" in history

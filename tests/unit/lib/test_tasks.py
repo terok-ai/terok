@@ -27,9 +27,9 @@ from terok.lib.orchestration.task_runners import (
 )
 from terok.lib.orchestration.tasks import (
     TaskDeleteResult,
-    _read_task_meta,
     get_tasks,
     get_workspace_git_diff,
+    read_task_meta,
     task_delete,
     task_list,
     task_new,
@@ -117,7 +117,7 @@ class TestTask:
             meta_path = meta_dir / f"{returned_id}_dossier.json"
             assert meta_path.is_file()
 
-            meta = _read_task_meta(meta_dir, returned_id) or {}
+            meta = read_task_meta(meta_dir, returned_id) or {}
             assert meta["task_id"] == returned_id
             workspace_value = meta.get("workspace")
             assert workspace_value
@@ -143,7 +143,7 @@ class TestTask:
         """A pre-``project_id``-field record gets the field populated from the meta-dir path.
 
         Tasks created before ``project_id`` joined ``TaskMeta`` had only
-        ``task_id`` on disk; without backfill, the next ``_write_task_meta``
+        ``task_id`` on disk; without backfill, the next ``write_task_meta``
         would land an empty wire dossier (no ``project`` key) and the
         clearance UI would render a half-identity until some unrelated
         write happened to repopulate the field.  The backfill leans on
@@ -167,7 +167,7 @@ class TestTask:
                 yaml_dump({"task_id": tid, "name": "diligent-octopus", "mode": "cli"})
             )
 
-            meta = _read_task_meta(meta_dir, tid)
+            meta = read_task_meta(meta_dir, tid)
 
             assert meta is not None
             assert meta["project_id"] == project_id
@@ -192,7 +192,7 @@ class TestTask:
         ) as ctx:
             tid = task_new(project_id)
             meta_dir = ctx.state_dir / "projects" / project_id / "tasks"
-            meta = _read_task_meta(meta_dir, tid) or {}
+            meta = read_task_meta(meta_dir, tid) or {}
 
             assert "created_at" in meta
             parsed = datetime.fromisoformat(meta["created_at"])
@@ -675,7 +675,7 @@ class TestTask:
                 mock_runtime.container.return_value.start.assert_called_once_with()
 
                 # Verify metadata mode is preserved
-                meta = _read_task_meta(meta_dir, tid) or {}
+                meta = read_task_meta(meta_dir, tid) or {}
                 assert meta["mode"] == "cli"
 
     def test_get_workspace_git_diff_no_task(self) -> None:
