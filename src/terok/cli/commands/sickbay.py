@@ -20,9 +20,7 @@ Exit codes:
 from __future__ import annotations
 
 import argparse
-import os
 import sys
-import tomllib
 from pathlib import Path
 
 from terok_clearance import (
@@ -420,53 +418,6 @@ def _check_ssh_signer() -> _CheckResult:
     return ("ok", label, f"{total}/{total} project(s) have SSH keys")
 
 
-_KEYRING_DOC_URL = "https://terok-ai.github.io/terok/kernel-keyring/"
-
-# Podman containers.conf lookup order (rootless).  The first existing file wins.
-_CONTAINERS_CONF_PATHS = (
-    Path.home() / ".config" / "containers" / "containers.conf",
-    Path("/etc/containers/containers.conf"),
-)
-
-
-def _find_containers_conf() -> Path | None:
-    """Return the effective containers.conf path, respecting ``$CONTAINERS_CONF``."""
-    env = os.environ.get("CONTAINERS_CONF")
-    if env:
-        p = Path(env)
-        if p.is_file():
-            return p
-        # Invalid env var — fall through to standard paths
-    return next((p for p in _CONTAINERS_CONF_PATHS if p.is_file()), None)
-
-
-def _check_keyring() -> _CheckResult:
-    """Check that the kernel keyring is disabled in containers.conf."""
-    label = "Keyring"
-    conf = _find_containers_conf()
-    if conf is None:
-        return (
-            "warn",
-            label,
-            f"no containers.conf found — add keyring = false, see {_KEYRING_DOC_URL}",
-        )
-    try:
-        data = tomllib.loads(conf.read_text(encoding="utf-8"))
-    except (OSError, tomllib.TOMLDecodeError) as exc:
-        return ("warn", label, f"cannot parse {conf} — {exc}")
-    containers_section = data.get("containers")
-    keyring = (
-        containers_section.get("keyring", True) if isinstance(containers_section, dict) else True
-    )
-    if keyring is False:
-        return ("ok", label, f"disabled in {conf}")
-    return (
-        "warn",
-        label,
-        f"not disabled — add [containers] keyring = false to {conf}, see {_KEYRING_DOC_URL}",
-    )
-
-
 def _stream_containers(
     project_id: str | None,
     task_id: str | None,
@@ -603,7 +554,6 @@ _GLOBAL_CHECKS = [
     ("Vault", _check_vault),
     ("Vault migration", _check_vault_migration),
     ("SSH signer", _check_ssh_signer),
-    ("Keyring", _check_keyring),
     ("SELinux policy", _check_selinux_policy),
     ("Clearance stack", _check_clearance_stack),
 ]

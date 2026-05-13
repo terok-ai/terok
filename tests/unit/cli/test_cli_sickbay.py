@@ -13,11 +13,9 @@ from terok_sandbox import GateServerStatus
 
 from terok.cli.commands import sickbay as _sickbay_module
 from terok.cli.commands.sickbay import (
-    _check_keyring,
     _check_shield,
     _check_vault,
     _cmd_sickbay,
-    _find_containers_conf,
 )
 from tests.testfs import MOCK_BASE
 from tests.testgate import OUTDATED_UNITS_MESSAGE, make_gate_server_status
@@ -106,10 +104,6 @@ def test_cmd_sickbay_reports_health(
         json.dumps({"p": {"private_key": str(dummy_key), "public_key": str(tmp_path / "id.pub")}})
     )
 
-    # Keyring check needs a containers.conf with keyring = false
-    keyring_conf = tmp_path / "containers.conf"
-    keyring_conf.write_text("[containers]\nkeyring = false\n")
-
     mock_ec = MagicMock(health="ok", hooks="per-container", dns_tier="dnsmasq")
     mock_cfg = MagicMock()
     mock_cfg.return_value.ssh_keys_json_path = ssh_keys
@@ -144,7 +138,6 @@ def test_cmd_sickbay_reports_health(
         patch("terok.cli.commands.sickbay.is_vault_systemd_available", return_value=False),
         patch("terok.cli.commands.sickbay.get_services_mode", return_value="tcp"),
         patch("terok.cli.commands.sickbay.make_sandbox_config", mock_cfg),
-        patch("terok.cli.commands.sickbay._find_containers_conf", return_value=keyring_conf),
     ):
         if exit_code is None:
             _cmd_sickbay()
@@ -335,91 +328,3 @@ def test_check_vault_states(
     assert status == expected_status
     assert label == "Vault"
     assert expected_detail in detail
-
-
-class TestCheckKeyring:
-    """Verify _check_keyring diagnostics."""
-
-    def test_disabled(self, tmp_path: Path) -> None:
-        """keyring = false → ok."""
-        conf = tmp_path / "containers.conf"
-        conf.write_text("[containers]\nkeyring = false\n")
-        with patch("terok.cli.commands.sickbay._find_containers_conf", return_value=conf):
-            sev, label, detail = _check_keyring()
-        assert sev == "ok"
-        assert label == "Keyring"
-        assert "disabled" in detail
-
-    def test_enabled_explicitly(self, tmp_path: Path) -> None:
-        """keyring = true → warn with docs link."""
-        conf = tmp_path / "containers.conf"
-        conf.write_text("[containers]\nkeyring = true\n")
-        with patch("terok.cli.commands.sickbay._find_containers_conf", return_value=conf):
-            sev, label, detail = _check_keyring()
-        assert sev == "warn"
-        assert "kernel-keyring" in detail
-
-    def test_absent_defaults_to_warn(self, tmp_path: Path) -> None:
-        """No [containers] section → warn (default is true)."""
-        conf = tmp_path / "containers.conf"
-        conf.write_text("[engine]\nevents_logger = 'file'\n")
-        with patch("terok.cli.commands.sickbay._find_containers_conf", return_value=conf):
-            sev, _, detail = _check_keyring()
-        assert sev == "warn"
-        assert "not disabled" in detail
-
-    def test_no_conf_file(self) -> None:
-        """No containers.conf found → warn."""
-        with patch("terok.cli.commands.sickbay._find_containers_conf", return_value=None):
-            sev, _, detail = _check_keyring()
-        assert sev == "warn"
-        assert "no containers.conf" in detail
-
-    def test_corrupt_toml(self, tmp_path: Path) -> None:
-        """Corrupt TOML → warn with parse error."""
-        conf = tmp_path / "containers.conf"
-        conf.write_text("[bad toml\n")
-        with patch("terok.cli.commands.sickbay._find_containers_conf", return_value=conf):
-            sev, _, detail = _check_keyring()
-        assert sev == "warn"
-        assert "cannot parse" in detail
-
-    def test_non_dict_containers_section(self, tmp_path: Path) -> None:
-        """Non-table [containers] value → warn (treated as keyring enabled)."""
-        conf = tmp_path / "containers.conf"
-        conf.write_text('containers = "not a table"\n')
-        with patch("terok.cli.commands.sickbay._find_containers_conf", return_value=conf):
-            sev, _, detail = _check_keyring()
-        assert sev == "warn"
-        assert "not disabled" in detail
-
-
-class TestFindContainersConf:
-    """Verify _find_containers_conf lookup logic."""
-
-    def test_env_var_valid(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-        """$CONTAINERS_CONF pointing to a real file → returns that path."""
-        conf = tmp_path / "custom.conf"
-        conf.write_text("[containers]\n")
-        monkeypatch.setenv("CONTAINERS_CONF", str(conf))
-        assert _find_containers_conf() == conf
-
-    def test_env_var_missing_falls_back(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        """$CONTAINERS_CONF pointing to non-existent file → falls back to standard paths."""
-        monkeypatch.setenv("CONTAINERS_CONF", str(tmp_path / "ghost.conf"))
-        fallback = tmp_path / "containers.conf"
-        fallback.write_text("[containers]\nkeyring = false\n")
-        with patch("terok.cli.commands.sickbay._CONTAINERS_CONF_PATHS", (fallback,)):
-            result = _find_containers_conf()
-        assert result == fallback
-
-    def test_no_env_no_files(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-        """No env var, no standard files → None."""
-        monkeypatch.delenv("CONTAINERS_CONF", raising=False)
-        with patch(
-            "terok.cli.commands.sickbay._CONTAINERS_CONF_PATHS",
-            (tmp_path / "missing1.conf", tmp_path / "missing2.conf"),
-        ):
-            assert _find_containers_conf() is None
