@@ -241,3 +241,40 @@ class TestTuiOnNoArgs:
             terokctl_main()
 
         mock_exec.assert_not_called()
+
+
+class TestLockedVaultRendering:
+    """When a dispatcher hits ``NoPassphraseError``, surface a friendly hint.
+
+    sandbox#278 stripped CLI-flavoured remediation strings from the
+    library raise sites; the terok CLI is the operator-facing surface,
+    so the actionable hint is rendered here at the top-level dispatch
+    loop.
+    """
+
+    def test_no_passphrase_error_routes_to_actionable_hint(self, capsys) -> None:
+        """A raised ``NoPassphraseError`` exits non-zero with the unlock hint."""
+        from terok_sandbox.credentials.encryption import NoPassphraseError
+
+        # ``terok.cli.__init__`` re-exports ``main`` and so shadows the
+        # submodule attribute — reach for the symbols directly.
+        from terok.cli.main import _DISPATCHERS, main as cli_main
+
+        original = _DISPATCHERS[0]
+
+        def _raise(_args: object) -> bool:
+            raise NoPassphraseError("no SQLCipher passphrase available for /vault.db")
+
+        _DISPATCHERS[0] = _raise
+        try:
+            with (
+                patch("sys.argv", ["terok", "config", "paths"]),
+                pytest.raises(SystemExit) as exc_info,
+            ):
+                cli_main()
+            assert exc_info.value.code == 2
+            err = capsys.readouterr().err
+            assert "no SQLCipher passphrase" in err
+            assert "terok vault unlock" in err
+        finally:
+            _DISPATCHERS[0] = original

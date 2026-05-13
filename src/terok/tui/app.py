@@ -65,6 +65,7 @@ if _HAS_TEXTUAL:
         EnvironmentCheck,
         GateServerStatus,
         GateStalenessInfo,
+        SandboxConfig,
         SetupVerdict,
         VaultStatus,
         check_environment as _shield_check_environment,
@@ -76,6 +77,7 @@ if _HAS_TEXTUAL:
     from textual import on, work
     from textual.app import App, ComposeResult
     from textual.containers import Horizontal, Vertical
+    from textual.css.query import NoMatches
     from textual.widgets import Footer, Header
     from textual.worker import Worker, WorkerState
 
@@ -126,6 +128,7 @@ if _HAS_TEXTUAL:
         ShieldScreen,
         TaskDetailsScreen,
         VaultScreen,
+        VaultUnlockModal,
     )
     from .setup_screen import SetupOutcome, SetupScreen
     from .task_actions import TaskActionsMixin
@@ -133,6 +136,7 @@ if _HAS_TEXTUAL:
         PanicButton,
         ProjectList,
         ProjectState,
+        StatusBar,
         TaskDetails,
         TaskList,
         TaskMeta,
@@ -276,6 +280,7 @@ if _HAS_TEXTUAL:
             ("q", "quit", "Quit"),
             ("a", "authenticate", "Auth"),
             ("P", "panic", "PANIC"),
+            ("ctrl+l", "refresh_vault_status", "Re-probe vault"),
         ]
 
         def __init__(self) -> None:
@@ -366,6 +371,8 @@ if _HAS_TEXTUAL:
                     task_details.border_title = "Task Details"
                     yield task_details
 
+            yield StatusBar(id="status-bar")
+
             # Use Textual's default Footer which will show key bindings
             yield Footer()
 
@@ -400,6 +407,12 @@ if _HAS_TEXTUAL:
             warning = _vault_migration_warning()
             if warning is not None:
                 self.notify(warning, severity="warning", timeout=15)
+
+            # If the DB exists but no resolver tier opens it, push the
+            # unlock modal here — otherwise the main view falls back to
+            # the ``maybe_vault_db`` graceful-degradation state and the
+            # operator sees a silent empty SSH tile with no remediation.
+            await self._refresh_vault_status(push_modal_if_locked=True)
 
             # Startup gate server health check
             self.run_worker(
@@ -1529,6 +1542,77 @@ if _HAS_TEXTUAL:
             handler = VAULT_ACTION_HANDLERS.get(result)
             if handler:
                 await getattr(self, handler)()
+
+        async def action_refresh_vault_status(self) -> None:
+            """Re-probe the vault and update the status pill.
+
+            Bound to ``Ctrl+L``.  Triggers an unlock modal if the
+            re-probe finds the vault locked — handy when the operator
+            ran ``terok-sandbox vault lock`` in a shell and wants to
+            re-unlock from the TUI without restarting it.
+            """
+            await self._refresh_vault_status(push_modal_if_locked=True)
+
+        async def _refresh_vault_status(self, *, push_modal_if_locked: bool = False) -> None:
+            """Read fresh ``VaultStatus``, update the pill, optionally push the unlock modal."""
+            try:
+                self._last_vault_status = get_vault_status()
+            except Exception:
+                self._last_vault_status = None
+
+            self._render_status_pill(self._last_vault_status)
+
+            if (
+                push_modal_if_locked
+                and self._last_vault_status is not None
+                and self._last_vault_status.locked
+            ):
+                await self.push_screen(VaultUnlockModal(), self._on_vault_unlock_result)
+
+        def _render_status_pill(self, status: "VaultStatus | None") -> None:
+            """Update the bottom StatusBar with a short vault-state pill."""
+            try:
+                bar = self.query_one("#status-bar", StatusBar)
+            except NoMatches:
+                # Compose hasn't mounted the bar yet — silent skip; the
+                # next ``_refresh_vault_status`` will land the message.
+                return
+            if status is None:
+                bar.set_message("")
+                return
+            if status.locked:
+                bar.set_message("Vault: LOCKED — press Ctrl+L to unlock")
+            elif status.passphrase_source is not None:
+                bar.set_message(f"Vault: unlocked ({status.passphrase_source})")
+            else:
+                bar.set_message("")
+
+        async def _on_vault_unlock_result(self, passphrase: "str | None") -> None:
+            """Write the typed passphrase to the session-unlock tmpfs file.
+
+            Always lands in the session-file tier — the highest-priority
+            resolver tier — so it wins regardless of what stale state
+            sits in keyring / systemd-creds / config.  After the write,
+            re-probe so the pill reflects the new source and the locked
+            state clears.
+            """
+            if not passphrase:
+                return
+
+            cfg = SandboxConfig()
+            try:
+                cfg.vault_passphrase_file.parent.mkdir(parents=True, exist_ok=True)
+                cfg.vault_passphrase_file.write_text(passphrase + "\n", encoding="utf-8")
+                cfg.vault_passphrase_file.chmod(0o600)
+            except OSError as exc:
+                self.notify(
+                    f"Failed to write session-unlock file: {exc}",
+                    severity="error",
+                    timeout=10,
+                )
+                return
+            self.notify("Vault unlocked for this session.", severity="information", timeout=5)
+            await self._refresh_vault_status()
 
         async def action_show_clearance(self) -> None:
             """Open the live clearance screen for D-Bus shield notifications."""

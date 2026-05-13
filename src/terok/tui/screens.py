@@ -2033,7 +2033,15 @@ def render_vault_status(status: VaultStatus | None) -> Text:
         Text(f"Socket:      {status.socket_path}"),
         Text(f"DB:          {status.db_path}"),
         Text(f"Routes:      {status.routes_path} ({status.routes_configured} configured)"),
+        Text(f"SSH keys:    {status.ssh_keys_stored}"),
     ]
+
+    if status.locked:
+        lines.append(
+            Text.assemble("Passphrase:  ", Text("vault locked — no tier resolved", style=err))
+        )
+    elif status.passphrase_source is not None:
+        lines.append(Text(f"Passphrase:  resolved via {status.passphrase_source}"))
 
     if status.credentials_stored:
         lines.append(Text(f"Credentials: {_format_credentials_typed(status)}"))
@@ -2052,6 +2060,102 @@ def render_vault_status(status: VaultStatus | None) -> Text:
         )
 
     return Text("\n").join(lines)
+
+
+# ---------------------------------------------------------------------------
+# Vault Unlock Modal
+# ---------------------------------------------------------------------------
+
+
+class VaultUnlockModal(screen.ModalScreen["str | None"]):
+    """Passphrase prompt that writes to the session-unlock tmpfs file.
+
+    Triggered when ``VaultStatus.locked`` is True at TUI mount or after
+    a manual ``Ctrl+L`` re-probe.  Mirrors the [`AskpassModal`][terok.tui.askpass_service.AskpassModal]
+    shape: one masked input, two buttons.  The "Unlock for this
+    session" path is the always-safe one — it writes the session-file
+    tier, the highest-priority resolver tier, which wins over any
+    stale persistent state.
+
+    Persistent-tier writes (keyring / systemd-creds / config.yml) are
+    setup-time decisions surfaced via the chooser and ``vault seal``;
+    keeping the runtime modal narrow avoids leaking that policy
+    surface into the unlock path.
+    """
+
+    BINDINGS = [
+        _modal_binding("escape", "cancel", "Cancel"),
+    ]
+
+    CSS = """
+    VaultUnlockModal {
+        align: center middle;
+    }
+
+    #vault-unlock-dialog {
+        width: 70;
+        max-width: 100%;
+        height: auto;
+        border: heavy $primary;
+        border-title-align: right;
+        background: $surface;
+        padding: 1 2;
+    }
+
+    #vault-unlock-prompt {
+        margin-bottom: 1;
+        color: $text-muted;
+    }
+
+    #vault-unlock-buttons {
+        height: 3;
+        align-horizontal: right;
+        margin-top: 1;
+    }
+
+    #vault-unlock-buttons Button {
+        margin-left: 1;
+    }
+    """
+
+    def compose(self) -> ComposeResult:
+        """Lay out prompt, masked input, and Cancel / Unlock buttons."""
+        if Input is None:  # pragma: no cover — textual is stubbed in unit tests
+            return
+        dialog = Vertical(id="vault-unlock-dialog")
+        dialog.border_title = "Vault locked"
+        with dialog:
+            yield Static(
+                "Enter the credentials-DB passphrase to unlock the vault for this session.\n"
+                "The value is written to the session-unlock tmpfs file (cleared at reboot).",
+                id="vault-unlock-prompt",
+            )
+            yield Input(password=True, id="vault-unlock-input")
+            with Horizontal(id="vault-unlock-buttons"):
+                yield Button("Cancel", id="vault-unlock-cancel", variant="default")
+                yield Button("Unlock for this session", id="vault-unlock-ok", variant="primary")
+
+    def on_mount(self) -> None:
+        """Focus the input so the user can type immediately."""
+        if Input is None:  # pragma: no cover
+            return
+        self.query_one("#vault-unlock-input", Input).focus()
+
+    def action_cancel(self) -> None:
+        """Dismiss without unlocking — the locked state persists."""
+        self.dismiss(None)
+
+    def on_button_pressed(self, event: Button.Pressed) -> None:
+        """Route the two buttons to ``dismiss(passphrase)`` or ``dismiss(None)``."""
+        if event.button.id == "vault-unlock-cancel":
+            self.dismiss(None)
+        elif event.button.id == "vault-unlock-ok":
+            value = self.query_one("#vault-unlock-input", Input).value
+            self.dismiss(value or None)
+
+    def on_input_submitted(self, event: "Input.Submitted") -> None:
+        """Enter in the input field is equivalent to clicking Unlock."""
+        self.dismiss(event.value or None)
 
 
 # ---------------------------------------------------------------------------

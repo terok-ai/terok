@@ -1287,8 +1287,17 @@ def make_vault_status(
     running: bool = True,
     routes_configured: int = 3,
     credentials_stored: tuple[str, ...] = ("claude", "gh"),
+    ssh_keys_stored: int = 0,
+    passphrase_source: str | None = "keyring",
+    locked: bool = False,
 ) -> mock.Mock:
-    """Build a vault status mock with common defaults."""
+    """Build a vault status mock with common defaults.
+
+    The post-#278 fields (``ssh_keys_stored``, ``passphrase_source``,
+    ``locked``) are set explicitly so ``mock.Mock`` truthiness doesn't
+    accidentally trip the locked branch in
+    [`render_vault_status`][terok.tui.screens.render_vault_status].
+    """
     status = mock.Mock()
     status.mode = mode
     status.running = running
@@ -1297,6 +1306,9 @@ def make_vault_status(
     status.routes_path = MOCK_VAULT_ROUTES
     status.routes_configured = routes_configured
     status.credentials_stored = credentials_stored
+    status.ssh_keys_stored = ssh_keys_stored
+    status.passphrase_source = passphrase_source
+    status.locked = locked
     return status
 
 
@@ -1400,6 +1412,103 @@ class TestRenderVaultStatus:
         result = screens.render_vault_status(status)
         assert "none stored" in str(result)
 
+    def test_render_vault_status_shows_passphrase_source(self) -> None:
+        """Resolved tier surfaces as ``Passphrase: resolved via <source>``."""
+        screens, _ = import_screens()
+        status = make_vault_status(passphrase_source="systemd-creds", ssh_keys_stored=3)
+        text_str = str(screens.render_vault_status(status))
+        assert "resolved via systemd-creds" in text_str
+        assert "SSH keys:    3" in text_str
+
+    def test_render_vault_status_announces_locked(self) -> None:
+        """Locked vault prints an actionable label instead of an empty source."""
+        screens, _ = import_screens()
+        status = make_vault_status(locked=True, passphrase_source=None)
+        text_str = str(screens.render_vault_status(status))
+        assert "vault locked" in text_str
+
+
+class TestVaultUnlockModal:
+    """Behaviour of the [`VaultUnlockModal`][terok.tui.screens.VaultUnlockModal] passphrase prompt."""
+
+    def test_action_cancel_dismisses_none(self) -> None:
+        """``escape`` / Cancel binding hands ``None`` to the result callback."""
+        screens, _ = import_screens()
+        modal = screens.VaultUnlockModal()
+        modal.dismiss = mock.Mock()
+        modal.action_cancel()
+        modal.dismiss.assert_called_once_with(None)
+
+    def test_button_cancel_dismisses_none(self) -> None:
+        """Cancel button id routes to ``dismiss(None)``."""
+        screens, _ = import_screens()
+        modal = screens.VaultUnlockModal()
+        modal.dismiss = mock.Mock()
+        event = mock.Mock()
+        event.button = mock.Mock()
+        event.button.id = "vault-unlock-cancel"
+        modal.on_button_pressed(event)
+        modal.dismiss.assert_called_once_with(None)
+
+    def test_button_ok_dismisses_input_value(self) -> None:
+        """Unlock button reads the masked Input and dismisses with the value."""
+        screens, _ = import_screens()
+        modal = screens.VaultUnlockModal()
+        modal.dismiss = mock.Mock()
+        mock_input = mock.Mock()
+        mock_input.value = "hunter2"
+        modal.query_one = mock.Mock(return_value=mock_input)
+        event = mock.Mock()
+        event.button = mock.Mock()
+        event.button.id = "vault-unlock-ok"
+        modal.on_button_pressed(event)
+        modal.dismiss.assert_called_once_with("hunter2")
+
+    def test_button_ok_with_empty_value_dismisses_none(self) -> None:
+        """Empty masked Input collapses to ``None`` so the caller skips the write."""
+        screens, _ = import_screens()
+        modal = screens.VaultUnlockModal()
+        modal.dismiss = mock.Mock()
+        mock_input = mock.Mock()
+        mock_input.value = ""
+        modal.query_one = mock.Mock(return_value=mock_input)
+        event = mock.Mock()
+        event.button = mock.Mock()
+        event.button.id = "vault-unlock-ok"
+        modal.on_button_pressed(event)
+        modal.dismiss.assert_called_once_with(None)
+
+    def test_button_unknown_id_is_ignored(self) -> None:
+        """Stray button events from re-used CSS / future expansion don't dismiss."""
+        screens, _ = import_screens()
+        modal = screens.VaultUnlockModal()
+        modal.dismiss = mock.Mock()
+        event = mock.Mock()
+        event.button = mock.Mock()
+        event.button.id = "not-a-vault-button"
+        modal.on_button_pressed(event)
+        modal.dismiss.assert_not_called()
+
+    def test_input_submitted_with_value_dismisses_value(self) -> None:
+        """Pressing Enter inside the masked input behaves like clicking Unlock."""
+        screens, _ = import_screens()
+        modal = screens.VaultUnlockModal()
+        modal.dismiss = mock.Mock()
+        event = mock.Mock()
+        event.value = "swordfish"
+        modal.on_input_submitted(event)
+        modal.dismiss.assert_called_once_with("swordfish")
+
+    def test_input_submitted_empty_dismisses_none(self) -> None:
+        """Enter on an empty input dismisses ``None`` (treated as Cancel)."""
+        screens, _ = import_screens()
+        modal = screens.VaultUnlockModal()
+        modal.dismiss = mock.Mock()
+        event = mock.Mock()
+        event.value = ""
+        modal.on_input_submitted(event)
+        modal.dismiss.assert_called_once_with(None)
+
 
 class TestVaultScreenRefresh:
     """Tests for vault screen refresh logic."""
@@ -1479,3 +1588,170 @@ class TestVaultActionDispatch:
         instance._action_vault_uninstall.assert_not_called()
         instance._action_vault_start.assert_not_called()
         instance._action_vault_stop.assert_not_called()
+
+
+class TestVaultStatusPill:
+    """Bottom-of-app StatusBar pill driven by [`_render_status_pill`][terok.tui.app.TerokTUI._render_status_pill]."""
+
+    def test_render_pill_locked(self) -> None:
+        """Locked status renders the call-to-action pill."""
+        _, app_class = import_app()
+        instance = mock.Mock(spec=app_class)
+        bar = mock.Mock()
+        instance.query_one = mock.Mock(return_value=bar)
+        status = make_vault_status(locked=True, passphrase_source=None)
+        app_class._render_status_pill(instance, status)
+        bar.set_message.assert_called_once()
+        assert "LOCKED" in bar.set_message.call_args[0][0]
+
+    def test_render_pill_unlocked_shows_source(self) -> None:
+        """Resolved tier surfaces in the pill text."""
+        _, app_class = import_app()
+        instance = mock.Mock(spec=app_class)
+        bar = mock.Mock()
+        instance.query_one = mock.Mock(return_value=bar)
+        status = make_vault_status(passphrase_source="keyring")
+        app_class._render_status_pill(instance, status)
+        bar.set_message.assert_called_once_with("Vault: unlocked (keyring)")
+
+    def test_render_pill_unknown_source_clears(self) -> None:
+        """Unlocked but no resolved tier means the pill goes blank."""
+        _, app_class = import_app()
+        instance = mock.Mock(spec=app_class)
+        bar = mock.Mock()
+        instance.query_one = mock.Mock(return_value=bar)
+        status = make_vault_status(locked=False, passphrase_source=None)
+        app_class._render_status_pill(instance, status)
+        bar.set_message.assert_called_once_with("")
+
+    def test_render_pill_none_status_clears(self) -> None:
+        """``None`` status (probe failed) clears the pill."""
+        _, app_class = import_app()
+        instance = mock.Mock(spec=app_class)
+        bar = mock.Mock()
+        instance.query_one = mock.Mock(return_value=bar)
+        app_class._render_status_pill(instance, None)
+        bar.set_message.assert_called_once_with("")
+
+    def test_render_pill_no_status_bar_yet_is_silent(self) -> None:
+        """Pre-mount call (no StatusBar yet) is swallowed silently."""
+        app_mod, app_class = import_app()
+        instance = mock.Mock(spec=app_class)
+        instance.query_one = mock.Mock(side_effect=app_mod.NoMatches("not yet"))
+        # Should NOT raise; method returns without touching anything.
+        app_class._render_status_pill(instance, make_vault_status())
+
+
+class TestRefreshVaultStatus:
+    """[`_refresh_vault_status`][terok.tui.app.TerokTUI._refresh_vault_status] probe + modal trigger behaviour."""
+
+    def _make_instance(self, app_class: type) -> object:
+        instance = mock.Mock(spec=app_class)
+        instance._render_status_pill = mock.Mock()
+        instance.push_screen = mock.AsyncMock()
+        return instance
+
+    def test_refresh_probes_and_stores_status(self) -> None:
+        """Fresh probe lands in ``_last_vault_status`` and feeds the pill."""
+        app_mod, app_class = import_app()
+        instance = self._make_instance(app_class)
+        status = make_vault_status(locked=False, passphrase_source="keyring")
+        with mock.patch.object(app_mod, "get_vault_status", return_value=status):
+            run(app_class._refresh_vault_status(instance))
+        assert instance._last_vault_status is status
+        instance._render_status_pill.assert_called_once_with(status)
+        instance.push_screen.assert_not_called()
+
+    def test_refresh_probe_failure_clears_status(self) -> None:
+        """``get_vault_status`` raising still updates the pill (with ``None``)."""
+        app_mod, app_class = import_app()
+        instance = self._make_instance(app_class)
+        with mock.patch.object(app_mod, "get_vault_status", side_effect=RuntimeError("nope")):
+            run(app_class._refresh_vault_status(instance, push_modal_if_locked=True))
+        assert instance._last_vault_status is None
+        instance._render_status_pill.assert_called_once_with(None)
+        instance.push_screen.assert_not_called()
+
+    def test_refresh_locked_pushes_modal_when_requested(self) -> None:
+        """Locked vault + ``push_modal_if_locked=True`` opens the unlock modal."""
+        app_mod, app_class = import_app()
+        instance = self._make_instance(app_class)
+        status = make_vault_status(locked=True, passphrase_source=None)
+        with mock.patch.object(app_mod, "get_vault_status", return_value=status):
+            run(app_class._refresh_vault_status(instance, push_modal_if_locked=True))
+        instance.push_screen.assert_awaited_once()
+        modal_arg = instance.push_screen.call_args[0][0]
+        assert isinstance(modal_arg, app_mod.VaultUnlockModal)
+        # Callback is the unlock-result coroutine.
+        assert instance.push_screen.call_args[0][1] == instance._on_vault_unlock_result
+
+    def test_refresh_locked_without_request_skips_modal(self) -> None:
+        """Even when locked, the modal stays closed if the caller didn't ask."""
+        app_mod, app_class = import_app()
+        instance = self._make_instance(app_class)
+        status = make_vault_status(locked=True, passphrase_source=None)
+        with mock.patch.object(app_mod, "get_vault_status", return_value=status):
+            run(app_class._refresh_vault_status(instance, push_modal_if_locked=False))
+        instance.push_screen.assert_not_called()
+
+    def test_action_refresh_vault_status_delegates(self) -> None:
+        """``Ctrl+L`` action defers to the same helper with ``push_modal_if_locked=True``."""
+        _, app_class = import_app()
+        instance = mock.Mock(spec=app_class)
+        instance._refresh_vault_status = mock.AsyncMock()
+        run(app_class.action_refresh_vault_status(instance))
+        instance._refresh_vault_status.assert_awaited_once_with(push_modal_if_locked=True)
+
+
+class TestOnVaultUnlockResult:
+    """[`_on_vault_unlock_result`][terok.tui.app.TerokTUI._on_vault_unlock_result] session-file write path."""
+
+    def _make_instance(self, app_class: type, passphrase_file: object) -> object:
+        instance = mock.Mock(spec=app_class)
+        instance._refresh_vault_status = mock.AsyncMock()
+        instance.notify = mock.Mock()
+        cfg = mock.Mock()
+        cfg.vault_passphrase_file = passphrase_file
+        instance._test_sandbox_cfg = cfg
+        return instance
+
+    def test_empty_passphrase_is_a_noop(self, tmp_path: object) -> None:
+        """An empty / ``None`` passphrase shortcuts before touching the disk."""
+        app_mod, app_class = import_app()
+        instance = self._make_instance(app_class, tmp_path / "session" / "passphrase")
+        with mock.patch.object(app_mod, "SandboxConfig") as ctor:
+            run(app_class._on_vault_unlock_result(instance, None))
+            run(app_class._on_vault_unlock_result(instance, ""))
+        ctor.assert_not_called()
+        instance._refresh_vault_status.assert_not_awaited()
+
+    def test_writes_session_file_and_reprobes(self, tmp_path: object) -> None:
+        """Happy path: chmod 0o600, content ends with newline, pill re-rendered."""
+        app_mod, app_class = import_app()
+        target = tmp_path / "session" / "passphrase"
+        instance = self._make_instance(app_class, target)
+        with mock.patch.object(app_mod, "SandboxConfig", return_value=instance._test_sandbox_cfg):
+            run(app_class._on_vault_unlock_result(instance, "hunter2"))
+        assert target.read_text(encoding="utf-8") == "hunter2\n"
+        # 0o600 — owner rw, nothing else.
+        assert target.stat().st_mode & 0o777 == 0o600
+        # Re-probe drives the pill refresh; modal stays closed.
+        instance._refresh_vault_status.assert_awaited_once_with()
+        # Friendly notify so the operator knows the write landed.
+        instance.notify.assert_called_once()
+
+    def test_oserror_surfaces_via_notify(self, tmp_path: object) -> None:
+        """A disk failure shows an error notification and skips the re-probe."""
+        app_mod, app_class = import_app()
+        # Point the passphrase file at a path under a non-directory parent so
+        # the ``parent.mkdir`` call raises ``NotADirectoryError`` (an OSError
+        # subclass) without the test having to fabricate one.
+        not_a_dir = tmp_path / "regular-file"
+        not_a_dir.write_text("blocker")
+        instance = self._make_instance(app_class, not_a_dir / "child" / "passphrase")
+        with mock.patch.object(app_mod, "SandboxConfig", return_value=instance._test_sandbox_cfg):
+            run(app_class._on_vault_unlock_result(instance, "swordfish"))
+        instance._refresh_vault_status.assert_not_awaited()
+        # Notify is called with the error severity — the operator sees a red toast.
+        instance.notify.assert_called_once()
+        assert instance.notify.call_args.kwargs.get("severity") == "error"
