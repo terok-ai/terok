@@ -2027,6 +2027,9 @@ def render_vault_status(status: VaultStatus | None) -> Text:
     else:
         running_s = Text("stopped", style=err)
 
+    locked_label = (
+        Text("yes — no tier resolved", style=err) if status.locked else Text("no", style=ok)
+    )
     lines: list[Text] = [
         Text.assemble("Mode:        ", mode_s),
         Text.assemble("Status:      ", running_s),
@@ -2034,19 +2037,46 @@ def render_vault_status(status: VaultStatus | None) -> Text:
         Text(f"DB:          {status.db_path}"),
         Text(f"Routes:      {status.routes_path} ({status.routes_configured} configured)"),
         Text(f"SSH keys:    {status.ssh_keys_stored}"),
+        # ``Locked:`` is the operator-facing yes/no; ``Passphrase:`` adds
+        # WHICH tier resolved it when unlocked.  Mirror the executor CLI
+        # (``vault status``) so the TUI and shell views agree at a glance.
+        Text.assemble("Locked:      ", locked_label),
     ]
 
-    if status.locked:
-        lines.append(
-            Text.assemble("Passphrase:  ", Text("vault locked — no tier resolved", style=err))
-        )
-    elif status.passphrase_source is not None:
+    if not status.locked and status.passphrase_source is not None:
         lines.append(Text(f"Passphrase:  resolved via {status.passphrase_source}"))
 
     if status.credentials_stored:
         lines.append(Text(f"Credentials: {_format_credentials_typed(status)}"))
     else:
         lines.append(Text.assemble("Credentials: ", Text("none stored", style=dim)))
+
+    plaintext_path = getattr(status, "plaintext_passphrase_path", None)
+    if plaintext_path is not None:
+        # The TUI is screenshot- and screen-share-friendly; rendering
+        # the full filesystem path of the plaintext-passphrase file
+        # is more disclosure than the warning requires.  Surface
+        # just the basename — enough for the operator to recognise
+        # what's going on, not enough to advertise the file's
+        # location to a casual observer.  The CLI ``vault status``
+        # still prints the full path for grep-friendly scripting.
+        from pathlib import Path as _Path
+
+        redacted = _Path(str(plaintext_path)).name
+        lines.append(Text(""))
+        lines.append(
+            Text.assemble(
+                Text("WARNING: ", style=err),
+                Text(f"vault passphrase stored in plaintext on disk ({redacted})", style=warn),
+            )
+        )
+        lines.append(
+            Text(
+                "         accept on-disk plaintext as your trust boundary,"
+                " or migrate to keyring/systemd-creds.",
+                style=warn,
+            )
+        )
 
     if not status.running and not standby:
         lines.append(Text(""))
@@ -2173,6 +2203,9 @@ class VaultScreen(screen.Screen[str | None]):
         _modal_binding("u", "vault_uninstall", "Uninstall systemd units"),
         _modal_binding("s", "vault_start", "Start daemon"),
         _modal_binding("p", "vault_stop", "Stop daemon"),
+        _modal_binding("n", "vault_unlock", "Unlock (session-file tier)"),
+        _modal_binding("l", "vault_lock", "Lock (clear session-file)"),
+        _modal_binding("e", "vault_seal", "Seal into systemd-creds"),
         _modal_binding("r", "vault_refresh", "Refresh status"),
     ]
 
@@ -2204,6 +2237,10 @@ class VaultScreen(screen.Screen[str | None]):
             None,
             Option("\\[s]tart daemon", id="vault_start"),
             Option("sto\\[p] daemon", id="vault_stop"),
+            None,
+            Option("u\\[n]lock (write to session-file tier)", id="vault_unlock"),
+            Option("\\[l]ock (clear session-file, stop daemon)", id="vault_lock"),
+            Option("s\\[e]al current passphrase into systemd-creds", id="vault_seal"),
             None,
             Option("\\[r]efresh status", id="vault_refresh"),
             id="actions-list",
@@ -2264,6 +2301,18 @@ class VaultScreen(screen.Screen[str | None]):
     def action_vault_stop(self) -> None:
         """Trigger daemon stop."""
         self.dismiss("vault_stop")
+
+    def action_vault_unlock(self) -> None:
+        """Trigger the session-file unlock flow."""
+        self.dismiss("vault_unlock")
+
+    def action_vault_lock(self) -> None:
+        """Trigger session-file lock (reversible; persistent tiers untouched)."""
+        self.dismiss("vault_lock")
+
+    def action_vault_seal(self) -> None:
+        """Seal the currently resolved passphrase into a systemd-creds credential."""
+        self.dismiss("vault_seal")
 
     def action_vault_refresh(self) -> None:
         """Refresh the status display."""

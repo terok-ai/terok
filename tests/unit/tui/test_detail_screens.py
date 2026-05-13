@@ -1290,12 +1290,13 @@ def make_vault_status(
     ssh_keys_stored: int = 0,
     passphrase_source: str | None = "keyring",
     locked: bool = False,
+    plaintext_passphrase_path: object | None = None,
 ) -> mock.Mock:
     """Build a vault status mock with common defaults.
 
-    The post-#278 fields (``ssh_keys_stored``, ``passphrase_source``,
-    ``locked``) are set explicitly so ``mock.Mock`` truthiness doesn't
-    accidentally trip the locked branch in
+    The post-#278 / #282 fields are set explicitly so ``mock.Mock``
+    truthiness doesn't accidentally trip the locked branch or the
+    plaintext-warning branch in
     [`render_vault_status`][terok.tui.screens.render_vault_status].
     """
     status = mock.Mock()
@@ -1309,6 +1310,7 @@ def make_vault_status(
     status.ssh_keys_stored = ssh_keys_stored
     status.passphrase_source = passphrase_source
     status.locked = locked
+    status.plaintext_passphrase_path = plaintext_passphrase_path
     return status
 
 
@@ -1343,6 +1345,9 @@ class TestVaultScreen:
             pytest.param("action_vault_uninstall", "vault_uninstall", id="uninstall"),
             pytest.param("action_vault_start", "vault_start", id="start"),
             pytest.param("action_vault_stop", "vault_stop", id="stop"),
+            pytest.param("action_vault_unlock", "vault_unlock", id="unlock"),
+            pytest.param("action_vault_lock", "vault_lock", id="lock"),
+            pytest.param("action_vault_seal", "vault_seal", id="seal"),
         ],
     )
     def test_vault_screen_actions(self, method_name: str, expected: str) -> None:
@@ -1421,11 +1426,51 @@ class TestRenderVaultStatus:
         assert "SSH keys:    3" in text_str
 
     def test_render_vault_status_announces_locked(self) -> None:
-        """Locked vault prints an actionable label instead of an empty source."""
+        """Locked vault prints an explicit ``Locked: yes`` line with the no-tier reason."""
         screens, _ = import_screens()
         status = make_vault_status(locked=True, passphrase_source=None)
         text_str = str(screens.render_vault_status(status))
-        assert "vault locked" in text_str
+        assert "Locked:" in text_str
+        assert "yes" in text_str
+        assert "no tier resolved" in text_str
+        # And when locked, the Passphrase: line is suppressed (no tier to name).
+        assert "resolved via" not in text_str
+
+    def test_render_vault_status_marks_unlocked_explicitly(self) -> None:
+        """Resolved vault shows ``Locked: no`` plus which tier did it."""
+        screens, _ = import_screens()
+        status = make_vault_status(locked=False, passphrase_source="keyring")
+        text_str = str(screens.render_vault_status(status))
+        assert "Locked:      no" in text_str
+        assert "resolved via keyring" in text_str
+
+    def test_render_vault_status_surfaces_plaintext_warning(self) -> None:
+        """``plaintext_passphrase_path`` set → red WARNING line shows the basename only.
+
+        Aisle CR (terok#939, CWE-200): the TUI is screenshot- and
+        screen-share friendly, so rendering the full filesystem path
+        is more disclosure than the warning requires.  Surface the
+        basename — enough to recognise *which* file, not enough to
+        advertise its location.  The CLI ``vault status`` keeps
+        printing the full path for grep-friendly scripting.
+        """
+        screens, _ = import_screens()
+        config_path = MOCK_BASE / "etc" / "terok" / "config.yml"
+        status = make_vault_status(plaintext_passphrase_path=config_path)
+        text_str = str(screens.render_vault_status(status))
+        assert "WARNING" in text_str
+        assert "plaintext" in text_str
+        # Basename surfaces; the full path does not.
+        assert "config.yml" in text_str
+        assert str(config_path.parent) not in text_str
+
+    def test_render_vault_status_no_plaintext_warning_when_unset(self) -> None:
+        """Default-None case keeps the render quiet — no WARNING line at all."""
+        screens, _ = import_screens()
+        status = make_vault_status(plaintext_passphrase_path=None)
+        text_str = str(screens.render_vault_status(status))
+        assert "WARNING" not in text_str
+        assert "plaintext" not in text_str
 
 
 class TestVaultUnlockModal:
@@ -1570,6 +1615,9 @@ class TestVaultActionDispatch:
             ("vault_uninstall", "_action_vault_uninstall"),
             ("vault_start", "_action_vault_start"),
             ("vault_stop", "_action_vault_stop"),
+            ("vault_unlock", "_action_vault_unlock"),
+            ("vault_lock", "_action_vault_lock"),
+            ("vault_seal", "_action_vault_seal"),
         ],
     )
     def test_vault_action_dispatch_all(self, action: str, handler: str) -> None:
@@ -1588,6 +1636,99 @@ class TestVaultActionDispatch:
         instance._action_vault_uninstall.assert_not_called()
         instance._action_vault_start.assert_not_called()
         instance._action_vault_stop.assert_not_called()
+
+
+class TestVaultActionImplementations:
+    """Verify the unlock / lock / seal handlers do the right thing under the hood.
+
+    The dispatch tests above prove the chooser callback routes to the
+    right method.  These tests prove the methods themselves invoke the
+    correct sandbox/system entry points — together they cover the
+    chain from VaultScreen selection through to side effects.
+    """
+
+    def _get_mixin(self) -> type:
+        from terok.tui.project_actions import ProjectActionsMixin
+
+        return ProjectActionsMixin
+
+    def test_unlock_pushes_modal_with_result_callback(self) -> None:
+        """``_action_vault_unlock`` opens VaultUnlockModal wired to ``_on_vault_unlock_result``."""
+        mixin = self._get_mixin()
+        instance = mock.Mock(spec=mixin)
+        instance.push_screen = mock.AsyncMock()
+        # ``_on_vault_unlock_result`` lives on the composed App, not on the
+        # mixin's TYPE_CHECKING stubs the spec sees — wire it explicitly so
+        # we can compare against the value passed as the callback.
+        instance._on_vault_unlock_result = mock.AsyncMock()
+        run(mixin._action_vault_unlock(instance))
+        instance.push_screen.assert_awaited_once()
+        modal_arg, callback_arg = instance.push_screen.call_args[0]
+        # The handler imports VaultUnlockModal from the real ``terok.tui.screens``
+        # module, distinct from the textual-stubbed copy ``import_screens``
+        # produces — compare by class name rather than identity.
+        assert type(modal_arg).__name__ == "VaultUnlockModal"
+        assert callback_arg is instance._on_vault_unlock_result
+
+    def test_lock_unlinks_session_file_stops_daemon_and_refreshes(self, tmp_path) -> None:
+        """``_action_vault_lock`` clears the session-file, stops the daemon, re-probes."""
+        mixin = self._get_mixin()
+        instance = mock.Mock(spec=mixin)
+        instance._refresh_vault_status = mock.AsyncMock()
+        # ``_run_suspended`` is the indirection that runs ``fn`` inside a
+        # terminal-suspended block; invoke it inline so we exercise the
+        # callable the handler passes through.
+        instance._run_suspended = mock.AsyncMock(side_effect=lambda fn, **kw: fn())
+
+        passphrase_file = tmp_path / "vault.passphrase"
+        passphrase_file.write_text("not-a-real-passphrase\n", encoding="utf-8")
+        fake_cfg = mock.Mock()
+        fake_cfg.vault_passphrase_file = passphrase_file
+        with (
+            mock.patch("terok.tui.project_actions.stop_vault") as m_stop,
+            mock.patch(
+                "terok.lib.api.make_sandbox_config",
+                return_value=fake_cfg,
+            ),
+        ):
+            run(mixin._action_vault_lock(instance))
+        assert not passphrase_file.exists()
+        m_stop.assert_called_once()
+        instance._refresh_vault_status.assert_awaited_once_with()
+
+    def test_lock_tolerates_missing_session_file(self, tmp_path) -> None:
+        """No session-file on disk is the cold-start path — must not blow up."""
+        mixin = self._get_mixin()
+        instance = mock.Mock(spec=mixin)
+        instance._refresh_vault_status = mock.AsyncMock()
+        instance._run_suspended = mock.AsyncMock(side_effect=lambda fn, **kw: fn())
+
+        missing = tmp_path / "never-created.passphrase"
+        fake_cfg = mock.Mock()
+        fake_cfg.vault_passphrase_file = missing
+        with (
+            mock.patch("terok.tui.project_actions.stop_vault") as m_stop,
+            mock.patch("terok.lib.api.make_sandbox_config", return_value=fake_cfg),
+        ):
+            run(mixin._action_vault_lock(instance))
+        m_stop.assert_called_once()
+        instance._refresh_vault_status.assert_awaited_once_with()
+
+    def test_seal_invokes_sandbox_with_key_auto_and_refreshes(self) -> None:
+        """``_action_vault_seal`` calls ``_handle_vault_seal(cfg=, key='auto')`` + re-probes."""
+        mixin = self._get_mixin()
+        instance = mock.Mock(spec=mixin)
+        instance._refresh_vault_status = mock.AsyncMock()
+        instance._run_suspended = mock.AsyncMock(side_effect=lambda fn, **kw: fn())
+
+        fake_cfg = mock.Mock()
+        with (
+            mock.patch("terok_sandbox.commands._handle_vault_seal") as m_seal,
+            mock.patch("terok.lib.api.make_sandbox_config", return_value=fake_cfg),
+        ):
+            run(mixin._action_vault_seal(instance))
+        m_seal.assert_called_once_with(cfg=fake_cfg, key="auto")
+        instance._refresh_vault_status.assert_awaited_once_with()
 
 
 class TestVaultStatusPill:
@@ -1613,6 +1754,21 @@ class TestVaultStatusPill:
         status = make_vault_status(passphrase_source="keyring")
         app_class._render_status_pill(instance, status)
         bar.set_message.assert_called_once_with("Vault: unlocked (keyring)")
+
+    def test_render_pill_unlocked_appends_plaintext_marker(self) -> None:
+        """sandbox#282: pill flags plaintext-on-disk even when another tier unlocked."""
+        _, app_class = import_app()
+        instance = mock.Mock(spec=app_class)
+        bar = mock.Mock()
+        instance.query_one = mock.Mock(return_value=bar)
+        status = make_vault_status(
+            passphrase_source="systemd-creds",
+            plaintext_passphrase_path=MOCK_BASE / "etc" / "terok" / "config.yml",
+        )
+        app_class._render_status_pill(instance, status)
+        message = bar.set_message.call_args[0][0]
+        assert "systemd-creds" in message
+        assert "plaintext" in message
 
     def test_render_pill_unknown_source_clears(self) -> None:
         """Unlocked but no resolved tier means the pill goes blank."""
@@ -1693,14 +1849,6 @@ class TestRefreshVaultStatus:
         with mock.patch.object(app_mod, "get_vault_status", return_value=status):
             run(app_class._refresh_vault_status(instance, push_modal_if_locked=False))
         instance.push_screen.assert_not_called()
-
-    def test_action_refresh_vault_status_delegates(self) -> None:
-        """``Ctrl+L`` action defers to the same helper with ``push_modal_if_locked=True``."""
-        _, app_class = import_app()
-        instance = mock.Mock(spec=app_class)
-        instance._refresh_vault_status = mock.AsyncMock()
-        run(app_class.action_refresh_vault_status(instance))
-        instance._refresh_vault_status.assert_awaited_once_with(push_modal_if_locked=True)
 
 
 class TestOnVaultUnlockResult:

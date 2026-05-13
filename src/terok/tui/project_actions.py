@@ -73,6 +73,8 @@ class ProjectActionsMixin(_MixinBase):
         async def refresh_projects(self) -> None: ...
         async def refresh_tasks(self) -> None: ...
         def _refresh_project_state(self) -> None: ...
+        async def _refresh_vault_status(self, *, push_modal_if_locked: bool = False) -> None: ...
+        async def _on_vault_unlock_result(self, passphrase: str | None) -> None: ...
 
     # ---------- Shared helpers ----------
 
@@ -772,3 +774,50 @@ class ProjectActionsMixin(_MixinBase):
             stop_vault,
             success_msg="Vault stopped",
         )
+
+    async def _action_vault_unlock(self) -> None:
+        """Prompt for the SQLCipher passphrase and land it on the session-file tier.
+
+        Re-uses the same modal as the on-mount probe, then funnels the
+        result through ``_on_vault_unlock_result`` so the write +
+        re-probe + pill refresh all stay in one place.
+        """
+        from .screens import VaultUnlockModal
+
+        await self.push_screen(VaultUnlockModal(), self._on_vault_unlock_result)
+
+    async def _action_vault_lock(self) -> None:
+        """Clear the session-file and stop the daemon (reversible).
+
+        Persistent tiers (keyring, sealed systemd-creds,
+        ``credentials.passphrase``) are intentionally untouched — the
+        TUI's lock action is the reversible one, ``vault lock --forget``
+        from a shell remains the destructive escape hatch.
+        """
+        from ..lib.api import make_sandbox_config
+
+        def _lock() -> None:
+            make_sandbox_config().vault_passphrase_file.unlink(missing_ok=True)
+            stop_vault()
+
+        await self._run_suspended(_lock, success_msg="Vault locked (session tier cleared)")
+        await self._refresh_vault_status()
+
+    async def _action_vault_seal(self) -> None:
+        """Seal the currently resolved passphrase into a systemd-creds credential.
+
+        Defers to sandbox's ``_handle_vault_seal`` with the default
+        ``--key=auto`` so a TPM2-equipped host gets ``host+tpm2``
+        binding automatically.  Runs in a suspended terminal so the
+        sandbox helper's stdout (which prints the resulting key mode)
+        lands where the operator can read it.
+        """
+        from terok_sandbox.commands import _handle_vault_seal
+
+        from ..lib.api import make_sandbox_config
+
+        await self._run_suspended(
+            lambda: _handle_vault_seal(cfg=make_sandbox_config(), key="auto"),
+            success_msg="Vault passphrase sealed into systemd-creds",
+        )
+        await self._refresh_vault_status()

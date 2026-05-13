@@ -3,9 +3,18 @@
 
 """Emergency panic — immediately cut all resource access across all projects.
 
-Two-phase sequence: Phase 1 raises shields, stops the vault and gate
-server — all in parallel, all reversible.  Phase 2 optionally stops
-the containers themselves (slow on some platforms, so user-prompted).
+Two-phase sequence: Phase 1 raises shields, locks the vault session
+tier + stops its daemon, and stops the gate server — all in parallel,
+all reversible.  Phase 2 optionally stops the containers themselves
+(slow on some platforms, so user-prompted).
+
+The vault step deletes the session-unlock tmpfs file in addition to
+stopping the daemon so the next socket activation can't auto-resume
+from the session tier — a stopped-but-unlocked daemon defeats the
+point of pressing PANIC.  Persistent tiers (keyring, systemd-creds,
+``credentials.passphrase``) are intentionally untouched; clearing
+them is destructive and the operator can opt-in via
+``terok-sandbox vault lock --forget``.
 
 Token revocation is deliberately excluded — it is irreversible and
 shields + stopped services already cut access.
@@ -111,7 +120,7 @@ def format_panic_report(result: PanicResult) -> str:
     lines = [
         f"Containers found: {result.total_running}",
         _format_shield_status(result),
-        f"Vault: {'stopped' if result.vault_stopped else 'FAILED'}",
+        f"Vault: {'locked + stopped' if result.vault_stopped else 'FAILED'}",
         f"Gate:  {'stopped' if result.gate_stopped else 'FAILED'}",
     ]
 
@@ -238,10 +247,24 @@ def _raise_shield(target: _Target) -> tuple[str, str | None]:
 
 
 def _stop_vault() -> tuple[bool, str | None]:
-    """Stop the vault daemon."""
-    from terok_sandbox import stop_vault
+    """Lock the session tier and stop the vault daemon.
+
+    Removes the session-unlock tmpfs file *before* stopping the daemon
+    so a panic genuinely makes the vault locked rather than merely
+    stopped — without this, the daemon happily auto-restarts from the
+    session tier on next socket activation, which is not what an
+    operator hitting "PANIC" wants.
+
+    Persistent tiers (keyring, sealed systemd-creds,
+    ``credentials.passphrase``) are intentionally NOT wiped: panic
+    must stay reversible, and the operator can run
+    ``terok-sandbox vault lock --forget`` afterwards if they want
+    a destructive lockout.
+    """
+    from terok_sandbox import SandboxConfig, stop_vault
 
     try:
+        SandboxConfig().vault_passphrase_file.unlink(missing_ok=True)
         stop_vault()
         return True, None
     except Exception as exc:
