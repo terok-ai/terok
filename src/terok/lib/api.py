@@ -11,7 +11,8 @@ refactored freely.
 Three kinds of exports live here:
 
 1. **Operations** — task/project/image lifecycle functions re-exported from
-   the domain facade (``task_new``, ``build_images``, ``delete_project``, …).
+   the domain and orchestration modules (``task_new``, ``build_images``,
+   ``delete_project``, …).
 2. **Types** — value objects and dataclasses consumers pass around
    (``ProjectConfig``, ``TaskMeta``, ``StatusInfo``, …).
 3. **Snapshots** — [`get_config`][terok.lib.api.get_config] returns a
@@ -69,52 +70,14 @@ from .core.task_state import (  # noqa: F401 — re-exported public API
     has_gpu,
 )
 
-# Operations + rich domain objects re-exported from the existing facade.
-from .domain.facade import (  # noqa: F401 — re-exported public API
-    DeleteProjectResult,
-    HeadlessRunRequest,
-    LogViewOptions,
-    Project,
-    Task,
-    TaskDeleteResult,
-    authenticate,
-    build_images,
+# Auth flow.
+from .domain.auth import authenticate  # noqa: F401 — re-exported public API
+
+# Image listing & cleanup.
+from .domain.image_cleanup import (  # noqa: F401 — re-exported public API
     cleanup_images,
-    delete_project,
-    derive_project,
     find_orphaned_images,
-    find_projects_sharing_gate,
-    generate_dockerfiles,
-    get_project,
-    get_project_state,
-    get_tasks,
-    is_task_image_old,
     list_images,
-    list_projects,
-    make_git_gate,
-    make_ssh_manager,
-    maybe_pause_for_ssh_key_registration,
-    project_image_exists,
-    project_needs_key_registration,
-    provision_ssh_key,
-    register_ssh_key,
-    summarize_ssh_init,
-    task_archive_list,
-    task_archive_logs,
-    task_delete,
-    task_followup_headless,
-    task_list,
-    task_login,
-    task_logs,
-    task_new,
-    task_rename,
-    task_restart,
-    task_run_cli,
-    task_run_headless,
-    task_run_toad,
-    task_status,
-    task_stop,
-    vault_db,
 )
 
 # Cross-project lockdown.
@@ -123,6 +86,45 @@ from .domain.panic import (  # noqa: F401 — re-exported public API
     format_panic_report,
     panic_stop_containers,
 )
+
+# Project aggregate + factories + lifecycle.
+from .domain.project import (  # noqa: F401 — re-exported public API
+    DeleteProjectResult,
+    Project,
+    delete_project,
+    derive_project,
+    find_projects_sharing_gate,
+    get_project,
+    list_projects,
+    make_git_gate,
+    make_ssh_manager,
+    project_image_exists,
+)
+from .domain.project_state import (  # noqa: F401 — re-exported public API
+    get_project_state,
+    is_task_image_old,
+)
+
+# SSH provisioning workflow.
+from .domain.ssh import (  # noqa: F401 — re-exported public API
+    maybe_pause_for_ssh_key_registration,
+    project_needs_key_registration,
+    provision_ssh_key,
+    register_ssh_key,
+    summarize_ssh_init,
+)
+
+# Task entity.
+from .domain.task import Task  # noqa: F401 — re-exported public API
+
+# Task logs.
+from .domain.task_logs import (  # noqa: F401 — re-exported public API
+    LogViewOptions,
+    task_logs,
+)
+
+# Vault context manager.
+from .domain.vault import vault_db  # noqa: F401 — re-exported public API
 
 # Wizard pieces shared between CLI prompts and TUI screens.
 from .domain.wizards.new_project import (  # noqa: F401 — re-exported public API
@@ -139,17 +141,44 @@ from .orchestration.autopilot import (  # noqa: F401 — re-exported public API
     wait_for_container_exit,
 )
 
-# Task orchestration helpers used by TUI workers.
+# Image build + dockerfile generation.
+from .orchestration.image import (  # noqa: F401 — re-exported public API
+    build_images,
+    generate_dockerfiles,
+)
+
+# Task runners (mode-specific entry points).
+from .orchestration.task_runners import (  # noqa: F401 — re-exported public API
+    HeadlessRunRequest,
+    task_followup_headless,
+    task_restart,
+    task_run_cli,
+    task_run_headless,
+    task_run_toad,
+)
+
+# Task orchestration helpers used by CLI commands + TUI workers.
 from .orchestration.tasks import (  # noqa: F401 — re-exported public API
+    TaskDeleteResult,
     TaskMeta,
     agent_config_dir,
     generate_task_name,
     get_all_task_states,
     get_login_command,
     get_task_meta,
+    get_tasks,
     get_workspace_git_diff,
     mark_task_deleting,
     sanitize_task_name,
+    task_archive_list,
+    task_archive_logs,
+    task_delete,
+    task_list,
+    task_login,
+    task_new,
+    task_rename,
+    task_status,
+    task_stop,
     validate_task_name,
 )
 
