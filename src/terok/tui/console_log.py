@@ -250,7 +250,7 @@ class ConsoleLogMixin(_MixinBase):
         *env*, if given, layers extra environment variables onto the
         child's env (e.g. the askpass wiring a personal-SSH gate-sync
         needs); ``PYTHONPATH`` is still forced last (see
-        [`child_process_env`][terok.tui.console_log.child_process_env]).
+        [`child_process_env`][terok.lib.util.subprocess_env.child_process_env]).
         """
         command = " ".join([ref, *(str(arg) for arg in args)])
         return self._dispatch_console(worker_argv(ref, args), command, title, on_complete, env)
@@ -295,7 +295,7 @@ class ConsoleLogMixin(_MixinBase):
         ``start_new_session=True`` + ``stdin=DEVNULL`` detach the child
         from the controlling terminal so nothing below it can reach
         ``/dev/tty`` and draw over the Textual frame.  *env* layers
-        extra variables onto [`child_process_env`][terok.tui.console_log.child_process_env].
+        extra variables onto [`child_process_env`][terok.lib.util.subprocess_env.child_process_env].
         """
         try:
             proc = await asyncio.create_subprocess_exec(
