@@ -62,10 +62,14 @@ declare -A DISTROS=(
     [nix]="nix"
 )
 
-# The ``nix`` slot is a focused regression target — wrapped-Python
-# import behaviour, not the full nested-podman integration suite.
-# Skipping the multi-phase ``run_tests`` flow keeps it tens of seconds
-# instead of minutes, since the nix image carries no podman / nftables.
+# The ``nix`` slot runs the same flavour the GitHub-Actions host CI
+# does — full unit suite plus host-only integration tests — but under
+# Nix-wrapped Python.  No podman / nftables, so the multi-phase
+# ``run_tests`` flow doesn't apply; we route through ``run_nix_tests``
+# instead.  Use of nix isn't an officially-supported install mode;
+# the slot exists so wrapped-Python regressions (#717 family) can't
+# slip past unit + host-only coverage on a different conceptual
+# install setup.
 declare -A SLOT_KIND=(
     [debian12]="podman"
     [ubuntu2404]="podman"
@@ -102,7 +106,7 @@ version_expectation() {
     local expected="${EXPECTED_VERSIONS[$name]:-}"
     case "$expected" in
         latest) printf 'podman latest, version pinned by upstream' ;;
-        n/a) printf 'nix-wrapped Python regression check (no podman)' ;;
+        n/a) printf 'nix-wrapped Python (unit + host-only integration, no podman)' ;;
         *) printf 'expected podman %s' "$expected" ;;
     esac
 }
@@ -329,19 +333,17 @@ print(\\\"Shield hooks verified.\\\")
     return "$status"
 }
 
-run_nix_check() {
-    # Focused regression check for the Nix-wrapped-Python failure mode
-    # (terok-ai/terok#717, Franz Pöschel): under Nix, ``sys.executable``
-    # is a wrapper script whose sys.path setup isn't reflected in the
-    # ``PYTHONPATH`` env var.  A subprocess started directly from that
-    # parent can't ``import terok`` unless every spawn site threads
-    # PYTHONPATH=os.pathsep.join(sys.path) through.
+run_nix_tests() {
+    # Run the same suite GitHub Actions runs (unit + host-only
+    # integration) but under Nix-wrapped Python.  Catches the
+    # wrapped-Python regressions (#717 family — every spawn of
+    # ``[sys.executable, "-m", "terok…"]`` must thread PYTHONPATH)
+    # and any other behaviour that quietly only works on the
+    # GitHub-Actions interpreter shape.
     #
-    # The check: install terok inside the nix-wrapped Python and run
-    # the two regression tests
-    # (``test_subprocess_pythonpath_call_sites`` AST scan +
-    # ``test_subprocess_env`` behavioural test).  No podman, no nested
-    # containers, no hook phases — by design.
+    # No podman, no nft, no hooks — the Nix container is intentionally
+    # leaner than the multi-distro slots.  Marker-filtered integration
+    # mirrors ``make test-integration-host``.
     local name="$1"
     local image="$IMAGE_PREFIX:$name"
     local ctr_name="$IMAGE_PREFIX-$name"
@@ -365,23 +367,26 @@ run_nix_check() {
             python3.12 --version
             python3.12 --version | awk '{print \$2}' > /results/$name.python-version
 
-            # Install terok itself + pytest into the user-site of the
-            # nix-wrapped interpreter.  ``--break-system-packages`` is a
-            # no-op on nix's per-user profile but pip 23+ requires it
-            # when site-packages lives outside the venv.
-            python3.12 -m pip install --user --quiet --break-system-packages . pytest
+            # Install terok with all runtime + sibling deps (URL pins
+            # in pyproject.toml resolve to released wheels), plus the
+            # pytest stack needed by the conftest auto-fixtures.
+            # ``--break-system-packages`` is a no-op on nix's per-user
+            # profile but pip 23+ requires it when site-packages lives
+            # outside a venv.
+            python3.12 -m pip install --user --quiet --break-system-packages \
+                . pytest pytest-asyncio pytest-cov pytest-tach
 
-            # Skip the heavy unit-suite conftest (it pulls
-            # terok_sandbox.paths etc. — siblings we don't install in
-            # this focused slot).  Disable tach/asyncio plugins the two
-            # tests don't need.  ``--override-ini=addopts=`` strips the
-            # pyproject's ``-v --tb=short`` so the inner command-line
-            # wins.
-            python3.12 -m pytest -v --tb=short \
-                --noconftest --override-ini='addopts=' \
-                -p no:tach -p no:asyncio \
-                tests/unit/test_subprocess_pythonpath_call_sites.py \
-                tests/unit/lib/util/test_subprocess_env.py
+            echo ''
+            echo '--- unit tests ---'
+            python3.12 -m pytest tests/unit -v --tb=short
+
+            echo ''
+            echo '--- host-only integration tests ---'
+            # Same marker filter ``make test-integration-host`` uses on
+            # GitHub-Actions: skip everything that wants podman or the
+            # internet.  Nix container has neither.
+            python3.12 -m pytest tests/integration -v --tb=short \
+                -m 'needs_host_features and not needs_internet and not needs_podman'
         "
 
     local status=$?
@@ -449,7 +454,7 @@ FAILED=()
 
 for target in "${TARGETS[@]}"; do
     case "${SLOT_KIND[$target]}" in
-        nix) runner=run_nix_check ;;
+        nix) runner=run_nix_tests ;;
         *) runner=run_tests ;;
     esac
     if "$runner" "$target"; then
