@@ -14,40 +14,39 @@
 
 FROM docker.io/nixos/nix:latest
 
-# Pre-populate the wrapped python + pip + shadow utilities in the
-# system profile so the test container has them ready without a
-# network round-trip per matrix run.  The base image already ships
-# ``bash`` and ``git-minimal`` — adding ``nixpkgs#git`` here conflicts
-# on ``bin/git-shell``, and we don't need git anyway (source tree
-# arrives via bind-mount, not a clone).
-#
-# ``shadow`` provides ``useradd`` / ``groupadd``: the slot itself
-# doesn't strictly need a non-root user (the wrapped-Python failure
-# mode is uid-independent), but rootless podman *does*, and we want
-# this image ready for that follow-up without a second image change.
+# Pre-populate the system profile with everything the tests need at
+# runtime: wrapped python + pip, awk, shadow (for rootless podman's
+# newuidmap/newgidmap if/when this slot starts exercising podman),
+# and bash (the base image only has bash via /nix/store, not at
+# /bin/bash, which trips most ``#!/bin/bash`` shebangs).
 #
 # ``--extra-experimental-features`` turns on flakes (off by default in
 # nix 2.18-).
 RUN nix --extra-experimental-features 'nix-command flakes' \
         profile install \
+        nixpkgs#bash \
+        nixpkgs#gawk \
         nixpkgs#python312 \
         nixpkgs#python312Packages.pip \
-        nixpkgs#shadow \
-        nixpkgs#gawk
+        nixpkgs#shadow
+
+# /bin/bash → wrapped bash so shebangs and shadow's shell checks find it.
+RUN ln -s /nix/var/nix/profiles/default/bin/bash /bin/bash
 
 # Non-root user (uid 1000) — parity with the other matrix slots, and
 # the prerequisite for rootless podman if/when this image starts
-# exercising it.  ``--no-log-init`` is mandatory: the default tries to
-# allocate the entire 32-bit lastlog file via ``ftruncate``, which
-# fails on the bind-mounted /nix/store mountpoint with EINVAL.
-RUN useradd --no-log-init -m -u 1000 -s /bin/bash testrunner \
-    && mkdir -p /home/testrunner/.local/bin \
-    && chown -R testrunner:testrunner /home/testrunner
+# exercising it.  Skipping ``useradd``: nixos/nix ships none of the
+# files shadow's userdb wants (``/etc/passwd``, ``/etc/login.defs``,
+# the lastlog skeleton on the bind-mounted ``/nix/store``), and a
+# direct ``/etc/passwd`` line is the same outcome with less ceremony.
+RUN install -d /etc \
+    && echo 'testrunner:x:1000:1000::/home/testrunner:/bin/bash' >> /etc/passwd \
+    && echo 'testrunner:x:1000:' >> /etc/group \
+    && install -d -o 1000 -g 1000 /home/testrunner /home/testrunner/.local/bin
 
 # Each user gets their own per-user nix profile; pip --user etc. write
 # under it.
-RUN mkdir -p /nix/var/nix/profiles/per-user/testrunner \
-    && chown testrunner:testrunner /nix/var/nix/profiles/per-user/testrunner
+RUN install -d -o 1000 -g 1000 /nix/var/nix/profiles/per-user/testrunner
 
 USER testrunner
 ENV USER=testrunner HOME=/home/testrunner
