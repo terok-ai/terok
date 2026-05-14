@@ -13,7 +13,7 @@ from typing import Any
 
 from terok_sandbox import GateStalenessInfo
 
-from terok.lib.orchestration.tasks import _TASK_ID_CROCKFORD_4_5_RE
+from terok.lib.orchestration.tasks.identity import _TASK_ID_CROCKFORD_4_5_RE
 
 
 def mock_git_config():

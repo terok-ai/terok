@@ -151,7 +151,7 @@ class TestReadDesiredShieldState:
 class TestRunContainerDoctor:
     """Orchestrator integration tests."""
 
-    @patch("terok.lib.orchestration.tasks.tasks_meta_dir")
+    @patch("terok.lib.orchestration.tasks.meta.tasks_meta_dir")
     def test_returns_warn_for_missing_metadata(self, mock_meta_dir: MagicMock) -> None:
         mock_meta_dir.return_value = MOCK_BASE / "nonexistent"
         results = run_container_doctor("proj", "99")
@@ -160,7 +160,7 @@ class TestRunContainerDoctor:
         assert "metadata not found" in results[0][2]
 
     @patch("terok.lib.orchestration.container_doctor.load_task_meta")
-    @patch("terok.lib.orchestration.tasks.tasks_meta_dir")
+    @patch("terok.lib.orchestration.tasks.meta.tasks_meta_dir")
     def test_returns_warn_for_never_started(
         self, mock_meta_dir: MagicMock, mock_load: MagicMock, tmp_path: Path
     ) -> None:
@@ -172,7 +172,7 @@ class TestRunContainerDoctor:
         assert "never started" in results[0][2]
 
     @patch("terok.lib.orchestration.container_doctor.load_task_meta")
-    @patch("terok.lib.orchestration.tasks.tasks_meta_dir")
+    @patch("terok.lib.orchestration.tasks.meta.tasks_meta_dir")
     def test_skips_non_running(
         self,
         mock_meta_dir: MagicMock,
@@ -199,7 +199,7 @@ class TestRunContainerDoctor:
     @patch("terok.lib.orchestration.container_doctor.get_token_broker_port")
     @patch("terok.lib.orchestration.container_doctor.make_sandbox_config")
     @patch("terok.lib.orchestration.container_doctor.load_task_meta")
-    @patch("terok.lib.orchestration.tasks.tasks_meta_dir")
+    @patch("terok.lib.orchestration.tasks.meta.tasks_meta_dir")
     def test_running_container_executes_probes(
         self,
         mock_meta_dir: MagicMock,
@@ -264,7 +264,7 @@ class TestRunContainerDoctor:
     @patch("terok.lib.orchestration.container_doctor.get_token_broker_port")
     @patch("terok.lib.orchestration.container_doctor.make_sandbox_config")
     @patch("terok.lib.orchestration.container_doctor.load_task_meta")
-    @patch("terok.lib.orchestration.tasks.tasks_meta_dir")
+    @patch("terok.lib.orchestration.tasks.meta.tasks_meta_dir")
     def test_fix_application(
         self,
         mock_meta_dir: MagicMock,
@@ -339,7 +339,7 @@ class TestRunContainerDoctor:
     @patch("terok.lib.orchestration.container_doctor.get_token_broker_port")
     @patch("terok.lib.orchestration.container_doctor.make_sandbox_config")
     @patch("terok.lib.orchestration.container_doctor.load_task_meta")
-    @patch("terok.lib.orchestration.tasks.tasks_meta_dir")
+    @patch("terok.lib.orchestration.tasks.meta.tasks_meta_dir")
     def test_host_side_unknown_check_skipped(
         self,
         mock_meta_dir: MagicMock,
@@ -510,7 +510,7 @@ class TestStreamingGrouping:
                 return_value=[net_b],
             ),
             patch(
-                "terok.lib.orchestration.tasks.tasks_meta_dir",
+                "terok.lib.orchestration.tasks.meta.tasks_meta_dir",
                 return_value=tmp_path,
             ),
             patch(
@@ -590,7 +590,7 @@ class TestStreamingGrouping:
                 return_value=[],
             ),
             patch(
-                "terok.lib.orchestration.tasks.tasks_meta_dir",
+                "terok.lib.orchestration.tasks.meta.tasks_meta_dir",
                 return_value=tmp_path,
             ),
             patch(

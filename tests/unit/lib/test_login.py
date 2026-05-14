@@ -94,7 +94,9 @@ class TestLogin:
             mock_runtime.container.return_value.login_command.return_value = _login_command(
                 expected_container
             )
-            with unittest.mock.patch("terok.lib.orchestration.tasks.os.execvp") as mock_exec:
+            with unittest.mock.patch(
+                "terok.lib.orchestration.tasks.lifecycle.os.execvp"
+            ) as mock_exec:
                 task_login(project_id, task_id)
         mock_exec.assert_called_once_with("podman", _login_command(expected_container))
 

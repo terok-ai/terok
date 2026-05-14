@@ -15,8 +15,6 @@ import pytest
 
 from terok.lib.orchestration.tasks import (
     TASK_NAME_MAX_LEN,
-    _default_categories_for_project,
-    _resolve_name_categories,
     generate_task_name,
     get_tasks,
     iter_task_ids,  # noqa: F401 — used in renamed assert
@@ -24,6 +22,10 @@ from terok.lib.orchestration.tasks import (
     task_new,
     task_rename,
     validate_task_name,
+)
+from terok.lib.orchestration.tasks.naming import (
+    _default_categories_for_project,
+    _resolve_name_categories,
 )
 from tests.test_utils import project_env
 

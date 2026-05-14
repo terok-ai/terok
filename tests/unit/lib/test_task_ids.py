@@ -12,13 +12,15 @@ import pytest
 
 from terok.lib.core.task_state import CONTAINER_MODES, container_name
 from terok.lib.orchestration.tasks import (
+    normalize_task_id_input,
+    resolve_task_id,
+    tasks_meta_dir,
+)
+from terok.lib.orchestration.tasks.identity import (
     _TASK_ID_BODY_CHARS,
     _TASK_ID_HEAD_CHARS,
     _TASK_ID_LEN,
     _generate_unique_id,
-    normalize_task_id_input,
-    resolve_task_id,
-    tasks_meta_dir,
 )
 from tests.test_utils import assert_task_id, project_env
 
@@ -71,7 +73,7 @@ class TestGenerateUniqueId:
 
     def test_raises_after_exhaustion(self) -> None:
         """Should raise RuntimeError if it can't find a unique ID in 100 tries."""
-        with unittest.mock.patch("terok.lib.orchestration.tasks._gen_task_id") as mock_gen:
+        with unittest.mock.patch("terok.lib.orchestration.tasks.identity._gen_task_id") as mock_gen:
             mock_gen.return_value = ID_A
             with pytest.raises(RuntimeError, match="Failed to generate unique task ID"):
                 _generate_unique_id({ID_A})

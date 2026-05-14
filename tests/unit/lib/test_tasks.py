@@ -242,7 +242,7 @@ class TestTask:
     def _task_list_output(project_id: str, states: dict[str, str | None], **filters: str) -> str:
         """Run ``task_list`` with mocked container states and capture stdout."""
         with unittest.mock.patch(
-            "terok.lib.orchestration.tasks.get_all_task_states",
+            "terok.lib.orchestration.tasks.query.get_all_task_states",
             return_value=states,
         ):
             buf = StringIO()
@@ -723,7 +723,7 @@ class TestTask:
 
             expected = "diff --git a/f.txt b/f.txt\n+line\n"
             with unittest.mock.patch(
-                "terok.lib.orchestration.tasks.container_git_diff",
+                "terok.lib.orchestration.tasks.query.container_git_diff",
                 return_value=expected,
             ) as mock_diff:
                 result = get_workspace_git_diff(project_id, tid, "HEAD")
@@ -747,7 +747,7 @@ class TestTask:
 
             expected = "diff --git a/f.txt b/f.txt\n+prev\n"
             with unittest.mock.patch(
-                "terok.lib.orchestration.tasks.container_git_diff",
+                "terok.lib.orchestration.tasks.query.container_git_diff",
                 return_value=expected,
             ) as mock_diff:
                 result = get_workspace_git_diff(project_id, tid, "PREV")
@@ -770,7 +770,7 @@ class TestTask:
             meta_path.write_text(json.dumps(meta, indent=2))
 
             with unittest.mock.patch(
-                "terok.lib.orchestration.tasks.container_git_diff",
+                "terok.lib.orchestration.tasks.query.container_git_diff",
                 return_value=None,
             ):
                 result = get_workspace_git_diff(project_id, tid)
@@ -1817,7 +1817,7 @@ class TestTaskDeleteWarnings:
                 if rmtree_side_effect:
                     patches.append(
                         unittest.mock.patch(
-                            "terok.lib.orchestration.tasks.shutil.rmtree",
+                            "terok.lib.orchestration.tasks.lifecycle.shutil.rmtree",
                             side_effect=rmtree_side_effect,
                         )
                     )
