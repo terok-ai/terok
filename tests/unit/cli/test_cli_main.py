@@ -254,7 +254,7 @@ class TestLockedVaultRendering:
 
     def test_no_passphrase_error_routes_to_actionable_hint(self, capsys) -> None:
         """A raised ``NoPassphraseError`` exits non-zero with the unlock hint."""
-        from terok_sandbox.credentials.encryption import NoPassphraseError
+        from terok_sandbox.vault.store.encryption import NoPassphraseError
 
         # ``terok.cli.__init__`` re-exports ``main`` and so shadows the
         # submodule attribute — reach for the symbols directly.

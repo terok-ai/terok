@@ -152,21 +152,30 @@ class TestSystemdDetection:
 
     @pytest.mark.parametrize(
         ("returncode", "expected"),
-        [(0, True), (1, True), (2, False)],
-        ids=["ok", "acceptable-nonzero", "unavailable"],
+        [
+            (0, True),  # "running" — fully operational
+            (1, True),  # generic non-zero — could be degraded / starting / …
+            (2, True),  # also a real systemctl exit code; systemd is still present
+            (3, True),  # ditto
+        ],
+        ids=["running", "non-zero-1", "non-zero-2", "non-zero-3"],
     )
     @unittest.mock.patch("subprocess.run")
-    def test_systemd_availability_from_return_code(
+    def test_systemd_present_for_any_real_returncode(
         self,
         mock_run: unittest.mock.Mock,
         returncode: int,
         expected: bool,
     ) -> None:
+        """``is-system-running`` returncode 0 means ``running``; any other
+        real exit code means systemd is still *present* (degraded,
+        starting, maintenance, …)."""
         mock_run.return_value = make_run_result(returncode=returncode)
         assert is_systemd_available() is expected
 
     @unittest.mock.patch("subprocess.run", side_effect=FileNotFoundError)
     def test_systemd_not_available_when_missing(self, _mock: unittest.mock.Mock) -> None:
+        """A missing ``systemctl`` binary is the only "absent" signal that matters."""
         assert not is_systemd_available()
 
 

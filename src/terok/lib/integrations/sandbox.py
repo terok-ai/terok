@@ -108,10 +108,6 @@ from terok_sandbox import (  # noqa: F401 — re-exported public API
 from terok_sandbox.commands import (  # noqa: F401 — re-exported public API
     _handle_vault_seal,
 )
-from terok_sandbox.credentials.db import (  # noqa: F401 — re-exported public API
-    NoPassphraseError,
-    WrongPassphraseError,
-)
 from terok_sandbox.doctor import (  # noqa: F401 — re-exported public API
     CheckVerdict,
     DoctorCheck,
@@ -121,12 +117,16 @@ from terok_sandbox.setup_stamp import (  # noqa: F401 — re-exported public API
     _installed_versions,
     _read_stamp,
 )
+from terok_sandbox.vault.store.db import (  # noqa: F401 — re-exported public API
+    NoPassphraseError,
+    WrongPassphraseError,
+)
 
 
 def __getattr__(name: str) -> Any:
     """Lazily resolve heavyweight re-exports kept off the import hot path.
 
-    ``terok_sandbox.vault.token_broker`` drags the whole ``aiohttp``
+    ``terok_sandbox.vault.daemon.token_broker`` drags the whole ``aiohttp``
     dependency tree in with it, and its only consumer (``terok vault
     serve``) imports it from inside a dispatch function anyway.  Routing
     it through ``__getattr__`` keeps ``import terok.lib.integrations.sandbox``
@@ -134,7 +134,7 @@ def __getattr__(name: str) -> Any:
     from paying that cost.
     """
     if name == "vault_token_broker_main":
-        from terok_sandbox.vault.token_broker import main
+        from terok_sandbox.vault.daemon.token_broker import main
 
         return main
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

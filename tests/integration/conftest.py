@@ -446,12 +446,14 @@ def _bypass_vault(request: pytest.FixtureRequest) -> Iterator[None]:
         # bypass reachability probes (socket + TCP health).
         with (
             patch.object(
-                __import__("terok_sandbox.vault.lifecycle", fromlist=["VaultManager"]).VaultManager,
+                __import__(
+                    "terok_sandbox.vault.daemon.lifecycle", fromlist=["VaultManager"]
+                ).VaultManager,
                 "_wait_for_unix_socket",
                 return_value=True,
             ),
             patch(
-                "terok_sandbox.vault.lifecycle.VaultManager._wait_for_ready",
+                "terok_sandbox.vault.daemon.lifecycle.VaultManager._wait_for_ready",
                 return_value=True,
             ),
         ):

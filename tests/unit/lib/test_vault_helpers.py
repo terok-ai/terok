@@ -81,7 +81,7 @@ class TestUnassignVaultSshKeys:
 
     def test_locked_vault_routes_notice_to_skipped(self) -> None:
         """A locked vault parks the notice in ``skipped`` — not ``deleted``."""
-        from terok_sandbox.credentials.db import NoPassphraseError
+        from terok_sandbox.vault.store.db import NoPassphraseError
 
         from terok.lib.domain.project import _unassign_vault_ssh_keys
 
@@ -110,7 +110,7 @@ class TestScopeHasVaultKeyLockedVault:
     """
 
     def test_returns_false_on_locked_vault(self) -> None:
-        from terok_sandbox.credentials.db import NoPassphraseError
+        from terok_sandbox.vault.store.db import NoPassphraseError
 
         from terok.lib.domain.project_state import _scope_has_vault_key
 
@@ -123,7 +123,7 @@ class TestScopeHasVaultKeyLockedVault:
             assert _scope_has_vault_key("proj") is False
 
     def test_returns_false_on_wrong_passphrase(self) -> None:
-        from terok_sandbox.credentials.db import WrongPassphraseError
+        from terok_sandbox.vault.store.db import WrongPassphraseError
 
         from terok.lib.domain.project_state import _scope_has_vault_key
 

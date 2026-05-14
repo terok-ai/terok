@@ -590,7 +590,7 @@ def _cmd_task_revoke_credentials(project_id: str, task_id: str) -> None:
     deciding the agent has misbehaved.  The next request the agent
     issues from inside the container gets a 401; in-flight proxy
     calls already past
-    [`lookup_token`][terok_sandbox.credentials.db.CredentialDB.lookup_token]
+    [`lookup_token`][terok_sandbox.vault.store.db.CredentialDB.lookup_token]
     complete on their real credential, which is the intended
     semantics.
     """

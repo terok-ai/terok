@@ -166,7 +166,7 @@ async def running_token_broker(
     vault_routes: Path,
     mock_upstream_api: MockUpstreamState,
 ) -> AsyncIterator[VaultEnv]:
-    """Run a real ``terok_sandbox.vault.token_broker`` on a random port.
+    """Run a real ``terok_sandbox.vault.daemon.token_broker`` on a random port.
 
     The broker app is built via the same ``_build_app`` factory that
     production uses — same auth header parsing, same upstream-forwarding
@@ -178,7 +178,7 @@ async def running_token_broker(
     # _build_app is the broker's internal factory; we lean on it directly
     # because there is no public "construct an in-process broker for
     # testing" entrypoint — adding one is a separate refactor.
-    from terok_sandbox.vault.token_broker import _build_app
+    from terok_sandbox.vault.daemon.token_broker import _build_app
 
     db_path, phantom_token, real_credential = populated_vault_db
     app = _build_app(str(db_path), str(vault_routes))

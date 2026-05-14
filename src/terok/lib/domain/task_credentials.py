@@ -41,7 +41,7 @@ def revoke_credentials(project_id: str, task_id: str) -> int:
     The DB-side delete takes effect on the next request the agent
     issues — the broker has no in-memory token cache, so an in-flight
     proxy call already past
-    [`lookup_token`][terok_sandbox.credentials.db.CredentialDB.lookup_token]
+    [`lookup_token`][terok_sandbox.vault.store.db.CredentialDB.lookup_token]
     completes on its real credential.  That's the intended semantics:
     block further use, don't kill in-flight TCP.
 
