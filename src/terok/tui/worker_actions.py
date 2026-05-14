@@ -248,6 +248,58 @@ def vault_to_keyring() -> None:
     _handle_vault_to_keyring(cfg=make_sandbox_config())
 
 
+def selinux_install_policy() -> None:
+    """Run the bundled SELinux installer with ``sudo bash`` and stream the output.
+
+    Delegates to the ``install_policy.sh`` script terok-sandbox ships
+    in its resources — same one ``terok setup`` prints when the policy
+    is missing.  Output (including any sudo prompt) lands in the
+    captured-log view so the operator can authenticate inline.
+
+    ``sudo`` and ``bash`` are looked up via [`shutil.which`][shutil.which]
+    so the subprocess gets an absolute executable path — keeps
+    bandit (B607 partial-path), SonarCloud, and a hostile ``PATH``
+    all out of the picture.  Failing either lookup turns into a clear
+    [`SystemExit`][SystemExit] rather than a confusing ``FileNotFoundError``.
+    """
+    import shutil
+    import subprocess  # noqa: S404 — running sudo to load a bundled SELinux policy is the whole point of this verb  # nosec B404
+
+    from terok.lib.integrations.sandbox import selinux_install_script
+
+    sudo = shutil.which("sudo")
+    bash = shutil.which("bash")
+    if sudo is None or bash is None:
+        missing = "sudo" if sudo is None else "bash"
+        raise SystemExit(
+            f"selinux_install_policy: {missing} not on PATH — install it or run "
+            "the bundled script manually."
+        )
+    # Stream stdout/stderr to the parent process so ConsoleLog captures
+    # them line-by-line — same shape as every other dispatched action.
+    subprocess.run(  # noqa: S603 — argv built from absolute paths + a bundled script  # nosec B603
+        [sudo, bash, str(selinux_install_script())],
+        check=True,
+    )
+
+
+def selinux_switch_to_tcp() -> None:
+    """Flip ``services.mode`` to ``tcp`` in the user-scope config.yml.
+
+    Writes only the ``services.mode`` field; preserves any other
+    user-supplied config via terok-sandbox's round-trip YAML writer.
+    The new value takes effect on the next setup run — which the
+    caller launches immediately after this returns.
+    """
+    from terok.lib.core.config import global_config_path
+    from terok.lib.integrations.sandbox import yaml_update_section
+
+    user_config = global_config_path()
+    user_config.parent.mkdir(parents=True, exist_ok=True)
+    yaml_update_section(user_config, "services", {"mode": "tcp"})
+    print(f"→ wrote services.mode=tcp to {user_config}")
+
+
 # ── Task lifecycle ────────────────────────────────────────────────────
 
 

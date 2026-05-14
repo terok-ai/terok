@@ -25,6 +25,7 @@ narrow allowed-importer rule.
 from typing import Any
 
 from terok_sandbox import (  # noqa: F401 — re-exported public API
+    EXIT_MANUAL_STEP_NEEDED,
     GATE_COMMANDS,
     SERVICES_TCP_OPTOUT_YAML,
     SSH_COMMANDS,
@@ -106,6 +107,7 @@ from terok_sandbox import (  # noqa: F401 — re-exported public API
     up,
     yellow,
 )
+from terok_sandbox._yaml import update_section as yaml_update_section  # noqa: F401
 from terok_sandbox.commands import (  # noqa: F401 — re-exported public API
     CommandTree,
     _handle_vault_seal,
@@ -153,6 +155,7 @@ __all__ = [
     "ContainerRuntime",
     "CredentialDB",
     "DoctorCheck",
+    "EXIT_MANUAL_STEP_NEEDED",
     "EnvironmentCheck",
     "ExecResult",
     "GATE_COMMANDS",
@@ -234,5 +237,6 @@ __all__ = [
     "stop_vault",
     "up",
     "vault_token_broker_main",  # noqa: F822 — PEP 562 lazy re-export via __getattr__
+    "yaml_update_section",
     "yellow",
 ]
