@@ -120,6 +120,7 @@ if _HAS_TEXTUAL:
 
     from .askpass_service import AskpassService
     from .clipboard import get_clipboard_helper_status
+    from .console_log import ConsoleLogMixin, ConsoleLogRegistry
     from .polling import PollingMixin
     from .project_actions import ProjectActionsMixin
     from .screens import (
@@ -206,7 +207,7 @@ if _HAS_TEXTUAL:
         "show_clearance": "action_show_clearance",
     }
 
-    class TerokTUI(PollingMixin, ProjectActionsMixin, TaskActionsMixin, App):
+    class TerokTUI(PollingMixin, ProjectActionsMixin, TaskActionsMixin, ConsoleLogMixin, App):
         """Redesigned TUI frontend for terok core modules."""
 
         CSS_PATH = None
@@ -293,6 +294,11 @@ if _HAS_TEXTUAL:
             self._config: Config = get_config()
             # Set dynamic title with version and branch info
             self._update_title()
+
+            # Session-scoped registry of dispatched-action console logs
+            # (image builds, gate/vault ops, container starts).  In-memory
+            # only — forgotten when the app closes.
+            self.console_logs = ConsoleLogRegistry()
 
             self.current_project_id: str | None = None
             self.current_task: TaskMeta | None = None
