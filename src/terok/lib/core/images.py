@@ -11,7 +11,7 @@ import re
 from functools import lru_cache
 from typing import TYPE_CHECKING
 
-from terok_executor import AGENTS_LABEL
+from terok.lib.integrations.executor import AGENTS_LABEL
 
 from . import runtime as _rt
 

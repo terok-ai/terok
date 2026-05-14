@@ -21,7 +21,7 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 
-from terok_executor import (
+from terok.lib.integrations.executor import (
     SharedMountStorageInfo,
     TaskStorageInfo,
     get_shared_mounts_storage,

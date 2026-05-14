@@ -42,7 +42,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-from terok_executor import AgentRunner
+from terok.lib.integrations.executor import AgentRunner
 
 from ..core import runtime as _rt
 from ..core.config import archive_dir

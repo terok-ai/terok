@@ -50,14 +50,15 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, TypedDict
 
-from terok_executor import (
+from terok_sandbox import GitGate, SSHManager
+
+from terok.lib.integrations.executor import (
     AGENTS_LABEL,
     ACPEndpointStatus,
     get_provider,
     list_authenticated_agents,
     resolve_instructions,
 )
-from terok_sandbox import GitGate, SSHManager
 
 from ..core.config import (
     archive_dir,

@@ -18,7 +18,6 @@ import subprocess
 from pathlib import Path
 from urllib.parse import urlparse, urlunparse
 
-from terok_executor import agent_doctor_checks, get_roster
 from terok_sandbox import (
     ExecResult,
     get_ssh_signer_port,
@@ -26,6 +25,8 @@ from terok_sandbox import (
     make_shield,
 )
 from terok_sandbox.doctor import CheckVerdict, DoctorCheck, sandbox_doctor_checks
+
+from terok.lib.integrations.executor import agent_doctor_checks, get_roster
 
 from ..core import runtime as _rt
 from ..core.config import make_sandbox_config

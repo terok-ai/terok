@@ -38,7 +38,7 @@ import time
 from pathlib import Path
 from typing import TYPE_CHECKING, NoReturn
 
-from terok_executor import acp_socket_is_live
+from terok.lib.integrations.executor import acp_socket_is_live
 
 from ...lib.api import list_projects
 from ...lib.core.config import is_experimental

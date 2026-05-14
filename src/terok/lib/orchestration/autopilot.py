@@ -8,7 +8,7 @@ the executor API so the TUI (presentation layer) does not reach for raw
 subprocess calls.
 """
 
-from terok_executor import AgentRunner
+from terok.lib.integrations.executor import AgentRunner
 
 from .tasks import update_task_exit_code
 

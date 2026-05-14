@@ -16,7 +16,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from terok_executor import AgentRunner
+from terok.lib.integrations.executor import AgentRunner
 
 from ..core import runtime as _rt
 from ..core.projects import load_project

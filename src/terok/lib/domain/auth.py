@@ -17,7 +17,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 
-from terok_executor import (
+from terok.lib.integrations.executor import (
     authenticate as _authenticate_raw,
 )
 

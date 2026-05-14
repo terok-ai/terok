@@ -18,7 +18,7 @@ from importlib.resources.abc import Traversable
 from pathlib import Path
 from typing import Any
 
-from terok_executor import (
+from terok.lib.integrations.executor import (
     BuildError,
     build_base_images,
     build_project_image,

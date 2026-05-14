@@ -13,20 +13,21 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-from terok_executor import (
-    AgentConfigSpec,
-    AgentRunner,
-    BuildError,
-    prepare_agent_config_dir,
-    resolve_instructions,
-    resolve_provider_value,
-)
 from terok_sandbox import (
     LifecycleHooks,
     Sandbox,
     Sharing,
     VolumeSpec,
     down as _shield_down_impl,
+)
+
+from terok.lib.integrations.executor import (
+    AgentConfigSpec,
+    AgentRunner,
+    BuildError,
+    prepare_agent_config_dir,
+    resolve_instructions,
+    resolve_provider_value,
 )
 
 from ..core import runtime as _rt

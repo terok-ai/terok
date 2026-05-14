@@ -24,10 +24,11 @@ from typing import Any
 
 from rich.style import Style
 from rich.text import Text
-from terok_executor import AgentRunner
 from textual import screen
 from textual.app import ComposeResult
 from textual.widgets import RichLog, Static
+
+from terok.lib.integrations.executor import AgentRunner
 
 from .screens import _modal_binding
 

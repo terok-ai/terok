@@ -13,8 +13,9 @@ from contextlib import redirect_stdout
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-from terok_executor import parse_md_agent
 from terok_sandbox import down as shield_down, up as shield_up
+
+from terok.lib.integrations.executor import parse_md_agent
 
 from ..lib.api import (
     HeadlessRunRequest,
