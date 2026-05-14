@@ -12,10 +12,10 @@ time.
 
 from __future__ import annotations
 
-from contextlib import contextmanager
 from unittest.mock import MagicMock, patch
 
 import pytest
+from tests.test_utils import patch_vault_db as _patch_vault_db
 
 # ---------------------------------------------------------------------------
 # Project factory functions (defined in terok.lib.domain.project)
@@ -76,21 +76,6 @@ class TestDeriveProject:
         share.assert_called_once_with("source", "derived")
         loader.assert_called_once_with("derived")
         assert isinstance(result, Project)
-
-
-# ---------------------------------------------------------------------------
-# Vault-DB patch helpers, one per consumer module
-# ---------------------------------------------------------------------------
-
-
-def _patch_vault_db(db, *, module: str):
-    """Patch ``vault_db`` in the given consumer module to yield *db*."""
-
-    @contextmanager
-    def _cm():
-        yield db
-
-    return patch(f"terok.lib.domain.{module}.vault_db", _cm)
 
 
 # ---------------------------------------------------------------------------

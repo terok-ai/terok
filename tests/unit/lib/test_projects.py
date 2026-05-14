@@ -499,13 +499,9 @@ class TestShareSshKeyAssignments:
 
     @staticmethod
     def _patch_vault_db(db):
-        from contextlib import contextmanager
+        from tests.test_utils import patch_vault_db
 
-        @contextmanager
-        def _cm():
-            yield db
-
-        return unittest.mock.patch("terok.lib.domain.project.vault_db", _cm)
+        return patch_vault_db(db, module="project")
 
     def test_delegates_to_db_assign(self) -> None:
         """Every assignment on the source scope becomes an assignment on the new scope."""

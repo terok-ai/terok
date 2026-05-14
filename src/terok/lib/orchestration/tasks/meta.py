@@ -97,9 +97,9 @@ def read_task_meta(meta_dir: Path, task_id: str) -> dict | None:
 
     A pre-self-describing layout (``<task_id>.json`` / ``<task_id>.yml``)
     is migrated to the new names in place before the read so callers
-    never see the legacy paths.  Likewise a single-JSON layout that
-    mixed wire dossier with bookkeeping (the brief intermediate state
-    on this branch before the split) is detected and re-split here.
+    never see the legacy paths.  Likewise a layout from before the
+    dossier/bookkeeping split — a single JSON file mixing wire-dossier
+    keys with bookkeeping — is detected and re-split here.
     """
     _migrate_legacy_filenames(meta_dir, task_id)
     json_path = dossier_path(meta_dir, task_id)
@@ -113,8 +113,8 @@ def read_task_meta(meta_dir: Path, task_id: str) -> dict | None:
         text = json_path.read_text(encoding="utf-8")
         json_data = json.loads(text) if text.strip() else {}
 
-    # Pre-split single-JSON layout (this branch's earlier iteration)
-    # mixed wire dossier with bookkeeping.  Detect, split, normalise.
+    # Pre-split single-JSON layout: one file mixed wire dossier with
+    # bookkeeping.  Detect, split, normalise.
     spillover = {k: v for k, v in json_data.items() if k not in _DOSSIER_FROM_WIRE}
     if spillover:
         json_data = {k: v for k, v in json_data.items() if k in _DOSSIER_FROM_WIRE}
@@ -251,8 +251,8 @@ def _task_id_from_filename(name: str) -> str:
 def task_exists(project_id: str, task_id: str) -> bool:
     """Return ``True`` if any task-meta file exists for ``(project_id, task_id)``.
 
-    Considers both the canonical (``<task_id>.dossier.json`` /
-    ``<task_id>.meta.yml``) and legacy (``<task_id>.json`` /
+    Considers both the canonical (``<task_id>_dossier.json`` /
+    ``<task_id>_meta.yml``) and legacy (``<task_id>.json`` /
     ``<task_id>.yml``) on-disk layouts.
     """
     meta_dir = tasks_meta_dir(project_id)

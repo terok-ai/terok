@@ -5,18 +5,14 @@
 
 from __future__ import annotations
 
-from contextlib import contextmanager
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
+
+from tests.test_utils import patch_vault_db
 
 
 def _patch_vault_db(db):
     """Patch the SSH module's ``vault_db`` alias to yield *db*."""
-
-    @contextmanager
-    def _cm():
-        yield db
-
-    return patch("terok.lib.domain.ssh.vault_db", _cm)
+    return patch_vault_db(db, module="ssh")
 
 
 class TestRegisterSshKey:
