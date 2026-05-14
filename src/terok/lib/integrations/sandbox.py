@@ -109,6 +109,7 @@ from terok_sandbox import (  # noqa: F401 — re-exported public API
 from terok_sandbox.commands import (  # noqa: F401 — re-exported public API
     CommandTree,
     _handle_vault_seal,
+    _handle_vault_to_keyring,
 )
 from terok_sandbox.doctor import (  # noqa: F401 — re-exported public API
     CheckVerdict,
@@ -182,6 +183,7 @@ __all__ = [
     "VolumeSpec",
     "WrongPassphraseError",
     "_handle_vault_seal",
+    "_handle_vault_to_keyring",
     "_installed_versions",
     "_read_stamp",
     "block",

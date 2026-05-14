@@ -756,3 +756,19 @@ class ProjectActionsMixin(_MixinBase):
             title="Sealing vault passphrase into systemd-creds",
             refresh="vault_status",
         )
+
+    async def _action_vault_to_keyring(self) -> None:
+        """Move the currently resolved passphrase into the OS keyring.
+
+        Defers to sandbox's ``_handle_vault_to_keyring``: resolves the
+        passphrase from whichever tier currently holds it, writes to
+        the keyring, flips ``credentials.use_keyring: true``, drops
+        any plaintext fallbacks, removes the session/sealed copies,
+        and restarts the daemon.  The shell-side equivalent of
+        ``terok vault passphrase to-keyring``.
+        """
+        self._run_console_action(
+            "terok.tui.worker_actions:vault_to_keyring",
+            title="Moving vault passphrase to OS keyring",
+            refresh="vault_status",
+        )

@@ -2220,6 +2220,7 @@ class VaultScreen(screen.Screen[str | None]):
         _modal_binding("n", "vault_unlock", "Unlock (session-file tier)"),
         _modal_binding("l", "vault_lock", "Lock (clear session-file)"),
         _modal_binding("e", "vault_seal", "Seal into systemd-creds"),
+        _modal_binding("k", "vault_to_keyring", "Move passphrase to keyring"),
         _modal_binding("r", "vault_refresh", "Refresh status"),
     ]
 
@@ -2255,6 +2256,7 @@ class VaultScreen(screen.Screen[str | None]):
             Option("u\\[n]lock (write to session-file tier)", id="vault_unlock"),
             Option("\\[l]ock (clear session-file, stop daemon)", id="vault_lock"),
             Option("s\\[e]al current passphrase into systemd-creds", id="vault_seal"),
+            Option("move passphrase to \\[k]eyring", id="vault_to_keyring"),
             None,
             Option("\\[r]efresh status", id="vault_refresh"),
             id="actions-list",
@@ -2327,6 +2329,10 @@ class VaultScreen(screen.Screen[str | None]):
     def action_vault_seal(self) -> None:
         """Seal the currently resolved passphrase into a systemd-creds credential."""
         self.dismiss("vault_seal")
+
+    def action_vault_to_keyring(self) -> None:
+        """Trigger the to-keyring relocation flow."""
+        self.dismiss("vault_to_keyring")
 
     def action_vault_refresh(self) -> None:
         """Refresh the status display."""
