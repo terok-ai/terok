@@ -29,6 +29,7 @@ to drive the request from a separate process / namespace.
 
 from __future__ import annotations
 
+import asyncio
 import os
 import pwd
 import shutil
@@ -171,7 +172,7 @@ async def test_revoked_phantom_is_rejected(
 
 
 @pytest.mark.needs_podman
-def test_phantom_swap_through_container_socket(
+async def test_phantom_swap_through_container_socket(
     running_token_broker_socket: VaultSocketEnv,
     mock_upstream_api: MockUpstreamState,
     _pull_image: None,
@@ -190,6 +191,14 @@ def test_phantom_swap_through_container_socket(
     resolve the host gateway differently, and that's not what this
     story is testing.  Production's "socket" vault transport is
     exactly this shape.
+
+    The test is ``async`` so the aiohttp broker (running in the same
+    event loop as the test body, courtesy of the
+    ``running_token_broker_socket`` fixture) keeps servicing requests
+    while the blocking ``podman exec curl`` is offloaded via
+    ``asyncio.to_thread``.  A sync test would park the loop and the
+    in-container curl would hang waiting for a response the broker
+    never gets to send.
 
     Marker: ``needs_podman`` — skipped where podman is absent (CI,
     laptops without a runtime); the matrix runners exercise it.
@@ -223,7 +232,8 @@ def test_phantom_swap_through_container_socket(
         #     container's setting, so SELinux relabeling doesn't trip
         #     nested-rootless podman bind-mounts.  On non-SELinux hosts
         #     a no-op.
-        result = subprocess.run(
+        result = await asyncio.to_thread(
+            subprocess.run,
             [
                 "podman",
                 "run",
@@ -257,7 +267,8 @@ def test_phantom_swap_through_container_socket(
         #    socket.  The phantom token is what the agent in production
         #    would send; the broker sees it and substitutes the real key
         #    before forwarding to the upstream.
-        exec_result = subprocess.run(
+        exec_result = await asyncio.to_thread(
+            subprocess.run,
             [
                 "podman",
                 "exec",
@@ -293,7 +304,8 @@ def test_phantom_swap_through_container_socket(
         #    upstream saw, nor anywhere in the container's environment.
         raw_headers = " ".join(captured.headers.values())
         assert phantom not in raw_headers
-        env_result = subprocess.run(
+        env_result = await asyncio.to_thread(
+            subprocess.run,
             ["podman", "exec", name, "env"],
             check=True,
             capture_output=True,
@@ -306,7 +318,8 @@ def test_phantom_swap_through_container_socket(
             "should have kept it host-side"
         )
     finally:
-        subprocess.run(
+        await asyncio.to_thread(
+            subprocess.run,
             ["podman", "rm", "-f", name],
             capture_output=True,
             timeout=30,
