@@ -886,9 +886,14 @@ class TestEditInExternalEditor:
         mixin = self._get_mixin()
         instance = self._instance(mixin)
         instr_path = tmp_path / "nested" / "instructions.md"
-        with mock.patch("terok.tui.project_actions.subprocess.run") as run_mock:
+        proc = mock.AsyncMock()
+        with mock.patch(
+            "terok.tui.project_actions.asyncio.create_subprocess_exec",
+            new=mock.AsyncMock(return_value=proc),
+        ) as exec_mock:
             run(mixin._edit_in_external_editor(instance, instr_path, "vim -u NONE", done_msg="ok"))
-        run_mock.assert_called_once_with(["vim", "-u", "NONE", str(instr_path)], check=False)
+        exec_mock.assert_awaited_once_with("vim", "-u", "NONE", str(instr_path))
+        proc.wait.assert_awaited_once()
         assert instr_path.parent.is_dir()
         instance.suspend.assert_called_once_with()
         instance.notify.assert_called_once_with("ok")
@@ -901,8 +906,8 @@ class TestEditInExternalEditor:
         instr_path = tmp_path / "instructions.md"
         with (
             mock.patch(
-                "terok.tui.project_actions.subprocess.run",
-                side_effect=FileNotFoundError("no such editor"),
+                "terok.tui.project_actions.asyncio.create_subprocess_exec",
+                new=mock.AsyncMock(side_effect=FileNotFoundError("no such editor")),
             ),
             mock.patch("builtins.input") as input_mock,
         ):

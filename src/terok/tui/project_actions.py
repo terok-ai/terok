@@ -8,6 +8,7 @@ and the project wizard.  Also provides shared TUI helpers used by both
 project and task actions.
 """
 
+import asyncio
 import os
 import shlex
 import subprocess
@@ -346,8 +347,9 @@ class ProjectActionsMixin(_MixinBase):
         instr_path.parent.mkdir(parents=True, exist_ok=True)
         with self.suspend():
             try:
-                subprocess.run([*shlex.split(editor), str(instr_path)], check=False)
-            except Exception as exc:  # noqa: BLE001 — surface, never crash the TUI
+                proc = await asyncio.create_subprocess_exec(*shlex.split(editor), str(instr_path))
+                await proc.wait()
+            except (OSError, ValueError) as exc:
                 print(f"Error launching {editor}: {exc}")
                 input("\n[Press Enter to return to TerokTUI] ")
                 return
