@@ -29,6 +29,7 @@ from terok_sandbox import (  # noqa: F401 — re-exported public API
     SERVICES_TCP_OPTOUT_YAML,
     SSH_COMMANDS,
     BestEffortLogger,
+    CommandDef,
     ConfigScope,
     ConfigStack,
     ContainerRuntime,
@@ -106,6 +107,7 @@ from terok_sandbox import (  # noqa: F401 — re-exported public API
     yellow,
 )
 from terok_sandbox.commands import (  # noqa: F401 — re-exported public API
+    CommandTree,
     _handle_vault_seal,
 )
 from terok_sandbox.doctor import (  # noqa: F401 — re-exported public API
@@ -143,6 +145,8 @@ def __getattr__(name: str) -> Any:
 __all__ = [
     "BestEffortLogger",
     "CheckVerdict",
+    "CommandDef",
+    "CommandTree",
     "ConfigScope",
     "ConfigStack",
     "ContainerRuntime",

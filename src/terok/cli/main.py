@@ -33,9 +33,8 @@ from .commands import (
     sickbay,
     task,
     uninstall,
-    vault_local,
 )
-from .wiring import wire_dispatch, wire_group
+from .tree import CommandDef, CommandTree, inject_cfg_factory
 
 # Optional: bash completion via argcomplete
 try:
@@ -43,8 +42,22 @@ try:
 except ImportError:  # pragma: no cover - optional dep
     argcomplete = None  # type: ignore[assignment]
 
+
+def _commandtree_dispatch(args: argparse.Namespace) -> bool:
+    """Dispatch verbs wired by [`CommandTree.wire`][terok_sandbox.commands.CommandTree.wire].
+
+    Each leaf parser sets ``_cmd`` to its [`CommandDef`][terok_sandbox.commands.CommandDef];
+    we hand off to [`CommandTree.dispatch`][terok_sandbox.commands.CommandTree.dispatch]
+    which extracts kwargs from *args* and calls the (possibly cfg-wrapped)
+    handler.  Returns ``True`` if a wired command was matched.
+    """
+    if not hasattr(args, "_cmd"):
+        return False
+    CommandTree.dispatch(args)
+    return True
+
+
 # Dispatch chain — tried in order; first True wins.
-# wire_dispatch handles commands mounted via wire_group (agent, gate).
 _DISPATCHERS = [
     panic.dispatch,
     setup.dispatch,
@@ -53,8 +66,7 @@ _DISPATCHERS = [
     project.dispatch,
     task.dispatch,
     image.dispatch,
-    vault_local.dispatch,  # must precede wire_dispatch — handles `vault serve`
-    wire_dispatch,
+    _commandtree_dispatch,
     shield.dispatch,
     dbus.dispatch,
     clearance.dispatch,
@@ -158,43 +170,13 @@ def main(prog: str = "terok") -> None:
     info.register(sub)
     acp.register(sub)
 
-    # Mount sub-package command registries under scoped prefixes.
-    # Groups that touch SandboxConfig paths receive config_factory so the
-    # wiring layer injects terok's make_sandbox_config() as ``cfg``.
-    from terok.lib.integrations.executor import (
-        AGENT_COMMANDS,
-        VAULT_COMMANDS as AGENT_VAULT_COMMANDS,
-    )
-    from terok.lib.integrations.sandbox import GATE_COMMANDS, SSH_COMMANDS
-
-    from ..lib.core.config import make_sandbox_config
-
-    wire_group(sub, "executor", AGENT_COMMANDS, help="Task container executor commands")
-    wire_group(
-        sub,
-        "gate",
-        GATE_COMMANDS,
-        help="Git gate commands",
-        config_factory=make_sandbox_config,
-    )
-    vault_wiring = wire_group(
-        sub,
-        "vault",
-        AGENT_VAULT_COMMANDS,
-        help="Vault commands",
-        config_factory=make_sandbox_config,
-        return_action=True,
-    )
-    assert vault_wiring is not None  # return_action=True guarantees a tuple
-    _, vault_sub = vault_wiring
-    vault_local.register(vault_sub)
-    wire_group(
-        sub,
-        "ssh",
-        SSH_COMMANDS,
-        help="SSH key management",
-        config_factory=make_sandbox_config,
-    )
+    # Build the terok-side CommandTree from upstream packages, apply
+    # terok's cfg-injection overlay (concept translation: terok's
+    # SandboxConfig wins over sandbox's default), and surface every
+    # sibling subtree both deeply (terok executor sandbox vault X) and
+    # as top-level shortcuts (terok vault X) that share CommandDef
+    # identity with the deep path.
+    _build_wired_tree().wire(sub)
 
     # Dev / shell niceties at the bottom of the help listing.
     dbus.register(sub)
@@ -255,6 +237,64 @@ def main(prog: str = "terok") -> None:
         sys.exit(2)
 
     parser.error("Unknown command")
+
+
+def _build_wired_tree() -> CommandTree:
+    """Compose terok's sibling-wired command tree.
+
+    Pulls executor's full [`CommandTree`][terok_sandbox.commands.CommandTree]
+    (already containing executor's overlays + sandbox spliced under
+    ``sandbox``), applies terok's
+    [`SandboxConfig`][terok_sandbox.SandboxConfig] injection at every
+    handler under the ``sandbox`` namespace that takes ``cfg``, and
+    surfaces three views over the same modified subtrees:
+
+    - ``terok executor <verb>``      — full executor deep path.
+    - ``terok sandbox <verb>``       — shortcut for the sandbox subtree
+      (same children as ``terok executor sandbox``).
+    - ``terok {vault,gate,ssh} <verb>`` — shortcuts that reference the
+      same [`CommandDef`][terok_sandbox.commands.CommandDef] instances
+      living under ``sandbox`` so terok's cfg wrap propagates uniformly.
+    """
+    from terok.lib.integrations.executor import COMMANDS as EXECUTOR_COMMANDS
+
+    from ..lib.core.config import make_sandbox_config
+
+    # Executor exposes ``CommandTree`` (its top-level forest).  Apply
+    # terok's cfg wrap to every handler under the ``sandbox`` namespace
+    # that declares a ``cfg`` parameter — sandbox-rooted gate, ssh,
+    # vault, credentials, etc. all funnel through ``make_sandbox_config``.
+    modified = inject_cfg_factory(
+        EXECUTOR_COMMANDS,
+        subtree_paths=(("sandbox",),),
+        factory=make_sandbox_config,
+    )
+
+    # The shortcut nodes share identity with their counterparts inside
+    # the modified executor tree — both ``terok vault X`` and ``terok
+    # executor sandbox vault X`` resolve to the same wrapped handler.
+    sandbox_node = modified.find_at(("sandbox",))
+    vault_node = modified.find_at(("sandbox", "vault"))
+    gate_node = modified.find_at(("sandbox", "gate"))
+    ssh_node = modified.find_at(("sandbox", "ssh"))
+
+    return CommandTree(
+        (
+            CommandDef(
+                name="executor",
+                help="Task container executor commands (deep path; full executor tree)",
+                children=modified.roots,
+            ),
+            CommandDef(
+                name="sandbox",
+                help="Sandbox subsystem (shortcut to terok executor sandbox)",
+                children=sandbox_node.children,
+            ),
+            vault_node,
+            gate_node,
+            ssh_node,
+        )
+    )
 
 
 def terokctl_main() -> None:
