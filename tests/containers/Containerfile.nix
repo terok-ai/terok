@@ -61,11 +61,8 @@ RUN install -d /etc \
 # under it.
 RUN install -d -o 1000 -g 1000 /nix/var/nix/profiles/per-user/testrunner
 
-USER testrunner
-ENV USER=testrunner HOME=/home/testrunner
-ENV PATH=/home/testrunner/.local/bin:/nix/var/nix/profiles/default/bin:$PATH
-
-# No WORKDIR: ``run_nix_tests`` does ``cp -a /src /workspace`` and then
-# ``cd /workspace``.  ``cp`` only lands /src's contents at /workspace/
-# when /workspace doesn't already exist; pre-creating it via WORKDIR
-# would land them at /workspace/src/ instead and break the cd.
+# No USER / WORKDIR: ``run_nix_tests`` follows the same pattern as
+# ``run_tests`` — outer ``bash -c`` runs as root to do the
+# ``cp -a /src /workspace`` + ``chown`` + per-user nix-profile init,
+# then ``su - testrunner`` runs the actual install/test as uid 1000.
+ENV PATH=/nix/var/nix/profiles/default/bin:$PATH
