@@ -61,16 +61,51 @@ declare -A DISTROS=(
     [podman]="podman"
 )
 
-# Expected podman versions (for reporting, not enforcement)
+# Expected podman versions — pinned to the exact distro-shipped point
+# release.  We do *not* fail on mismatch (a distro update is a normal
+# event), only surface a yellow WARNING so a maintainer can refresh
+# the pins.  The ``podman`` image rolls with upstream, so it carries
+# no expectation — its observed version is reported as-is.
 declare -A EXPECTED_VERSIONS=(
-    [debian12]="4.3.x"
-    [ubuntu2404]="4.9.x"
-    [ubuntu2604]="5.7.x"
-    [debian13]="5.4.x"
-    [fedora43]="5.8.x"
-    [fedora44]="5.8.x"
+    [debian12]="4.3.1"
+    [ubuntu2404]="4.9.3"
+    [ubuntu2604]="5.7.0"
+    [debian13]="5.4.2"
+    [fedora43]="5.8.2"
+    [fedora44]="5.8.2"
     [podman]="latest"
 )
+
+# Print "expected podman X.Y.Z" for distros with a version pin, or
+# "podman latest, version pinned by upstream" for the bare ``podman``
+# image.  Used in the ``==> Testing ...`` heading and the ``--list``
+# output.
+version_expectation() {
+    local name="$1"
+    local expected="${EXPECTED_VERSIONS[$name]:-}"
+    if [[ "$expected" == "latest" ]]; then
+        printf 'podman latest, version pinned by upstream'
+    else
+        printf 'expected podman %s' "$expected"
+    fi
+}
+
+# Print the parenthesised version summary for ``$name`` after a run.
+# Match (or ``latest``): dim ``(podman X.Y.Z)``.
+# Mismatch: yellow ``(WARNING: expected podman A, got podman B)``.
+# Never fails the run — distro point releases are routine, the warning
+# is just a nudge to refresh ``EXPECTED_VERSIONS``.
+version_summary() {
+    local name="$1"
+    local expected="${EXPECTED_VERSIONS[$name]:-}"
+    local actual="${ACTUAL_VERSIONS[$name]:-?}"
+    if [[ "$expected" == "latest" || "$expected" == "$actual" ]]; then
+        printf '%s(podman %s)%s' "$C_DIM" "$actual" "$C_RESET"
+    else
+        printf '%s(WARNING: expected podman %s, got podman %s)%s' \
+            "$C_YELLOW" "$expected" "$actual" "$C_RESET"
+    fi
+}
 
 # Non-root user baked into each Containerfile (uid 1000).
 # The podman image uses its pre-existing 'podman' user.
@@ -146,7 +181,7 @@ run_tests() {
     local test_user="${TEST_USERS[$name]}"
 
     echo ""
-    echo -e "${C_CYAN}==> Testing ${C_BOLD}$name${C_CYAN} (expected podman ${EXPECTED_VERSIONS[$name]})${C_RESET}"
+    echo -e "${C_CYAN}==> Testing ${C_BOLD}$name${C_CYAN} ($(version_expectation "$name"))${C_RESET}"
     echo -e "    ${C_DIM}user: $test_user${C_RESET}"
     echo ""
 
@@ -264,11 +299,12 @@ print(\\\"Shield hooks verified.\\\")
     actual=$(cat "$RESULTS_DIR/$name.podman-version" 2>/dev/null || true)
     ACTUAL_VERSIONS[$name]="${actual:-?}"
 
-    local versions="expected ${EXPECTED_VERSIONS[$name]}, got ${ACTUAL_VERSIONS[$name]}"
+    local vsummary
+    vsummary=$(version_summary "$name")
     if [[ $status -eq 0 ]]; then
-        echo -e "${C_GREEN}==> $name: PASS${C_RESET} ${C_DIM}($versions)${C_RESET}"
+        echo -e "${C_GREEN}==> $name: PASS${C_RESET} $vsummary"
     else
-        echo -e "${C_RED}==> $name: FAIL${C_RESET} ${C_DIM}($versions)${C_RESET}" >&2
+        echo -e "${C_RED}==> $name: FAIL${C_RESET} $vsummary" >&2
     fi
     return "$status"
 }
@@ -291,7 +327,7 @@ done
 
 if $LIST_ONLY; then
     for name in "${!DISTROS[@]}"; do
-        echo "$name (podman ${EXPECTED_VERSIONS[$name]})"
+        echo "$name ($(version_expectation "$name"))"
     done | sort
     exit 0
 fi
@@ -332,10 +368,10 @@ done
 echo ""
 echo -e "${C_BOLD}===== Matrix Summary =====${C_RESET}"
 for target in "${PASSED[@]}"; do
-    echo -e "  ${C_GREEN}PASS${C_RESET}: $target ${C_DIM}(expected ${EXPECTED_VERSIONS[$target]}, got ${ACTUAL_VERSIONS[$target]:-?})${C_RESET}"
+    echo -e "  ${C_GREEN}PASS${C_RESET}: $target $(version_summary "$target")"
 done
 for target in "${FAILED[@]}"; do
-    echo -e "  ${C_RED}FAIL${C_RESET}: $target ${C_DIM}(expected ${EXPECTED_VERSIONS[$target]}, got ${ACTUAL_VERSIONS[$target]:-?})${C_RESET}"
+    echo -e "  ${C_RED}FAIL${C_RESET}: $target $(version_summary "$target")"
 done
 
 if [[ ${#FAILED[@]} -gt 0 ]]; then
