@@ -212,13 +212,8 @@ def test_phantom_swap_through_container_socket(
         PODMAN_TEST_IMAGE if "/" in PODMAN_TEST_IMAGE else f"localhost/{PODMAN_TEST_IMAGE}"
     )
     try:
-        # Podman knobs:
-        #   --rm  belt-and-suspenders cleanup.  ``finally`` already
-        #     runs ``podman rm -f``, but if pytest is SIGKILL'd between
-        #     ``podman run`` and the ``finally`` block, ``--rm`` ensures
-        #     the container is auto-removed once ``sleep 60`` exits.
-        #     Keeps the operator's container state pristine even on a
-        #     crashed test run.
+        # Two podman knobs the matrix doesn't need but a personal dev
+        # host does:
         #   --pull=never  podman's default ``--pull=missing`` interprets
         #     the ``localhost/`` prefix as a real registry hostname and
         #     probes ``https://localhost/v2/`` before checking the local
@@ -233,7 +228,6 @@ def test_phantom_swap_through_container_socket(
                 "podman",
                 "run",
                 "-d",
-                "--rm",
                 "--pull",
                 "never",
                 "--security-opt",
