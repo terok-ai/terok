@@ -263,7 +263,7 @@ class TestStopContainers:
 class TestRaiseShield:
     """Tests for _raise_shield."""
 
-    @patch("terok_sandbox.block")
+    @patch("terok.lib.integrations.sandbox.block")
     def test_success(self, mock_block):
         """Shield block succeeds."""
         from terok.lib.domain.panic import _raise_shield
@@ -272,7 +272,7 @@ class TestRaiseShield:
         assert err is None
         mock_block.assert_called_once()
 
-    @patch("terok_sandbox.block", side_effect=Exception("nft failed"))
+    @patch("terok.lib.integrations.sandbox.block", side_effect=Exception("nft failed"))
     def test_failure(self, _):
         """Shield block failure returns error string."""
         from terok.lib.domain.panic import _raise_shield
@@ -284,8 +284,8 @@ class TestRaiseShield:
 class TestStopVault:
     """Tests for _stop_vault — the panic "lock + stop" step."""
 
-    @patch("terok_sandbox.stop_vault")
-    @patch("terok_sandbox.SandboxConfig")
+    @patch("terok.lib.integrations.sandbox.stop_vault")
+    @patch("terok.lib.integrations.sandbox.SandboxConfig")
     def test_success(self, mock_cfg: MagicMock, mock_stop: MagicMock) -> None:
         """Vault stop succeeds."""
         from terok.lib.domain.panic import _stop_vault
@@ -294,8 +294,8 @@ class TestStopVault:
         ok, err = _stop_vault()
         assert ok and err is None
 
-    @patch("terok_sandbox.SandboxConfig")
-    @patch("terok_sandbox.stop_vault", side_effect=Exception("no vault"))
+    @patch("terok.lib.integrations.sandbox.SandboxConfig")
+    @patch("terok.lib.integrations.sandbox.stop_vault", side_effect=Exception("no vault"))
     def test_failure(self, _stop: MagicMock, mock_cfg: MagicMock) -> None:
         """Vault stop failure returns error."""
         from terok.lib.domain.panic import _stop_vault
@@ -318,8 +318,8 @@ class TestStopVault:
         fake_cfg = MagicMock()
         fake_cfg.vault_passphrase_file = passphrase_file
         with (
-            patch("terok_sandbox.SandboxConfig", return_value=fake_cfg),
-            patch("terok_sandbox.stop_vault"),
+            patch("terok.lib.integrations.sandbox.SandboxConfig", return_value=fake_cfg),
+            patch("terok.lib.integrations.sandbox.stop_vault"),
         ):
             ok, err = _stop_vault()
         assert ok and err is None
@@ -333,8 +333,8 @@ class TestStopVault:
         fake_cfg = MagicMock()
         fake_cfg.vault_passphrase_file = missing
         with (
-            patch("terok_sandbox.SandboxConfig", return_value=fake_cfg),
-            patch("terok_sandbox.stop_vault"),
+            patch("terok.lib.integrations.sandbox.SandboxConfig", return_value=fake_cfg),
+            patch("terok.lib.integrations.sandbox.stop_vault"),
         ):
             ok, err = _stop_vault()
         assert ok and err is None
@@ -343,7 +343,7 @@ class TestStopVault:
 class TestStopGate:
     """Tests for _stop_gate."""
 
-    @patch("terok_sandbox.stop_daemon")
+    @patch("terok.lib.integrations.sandbox.stop_daemon")
     def test_success(self, mock_stop):
         """Gate stop succeeds."""
         from terok.lib.domain.panic import _stop_gate
@@ -351,7 +351,7 @@ class TestStopGate:
         ok, err = _stop_gate()
         assert ok and err is None
 
-    @patch("terok_sandbox.stop_daemon", side_effect=Exception("no gate"))
+    @patch("terok.lib.integrations.sandbox.stop_daemon", side_effect=Exception("no gate"))
     def test_failure(self, _):
         """Gate stop failure returns error."""
         from terok.lib.domain.panic import _stop_gate

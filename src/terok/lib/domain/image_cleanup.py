@@ -12,7 +12,7 @@ from ..core import runtime as _rt
 from ..core.projects import list_projects
 
 if TYPE_CHECKING:
-    from terok_sandbox import Image
+    from terok.lib.integrations.sandbox import Image
 
 
 @dataclass

@@ -387,8 +387,13 @@ def _setup_verdict_or_exit() -> None:
     invocation — one ``Path.is_file``, one JSON decode, a handful
     of ``importlib.metadata.version`` lookups.
     """
-    from terok_sandbox import SetupVerdict, needs_setup
-    from terok_sandbox.setup_stamp import _installed_versions, _read_stamp, stamp_path
+    from terok.lib.integrations.sandbox import (
+        SetupVerdict,
+        _installed_versions,
+        _read_stamp,
+        needs_setup,
+        stamp_path,
+    )
 
     verdict = needs_setup()
     if verdict is SetupVerdict.OK:

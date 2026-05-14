@@ -403,7 +403,9 @@ class TestCheckSelinuxPolicy:
     @staticmethod
     def _run(result: SelinuxCheckResult) -> tuple[str, str, str]:
         """Execute ``_check_selinux_policy`` with ``check_selinux_status`` mocked."""
-        with unittest.mock.patch("terok_sandbox.check_selinux_status", return_value=result):
+        with unittest.mock.patch(
+            "terok.lib.integrations.sandbox.check_selinux_status", return_value=result
+        ):
             return _check_selinux_policy()
 
     def test_not_needed_in_tcp_mode(self) -> None:
@@ -472,7 +474,9 @@ class TestCheckVaultMigration:
         def fake_ns(name: str) -> Path:
             return tmp_path / name  # neither exists
 
-        with unittest.mock.patch("terok_sandbox.paths.namespace_state_dir", side_effect=fake_ns):
+        with unittest.mock.patch(
+            "terok.lib.integrations.sandbox.namespace_state_dir", side_effect=fake_ns
+        ):
             sev, label, detail = _check_vault_migration()
         assert sev == "ok"
         assert label == "Vault migration"
@@ -487,7 +491,9 @@ class TestCheckVaultMigration:
         def fake_ns(name: str) -> Path:
             return legacy if name == "credentials" else vault
 
-        with unittest.mock.patch("terok_sandbox.paths.namespace_state_dir", side_effect=fake_ns):
+        with unittest.mock.patch(
+            "terok.lib.integrations.sandbox.namespace_state_dir", side_effect=fake_ns
+        ):
             sev, _, detail = _check_vault_migration()
         assert sev == "warn"
         assert str(legacy) in detail
@@ -503,7 +509,9 @@ class TestCheckVaultMigration:
         def fake_ns(name: str) -> Path:
             return legacy if name == "credentials" else vault
 
-        with unittest.mock.patch("terok_sandbox.paths.namespace_state_dir", side_effect=fake_ns):
+        with unittest.mock.patch(
+            "terok.lib.integrations.sandbox.namespace_state_dir", side_effect=fake_ns
+        ):
             sev, _, detail = _check_vault_migration()
         assert sev == "info"
         assert "still present" in detail
@@ -512,7 +520,7 @@ class TestCheckVaultMigration:
     def test_warn_when_probe_raises(self) -> None:
         """An exception inside the probe is surfaced as a warn result."""
         with unittest.mock.patch(
-            "terok_sandbox.paths.namespace_state_dir",
+            "terok.lib.integrations.sandbox.namespace_state_dir",
             side_effect=RuntimeError("boom"),
         ):
             sev, label, detail = _check_vault_migration()

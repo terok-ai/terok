@@ -49,7 +49,7 @@ else:
 
 def _lookup_vault_pub_line(scope: str) -> str | None:
     """Return the scope's most-recent public key line, or ``None`` if unassigned."""
-    from terok_sandbox import public_line_of
+    from terok.lib.integrations.sandbox import public_line_of
 
     from ..lib.api import vault_db
 
@@ -81,7 +81,7 @@ class ProjectActionsMixin(_MixinBase):
 
     def _print_sync_gate_ssh_help(self, project_id: str) -> None:
         """Print SSH-specific troubleshooting details for gate sync failures."""
-        from terok_sandbox import is_ssh_url
+        from terok.lib.integrations.sandbox import is_ssh_url
 
         try:
             project = load_project(project_id)
@@ -443,7 +443,7 @@ class ProjectActionsMixin(_MixinBase):
 
         def work() -> None:
             """Resolve and print the effective instructions."""
-            from terok_executor import resolve_instructions
+            from terok.lib.integrations.executor import resolve_instructions
 
             from ..lib.api import resolve_agent_config
 
@@ -451,7 +451,7 @@ class ProjectActionsMixin(_MixinBase):
             effective = resolve_agent_config(
                 pid, agent_config=project.agent_config, project_root=project.root
             )
-            from terok_executor import get_provider as _get_provider
+            from terok.lib.integrations.executor import get_provider as _get_provider
 
             provider = _get_provider(None, default_agent=project.default_agent)
             text = resolve_instructions(effective, provider.name, project_root=project.root)
@@ -483,7 +483,7 @@ class ProjectActionsMixin(_MixinBase):
 
         def work() -> None:
             """Print bundled default instructions."""
-            from terok_executor import bundled_default_instructions
+            from terok.lib.integrations.executor import bundled_default_instructions
 
             text = bundled_default_instructions()
             print("=== Bundled Default Instructions ===\n")
@@ -720,7 +720,7 @@ class ProjectActionsMixin(_MixinBase):
         """Run hook installation after shield setup modal choice."""
         if result is None:
             return
-        from terok_sandbox import setup_hooks_direct as shield_setup_hooks_direct
+        from terok.lib.integrations.sandbox import setup_hooks_direct as shield_setup_hooks_direct
 
         await self._run_suspended(
             lambda: shield_setup_hooks_direct(root=result == "root"),
@@ -731,7 +731,7 @@ class ProjectActionsMixin(_MixinBase):
 
     async def _action_vault_install(self) -> None:
         """Install systemd socket activation for the vault."""
-        from terok_executor import ensure_vault_routes
+        from terok.lib.integrations.executor import ensure_vault_routes
 
         from ..lib.api import make_sandbox_config
 
@@ -756,7 +756,7 @@ class ProjectActionsMixin(_MixinBase):
 
     async def _action_vault_start(self) -> None:
         """Generate routes and start the vault daemon."""
-        from terok_executor import ensure_vault_routes
+        from terok.lib.integrations.executor import ensure_vault_routes
 
         from ..lib.api import make_sandbox_config
 
@@ -813,7 +813,7 @@ class ProjectActionsMixin(_MixinBase):
         sandbox helper's stdout (which prints the resulting key mode)
         lands where the operator can read it.
         """
-        from terok_sandbox.commands import _handle_vault_seal
+        from terok.lib.integrations.sandbox import _handle_vault_seal
 
         from ..lib.api import make_sandbox_config
 

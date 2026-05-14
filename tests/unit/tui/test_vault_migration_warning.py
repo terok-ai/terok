@@ -24,7 +24,7 @@ class TestVaultMigrationWarning:
         """Existing ``credentials/`` dir → warning points at the migration tool."""
         legacy = tmp_path / "credentials"
         legacy.mkdir()
-        with patch("terok_sandbox.paths.namespace_state_dir", return_value=legacy):
+        with patch("terok.lib.integrations.sandbox.namespace_state_dir", return_value=legacy):
             msg = _vault_migration_warning()
         assert msg is not None
         assert "Legacy credentials/" in msg
@@ -33,13 +33,13 @@ class TestVaultMigrationWarning:
     def test_returns_none_when_no_legacy_dir(self, tmp_path: Path) -> None:
         """Missing ``credentials/`` dir → no warning, no crash."""
         missing = tmp_path / "credentials"  # never created
-        with patch("terok_sandbox.paths.namespace_state_dir", return_value=missing):
+        with patch("terok.lib.integrations.sandbox.namespace_state_dir", return_value=missing):
             assert _vault_migration_warning() is None
 
     def test_returns_none_when_sandbox_probe_raises(self) -> None:
         """Any exception in the probe is swallowed — diagnostics never crash boot."""
         with patch(
-            "terok_sandbox.paths.namespace_state_dir",
+            "terok.lib.integrations.sandbox.namespace_state_dir",
             side_effect=RuntimeError("sandbox misconfigured"),
         ):
             assert _vault_migration_warning() is None

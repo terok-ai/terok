@@ -15,7 +15,7 @@ from pydantic import ValidationError
 from terok.lib.integrations.sandbox import ServicesMode
 
 if TYPE_CHECKING:
-    from terok_sandbox import ConfigStack, SandboxConfig
+    from terok.lib.integrations.sandbox import ConfigStack, SandboxConfig
 
 from ..util.yaml import YAMLError, load as _yaml_load
 from .paths import config_root as _config_root_base
@@ -117,7 +117,7 @@ def _build_config_stack() -> "ConfigStack":
     Loads each layer independently; unreadable or malformed files are
     skipped with a stderr warning so the remaining layers still apply.
     """
-    from terok_sandbox import ConfigScope, ConfigStack
+    from terok.lib.integrations.sandbox import ConfigScope, ConfigStack
 
     from ..util.logging_utils import warn_user
 
@@ -235,7 +235,7 @@ def sandbox_live_dir() -> Path:
     - Global config ``paths.sandbox_live_dir``.
     - Namespace root + ``sandbox-live/``.
     """
-    from terok_sandbox.paths import namespace_state_dir
+    from terok.lib.integrations.sandbox import namespace_state_dir
 
     return _resolve_path(
         "TEROK_SANDBOX_LIVE_DIR",
@@ -333,7 +333,7 @@ def archive_dir() -> Path:
     The ``<project>/`` subdirectory is bundled into the project tar and
     removed on project deletion — freeing the name for reuse.
     """
-    from terok_sandbox.paths import namespace_state_dir
+    from terok.lib.integrations.sandbox import namespace_state_dir
 
     return namespace_state_dir("archive").resolve()
 
@@ -349,7 +349,7 @@ def vault_dir() -> Path:
     """
     import warnings
 
-    from terok_sandbox.paths import namespace_state_dir
+    from terok.lib.integrations.sandbox import namespace_state_dir
 
     env = "TEROK_VAULT_DIR"
     if not os.environ.get(env) and os.environ.get("TEROK_CREDENTIALS_DIR"):
@@ -381,7 +381,7 @@ def make_sandbox_config() -> "SandboxConfig":
     This is the **single source of truth** for config bridging — every
     SandboxConfig field that terok controls must be set here.
     """
-    from terok_sandbox import SandboxConfig
+    from terok.lib.integrations.sandbox import SandboxConfig
 
     return SandboxConfig(
         vault_dir=vault_dir(),
@@ -432,7 +432,7 @@ def get_global_image_base_image() -> str:
     (e.g. ``terok auth``) so users on Fedora/NVIDIA/Podman bases don't
     end up with a parallel Ubuntu L1 just for auth.
     """
-    from terok_executor import DEFAULT_BASE_IMAGE
+    from terok.lib.integrations.executor import DEFAULT_BASE_IMAGE
 
     return _load_validated().image.base_image or DEFAULT_BASE_IMAGE
 

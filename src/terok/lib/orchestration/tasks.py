@@ -1171,7 +1171,7 @@ def _task_delete(project: ProjectConfig, task_id: str) -> TaskDeleteResult:
         _archive_task(project, task_id, meta)
 
     _log_debug("task_delete: revoking gate tokens")
-    from terok_sandbox import revoke_token_for_task
+    from terok.lib.integrations.sandbox import revoke_token_for_task
 
     try:
         revoke_token_for_task(project.id, task_id)

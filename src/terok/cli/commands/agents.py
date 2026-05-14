@@ -38,7 +38,7 @@ def dispatch(args: argparse.Namespace) -> bool:
     if args.cmd != "agents":
         return False
 
-    from terok_executor import get_roster
+    from terok.lib.integrations.executor import get_roster
 
     roster = get_roster()
     names = roster.all_names if getattr(args, "all", False) else roster.agent_names

@@ -38,7 +38,7 @@ from ..util.host_cmd import WORKSPACE_DANGEROUS_DIRNAME
 if TYPE_CHECKING:
     # Type-only import: terok_executor doesn't re-export AgentRoster at the
     # top level, but the runtime convention only applies to actual imports.
-    from terok_executor.roster import AgentRoster
+    from terok.lib.integrations.executor import AgentRoster
 
 _logger = logging.getLogger(__name__)
 
@@ -254,7 +254,7 @@ def ensure_vault() -> None:
     if get_vault_bypass():
         return
 
-    from terok_sandbox import VaultUnreachableError, ensure_vault_reachable
+    from terok.lib.integrations.sandbox import VaultUnreachableError, ensure_vault_reachable
 
     try:
         ensure_vault_reachable(make_sandbox_config())
@@ -339,7 +339,7 @@ def _warn_leaked_credentials() -> None:
     """
     import sys
 
-    from terok_executor import scan_leaked_credentials
+    from terok.lib.integrations.executor import scan_leaked_credentials
 
     from ..core.config import is_claude_oauth_exposed, is_codex_oauth_exposed
     from ..util.ansi import bold, supports_color, yellow
@@ -390,7 +390,7 @@ def _seed_workspace_cache(repo_dir: Path, project_id: str, code_repo: str | None
         return
 
     try:
-        from terok_executor import seed_workspace_from_clone_cache
+        from terok.lib.integrations.executor import seed_workspace_from_clone_cache
     except ImportError:
         return
 
@@ -460,7 +460,7 @@ def build_task_env_and_volumes(
         authorship=project.git_authorship,
     )
 
-    from terok_executor import ContainerEnvSpec, assemble_container_env, get_roster
+    from terok.lib.integrations.executor import ContainerEnvSpec, assemble_container_env, get_roster
 
     # Vault: bypass → no vault at all; otherwise ensure it's up before assembly
     vault_bypass = get_vault_bypass()
@@ -518,7 +518,7 @@ def build_task_env_and_volumes(
 
     # Socket mode: mount host runtime dir so socat bridges can reach sockets
     if use_socket:
-        from terok_sandbox import Sharing
+        from terok.lib.integrations.sandbox import Sharing
 
         volumes.append(VolumeSpec(cfg.runtime_dir, _CONTAINER_RUNTIME_DIR, sharing=Sharing.SHARED))
 

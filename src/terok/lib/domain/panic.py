@@ -236,7 +236,7 @@ def _discover_targets() -> list[_Target]:
 
 def _raise_shield(target: _Target) -> tuple[str, str | None]:
     """Block all traffic for one container (total blackout)."""
-    from terok_sandbox import block as shield_block
+    from terok.lib.integrations.sandbox import block as shield_block
 
     _, _, _, cname, task_dir = target
     try:
@@ -261,7 +261,7 @@ def _stop_vault() -> tuple[bool, str | None]:
     ``terok-sandbox vault lock --forget`` afterwards if they want
     a destructive lockout.
     """
-    from terok_sandbox import SandboxConfig, stop_vault
+    from terok.lib.integrations.sandbox import SandboxConfig, stop_vault
 
     try:
         SandboxConfig().vault_passphrase_file.unlink(missing_ok=True)
@@ -273,7 +273,7 @@ def _stop_vault() -> tuple[bool, str | None]:
 
 def _stop_gate() -> tuple[bool, str | None]:
     """Stop the gate server daemon."""
-    from terok_sandbox import stop_daemon
+    from terok.lib.integrations.sandbox import stop_daemon
 
     try:
         stop_daemon()

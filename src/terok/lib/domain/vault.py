@@ -10,7 +10,7 @@ from contextlib import ExitStack, contextmanager
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from terok_sandbox import CredentialDB
+    from terok.lib.integrations.sandbox import CredentialDB
 
 
 @contextmanager
@@ -46,7 +46,7 @@ def maybe_vault_db(*, prompt_on_tty: bool = False) -> Iterator[CredentialDB | No
     modules" contract holds (only ``vault.py`` reaches into
     ``terok_sandbox``).
     """
-    from terok_sandbox.credentials.db import NoPassphraseError, WrongPassphraseError
+    from terok.lib.integrations.sandbox import NoPassphraseError, WrongPassphraseError
 
     # Catch exceptions raised on entry only — wrapping the entire
     # ``with vault_db(): yield db`` in a try/except would also swallow

@@ -74,7 +74,7 @@ def state_root() -> Path:
     layered config stack) → platform default (``/var/lib/terok`` or
     ``${XDG_DATA_HOME:-~/.local/share}/terok``).
     """
-    from terok_sandbox.paths import namespace_state_dir
+    from terok.lib.integrations.sandbox import namespace_state_dir
 
     return namespace_state_dir("").resolve()
 
@@ -208,7 +208,7 @@ def runtime_dir() -> Path:
     transient state), while this function sits under the shared terok
     namespace root for ecosystem packages to co-locate.
     """
-    from terok_sandbox.paths import namespace_runtime_dir
+    from terok.lib.integrations.sandbox import namespace_runtime_dir
 
     return namespace_runtime_dir()
 

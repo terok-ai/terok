@@ -46,7 +46,7 @@ from ...lib.core.paths import acp_log_path, acp_socket_path
 from ._completers import add_project_id, add_task_id
 
 if TYPE_CHECKING:
-    from terok_executor import ACPEndpointStatus
+    from terok.lib.integrations.executor import ACPEndpointStatus
 
     from ...lib.domain.project import Project
 

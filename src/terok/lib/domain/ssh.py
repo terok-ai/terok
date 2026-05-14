@@ -21,7 +21,7 @@ from ..core.projects import load_project
 from .vault import vault_db
 
 if TYPE_CHECKING:
-    from terok_sandbox.credentials.ssh import SSHInitResult
+    from terok.lib.integrations.sandbox import SSHInitResult
 
 
 def provision_ssh_key(
@@ -69,7 +69,7 @@ def project_needs_key_registration(project_id: str) -> bool:
     wizard's mid-flow "continue" gate — keeps the rule (SSH URLs need
     registration, HTTPS and no-upstream projects don't) in one place.
     """
-    from terok_sandbox import is_ssh_url
+    from terok.lib.integrations.sandbox import is_ssh_url
 
     try:
         project = load_project(project_id)

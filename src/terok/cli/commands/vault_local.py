@@ -58,7 +58,7 @@ def dispatch(args: argparse.Namespace) -> bool:
     saved = _sys.argv
     try:
         _sys.argv = ["terok-vault-serve", *_sys.argv[serve_idx + 1 :]]
-        from terok_sandbox.vault.token_broker import main as _serve
+        from terok.lib.integrations.sandbox import vault_token_broker_main as _serve
 
         _serve()
     finally:

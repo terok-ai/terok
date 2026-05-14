@@ -316,7 +316,7 @@ class TestApplyAuthProtectDenies:
         roster = MagicMock()
         roster.vault_routes = routes
         return (
-            patch("terok_executor.get_roster", return_value=roster),
+            patch("terok.lib.integrations.executor.get_roster", return_value=roster),
             patch(
                 "terok.lib.core.config.exposed_credential_providers",
                 return_value=exposed,
@@ -325,7 +325,9 @@ class TestApplyAuthProtectDenies:
                 "terok.lib.orchestration.task_runners._resolved_allow_entries",
                 return_value=allow_entries,
             ),
-            patch("terok_sandbox.make_shield", return_value=shield_obj or MagicMock()),
+            patch(
+                "terok.lib.integrations.sandbox.make_shield", return_value=shield_obj or MagicMock()
+            ),
         )
 
     def test_denies_upstream_and_oauth_refresh_for_each_provider(self, tmp_path: Path) -> None:

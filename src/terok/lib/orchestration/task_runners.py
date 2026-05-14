@@ -97,7 +97,7 @@ def _apply_unrestricted_env(env: dict[str, str]) -> None:
     it is launched (CLI wrapper or ACP).  Setting them at the container
     level provides a single, unified permission mechanism.
     """
-    from terok_executor import collect_all_auto_approve_env
+    from terok.lib.integrations.executor import collect_all_auto_approve_env
 
     env["TEROK_UNRESTRICTED"] = "1"
     env.update(collect_all_auto_approve_env())
@@ -273,7 +273,7 @@ def _prepare_agent_config(
         preset=preset,
     )
     subagents = tuple(effective.get("subagents") or ())
-    from terok_executor import get_provider as _get_provider
+    from terok.lib.integrations.executor import get_provider as _get_provider
 
     resolved = _get_provider(provider_name, default_agent=project.default_agent)
     instr_text = resolve_instructions(effective, resolved.name, project_root=project.root)
@@ -413,7 +413,7 @@ def _auth_protect_hosts() -> dict[str, frozenset[str]]:
     story for those providers.  See the field declaration on
     [`VaultRoute`][terok_executor.roster.types.VaultRoute] for the rationale.
     """
-    from terok_executor import get_roster
+    from terok.lib.integrations.executor import get_roster
 
     out: dict[str, frozenset[str]] = {}
     for name, route in get_roster().vault_routes.items():
@@ -456,7 +456,7 @@ def _apply_auth_protect_denies(cname: str, task_dir: Path) -> None:
     already present in the active allow profiles (the developer has
     explicitly opted that endpoint back in).
     """
-    from terok_sandbox import make_shield
+    from terok.lib.integrations.sandbox import make_shield
 
     from ..core.config import exposed_credential_providers
 
@@ -950,7 +950,7 @@ def task_run_headless(request: HeadlessRunRequest) -> str:
 
     Returns the task_id.
     """
-    from terok_executor import (
+    from terok.lib.integrations.executor import (
         CLIOverrides,
         apply_provider_config,
         build_headless_command,
@@ -1153,7 +1153,7 @@ def task_followup_headless(
     original ``task_run_headless`` invocation since ``podman start``
     re-executes the same container command.
     """
-    from terok_executor import AGENT_PROVIDERS
+    from terok.lib.integrations.executor import AGENT_PROVIDERS
 
     project = load_project(project_id)
     meta, meta_path = load_task_meta(project.id, task_id)
@@ -1203,7 +1203,7 @@ def task_followup_headless(
 
     if project.is_sealed:
         # Sealed: inject prompt via podman cp into stopped container
-        from terok_executor import inject_prompt
+        from terok.lib.integrations.executor import inject_prompt
 
         inject_prompt(cname, prompt)
     else:

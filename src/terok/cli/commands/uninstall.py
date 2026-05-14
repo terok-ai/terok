@@ -142,7 +142,7 @@ def _uninstall_sandbox_stack(*, root: bool) -> bool:
     survives an uninstall on purpose: it's harmless without the hooks
     that feed it, and the reinstall path overwrites it.
     """
-    from terok_sandbox import sandbox_uninstall
+    from terok.lib.integrations.sandbox import sandbox_uninstall
 
     with stage_line("Sandbox stack") as s:
         try:
@@ -156,7 +156,7 @@ def _uninstall_sandbox_stack(*, root: bool) -> bool:
 
 def _purge_credential_db() -> bool:
     """Delete the vault credential database — agents will need re-auth."""
-    from terok_sandbox import SandboxConfig
+    from terok.lib.integrations.sandbox import SandboxConfig
 
     with stage_line("Credential DB") as s:
         db_path = SandboxConfig().db_path

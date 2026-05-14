@@ -22,7 +22,7 @@ class TestEnsureVault:
         """Does nothing when bypass_no_secret_protection is set."""
         with (
             patch(f"{_CFG}.get_vault_bypass", return_value=True),
-            patch("terok_sandbox.ensure_vault_reachable") as mock_reach,
+            patch("terok.lib.integrations.sandbox.ensure_vault_reachable") as mock_reach,
         ):
             ensure_vault()
         mock_reach.assert_not_called()
@@ -33,7 +33,7 @@ class TestEnsureVault:
         with (
             patch(f"{_CFG}.get_vault_bypass", return_value=False),
             patch(f"{_ENV}.make_sandbox_config", return_value=mock_cfg),
-            patch("terok_sandbox.ensure_vault_reachable") as mock_reach,
+            patch("terok.lib.integrations.sandbox.ensure_vault_reachable") as mock_reach,
         ):
             ensure_vault()
         mock_reach.assert_called_once_with(mock_cfg)
@@ -44,7 +44,7 @@ class TestEnsureVault:
             patch(f"{_CFG}.get_vault_bypass", return_value=False),
             patch(f"{_ENV}.make_sandbox_config"),
             patch(
-                "terok_sandbox.ensure_vault_reachable",
+                "terok.lib.integrations.sandbox.ensure_vault_reachable",
                 side_effect=SystemExit("vault down"),
             ),
         ):

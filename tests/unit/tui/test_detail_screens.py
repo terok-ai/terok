@@ -1392,7 +1392,7 @@ class TestRenderVaultStatus:
         """Systemd socket active but service idle shows standby."""
         screens, _ = import_screens()
         status = make_vault_status(mode="systemd", running=False)
-        with mock.patch("terok_sandbox.is_vault_socket_active", return_value=True):
+        with mock.patch("terok.lib.integrations.sandbox.is_vault_socket_active", return_value=True):
             result = screens.render_vault_status(status)
         text_str = str(result)
         assert "standby" in text_str
@@ -1404,7 +1404,9 @@ class TestRenderVaultStatus:
         """Systemd socket inactive shows stopped with help text."""
         screens, _ = import_screens()
         status = make_vault_status(mode="systemd", running=False)
-        with mock.patch("terok_sandbox.is_vault_socket_active", return_value=False):
+        with mock.patch(
+            "terok.lib.integrations.sandbox.is_vault_socket_active", return_value=False
+        ):
             result = screens.render_vault_status(status)
         text_str = str(result)
         assert "stopped" in text_str
@@ -1565,7 +1567,7 @@ class TestVaultScreenRefresh:
         detail = mock.Mock()
         screen.query_one = mock.Mock(return_value=detail)
         new_status = make_vault_status(running=True)
-        with mock.patch("terok_sandbox.get_vault_status", return_value=new_status):
+        with mock.patch("terok.lib.integrations.sandbox.get_vault_status", return_value=new_status):
             screen._refresh_status()
         assert screen._status is new_status
         detail.update.assert_called_once()
@@ -1576,7 +1578,9 @@ class TestVaultScreenRefresh:
         screen = screens.VaultScreen(make_vault_status())
         detail = mock.Mock()
         screen.query_one = mock.Mock(return_value=detail)
-        with mock.patch("terok_sandbox.get_vault_status", side_effect=RuntimeError):
+        with mock.patch(
+            "terok.lib.integrations.sandbox.get_vault_status", side_effect=RuntimeError
+        ):
             screen._refresh_status()
         assert screen._status is None
 
@@ -1723,7 +1727,7 @@ class TestVaultActionImplementations:
 
         fake_cfg = mock.Mock()
         with (
-            mock.patch("terok_sandbox.commands._handle_vault_seal") as m_seal,
+            mock.patch("terok.lib.integrations.sandbox._handle_vault_seal") as m_seal,
             mock.patch("terok.lib.api.make_sandbox_config", return_value=fake_cfg),
         ):
             run(mixin._action_vault_seal(instance))

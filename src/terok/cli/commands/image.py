@@ -136,7 +136,7 @@ def _cmd_build(
     sidecar: bool,
 ) -> None:
     """Build the host-wide default L0+L1 images via the executor primitive."""
-    from terok_executor import (
+    from terok.lib.integrations.executor import (
         BuildError,
         build_base_images,
         build_sidecar_image,

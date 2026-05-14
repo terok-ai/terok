@@ -47,7 +47,7 @@ def test_dispatch_lists_agent_names_only_by_default(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
     """Default invocation prints only the agent rows, not the tool entries."""
-    with patch("terok_executor.get_roster", return_value=_fake_roster()):
+    with patch("terok.lib.integrations.executor.get_roster", return_value=_fake_roster()):
         assert agents.dispatch(_ns()) is True
     out = capsys.readouterr().out
     assert "claude" in out
@@ -59,7 +59,7 @@ def test_dispatch_includes_tool_entries_with_all_flag(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
     """``--all`` widens the listing to include tool / sidecar entries."""
-    with patch("terok_executor.get_roster", return_value=_fake_roster()):
+    with patch("terok.lib.integrations.executor.get_roster", return_value=_fake_roster()):
         agents.dispatch(_ns(all_flag=True))
     out = capsys.readouterr().out
     assert "claude" in out
@@ -70,7 +70,7 @@ def test_dispatch_renders_label_alongside_name(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
     """The output table carries each agent's human-readable label."""
-    with patch("terok_executor.get_roster", return_value=_fake_roster()):
+    with patch("terok.lib.integrations.executor.get_roster", return_value=_fake_roster()):
         agents.dispatch(_ns())
     out = capsys.readouterr().out
     assert "Anthropic Claude" in out
@@ -80,7 +80,7 @@ def test_dispatch_renders_label_alongside_name(
 def test_dispatch_handles_empty_roster(capsys: pytest.CaptureFixture[str]) -> None:
     """An empty roster prints an explanatory line on stderr instead of an empty table."""
     empty = _fake_roster(agent_names=(), all_names=())
-    with patch("terok_executor.get_roster", return_value=empty):
+    with patch("terok.lib.integrations.executor.get_roster", return_value=empty):
         assert agents.dispatch(_ns()) is True
     err = capsys.readouterr().err
     assert "No agents registered" in err
@@ -93,7 +93,7 @@ def test_dispatch_falls_back_to_auth_provider_label(
     roster = _fake_roster(agent_names=("kisski",), all_names=("kisski",), labels={})
     roster.providers = {}
     roster.auth_providers = {"kisski": SimpleNamespace(label="KISSKI AcademicCloud")}
-    with patch("terok_executor.get_roster", return_value=roster):
+    with patch("terok.lib.integrations.executor.get_roster", return_value=roster):
         agents.dispatch(_ns())
     assert "KISSKI AcademicCloud" in capsys.readouterr().out
 
@@ -105,7 +105,7 @@ def test_dispatch_falls_back_to_name_when_no_label(
     roster = _fake_roster(agent_names=("nolabel",), all_names=("nolabel",), labels={})
     roster.providers = {}
     roster.auth_providers = {}
-    with patch("terok_executor.get_roster", return_value=roster):
+    with patch("terok.lib.integrations.executor.get_roster", return_value=roster):
         agents.dispatch(_ns())
     assert "nolabel" in capsys.readouterr().out
 

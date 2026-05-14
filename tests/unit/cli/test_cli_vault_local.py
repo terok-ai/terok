@@ -63,15 +63,12 @@ class TestDispatch:
         def fake_serve() -> None:
             captured_argv.extend(sys.argv)
 
-        fake_module = type(sys)("fake_vault_module")
-        fake_module.main = fake_serve
-
         args = argparse.Namespace(_terok_local_cmd=_SENTINEL)
 
         with (
-            patch.dict(
-                sys.modules,
-                {"terok_sandbox.vault.token_broker": fake_module},
+            patch(
+                "terok.lib.integrations.sandbox.vault_token_broker_main",
+                fake_serve,
             ),
             patch.object(
                 sys,

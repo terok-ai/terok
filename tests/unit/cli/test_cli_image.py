@@ -182,11 +182,13 @@ class TestCmdBuild:
             ),
             patch("terok.lib.core.config.get_global_image_agents", return_value="all"),
             patch(
-                "terok_executor.parse_agent_selection",
+                "terok.lib.integrations.executor.parse_agent_selection",
                 return_value=sentinel.RESOLVED_AGENTS,
             ) as mock_parse,
-            patch("terok_executor.build_base_images", return_value=fake_images) as mock_build,
-            patch("terok_executor.build_sidecar_image"),
+            patch(
+                "terok.lib.integrations.executor.build_base_images", return_value=fake_images
+            ) as mock_build,
+            patch("terok.lib.integrations.executor.build_sidecar_image"),
         ):
             _cmd_build(
                 base=None,
@@ -219,11 +221,13 @@ class TestCmdBuild:
             ),
             patch("terok.lib.core.config.get_global_image_agents", return_value="all"),
             patch(
-                "terok_executor.parse_agent_selection",
+                "terok.lib.integrations.executor.parse_agent_selection",
                 return_value=sentinel.RESOLVED_AGENTS,
             ) as mock_parse,
-            patch("terok_executor.build_base_images", return_value=fake_images) as mock_build,
-            patch("terok_executor.build_sidecar_image"),
+            patch(
+                "terok.lib.integrations.executor.build_base_images", return_value=fake_images
+            ) as mock_build,
+            patch("terok.lib.integrations.executor.build_sidecar_image"),
         ):
             _cmd_build(
                 base="ubuntu:24.04",
@@ -255,10 +259,10 @@ class TestCmdBuild:
                 return_value="ubuntu:24.04",
             ),
             patch("terok.lib.core.config.get_global_image_agents", return_value="all"),
-            patch("terok_executor.parse_agent_selection", side_effect=lambda v: v),
-            patch("terok_executor.build_base_images", return_value=fake_images),
+            patch("terok.lib.integrations.executor.parse_agent_selection", side_effect=lambda v: v),
+            patch("terok.lib.integrations.executor.build_base_images", return_value=fake_images),
             patch(
-                "terok_executor.build_sidecar_image",
+                "terok.lib.integrations.executor.build_sidecar_image",
                 return_value="terok-l1-sidecar:ubuntu-24.04",
             ) as mock_sidecar,
         ):
@@ -285,9 +289,9 @@ class TestCmdBuild:
                 return_value="ubuntu:24.04",
             ),
             patch("terok.lib.core.config.get_global_image_agents", return_value="all"),
-            patch("terok_executor.parse_agent_selection", side_effect=lambda v: v),
+            patch("terok.lib.integrations.executor.parse_agent_selection", side_effect=lambda v: v),
             patch(
-                "terok_executor.build_base_images",
+                "terok.lib.integrations.executor.build_base_images",
                 side_effect=BuildError("podman missing"),
             ),
         ):

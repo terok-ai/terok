@@ -758,6 +758,9 @@ class TestTaskFollowupHeadless:
                 ),
                 mock_git_config(),
                 unittest.mock.patch("terok.lib.orchestration.task_runners._print_run_summary"),
+                # ``inject_prompt`` is terok-executor code; it lazily imports
+                # ``Sandbox`` from terok_sandbox directly, so the patch targets
+                # the wheel, not terok's integration adapter.
                 unittest.mock.patch("terok_sandbox.Sandbox") as mock_sandbox_cls,
             ):
                 buffer = StringIO()

@@ -104,8 +104,8 @@ class TestCmdSetup:
         lazily on first ``terok task run`` / ``terok project init``.
         """
         with (
-            patch("terok_executor.ensure_sandbox_ready") as sandbox,
-            patch("terok_executor.build_base_images") as images,
+            patch("terok.lib.integrations.executor.ensure_sandbox_ready") as sandbox,
+            patch("terok.lib.integrations.executor.build_base_images") as images,
             patch("terok.cli.commands.setup._ensure_desktop_entry", return_value=True) as desktop,
             patch("terok.cli.commands.setup._ensure_shell_completions"),
         ):
@@ -123,8 +123,8 @@ class TestCmdSetup:
         the resolved policy is ``"skip"``.
         """
         with (
-            patch("terok_executor.ensure_sandbox_ready"),
-            patch("terok_executor.build_base_images"),
+            patch("terok.lib.integrations.executor.ensure_sandbox_ready"),
+            patch("terok.lib.integrations.executor.build_base_images"),
             patch("terok.cli.commands.setup._ensure_desktop_entry", return_value=True) as desktop,
             patch("terok.cli.commands.setup._ensure_shell_completions"),
         ):
@@ -134,8 +134,8 @@ class TestCmdSetup:
     def test_install_desktop_entry_resolves_to_install_policy(self) -> None:
         """``--install-desktop-entry`` resolves to ``policy="install"``."""
         with (
-            patch("terok_executor.ensure_sandbox_ready"),
-            patch("terok_executor.build_base_images"),
+            patch("terok.lib.integrations.executor.ensure_sandbox_ready"),
+            patch("terok.lib.integrations.executor.build_base_images"),
             patch("terok.cli.commands.setup._ensure_desktop_entry", return_value=True) as desktop,
             patch("terok.cli.commands.setup._ensure_shell_completions"),
         ):
@@ -145,8 +145,8 @@ class TestCmdSetup:
     def test_default_policy_comes_from_config(self) -> None:
         """Without CLI flags, the policy comes from ``tui.desktop_entry`` (default ``auto``)."""
         with (
-            patch("terok_executor.ensure_sandbox_ready"),
-            patch("terok_executor.build_base_images"),
+            patch("terok.lib.integrations.executor.ensure_sandbox_ready"),
+            patch("terok.lib.integrations.executor.build_base_images"),
             patch("terok.cli.commands.setup._ensure_desktop_entry", return_value=True) as desktop,
             patch(
                 "terok.lib.core.config.get_tui_desktop_entry",
@@ -160,8 +160,8 @@ class TestCmdSetup:
     def test_with_images_builds_requested_base(self) -> None:
         """``--with-images=ubuntu:24.04`` triggers the factory with that base + auto-detected family."""
         with (
-            patch("terok_executor.ensure_sandbox_ready"),
-            patch("terok_executor.build_base_images") as images,
+            patch("terok.lib.integrations.executor.ensure_sandbox_ready"),
+            patch("terok.lib.integrations.executor.build_base_images") as images,
             patch("terok.cli.commands.setup._ensure_desktop_entry", return_value=True),
             patch("terok.cli.commands.setup._ensure_shell_completions"),
         ):
@@ -171,8 +171,8 @@ class TestCmdSetup:
     def test_with_images_plus_family_override(self) -> None:
         """``--family`` overrides auto-detection when paired with ``--with-images``."""
         with (
-            patch("terok_executor.ensure_sandbox_ready"),
-            patch("terok_executor.build_base_images") as images,
+            patch("terok.lib.integrations.executor.ensure_sandbox_ready"),
+            patch("terok.lib.integrations.executor.build_base_images") as images,
             patch("terok.cli.commands.setup._ensure_desktop_entry", return_value=True),
             patch("terok.cli.commands.setup._ensure_shell_completions"),
         ):
@@ -186,9 +186,9 @@ class TestCmdSetup:
         from terok_executor import BuildError
 
         with (
-            patch("terok_executor.ensure_sandbox_ready"),
+            patch("terok.lib.integrations.executor.ensure_sandbox_ready"),
             patch(
-                "terok_executor.build_base_images",
+                "terok.lib.integrations.executor.build_base_images",
                 side_effect=BuildError("dockerfile parse error"),
             ),
             patch("terok.cli.commands.setup._ensure_desktop_entry", return_value=True),
@@ -205,8 +205,10 @@ class TestCmdSetup:
         yet mount it; the user needs to fix the sandbox install first.
         """
         with (
-            patch("terok_executor.ensure_sandbox_ready", side_effect=SystemExit(1)),
-            patch("terok_executor.build_base_images") as images,
+            patch(
+                "terok.lib.integrations.executor.ensure_sandbox_ready", side_effect=SystemExit(1)
+            ),
+            patch("terok.lib.integrations.executor.build_base_images") as images,
             patch("terok.cli.commands.setup._ensure_desktop_entry", return_value=True),
         ):
             with pytest.raises(SystemExit):
@@ -216,8 +218,10 @@ class TestCmdSetup:
     def test_sandbox_failure_exits_nonzero(self, capsys: pytest.CaptureFixture[str]) -> None:
         """``ensure_sandbox_ready`` raising ``SystemExit`` is reported + propagates exit 1."""
         with (
-            patch("terok_executor.ensure_sandbox_ready", side_effect=SystemExit(1)),
-            patch("terok_executor.build_base_images"),
+            patch(
+                "terok.lib.integrations.executor.ensure_sandbox_ready", side_effect=SystemExit(1)
+            ),
+            patch("terok.lib.integrations.executor.build_base_images"),
             patch("terok.cli.commands.setup._ensure_desktop_entry", return_value=True),
         ):
             with pytest.raises(SystemExit) as exc:
@@ -236,8 +240,10 @@ class TestCmdSetup:
         ``terok setup`` re-run from the menu works.
         """
         with (
-            patch("terok_executor.ensure_sandbox_ready", side_effect=SystemExit(1)),
-            patch("terok_executor.build_base_images"),
+            patch(
+                "terok.lib.integrations.executor.ensure_sandbox_ready", side_effect=SystemExit(1)
+            ),
+            patch("terok.lib.integrations.executor.build_base_images"),
             patch("terok.cli.commands.setup._ensure_desktop_entry", return_value=True) as desktop,
         ):
             with pytest.raises(SystemExit):
@@ -247,8 +253,8 @@ class TestCmdSetup:
     def test_desktop_failure_reports_warn(self, capsys: pytest.CaptureFixture[str]) -> None:
         """Desktop entry failing is a WARN, not a FAIL — doesn't flip exit code."""
         with (
-            patch("terok_executor.ensure_sandbox_ready"),
-            patch("terok_executor.build_base_images"),
+            patch("terok.lib.integrations.executor.ensure_sandbox_ready"),
+            patch("terok.lib.integrations.executor.build_base_images"),
             patch("terok.cli.commands.setup._ensure_desktop_entry", return_value=False),
             patch("terok.cli.commands.setup._ensure_shell_completions"),
         ):

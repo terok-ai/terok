@@ -96,7 +96,8 @@ def _resolve_host_auth_image(provider: str) -> str:
     import sys
 
     from rich.console import Console
-    from terok_executor import (
+
+    from terok.lib.integrations.executor import (
         AUTH_PROVIDERS,
         build_base_images,
         ensure_default_l1,

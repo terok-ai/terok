@@ -469,7 +469,7 @@ def _check_selinux_policy() -> _CheckResult:
     ``terok setup`` share one source of truth; this function only
     translates the structured result into sickbay's output shape.
     """
-    from terok_sandbox import (
+    from terok.lib.integrations.sandbox import (
         SelinuxStatus,
         check_selinux_status,
         selinux_install_command,
@@ -523,7 +523,7 @@ def _check_vault_migration() -> _CheckResult:
     """Check for leftover pre-vault credentials directory."""
     label = "Vault migration"
     try:
-        from terok_sandbox.paths import namespace_state_dir
+        from terok.lib.integrations.sandbox import namespace_state_dir
 
         old_dir = namespace_state_dir("credentials")
         new_dir = namespace_state_dir("vault")

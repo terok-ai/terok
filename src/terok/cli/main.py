@@ -161,8 +161,11 @@ def main(prog: str = "terok") -> None:
     # Mount sub-package command registries under scoped prefixes.
     # Groups that touch SandboxConfig paths receive config_factory so the
     # wiring layer injects terok's make_sandbox_config() as ``cfg``.
-    from terok_executor import AGENT_COMMANDS, VAULT_COMMANDS as AGENT_VAULT_COMMANDS
-    from terok_sandbox import GATE_COMMANDS, SSH_COMMANDS
+    from terok.lib.integrations.executor import (
+        AGENT_COMMANDS,
+        VAULT_COMMANDS as AGENT_VAULT_COMMANDS,
+    )
+    from terok.lib.integrations.sandbox import GATE_COMMANDS, SSH_COMMANDS
 
     from ..lib.core.config import make_sandbox_config
 

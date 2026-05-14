@@ -304,7 +304,7 @@ class TaskActionsMixin(_MixinBase):
         if agent == "bash":
             cmd = base_cmd
         else:
-            from terok_executor import AGENT_PROVIDERS
+            from terok.lib.integrations.executor import AGENT_PROVIDERS
 
             provider = AGENT_PROVIDERS.get(agent)
             if not provider:
@@ -443,7 +443,7 @@ class TaskActionsMixin(_MixinBase):
         agent_name, selected_subagents = result
 
         # Only pass sub-agents if the agent supports them
-        from terok_executor import AGENT_PROVIDERS
+        from terok.lib.integrations.executor import AGENT_PROVIDERS
 
         provider = AGENT_PROVIDERS.get(agent_name)
         agents = selected_subagents if provider and provider.supports_agents_json else None
@@ -798,7 +798,7 @@ class TaskActionsMixin(_MixinBase):
         tid = task.task_id
 
         def work() -> None:
-            from terok_sandbox import shield_interactive_session
+            from terok.lib.integrations.sandbox import shield_interactive_session
 
             task_dir = load_project(pid).tasks_root / str(tid)
             cname = container_name(pid, task.mode or "cli", tid)
@@ -818,7 +818,7 @@ class TaskActionsMixin(_MixinBase):
         tid = task.task_id
 
         def work() -> None:
-            from terok_sandbox import shield_watch_session
+            from terok.lib.integrations.sandbox import shield_watch_session
 
             task_dir = load_project(pid).tasks_root / str(tid)
             cname = container_name(pid, task.mode or "cli", tid)

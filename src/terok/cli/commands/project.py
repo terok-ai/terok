@@ -319,7 +319,7 @@ def _cmd_gate_path(project_id: str) -> None:
 
 def _cmd_gate_sync(args: argparse.Namespace) -> None:
     """Sync the host-side git gate for a project."""
-    from terok_sandbox.gate.mirror import GateAuthNotConfigured
+    from terok.lib.integrations.sandbox import GateAuthNotConfigured
 
     project = load_project(args.project_id)
     if not project.gate_enabled:

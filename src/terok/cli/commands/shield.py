@@ -155,7 +155,7 @@ def dispatch(args: argparse.Namespace) -> bool:
                 "  terok shield install-hooks --root   # /etc/containers/oci/hooks.d\n"
                 "  terok shield install-hooks --user   # ~/.local/share/containers/oci/hooks.d"
             )
-        from terok_sandbox import run_setup as shield_run_setup
+        from terok.lib.integrations.sandbox import run_setup as shield_run_setup
 
         shield_run_setup(root=args.root, user=args.user)
         return True

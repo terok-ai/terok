@@ -132,7 +132,7 @@ class TestLeakedCredentialsScan:
                 return_value=Path("/tmp/terok-testing/mounts"),
             ),
             patch(
-                "terok_executor.scan_leaked_credentials",
+                "terok.lib.integrations.executor.scan_leaked_credentials",
                 return_value=[("claude", Path("/tmp/terok-testing/m/.credentials.json"))],
             ),
             patch("terok.lib.core.config.is_claude_oauth_exposed", return_value=False),
@@ -157,7 +157,7 @@ class TestLeakedCredentialsScan:
                 return_value=Path("/tmp/terok-testing/mounts"),
             ),
             patch(
-                "terok_executor.scan_leaked_credentials",
+                "terok.lib.integrations.executor.scan_leaked_credentials",
                 return_value=[
                     ("claude", Path("/tmp/terok-testing/m/.credentials.json")),
                     ("vibe", Path("/tmp/terok-testing/m/config.toml")),
@@ -189,7 +189,7 @@ class TestLeakedCredentialsScan:
                 return_value=Path("/tmp/terok-testing/mounts"),
             ),
             patch(
-                "terok_executor.scan_leaked_credentials",
+                "terok.lib.integrations.executor.scan_leaked_credentials",
                 return_value=[
                     ("codex", Path("/tmp/terok-testing/m/_codex-config/auth.json")),
                     ("vibe", Path("/tmp/terok-testing/m/config.toml")),

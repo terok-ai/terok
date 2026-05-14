@@ -20,8 +20,8 @@ raised at dispatch time if the handler supports neither.
 
 Usage::
 
-    from terok_executor import AGENT_COMMANDS
-    from terok_sandbox import GATE_COMMANDS
+    from terok.lib.integrations.executor import AGENT_COMMANDS
+    from terok.lib.integrations.sandbox import GATE_COMMANDS
 
     wire_group(sub, "executor", AGENT_COMMANDS, help="Executor container commands")
     wire_group(

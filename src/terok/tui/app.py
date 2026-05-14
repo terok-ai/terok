@@ -45,7 +45,7 @@ def _vault_migration_warning() -> str | None:
     crash on startup because of a diagnostic check).
     """
     try:
-        from terok_sandbox.paths import namespace_state_dir
+        from terok.lib.integrations.sandbox import namespace_state_dir
 
         if namespace_state_dir("credentials").is_dir():
             return (
@@ -61,7 +61,14 @@ if _HAS_TEXTUAL:
     # Import textual and our widgets only when available
     from dataclasses import dataclass
 
-    from terok_sandbox import (
+    from textual import on, work
+    from textual.app import App, ComposeResult
+    from textual.containers import Horizontal, Vertical
+    from textual.css.query import NoMatches
+    from textual.widgets import Footer, Header
+    from textual.worker import Worker, WorkerState
+
+    from terok.lib.integrations.sandbox import (
         EnvironmentCheck,
         GateServerStatus,
         GateStalenessInfo,
@@ -74,12 +81,6 @@ if _HAS_TEXTUAL:
         needs_setup,
         state as _shield_state,
     )
-    from textual import on, work
-    from textual.app import App, ComposeResult
-    from textual.containers import Horizontal, Vertical
-    from textual.css.query import NoMatches
-    from textual.widgets import Footer, Header
-    from textual.worker import Worker, WorkerState
 
     from ..lib.api import (
         BrokenProject,

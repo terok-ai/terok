@@ -95,7 +95,7 @@ from .task import Task
 from .vault import vault_db
 
 if TYPE_CHECKING:
-    from terok_executor import AgentProvider
+    from terok.lib.integrations.executor import AgentProvider
 
     from ..core.project_model import PresetInfo
 
@@ -709,7 +709,7 @@ class Project:
         running = self.list_tasks(status="running")
         if not running:
             return []
-        from terok_sandbox import Sandbox
+        from terok.lib.integrations.sandbox import Sandbox
 
         # One DB read + one Sandbox + per-image label cache for the
         # whole listing.  Auth is global today — same set for every task.

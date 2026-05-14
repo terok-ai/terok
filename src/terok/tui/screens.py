@@ -128,7 +128,7 @@ def _visible_providers(installed: frozenset[str] | None) -> list[str]:
     every known provider is shown.  Otherwise the registry is intersected
     with the install set, preserving registry order.
     """
-    from terok_executor import AGENT_PROVIDERS
+    from terok.lib.integrations.executor import AGENT_PROVIDERS
 
     if not installed:
         return list(AGENT_PROVIDERS)
@@ -246,7 +246,7 @@ class GateServerScreen(screen.Screen[str | None]):
 
     def _refresh_status(self) -> None:
         """Re-fetch status and update the display."""
-        from terok_sandbox import get_server_status
+        from terok.lib.integrations.sandbox import get_server_status
 
         try:
             self._status = get_server_status()
@@ -490,7 +490,7 @@ class AuthActionsScreen(screen.ModalScreen[str | None]):
 
     def compose(self) -> ComposeResult:
         """Build the numbered list of authentication providers."""
-        from terok_executor import AUTH_PROVIDERS
+        from terok.lib.integrations.executor import AUTH_PROVIDERS
 
         providers = list(AUTH_PROVIDERS.values())
         options: list[Option | None] = [
@@ -521,7 +521,7 @@ class AuthActionsScreen(screen.ModalScreen[str | None]):
 
     def on_key(self, event: events.Key) -> None:
         """Handle number-key shortcuts (1-9) to select a provider or import."""
-        from terok_executor import AUTH_PROVIDERS
+        from terok.lib.integrations.executor import AUTH_PROVIDERS
 
         if event.character and event.character.isdigit():
             idx = int(event.character) - 1
@@ -848,7 +848,7 @@ class AgentSelectionScreen(screen.ModalScreen[tuple[str, list[str] | None] | Non
         self._subagents = subagents or []
         self._installed = installed
 
-        from terok_executor import AGENT_PROVIDERS
+        from terok.lib.integrations.executor import AGENT_PROVIDERS
 
         visible = _visible_providers(installed)
         if default_agent in AGENT_PROVIDERS and (not installed or default_agent in installed):
@@ -863,7 +863,7 @@ class AgentSelectionScreen(screen.ModalScreen[tuple[str, list[str] | None] | Non
 
     def compose(self) -> ComposeResult:
         """Build the agent list, optional sub-agent checkboxes, and buttons."""
-        from terok_executor import AGENT_PROVIDERS
+        from terok.lib.integrations.executor import AGENT_PROVIDERS
 
         with Vertical(id="agent-dialog") as dialog:
             options = []
@@ -1268,7 +1268,7 @@ class TaskLaunchScreen(screen.ModalScreen["tuple[str, str, str, str, str, str | 
 
     def compose(self) -> ComposeResult:
         """Build status, agent selector, prompt input, and action buttons."""
-        from terok_executor import AGENT_PROVIDERS
+        from terok.lib.integrations.executor import AGENT_PROVIDERS
 
         with Vertical(id="launch-dialog") as dialog:
             yield Static("Status: Starting container\u2026", id="launch-status")
@@ -1811,7 +1811,7 @@ class ShieldScreen(screen.Screen[str | None]):
 
     def _load_shield_info(self) -> None:
         """Fetch shield config (mode, audit, profiles) for display."""
-        from terok_sandbox import status as shield_status
+        from terok.lib.integrations.sandbox import status as shield_status
 
         try:
             self._shield_info = shield_status()
@@ -1852,7 +1852,7 @@ class ShieldScreen(screen.Screen[str | None]):
     @staticmethod
     def _fetch_status() -> tuple[EnvironmentCheck | None, dict | None]:
         """Load environment check and shield config in a thread."""
-        from terok_sandbox import (
+        from terok.lib.integrations.sandbox import (
             check_environment as shield_check_environment,
             status as shield_status,
         )
@@ -2018,7 +2018,7 @@ def render_vault_status(status: VaultStatus | None) -> Text:
     if status.running:
         running_s = Text("running", style=ok)
     elif status.mode == "systemd":
-        from terok_sandbox import is_vault_socket_active
+        from terok.lib.integrations.sandbox import is_vault_socket_active
 
         if is_vault_socket_active():
             running_s = Text("standby (starts on first connection)", style=warn)
@@ -2264,7 +2264,7 @@ class VaultScreen(screen.Screen[str | None]):
 
     def _refresh_status(self) -> None:
         """Re-fetch status and update the display."""
-        from terok_sandbox import get_vault_status
+        from terok.lib.integrations.sandbox import get_vault_status
 
         try:
             self._status = get_vault_status()
