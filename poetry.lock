@@ -3587,13 +3587,14 @@ url = "https://github.com/terok-ai/terok-clearance/releases/download/v0.6.13/ter
 
 [[package]]
 name = "terok-executor"
-version = "0.0.147"
+version = "0.0.148"
 description = "Single-agent task runner for hardened Podman containers"
 optional = false
 python-versions = ">=3.12,<3.15"
 groups = ["main"]
-files = []
-develop = false
+files = [
+    {file = "terok_executor-0.0.148-py3-none-any.whl", hash = "sha256:3dd2efc605571bcd6bafd1a3a232cf01a21b4752937691d4b37d9ac4165f0337"},
+]
 
 [package.dependencies]
 agent-client-protocol = ">=0.7"
@@ -3602,24 +3603,23 @@ prompt-toolkit = ">=3.0"
 pydantic = ">=2.9"
 rich = ">=13.0"
 "ruamel.yaml" = ">=0.18"
-terok-sandbox = {git = "https://github.com/sliwowitz/terok-sandbox.git", branch = "feat/selinux-setup-surfacing"}
+terok_sandbox = {url = "https://github.com/terok-ai/terok-sandbox/releases/download/v0.0.123/terok_sandbox-0.0.123-py3-none-any.whl"}
 tomli-w = ">=1.0"
 
 [package.source]
-type = "git"
-url = "https://github.com/sliwowitz/terok-executor.git"
-reference = "chore/sandbox-selinux-pin"
-resolved_reference = "3377b15c64af5f26417140b480121e615b807b51"
+type = "url"
+url = "https://github.com/terok-ai/terok-executor/releases/download/v0.0.148/terok_executor-0.0.148-py3-none-any.whl"
 
 [[package]]
 name = "terok-sandbox"
-version = "0.0.122"
+version = "0.0.123"
 description = "Hardened Podman container runner with gate server and shield integration"
 optional = false
 python-versions = ">=3.12,<4.0"
 groups = ["main"]
-files = []
-develop = false
+files = [
+    {file = "terok_sandbox-0.0.123-py3-none-any.whl", hash = "sha256:0e2a8bd3eda875a0707cd1832d05708fbe3b59575df0cc71e7d7da761bf81766"},
+]
 
 [package.dependencies]
 aiohttp = ">=3.9"
@@ -3631,14 +3631,12 @@ prompt-toolkit = ">=3.0"
 pydantic = ">=2.9"
 "ruamel.yaml" = ">=0.18"
 sqlcipher3 = ">=0.6.2"
-terok-clearance = {url = "https://github.com/terok-ai/terok-clearance/releases/download/v0.6.13/terok_clearance-0.6.13-py3-none-any.whl"}
-terok-shield = {url = "https://github.com/terok-ai/terok-shield/releases/download/v0.6.41/terok_shield-0.6.41-py3-none-any.whl"}
+terok_clearance = {url = "https://github.com/terok-ai/terok-clearance/releases/download/v0.6.13/terok_clearance-0.6.13-py3-none-any.whl"}
+terok_shield = {url = "https://github.com/terok-ai/terok-shield/releases/download/v0.6.41/terok_shield-0.6.41-py3-none-any.whl"}
 
 [package.source]
-type = "git"
-url = "https://github.com/sliwowitz/terok-sandbox.git"
-reference = "feat/selinux-setup-surfacing"
-resolved_reference = "0cb0cc58baa45d3c9053a3583dfc0507d8b4b972"
+type = "url"
+url = "https://github.com/terok-ai/terok-sandbox/releases/download/v0.0.123/terok_sandbox-0.0.123-py3-none-any.whl"
 
 [[package]]
 name = "terok-shield"
@@ -4537,4 +4535,4 @@ propcache = ">=0.2.1"
 [metadata]
 lock-version = "2.1"
 python-versions = ">=3.12,<3.15"
-content-hash = "501760a7b93c3ccc3331146a4a8d69ddf574eb1b4bb72f17a72326bf35ebda83"
+content-hash = "6024569f7a1d503f94bd25c6e845f5326fffd5ace080c14d836a82e90f03512f"
