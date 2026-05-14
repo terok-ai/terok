@@ -240,6 +240,14 @@ def vault_seal() -> None:
     _handle_vault_seal(cfg=make_sandbox_config(), key="auto")
 
 
+def vault_to_keyring() -> None:
+    """Move the resolved passphrase from its current tier into the OS keyring."""
+    from terok.lib.api import make_sandbox_config
+    from terok.lib.integrations.sandbox import _handle_vault_to_keyring
+
+    _handle_vault_to_keyring(cfg=make_sandbox_config())
+
+
 # ── Task lifecycle ────────────────────────────────────────────────────
 
 

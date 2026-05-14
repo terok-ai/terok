@@ -184,6 +184,7 @@ if _HAS_TEXTUAL:
         "vault_unlock": "_action_vault_unlock",
         "vault_lock": "_action_vault_lock",
         "vault_seal": "_action_vault_seal",
+        "vault_to_keyring": "_action_vault_to_keyring",
     }
 
     TASK_ACTION_HANDLERS: dict[str, str] = {

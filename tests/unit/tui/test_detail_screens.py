@@ -1452,6 +1452,7 @@ class TestVaultScreen:
             pytest.param("action_vault_unlock", "vault_unlock", id="unlock"),
             pytest.param("action_vault_lock", "vault_lock", id="lock"),
             pytest.param("action_vault_seal", "vault_seal", id="seal"),
+            pytest.param("action_vault_to_keyring", "vault_to_keyring", id="to-keyring"),
         ],
     )
     def test_vault_screen_actions(self, method_name: str, expected: str) -> None:
@@ -1726,6 +1727,7 @@ class TestVaultActionDispatch:
             ("vault_unlock", "_action_vault_unlock"),
             ("vault_lock", "_action_vault_lock"),
             ("vault_seal", "_action_vault_seal"),
+            ("vault_to_keyring", "_action_vault_to_keyring"),
         ],
     )
     def test_vault_action_dispatch_all(self, action: str, handler: str) -> None:
@@ -1797,6 +1799,17 @@ class TestVaultActionImplementations:
         instance._run_console_action.assert_called_once_with(
             "terok.tui.worker_actions:vault_seal",
             title="Sealing vault passphrase into systemd-creds",
+            refresh="vault_status",
+        )
+
+    def test_to_keyring_dispatches_vault_to_keyring(self) -> None:
+        """``_action_vault_to_keyring`` dispatches the worker action + refreshes status."""
+        mixin = self._get_mixin()
+        instance = mock.Mock(spec=mixin)
+        run(mixin._action_vault_to_keyring(instance))
+        instance._run_console_action.assert_called_once_with(
+            "terok.tui.worker_actions:vault_to_keyring",
+            title="Moving vault passphrase to OS keyring",
             refresh="vault_status",
         )
 
