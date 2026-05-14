@@ -1,187 +1,152 @@
 # SPDX-FileCopyrightText: 2026 Jiri Vyskocil
 # SPDX-License-Identifier: Apache-2.0
 
-"""Tests for [`WorkerLogScreen`][terok.tui.app.WorkerLogScreen] — the reusable subprocess-streaming modal.
+"""Tests for [`WorkerLogScreen`][terok.tui.worker_log_screen.WorkerLogScreen].
 
-Drives the screen via Textual's ``Pilot`` harness — spawns real
-(short-lived) subprocesses rather than mocking ``asyncio.subprocess``
-so the fd / pipe plumbing gets exercised end-to-end.
+``WorkerLogScreen`` is a pure *view* over a
+[`ConsoleLogEntry`][terok.tui.console_log.ConsoleLogEntry] — it owns no
+subprocess.  These tests hand-construct entries and drive their
+``append`` / ``finish`` directly (standing in for the registry pump),
+so the screen's replay / live-tail / button behaviour is exercised
+without spawning processes.  The pump itself is covered in
+``test_console_log.py``.
 """
 
 from __future__ import annotations
-
-import sys
 
 import pytest
 from textual.app import App
 from textual.widgets import Button, RichLog
 
-from terok.tui.worker_log_screen import WorkerLogScreen, WorkerResult
+from terok.tui.console_log import ConsoleLogEntry
+from terok.tui.worker_log_screen import WorkerLogScreen
 
 _SENTINEL_PENDING = object()
 
 
-class _WorkerHost(App):
-    """Minimal app that pushes a [`WorkerLogScreen`][terok.tui.app.WorkerLogScreen] and stashes the result."""
+def _entry(*, lines: list[str] | None = None, finished: int | None = None) -> ConsoleLogEntry:
+    """Build an entry, optionally pre-seeded with *lines* and a *finished* exit code."""
+    entry = ConsoleLogEntry(id=1, title="Building images for proj", argv=["x"], command="terok x")
+    for line in lines or []:
+        entry.append(line)
+    if finished is not None:
+        entry.finish(finished)
+    return entry
 
-    def __init__(self, argv: list[str]) -> None:
+
+class _ViewerHost(App):
+    """Minimal app that pushes a [`WorkerLogScreen`][terok.tui.worker_log_screen.WorkerLogScreen] over an entry."""
+
+    def __init__(self, entry: ConsoleLogEntry) -> None:
+        """Stash the entry to view and a pending-result sentinel."""
         super().__init__()
-        self._argv = argv
+        self._entry = entry
         self.result: object = _SENTINEL_PENDING
 
     def on_mount(self) -> None:
-        self.push_screen(WorkerLogScreen(self._argv, title="test"), self._capture)
+        """Push the viewer and capture its dismissal."""
+        self.push_screen(WorkerLogScreen(self._entry), self._capture)
 
     def _capture(self, result: object) -> None:
         self.result = result
 
 
-async def _wait_until_close_enabled(pilot, timeout_ticks: int = 200) -> None:
-    """Pump the event loop until the Close button enables (subprocess finished).
-
-    ``Pilot.pause()`` processes one iteration of the Textual tick; 200
-    * default pause (few ms each) gives us ~2–4 s of real wait, enough
-    for even a cold Python startup + an echo.
-    """
-    for _ in range(timeout_ticks):
-        await pilot.pause()
-        button = pilot.app.screen.query_one("#worker-log-close", Button)
-        if not button.disabled:
-            return
-    raise AssertionError("Close button never enabled — subprocess stuck or screen wedged")
+def _rendered(screen: WorkerLogScreen) -> str:
+    """Join the screen's RichLog lines for substring assertions."""
+    log = screen.query_one("#worker-log-output", RichLog)
+    return "\n".join(str(line) for line in log.lines)
 
 
-# ── Happy path ────────────────────────────────────────────────────────
+# ── Finished entries ──────────────────────────────────────────────────
 
 
 @pytest.mark.asyncio
-async def test_zero_exit_streams_output_and_marks_done() -> None:
-    """A clean subprocess completes, enables Close with ``success`` variant, captures stdout."""
-    argv = [sys.executable, "-c", "print('hello from worker'); print('line two')"]
-    app = _WorkerHost(argv)
+async def test_finished_ok_entry_replays_lines_and_shows_done() -> None:
+    """A viewer over a clean finished entry replays its output and shows a green Done."""
+    entry = _entry(lines=["compiled step 1", "compiled step 2"], finished=0)
+    app = _ViewerHost(entry)
     async with app.run_test() as pilot:
-        await _wait_until_close_enabled(pilot)
         screen = pilot.app.screen
         assert isinstance(screen, WorkerLogScreen)
-        # Both printed lines should have made it into the log widget.
-        log = screen.query_one("#worker-log-output", RichLog)
-        rendered = "\n".join(str(line) for line in log.lines)
-        assert "hello from worker" in rendered
-        assert "line two" in rendered
-        # Close is green and relabelled "Done" when the run succeeded.
+        rendered = _rendered(screen)
+        assert "compiled step 1" in rendered and "compiled step 2" in rendered
         button = screen.query_one("#worker-log-close", Button)
-        assert button.variant == "success"
-        assert str(button.label) == "Done"
-        # Click Close and confirm the screen dismisses with exit 0.
+        assert str(button.label) == "Done" and button.variant == "success"
         await pilot.click("#worker-log-close")
         await pilot.pause()
-    assert isinstance(app.result, WorkerResult)
-    assert app.result.exit_code == 0
-    assert app.result.ok is True
+    assert app.result is None, "the viewer dismisses with None — the entry holds the outcome"
 
 
 @pytest.mark.asyncio
-async def test_nonzero_exit_surfaces_exit_code_and_warns() -> None:
-    """A subprocess that exits non-zero reports the code and styles Close as ``warning``."""
-    argv = [sys.executable, "-c", "import sys; print('oops'); sys.exit(7)"]
-    app = _WorkerHost(argv)
+async def test_finished_failed_entry_shows_close_warning() -> None:
+    """A viewer over a failed finished entry shows a warning-styled Close."""
+    entry = _entry(lines=["boom"], finished=3)
+    app = _ViewerHost(entry)
     async with app.run_test() as pilot:
-        await _wait_until_close_enabled(pilot)
         screen = pilot.app.screen
         assert isinstance(screen, WorkerLogScreen)
-        log = screen.query_one("#worker-log-output", RichLog)
-        rendered = "\n".join(str(line) for line in log.lines)
-        assert "oops" in rendered
-        assert "exited with code 7" in rendered
         button = screen.query_one("#worker-log-close", Button)
-        assert button.variant == "warning"
-        await pilot.click("#worker-log-close")
-        await pilot.pause()
-    assert isinstance(app.result, WorkerResult)
-    assert app.result.exit_code == 7
-    assert app.result.ok is False
+        assert str(button.label) == "Close" and button.variant == "warning"
 
 
-# ── Exec failure ──────────────────────────────────────────────────────
+# ── Running entries ───────────────────────────────────────────────────
 
 
 @pytest.mark.asyncio
-async def test_missing_executable_surfaces_in_log_with_exit_127() -> None:
-    """Command-not-found is caught and printed — the modal doesn't freeze silently."""
-    argv = ["/nonexistent/command/terok-never-existed", "--help"]
-    app = _WorkerHost(argv)
+async def test_running_entry_shows_hide_and_live_tails() -> None:
+    """A viewer over a running entry shows Hide and tails lines appended after mount."""
+    entry = _entry(lines=["initial line"])
+    app = _ViewerHost(entry)
     async with app.run_test() as pilot:
-        await _wait_until_close_enabled(pilot)
         screen = pilot.app.screen
         assert isinstance(screen, WorkerLogScreen)
-        log = screen.query_one("#worker-log-output", RichLog)
-        rendered = "\n".join(str(line) for line in log.lines)
-        assert "failed to launch" in rendered
-        # 127 matches the shell convention for "command not found".
-        await pilot.click("#worker-log-close")
+        button = screen.query_one("#worker-log-close", Button)
+        assert str(button.label) == "Hide"
+        assert "initial line" in _rendered(screen)
+
+        # Stand in for the registry pump appending more output live.
+        entry.append("streamed after mount")
         await pilot.pause()
-    assert isinstance(app.result, WorkerResult)
-    assert app.result.exit_code == 127
-    assert app.result.ok is False
-
-
-# ── Escape binding ────────────────────────────────────────────────────
+        assert "streamed after mount" in _rendered(screen)
 
 
 @pytest.mark.asyncio
-async def test_escape_before_completion_is_ignored(tmp_path) -> None:
-    """Escape mid-run can't dismiss — Close-button enablement is the only exit.
-
-    Prevents an accidental Escape from killing the view of a long-
-    running ``podman build`` / ``terok setup`` before it finishes.
-
-    The subprocess blocks on a sentinel file (not a wall-clock sleep)
-    so the "still running" assertion is deterministic regardless of
-    CI speed — slow runners previously raced past a ``time.sleep(0.3)``
-    and saw the Close button already enabled.
-    """
-    sentinel = tmp_path / "release-the-worker"
-    sentinel.touch()
-    argv = [
-        sys.executable,
-        "-c",
-        (
-            "import os, sys, time\n"
-            f"p = {str(sentinel)!r}\n"
-            "while os.path.exists(p):\n"
-            "    time.sleep(0.05)\n"
-            "print('done')\n"
-        ),
-    ]
-    app = _WorkerHost(argv)
+async def test_entry_finishing_while_open_relabels_button() -> None:
+    """When the entry finishes while the viewer is open, Hide becomes Done."""
+    entry = _entry()
+    app = _ViewerHost(entry)
     async with app.run_test() as pilot:
-        await pilot.pause()
-        # Subprocess blocks on the sentinel; Escape should be a no-op.
         screen = pilot.app.screen
         assert isinstance(screen, WorkerLogScreen)
-        screen.action_maybe_cancel()
+        assert str(screen.query_one("#worker-log-close", Button).label) == "Hide"
+
+        entry.finish(0)
         await pilot.pause()
-        # The modal is still up, the Close button still disabled — no race
-        # against a wall-clock timeout because the subprocess can't exit
-        # until we unlink the sentinel below.
+        button = screen.query_one("#worker-log-close", Button)
+        assert str(button.label) == "Done" and button.variant == "success"
+
+
+@pytest.mark.asyncio
+async def test_hiding_a_running_entry_dismisses_without_killing_it() -> None:
+    """Hide dismisses the viewer but leaves the entry running — backgrounding it."""
+    entry = _entry(lines=["in progress"])
+    app = _ViewerHost(entry)
+    async with app.run_test() as pilot:
         assert isinstance(pilot.app.screen, WorkerLogScreen)
-        assert pilot.app.screen.query_one("#worker-log-close", Button).disabled is True
-        # Release the subprocess; it exits cleanly and the Close button enables.
-        sentinel.unlink()
-        await _wait_until_close_enabled(pilot)
         await pilot.click("#worker-log-close")
         await pilot.pause()
-    assert isinstance(app.result, WorkerResult)
-    assert app.result.ok is True
+        assert not isinstance(pilot.app.screen, WorkerLogScreen), "viewer dismissed"
+    assert entry.running, "hiding the viewer must not finish the entry"
 
 
-# ── WorkerResult sanity ───────────────────────────────────────────────
-
-
-def test_worker_result_ok_flag_matches_exit_zero() -> None:
-    """``WorkerResult.ok`` is syntactic sugar for ``exit_code == 0``."""
-    assert WorkerResult(exit_code=0).ok is True
-    assert WorkerResult(exit_code=1).ok is False
-    assert WorkerResult(exit_code=127).ok is False
-    # Dismissed-before-completion sentinel is explicitly not ok.
-    assert WorkerResult(exit_code=None).ok is False
+@pytest.mark.asyncio
+async def test_escape_dismisses_running_viewer() -> None:
+    """Escape mirrors Hide — safe at any time since dismissing never kills the action."""
+    entry = _entry(lines=["working"])
+    app = _ViewerHost(entry)
+    async with app.run_test() as pilot:
+        assert isinstance(pilot.app.screen, WorkerLogScreen)
+        await pilot.press("escape")
+        await pilot.pause()
+        assert not isinstance(pilot.app.screen, WorkerLogScreen)
+    assert entry.running, "escape backgrounds the entry, it keeps running"

@@ -519,11 +519,17 @@ if _HAS_TEXTUAL:
             return False
 
         async def _run_setup_subprocess(self) -> bool:
-            """Stream ``terok setup`` through [`WorkerLogScreen`][terok.tui.app.WorkerLogScreen]; True on exit 0."""
-            result = await self.push_screen_wait(
-                WorkerLogScreen(["terok", "setup"], title="Running terok setup…")
-            )
-            if result.ok:
+            """Stream ``terok setup`` through a ``WorkerLogScreen``; True on exit 0.
+
+            The view is pushed non-blocking and the *entry* — not the
+            screen — is awaited: hiding the log to the background must
+            not stop the first-run flow from chaining into the wizard
+            once setup actually finishes.
+            """
+            entry = self.dispatch_console_command(["terok", "setup"], title="Running terok setup")
+            await self.push_screen(WorkerLogScreen(entry))
+            await entry.wait()
+            if entry.ok:
                 return True
             self.notify(
                 "terok setup reported errors.  Re-run from the command palette "

@@ -38,9 +38,10 @@ class SetupOutcome(enum.Enum):
     The screen does *not* run setup itself; it only collects intent.
     Translating the outcome to host-state changes is the caller's job:
 
-    - ``SHOULD_RUN`` — user clicked Run; caller should push
-      [`WorkerLogScreen`][terok.tui.worker_log_screen.WorkerLogScreen] with
-      ``["terok", "setup"]``.
+    - ``SHOULD_RUN`` — user clicked Run; caller should dispatch
+      ``terok setup`` to the console-log registry and push a
+      [`WorkerLogScreen`][terok.tui.worker_log_screen.WorkerLogScreen]
+      view over the returned entry.
     - ``SKIPPED`` — user dismissed before running; the caller leaves
       the host alone.
     - ``REFUSED`` — verdict is ``STALE_AFTER_DOWNGRADE``; the only
@@ -75,8 +76,9 @@ class SetupScreen(ModalScreen[SetupOutcome]):
 
     1. *Healthy / non-OK verdict* — Skip + Run buttons.  Clicking Run
        dismisses with [`SetupOutcome.SHOULD_RUN`][terok.tui.setup_screen.SetupOutcome.SHOULD_RUN] so the parent
-       can push the [`WorkerLogScreen`][terok.tui.app.WorkerLogScreen] that owns the actual
-       subprocess streaming.
+       can dispatch ``terok setup`` to the console-log registry and
+       open a [`WorkerLogScreen`][terok.tui.worker_log_screen.WorkerLogScreen]
+       view of its streaming output.
     2. *Downgrade verdict* — Run is hidden; the only exit dismisses
        with [`SetupOutcome.REFUSED`][terok.tui.setup_screen.SetupOutcome.REFUSED].  The CLI refuses with exit
        code 4 here; this mirrors that contract by *not* offering an
