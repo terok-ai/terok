@@ -8,10 +8,9 @@ and the project wizard.  Also provides shared TUI helpers used by both
 project and task actions.
 """
 
-import os
-import shlex
 import subprocess
 from collections.abc import Callable
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 from textual import work
@@ -38,7 +37,7 @@ class ProjectActionsMixin(_MixinBase):
 
     Provides ``action_*`` methods for project-level operations (Dockerfile
     generation, image building, SSH init, gate sync, auth, wizard) as well
-    as reusable helpers (``_run_suspended``, ``_launch_terminal_session``)
+    as reusable helpers (``_run_console_action``, ``_launch_terminal_session``)
     used by both project and task actions.
     """
 
@@ -61,39 +60,6 @@ class ProjectActionsMixin(_MixinBase):
         ) -> ConsoleLogEntry: ...
 
     # ---------- Shared helpers ----------
-
-    async def _run_suspended(
-        self,
-        fn: Callable[[], None],
-        *,
-        success_msg: str | None = None,
-        refresh: str | None = "project_state",
-    ) -> bool:
-        """Run *fn* in a suspended TUI session with standard error handling.
-
-        Suspends the TUI, runs *fn*, waits for the user to press Enter,
-        then optionally notifies and refreshes.  Returns True if *fn*
-        completed without error.  The resume prompt is shown in a finally
-        block so the user always gets back to the TUI.
-        """
-        ok = False
-        with self.suspend():
-            try:
-                fn()
-                ok = True
-            except SystemExit as e:
-                print(f"Error: {e}")
-            except Exception as e:
-                print(f"Error: {e}")
-            finally:
-                input("\n[Press Enter to return to TerokTUI] ")
-        if ok and success_msg:
-            self.notify(success_msg)
-        if refresh == "project_state":
-            self._refresh_project_state()
-        elif refresh == "tasks":
-            await self.refresh_tasks()
-        return ok
 
     def _run_console_action(
         self,
@@ -324,24 +290,40 @@ class ProjectActionsMixin(_MixinBase):
 
     # ---------- Instructions editing ----------
 
+    async def _edit_instructions_file(self, instr_path: Path, *, title: str, done_msg: str) -> None:
+        """Edit *instr_path* in a native TextEditorScreen, writing it back on Save.
+
+        The web-compatible replacement for opening ``$EDITOR`` in a
+        suspended terminal: the file is loaded into a
+        [`TextEditorScreen`][terok.tui.text_screens.TextEditorScreen]
+        and only written back if the operator chooses Save.
+        """
+        from .text_screens import TextEditorScreen
+
+        existing = instr_path.read_text(encoding="utf-8") if instr_path.is_file() else ""
+
+        def _on_saved(text: str | None) -> None:
+            if text is None:
+                return
+            instr_path.parent.mkdir(parents=True, exist_ok=True)
+            instr_path.write_text(text, encoding="utf-8")
+            self.notify(done_msg)
+            self._refresh_project_state()
+
+        await self.push_screen(TextEditorScreen(existing, title=title), _on_saved)
+
     async def _action_edit_instructions(self) -> None:
-        """Open project instructions.md in $EDITOR for the current project."""
+        """Edit the current project's instructions.md in a native editor modal."""
         if not self.current_project_id:
             self.notify("No project selected.")
             return
         pid = self.current_project_id
-
-        def work() -> None:
-            """Open instructions file in $EDITOR (creates if absent)."""
-            project = load_project(pid)
-            instr_path = project.root / "instructions.md"
-            editor = os.environ.get("EDITOR", "").strip() or "vi"
-            editor_cmd = shlex.split(editor)
-            result = subprocess.run([*editor_cmd, str(instr_path)], check=False)
-            if result.returncode != 0:
-                raise SystemExit(f"Editor exited with code {result.returncode}")
-
-        await self._run_suspended(work, success_msg=f"Instructions updated for {pid}")
+        instr_path = load_project(pid).root / "instructions.md"
+        await self._edit_instructions_file(
+            instr_path,
+            title=f"Instructions — {pid}",
+            done_msg=f"Instructions updated for {pid}",
+        )
 
     async def _action_toggle_instructions_inherit(self) -> None:
         """Toggle YAML instructions between inherit and override mode."""
@@ -399,56 +381,38 @@ class ProjectActionsMixin(_MixinBase):
             return
         pid = self.current_project_id
 
-        def work() -> None:
-            """Resolve and print the effective instructions."""
-            from terok.lib.integrations.executor import resolve_instructions
+        from terok.lib.integrations.executor import get_provider, resolve_instructions
 
-            from ..lib.api import resolve_agent_config
+        from ..lib.api import resolve_agent_config
+        from .text_screens import TextViewScreen
 
-            project = load_project(pid)
-            effective = resolve_agent_config(
-                pid, agent_config=project.agent_config, project_root=project.root
-            )
-            from terok.lib.integrations.executor import get_provider as _get_provider
-
-            provider = _get_provider(None, default_agent=project.default_agent)
-            text = resolve_instructions(effective, provider.name, project_root=project.root)
-            print("=== Resolved Instructions ===\n")
-            print(text)
-            print(f"\n=== End ({len(text)} chars) ===")
-
-        await self._run_suspended(work, refresh=None)
+        project = load_project(pid)
+        effective = resolve_agent_config(
+            pid, agent_config=project.agent_config, project_root=project.root
+        )
+        provider = get_provider(None, default_agent=project.default_agent)
+        text = resolve_instructions(effective, provider.name, project_root=project.root)
+        await self.push_screen(TextViewScreen(text, title=f"Resolved instructions — {pid}"))
 
     async def _action_edit_global_instructions(self) -> None:
-        """Open global instructions.md in $EDITOR."""
+        """Edit the global instructions.md in a native editor modal."""
+        from ..lib.api import get_config
 
-        def work() -> None:
-            """Open global instructions file in $EDITOR."""
-            from ..lib.api import get_config
-
-            global_instr = get_config().global_config_path.parent / "instructions.md"
-            global_instr.parent.mkdir(parents=True, exist_ok=True)
-            editor = os.environ.get("EDITOR", "").strip() or "vi"
-            editor_cmd = shlex.split(editor)
-            result = subprocess.run([*editor_cmd, str(global_instr)], check=False)
-            if result.returncode != 0:
-                raise SystemExit(f"Editor exited with code {result.returncode}")
-
-        await self._run_suspended(work, success_msg="Global instructions updated", refresh=None)
+        global_instr = get_config().global_config_path.parent / "instructions.md"
+        await self._edit_instructions_file(
+            global_instr,
+            title="Global instructions",
+            done_msg="Global instructions updated",
+        )
 
     async def _action_show_default_instructions(self) -> None:
         """Display the bundled default instructions (read-only)."""
+        from terok.lib.integrations.executor import bundled_default_instructions
 
-        def work() -> None:
-            """Print bundled default instructions."""
-            from terok.lib.integrations.executor import bundled_default_instructions
+        from .text_screens import TextViewScreen
 
-            text = bundled_default_instructions()
-            print("=== Bundled Default Instructions ===\n")
-            print(text)
-            print(f"\n=== End ({len(text)} chars) ===")
-
-        await self._run_suspended(work, refresh=None)
+        text = bundled_default_instructions()
+        await self.push_screen(TextViewScreen(text, title="Bundled default instructions"))
 
     # ---------- OpenCode config import ----------
 

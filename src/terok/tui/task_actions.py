@@ -97,13 +97,6 @@ class TaskActionsMixin(_MixinBase):
         async def refresh_tasks(self) -> None: ...
         def _log_debug(self, message: str) -> None: ...
         def _refresh_project_state(self) -> None: ...
-        def _run_suspended(
-            self,
-            fn: Callable[[], None],
-            *,
-            success_msg: str | None = ...,
-            refresh: str | None = ...,
-        ) -> Any: ...
         def _run_console_action(
             self,
             ref: str,
@@ -805,44 +798,29 @@ class TaskActionsMixin(_MixinBase):
         self._action_shield_toggle("down", lambda c, d: shield_down(c, d, allow_all=True))
 
     async def _action_shield_interactive(self) -> None:
-        """Start shield interactive NFLOG verdict handler (suspended TUI)."""
-        if self._notify_shield_bypassed():
-            return
-        if not self.current_project_id or not self.current_task:
-            self.notify("No task selected.")
-            return
-        pid = self.current_project_id
-        task = self.current_task
-        tid = task.task_id
+        """Open the native shield clearance screen for live verdict handling.
 
-        def work() -> None:
-            from terok.lib.integrations.sandbox import shield_interactive_session
+        Replaces the terminal NFLOG fallback (``shield_interactive_session``)
+        — that fallback exists only for hosts without the D-Bus clearance
+        hub and cannot work web-served.  In the TUI the native
+        [`ClearanceScreen`][terok.tui.clearance_screen.ClearanceScreen] *is*
+        the interactive verdict handler.
+        """
+        from .clearance_screen import ClearanceScreen
 
-            task_dir = load_project(pid).tasks_root / str(tid)
-            cname = container_name(pid, task.mode or "cli", tid)
-            shield_interactive_session(cname, task_dir)
-
-        await self._run_suspended(work, refresh="tasks")
+        await self.push_screen(ClearanceScreen())
 
     async def _action_shield_watch(self) -> None:
-        """Start shield watch event stream (suspended TUI)."""
-        if self._notify_shield_bypassed():
-            return
-        if not self.current_project_id or not self.current_task:
-            self.notify("No task selected.")
-            return
-        pid = self.current_project_id
-        task = self.current_task
-        tid = task.task_id
+        """Open the native shield clearance screen — its event log streams blocked access.
 
-        def work() -> None:
-            from terok.lib.integrations.sandbox import shield_watch_session
+        Replaces the terminal ``shield_watch_session`` stream:
+        [`ClearanceScreen`][terok.tui.clearance_screen.ClearanceScreen]
+        already renders the same blocked-access events in its scrolling
+        event log, alongside the interactive pending list.
+        """
+        from .clearance_screen import ClearanceScreen
 
-            task_dir = load_project(pid).tasks_root / str(tid)
-            cname = container_name(pid, task.mode or "cli", tid)
-            shield_watch_session(cname, task_dir)
-
-        await self._run_suspended(work, refresh="tasks")
+        await self.push_screen(ClearanceScreen())
 
     # --- Main-screen task pane shortcuts (c/w/X/D/s) ---
 
