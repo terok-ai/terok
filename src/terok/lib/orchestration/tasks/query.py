@@ -80,7 +80,9 @@ def get_task_meta(project_id: str, task_id: str) -> TaskMeta:
     if raw is None:
         raise SystemExit(f"Unknown task {task_id}")
     mode = raw.get("mode")
-    tid = str(raw.get("task_id", ""))
+    # Fall back to the caller-known task_id rather than a blank identity
+    # when the on-disk record predates the field.
+    tid = str(raw.get("task_id") or task_id)
     # Hydrate live container state only for tasks that have actually been started
     live_state: str | None = None
     if mode is not None:
@@ -175,7 +177,9 @@ def _get_tasks(project_id: str, reverse: bool = False) -> list[TaskMeta]:
             meta = read_task_meta(meta_dir, tid_stem)
             if meta is None:
                 continue
-            tid = str(meta.get("task_id", ""))
+            # Fall back to the meta-dir-derived stem rather than a blank
+            # identity when the on-disk record predates the field.
+            tid = str(meta.get("task_id") or tid_stem)
             ws_status = None
             ws_message = None
             if tasks_root and tid:
@@ -187,6 +191,7 @@ def _get_tasks(project_id: str, reverse: bool = False) -> list[TaskMeta]:
             tasks.append(
                 TaskMeta(
                     task_id=tid,
+                    project_id=meta.get("project_id") or project_id,
                     mode=mode,
                     workspace=meta.get("workspace", ""),
                     web_port=meta.get("web_port"),

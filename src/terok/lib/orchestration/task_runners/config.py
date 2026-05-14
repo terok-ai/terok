@@ -31,11 +31,17 @@ _FALSE_STRINGS = frozenset({"false", "0", "no", "off"})
 
 
 def _str_to_bool(value: object) -> bool:
-    """Strictly coerce a config value to bool, treating string ``"false"`` as ``False``."""
+    """Strictly coerce a config value to bool, treating string ``"false"`` as ``False``.
+
+    String values are stripped and lowercased before the check, so a
+    blank/whitespace-only value reads as ``False`` rather than silently
+    flipping unrestricted mode on.
+    """
     if isinstance(value, bool):
         return value
     if isinstance(value, str):
-        return value.lower() not in _FALSE_STRINGS
+        normalized = value.strip().lower()
+        return normalized != "" and normalized not in _FALSE_STRINGS
     return bool(value)
 
 
