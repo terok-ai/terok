@@ -8,21 +8,11 @@ elsewhere in terok import from this module rather than from
 ``terok_sandbox`` directly — see the package docstring in
 [`terok.lib.integrations`][terok.lib.integrations] for the rationale.
 
-Most symbols come from the wheel's top-level API.  A handful are not
-exposed there yet and are pulled from submodules below — including a
-few sibling-private names (``_handle_vault_seal``, ``_installed_versions``,
-``_read_stamp``).  Centralising those reaches here means a sibling
-release that tidies its own API only breaks this one file.
-
-terok-shield doesn't have its own adapter: the only domain-side access
-to shield is through sandbox's re-exports (``make_shield``, ``up``,
-``down``, ``quarantine``, ``status``).  The CLI command bridge in
-``terok.cli.commands.shield`` that wraps shield's own CLI registry is
-the lone exception and imports ``terok_shield.*`` directly under a
-narrow allowed-importer rule.
+Every symbol comes from the wheel's top-level public API.  Shield's
+high-level wrappers (``make_shield``, ``up``, ``down``, ``quarantine``,
+``status``) flow through here as sandbox's own re-exports; shield's
+command registry has its own adapter, ``terok.lib.integrations.shield``.
 """
-
-from typing import Any
 
 from terok_sandbox import (  # noqa: F401 — re-exported public API
     EXIT_MANUAL_STEP_NEEDED,
@@ -30,11 +20,14 @@ from terok_sandbox import (  # noqa: F401 — re-exported public API
     SERVICES_TCP_OPTOUT_YAML,
     SSH_COMMANDS,
     BestEffortLogger,
+    CheckVerdict,
     CommandDef,
+    CommandTree,
     ConfigScope,
     ConfigStack,
     ContainerRuntime,
     CredentialDB,
+    DoctorCheck,
     EnvironmentCheck,
     ExecResult,
     GateAuthNotConfigured,
@@ -44,6 +37,7 @@ from terok_sandbox import (  # noqa: F401 — re-exported public API
     GitGate,
     Image,
     LifecycleHooks,
+    NoPassphraseError,
     NullRuntime,
     PodmanRuntime,
     RawSSHSection,
@@ -59,6 +53,7 @@ from terok_sandbox import (  # noqa: F401 — re-exported public API
     VaultStatus,
     VaultUnreachableError,
     VolumeSpec,
+    WrongPassphraseError,
     bold,
     check_environment,
     check_selinux_status,
@@ -75,6 +70,9 @@ from terok_sandbox import (  # noqa: F401 — re-exported public API
     get_ssh_signer_port,
     get_token_broker_port,
     get_vault_status,
+    handle_vault_seal,
+    handle_vault_to_keyring,
+    installed_versions,
     is_ssh_url,
     is_systemd_available,
     is_vault_socket_active,
@@ -85,11 +83,13 @@ from terok_sandbox import (  # noqa: F401 — re-exported public API
     needs_setup,
     public_line_of,
     quarantine,
+    read_stamp,
     red,
     release_port,
     resolve_container_state_dir,
     revoke_token_for_task,
     run_setup,
+    sandbox_doctor_checks,
     sandbox_uninstall,
     selinux_install_command,
     selinux_install_script,
@@ -105,45 +105,9 @@ from terok_sandbox import (  # noqa: F401 — re-exported public API
     stop_daemon,
     stop_vault,
     up,
+    yaml_update_section,
     yellow,
 )
-from terok_sandbox._yaml import update_section as yaml_update_section  # noqa: F401
-from terok_sandbox.commands import (  # noqa: F401 — re-exported public API
-    CommandTree,
-    _handle_vault_seal,
-    _handle_vault_to_keyring,
-)
-from terok_sandbox.doctor import (  # noqa: F401 — re-exported public API
-    CheckVerdict,
-    DoctorCheck,
-    sandbox_doctor_checks,
-)
-from terok_sandbox.setup_stamp import (  # noqa: F401 — re-exported public API
-    _installed_versions,
-    _read_stamp,
-)
-from terok_sandbox.vault.store.db import (  # noqa: F401 — re-exported public API
-    NoPassphraseError,
-    WrongPassphraseError,
-)
-
-
-def __getattr__(name: str) -> Any:
-    """Lazily resolve heavyweight re-exports kept off the import hot path.
-
-    ``terok_sandbox.vault.daemon.token_broker`` drags the whole ``aiohttp``
-    dependency tree in with it, and its only consumer (``terok vault
-    serve``) imports it from inside a dispatch function anyway.  Routing
-    it through ``__getattr__`` keeps ``import terok.lib.integrations.sandbox``
-    — which sits on the CLI-startup hot path via ``terok.cli.main`` —
-    from paying that cost.
-    """
-    if name == "vault_token_broker_main":
-        from terok_sandbox.vault.daemon.token_broker import main
-
-        return main
-    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
-
 
 __all__ = [
     "BestEffortLogger",
@@ -185,10 +149,6 @@ __all__ = [
     "VaultUnreachableError",
     "VolumeSpec",
     "WrongPassphraseError",
-    "_handle_vault_seal",
-    "_handle_vault_to_keyring",
-    "_installed_versions",
-    "_read_stamp",
     "bold",
     "check_environment",
     "check_selinux_status",
@@ -205,6 +165,9 @@ __all__ = [
     "get_ssh_signer_port",
     "get_token_broker_port",
     "get_vault_status",
+    "handle_vault_seal",
+    "handle_vault_to_keyring",
+    "installed_versions",
     "is_ssh_url",
     "is_systemd_available",
     "is_vault_socket_active",
@@ -215,6 +178,7 @@ __all__ = [
     "needs_setup",
     "public_line_of",
     "quarantine",
+    "read_stamp",
     "red",
     "release_port",
     "resolve_container_state_dir",
@@ -236,7 +200,6 @@ __all__ = [
     "stop_daemon",
     "stop_vault",
     "up",
-    "vault_token_broker_main",  # noqa: F822 — PEP 562 lazy re-export via __getattr__
     "yaml_update_section",
     "yellow",
 ]

@@ -746,7 +746,7 @@ class ProjectActionsMixin(_MixinBase):
     async def _action_vault_seal(self) -> None:
         """Seal the currently resolved passphrase into a systemd-creds credential.
 
-        Defers to sandbox's ``_handle_vault_seal`` with the default
+        Defers to sandbox's ``handle_vault_seal`` with the default
         ``--key=auto`` so a TPM2-equipped host gets ``host+tpm2``
         binding automatically.  The sealed-key-mode output streams into
         the log view where the operator can read it.
@@ -760,7 +760,7 @@ class ProjectActionsMixin(_MixinBase):
     async def _action_vault_to_keyring(self) -> None:
         """Move the currently resolved passphrase into the OS keyring.
 
-        Defers to sandbox's ``_handle_vault_to_keyring``: resolves the
+        Defers to sandbox's ``handle_vault_to_keyring``: resolves the
         passphrase from whichever tier currently holds it, writes to
         the keyring, flips ``credentials.use_keyring: true``, drops
         any plaintext fallbacks, removes the session/sealed copies,

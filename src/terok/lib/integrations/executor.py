@@ -8,10 +8,7 @@ elsewhere in terok import from this module rather than from
 ``terok_executor`` directly — see the package docstring in
 [`terok.lib.integrations`][terok.lib.integrations] for the rationale.
 
-Most symbols come from the wheel's top-level API.  ``AgentRoster`` and
-the Dockerfile renderers (``render_l0`` / ``render_l1``) are not exposed
-at the top level yet, so they are pulled from their submodules here —
-the one place that reach is allowed to live.
+Every symbol comes from the wheel's top-level public API.
 """
 
 from terok_executor import (  # noqa: F401 — re-exported public API
@@ -26,6 +23,7 @@ from terok_executor import (  # noqa: F401 — re-exported public API
     ACPEndpointStatus,
     AgentConfigSpec,
     AgentProvider,
+    AgentRoster,
     AgentRunner,
     BuildError,
     CLIOverrides,
@@ -61,6 +59,8 @@ from terok_executor import (  # noqa: F401 — re-exported public API
     parse_agent_selection,
     parse_md_agent,
     prepare_agent_config_dir,
+    render_l0,
+    render_l1,
     resolve_instructions,
     resolve_provider_value,
     scan_leaked_credentials,
@@ -69,11 +69,6 @@ from terok_executor import (  # noqa: F401 — re-exported public API
     stage_tmux_config,
     stage_toad_agents,
 )
-from terok_executor.container.build import (  # noqa: F401 — re-exported public API
-    render_l0,
-    render_l1,
-)
-from terok_executor.roster import AgentRoster  # noqa: F401 — re-exported public API
 
 __all__ = [
     "ACPEndpointStatus",

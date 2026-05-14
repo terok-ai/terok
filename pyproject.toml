@@ -58,10 +58,10 @@ platformdirs = ">=4.5.1"
 unique-namer = ">=1.3"
 textual-serve = ">=1.1.0"
 jinja2 = "^3.1"
-terok-executor = {url = "https://github.com/terok-ai/terok-executor/releases/download/v0.0.148/terok_executor-0.0.148-py3-none-any.whl"}
-terok-sandbox = {url = "https://github.com/terok-ai/terok-sandbox/releases/download/v0.0.123/terok_sandbox-0.0.123-py3-none-any.whl"}
-terok-shield = {url = "https://github.com/terok-ai/terok-shield/releases/download/v0.6.41/terok_shield-0.6.41-py3-none-any.whl"}
-terok-clearance = {url = "https://github.com/terok-ai/terok-clearance/releases/download/v0.6.13/terok_clearance-0.6.13-py3-none-any.whl"}
+terok-executor = {git = "https://github.com/sliwowitz/terok-executor.git", branch = "feat/uniform-command-registry"}
+terok-sandbox = {git = "https://github.com/sliwowitz/terok-sandbox.git", branch = "feat/uniform-command-registry"}
+terok-shield = {git = "https://github.com/sliwowitz/terok-shield.git", branch = "feat/uniform-command-registry"}
+terok-clearance = {git = "https://github.com/sliwowitz/terok-clearance.git", branch = "feat/uniform-command-registry"}
 
 [tool.poetry.group.dev.dependencies]
 pydevd-pycharm = "262.4852.46"

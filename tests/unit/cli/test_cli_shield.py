@@ -324,7 +324,7 @@ def test_install_hooks_requires_scope_flag() -> None:
     assert "terok shield install-hooks" in message
 
 
-@patch("terok_shield.cli.simple_clearance.run_simple_clearance")
+@patch("terok_shield.simple_clearance.run_simple_clearance")
 @patch("terok.cli.commands.shield._resolve_task", return_value=("proj-cli-1", MOCK_TASK_DIR_1))
 @patch("terok.cli.commands.shield.make_shield")
 def test_dispatch_simple_clearance(
@@ -344,7 +344,7 @@ def test_dispatch_simple_clearance(
     mock_run.assert_called_once_with(mock_shield.config.state_dir, "proj-cli-1")
 
 
-@patch("terok_shield.cli.watch.run_watch")
+@patch("terok_shield.watch.run_watch")
 @patch("terok.cli.commands.shield._resolve_task", return_value=("proj-cli-1", MOCK_TASK_DIR_1))
 @patch("terok.cli.commands.shield.make_shield")
 def test_dispatch_watch(

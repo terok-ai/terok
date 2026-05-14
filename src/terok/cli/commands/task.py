@@ -389,9 +389,9 @@ def _setup_verdict_or_exit() -> None:
     """
     from terok.lib.integrations.sandbox import (
         SetupVerdict,
-        _installed_versions,
-        _read_stamp,
+        installed_versions,
         needs_setup,
+        read_stamp,
         stamp_path,
     )
 
@@ -400,7 +400,7 @@ def _setup_verdict_or_exit() -> None:
         return
 
     if verdict is SetupVerdict.STALE_AFTER_DOWNGRADE:
-        downgraded = _name_downgraded_packages(stamp_path(), _read_stamp, _installed_versions)
+        downgraded = _name_downgraded_packages(stamp_path(), read_stamp, installed_versions)
         names = ", ".join(downgraded) or "one or more packages"
         print(
             f"terok: refusing to run — downgrade detected ({names}).\n"

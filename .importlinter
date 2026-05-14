@@ -28,10 +28,6 @@ layers =
 # importer.  A new ``from terok_sandbox import …`` anywhere else is a
 # CI failure: route it through the adapter instead (and extend the
 # adapter's re-export surface if the symbol is new).
-#
-# terok-shield is the one exception: terok never imports it from the
-# library at all — only the ``terok shield`` CLI command bridges to
-# shield's own CLI registry, so that one module is the allowed importer.
 
 [importlinter:contract:sandbox-boundary]
 name = terok_sandbox access restricted to the integrations adapter
@@ -55,8 +51,8 @@ allowed_importers =
     terok.lib.integrations.clearance
 
 [importlinter:contract:shield-boundary]
-name = terok_shield access restricted to designated modules
+name = terok_shield access restricted to the integrations adapter
 type = protected
 protected_modules = terok_shield
 allowed_importers =
-    terok.cli.commands.shield
+    terok.lib.integrations.shield
