@@ -65,4 +65,7 @@ USER testrunner
 ENV USER=testrunner HOME=/home/testrunner
 ENV PATH=/home/testrunner/.local/bin:/nix/var/nix/profiles/default/bin:$PATH
 
-WORKDIR /workspace
+# No WORKDIR: ``run_nix_tests`` does ``cp -a /src /workspace`` and then
+# ``cd /workspace``.  ``cp`` only lands /src's contents at /workspace/
+# when /workspace doesn't already exist; pre-creating it via WORKDIR
+# would land them at /workspace/src/ instead and break the cd.
