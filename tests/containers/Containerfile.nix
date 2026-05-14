@@ -28,20 +28,11 @@ RUN nix --extra-experimental-features 'nix-command flakes' \
         nixpkgs#python312 \
         nixpkgs#python312Packages.pip
 
-# Non-root user (uid 1000) so the container exercises the same "regular
-# user shell" path Franz hit, not the root path.  Nix needs the user's
-# home to exist for ~/.local writes from pip --user.
-RUN useradd -m -u 1000 -s /bin/bash testrunner \
-    && mkdir -p /home/testrunner/.local/bin \
-    && chown -R testrunner:testrunner /home/testrunner
-
-# Each user needs their own nix profile to install user-local packages
-# without root.  Initialise the per-user profile dir.
-RUN mkdir -p /nix/var/nix/profiles/per-user/testrunner \
-    && chown testrunner:testrunner /nix/var/nix/profiles/per-user/testrunner
-
-USER testrunner
-ENV USER=testrunner HOME=/home/testrunner
-ENV PATH=/home/testrunner/.local/bin:/nix/var/nix/profiles/default/bin:$PATH
+# Run as root.  ``nixos/nix`` is minimal — no ``shadow`` / ``useradd`` —
+# and the wrapped-Python failure mode this slot exists to catch is uid-
+# independent (the wrapper rewrites sys.path the same way for any uid).
+# Pulling in ``nixpkgs#shadow`` just to drop privileges would add ~30 MB
+# of nix-store paths for no test-shape gain.
+ENV PATH=/root/.local/bin:/nix/var/nix/profiles/default/bin:$PATH
 
 WORKDIR /workspace
