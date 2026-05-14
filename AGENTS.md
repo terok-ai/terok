@@ -17,7 +17,16 @@
 
 ## Repo layout
 
-- `src/terok/`: Python package (CLI in `src/terok/cli/`, TUI in `src/terok/tui/`)
+- `src/terok/`: Python package
+  - `cli/`, `tui/`: the two presentation frontends
+  - `lib/api.py`: the single stable import boundary the frontends consume
+  - `lib/domain/`: Project/Task aggregates, ssh/auth workflows, panic, vault
+  - `lib/orchestration/`: container lifecycle — `tasks/` (metadata, lifecycle,
+    queries) and `task_runners/` (cli/toad/headless/restart mode runners) are
+    packages of focused submodules behind a re-export `__init__`
+  - `lib/core/`: foundation types, config, pure utilities
+  - `lib/integrations/`: thin adapters that own every import from the sibling
+    wheels — `executor.py`, `sandbox.py`, `clearance.py`
 - `tests/`: `pytest` test suite
 - `docs/`: user + developer documentation
 - `examples/`, `completions/`: sample configs and shell completions
@@ -125,11 +134,13 @@ All three of `terok-executor`, `terok-sandbox`, and `terok-clearance` are listed
 - When bumping `terok-shield` in terok-sandbox, no direct impact on terok (transitive). But if terok-sandbox re-exports shield types that terok uses, the shield version must be compatible.
 - After any version bump: run `poetry lock` and commit both `pyproject.toml` and `poetry.lock`.
 
-**Import convention:** always import from the top-level package API (`from terok_executor import X`, `from terok_sandbox import X`), never from internal submodules. This keeps the coupling surface minimal and allows internal reorganization without breaking consumers.
+**Import convention:** never import a sibling wheel directly. Every `terok_executor` / `terok_sandbox` / `terok_clearance` symbol is re-exported through a thin adapter in `src/terok/lib/integrations/` (`executor.py`, `sandbox.py`, `clearance.py`) — import from there (`from terok.lib.integrations.executor import X`). This is enforced by `.importlinter`'s `*-boundary` contracts: a direct `from terok_sandbox import …` outside `lib/integrations/` fails CI. When a sibling release adds a symbol terok needs, extend the adapter's re-export surface rather than reaching past it. terok-shield is the one exception — terok never imports it from the library; only the `terok shield` CLI command bridges to shield's own CLI registry.
+
+When a sibling exposes a needed symbol only from an internal submodule (e.g. `terok_sandbox.commands._handle_vault_seal`), the adapter is still the single place that reach is allowed to live — but the proper fix is to get the sibling to promote it to public API.
 
 ## Module Boundaries (tach)
 
-The project uses [tach](https://github.com/gauge-sh/tach) to enforce module boundary rules defined in `tach.toml`. Each module declares its allowed dependencies and public interface. When adding new cross-module imports:
+The project uses [tach](https://github.com/gauge-sh/tach) to enforce module boundary rules defined in `tach.toml`. Each module declares its allowed dependencies and public interface. The layers, top to bottom, are `presentation` → `domain` → `orchestration` → `core` → `integrations`. When adding new cross-module imports:
 
 - If importing from an existing dependency, ensure the symbol is in that module's `[[interfaces]]` `expose` list
 - If adding a new dependency between modules, add it to the `depends_on` list and update `[[interfaces]]` as needed

@@ -279,10 +279,14 @@ depends_on = [
 #
 
 # Task container runners (CLI, headless, toad, restart)
+# Task container runners — package: container / shield / config / cli /
+# toad / headless / restart submodules behind a re-export __init__.
 [[modules]]
 path = "terok.lib.orchestration.task_runners"
 layer = "orchestration"
 depends_on = [
+    "terok.lib.integrations.executor",
+    "terok.lib.integrations.sandbox",
     "terok.lib.orchestration.agent_config",
     "terok.lib.orchestration.container_exec",
     "terok.lib.orchestration.environment",
@@ -295,23 +299,29 @@ depends_on = [
     "terok.lib.core.runtime",
     "terok.lib.core.task_state",
     "terok.lib.util.ansi",
+    "terok.lib.util.net",
     "terok.lib.util.yaml",
 ]
 
-# Task metadata, lifecycle, and queries
+# Task metadata, lifecycle, and queries — package: meta / identity /
+# naming / query / lifecycle / archive submodules behind a re-export
+# __init__.
 [[modules]]
 path = "terok.lib.orchestration.tasks"
 layer = "orchestration"
 depends_on = [
+    "terok.lib.integrations.executor",
+    "terok.lib.integrations.sandbox",
     "terok.lib.orchestration.container_exec",
     "terok.lib.orchestration.hooks",
     "terok.lib.orchestration.ports",
+    "terok.lib.core.config",
+    "terok.lib.core.paths",
+    "terok.lib.core.projects",
     "terok.lib.core.runtime",
     "terok.lib.core.task_display",
     "terok.lib.core.task_state",
     "terok.lib.core.work_status",
-    "terok.lib.core.config",
-    "terok.lib.core.projects",
     "terok.lib.util.ansi",
     "terok.lib.util.emoji",
     "terok.lib.util.fs",
