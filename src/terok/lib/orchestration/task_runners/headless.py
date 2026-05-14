@@ -111,6 +111,55 @@ def _print_run_summary(project_id: str, task_id: str, mode: str, workspace: Path
     print(f"  Workspace: {workspace}")
 
 
+def _build_cli_overrides(config_path: str | None) -> dict:
+    """Load the optional ``--config`` agent-config file into an overrides dict.
+
+    Returns ``{}`` when no config file was given; raises ``SystemExit``
+    when the named file does not exist.
+    """
+    if not config_path:
+        return {}
+    config_src = Path(config_path)
+    if not config_src.is_file():
+        raise SystemExit(f"Agent config file not found: {config_path}")
+    return _yaml_load(config_src.read_text(encoding="utf-8")) or {}
+
+
+def _report_headless_result(
+    *,
+    project_id: str,
+    task_id: str,
+    cname: str,
+    task_dir: Path,
+    follow: bool,
+    label: str,
+    detached_label: str,
+) -> None:
+    """Print the shared tail of the headless run + follow-up runners.
+
+    When *follow* is set, wait for the container, print the run summary,
+    and record the exit code; otherwise print the detached-task block.
+    """
+    color_enabled = _supports_color()
+    if follow:
+        exit_code = _rt.get_runtime().container(cname).wait()
+        _print_run_summary(project_id, task_id, "run", task_dir / "workspace-dangerous")
+        update_task_exit_code(project_id, task_id, exit_code)
+        if exit_code != 0:
+            print(f"\n{label} exited with code {_red(str(exit_code), color_enabled)}")
+    else:
+        _print_detached_summary(
+            DetachedSummary(
+                label=detached_label,
+                task_id=task_id,
+                cname=cname,
+                color=color_enabled,
+                log_cmd=f"podman logs -f {cname}",
+                stop_cmd=f"podman stop {cname}",
+            )
+        )
+
+
 def task_run_headless(request: HeadlessRunRequest) -> str:
     """Run an agent headlessly (autopilot mode) in a new task container.
 
@@ -134,22 +183,14 @@ def task_run_headless(request: HeadlessRunRequest) -> str:
     resolved = get_provider(request.provider, default_agent=project.default_agent)
     require_agent_installed(project, resolved.name)
 
-    # Build CLI overrides from --config file and explicit flags
-    cli_overrides: dict = {}
-    if request.config_path:
-        config_src = Path(request.config_path)
-        if not config_src.is_file():
-            raise SystemExit(f"Agent config file not found: {request.config_path}")
-        cli_config = _yaml_load(config_src.read_text(encoding="utf-8")) or {}
-        cli_overrides = cli_config
-
     # Resolve layered agent config (global → project → preset → CLI overrides)
+    cli_overrides = _build_cli_overrides(request.config_path)
     effective = resolve_agent_config(
         request.project_id,
         agent_config=project.agent_config,
         project_root=project.root,
         preset=request.preset,
-        cli_overrides=cli_overrides if cli_overrides else None,
+        cli_overrides=cli_overrides or None,
     )
 
     # Resolve instructions: CLI --instructions overrides config stack
@@ -273,29 +314,42 @@ def task_run_headless(request: HeadlessRunRequest) -> str:
         meta["preset"] = request.preset
     write_task_meta(meta_path, meta)
 
-    color_enabled = _supports_color()
-
-    if request.follow:
-        exit_code = _rt.get_runtime().container(cname).wait()
-        _print_run_summary(project.id, task_id, "run", task_dir / "workspace-dangerous")
-
-        update_task_exit_code(project.id, task_id, exit_code)
-
-        if exit_code != 0:
-            print(f"\n{resolved.label} exited with code {_red(str(exit_code), color_enabled)}")
-    else:
-        _print_detached_summary(
-            DetachedSummary(
-                label=f"Headless {resolved.label} task started (detached).",
-                task_id=task_id,
-                cname=cname,
-                color=color_enabled,
-                log_cmd=f"podman logs -f {cname}",
-                stop_cmd=f"podman stop {cname}",
-            )
-        )
+    _report_headless_result(
+        project_id=project.id,
+        task_id=task_id,
+        cname=cname,
+        task_dir=task_dir,
+        follow=request.follow,
+        label=resolved.label,
+        detached_label=f"Headless {resolved.label} task started (detached).",
+    )
 
     return task_id
+
+
+def _inject_followup_prompt(
+    *, is_sealed: bool, cname: str, agent_config_dir: Path, prompt: str
+) -> None:
+    """Hand the follow-up *prompt* to the (stopped) task container.
+
+    Sealed projects get it copied straight in via ``podman cp``; unsealed
+    ones replace ``prompt.txt`` on the agent-config volume, archiving the
+    prior prompt to ``prompt-history.txt`` so the agent only ever sees
+    the current instruction.
+    """
+    if is_sealed:
+        from terok.lib.integrations.executor import inject_prompt
+
+        inject_prompt(cname, prompt)
+        return
+
+    prompt_path = agent_config_dir / "prompt.txt"
+    history_path = agent_config_dir / "prompt-history.txt"
+    existing = prompt_path.read_text(encoding="utf-8") if prompt_path.is_file() else ""
+    if existing:
+        with history_path.open("a", encoding="utf-8") as hf:
+            hf.write(f"{existing}\n\n---\n\n")
+    prompt_path.write_text(prompt, encoding="utf-8")
 
 
 def task_followup_headless(
@@ -368,25 +422,13 @@ def task_followup_headless(
             f"Follow-up will start a fresh session with the new prompt."
         )
 
-    # Write follow-up prompt to prompt.txt (replaces previous content so the
-    # agent only sees the current instruction).  Prior prompts are archived to
-    # prompt-history.txt for logging/debugging.
     task_dir = project.tasks_root / str(task_id)
-    agent_config_dir = task_dir / "agent-config"
-
-    if project.is_sealed:
-        # Sealed: inject prompt via podman cp into stopped container
-        from terok.lib.integrations.executor import inject_prompt
-
-        inject_prompt(cname, prompt)
-    else:
-        prompt_path = agent_config_dir / "prompt.txt"
-        history_path = agent_config_dir / "prompt-history.txt"
-        existing = prompt_path.read_text(encoding="utf-8") if prompt_path.is_file() else ""
-        if existing:
-            with history_path.open("a", encoding="utf-8") as hf:
-                hf.write(f"{existing}\n\n---\n\n")
-        prompt_path.write_text(prompt, encoding="utf-8")
+    _inject_followup_prompt(
+        is_sealed=project.is_sealed,
+        cname=cname,
+        agent_config_dir=task_dir / "agent-config",
+        prompt=prompt,
+    )
 
     # Ensure the vault is reachable before restarting — after a
     # host reboot the systemd socket may be active but the service idle.
@@ -412,27 +454,15 @@ def task_followup_headless(
     meta["exit_code"] = None
     write_task_meta(meta_path, meta)
 
-    color_enabled = _supports_color()
-
-    if follow:
-        exit_code = _rt.get_runtime().container(cname).wait()
-        _print_run_summary(project.id, task_id, "run", task_dir / "workspace-dangerous")
-
-        update_task_exit_code(project.id, task_id, exit_code)
-
-        if exit_code != 0:
-            print(f"\n{label} exited with code {_red(str(exit_code), color_enabled)}")
-    else:
-        _print_detached_summary(
-            DetachedSummary(
-                label="Follow-up started (detached).",
-                task_id=task_id,
-                cname=cname,
-                color=color_enabled,
-                log_cmd=f"podman logs -f {cname}",
-                stop_cmd=f"podman stop {cname}",
-            )
-        )
+    _report_headless_result(
+        project_id=project.id,
+        task_id=task_id,
+        cname=cname,
+        task_dir=task_dir,
+        follow=follow,
+        label=label,
+        detached_label="Follow-up started (detached).",
+    )
 
 
 __all__ = [
