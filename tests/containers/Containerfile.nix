@@ -14,19 +14,19 @@
 
 FROM docker.io/nixos/nix:latest
 
-# Single-user nix install in the base image runs as root.  Enable
-# unprivileged user namespaces and pre-populate ``python3`` (with pip)
-# + ``git`` in the system profile so the test container has them ready
-# without a network round-trip per matrix run.
+# Pre-populate the wrapped python + pip in the system profile so the
+# test container has them ready without a network round-trip per matrix
+# run.  The base image already ships ``bash`` and ``git-minimal`` —
+# adding ``nixpkgs#git`` here conflicts on ``bin/git-shell``, and we
+# don't need git anyway (the source tree arrives via bind-mount, not a
+# clone).
 #
-# ``--accept-flake-config`` keeps the build hermetic; ``--extra-experimental-features``
-# turns on flakes (off by default in nix 2.18-).
+# ``--extra-experimental-features`` turns on flakes (off by default in
+# nix 2.18-).
 RUN nix --extra-experimental-features 'nix-command flakes' \
         profile install \
         nixpkgs#python312 \
-        nixpkgs#python312Packages.pip \
-        nixpkgs#git \
-        nixpkgs#bash
+        nixpkgs#python312Packages.pip
 
 # Non-root user (uid 1000) so the container exercises the same "regular
 # user shell" path Franz hit, not the root path.  Nix needs the user's
