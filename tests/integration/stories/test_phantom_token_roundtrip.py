@@ -173,17 +173,23 @@ def test_phantom_swap_through_container_socket(
     host_socket = running_token_broker_socket.socket_path
 
     name = f"{PODMAN_CONTAINER_PREFIX}-phantom-{uuid.uuid4().hex[:8]}"
+    # ``podman build -t terok-itest:latest`` stores the image as
+    # ``localhost/terok-itest:latest`` — qualify the reference so
+    # podman's strict short-name policy (no
+    # ``unqualified-search-registries`` configured, typical of personal
+    # dev hosts) doesn't refuse to resolve the bare name even for a
+    # local-store lookup.
+    qualified_image = (
+        PODMAN_TEST_IMAGE if "/" in PODMAN_TEST_IMAGE else f"localhost/{PODMAN_TEST_IMAGE}"
+    )
     try:
         # Two podman knobs the matrix doesn't need but a personal dev
         # host does:
-        #   --pull=never  short-circuits the pull-decision step.  Without
-        #     it, podman either trips the strict short-name policy (no
-        #     unqualified-search-registries → refuses ``terok-itest:latest``)
-        #     or treats a ``localhost/`` prefix as a registry hostname and
-        #     tries to ``https://localhost/v2/`` (the image lives in the
-        #     local store after _pull_image's ``podman build``, but
-        #     ``--pull=missing`` short-circuited the local-store lookup
-        #     before finding it).
+        #   --pull=never  podman's default ``--pull=missing`` interprets
+        #     the ``localhost/`` prefix as a real registry hostname and
+        #     probes ``https://localhost/v2/`` before checking the local
+        #     store.  ``never`` skips that probe and goes straight to
+        #     the local store where the image already lives.
         #   --security-opt label=disable  mirrors the outer matrix
         #     container's setting, so SELinux relabeling doesn't trip
         #     nested-rootless podman bind-mounts.  On non-SELinux hosts
@@ -201,7 +207,7 @@ def test_phantom_swap_through_container_socket(
                 name,
                 "-v",
                 f"{host_socket}:/vault.sock",
-                PODMAN_TEST_IMAGE,
+                qualified_image,
                 "sleep",
                 "60",
             ],
