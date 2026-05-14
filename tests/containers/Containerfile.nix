@@ -14,23 +14,25 @@
 
 FROM docker.io/nixos/nix:latest
 
-# Pre-populate the system profile with everything the tests need at
+# Pre-populate the system profile with what the tests need at
 # runtime: wrapped python + pip, awk, shadow (for rootless podman's
-# newuidmap/newgidmap if/when this slot starts exercising podman),
-# and bash (the base image only has bash via /nix/store, not at
-# /bin/bash, which trips most ``#!/bin/bash`` shebangs).
+# newuidmap/newgidmap if/when this slot starts exercising podman).
+#
+# Bash and git-minimal already ship in the base image's profile;
+# adding ``nixpkgs#bash`` or ``nixpkgs#git`` here conflicts on shared
+# files (``bash/printenv``, ``bin/git-shell``).
 #
 # ``--extra-experimental-features`` turns on flakes (off by default in
 # nix 2.18-).
 RUN nix --extra-experimental-features 'nix-command flakes' \
         profile install \
-        nixpkgs#bash \
         nixpkgs#gawk \
         nixpkgs#python312 \
         nixpkgs#python312Packages.pip \
         nixpkgs#shadow
 
-# /bin/bash → wrapped bash so shebangs and shadow's shell checks find it.
+# /bin/bash → the bash the base image already has, so shebangs and
+# shadow's shell checks resolve.
 RUN ln -s /nix/var/nix/profiles/default/bin/bash /bin/bash
 
 # Non-root user (uid 1000) — parity with the other matrix slots, and
