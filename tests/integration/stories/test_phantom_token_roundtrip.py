@@ -228,6 +228,7 @@ def test_phantom_swap_through_container_socket(
                 "podman",
                 "run",
                 "-d",
+                "--rm",
                 "--pull",
                 "never",
                 "--security-opt",
