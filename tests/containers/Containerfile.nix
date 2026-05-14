@@ -14,9 +14,10 @@
 
 FROM docker.io/nixos/nix:latest
 
-# Pre-populate the system profile with what the tests need at
-# runtime: wrapped python + pip, awk, shadow (for rootless podman's
-# newuidmap/newgidmap if/when this slot starts exercising podman).
+# Pre-populate the system profile with what the tests need at runtime:
+# wrapped python + pip, awk, shadow (newuidmap / newgidmap for the
+# rootless-podman follow-up), and util-linux (provides ``su``, which
+# the outer ``bash -c`` uses to drop to the testrunner uid).
 #
 # Bash and git-minimal already ship in the base image's profile;
 # adding ``nixpkgs#bash`` or ``nixpkgs#git`` here conflicts on shared
@@ -27,7 +28,8 @@ FROM docker.io/nixos/nix:latest
 RUN nix --extra-experimental-features 'nix-command flakes' \
         profile add \
         nixpkgs#gawk \
-        nixpkgs#shadow
+        nixpkgs#shadow \
+        nixpkgs#util-linux
 
 # ``python312`` and ``python312Packages.pip`` are *separate* derivations
 # that don't share a site-packages; installing them side-by-side leaves
