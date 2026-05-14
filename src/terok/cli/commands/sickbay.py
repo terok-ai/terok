@@ -23,16 +23,13 @@ import argparse
 import sys
 from pathlib import Path
 
-from terok_clearance import (
+from terok.lib.integrations.clearance import (
+    HUB_UNIT_NAME as _CLEARANCE_HUB_UNIT_NAME,
+    NOTIFIER_UNIT_NAME as _CLEARANCE_NOTIFIER_UNIT_NAME,
     check_units_outdated as _clearance_check_units_outdated,
     read_installed_notifier_unit_version as _clearance_notifier_unit_version,
     read_installed_unit_version as _clearance_hub_unit_version,
 )
-from terok_clearance.runtime.installer import (
-    HUB_UNIT_NAME as _CLEARANCE_HUB_UNIT_NAME,
-    NOTIFIER_UNIT_NAME as _CLEARANCE_NOTIFIER_UNIT_NAME,
-)
-
 from terok.lib.integrations.sandbox import (
     SERVICES_TCP_OPTOUT_YAML,
     check_environment,
