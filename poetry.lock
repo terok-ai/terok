@@ -3587,13 +3587,14 @@ url = "https://github.com/terok-ai/terok-clearance/releases/download/v0.6.11/ter
 
 [[package]]
 name = "terok-executor"
-version = "0.0.144"
+version = "0.0.145"
 description = "Single-agent task runner for hardened Podman containers"
 optional = false
 python-versions = ">=3.12,<3.15"
 groups = ["main"]
-files = []
-develop = false
+files = [
+    {file = "terok_executor-0.0.145-py3-none-any.whl", hash = "sha256:648350f7af787f69dd49f33a49e504bc500a76ff4c344660fcc98e06d9776524"},
+]
 
 [package.dependencies]
 agent-client-protocol = ">=0.7"
@@ -3602,24 +3603,23 @@ prompt-toolkit = ">=3.0"
 pydantic = ">=2.9"
 rich = ">=13.0"
 "ruamel.yaml" = ">=0.18"
-terok-sandbox = {git = "https://github.com/sliwowitz/terok-sandbox.git", branch = "refactor/drop-back-compat-shims"}
+terok_sandbox = {url = "https://github.com/terok-ai/terok-sandbox/releases/download/v0.0.120/terok_sandbox-0.0.120-py3-none-any.whl"}
 tomli-w = ">=1.0"
 
 [package.source]
-type = "git"
-url = "https://github.com/sliwowitz/terok-executor.git"
-reference = "refactor/canonical-vault-paths"
-resolved_reference = "6f6b759c8f5d2275b87d67614b5c67e52f3631f8"
+type = "url"
+url = "https://github.com/terok-ai/terok-executor/releases/download/v0.0.145/terok_executor-0.0.145-py3-none-any.whl"
 
 [[package]]
 name = "terok-sandbox"
-version = "0.0.119"
+version = "0.0.120"
 description = "Hardened Podman container runner with gate server and shield integration"
 optional = false
 python-versions = ">=3.12,<4.0"
 groups = ["main"]
-files = []
-develop = false
+files = [
+    {file = "terok_sandbox-0.0.120-py3-none-any.whl", hash = "sha256:d0e247573ff522577290817580f0fc7c09991b3538242c4d1f79053abd814a7d"},
+]
 
 [package.dependencies]
 aiohttp = ">=3.9"
@@ -3631,14 +3631,12 @@ prompt-toolkit = ">=3.0"
 pydantic = ">=2.9"
 "ruamel.yaml" = ">=0.18"
 sqlcipher3 = ">=0.6.2"
-terok-clearance = {url = "https://github.com/terok-ai/terok-clearance/releases/download/v0.6.11/terok_clearance-0.6.11-py3-none-any.whl"}
-terok-shield = {url = "https://github.com/terok-ai/terok-shield/releases/download/v0.6.39/terok_shield-0.6.39-py3-none-any.whl"}
+terok_clearance = {url = "https://github.com/terok-ai/terok-clearance/releases/download/v0.6.11/terok_clearance-0.6.11-py3-none-any.whl"}
+terok_shield = {url = "https://github.com/terok-ai/terok-shield/releases/download/v0.6.39/terok_shield-0.6.39-py3-none-any.whl"}
 
 [package.source]
-type = "git"
-url = "https://github.com/sliwowitz/terok-sandbox.git"
-reference = "refactor/drop-back-compat-shims"
-resolved_reference = "13b0c13c99570dfe5f2f14ee995f716eaeb048b4"
+type = "url"
+url = "https://github.com/terok-ai/terok-sandbox/releases/download/v0.0.120/terok_sandbox-0.0.120-py3-none-any.whl"
 
 [[package]]
 name = "terok-shield"
@@ -4537,4 +4535,4 @@ propcache = ">=0.2.1"
 [metadata]
 lock-version = "2.1"
 python-versions = ">=3.12,<3.15"
-content-hash = "2e29d1e2d03924a99470df49fe4edc1ed860a07a2e6680510a142584b4ffeba8"
+content-hash = "a8878cb2d39ace594b246ab018fa2e5bf95eecae917e58a178d0b747fb1b1f78"
