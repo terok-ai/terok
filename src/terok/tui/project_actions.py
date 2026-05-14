@@ -108,7 +108,7 @@ class ProjectActionsMixin(_MixinBase):
         cname: str,
         label: str = "Opened",
     ) -> None:
-        """Launch *cmd* via tmux/terminal/web, falling back to a suspended TUI.
+        """Launch *cmd* via tmux/terminal, falling back to a suspended TUI.
 
         Hard-gated on [`App.is_web`][textual.app.App.is_web]: a container
         login attaches a host terminal, and under textual-serve there is
@@ -127,15 +127,12 @@ class ProjectActionsMixin(_MixinBase):
             )
             return
 
-        method, port = launch_login(cmd, title=title)
+        method, _port = launch_login(cmd, title=title)
 
         if method == "tmux":
             self.notify(f"{label} in tmux window: {cname}")
         elif method == "terminal":
             self.notify(f"{label} in new terminal: {cname}")
-        elif method == "web" and port is not None:
-            self.open_url(f"http://localhost:{port}")
-            self.notify(f"{label} in browser: {cname}")
         else:
             with self.suspend():
                 try:

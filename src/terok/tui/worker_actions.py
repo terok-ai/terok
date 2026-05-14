@@ -113,10 +113,20 @@ def auth(provider: str, project_id: str | None) -> None:
 # ── Gate sync ─────────────────────────────────────────────────────────
 
 
+def _lookup_vault_pub_line(scope: str) -> str | None:
+    """Return *scope*'s most-recent public key line, or ``None`` if unassigned."""
+    from terok.lib.api import vault_db
+    from terok.lib.integrations.sandbox import public_line_of
+
+    with vault_db() as db:
+        records = db.load_ssh_keys_for_scope(scope)
+    return public_line_of(records[-1]) if records else None
+
+
 def _print_sync_gate_ssh_help(project_id: str) -> None:
     """Print SSH-specific troubleshooting for a gate-sync failure."""
-    from terok.lib.api import load_project, vault_db
-    from terok.lib.integrations.sandbox import is_ssh_url, public_line_of
+    from terok.lib.api import load_project
+    from terok.lib.integrations.sandbox import is_ssh_url
 
     try:
         project = load_project(project_id)
@@ -127,11 +137,10 @@ def _print_sync_gate_ssh_help(project_id: str) -> None:
 
     print("\nHint: this project uses an SSH upstream.")
     print("Gate sync failures are often a missing SSH key registration on the remote.")
-    with vault_db() as db:
-        records = db.load_ssh_keys_for_scope(project.id)
-    if records:
+    pub_line = _lookup_vault_pub_line(project.id)
+    if pub_line is not None:
         print("Public key (register as a deploy key on the remote):")
-        print(f"  {public_line_of(records[-1])}")
+        print(f"  {pub_line}")
     else:
         print(f"No SSH key assigned to project (scope) {project.id!r} in the vault.")
         print(f"Run 'terok project ssh-init {project_id}' to generate one,")

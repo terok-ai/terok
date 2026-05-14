@@ -3,14 +3,17 @@
 
 """Helpers for launching interactive login shells from the TUI.
 
-Provides tmux detection, desktop terminal detection, web-mode ttyd spawning,
-and an orchestrator that picks the best available method.
+Provides tmux detection, desktop terminal detection, and an orchestrator
+that picks the best available method.
+
+Container login is only ever attempted from a *local-terminal* TUI —
+[`_launch_terminal_session`][terok.tui.project_actions.ProjectActionsMixin._launch_terminal_session]
+refuses it under textual-serve before reaching here (issue #473) — so
+nothing in this module needs to handle the web-served case.
 """
 
 import os
 import shlex
-import shutil
-import socket
 import subprocess
 
 
@@ -180,47 +183,15 @@ def spawn_terminal_with_command(command: list[str], title: str | None = None) ->
 
 
 def is_web_mode() -> bool:
-    """Detect if the app is running under textual-serve (web mode).
+    """Detect textual-serve (web) mode from the environment — pre-app only.
 
-    When served via ``textual serve``, the TERM_PROGRAM environment
-    variable is typically absent and the textual driver changes.  We
-    check for the presence of an env var set by textual-serve.
+    ``textual-serve`` sets the ``TEXTUAL_DRIVER`` env var to a web
+    driver.  This env probe is for callers that run *before* the app
+    exists (e.g. the tmux-wrap decision in ``main()``); once the app is
+    running, prefer the canonical [`App.is_web`][textual.app.App.is_web].
     """
-    # textual-serve sets TEXTUAL_DRIVER when running in web mode
     driver = os.environ.get("TEXTUAL_DRIVER", "")
     return "web" in driver.lower()
-
-
-_LOCALHOST = "127.0.0.1"
-
-
-def _find_free_port() -> int:
-    """Find a free TCP port on localhost."""
-    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-        s.bind((_LOCALHOST, 0))
-        return s.getsockname()[1]
-
-
-def spawn_ttyd(command: list[str], port: int = 0) -> int | None:
-    """Start ttyd serving the given command on a local port.
-
-    Binds to the loopback interface only (``-i lo``) so the terminal is not
-    exposed beyond localhost.  Returns the port number on success, or None
-    if ttyd is not installed.  If port is 0, a free port is selected
-    automatically.
-    """
-    if not shutil.which("ttyd"):
-        return None
-
-    if port == 0:
-        port = _find_free_port()
-
-    ttyd_cmd = ["ttyd", "-W", "-o", "-i", "lo", "-p", str(port)] + command
-    try:
-        subprocess.Popen(ttyd_cmd, start_new_session=True)
-        return port
-    except (FileNotFoundError, OSError):
-        return None
 
 
 def launch_login(
@@ -229,23 +200,16 @@ def launch_login(
 ) -> tuple[str, int | None]:
     """Launch a login session using the best available method.
 
-    Returns a tuple of (method, port):
+    Only reached from a local-terminal TUI (the web case is refused
+    upstream), so a host terminal is assumed available.  Returns a
+    tuple of (method, port):
+
     - ("tmux", None): opened in a new tmux window
     - ("terminal", None): opened in a new desktop terminal window
-    - ("web", port): started ttyd on the given port (caller should open_url)
     - ("none", None): no external method available; caller should suspend
     """
-    if is_inside_tmux():
-        if tmux_new_window(command, title=title):
-            return ("tmux", None)
-
-    if not is_web_mode():
-        if spawn_terminal_with_command(command, title=title):
-            return ("terminal", None)
-
-    if is_web_mode():
-        port = spawn_ttyd(command)
-        if port is not None:
-            return ("web", port)
-
+    if is_inside_tmux() and tmux_new_window(command, title=title):
+        return ("tmux", None)
+    if spawn_terminal_with_command(command, title=title):
+        return ("terminal", None)
     return ("none", None)
