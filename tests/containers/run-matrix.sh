@@ -367,14 +367,15 @@ run_nix_tests() {
             python3.12 --version
             python3.12 --version | awk '{print \$2}' > /results/$name.python-version
 
-            # Install terok with all runtime + sibling deps (URL pins
-            # in pyproject.toml resolve to released wheels), plus the
-            # pytest stack needed by the conftest auto-fixtures.
-            # ``--break-system-packages`` is a no-op on nix's per-user
-            # profile but pip 23+ requires it when site-packages lives
-            # outside a venv.
-            python3.12 -m pip install --user --quiet --break-system-packages \
-                . pytest pytest-asyncio pytest-cov pytest-tach
+            # Nix disables user site-packages (PYTHONNOUSERSITE), so
+            # ``pip install --user`` is rejected.  Install into a venv
+            # instead — same shape the other matrix slots use.  The
+            # venv inherits the wrapper's sys.path scrubbing, which is
+            # the wrapped-Python failure mode we want to exercise.
+            python3.12 -m venv .venv
+            . .venv/bin/activate
+            pip install --quiet --upgrade pip
+            pip install --quiet . pytest pytest-asyncio pytest-cov pytest-tach
 
             echo ''
             echo '--- unit tests ---'
