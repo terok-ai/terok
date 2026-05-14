@@ -18,12 +18,11 @@ import pytest
 from terok.lib.core.projects import load_project
 from terok.lib.domain.task_logs import LogViewOptions, task_logs
 from terok.lib.orchestration.environment import build_task_env_and_volumes
-from terok.lib.orchestration.task_runners import (
+from terok.lib.orchestration.task_runners import task_run_cli, task_run_toad
+from terok.lib.orchestration.task_runners.toad import (
     _ensure_toad_token,
     _rehydrate_toad_token,
     _toad_browser_url,
-    task_run_cli,
-    task_run_toad,
 )
 from terok.lib.orchestration.tasks import (
     TaskDeleteResult,
@@ -518,7 +517,7 @@ class TestTask:
                 _set_state_sequence(mock_runtime, [None, "running"]),
                 mock_git_config(),
                 unittest.mock.patch(
-                    "terok.lib.orchestration.task_runners._supports_color",
+                    "terok.lib.orchestration.task_runners.cli._supports_color",
                     return_value=True,
                 ),
             ):
@@ -573,11 +572,11 @@ class TestTask:
             with (
                 mock_git_config(),
                 unittest.mock.patch(
-                    "terok.lib.orchestration.task_runners.assign_web_port",
+                    "terok.lib.orchestration.task_runners.toad.assign_web_port",
                     return_value=7861,
                 ),
                 unittest.mock.patch(
-                    "terok.lib.orchestration.task_runners._agent_runner"
+                    "terok.lib.orchestration.task_runners.container._agent_runner"
                 ) as sandbox_factory,
             ):
                 task_run_toad(project_id, tid)
@@ -615,11 +614,11 @@ class TestTask:
             with (
                 mock_git_config(),
                 unittest.mock.patch(
-                    "terok.lib.orchestration.task_runners.assign_web_port",
+                    "terok.lib.orchestration.task_runners.toad.assign_web_port",
                     return_value=7862,
                 ),
                 unittest.mock.patch(
-                    "terok.lib.orchestration.task_runners._agent_runner"
+                    "terok.lib.orchestration.task_runners.container._agent_runner"
                 ) as sandbox_factory,
             ):
                 task_run_toad(project_id, tid)
@@ -1186,11 +1185,11 @@ class TestResumeToadContainer:
             with (
                 mock_git_config(),
                 unittest.mock.patch(
-                    "terok.lib.orchestration.task_runners.assign_web_port",
+                    "terok.lib.orchestration.task_runners.toad.assign_web_port",
                     return_value=7862,
                 ),
                 unittest.mock.patch(
-                    "terok.lib.orchestration.task_runners.ensure_vault",
+                    "terok.lib.orchestration.task_runners.toad.ensure_vault",
                 ),
                 redirect_stdout(buf),
             ):
@@ -1220,20 +1219,20 @@ class TestResumeToadContainer:
             with (
                 mock_git_config(),
                 unittest.mock.patch(
-                    "terok.lib.orchestration.task_runners.assign_web_port",
+                    "terok.lib.orchestration.task_runners.toad.assign_web_port",
                     return_value=7863,
                 ),
                 unittest.mock.patch(
-                    "terok.lib.orchestration.task_runners.ensure_vault",
+                    "terok.lib.orchestration.task_runners.toad.ensure_vault",
                 ),
                 unittest.mock.patch(
-                    "terok.lib.orchestration.task_runners._podman_start",
+                    "terok.lib.orchestration.task_runners.toad._podman_start",
                 ),
                 unittest.mock.patch(
-                    "terok.lib.orchestration.task_runners._assert_running",
+                    "terok.lib.orchestration.task_runners.toad._assert_running",
                 ),
                 unittest.mock.patch(
-                    "terok.lib.orchestration.task_runners._apply_shield_policy",
+                    "terok.lib.orchestration.task_runners.toad._apply_shield_policy",
                 ),
                 redirect_stdout(buf),
             ):
@@ -1257,7 +1256,7 @@ class TestResumeToadContainer:
             mock_runtime.container.return_value.state = "running"
             with (
                 unittest.mock.patch(
-                    "terok.lib.orchestration.task_runners.assign_web_port",
+                    "terok.lib.orchestration.task_runners.toad.assign_web_port",
                     return_value=9999,  # allocator returned a different port
                 ),
                 pytest.raises(SystemExit, match="no longer available"),

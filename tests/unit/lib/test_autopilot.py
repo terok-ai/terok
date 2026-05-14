@@ -191,9 +191,9 @@ def run_headless_request(
         with (
             mock_git_config(),
             unittest.mock.patch(
-                "terok.lib.orchestration.task_runners._agent_runner"
+                "terok.lib.orchestration.task_runners.container._agent_runner"
             ) as sandbox_factory,
-            unittest.mock.patch("terok.lib.orchestration.task_runners._print_run_summary"),
+            unittest.mock.patch("terok.lib.orchestration.task_runners.headless._print_run_summary"),
         ):
             buffer = StringIO()
             with redirect_stdout(buffer):
@@ -243,7 +243,7 @@ def run_followup_request(
             os.environ, runner_env_vars(base, base / "config.yml"), clear=True
         ),
         mock_git_config(),
-        unittest.mock.patch("terok.lib.orchestration.task_runners._print_run_summary"),
+        unittest.mock.patch("terok.lib.orchestration.task_runners.headless._print_run_summary"),
     ):
         buffer = StringIO()
         with redirect_stdout(buffer):
@@ -757,7 +757,9 @@ class TestTaskFollowupHeadless:
                     os.environ, runner_env_vars(base, config_file), clear=True
                 ),
                 mock_git_config(),
-                unittest.mock.patch("terok.lib.orchestration.task_runners._print_run_summary"),
+                unittest.mock.patch(
+                    "terok.lib.orchestration.task_runners.headless._print_run_summary"
+                ),
                 # ``inject_prompt`` is terok-executor code; it lazily imports
                 # ``Sandbox`` from terok_sandbox directly, so the patch targets
                 # the wheel, not terok's integration adapter.
