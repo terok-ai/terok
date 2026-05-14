@@ -44,30 +44,30 @@ from typing import Any
 
 from terok.lib.integrations.executor import AgentRunner
 
-from ..core import runtime as _rt
-from ..core.config import archive_dir
-from ..core.paths import core_state_dir
-from ..core.projects import ProjectConfig, load_project
-from ..core.task_display import STATUS_DISPLAY, mode_info
-from ..core.task_state import (
+from ...core import runtime as _rt
+from ...core.config import archive_dir
+from ...core.paths import core_state_dir
+from ...core.projects import ProjectConfig, load_project
+from ...core.task_display import STATUS_DISPLAY, mode_info
+from ...core.task_state import (
     CONTAINER_MODES,
     TaskState,
     container_name,
     effective_status,
 )
-from ..core.work_status import read_work_status
-from ..util.ansi import (
+from ...core.work_status import read_work_status
+from ...util.ansi import (
     green as _green,
     red as _red,
     supports_color as _supports_color,
     yellow as _yellow,
 )
-from ..util.emoji import render_emoji
-from ..util.fs import archive_timestamp, create_archive_dir, ensure_dir
-from ..util.host_cmd import WORKSPACE_DANGEROUS_DIRNAME
-from ..util.logging_utils import _log_debug
-from ..util.yaml import dump as _yaml_dump, load as _yaml_load
-from .container_exec import container_git_diff
+from ...util.emoji import render_emoji
+from ...util.fs import archive_timestamp, create_archive_dir, ensure_dir
+from ...util.host_cmd import WORKSPACE_DANGEROUS_DIRNAME
+from ...util.logging_utils import _log_debug
+from ...util.yaml import dump as _yaml_dump, load as _yaml_load
+from ..container_exec import container_git_diff
 
 # ---------- Task meta file format ----------
 #
@@ -577,7 +577,7 @@ def generate_task_name(project_id: str | None = None) -> str:
 
 def _resolve_name_categories(project_id: str) -> list[str] | None:
     """Resolve task-name categories: project config → global config → hash default."""
-    from ..core.config import get_task_name_categories
+    from ...core.config import get_task_name_categories
 
     # 1. Per-project override
     try:
@@ -925,7 +925,7 @@ def _get_tasks(project_id: str, reverse: bool = False) -> list[TaskMeta]:
                 )
             )
         except Exception as exc:
-            from ..util.logging_utils import log_warning
+            from ...util.logging_utils import log_warning
 
             log_warning(f"Skipping malformed task metadata file for {tid_stem}: {exc}")
             continue
@@ -1197,7 +1197,7 @@ def _task_delete(project: ProjectConfig, task_id: str) -> TaskDeleteResult:
     _log_debug("task_delete: stop_task_containers returned")
 
     if mode:
-        from .hooks import run_hook
+        from ..hooks import run_hook
 
         run_hook(
             "post_stop",
@@ -1236,7 +1236,7 @@ def _task_delete(project: ProjectConfig, task_id: str) -> TaskDeleteResult:
     if containers_removed:
         _log_debug("task_delete: releasing web port")
         try:
-            from .ports import release_web_port
+            from ..ports import release_web_port
 
             release_web_port(project.id, task_id)
         except Exception as exc:  # noqa: BLE001 — best-effort cleanup
@@ -1340,13 +1340,13 @@ def _task_stop(project: ProjectConfig, task_id: str, *, timeout: int | None = No
         raise SystemExit(f"Failed to stop container: {exc}")
 
     try:
-        from .ports import release_web_port
+        from ..ports import release_web_port
 
         release_web_port(project.id, task_id)
     except Exception:  # noqa: BLE001 — best-effort; container is already stopped
         pass
 
-    from .hooks import run_hook
+    from ..hooks import run_hook
 
     run_hook(
         "post_stop",
