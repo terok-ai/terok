@@ -173,37 +173,35 @@ def test_phantom_swap_through_container_socket(
     host_socket = running_token_broker_socket.socket_path
 
     name = f"{PODMAN_CONTAINER_PREFIX}-phantom-{uuid.uuid4().hex[:8]}"
-    # podman's strict short-name policy refuses to resolve
-    # ``terok-itest:latest`` on hosts that have no
-    # ``unqualified-search-registries`` configured in
-    # ``/etc/containers/registries.conf`` (most personal dev machines).
-    # The image was built locally and stored as
-    # ``localhost/terok-itest:latest``; qualify the reference so podman
-    # doesn't go shopping for a registry.
-    qualified_image = (
-        PODMAN_TEST_IMAGE
-        if "/" in PODMAN_TEST_IMAGE
-        else f"localhost/{PODMAN_TEST_IMAGE}"
-    )
     try:
-        # ``label=disable`` mirrors what the matrix's outer-container run
-        # does, so SELinux relabeling doesn't trip nested-rootless podman
-        # bind-mounts (the prior ``:z`` flag did the wrong thing — it
-        # tried to relabel a file the outer container had marked
-        # unlabeled, and podman exited 125).  On non-SELinux hosts it is
-        # a no-op.
+        # Two podman knobs the matrix doesn't need but a personal dev
+        # host does:
+        #   --pull=never  short-circuits the pull-decision step.  Without
+        #     it, podman either trips the strict short-name policy (no
+        #     unqualified-search-registries → refuses ``terok-itest:latest``)
+        #     or treats a ``localhost/`` prefix as a registry hostname and
+        #     tries to ``https://localhost/v2/`` (the image lives in the
+        #     local store after _pull_image's ``podman build``, but
+        #     ``--pull=missing`` short-circuited the local-store lookup
+        #     before finding it).
+        #   --security-opt label=disable  mirrors the outer matrix
+        #     container's setting, so SELinux relabeling doesn't trip
+        #     nested-rootless podman bind-mounts.  On non-SELinux hosts
+        #     a no-op.
         result = subprocess.run(
             [
                 "podman",
                 "run",
                 "-d",
+                "--pull",
+                "never",
                 "--security-opt",
                 "label=disable",
                 "--name",
                 name,
                 "-v",
                 f"{host_socket}:/vault.sock",
-                qualified_image,
+                PODMAN_TEST_IMAGE,
                 "sleep",
                 "60",
             ],
