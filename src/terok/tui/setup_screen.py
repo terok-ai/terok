@@ -23,12 +23,13 @@ from __future__ import annotations
 import enum
 from collections.abc import Iterator
 
-from terok_sandbox import SetupVerdict, needs_setup
 from textual.app import ComposeResult
 from textual.binding import Binding
 from textual.containers import Horizontal, Vertical
 from textual.screen import ModalScreen
 from textual.widgets import Button, Label, Static
+
+from terok.lib.integrations.sandbox import SetupVerdict, needs_setup
 
 
 class SetupOutcome(enum.Enum):

@@ -62,7 +62,8 @@ else:
 
 from rich.style import Style
 from rich.text import Text
-from terok_sandbox import (
+
+from terok.lib.integrations.sandbox import (
     EnvironmentCheck,
     GateServerStatus,
     GateStalenessInfo,

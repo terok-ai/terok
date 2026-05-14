@@ -23,7 +23,7 @@ from __future__ import annotations
 
 import argparse
 
-from terok_sandbox import bold, stage_line, yellow
+from terok.lib.integrations.sandbox import bold, stage_line, yellow
 
 # ── CLI wiring ─────────────────────────────────────────────────────────
 

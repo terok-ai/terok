@@ -14,7 +14,9 @@ import subprocess
 from collections.abc import Callable
 from typing import TYPE_CHECKING
 
-from terok_sandbox import (
+from textual import work
+
+from terok.lib.integrations.sandbox import (
     GateServerManager,
     VaultManager,
     start_daemon,
@@ -22,7 +24,6 @@ from terok_sandbox import (
     stop_daemon,
     stop_vault,
 )
-from textual import work
 
 from ..lib.api import (
     authenticate,

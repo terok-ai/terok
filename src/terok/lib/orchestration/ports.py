@@ -8,7 +8,7 @@ All port allocation flows through the shared port registry in
 users on shared hosts.
 """
 
-from terok_sandbox import claim_port, release_port
+from terok.lib.integrations.sandbox import claim_port, release_port
 
 
 def assign_web_port(project_id: str, task_id: str, preferred: int | None = None) -> int:

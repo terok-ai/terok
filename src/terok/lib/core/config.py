@@ -11,7 +11,8 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal
 
 from pydantic import ValidationError
-from terok_sandbox import ServicesMode
+
+from terok.lib.integrations.sandbox import ServicesMode
 
 if TYPE_CHECKING:
     from terok_sandbox import ConfigStack, SandboxConfig

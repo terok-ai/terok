@@ -50,8 +50,6 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, TypedDict
 
-from terok_sandbox import GitGate, SSHManager
-
 from terok.lib.integrations.executor import (
     AGENTS_LABEL,
     ACPEndpointStatus,
@@ -59,6 +57,7 @@ from terok.lib.integrations.executor import (
     list_authenticated_agents,
     resolve_instructions,
 )
+from terok.lib.integrations.sandbox import GitGate, SSHManager
 
 from ..core.config import (
     archive_dir,

@@ -15,9 +15,10 @@ import argparse
 import sys
 from pathlib import Path
 
-from terok_sandbox import make_shield
 from terok_shield.cli.registry import COMMANDS, ArgDef, CommandDef
 from terok_shield.run import ExecError
+
+from terok.lib.integrations.sandbox import make_shield
 
 from ...lib.core.config import make_sandbox_config
 from ...lib.orchestration.tasks import resolve_task_id

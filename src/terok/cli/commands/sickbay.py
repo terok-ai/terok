@@ -32,7 +32,8 @@ from terok_clearance.runtime.installer import (
     HUB_UNIT_NAME as _CLEARANCE_HUB_UNIT_NAME,
     NOTIFIER_UNIT_NAME as _CLEARANCE_NOTIFIER_UNIT_NAME,
 )
-from terok_sandbox import (
+
+from terok.lib.integrations.sandbox import (
     SERVICES_TCP_OPTOUT_YAML,
     check_environment,
     check_units_outdated,

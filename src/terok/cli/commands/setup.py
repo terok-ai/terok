@@ -31,9 +31,8 @@ import argparse
 import shutil
 import sys
 
-from terok_sandbox import bold, red, stage_line, yellow
-
 from terok.lib.integrations.executor import AUTH_PROVIDERS
+from terok.lib.integrations.sandbox import bold, red, stage_line, yellow
 
 from ...lib.api import (
     build_images,

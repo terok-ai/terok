@@ -18,7 +18,7 @@ import os
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from terok_sandbox import (
+from terok.lib.integrations.sandbox import (
     SandboxConfig,
     VolumeSpec,
     create_token,

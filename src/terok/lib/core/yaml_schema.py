@@ -29,9 +29,9 @@ from __future__ import annotations
 from typing import Annotated, Any, ClassVar, Literal
 
 from pydantic import BaseModel, BeforeValidator, ConfigDict, Field, field_validator, model_validator
-from terok_sandbox import RawSSHSection
 
 from terok.lib.integrations.executor import ExecutorConfigView, RawImageSection
+from terok.lib.integrations.sandbox import RawSSHSection
 
 # ---------------------------------------------------------------------------
 # Shared reusable validators / annotated types

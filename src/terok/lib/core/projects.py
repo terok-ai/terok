@@ -13,7 +13,8 @@ from pathlib import Path
 from typing import Any
 
 from pydantic import ValidationError
-from terok_sandbox import ConfigScope, ConfigStack, gate_use_personal_ssh_default
+
+from terok.lib.integrations.sandbox import ConfigScope, ConfigStack, gate_use_personal_ssh_default
 
 from ..util.yaml import YAMLError, dump as _yaml_dump, load as _yaml_load
 from .config import (

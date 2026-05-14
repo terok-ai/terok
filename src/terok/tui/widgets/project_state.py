@@ -9,8 +9,9 @@ from typing import Any
 
 from rich.style import Style
 from rich.text import Text
-from terok_sandbox import EnvironmentCheck, GateServerStatus, GateStalenessInfo
 from textual.widgets import Static
+
+from terok.lib.integrations.sandbox import EnvironmentCheck, GateServerStatus, GateStalenessInfo
 
 from ...lib.api import (
     GPU_DISPLAY,

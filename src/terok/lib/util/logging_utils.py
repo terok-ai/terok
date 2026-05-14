@@ -14,7 +14,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from terok_sandbox import BestEffortLogger
+from terok.lib.integrations.sandbox import BestEffortLogger
 
 LOG_FILENAME = "terok.log"
 """Filename for the best-effort terok library log (written under ``core_state_dir()``)."""

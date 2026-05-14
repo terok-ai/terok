@@ -13,7 +13,7 @@ argcomplete integration, and top-level dispatch loop.
 import argparse
 import sys
 
-from terok_sandbox.credentials.encryption import NoPassphraseError as _NoPassphraseError
+from terok.lib.integrations.sandbox import NoPassphraseError as _NoPassphraseError
 
 from ..lib.core.config import set_experimental
 from ..lib.core.version import format_version_string, get_version_info

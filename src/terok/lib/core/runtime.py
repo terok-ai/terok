@@ -17,7 +17,7 @@ from __future__ import annotations
 
 import os
 
-from terok_sandbox import ContainerRuntime, NullRuntime, PodmanRuntime
+from terok.lib.integrations.sandbox import ContainerRuntime, NullRuntime, PodmanRuntime
 
 _runtime: ContainerRuntime | None = None
 
