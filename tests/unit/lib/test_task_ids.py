@@ -5,16 +5,17 @@
 
 from __future__ import annotations
 
-import json
 import unittest.mock
 
 import pytest
 
 from terok.lib.core.task_state import CONTAINER_MODES, container_name
 from terok.lib.orchestration.tasks import (
+    dossier_path,
     normalize_task_id_input,
     resolve_task_id,
     tasks_meta_dir,
+    write_task_meta,
 )
 from terok.lib.orchestration.tasks.identity import (
     _TASK_ID_BODY_CHARS,
@@ -111,10 +112,8 @@ class TestResolveTaskId:
 
     def _write_meta(self, project_id: str, task_id: str) -> None:
         """Write a minimal task metadata file."""
-        meta_dir = tasks_meta_dir(project_id)
-        meta_dir.mkdir(parents=True, exist_ok=True)
         meta = {"task_id": task_id, "name": "test-task", "mode": None, "workspace": "/tmp/ws"}
-        (meta_dir / f"{task_id}_dossier.json").write_text(json.dumps(meta, indent=2))
+        write_task_meta(dossier_path(tasks_meta_dir(project_id), task_id), meta)
 
     def test_exact_match(self) -> None:
         """Full task ID should resolve immediately."""
@@ -211,10 +210,8 @@ class TestLegacyHexCompat:
 
     def _write_meta(self, project_id: str, task_id: str) -> None:
         """Write a minimal task metadata file."""
-        meta_dir = tasks_meta_dir(project_id)
-        meta_dir.mkdir(parents=True, exist_ok=True)
         meta = {"task_id": task_id, "name": "legacy", "mode": None, "workspace": "/tmp/ws"}
-        (meta_dir / f"{task_id}_dossier.json").write_text(json.dumps(meta, indent=2))
+        write_task_meta(dossier_path(tasks_meta_dir(project_id), task_id), meta)
 
     def test_legacy_hex_resolves_with_deprecation(self) -> None:
         """A legacy 8-char hex task on disk should still resolve, with a DeprecationWarning."""
@@ -235,13 +232,8 @@ class TestLegacyHexCompat:
         import warnings
 
         with project_env(MINIMAL_PROJECT) as _ctx:
-            meta_dir = tasks_meta_dir("test-proj")
-            meta_dir.mkdir(parents=True, exist_ok=True)
-            (meta_dir / f"{ID_A}.json").write_text(
-                json.dumps(
-                    {"task_id": ID_A, "name": "n", "mode": None, "workspace": "/tmp/ws"}, indent=2
-                )
-            )
+            meta = {"task_id": ID_A, "name": "n", "mode": None, "workspace": "/tmp/ws"}
+            write_task_meta(dossier_path(tasks_meta_dir("test-proj"), ID_A), meta)
             with warnings.catch_warnings():
                 warnings.simplefilter("error", DeprecationWarning)
                 assert resolve_task_id("test-proj", ID_A) == ID_A

@@ -5,7 +5,6 @@
 
 from __future__ import annotations
 
-import json
 import subprocess
 from collections.abc import Callable
 from contextlib import redirect_stdout
@@ -18,7 +17,14 @@ import pytest
 from terok_sandbox import PodmanRuntime
 
 from terok.lib.orchestration.task_runners import task_restart
-from terok.lib.orchestration.tasks import get_task_container_state, task_new, task_status, task_stop
+from terok.lib.orchestration.tasks import (
+    get_task_container_state,
+    read_task_meta,
+    task_new,
+    task_status,
+    task_stop,
+    write_task_meta,
+)
 from tests.test_utils import mock_git_config, project_env
 
 
@@ -39,10 +45,10 @@ def update_task_meta(
     ctx: SimpleNamespace, project_id: str, task_id: str, **changes: object
 ) -> None:
     """Patch selected metadata keys for a generated task."""
-    meta_path = task_meta_path(ctx, project_id, task_id)
-    meta = json.loads(meta_path.read_text() or "{}") or {}
+    dossier_handle = task_meta_path(ctx, project_id, task_id)
+    meta = read_task_meta(dossier_handle.parent, task_id) or {}
     meta.update(changes)
-    meta_path.write_text(json.dumps(meta, indent=2), encoding="utf-8")
+    write_task_meta(dossier_handle, meta)
 
 
 def create_task_with_mode(ctx: SimpleNamespace, project_id: str, *, mode: str = "cli") -> str:

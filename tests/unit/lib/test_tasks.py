@@ -26,12 +26,16 @@ from terok.lib.orchestration.task_runners.toad import (
 )
 from terok.lib.orchestration.tasks import (
     TaskDeleteResult,
+    dossier_path,
     get_tasks,
     get_workspace_git_diff,
+    load_task_meta,
     read_task_meta,
     task_delete,
     task_list,
     task_new,
+    tasks_meta_dir,
+    write_task_meta,
 )
 from terok.lib.util.net import url_host
 from terok.tui.clipboard import (
@@ -227,15 +231,14 @@ class TestTask:
 
     @staticmethod
     def _patch_task_meta(ctx, project_id: str, tid: str, **updates) -> None:
-        """Load a task's YAML metadata, apply updates, and write it back."""
+        """Load a task's metadata, apply updates, and write it back."""
         meta_dir = ctx.state_dir / "projects" / project_id / "tasks"
-        meta_path = meta_dir / f"{tid}_dossier.json"
-        meta = json.loads(meta_path.read_text() or "{}")
+        meta = read_task_meta(meta_dir, tid) or {}
         meta.update(updates)
         # Setting mode implies the task reached readiness (ready_at marker).
         if "mode" in updates and updates["mode"] is not None and "ready_at" not in updates:
             meta.setdefault("ready_at", "2025-01-01T00:00:00+00:00")
-        meta_path.write_text(json.dumps(meta, indent=2))
+        write_task_meta(dossier_path(meta_dir, tid), meta)
 
     @staticmethod
     def _task_list_output(project_id: str, states: dict[str, str | None], **filters: str) -> str:
@@ -659,12 +662,11 @@ class TestTask:
         ) as ctx:
             tid = task_new(project_id)
             meta_dir = ctx.state_dir / "projects" / project_id / "tasks"
-            meta_path = meta_dir / f"{tid}_dossier.json"
 
             # Simulate task was previously run
-            meta = json.loads(meta_path.read_text() or "{}")
+            meta = read_task_meta(meta_dir, tid) or {}
             meta["mode"] = "cli"
-            meta_path.write_text(json.dumps(meta, indent=2))
+            write_task_meta(dossier_path(meta_dir, tid), meta)
 
             cname = f"{project_id}-cli-{tid}"
             with (
@@ -713,12 +715,10 @@ class TestTask:
             project_id=project_id,
         ):
             tid = task_new(project_id)
-            from terok.lib.orchestration.tasks import tasks_meta_dir
-
-            meta_path = tasks_meta_dir(project_id) / f"{tid}_dossier.json"
-            meta = json.loads(meta_path.read_text() or "{}")
+            meta_dir = tasks_meta_dir(project_id)
+            meta = read_task_meta(meta_dir, tid) or {}
             meta["mode"] = "cli"
-            meta_path.write_text(json.dumps(meta, indent=2))
+            write_task_meta(dossier_path(meta_dir, tid), meta)
 
             expected = "diff --git a/f.txt b/f.txt\n+line\n"
             with unittest.mock.patch(
@@ -737,12 +737,10 @@ class TestTask:
             project_id=project_id,
         ):
             tid = task_new(project_id)
-            from terok.lib.orchestration.tasks import tasks_meta_dir
-
-            meta_path = tasks_meta_dir(project_id) / f"{tid}_dossier.json"
-            meta = json.loads(meta_path.read_text() or "{}")
+            meta_dir = tasks_meta_dir(project_id)
+            meta = read_task_meta(meta_dir, tid) or {}
             meta["mode"] = "run"
-            meta_path.write_text(json.dumps(meta, indent=2))
+            write_task_meta(dossier_path(meta_dir, tid), meta)
 
             expected = "diff --git a/f.txt b/f.txt\n+prev\n"
             with unittest.mock.patch(
@@ -761,12 +759,10 @@ class TestTask:
             project_id=project_id,
         ):
             tid = task_new(project_id)
-            from terok.lib.orchestration.tasks import tasks_meta_dir
-
-            meta_path = tasks_meta_dir(project_id) / f"{tid}_dossier.json"
-            meta = json.loads(meta_path.read_text() or "{}")
+            meta_dir = tasks_meta_dir(project_id)
+            meta = read_task_meta(meta_dir, tid) or {}
             meta["mode"] = "cli"
-            meta_path.write_text(json.dumps(meta, indent=2))
+            write_task_meta(dossier_path(meta_dir, tid), meta)
 
             with unittest.mock.patch(
                 "terok.lib.orchestration.tasks.query.container_git_diff",
@@ -1161,12 +1157,9 @@ class TestResumeToadContainer:
     def _seed_toad_meta(project_id: str, task_id: str, *, port: int, token: str) -> None:
         """Preload task metadata as if a toad launch had already succeeded."""
         project = load_project(project_id)
-        from terok.lib.orchestration.tasks import load_task_meta
-
-        _, meta_path = load_task_meta(project.id, task_id, "toad")
-        meta = json.loads(meta_path.read_text(encoding="utf-8") or "{}")
+        meta, dossier_handle = load_task_meta(project.id, task_id, "toad")
         meta.update({"mode": "toad", "web_port": port, "web_token": token})
-        meta_path.write_text(json.dumps(meta, indent=2))
+        write_task_meta(dossier_handle, meta)
         (project.tasks_root / str(task_id) / "agent-config").mkdir(parents=True, exist_ok=True)
 
     def test_resume_running_container_prints_tokenized_url(self, mock_runtime) -> None:
@@ -1271,13 +1264,10 @@ class TestTaskLogs:
         """Create a task and set its mode in metadata."""
         task_id = task_new(project_id)
         # Manually update metadata to set mode (normally done by task runners)
-        from terok.lib.core.paths import core_state_dir
-
-        meta_dir = core_state_dir() / "projects" / project_id / "tasks"
-        meta_path = meta_dir / f"{task_id}_dossier.json"
-        meta = json.loads(meta_path.read_text() or "{}") or {}
+        meta_dir = tasks_meta_dir(project_id)
+        meta = read_task_meta(meta_dir, task_id) or {}
         meta["mode"] = mode
-        meta_path.write_text(json.dumps(meta, indent=2))
+        write_task_meta(dossier_path(meta_dir, task_id), meta)
         return task_id
 
     def test_unknown_task_raises(self) -> None:
@@ -1546,14 +1536,13 @@ class TestTaskArchive:
             with mock_git_config():
                 task_id = task_new(project_id)
                 meta_dir = ctx.state_dir / "projects" / project_id / "tasks"
-                meta_path = meta_dir / f"{task_id}_dossier.json"
 
                 # Set mode in metadata (simulating a task that ran)
-                meta = json.loads(meta_path.read_text() or "{}") or {}
+                meta = read_task_meta(meta_dir, task_id) or {}
                 meta["mode"] = "run"
                 meta["name"] = "test-task"
                 meta["exit_code"] = 0
-                meta_path.write_text(json.dumps(meta, indent=2))
+                write_task_meta(dossier_path(meta_dir, task_id), meta)
 
                 # Create logs dir to simulate persisted logs
                 task_dir = ctx.state_dir / "tasks" / project_id / task_id
@@ -1574,7 +1563,7 @@ class TestTaskArchive:
                     task_delete(project_id, task_id)
 
                 # Task should be deleted
-                assert not meta_path.exists()
+                assert not dossier_path(meta_dir, task_id).exists()
 
                 # Archive should exist under namespace archive tree
                 from terok.lib.orchestration.tasks import tasks_archive_dir
@@ -2018,12 +2007,7 @@ class TestGetTaskMeta:
 
     def test_hydrates_live_container_state(self, mock_runtime) -> None:
         """A task that has run gets its container_state filled from the runtime."""
-        from terok.lib.orchestration.tasks import (
-            dossier_path,
-            get_task_meta,
-            tasks_meta_dir,
-            write_task_meta,
-        )
+        from terok.lib.orchestration.tasks import get_task_meta
 
         pid = "proj_gtm_live"
         with project_env(f"project:\n  id: {pid}\n", project_id=pid), mock_git_config():

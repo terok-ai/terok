@@ -97,9 +97,7 @@ def read_task_meta(meta_dir: Path, task_id: str) -> dict | None:
 
     A pre-self-describing layout (``<task_id>.json`` / ``<task_id>.yml``)
     is migrated to the new names in place before the read so callers
-    never see the legacy paths.  Likewise a layout from before the
-    dossier/bookkeeping split — a single JSON file mixing wire-dossier
-    keys with bookkeeping — is detected and re-split here.
+    never see the legacy paths.
     """
     _migrate_legacy_filenames(meta_dir, task_id)
     json_path = dossier_path(meta_dir, task_id)
@@ -108,22 +106,9 @@ def read_task_meta(meta_dir: Path, task_id: str) -> dict | None:
     if not (json_path.is_file() or yml_path.is_file()):
         return None
 
-    # Pre-split single-JSON layout: one file mixed wire dossier with
-    # bookkeeping.  Detect, split, normalise.
-    dossier_data, spillover = _split_dossier_spillover(_read_json_meta(json_path))
-    yml_data = _read_yml_meta(yml_path)
-
-    # Spillover came from a caller writing the pre-split layout — treat
-    # it as more authoritative than any YAML on disk, since that YAML
-    # was written before the latest mutation and may be stale.
-    if spillover:
-        yml_data = {**yml_data, **spillover}
-
-    merged = _merge_dossier_into(yml_data, dossier_data)
-    backfilled = _backfill_project_id(merged, meta_dir)
-
-    if spillover or backfilled:
-        # Normalise on disk so the next read takes the fast path.
+    merged = _merge_dossier_into(_read_yml_meta(yml_path), _read_json_meta(json_path))
+    if _backfill_project_id(merged, meta_dir):
+        # Normalise on disk so the backfilled project_id persists.
         write_task_meta(dossier_path(meta_dir, task_id), merged)
 
     return merged
@@ -144,22 +129,18 @@ def _read_yml_meta(yml_path: Path) -> dict:
     return _to_plain(_yaml_load(yml_path.read_text(encoding="utf-8")) or {})
 
 
-def _split_dossier_spillover(json_data: dict) -> tuple[dict, dict]:
-    """Split a JSON-meta dict into ``(wire-dossier keys, bookkeeping spillover)``.
-
-    A current-format dossier file holds only wire keys; a pre-split file
-    mixed bookkeeping in — that mixed-in half is the *spillover*.
-    """
-    dossier = {k: v for k, v in json_data.items() if k in _DOSSIER_FROM_WIRE}
-    spillover = {k: v for k, v in json_data.items() if k not in _DOSSIER_FROM_WIRE}
-    return dossier, spillover
-
-
 def _merge_dossier_into(yml_data: dict, dossier_data: dict) -> dict:
-    """Return *yml_data* merged with the wire-key-translated *dossier_data*."""
+    """Return *yml_data* merged with the wire-key-translated *dossier_data*.
+
+    Only recognised wire keys (``project`` / ``task`` / ``name``) are
+    translated and merged; any other key in the dossier file is ignored
+    rather than crashing this persistence boundary on an unexpected shape.
+    """
     merged = dict(yml_data)
     for wire_key, value in dossier_data.items():
-        merged[_DOSSIER_FROM_WIRE[wire_key]] = value
+        internal_key = _DOSSIER_FROM_WIRE.get(wire_key)
+        if internal_key is not None:
+            merged[internal_key] = value
     return merged
 
 

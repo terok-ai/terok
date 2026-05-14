@@ -592,17 +592,17 @@ class TestTaskFollowupHeadless:
 
             config_file = write_runner_project(base, "proj_mode")
 
-            from terok.lib.orchestration.tasks import task_new
+            from terok.lib.orchestration.tasks import task_new, write_task_meta
 
             with unittest.mock.patch.dict(
                 os.environ, runner_env_vars(base, config_file), clear=True
             ):
                 with mock_git_config():
                     task_id = task_new("proj_mode")
-                    _agent_cfg, meta_path = task_paths(base, "proj_mode", task_id)
-                    meta = json.loads(meta_path.read_text() or "{}")
+                    _agent_cfg, dossier_handle = task_paths(base, "proj_mode", task_id)
+                    meta = read_task_meta(base, "proj_mode", task_id)
                     meta["mode"] = "cli"
-                    meta_path.write_text(json.dumps(meta, indent=2))
+                    write_task_meta(dossier_handle, meta)
 
                     with pytest.raises(SystemExit) as ctx:
                         task_followup_headless("proj_mode", task_id, "test")
@@ -615,17 +615,17 @@ class TestTaskFollowupHeadless:
 
             config_file = write_runner_project(base, "proj_run")
 
-            from terok.lib.orchestration.tasks import task_new
+            from terok.lib.orchestration.tasks import task_new, write_task_meta
 
             with unittest.mock.patch.dict(
                 os.environ, runner_env_vars(base, config_file), clear=True
             ):
                 with mock_git_config():
                     task_id = task_new("proj_run")
-                    _agent_cfg, meta_path = task_paths(base, "proj_run", task_id)
-                    meta = json.loads(meta_path.read_text() or "{}")
+                    _agent_cfg, dossier_handle = task_paths(base, "proj_run", task_id)
+                    meta = read_task_meta(base, "proj_run", task_id)
                     meta["mode"] = "run"
-                    meta_path.write_text(json.dumps(meta, indent=2))
+                    write_task_meta(dossier_handle, meta)
 
                     mock_runtime.container.return_value.state = "running"
                     with pytest.raises(SystemExit) as ctx:
