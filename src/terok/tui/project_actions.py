@@ -16,46 +16,21 @@ from typing import TYPE_CHECKING
 
 from textual import work
 
-from terok.lib.integrations.sandbox import (
-    GateServerManager,
-    VaultManager,
-    start_daemon,
-    start_vault,
-    stop_daemon,
-    stop_vault,
-)
-
 from ..lib.api import (
-    authenticate,
-    build_images,
     delete_project,
     find_projects_sharing_gate,
-    generate_dockerfiles,
     load_project,
-    make_git_gate,
-    maybe_pause_for_ssh_key_registration,
-    provision_ssh_key,
-    summarize_ssh_init,
 )
 from .shell_launch import launch_login
 
 if TYPE_CHECKING:
     from textual.app import App
 
+    from .console_log import ConsoleLogEntry
+
     _MixinBase = App
 else:
     _MixinBase = object
-
-
-def _lookup_vault_pub_line(scope: str) -> str | None:
-    """Return the scope's most-recent public key line, or ``None`` if unassigned."""
-    from terok.lib.integrations.sandbox import public_line_of
-
-    from ..lib.api import vault_db
-
-    with vault_db() as db:
-        records = db.load_ssh_keys_for_scope(scope)
-    return public_line_of(records[-1]) if records else None
 
 
 class ProjectActionsMixin(_MixinBase):
@@ -76,34 +51,16 @@ class ProjectActionsMixin(_MixinBase):
         def _refresh_project_state(self) -> None: ...
         async def _refresh_vault_status(self, *, push_modal_if_locked: bool = False) -> None: ...
         async def _on_vault_unlock_result(self, passphrase: str | None) -> None: ...
+        # Provided by ConsoleLogMixin — both are mixed into TerokTUI.
+        def dispatch_console_action(
+            self,
+            ref: str,
+            *args: object,
+            title: str,
+            on_complete: Callable[[ConsoleLogEntry], None] | None = None,
+        ) -> ConsoleLogEntry: ...
 
     # ---------- Shared helpers ----------
-
-    def _print_sync_gate_ssh_help(self, project_id: str) -> None:
-        """Print SSH-specific troubleshooting details for gate sync failures."""
-        from terok.lib.integrations.sandbox import is_ssh_url
-
-        try:
-            project = load_project(project_id)
-        except (Exception, SystemExit):
-            return
-
-        if not is_ssh_url(project.upstream_url):
-            return
-
-        print("\nHint: this project uses an SSH upstream.")
-        print(
-            "Gate sync failures are often caused by a missing SSH key registration on the remote."
-        )
-
-        pub_line = _lookup_vault_pub_line(project.id)
-        if pub_line is None:
-            print(f"No SSH key assigned to project (scope) {project.id!r} in the vault.")
-            print(f"Run 'terok project ssh-init {project_id}' to generate one,")
-            print("then register the printed public key as a deploy key upstream.")
-        else:
-            print("Public key (register as a deploy key on the remote):")
-            print(f"  {pub_line}")
 
     async def _run_suspended(
         self,
@@ -137,6 +94,45 @@ class ProjectActionsMixin(_MixinBase):
         elif refresh == "tasks":
             await self.refresh_tasks()
         return ok
+
+    def _run_console_action(
+        self,
+        ref: str,
+        *args: object,
+        title: str,
+        refresh: str | None = "project_state",
+        on_complete: Callable[[], None] | None = None,
+    ) -> None:
+        """Dispatch a Type-1 action as a captured child process and open its log view.
+
+        The web-compatible replacement for ``_run_suspended``: the
+        action runs in a child process (see
+        [`worker_actions`][terok.tui.worker_actions]), a
+        [`WorkerLogScreen`][terok.tui.worker_log_screen.WorkerLogScreen]
+        shows it live — hideable to the background — and on completion
+        the requested *refresh* runs plus any extra *on_complete*, even
+        if the log was hidden.  *ref* is a ``"module:function"``
+        reference into ``worker_actions``; *args* must be
+        JSON-serialisable.
+
+        *refresh* picks the derived state to re-pull on completion —
+        ``"project_state"`` (default), ``"tasks"``, ``"vault_status"``,
+        or ``None`` for no refresh.
+        """
+        from .worker_log_screen import WorkerLogScreen
+
+        def _finished(_entry: object) -> None:
+            if refresh == "project_state":
+                self._refresh_project_state()
+            elif refresh == "tasks":
+                self.run_worker(self.refresh_tasks())
+            elif refresh == "vault_status":
+                self.run_worker(self._refresh_vault_status())
+            if on_complete is not None:
+                on_complete()
+
+        entry = self.dispatch_console_action(ref, *args, title=title, on_complete=_finished)
+        self.push_screen(WorkerLogScreen(entry))
 
     async def _launch_terminal_session(
         self,
@@ -189,9 +185,10 @@ class ProjectActionsMixin(_MixinBase):
             self.notify("No project selected.")
             return
         pid = self.current_project_id
-        await self._run_suspended(
-            lambda: generate_dockerfiles(pid),
-            success_msg=f"Generated Dockerfiles for {pid}",
+        self._run_console_action(
+            "terok.tui.worker_actions:generate",
+            pid,
+            title=f"Generating Dockerfiles for {pid}",
         )
 
     async def action_build_images(self) -> None:
@@ -200,11 +197,12 @@ class ProjectActionsMixin(_MixinBase):
             self.notify("No project selected.")
             return
         pid = self.current_project_id
-        await self._run_suspended(
-            lambda: build_images(pid),
-            success_msg=f"Built L2 project images for {pid}",
+        self._run_console_action(
+            "terok.tui.worker_actions:build",
+            pid,
+            title=f"Building images for {pid}",
+            on_complete=self._invalidate_image_caches,
         )
-        self._invalidate_image_caches()
 
     async def action_init_ssh(self) -> None:
         """Mint a fresh vault-backed SSH keypair for the current project."""
@@ -212,10 +210,10 @@ class ProjectActionsMixin(_MixinBase):
             self.notify("No project selected.")
             return
         pid = self.current_project_id
-
-        await self._run_suspended(
-            lambda: summarize_ssh_init(provision_ssh_key(pid)),
-            success_msg=f"Initialized vault-backed SSH key for {pid}",
+        self._run_console_action(
+            "terok.tui.worker_actions:init_ssh",
+            pid,
+            title=f"Initializing SSH key for {pid}",
         )
 
     async def _action_build_agents(self) -> None:
@@ -224,11 +222,12 @@ class ProjectActionsMixin(_MixinBase):
             self.notify("No project selected.")
             return
         pid = self.current_project_id
-        await self._run_suspended(
-            lambda: build_images(pid, refresh_agents=True),
-            success_msg=f"Rebuilt from L0 with fresh agents for {pid}",
+        self._run_console_action(
+            "terok.tui.worker_actions:build_agents",
+            pid,
+            title=f"Rebuilding {pid} from L0 with fresh agents",
+            on_complete=self._invalidate_image_caches,
         )
-        self._invalidate_image_caches()
 
     async def _action_build_full(self) -> None:
         """Rebuild from L0 (no cache)."""
@@ -236,11 +235,12 @@ class ProjectActionsMixin(_MixinBase):
             self.notify("No project selected.")
             return
         pid = self.current_project_id
-        await self._run_suspended(
-            lambda: build_images(pid, full_rebuild=True),
-            success_msg=f"Rebuilt from L0 (no cache) for {pid}",
+        self._run_console_action(
+            "terok.tui.worker_actions:build_full",
+            pid,
+            title=f"Rebuilding {pid} from L0 (no cache)",
+            on_complete=self._invalidate_image_caches,
         )
-        self._invalidate_image_caches()
 
     @staticmethod
     def _invalidate_image_caches() -> None:
@@ -260,35 +260,12 @@ class ProjectActionsMixin(_MixinBase):
             self.notify("No project selected.")
             return
         pid = self.current_project_id
-
-        gate_ok = False
-
-        def work() -> None:
-            """Run all four setup steps sequentially."""
-            nonlocal gate_ok
-            print(f"=== Full Setup for {pid} ===\n")
-            print("Step 1/4: Initializing SSH...")
-            summarize_ssh_init(provision_ssh_key(pid))
-            maybe_pause_for_ssh_key_registration(pid)
-            print("\nStep 2/4: Generating Dockerfiles...")
-            generate_dockerfiles(pid)
-            print("\nStep 3/4: Building images...")
-            build_images(pid)
-            print("\nStep 4/4: Syncing git gate...")
-            res = make_git_gate(load_project(pid)).sync()
-            if not res["success"]:
-                print(f"\nGate sync warnings: {', '.join(res['errors'])}")
-            else:
-                print(f"\nGate ready at {res['path']}")
-                gate_ok = True
-            print("\n=== Full Setup complete! ===")
-
-        ok = await self._run_suspended(work, refresh="project_state")
-        self._invalidate_image_caches()
-        if ok and gate_ok:
-            self.notify(f"Full setup completed for {pid}")
-        elif ok:
-            self.notify(f"Setup done for {pid} (gate sync had errors)", severity="warning")
+        self._run_console_action(
+            "terok.tui.worker_actions:project_init",
+            pid,
+            title=f"Full setup for {pid}",
+            on_complete=self._invalidate_image_caches,
+        )
 
     # ---------- Authentication actions ----------
 
@@ -304,9 +281,11 @@ class ProjectActionsMixin(_MixinBase):
         if not self.current_project_id:
             self.notify("No project selected.")
             return
-        await self._run_suspended(
-            lambda: authenticate(provider, self.current_project_id),
-            success_msg=f"Auth completed for {provider}",
+        self._run_console_action(
+            "terok.tui.worker_actions:auth",
+            provider,
+            self.current_project_id,
+            title=f"Authenticating {provider} for {self.current_project_id}",
             refresh=None,
         )
 
@@ -317,9 +296,11 @@ class ProjectActionsMixin(_MixinBase):
         provider-scoped to the vault, so a later switch to per-project
         auth doesn't duplicate or overwrite anything.
         """
-        await self._run_suspended(
-            lambda: authenticate(provider, None),
-            success_msg=f"Auth completed for {provider} (host-wide)",
+        self._run_console_action(
+            "terok.tui.worker_actions:auth",
+            provider,
+            None,
+            title=f"Authenticating {provider} (host-wide)",
             refresh=None,
         )
 
@@ -334,35 +315,12 @@ class ProjectActionsMixin(_MixinBase):
         if not self.current_project_id:
             self.notify("No project selected.")
             return
-
-        project_id = self.current_project_id
-        sync_ok = False
-        with self.suspend():
-            try:
-                print(f"Syncing gate for {project_id}...")
-                result = make_git_gate(load_project(project_id)).sync()
-                if result["success"]:
-                    sync_ok = True
-                    if result["created"]:
-                        print("Gate created and synced from upstream.")
-                    else:
-                        print("Gate synced from upstream.")
-                else:
-                    print(f"Gate sync failed: {', '.join(result['errors'])}")
-                    self._print_sync_gate_ssh_help(project_id)
-            except SystemExit as e:
-                print(f"Gate sync failed: {e}")
-                self._print_sync_gate_ssh_help(project_id)
-            except Exception as e:
-                print(f"Gate operation error: {e}")
-                self._print_sync_gate_ssh_help(project_id)
-            input("\n[Press Enter to return to TerokTUI] ")
-
-        if sync_ok:
-            self.notify("Gate synced from upstream")
-        else:
-            self.notify("Gate sync failed. See terminal output.")
-        self._refresh_project_state()
+        pid = self.current_project_id
+        self._run_console_action(
+            "terok.tui.worker_actions:sync_gate",
+            pid,
+            title=f"Syncing gate for {pid}",
+        )
 
     # ---------- Instructions editing ----------
 
@@ -678,34 +636,30 @@ class ProjectActionsMixin(_MixinBase):
 
     async def _action_gate_install(self) -> None:
         """Install systemd socket units for the gate server."""
-        from ..lib.api import make_sandbox_config
-
-        await self._run_suspended(
-            lambda: GateServerManager(make_sandbox_config()).install_systemd_units(),
-            success_msg="Gate server systemd units installed",
+        self._run_console_action(
+            "terok.tui.worker_actions:gate_install",
+            title="Installing gate server systemd units",
         )
 
     async def _action_gate_uninstall(self) -> None:
         """Uninstall systemd units for the gate server."""
-        from ..lib.api import make_sandbox_config
-
-        await self._run_suspended(
-            lambda: GateServerManager(make_sandbox_config()).uninstall_systemd_units(),
-            success_msg="Gate server systemd units uninstalled",
+        self._run_console_action(
+            "terok.tui.worker_actions:gate_uninstall",
+            title="Uninstalling gate server systemd units",
         )
 
     async def _action_gate_start(self) -> None:
         """Start the gate server daemon."""
-        await self._run_suspended(
-            start_daemon,
-            success_msg="Gate server daemon started",
+        self._run_console_action(
+            "terok.tui.worker_actions:gate_start",
+            title="Starting gate server daemon",
         )
 
     async def _action_gate_stop(self) -> None:
         """Stop the gate server daemon."""
-        await self._run_suspended(
-            stop_daemon,
-            success_msg="Gate server daemon stopped",
+        self._run_console_action(
+            "terok.tui.worker_actions:gate_stop",
+            title="Stopping gate server daemon",
         )
 
     # ---------- Shield actions ----------
@@ -720,60 +674,40 @@ class ProjectActionsMixin(_MixinBase):
         """Run hook installation after shield setup modal choice."""
         if result is None:
             return
-        from terok.lib.integrations.sandbox import setup_hooks_direct as shield_setup_hooks_direct
-
-        await self._run_suspended(
-            lambda: shield_setup_hooks_direct(root=result == "root"),
-            success_msg="Shield hooks installed",
+        self._run_console_action(
+            "terok.tui.worker_actions:shield_setup",
+            result == "root",
+            title="Installing shield hooks",
         )
 
     # ---------- Vault actions ----------
 
     async def _action_vault_install(self) -> None:
         """Install systemd socket activation for the vault."""
-        from terok.lib.integrations.executor import ensure_vault_routes
-
-        from ..lib.api import make_sandbox_config
-
-        def _install() -> None:
-            cfg = make_sandbox_config()
-            ensure_vault_routes(cfg=cfg)
-            VaultManager(cfg).install_systemd_units()
-
-        await self._run_suspended(
-            _install,
-            success_msg="Vault systemd socket installed",
+        self._run_console_action(
+            "terok.tui.worker_actions:vault_install",
+            title="Installing vault systemd socket",
         )
 
     async def _action_vault_uninstall(self) -> None:
         """Uninstall vault systemd units."""
-        from ..lib.api import make_sandbox_config
-
-        await self._run_suspended(
-            lambda: VaultManager(make_sandbox_config()).uninstall_systemd_units(),
-            success_msg="Vault systemd units removed",
+        self._run_console_action(
+            "terok.tui.worker_actions:vault_uninstall",
+            title="Uninstalling vault systemd units",
         )
 
     async def _action_vault_start(self) -> None:
         """Generate routes and start the vault daemon."""
-        from terok.lib.integrations.executor import ensure_vault_routes
-
-        from ..lib.api import make_sandbox_config
-
-        def _start() -> None:
-            ensure_vault_routes(cfg=make_sandbox_config())
-            start_vault(cfg=make_sandbox_config())
-
-        await self._run_suspended(
-            _start,
-            success_msg="Vault started",
+        self._run_console_action(
+            "terok.tui.worker_actions:vault_start",
+            title="Starting vault",
         )
 
     async def _action_vault_stop(self) -> None:
         """Stop the vault daemon."""
-        await self._run_suspended(
-            stop_vault,
-            success_msg="Vault stopped",
+        self._run_console_action(
+            "terok.tui.worker_actions:vault_stop",
+            title="Stopping vault",
         )
 
     async def _action_vault_unlock(self) -> None:
@@ -795,30 +729,22 @@ class ProjectActionsMixin(_MixinBase):
         TUI's lock action is the reversible one, ``vault lock --forget``
         from a shell remains the destructive escape hatch.
         """
-        from ..lib.api import make_sandbox_config
-
-        def _lock() -> None:
-            make_sandbox_config().vault_passphrase_file.unlink(missing_ok=True)
-            stop_vault()
-
-        await self._run_suspended(_lock, success_msg="Vault locked (session tier cleared)")
-        await self._refresh_vault_status()
+        self._run_console_action(
+            "terok.tui.worker_actions:vault_lock",
+            title="Locking vault (clearing session tier)",
+            refresh="vault_status",
+        )
 
     async def _action_vault_seal(self) -> None:
         """Seal the currently resolved passphrase into a systemd-creds credential.
 
         Defers to sandbox's ``_handle_vault_seal`` with the default
         ``--key=auto`` so a TPM2-equipped host gets ``host+tpm2``
-        binding automatically.  Runs in a suspended terminal so the
-        sandbox helper's stdout (which prints the resulting key mode)
-        lands where the operator can read it.
+        binding automatically.  The sealed-key-mode output streams into
+        the log view where the operator can read it.
         """
-        from terok.lib.integrations.sandbox import _handle_vault_seal
-
-        from ..lib.api import make_sandbox_config
-
-        await self._run_suspended(
-            lambda: _handle_vault_seal(cfg=make_sandbox_config(), key="auto"),
-            success_msg="Vault passphrase sealed into systemd-creds",
+        self._run_console_action(
+            "terok.tui.worker_actions:vault_seal",
+            title="Sealing vault passphrase into systemd-creds",
+            refresh="vault_status",
         )
-        await self._refresh_vault_status()

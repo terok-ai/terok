@@ -32,11 +32,9 @@ from ..lib.api import (
     task_followup_headless,
     task_new,
     task_rename,
-    task_restart,
     task_run_cli,
     task_run_headless,
     task_run_toad,
-    task_stop,
     wait_for_container_exit,
 )
 from .clipboard import copy_to_clipboard_detailed
@@ -106,6 +104,14 @@ class TaskActionsMixin(_MixinBase):
             success_msg: str | None = ...,
             refresh: str | None = ...,
         ) -> Any: ...
+        def _run_console_action(
+            self,
+            ref: str,
+            *args: object,
+            title: str,
+            refresh: str | None = ...,
+            on_complete: Callable[[], None] | None = ...,
+        ) -> None: ...
         def _launch_terminal_session(self, *args: Any, **kwargs: Any) -> Any: ...
         def _save_selection_state(self) -> None: ...
         def _update_task_details(self) -> None: ...
@@ -600,7 +606,13 @@ class TaskActionsMixin(_MixinBase):
             return
         pid = self.current_project_id
         tid = self.current_task.task_id
-        await self._run_suspended(lambda: task_restart(pid, tid), refresh="tasks")
+        self._run_console_action(
+            "terok.tui.worker_actions:task_restart",
+            pid,
+            tid,
+            title=f"Restarting task {tid}",
+            refresh="tasks",
+        )
 
     async def _action_stop_task(self) -> None:
         """Stop a running task container."""
@@ -609,7 +621,13 @@ class TaskActionsMixin(_MixinBase):
             return
         pid = self.current_project_id
         tid = self.current_task.task_id
-        await self._run_suspended(lambda: task_stop(pid, tid), refresh="tasks")
+        self._run_console_action(
+            "terok.tui.worker_actions:task_stop",
+            pid,
+            tid,
+            title=f"Stopping task {tid}",
+            refresh="tasks",
+        )
 
     async def _action_login(self) -> None:
         """Log into the selected task's running container."""
