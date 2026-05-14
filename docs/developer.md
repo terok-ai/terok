@@ -232,24 +232,104 @@ persistent daemon would add unnecessary complexity for a service whose
 entire protocol is "handle one connection, exit".  Each pattern is the
 natural fit for its workload.
 
-### Why TCP instead of Unix sockets?
+### Socket vs TCP transport — the `services.mode` switch
 
-Podman cannot securely share a Unix socket from the host into a rootless
-container.  TCP ports on `127.0.0.1` are the pragmatic workaround —
-containers reach the host via `host.containers.internal:<port>`.
+A single config key controls the host-side default for every
+sandbox-provided service:
 
-This has a real downside: if a port is already occupied, terok would need
-to pick a different one and propagate the new port to every running
-container.  Unix sockets avoid this entirely (a filesystem path has no
-collision risk).  If Podman (or an alternative) ever gains secure socket
-sharing, the transport layer should be swapped — the current TCP binding
-is a bridge, not the target architecture.
+```yaml
+# config.yml
+services:
+  mode: socket   # default, recommended; alternative: tcp
+```
+
+Read by [`SandboxConfig.services_mode`][terok_sandbox.config.SandboxConfig.services_mode].
+In `socket` mode each service exposes a Unix socket under
+`$XDG_RUNTIME_DIR/...` via a systemd `*.socket` unit
+(`ListenStream=…`); in `tcp` mode the same service binds a loopback
+TCP port recorded in `terok_sandbox.port_registry` so the orchestrator
+can pass it to the container at create time.  The wire-format is the
+same in both modes — only the listening file descriptor differs
+(`AF_UNIX` vs `AF_INET`).
+
+Sockets are the preferred mode.  TCP exists for the SELinux case: on
+distros with SELinux enforcing, a host socket bind-mounted into a
+container is unreachable from the container's domain without a custom
+policy that lets the container side `connectto` the host service's
+type.  When you have root, terok's setup installs that policy
+alongside the systemd units and socket mode works transparently;
+without root the policy can't be installed, so the alternative is to
+fall back to TCP, accepting the trade-off that the loopback ports are
+visible to every other local user on the host.
 
 ### Shield (no socket service)
 
 `terok-shield` does not run a host-side service.  It operates entirely
 via OCI hooks (`prestart`/`poststop`) that configure firewall rules when
 containers start and stop.  No socket activation, no daemon, no TCP port.
+
+### The container-side bridge
+
+The in-container side of the wire is set up by
+`terok_sandbox/resources/bridges/ensure-bridges.sh`, sourced from the
+container entrypoint and from per-shell init.  It reads the env vars
+the executor injected at create time and spins up `socat` processes so
+the in-container client sees a uniform transport regardless of the
+host-side mode:
+
+- Always exposes `/tmp/ssh-agent.sock` for the SSH signer (Unix socket).
+- Always exposes `http://localhost:${TEROK_VAULT_LOOPBACK_PORT}` for
+  the vault token broker (HTTP-over-TCP).
+- Always exposes `/tmp/terok-vault.sock` for the vault token broker
+  (HTTP-over-Unix) — for clients that demand a socket (`gh`, `claude`).
+- For the gate server: in socket mode bridges
+  `http://localhost:9418` to the host gate socket.  In TCP mode the
+  bridge is **skipped** and the in-container client reaches
+  `host.containers.internal:<gate_port>` directly.  See
+  [Gaps](#gaps) below.
+
+### Connector inventory
+
+| Service | Host activation | Host endpoint | What it does host-side | Container consumer | Container endpoint | Bridge |
+|---|---|---|---|---|---|---|
+| **Vault token broker** | `terok-vault.socket` (socket) / `terok-vault.service` (tcp); aiohttp app via `_build_app()` in [`terok_sandbox.vault.daemon.token_broker`][terok_sandbox.vault.daemon.token_broker] | `${XDG_RUNTIME_DIR}/.../vault.sock` or `127.0.0.1:<broker_port>` | Reverse-proxies HTTP requests carrying phantom tokens to upstream APIs; substitutes the phantom for the real OAuth / API-key from the encrypted SQLite vault, forwards via TCP egress | Agent HTTP clients (`gh`, `claude`, `curl`) | `http://localhost:${TEROK_VAULT_LOOPBACK_PORT}` and `/tmp/terok-vault.sock` (both exposed) | Bidirectional `socat`: TCP-LISTEN→UNIX-CONNECT (socket mode) and UNIX-LISTEN→TCP-CONNECT (tcp mode) |
+| **Vault SSH signer** | Same `terok-vault` daemon, same switch | `${XDG_RUNTIME_DIR}/.../ssh-agent.sock` or `127.0.0.1:<ssh_signer_port>` | Implements the `ssh-agent` protocol; signs with private keys from the vault DB after validating the per-task phantom token.  The agent never sees the key | `ssh`, `git over ssh` via `$SSH_AUTH_SOCK` | `/tmp/ssh-agent.sock` (always — single endpoint regardless of host mode) | `socat UNIX-LISTEN:/tmp/ssh-agent.sock,fork SYSTEM:ssh-agent-bridge.sh` — `ssh-agent-bridge.sh` is itself the transport-aware bridge |
+| **Gate server (git)** | `terok-gate.socket` (socket) / `terok-gate.service` (tcp); `ThreadingHTTPServer` in [`terok_sandbox.gate.server`][terok_sandbox.gate.server] | `${XDG_RUNTIME_DIR}/.../gate-server.sock` or `127.0.0.1:<gate_port>` | HTTP backend for `git-upload-pack` / `git-receive-pack`; validates `TEROK_GATE_TOKEN`, then shells to the real `git http-backend` against host repos | `git clone/fetch/push` from inside the container | Socket mode: `http://localhost:9418/`. TCP mode: `http://host.containers.internal:<gate_port>/` *(no bridge)* | Socket mode only: `socat TCP-LISTEN:9418 UNIX-CONNECT:$TEROK_GATE_SOCKET`.  See [Gaps](#gaps) |
+| **ACP host proxy** | Started per-task by the orchestrator; not systemd | `<state_dir>/acp.sock` (always Unix socket, per-task) | Aggregates several in-container ACP agents (`terok-claude-acp`, `terok-codex-acp`, …) behind one endpoint; relays JSON-RPC to the host TUI | The in-container `terok-*-acp` wrappers | Inherited fd or path passed at spawn | Direct mount; single-protocol on both sides |
+| **Shield NFLOG reader → clearance hub** | Spawned per-shielded-container by terok | `${XDG_RUNTIME_DIR}/terok-shield-events.sock` (clearance hub's ingester leg) | Translates kernel `REJECT`s into `connection_blocked` events; clearance hub then notifies via D-Bus and routes operator verdicts back through a shield-exec helper | **None** — host-side end-to-end | n/a | Host-only Unix socket |
+| **Clearance verdict (varlink)** | `terok-clearance-verdict.service` | `${XDG_RUNTIME_DIR}/terok-clearance-verdict.sock` (mode 0600, varlink) | Receives operator allow / deny decisions; calls the shield-exec helper to update nftables sets | **None** — host-only | n/a | Host-only Unix socket |
+| **Workspace bind mount** | Plain `podman -v` at container create | `<task_dir>/workspace/` (host fs) | The task's git checkout | The agent's working dir | `/workspace` | Direct bind mount, no proxy |
+
+### Is the normalization complete?
+
+Almost.  The container-side convention is "the agent's protocol
+expectation always works regardless of host mode" — but it's enforced
+unevenly across the four bidirectional services:
+
+- **Vault token broker** — ✅ full bidirectional normalization.
+  Container always has both `http://localhost:<port>` and
+  `/tmp/terok-vault.sock`.
+- **Vault SSH signer** — ✅ always `/tmp/ssh-agent.sock`.  The
+  ssh-agent protocol is socket-only by convention, so there's no TCP
+  in-container endpoint to maintain.
+- **Gate server** — ⚠ *socket-mode-only* bridge.  In socket mode the
+  container sees `http://localhost:9418/`; in TCP mode it has to
+  reach `http://host.containers.internal:<gate_port>/` directly with
+  no bridge.  See [Gaps](#gaps).
+- **ACP / workspace** — ✅ single-protocol on both sides; no
+  transport mismatch to normalize.
+
+### Gaps
+
+The lone asymmetry is **gate's TCP mode**: the vault has a "host TCP →
+in-container Unix" bridge but gate doesn't have a "host TCP →
+in-container localhost" one.  The orchestrator absorbs the difference
+by rewriting the injected `CODE_REPO` to point at
+`host.containers.internal`, so the agent's `git` still works — but the
+"in-container endpoint is always the same" invariant the vault upholds
+doesn't hold for gate.  Whether to normalize this too is open: gate's
+clients are constrained to git, which is already TCP-fluent, so the
+case for adding a symmetric bridge is weaker than it was for vault.
 
 ---
 
