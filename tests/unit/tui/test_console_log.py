@@ -13,6 +13,7 @@ pipe plumbing gets exercised end-to-end.
 from __future__ import annotations
 
 import asyncio
+import os
 import sys
 
 import pytest
@@ -24,6 +25,7 @@ from terok.tui.console_log import (
     ConsoleLogMixin,
     ConsoleLogRegistry,
     LogStatus,
+    child_process_env,
     worker_argv,
 )
 
@@ -141,6 +143,24 @@ def test_worker_argv_structure() -> None:
     assert argv[1:4] == ["-u", "-m", "terok.tui._worker_entry"]
     assert argv[4] == "terok.lib.api:build_images"
     assert argv[5] == '["proj", true]'
+
+
+# ── child_process_env (Nix #717 shim) ─────────────────────────────────
+
+
+def test_child_process_env_threads_sys_path_as_pythonpath() -> None:
+    """The child env carries the parent's ``sys.path`` as ``PYTHONPATH`` (#717)."""
+    env = child_process_env()
+    assert env["PYTHONPATH"] == os.pathsep.join(sys.path)
+    # And it still inherits the parent environment.
+    assert "PATH" in env
+
+
+def test_child_process_env_pythonpath_wins_over_overrides() -> None:
+    """An ambient/override ``PYTHONPATH`` can never shadow the parent's real path."""
+    env = child_process_env({"FOO": "bar", "PYTHONPATH": "ambient-junk"})
+    assert env["FOO"] == "bar"
+    assert env["PYTHONPATH"] == os.pathsep.join(sys.path)
 
 
 # ── _worker_entry.main ────────────────────────────────────────────────

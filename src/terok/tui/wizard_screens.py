@@ -1012,11 +1012,12 @@ def _run_isolated(
     Combined, no subprocess below this call — however badly behaved —
     can prompt the user over the TUI.
 
-    *env* is passed straight through to [`subprocess.run`][subprocess.run].  When
-    ``None`` the child inherits the parent's environment (default
-    behaviour); the wizard uses this parameter to inject askpass
-    variables for ``use_personal_ssh`` projects so OpenSSH routes
-    passphrase prompts to the TUI modal instead of failing silently.
+    *env* layers extra variables on top of the child env built by
+    [`child_process_env`][terok.tui.console_log.child_process_env] (which
+    threads ``sys.path`` through as ``PYTHONPATH`` so the child can
+    import ``terok`` under Nix — see #717).  The wizard uses *env* to
+    inject askpass variables for ``use_personal_ssh`` projects so
+    OpenSSH routes passphrase prompts to the TUI modal.
 
     *label* is the human-friendly step name used in the error message.
     Any non-zero exit propagates as [`RuntimeError`][RuntimeError] carrying the
@@ -1030,6 +1031,8 @@ def _run_isolated(
     import subprocess  # noqa: S404 — launching a known python interpreter with fixed argv
     import sys
 
+    from .console_log import child_process_env
+
     result = subprocess.run(  # noqa: S603 — argv is sys.executable + -c + terok code we control
         [sys.executable, "-c", child_body],
         capture_output=True,
@@ -1037,7 +1040,7 @@ def _run_isolated(
         check=False,
         stdin=subprocess.DEVNULL,
         start_new_session=True,
-        env=env,
+        env=child_process_env(env),
     )
     if result.returncode != 0:
         tail = (result.stderr or result.stdout or "").strip().splitlines()
