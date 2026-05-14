@@ -820,7 +820,7 @@ class TaskActionsMixin(_MixinBase):
             return
         self._action_shield_toggle("up", shield_up)
 
-    def _action_shield_down_all(self) -> None:
+    def _action_shield_disengaged(self) -> None:
         """Drop the shield with allow_all (also permit private-range traffic)."""
         if self._notify_shield_bypassed():
             return
@@ -871,9 +871,9 @@ class TaskActionsMixin(_MixinBase):
             return
         self._action_shield_toggle("down", shield_down)
 
-    def action_shield_down_all_from_main(self) -> None:
+    def action_shield_disengaged_from_main(self) -> None:
         """Drop the shield with allow_all (+ private ranges) for the current task."""
-        self._action_shield_down_all()
+        self._action_shield_disengaged()
 
     def action_shield_up_from_main(self) -> None:
         """Raise the shield from the main screen."""

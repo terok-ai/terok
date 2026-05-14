@@ -16,7 +16,7 @@ release that tidies its own API only breaks this one file.
 
 terok-shield doesn't have its own adapter: the only domain-side access
 to shield is through sandbox's re-exports (``make_shield``, ``up``,
-``down``, ``block``, ``status``).  The CLI command bridge in
+``down``, ``quarantine``, ``status``).  The CLI command bridge in
 ``terok.cli.commands.shield`` that wraps shield's own CLI registry is
 the lone exception and imports ``terok_shield.*`` directly under a
 narrow allowed-importer rule.
@@ -58,7 +58,6 @@ from terok_sandbox import (  # noqa: F401 — re-exported public API
     VaultStatus,
     VaultUnreachableError,
     VolumeSpec,
-    block,
     bold,
     check_environment,
     check_selinux_status,
@@ -84,6 +83,7 @@ from terok_sandbox import (  # noqa: F401 — re-exported public API
     namespace_state_dir,
     needs_setup,
     public_line_of,
+    quarantine,
     red,
     release_port,
     resolve_container_state_dir,
@@ -186,7 +186,6 @@ __all__ = [
     "_handle_vault_to_keyring",
     "_installed_versions",
     "_read_stamp",
-    "block",
     "bold",
     "check_environment",
     "check_selinux_status",
@@ -212,6 +211,7 @@ __all__ = [
     "namespace_state_dir",
     "needs_setup",
     "public_line_of",
+    "quarantine",
     "red",
     "release_port",
     "resolve_container_state_dir",

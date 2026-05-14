@@ -333,10 +333,10 @@ class TestRenderHelpers:
                 id="disabled",
             ),
             pytest.param(
-                "INACTIVE",
-                ["inactive", "shield-security"],
+                "OFFLINE",
+                ["offline", "shield-security"],
                 [],
-                id="inactive-running",
+                id="offline-running",
             ),
             pytest.param(
                 "UP",
@@ -355,21 +355,21 @@ class TestRenderHelpers:
             absent,
         )
 
-    def test_render_shield_inactive_stopped_hooks_ok_shows_ready(self) -> None:
+    def test_render_shield_offline_stopped_hooks_ok_shows_ready(self) -> None:
         """Stopped containers with healthy hooks show 'ready', no warning."""
         widgets = import_widgets()
-        task = make_task(widgets, task_id="99", shield_state="INACTIVE", container_state="exited")
+        task = make_task(widgets, task_id="99", shield_state="OFFLINE", container_state="exited")
         text = str(widgets.render_task_details(task, project_id="proj1", shield_hooks_ok=True))
         assert "ready" in text
-        assert "inactive" not in text
+        assert "offline" not in text
         assert "shield-security" not in text
 
-    def test_render_shield_inactive_stopped_hooks_broken_shows_warning(self) -> None:
-        """Stopped containers with broken hooks still show inactive warning."""
+    def test_render_shield_offline_stopped_hooks_broken_shows_warning(self) -> None:
+        """Stopped containers with broken hooks still show offline warning."""
         widgets = import_widgets()
-        task = make_task(widgets, task_id="99", shield_state="INACTIVE", container_state="exited")
+        task = make_task(widgets, task_id="99", shield_state="OFFLINE", container_state="exited")
         text = str(widgets.render_task_details(task, project_id="proj1", shield_hooks_ok=False))
-        assert "inactive" in text
+        assert "offline" in text
         assert "shield-security" in text
         assert "ready" not in text
 
@@ -560,7 +560,7 @@ class TestTaskScreenKeyBinding:
             pytest.param("r", True, "restart", None, None, id="lower-r"),
             pytest.param("t", True, "stop", None, None, id="lower-t"),
             pytest.param("d", True, "shield_down", None, None, id="lower-d"),
-            pytest.param("D", True, "shield_down_all", None, None, id="shift-d"),
+            pytest.param("D", True, "shield_disengaged", None, None, id="shift-d"),
             pytest.param("s", True, "shield_up", None, None, id="lower-s"),
             pytest.param("escape", False, None, None, None, id="escape"),
             pytest.param("q", False, None, None, None, id="q"),

@@ -102,10 +102,10 @@ class TestShieldRestart:
         container: str,
         real_shield: Shield,
     ) -> None:
-        """Shield state is UP or DOWN (not INACTIVE/ERROR) after creation."""
+        """Shield state is UP or DOWN (not OFFLINE/ERROR) after creation."""
         state = real_shield.state(container)
-        assert state in {ShieldState.UP, ShieldState.DOWN, ShieldState.DOWN_ALL}, (
-            f"Shield state after creation: {state!r} (expected UP, DOWN, or DOWN_ALL)"
+        assert state in {ShieldState.UP, ShieldState.DOWN, ShieldState.DISENGAGED}, (
+            f"Shield state after creation: {state!r} (expected UP, DOWN, or DISENGAGED)"
         )
 
     def test_03_rules_present_after_creation(
@@ -139,8 +139,8 @@ class TestShieldRestart:
         _podman_stop(container)
         _podman_start(container)
         state = real_shield.state(container)
-        assert state in {ShieldState.UP, ShieldState.DOWN, ShieldState.DOWN_ALL}, (
-            f"Shield state after restart: {state!r} (expected UP, DOWN, or DOWN_ALL)"
+        assert state in {ShieldState.UP, ShieldState.DOWN, ShieldState.DISENGAGED}, (
+            f"Shield state after restart: {state!r} (expected UP, DOWN, or DISENGAGED)"
         )
 
     def test_07_rules_present_after_restart(

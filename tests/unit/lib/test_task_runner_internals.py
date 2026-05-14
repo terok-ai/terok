@@ -166,11 +166,11 @@ class TestApplyShieldPolicy:
             _apply_shield_policy(project, "ctr", tmp_path, is_restart=True)
         mock_down.assert_called_once_with("ctr", tmp_path, allow_all=False)
 
-    def test_restart_retain_restores_down_all(self, tmp_path: Path) -> None:
-        """Restart with retain policy restores a saved 'down_all' state."""
+    def test_restart_retain_restores_disengaged(self, tmp_path: Path) -> None:
+        """Restart with retain policy restores a saved 'disengaged' state."""
         from terok.lib.orchestration.task_runners.shield import _apply_shield_policy
 
-        (tmp_path / "shield_desired_state").write_text("down_all\n")
+        (tmp_path / "shield_desired_state").write_text("disengaged\n")
         project = self._make_project(on_restart="retain")
         with (
             patch(

@@ -144,8 +144,8 @@ class TestReadDesiredShieldState:
         assert _read_desired_shield_state(tmp_path) == "up"
 
     def test_strips_whitespace(self, tmp_path: Path) -> None:
-        (tmp_path / "shield_desired_state").write_text("  down_all  \n")
-        assert _read_desired_shield_state(tmp_path) == "down_all"
+        (tmp_path / "shield_desired_state").write_text("  disengaged  \n")
+        assert _read_desired_shield_state(tmp_path) == "disengaged"
 
 
 class TestRunContainerDoctor:

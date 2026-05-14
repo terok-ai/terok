@@ -394,12 +394,12 @@ class TestPersistDesiredState:
         _persist_desired_state("down", tmp_path, {})
         assert (tmp_path / "shield_desired_state").read_text().strip() == "down"
 
-    def test_down_all_persists(self, tmp_path: Path) -> None:
-        """``shield down --all`` writes 'down_all' to the desired state file."""
+    def test_disengaged_persists(self, tmp_path: Path) -> None:
+        """``shield down --all`` writes 'disengaged' to the desired state file."""
         from terok.cli.commands.shield import _persist_desired_state
 
         _persist_desired_state("down", tmp_path, {"allow_all": True})
-        assert (tmp_path / "shield_desired_state").read_text().strip() == "down_all"
+        assert (tmp_path / "shield_desired_state").read_text().strip() == "disengaged"
 
     def test_unrelated_command_noop(self, tmp_path: Path) -> None:
         """Non up/down commands do not create a state file."""

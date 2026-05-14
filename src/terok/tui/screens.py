@@ -1587,7 +1587,9 @@ class TaskDetailsScreen(screen.Screen[str | None]):
             from ..lib.api import get_config
 
             options.append(Option("shield \\[d]own (bypass)", id="shield_down"))
-            options.append(Option("shield \\[D]own --all (+ private ranges)", id="shield_down_all"))
+            options.append(
+                Option("shield \\[D]own --all (+ private ranges)", id="shield_disengaged")
+            )
             if not get_config().shield_bypass_firewall_no_protection:
                 options.append(Option("\\[s]hield up (deny-all)", id="shield_up"))
             options.append(
@@ -1649,7 +1651,7 @@ class TaskDetailsScreen(screen.Screen[str | None]):
             "H": "diff_head",
             "P": "diff_prev",
             "X": "delete",
-            "D": "shield_down_all",
+            "D": "shield_disengaged",
             "W": "shield_watch",
             "C": "show_clearance",
         }

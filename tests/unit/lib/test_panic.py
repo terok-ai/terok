@@ -263,18 +263,18 @@ class TestStopContainers:
 class TestRaiseShield:
     """Tests for _raise_shield."""
 
-    @patch("terok.lib.integrations.sandbox.block")
-    def test_success(self, mock_block):
-        """Shield block succeeds."""
+    @patch("terok.lib.integrations.sandbox.quarantine")
+    def test_success(self, mock_quarantine):
+        """Shield quarantine succeeds."""
         from terok.lib.domain.panic import _raise_shield
 
         cname, err = _raise_shield(_target())
         assert err is None
-        mock_block.assert_called_once()
+        mock_quarantine.assert_called_once()
 
-    @patch("terok.lib.integrations.sandbox.block", side_effect=Exception("nft failed"))
+    @patch("terok.lib.integrations.sandbox.quarantine", side_effect=Exception("nft failed"))
     def test_failure(self, _):
-        """Shield block failure returns error string."""
+        """Shield quarantine failure returns error string."""
         from terok.lib.domain.panic import _raise_shield
 
         cname, err = _raise_shield(_target())

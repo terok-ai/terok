@@ -23,7 +23,7 @@ if TYPE_CHECKING:
     from ...core.project_model import ProjectConfig
 
 _DESIRED_SHIELD_STATE_FILENAME = "shield_desired_state"
-_VALID_SHIELD_STATES = frozenset({"up", "down", "down_all"})
+_VALID_SHIELD_STATES = frozenset({"up", "down", "disengaged"})
 
 
 def _read_desired_shield_state(task_dir: Path) -> str | None:
@@ -43,10 +43,10 @@ def _write_desired_shield_state(task_dir: Path, state: str) -> None:
 def _restore_shield_state(cname: str, task_dir: Path) -> None:
     """Restore the persisted shield state on container restart (``retain`` policy)."""
     desired = _read_desired_shield_state(task_dir)
-    if not desired or not desired.startswith("down"):
+    if desired not in {"down", "disengaged"}:
         return
     try:
-        _shield_down_impl(cname, task_dir, allow_all=(desired == "down_all"))
+        _shield_down_impl(cname, task_dir, allow_all=(desired == "disengaged"))
     except Exception as exc:
         import warnings
 

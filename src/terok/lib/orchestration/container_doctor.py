@@ -262,7 +262,7 @@ def _check_shield_state(task_dir: Path, cname: str) -> _CheckResult:
     except Exception as exc:  # noqa: BLE001
         return ("warn", _SHIELD_STATE_LABEL, f"status check failed: {exc}")
 
-    if actual == desired or (desired == "down_all" and actual == "down"):
+    if actual == desired or (desired == "disengaged" and actual == "down"):
         return ("ok", _SHIELD_STATE_LABEL, f"matches desired ({desired})")
     return ("warn", _SHIELD_STATE_LABEL, f"mismatch: actual={actual!r}, desired={desired!r}")
 
