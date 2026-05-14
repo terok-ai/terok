@@ -5,9 +5,9 @@ include_external_packages = True
 
 # ── Layer architecture (independent verification) ─────────────────
 #
-# Duplicates tach's layer list (4 lines) to catch agent-modified
-# tach.toml.  import-linter computes layers from the actual import
-# graph, not from editable labels.
+# Duplicates tach's layer list to catch agent-modified tach.toml.
+# import-linter computes layers from the actual import graph, not
+# from editable labels.
 
 [importlinter:contract:architecture]
 name = Layered architecture
@@ -17,6 +17,7 @@ layers =
     terok.lib.domain
     terok.lib.orchestration
     terok.lib.core
+    terok.lib.integrations
 
 # ── Cross-package boundaries (tach can't do this) ────────────────
 #
@@ -58,6 +59,7 @@ allowed_importers =
     terok.lib.domain.task_credentials
     terok.lib.domain.vault
     terok.lib.util.logging_utils
+    terok.lib.integrations.sandbox
     terok.lib.orchestration.agent_config
     terok.lib.orchestration.container_doctor
     terok.lib.orchestration.environment
@@ -92,6 +94,7 @@ allowed_importers =
     terok.lib.domain.project
     terok.lib.domain.storage
     terok.lib.domain.task_logs
+    terok.lib.integrations.executor
     terok.lib.orchestration.autopilot
     terok.lib.orchestration.container_doctor
     terok.lib.orchestration.environment

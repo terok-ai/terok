@@ -24,16 +24,15 @@ ignore_type_checking_imports = true
 #   domain            Project/Task aggregates, ssh/auth workflows, agent config, task CRUD
 #   orchestration     Container lifecycle, env/volumes, Dockerfile, ports
 #   core              Foundation types, config, and pure utilities
-#
-# NOTE: The sandbox layer has been extracted to the external terok-sandbox
-# package. Modules that previously depended on terok.lib.sandbox.* now
-# import directly from terok_sandbox.* (external, not tach-managed).
+#   integrations      Thin re-export adapters for sibling wheels
+#                     (terok-executor, terok-sandbox, terok-clearance).
 #
 layers = [
     "presentation",
     "domain",
     "orchestration",
     "core",
+    "integrations",
 ]
 
 [external]
@@ -554,6 +553,29 @@ path = "terok.lib.util.text_wrap"
 layer = "core"
 depends_on = []
 utility = true
+
+
+# ── INTEGRATIONS LAYER ────────────────────────────────────────────
+#
+# Thin re-export adapters that own every import from a sibling wheel
+# (terok-executor, terok-sandbox, terok-clearance).  Outside these
+# modules, importing the sibling wheels is a contract violation —
+# see ``.importlinter``'s ``*-boundary`` contracts.
+
+[[modules]]
+path = "terok.lib.integrations.executor"
+layer = "integrations"
+depends_on = []
+
+[[modules]]
+path = "terok.lib.integrations.sandbox"
+layer = "integrations"
+depends_on = []
+
+[[modules]]
+path = "terok.lib.integrations.clearance"
+layer = "integrations"
+depends_on = []
 
 
 # ── Interfaces ────────────────────────────────────────────────────
