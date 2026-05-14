@@ -34,6 +34,7 @@ from ...util.ansi import (
     red as _red,
     supports_color as _supports_color,
 )
+from ...util.host_cmd import WORKSPACE_DANGEROUS_DIRNAME
 from ...util.yaml import load as _yaml_load
 from ..agent_config import resolve_agent_config
 from ..container_exec import container_git_diff
@@ -50,6 +51,12 @@ from ..tasks import (
 from .config import _apply_unrestricted_env, _str_to_bool
 from .container import _assert_running, _podman_start, _run_container
 from .shield import _apply_shield_policy
+
+#: Agent-config volume filename holding the current follow-up prompt.
+_PROMPT_FILENAME = "prompt.txt"
+
+#: Agent-config volume filename the prior prompt is archived to on follow-up.
+_PROMPT_HISTORY_FILENAME = "prompt-history.txt"
 
 
 @dataclass(frozen=True)
@@ -143,7 +150,7 @@ def _report_headless_result(
     color_enabled = _supports_color()
     if follow:
         exit_code = _rt.get_runtime().container(cname).wait()
-        _print_run_summary(project_id, task_id, "run", task_dir / "workspace-dangerous")
+        _print_run_summary(project_id, task_id, "run", task_dir / WORKSPACE_DANGEROUS_DIRNAME)
         update_task_exit_code(project_id, task_id, exit_code)
         if exit_code != 0:
             print(f"\n{label} exited with code {_red(str(exit_code), color_enabled)}")
@@ -343,8 +350,8 @@ def _inject_followup_prompt(
         inject_prompt(cname, prompt)
         return
 
-    prompt_path = agent_config_dir / "prompt.txt"
-    history_path = agent_config_dir / "prompt-history.txt"
+    prompt_path = agent_config_dir / _PROMPT_FILENAME
+    history_path = agent_config_dir / _PROMPT_HISTORY_FILENAME
     existing = prompt_path.read_text(encoding="utf-8") if prompt_path.is_file() else ""
     if existing:
         with history_path.open("a", encoding="utf-8") as hf:
