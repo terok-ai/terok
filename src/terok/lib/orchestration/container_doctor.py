@@ -16,7 +16,7 @@ from __future__ import annotations
 
 import subprocess
 from pathlib import Path
-from urllib.parse import urlparse, urlunparse
+from urllib.parse import ParseResult, urlparse, urlunparse
 
 from terok.lib.integrations.executor import agent_doctor_checks, get_roster
 from terok.lib.integrations.sandbox import (
@@ -120,6 +120,28 @@ _PORT_DRIFT_HINT = (
 )
 
 
+def _gatekeeping_remote_verdict(
+    parsed: ParseResult, port: int | None, safe_url: str, gate_port: int | None
+) -> CheckVerdict:
+    """Verdict for a gatekeeping-class git origin — it must route through the gate.
+
+    Gate URL shape: ``http://<token>@host.containers.internal:<port>/<name>``.
+    """
+    if parsed.hostname != "host.containers.internal":
+        return CheckVerdict(
+            "error",
+            f"git origin: {safe_url!r} bypasses gate — should use host.containers.internal",
+            fixable=False,
+        )
+    if gate_port is not None and port != gate_port:
+        return CheckVerdict(
+            "error",
+            f"git origin: port {port} does not match gate port {gate_port}" + _PORT_DRIFT_HINT,
+            fixable=False,
+        )
+    return CheckVerdict("ok", "git origin: routed through gate")
+
+
 def _git_remote_check(security_class: str, gate_port: int | None) -> DoctorCheck:
     """Check that git origin remote matches the expected pattern for the security class."""
 
@@ -140,21 +162,7 @@ def _git_remote_check(security_class: str, gate_port: int | None) -> DoctorCheck
         safe_url = urlunparse(parsed._replace(netloc=netloc))
 
         if security_class == "gatekeeping":
-            # Gate URL: http://<token>@host.containers.internal:<port>/<name>
-            if parsed.hostname != "host.containers.internal":
-                return CheckVerdict(
-                    "error",
-                    f"git origin: {safe_url!r} bypasses gate — should use host.containers.internal",
-                    fixable=False,
-                )
-            if gate_port is not None and port != gate_port:
-                return CheckVerdict(
-                    "error",
-                    f"git origin: port {port} does not match gate port {gate_port}"
-                    + _PORT_DRIFT_HINT,
-                    fixable=False,
-                )
-            return CheckVerdict("ok", "git origin: routed through gate")
+            return _gatekeeping_remote_verdict(parsed, port, safe_url, gate_port)
         # Online mode: any URL is acceptable
         return CheckVerdict("ok", f"git origin: {safe_url}")
 

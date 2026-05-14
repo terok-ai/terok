@@ -89,6 +89,103 @@ def _gate_url(
     return f"http://{token}@{host}/{gate_repo.name}"
 
 
+def _resolve_gate_port(cfg: SandboxConfig, *, use_socket: bool) -> int:
+    """Resolve the port the container reaches the gate on.
+
+    Socket mode uses the fixed in-container socat-bridge port (see
+    ensure-bridges.sh); TCP mode uses the host gate server's port —
+    required, so a missing one is fatal.
+    """
+    if use_socket:
+        return _CONTAINER_GATE_PORT
+    host_port = get_gate_server_port(cfg)
+    if host_port is None:
+        raise SystemExit(
+            "Gate server port not configured — required in TCP mode. "
+            "Check sandbox config or switch to socket mode."
+        )
+    return host_port
+
+
+def _gatekeeping_repo_env(
+    project: ProjectConfig,
+    task_id: str,
+    cfg: SandboxConfig,
+    gate_base: Path,
+    gate_port: int,
+    *,
+    use_socket: bool,
+) -> dict[str, str]:
+    """Repo-access env for a gatekeeping-class task — the gate *is* origin.
+
+    The container clones and pushes through the gate, so a missing gate
+    mirror is fatal.
+    """
+    gate_repo = project.gate_path
+    if not gate_repo.exists():
+        raise SystemExit(
+            f"Git gate missing for project '{project.id}'.\n"
+            f"Expected at: {gate_repo}\n"
+            f"Run 'terok project gate-sync {project.id}' to create/update the local mirror."
+        )
+    ensure_server_reachable(cfg)
+    token = create_token(project.id, task_id, cfg)
+    gate_url = _gate_url(gate_repo, gate_base, gate_port, token, use_socket=use_socket)
+    env: dict[str, str] = {"CODE_REPO": gate_url}
+    if project.default_branch:
+        env["GIT_BRANCH"] = project.default_branch
+    if project.expose_external_remote and project.upstream_url:
+        env["EXTERNAL_REMOTE_URL"] = project.upstream_url
+    return env
+
+
+def _online_repo_env(
+    project: ProjectConfig,
+    task_id: str,
+    cfg: SandboxConfig,
+    gate_base: Path,
+    gate_port: int,
+    *,
+    use_socket: bool,
+) -> dict[str, str]:
+    """Repo-access env for an online-class task — clones from upstream directly.
+
+    The gate is used only as an opt-in clone accelerator
+    (``gate.enabled``) when its mirror exists and the server is
+    reachable; ``gate.enabled: false`` is the escape hatch for hosts
+    that cannot reach the gate.
+    """
+    env: dict[str, str] = {}
+    gate_repo = project.gate_path
+    if project.gate_enabled and gate_repo.exists():
+        try:
+            ensure_server_reachable(cfg)
+        except SystemExit:
+            from ..util.logging_utils import warn_user
+
+            warn_user(
+                "gate",
+                "Gate server unreachable; cloning directly from upstream. "
+                "This is safe — online mode does not require the gate.",
+            )
+        else:
+            token = create_token(project.id, task_id, cfg)
+            gate_url = _gate_url(gate_repo, gate_base, gate_port, token, use_socket=use_socket)
+            env["CLONE_FROM"] = gate_url
+            # Surface the gate as a named "gate" remote alongside origin
+            # (which points at upstream).  The agent can push WIP branches
+            # host-locally without going to upstream — a free checkpoint
+            # that makes the gate's role coherent across both modes.  In
+            # gatekeeping mode the gate is already origin, so this env var
+            # is online-mode-only.  Consumed by init-ssh-and-repo.sh.
+            env["GATE_REMOTE_URL"] = gate_url
+    if project.upstream_url:
+        env["CODE_REPO"] = project.upstream_url
+        if project.default_branch:
+            env["GIT_BRANCH"] = project.default_branch
+    return env
+
+
 def _security_mode_env_and_volumes(
     project: ProjectConfig,
     task_id: str,
@@ -97,71 +194,17 @@ def _security_mode_env_and_volumes(
     use_socket: bool = False,
 ) -> tuple[dict[str, str], list[str]]:
     """Return env vars and volumes for the project's security mode."""
-    env: dict[str, str] = {}
     volumes: list[str] = []
-
     gate_repo = project.gate_path
     gate_base = get_gate_base_path(cfg)
-    # In socket mode the container reaches the gate via an in-container
-    # socat bridge that listens on a fixed port (see ensure-bridges.sh);
-    # in TCP mode the container reaches the host's gate server directly.
-    if use_socket:
-        gate_port = _CONTAINER_GATE_PORT
-    else:
-        host_port = get_gate_server_port(cfg)
-        if host_port is None:
-            raise SystemExit(
-                "Gate server port not configured — required in TCP mode. "
-                "Check sandbox config or switch to socket mode."
-            )
-        gate_port = host_port
+    gate_port = _resolve_gate_port(cfg, use_socket=use_socket)
 
     if project.security_class == "gatekeeping":
-        if not gate_repo.exists():
-            raise SystemExit(
-                f"Git gate missing for project '{project.id}'.\n"
-                f"Expected at: {gate_repo}\n"
-                f"Run 'terok project gate-sync {project.id}' to create/update the local mirror."
-            )
-        ensure_server_reachable(cfg)
-        token = create_token(project.id, task_id, cfg)
-        gate_url = _gate_url(gate_repo, gate_base, gate_port, token, use_socket=use_socket)
-        env["CODE_REPO"] = gate_url
-        if project.default_branch:
-            env["GIT_BRANCH"] = project.default_branch
-        if project.expose_external_remote and project.upstream_url:
-            env["EXTERNAL_REMOTE_URL"] = project.upstream_url
+        env = _gatekeeping_repo_env(
+            project, task_id, cfg, gate_base, gate_port, use_socket=use_socket
+        )
     else:
-        # Online mode: use the gate as a clone accelerator when it exists
-        # *and* the project opted in.  ``gate.enabled: false`` is the
-        # explicit escape hatch for hosts that cannot reach the remote
-        # (container clones directly from upstream instead).
-        if project.gate_enabled and gate_repo.exists():
-            try:
-                ensure_server_reachable(cfg)
-            except SystemExit:
-                from ..util.logging_utils import warn_user
-
-                warn_user(
-                    "gate",
-                    "Gate server unreachable; cloning directly from upstream. "
-                    "This is safe — online mode does not require the gate.",
-                )
-            else:
-                token = create_token(project.id, task_id, cfg)
-                gate_url = _gate_url(gate_repo, gate_base, gate_port, token, use_socket=use_socket)
-                env["CLONE_FROM"] = gate_url
-                # Surface the gate as a named "gate" remote alongside origin
-                # (which points at upstream).  The agent can push WIP branches
-                # host-locally without going to upstream — a free checkpoint
-                # that makes the gate's role coherent across both modes.  In
-                # gatekeeping mode the gate is already origin, so this env var
-                # is online-mode-only.  Consumed by init-ssh-and-repo.sh.
-                env["GATE_REMOTE_URL"] = gate_url
-        if project.upstream_url:
-            env["CODE_REPO"] = project.upstream_url
-            if project.default_branch:
-                env["GIT_BRANCH"] = project.default_branch
+        env = _online_repo_env(project, task_id, cfg, gate_base, gate_port, use_socket=use_socket)
 
     # Gate socket path for the container-side socat bridge (set once for both modes).
     if use_socket and ("CODE_REPO" in env or "CLONE_FROM" in env) and gate_repo.exists():
