@@ -29,18 +29,18 @@ from terok.lib.integrations.sandbox import (
     down as _shield_down_impl,
 )
 
-from ..core import runtime as _rt
-from ..core.config import (
+from ...core import runtime as _rt
+from ...core.config import (
     SHIELD_SECURITY_HINT,
     get_public_host,
     get_shield_bypass_firewall_no_protection,
     make_sandbox_config,
     sandbox_live_mounts_dir,
 )
-from ..core.images import project_cli_image, require_agent_installed
-from ..core.projects import load_project
-from ..core.task_state import has_gpu
-from ..util.ansi import (
+from ...core.images import project_cli_image, require_agent_installed
+from ...core.projects import load_project
+from ...core.task_state import has_gpu
+from ...util.ansi import (
     blue as _blue,
     green as _green,
     hyperlink as _hyperlink,
@@ -48,14 +48,14 @@ from ..util.ansi import (
     supports_color as _supports_color,
     yellow as _yellow,
 )
-from ..util.net import url_host
-from ..util.yaml import load as _yaml_load
-from .agent_config import resolve_agent_config
-from .container_exec import container_git_diff
-from .environment import build_task_env_and_volumes, ensure_vault
-from .hooks import run_hook
-from .ports import assign_web_port, release_web_port
-from .tasks import (
+from ...util.net import url_host
+from ...util.yaml import load as _yaml_load
+from ..agent_config import resolve_agent_config
+from ..container_exec import container_git_diff
+from ..environment import build_task_env_and_volumes, ensure_vault
+from ..hooks import run_hook
+from ..ports import assign_web_port, release_web_port
+from ..tasks import (
     CONTAINER_TEROK_CONFIG,
     container_name,
     dossier_path,
@@ -67,7 +67,7 @@ from .tasks import (
 )
 
 if TYPE_CHECKING:
-    from ..core.project_model import ProjectConfig
+    from ...core.project_model import ProjectConfig
 
 
 _LOCALHOST = "127.0.0.1"
@@ -458,7 +458,7 @@ def _apply_auth_protect_denies(cname: str, task_dir: Path) -> None:
     """
     from terok.lib.integrations.sandbox import make_shield
 
-    from ..core.config import exposed_credential_providers
+    from ...core.config import exposed_credential_providers
 
     exposed = exposed_credential_providers()
     try:
