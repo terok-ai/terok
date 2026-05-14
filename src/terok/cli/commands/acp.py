@@ -43,6 +43,7 @@ from terok.lib.integrations.executor import acp_socket_is_live
 from ...lib.api import list_projects
 from ...lib.core.config import is_experimental
 from ...lib.core.paths import acp_log_path, acp_socket_path
+from ...lib.util.subprocess_env import child_process_env
 from ._completers import add_project_id, add_task_id
 
 if TYPE_CHECKING:
@@ -213,6 +214,7 @@ def _spawn_daemon(
     try:
         proc = subprocess.Popen(  # nosec B603 — argv = [interpreter, -m, module, container, sock]
             [sys.executable, "-m", "terok_executor.acp.daemon", cname, str(sock_path)],
+            env=child_process_env(),
             stdin=subprocess.DEVNULL,
             stdout=subprocess.DEVNULL,
             stderr=log_fd,

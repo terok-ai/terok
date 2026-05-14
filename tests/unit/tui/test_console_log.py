@@ -19,13 +19,13 @@ import sys
 import pytest
 from textual.app import App
 
+from terok.lib.util.subprocess_env import child_process_env
 from terok.tui import _worker_entry
 from terok.tui.console_log import (
     ConsoleLogEntry,
     ConsoleLogMixin,
     ConsoleLogRegistry,
     LogStatus,
-    child_process_env,
     worker_argv,
 )
 

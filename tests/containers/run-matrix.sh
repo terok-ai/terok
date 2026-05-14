@@ -59,6 +59,22 @@ declare -A DISTROS=(
     [fedora43]="fedora43"
     [fedora44]="fedora44"
     [podman]="podman"
+    [nix]="nix"
+)
+
+# The ``nix`` slot is a focused regression target — wrapped-Python
+# import behaviour, not the full nested-podman integration suite.
+# Skipping the multi-phase ``run_tests`` flow keeps it tens of seconds
+# instead of minutes, since the nix image carries no podman / nftables.
+declare -A SLOT_KIND=(
+    [debian12]="podman"
+    [ubuntu2404]="podman"
+    [ubuntu2604]="podman"
+    [debian13]="podman"
+    [fedora43]="podman"
+    [fedora44]="podman"
+    [podman]="podman"
+    [nix]="nix"
 )
 
 # Expected podman versions — pinned to the exact distro-shipped point
@@ -74,6 +90,7 @@ declare -A EXPECTED_VERSIONS=(
     [fedora43]="5.8.2"
     [fedora44]="5.8.2"
     [podman]="latest"
+    [nix]="n/a"
 )
 
 # Print "expected podman X.Y.Z" for distros with a version pin, or
@@ -83,11 +100,11 @@ declare -A EXPECTED_VERSIONS=(
 version_expectation() {
     local name="$1"
     local expected="${EXPECTED_VERSIONS[$name]:-}"
-    if [[ "$expected" == "latest" ]]; then
-        printf 'podman latest, version pinned by upstream'
-    else
-        printf 'expected podman %s' "$expected"
-    fi
+    case "$expected" in
+        latest) printf 'podman latest, version pinned by upstream' ;;
+        n/a) printf 'nix-wrapped Python regression check (no podman)' ;;
+        *) printf 'expected podman %s' "$expected" ;;
+    esac
 }
 
 # Print the parenthesised version summary for ``$name`` after a run.
@@ -99,7 +116,9 @@ version_summary() {
     local name="$1"
     local expected="${EXPECTED_VERSIONS[$name]:-}"
     local actual="${ACTUAL_VERSIONS[$name]:-?}"
-    if [[ "$expected" == "latest" || "$expected" == "$actual" ]]; then
+    if [[ "$expected" == "n/a" ]]; then
+        printf '%s(nix-wrapped Python %s)%s' "$C_DIM" "$actual" "$C_RESET"
+    elif [[ "$expected" == "latest" || "$expected" == "$actual" ]]; then
         printf '%s(podman %s)%s' "$C_DIM" "$actual" "$C_RESET"
     else
         printf '%s(WARNING: expected podman %s, got podman %s)%s' \
@@ -117,6 +136,7 @@ declare -A TEST_USERS=(
     [fedora43]="testrunner"
     [fedora44]="testrunner"
     [podman]="podman"
+    [nix]="testrunner"
 )
 
 usage() {
@@ -309,6 +329,76 @@ print(\\\"Shield hooks verified.\\\")
     return "$status"
 }
 
+run_nix_check() {
+    # Focused regression check for the Nix-wrapped-Python failure mode
+    # (terok-ai/terok#717, Franz Pöschel): under Nix, ``sys.executable``
+    # is a wrapper script whose sys.path setup isn't reflected in the
+    # ``PYTHONPATH`` env var.  A subprocess started directly from that
+    # parent can't ``import terok`` unless every spawn site threads
+    # PYTHONPATH=os.pathsep.join(sys.path) through.
+    #
+    # The check: install terok inside the nix-wrapped Python and run
+    # the two regression tests
+    # (``test_subprocess_pythonpath_call_sites`` AST scan +
+    # ``test_subprocess_env`` behavioural test).  No podman, no nested
+    # containers, no hook phases — by design.
+    local name="$1"
+    local image="$IMAGE_PREFIX:$name"
+    local ctr_name="$IMAGE_PREFIX-$name"
+
+    echo ""
+    echo -e "${C_CYAN}==> Testing ${C_BOLD}$name${C_CYAN} ($(version_expectation "$name"))${C_RESET}"
+    echo ""
+
+    podman run --rm --name "$ctr_name" \
+        --security-opt label=disable \
+        -v "$REPO_ROOT:$SOURCE_MOUNT:ro,Z" \
+        -v "$RESULTS_DIR:/results:rw,Z" \
+        "$image" \
+        bash -c "
+            set -e
+            cp -a $SOURCE_MOUNT $WORKSPACE_DIR
+            cd $WORKSPACE_DIR
+
+            echo '--- nix-wrapped python ---'
+            which python3.12
+            python3.12 --version
+            python3.12 --version | awk '{print \$2}' > /results/$name.python-version
+
+            # Install terok itself + pytest into the user-site of the
+            # nix-wrapped interpreter.  ``--break-system-packages`` is a
+            # no-op on nix's per-user profile but pip 23+ requires it
+            # when site-packages lives outside the venv.
+            python3.12 -m pip install --user --quiet --break-system-packages . pytest
+
+            # Skip the heavy unit-suite conftest (it pulls
+            # terok_sandbox.paths etc. — siblings we don't install in
+            # this focused slot).  Disable tach/asyncio plugins the two
+            # tests don't need.  ``--override-ini=addopts=`` strips the
+            # pyproject's ``-v --tb=short`` so the inner command-line
+            # wins.
+            python3.12 -m pytest -v --tb=short \
+                --noconftest --override-ini='addopts=' \
+                -p no:tach -p no:asyncio \
+                tests/unit/test_subprocess_pythonpath_call_sites.py \
+                tests/unit/lib/util/test_subprocess_env.py
+        "
+
+    local status=$?
+    local actual
+    actual=$(cat "$RESULTS_DIR/$name.python-version" 2>/dev/null || true)
+    ACTUAL_VERSIONS[$name]="${actual:-?}"
+
+    local vsummary
+    vsummary=$(version_summary "$name")
+    if [[ $status -eq 0 ]]; then
+        echo -e "${C_GREEN}==> $name: PASS${C_RESET} $vsummary"
+    else
+        echo -e "${C_RED}==> $name: FAIL${C_RESET} $vsummary" >&2
+    fi
+    return "$status"
+}
+
 BUILD_ONLY=false
 LIST_ONLY=false
 NO_CACHE=false
@@ -358,7 +448,11 @@ PASSED=()
 FAILED=()
 
 for target in "${TARGETS[@]}"; do
-    if run_tests "$target"; then
+    case "${SLOT_KIND[$target]}" in
+        nix) runner=run_nix_check ;;
+        *) runner=run_tests ;;
+    esac
+    if "$runner" "$target"; then
         PASSED+=("$target")
     else
         FAILED+=("$target")
