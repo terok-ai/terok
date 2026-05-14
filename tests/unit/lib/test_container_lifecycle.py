@@ -241,3 +241,108 @@ def test_get_task_container_state_uses_project_id_and_mode() -> None:
     with patch("terok.lib.core.runtime.get_runtime", return_value=runtime_mock):
         assert get_task_container_state("proj", "1", "cli") == "running"
         runtime_mock.container.assert_called_once_with("proj-cli-1")
+
+
+def test_task_restart_no_mode_raises() -> None:
+    """Restarting a task that never ran (no mode set) raises a user-facing SystemExit."""
+    project_id = "proj_restart_nomode"
+    with project_env(project_config(project_id), project_id=project_id):
+        with mock_git_config():
+            task_id = task_new(project_id)  # fresh task — mode is None
+            with pytest.raises(SystemExit, match="never been run"):
+                task_restart(project_id, task_id)
+
+
+def test_task_restart_missing_container_raises() -> None:
+    """Restarting a task whose container is gone raises, pointing at ``task run``."""
+    project_id = "proj_restart_gone"
+    with project_env(project_config(project_id), project_id=project_id) as ctx:
+        task_id = create_task_with_mode(ctx, project_id)
+
+        runtime_mock = Mock(spec=PodmanRuntime)
+        runtime_mock.container.return_value = _mock_container(state=None)
+        with (
+            mock_git_config(),
+            patch("terok.lib.core.runtime.get_runtime", return_value=runtime_mock),
+        ):
+            with pytest.raises(SystemExit, match="no longer exists"):
+                task_restart(project_id, task_id)
+
+
+def test_task_restart_stop_failure_raises() -> None:
+    """A RuntimeError from Container.stop surfaces as a user-facing SystemExit."""
+    project_id = "proj_restart_stopfail"
+    with project_env(project_config(project_id), project_id=project_id) as ctx:
+        task_id = create_task_with_mode(ctx, project_id)
+
+        container = _mock_container(state="running")
+        container.stop.side_effect = RuntimeError("container locked")
+        runtime_mock = Mock(spec=PodmanRuntime)
+        runtime_mock.container.return_value = container
+        with (
+            mock_git_config(),
+            patch("terok.lib.core.runtime.get_runtime", return_value=runtime_mock),
+        ):
+            with pytest.raises(SystemExit, match="Failed to stop container"):
+                task_restart(project_id, task_id)
+
+
+def test_task_restart_port_unavailable_aborts_before_stopping() -> None:
+    """A toad task whose saved web_port is now taken aborts *before* the container is stopped.
+
+    Pins the "validate preconditions before stopping a healthy container"
+    safety property: a restart that would fail anyway must not first take
+    down a working service.
+    """
+    project_id = "proj_restart_port"
+    with project_env(project_config(project_id), project_id=project_id) as ctx:
+        task_id = create_task_with_mode(ctx, project_id, mode="toad")
+        update_task_meta(ctx, project_id, task_id, web_port=8080, web_token="tok")
+
+        container = _mock_container(state="running")
+        runtime_mock = Mock(spec=PodmanRuntime)
+        runtime_mock.container.return_value = container
+        with (
+            mock_git_config(),
+            patch("terok.lib.core.runtime.get_runtime", return_value=runtime_mock),
+            patch(
+                "terok.lib.orchestration.task_runners.restart.assign_web_port",
+                return_value=9999,  # != saved 8080 → port no longer available
+            ),
+            patch("terok.lib.orchestration.task_runners.restart.release_web_port") as release,
+        ):
+            with pytest.raises(SystemExit, match="no longer available"):
+                task_restart(project_id, task_id)
+
+        release.assert_called_once_with(project_id, task_id)
+        container.stop.assert_not_called()
+
+
+def test_task_restart_toad_rehydrates_token_and_prints_url() -> None:
+    """Restarting a running toad task rehydrates its token and prints the browser URL."""
+    project_id = "proj_restart_toad"
+    with project_env(project_config(project_id), project_id=project_id) as ctx:
+        task_id = create_task_with_mode(ctx, project_id, mode="toad")
+        update_task_meta(ctx, project_id, task_id, web_port=8080, web_token="sekret")
+
+        container = _mock_container(state="running")
+        runtime_mock = Mock(spec=PodmanRuntime)
+        runtime_mock.container.return_value = container
+        with (
+            mock_git_config(),
+            patch("terok.lib.core.runtime.get_runtime", return_value=runtime_mock),
+            patch(
+                "terok.lib.orchestration.task_runners.restart.assign_web_port",
+                return_value=8080,  # same port → available
+            ),
+            patch(
+                "terok.lib.orchestration.task_runners.restart._rehydrate_toad_token"
+            ) as rehydrate,
+        ):
+            output = capture_stdout(task_restart, project_id, task_id)
+
+        rehydrate.assert_called_once()
+        container.stop.assert_called_once()
+        container.start.assert_called_once()
+        assert "Toad:" in output
+        assert "8080" in output

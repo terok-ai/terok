@@ -1902,3 +1902,220 @@ class TestTaskDeleteWarnings:
         assert any("c1" in w for w in result.warnings)
         assert any("Workspace" in w for w in result.warnings)
         assert any("Web port kept claimed" in w for w in result.warnings)
+
+
+class TestArchiveMetaLoading:
+    """_load_archived_task_meta tolerates legacy task.yml and corrupt snapshots."""
+
+    def test_reads_legacy_yaml_snapshot(self, tmp_path: Path) -> None:
+        """An archive entry with only task.yml (no task.json) still loads."""
+        from terok.lib.orchestration.tasks.archive import _load_archived_task_meta
+
+        entry = tmp_path / "20260101T000000Z_g1v2h_old"
+        entry.mkdir()
+        (entry / "task.yml").write_text("task_id: g1v2h\nname: old-task\nmode: cli\n")
+        assert _load_archived_task_meta(entry) == {
+            "task_id": "g1v2h",
+            "name": "old-task",
+            "mode": "cli",
+        }
+
+    def test_json_takes_precedence_over_yaml(self, tmp_path: Path) -> None:
+        """When both task.json and task.yml exist, the JSON snapshot wins."""
+        from terok.lib.orchestration.tasks.archive import _load_archived_task_meta
+
+        entry = tmp_path / "entry"
+        entry.mkdir()
+        (entry / "task.json").write_text('{"task_id": "json"}')
+        (entry / "task.yml").write_text("task_id: yaml\n")
+        assert _load_archived_task_meta(entry) == {"task_id": "json"}
+
+    def test_corrupt_json_returns_none(self, tmp_path: Path) -> None:
+        """A malformed task.json yields None rather than raising."""
+        from terok.lib.orchestration.tasks.archive import _load_archived_task_meta
+
+        entry = tmp_path / "entry"
+        entry.mkdir()
+        (entry / "task.json").write_text("{not json")
+        assert _load_archived_task_meta(entry) is None
+
+    def test_missing_snapshot_returns_none(self, tmp_path: Path) -> None:
+        """An archive entry with neither task.json nor task.yml yields None."""
+        from terok.lib.orchestration.tasks.archive import _load_archived_task_meta
+
+        entry = tmp_path / "entry"
+        entry.mkdir()
+        assert _load_archived_task_meta(entry) is None
+
+    def test_empty_json_reads_as_empty_dict(self, tmp_path: Path) -> None:
+        """A whitespace-only task.json reads as an empty dict, not None."""
+        from terok.lib.orchestration.tasks.archive import _load_archived_task_meta
+
+        entry = tmp_path / "entry"
+        entry.mkdir()
+        (entry / "task.json").write_text("  \n")
+        assert _load_archived_task_meta(entry) == {}
+
+
+class TestArchiveListing:
+    """list / format / log-lookup over the archive tree."""
+
+    def test_list_skips_non_dirs_and_unparseable_entries(self) -> None:
+        """A stray file and a snapshot-less dir are both skipped."""
+        from terok.lib.orchestration.tasks import list_archived_tasks, tasks_archive_dir
+
+        pid = "proj_arc_skip"
+        with project_env(f"project:\n  id: {pid}\n", project_id=pid):
+            root = tasks_archive_dir(pid)
+            root.mkdir(parents=True)
+            (root / "stray-file.txt").write_text("not a dir")
+            (root / "20260101T000000Z_g1v2h").mkdir()  # dir, no snapshot
+            good = root / "20260102T000000Z_p7fmn_done"
+            good.mkdir()
+            (good / "task.json").write_text(
+                '{"task_id": "p7fmn", "name": "done", "mode": "run", "exit_code": 0}'
+            )
+            assert [a.task_id for a in list_archived_tasks(pid)] == ["p7fmn"]
+
+    def test_archive_list_formats_mode_and_exit(self) -> None:
+        """task_archive_list renders the mode= / exit= extras for a populated entry."""
+        from terok.lib.orchestration.tasks import task_archive_list, tasks_archive_dir
+
+        pid = "proj_arc_fmt"
+        with project_env(f"project:\n  id: {pid}\n", project_id=pid):
+            entry = tasks_archive_dir(pid) / "20260103T120000Z_k3v8h_fix-bug"
+            entry.mkdir(parents=True)
+            (entry / "task.json").write_text(
+                '{"task_id": "k3v8h", "name": "fix-bug", "mode": "run", "exit_code": 1}'
+            )
+            buf = StringIO()
+            with redirect_stdout(buf):
+                task_archive_list(pid)
+            out = buf.getvalue()
+            assert "k3v8h" in out and "fix-bug" in out
+            assert "mode=run" in out and "exit=1" in out
+
+    def test_archive_logs_returns_none_when_no_archive_dir(self) -> None:
+        """task_archive_logs yields None when the project has no archive tree yet."""
+        from terok.lib.orchestration.tasks import task_archive_logs
+
+        pid = "proj_arc_nodir"
+        with project_env(f"project:\n  id: {pid}\n", project_id=pid):
+            assert task_archive_logs(pid, "anything") is None
+
+
+class TestGetTaskMeta:
+    """get_task_meta hydrates a TaskMeta from disk plus live container state."""
+
+    def test_unknown_task_raises(self) -> None:
+        """A task with no metadata on disk raises SystemExit."""
+        from terok.lib.orchestration.tasks import get_task_meta
+
+        pid = "proj_gtm_unknown"
+        with project_env(f"project:\n  id: {pid}\n", project_id=pid):
+            with pytest.raises(SystemExit, match="Unknown task"):
+                get_task_meta(pid, "g1v2h")
+
+    def test_hydrates_live_container_state(self, mock_runtime) -> None:
+        """A task that has run gets its container_state filled from the runtime."""
+        from terok.lib.orchestration.tasks import (
+            dossier_path,
+            get_task_meta,
+            tasks_meta_dir,
+            write_task_meta,
+        )
+
+        pid = "proj_gtm_live"
+        with project_env(f"project:\n  id: {pid}\n", project_id=pid), mock_git_config():
+            task_id = task_new(pid)
+            meta_dir = tasks_meta_dir(pid)
+            meta = read_task_meta(meta_dir, task_id)
+            meta["mode"] = "cli"
+            write_task_meta(dossier_path(meta_dir, task_id), meta)
+            mock_runtime.container.return_value.state = "running"
+
+            tm = get_task_meta(pid, task_id)
+            assert tm.task_id == task_id
+            assert tm.mode == "cli"
+            assert tm.container_state == "running"
+
+    def test_no_mode_skips_live_state_lookup(self, mock_runtime) -> None:
+        """A never-run task (mode unset) reports no container state and skips the runtime."""
+        from terok.lib.orchestration.tasks import get_task_meta
+
+        pid = "proj_gtm_nomode"
+        with project_env(f"project:\n  id: {pid}\n", project_id=pid), mock_git_config():
+            task_id = task_new(pid)  # fresh task — mode is None
+            tm = get_task_meta(pid, task_id)
+            assert tm.mode is None
+            assert tm.container_state is None
+            mock_runtime.container.assert_not_called()
+
+
+class TestDossierHandle:
+    """_dossier_handle_to_dir_and_id decomposes a dossier-file handle."""
+
+    def test_canonical_handle(self, tmp_path: Path) -> None:
+        """The canonical <id>_dossier.json handle decomposes to (dir, id)."""
+        from terok.lib.orchestration.tasks.meta import _dossier_handle_to_dir_and_id
+
+        assert _dossier_handle_to_dir_and_id(tmp_path / "k3v8h_dossier.json") == (
+            tmp_path,
+            "k3v8h",
+        )
+
+    def test_legacy_json_handle(self, tmp_path: Path) -> None:
+        """A pre-self-describing <id>.json handle still decomposes."""
+        from terok.lib.orchestration.tasks.meta import _dossier_handle_to_dir_and_id
+
+        assert _dossier_handle_to_dir_and_id(tmp_path / "k3v8h.json") == (tmp_path, "k3v8h")
+
+    def test_foreign_filename_raises(self, tmp_path: Path) -> None:
+        """A non-dossier filename raises rather than silently inferring a task ID."""
+        from terok.lib.orchestration.tasks.meta import _dossier_handle_to_dir_and_id
+
+        with pytest.raises(ValueError, match="not a dossier-file handle"):
+            _dossier_handle_to_dir_and_id(tmp_path / "k3v8h_meta.yml")
+
+
+class TestMetaMutations:
+    """mark_task_deleting / update_task_exit_code are best-effort on-disk mutations."""
+
+    def test_mark_deleting_sets_flag(self) -> None:
+        """mark_task_deleting persists deleting=True to the metadata file."""
+        from terok.lib.orchestration.tasks import mark_task_deleting, tasks_meta_dir
+
+        pid = "proj_mtd"
+        with project_env(f"project:\n  id: {pid}\n", project_id=pid), mock_git_config():
+            task_id = task_new(pid)
+            mark_task_deleting(pid, task_id)
+            assert read_task_meta(tasks_meta_dir(pid), task_id)["deleting"] is True
+
+    def test_mark_deleting_unknown_task_is_noop(self) -> None:
+        """Marking a missing task does nothing and does not raise."""
+        from terok.lib.orchestration.tasks import mark_task_deleting
+
+        pid = "proj_mtd_missing"
+        with project_env(f"project:\n  id: {pid}\n", project_id=pid):
+            mark_task_deleting(pid, "g1v2h")  # must not raise
+
+    def test_mark_deleting_swallows_write_errors(self) -> None:
+        """A write failure is logged, not raised — deletion must proceed regardless."""
+        from terok.lib.orchestration.tasks import mark_task_deleting
+
+        pid = "proj_mtd_err"
+        with project_env(f"project:\n  id: {pid}\n", project_id=pid), mock_git_config():
+            task_id = task_new(pid)
+            with unittest.mock.patch(
+                "terok.lib.orchestration.tasks.meta.write_task_meta",
+                side_effect=OSError("disk full"),
+            ):
+                mark_task_deleting(pid, task_id)  # must not raise
+
+    def test_update_exit_code_unknown_task_is_noop(self) -> None:
+        """Updating the exit code of a missing task does nothing and does not raise."""
+        from terok.lib.orchestration.tasks import update_task_exit_code
+
+        pid = "proj_uec_missing"
+        with project_env(f"project:\n  id: {pid}\n", project_id=pid):
+            update_task_exit_code(pid, "g1v2h", 0)  # must not raise
