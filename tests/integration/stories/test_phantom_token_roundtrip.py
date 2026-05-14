@@ -173,6 +173,18 @@ def test_phantom_swap_through_container_socket(
     host_socket = running_token_broker_socket.socket_path
 
     name = f"{PODMAN_CONTAINER_PREFIX}-phantom-{uuid.uuid4().hex[:8]}"
+    # podman's strict short-name policy refuses to resolve
+    # ``terok-itest:latest`` on hosts that have no
+    # ``unqualified-search-registries`` configured in
+    # ``/etc/containers/registries.conf`` (most personal dev machines).
+    # The image was built locally and stored as
+    # ``localhost/terok-itest:latest``; qualify the reference so podman
+    # doesn't go shopping for a registry.
+    qualified_image = (
+        PODMAN_TEST_IMAGE
+        if "/" in PODMAN_TEST_IMAGE
+        else f"localhost/{PODMAN_TEST_IMAGE}"
+    )
     try:
         # ``label=disable`` mirrors what the matrix's outer-container run
         # does, so SELinux relabeling doesn't trip nested-rootless podman
@@ -191,7 +203,7 @@ def test_phantom_swap_through_container_socket(
                 name,
                 "-v",
                 f"{host_socket}:/vault.sock",
-                PODMAN_TEST_IMAGE,
+                qualified_image,
                 "sleep",
                 "60",
             ],
