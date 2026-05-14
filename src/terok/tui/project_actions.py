@@ -57,6 +57,7 @@ class ProjectActionsMixin(_MixinBase):
             *args: object,
             title: str,
             on_complete: Callable[[ConsoleLogEntry], None] | None = None,
+            env: dict[str, str] | None = None,
         ) -> ConsoleLogEntry: ...
 
     # ---------- Shared helpers ----------

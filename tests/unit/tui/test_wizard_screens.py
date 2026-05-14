@@ -12,9 +12,10 @@ just confirms the screens wire the right widgets to the shared
 
 from __future__ import annotations
 
+import asyncio
 import tempfile
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import AsyncMock, MagicMock, PropertyMock, patch
 
 import pytest
 from textual.app import App
@@ -346,75 +347,141 @@ async def test_form_prefill_populates_widgets() -> None:
         assert pressed.name == initial["security_class"]
 
 
-# ── Subprocess isolation helpers ──────────────────────────────────────
+# ── Dispatched init steps (_run_dispatched_step) ──────────────────────
 
 
-def test_run_isolated_propagates_nonzero_as_runtime_error() -> None:
-    """A crashing child surfaces its stderr tail in the raised message."""
-    from terok.tui.wizard_screens import _run_isolated
+@pytest.mark.asyncio
+async def test_run_dispatched_step_tails_output_and_completes() -> None:
+    """``_run_dispatched_step`` streams the child's lines into the log and returns on exit 0."""
+    from terok.tui.console_log import ConsoleLogEntry
+    from terok.tui.wizard_screens import InitProgressScreen
 
-    with pytest.raises(RuntimeError) as excinfo:
-        _run_isolated(
-            "import sys; sys.stderr.write('kaboom\\n'); sys.exit(3)",
-            label="toy step",
+    screen = InitProgressScreen("demo")
+    entry = ConsoleLogEntry(id=1, title="Build", argv=["x"], command="x")
+    fake_app = MagicMock()
+    fake_app.dispatch_console_action = MagicMock(return_value=entry)
+    log = MagicMock()
+
+    async def _drive() -> None:
+        # Let _run_dispatched_step reach `await entry.wait()`, then finish it.
+        await asyncio.sleep(0)
+        entry.append("STEP 1/3")
+        entry.finish(0)
+
+    with patch.object(InitProgressScreen, "app", new_callable=PropertyMock, return_value=fake_app):
+        await asyncio.gather(
+            screen._run_dispatched_step(
+                "terok.tui.worker_actions:build",
+                "demo",
+                log=log,
+                title="Building images for demo",
+                env=None,
+                fail_msg="Image build failed",
+            ),
+            _drive(),
         )
-    msg = str(excinfo.value)
-    assert "toy step exited with code 3" in msg
-    assert "kaboom" in msg
+
+    fake_app.dispatch_console_action.assert_called_once()
+    # The child's output line was tailed into the wizard log pane.
+    assert any("STEP 1/3" in str(call.args[0]) for call in log.write.call_args_list)
 
 
-def test_run_isolated_detaches_child_from_controlling_tty() -> None:
-    """The child is its own session leader and has an empty stdin.
+@pytest.mark.asyncio
+async def test_run_dispatched_step_raises_on_nonzero_exit() -> None:
+    """A non-zero child exit raises ``RuntimeError(fail_msg)`` so the step is marked failed."""
+    from terok.tui.console_log import ConsoleLogEntry
+    from terok.tui.wizard_screens import InitProgressScreen
 
-    Without this isolation, a misbehaving grandchild (e.g. OpenSSH asking
-    for a passphrase) can open ``/dev/tty`` and write prompts onto the
-    Textual frame that the TUI can't catch via ``capture_output``.  The
-    invariants below prove the belt-and-braces:
+    screen = InitProgressScreen("demo")
+    entry = ConsoleLogEntry(id=1, title="Build", argv=["x"], command="x")
+    fake_app = MagicMock()
+    fake_app.dispatch_console_action = MagicMock(return_value=entry)
 
-    * ``os.getsid(0) == os.getpid()`` — child was ``setsid()``-ed, so it
-      has no controlling tty at all.
-    * reading stdin returns empty — ``DEVNULL`` severed the last input
-      channel, so any tool that falls back to stdin also fails cleanly.
+    async def _drive() -> None:
+        await asyncio.sleep(0)
+        entry.finish(1)
+
+    with patch.object(InitProgressScreen, "app", new_callable=PropertyMock, return_value=fake_app):
+        with pytest.raises(RuntimeError, match="Image build failed"):
+            await asyncio.gather(
+                screen._run_dispatched_step(
+                    "terok.tui.worker_actions:build",
+                    "demo",
+                    log=MagicMock(),
+                    title="Building images for demo",
+                    env=None,
+                    fail_msg="Image build failed",
+                ),
+                _drive(),
+            )
+
+
+_SSH_RESULT = {
+    "key_id": 7,
+    "comment": "tk-main:demo",
+    "public_line": "ssh-ed25519 AAAA tk-main:demo",
+    "fingerprint": "SHA256:abc",
+}
+
+
+async def _drive_run_init(*, gate_enabled: bool) -> AsyncMock:
+    """Drive ``InitProgressScreen``'s init worker to completion; return the step mock.
+
+    Every facade is mocked and ``_run_dispatched_step`` is a no-op
+    AsyncMock — the point is to exercise ``_run_init``'s own
+    step-marking / dispatch wiring, not the work itself.
     """
-    from terok.tui.wizard_screens import _run_isolated
+    from terok.tui.wizard_screens import InitOutcome, InitProgressScreen
 
-    probe = (
-        "import os, sys;"
-        " is_leader = os.getsid(0) == os.getpid();"
-        " stdin_empty = sys.stdin.read() == '';"
-        " sys.exit(0 if (is_leader and stdin_empty) else 1)"
-    )
-    # Raises if either invariant fails.
-    _run_isolated(probe, label="tty-isolation probe")
+    project = MagicMock()
+    project.gate_enabled = gate_enabled
+
+    class _Host(App):
+        def on_mount(self) -> None:
+            self.push_screen(InitProgressScreen("demo"))
+
+    step_mock = AsyncMock()
+    with (
+        patch("terok.lib.api.provision_ssh_key", return_value=_SSH_RESULT),
+        patch("terok.lib.api.summarize_ssh_init"),
+        patch("terok.lib.api.generate_dockerfiles"),
+        patch("terok.lib.api.load_project", return_value=project),
+        patch("terok.tui.wizard_screens.project_needs_key_registration", return_value=False),
+        patch.object(
+            InitProgressScreen, "_askpass_subprocess_env", new=AsyncMock(return_value=None)
+        ),
+        patch.object(InitProgressScreen, "_run_dispatched_step", new=step_mock),
+    ):
+        app = _Host()
+        async with app.run_test() as pilot:
+            screen = app.screen
+            assert isinstance(screen, InitProgressScreen)
+            for _ in range(80):
+                if screen._outcome is not InitOutcome.FAILED:
+                    break
+                await pilot.pause()
+            assert screen._outcome is InitOutcome.SUCCESS
+    return step_mock
 
 
-def test_gate_sync_in_subprocess_returns_result_dict() -> None:
-    """The helper shuttles the child's result dict back to the parent verbatim.
+@pytest.mark.asyncio
+async def test_run_init_walks_all_four_steps_to_success() -> None:
+    """_run_init runs ssh → generate → build → gate (all mocked) and ends on SUCCESS."""
+    step_mock = await _drive_run_init(gate_enabled=True)
+    # build + gate-sync were both dispatched as captured child processes.
+    refs = [call.args[0] for call in step_mock.await_args_list]
+    assert refs == [
+        "terok.tui.worker_actions:build",
+        "terok.tui.worker_actions:sync_gate",
+    ]
 
-    We patch the facade's ``make_git_gate`` inside the *child* process by
-    pre-seeding a ``conftest``-style sitecustomize — not worth the
-    trouble.  Instead, we verify the helper's tempfile-roundtrip path
-    with a trivial child body that writes a known dict to the result
-    file directly.
-    """
-    from unittest.mock import patch as upatch
 
-    from terok.tui.wizard_screens import _gate_sync_in_subprocess
-
-    sentinel = {"success": True, "upstream_url": "https://example.com/r.git", "errors": []}
-
-    def _fake_run_isolated(body: str, *, label: str, env: dict | None = None) -> None:  # noqa: ARG001
-        # Extract the result path from the body — it's the last argument
-        # passed to ``open(...)``.
-        import json
-        import re
-
-        match = re.search(r"open\((['\"])(?P<p>[^'\"]+)\1, 'w'\)", body)
-        assert match, f"body missing result path: {body!r}"
-        Path(match.group("p")).write_text(json.dumps(sentinel), encoding="utf-8")
-
-    with upatch("terok.tui.wizard_screens._run_isolated", side_effect=_fake_run_isolated):
-        assert _gate_sync_in_subprocess("demo") == sentinel
+@pytest.mark.asyncio
+async def test_run_init_skips_gate_sync_when_gate_disabled() -> None:
+    """With ``gate.enabled: false`` the gate step is marked skipped — only the build dispatches."""
+    step_mock = await _drive_run_init(gate_enabled=False)
+    refs = [call.args[0] for call in step_mock.await_args_list]
+    assert refs == ["terok.tui.worker_actions:build"]
 
 
 # ── SSH fingerprint display ───────────────────────────────────────────

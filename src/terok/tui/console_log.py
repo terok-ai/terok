@@ -247,6 +247,7 @@ class ConsoleLogMixin(_MixinBase):
         *args: object,
         title: str,
         on_complete: Callable[[ConsoleLogEntry], None] | None = None,
+        env: dict[str, str] | None = None,
     ) -> ConsoleLogEntry:
         """Dispatch a referenced callable as a captured background child process.
 
@@ -263,9 +264,14 @@ class ConsoleLogMixin(_MixinBase):
         exits — regardless of whether a viewer is open — so an action
         can refresh derived state (project list, task list) even when
         its log was hidden to the background.
+
+        *env*, if given, layers extra environment variables onto the
+        child's env (e.g. the askpass wiring a personal-SSH gate-sync
+        needs); ``PYTHONPATH`` is still forced last (see
+        [`child_process_env`][terok.tui.console_log.child_process_env]).
         """
         command = " ".join([ref, *(str(arg) for arg in args)])
-        return self._dispatch_console(worker_argv(ref, args), command, title, on_complete)
+        return self._dispatch_console(worker_argv(ref, args), command, title, on_complete, env)
 
     def dispatch_console_command(
         self,
@@ -280,7 +286,7 @@ class ConsoleLogMixin(_MixinBase):
         Same UI-free contract as
         [`dispatch_console_action`][terok.tui.console_log.ConsoleLogMixin.dispatch_console_action].
         """
-        return self._dispatch_console(list(argv), shlex.join(argv), title, on_complete)
+        return self._dispatch_console(list(argv), shlex.join(argv), title, on_complete, None)
 
     def _dispatch_console(
         self,
@@ -288,10 +294,11 @@ class ConsoleLogMixin(_MixinBase):
         command: str,
         title: str,
         on_complete: Callable[[ConsoleLogEntry], None] | None,
+        env: dict[str, str] | None,
     ) -> ConsoleLogEntry:
         """Register the entry and kick off the app-scoped pump worker."""
         entry = self.console_logs.create(title, argv, command)
-        self._pump_console_entry(entry, on_complete)
+        self._pump_console_entry(entry, on_complete, env)
         return entry
 
     @work(group="console-log", exit_on_error=False)
@@ -299,13 +306,14 @@ class ConsoleLogMixin(_MixinBase):
         self,
         entry: ConsoleLogEntry,
         on_complete: Callable[[ConsoleLogEntry], None] | None,
+        env: dict[str, str] | None,
     ) -> None:
         """Spawn the child for *entry*, stream its output in, finish + notify on exit.
 
         ``start_new_session=True`` + ``stdin=DEVNULL`` detach the child
         from the controlling terminal so nothing below it can reach
-        ``/dev/tty`` and draw over the Textual frame — the same guard
-        the wizard's ``_run_isolated`` helper already relies on.
+        ``/dev/tty`` and draw over the Textual frame.  *env* layers
+        extra variables onto [`child_process_env`][terok.tui.console_log.child_process_env].
         """
         try:
             proc = await asyncio.create_subprocess_exec(
@@ -314,7 +322,7 @@ class ConsoleLogMixin(_MixinBase):
                 stderr=asyncio.subprocess.STDOUT,
                 stdin=asyncio.subprocess.DEVNULL,
                 start_new_session=True,
-                env=child_process_env(),
+                env=child_process_env(env),
             )
         except OSError as exc:
             entry.append(f"[failed to launch] {exc}")

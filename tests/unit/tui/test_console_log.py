@@ -294,3 +294,19 @@ async def test_dispatch_action_runs_referenced_callable() -> None:
     assert entry.ok
     assert "from the worker" in entry.lines
     assert entry.command == "builtins:print from the worker"
+
+
+@pytest.mark.asyncio
+async def test_dispatch_action_threads_env_to_child() -> None:
+    """``dispatch_console_action(env=...)`` layers the extra vars onto the child's env."""
+    app = _DispatchHost()
+    async with app.run_test():
+        entry = app.dispatch_console_action(
+            "os:system",
+            "echo marker=$TEROK_DISPATCH_ENV_TEST",
+            title="env passthrough",
+            env={"TEROK_DISPATCH_ENV_TEST": "threaded-through"},
+        )
+        await asyncio.wait_for(entry.wait(), timeout=10.0)
+    assert entry.ok
+    assert any("marker=threaded-through" in line for line in entry.lines)
