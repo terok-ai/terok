@@ -40,7 +40,7 @@ RUN nix --extra-experimental-features 'nix-command flakes' \
 # ``--impure`` is required by ``builtins.getFlake``.
 RUN nix --extra-experimental-features 'nix-command flakes' \
         profile add --impure --expr \
-        '(builtins.getFlake "nixpkgs").legacyPackages.x86_64-linux.python312.withPackages (ps: [ ps.pip ])'
+        '(builtins.getFlake "nixpkgs").legacyPackages.${builtins.currentSystem}.python312.withPackages (ps: [ ps.pip ])'
 
 # /bin/bash → the bash the base image already has, so shebangs and
 # shadow's shell checks resolve.
