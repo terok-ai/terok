@@ -1451,6 +1451,11 @@ if _HAS_TEXTUAL:
                 self.action_run_setup,
             )
             yield SystemCommand(
+                "Console output",
+                "View live and captured logs from dispatched actions (builds, gate/vault ops)",
+                self.action_show_console_output,
+            )
+            yield SystemCommand(
                 "Git Gate Server",
                 "Manage gate server status and operations",
                 self.action_show_gate_server,
@@ -1480,6 +1485,12 @@ if _HAS_TEXTUAL:
                 "Run the host-wide auth flow for an agent or tool — no project required",
                 self.action_authenticate,
             )
+
+        def action_show_console_output(self) -> None:
+            """Open the console-output list — every dispatched action's log this session."""
+            from .console_output_screen import ConsoleOutputScreen
+
+            self.push_screen(ConsoleOutputScreen(self.console_logs))
 
         async def action_authenticate(self) -> None:
             """Open the host-wide ``Authenticate agents and tools`` modal.
