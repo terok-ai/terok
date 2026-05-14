@@ -22,6 +22,8 @@ the lone exception and imports ``terok_shield.*`` directly under a
 narrow allowed-importer rule.
 """
 
+from typing import Any
+
 from terok_sandbox import (  # noqa: F401 — re-exported public API
     GATE_COMMANDS,
     SERVICES_TCP_OPTOUT_YAML,
@@ -121,7 +123,7 @@ from terok_sandbox.setup_stamp import (  # noqa: F401 — re-exported public API
 )
 
 
-def __getattr__(name: str) -> object:
+def __getattr__(name: str) -> Any:
     """Lazily resolve heavyweight re-exports kept off the import hot path.
 
     ``terok_sandbox.vault.token_broker`` drags the whole ``aiohttp``

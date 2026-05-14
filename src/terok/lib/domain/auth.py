@@ -9,8 +9,8 @@ API key never triggers an L1 build), applies the OAuth-vs-API-key gates
 from the user's config, and prompts the user when an L1 image needs
 building.
 
-The image-resolution logic lives in
-[`_resolve_host_auth_image`][terok.lib.domain.auth._resolve_host_auth_image].
+The image-resolution logic lives in the module-private
+``_resolve_host_auth_image``.
 """
 
 from __future__ import annotations
