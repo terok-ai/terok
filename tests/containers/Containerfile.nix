@@ -24,16 +24,23 @@ FROM docker.io/nixos/nix:latest
 #
 # ``--extra-experimental-features`` turns on flakes (off by default in
 # nix 2.18-).
-# ``python312`` and ``python312Packages.pip`` are *separate*
-# derivations that don't share a site-packages; installing them
-# side-by-side leaves ``python3.12 -m pip`` unable to find pip.
+RUN nix --extra-experimental-features 'nix-command flakes' \
+        profile add \
+        nixpkgs#gawk \
+        nixpkgs#shadow
+
+# ``python312`` and ``python312Packages.pip`` are *separate* derivations
+# that don't share a site-packages; installing them side-by-side leaves
+# ``python3.12 -m pip`` unable to find pip.
 # ``python312.withPackages(ps: [ ps.pip ])`` builds a wrapped python
 # whose sys.path includes the listed packages — what we actually want.
+#
+# That expression isn't a valid flakeref attrpath (``profile add`` only
+# parses dot-separated names there), so feed it via ``--expr``.
+# ``--impure`` is required by ``builtins.getFlake``.
 RUN nix --extra-experimental-features 'nix-command flakes' \
-        profile install \
-        nixpkgs#gawk \
-        'nixpkgs#python312.withPackages(ps: [ ps.pip ])' \
-        nixpkgs#shadow
+        profile add --impure --expr \
+        '(builtins.getFlake "nixpkgs").legacyPackages.x86_64-linux.python312.withPackages (ps: [ ps.pip ])'
 
 # /bin/bash → the bash the base image already has, so shebangs and
 # shadow's shell checks resolve.
