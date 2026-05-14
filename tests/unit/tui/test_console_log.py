@@ -181,6 +181,12 @@ def test_worker_entry_colonless_ref_exits_2() -> None:
     assert _worker_entry.main(["no-colon-here", "[]"]) == 2
 
 
+def test_worker_entry_non_callable_ref_exits_2() -> None:
+    """A ref that resolves to a non-callable is rejected at resolve time, not at call time."""
+    # sys.version is a str — resolvable, but not callable.
+    assert _worker_entry.main(["sys:version", "[]"]) == 2
+
+
 def test_worker_entry_malformed_argv_exits_2() -> None:
     """Wrong argument count exits 2 with a usage line."""
     assert _worker_entry.main(["only-one"]) == 2

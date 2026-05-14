@@ -33,11 +33,19 @@ from collections.abc import Callable
 
 
 def _resolve(ref: str) -> Callable[..., object]:
-    """Resolve a ``"module.path:function"`` reference to the callable."""
+    """Resolve a ``"module.path:function"`` reference to the callable.
+
+    Raises ``ValueError`` for a malformed ref or one that resolves to a
+    non-callable, so the bad-ref is caught at resolve time (exit 2)
+    rather than surfacing later as an opaque ``TypeError`` at call time.
+    """
     module_path, sep, attr = ref.partition(":")
     if not module_path or not sep or not attr:
         raise ValueError(f"worker ref must be 'module.path:function', got {ref!r}")
-    return getattr(importlib.import_module(module_path), attr)
+    target = getattr(importlib.import_module(module_path), attr)
+    if not callable(target):
+        raise ValueError(f"worker ref {ref!r} resolved to a non-callable: {target!r}")
+    return target
 
 
 def main(argv: list[str]) -> int:
