@@ -352,6 +352,9 @@ run_nix_tests() {
     echo -e "${C_CYAN}==> Testing ${C_BOLD}$name${C_CYAN} ($(version_expectation "$name"))${C_RESET}"
     echo ""
 
+    # Runs as root inside the Nix container — see Containerfile.nix
+    # for why (the wrapped-Python failure mode is uid-independent and
+    # ``su``/``newuidmap`` plumbing is deferred until podman lands).
     podman run --rm --name "$ctr_name" \
         --security-opt label=disable \
         -v "$REPO_ROOT:$SOURCE_MOUNT:ro,Z" \
@@ -359,47 +362,35 @@ run_nix_tests() {
         "$image" \
         bash -c "
             set -e
-
-            # ── Prepare workspace (as root) ──
             cp -a $SOURCE_MOUNT $WORKSPACE_DIR
-            chown -R testrunner:testrunner $WORKSPACE_DIR
+            cd $WORKSPACE_DIR
 
-            # ── Run everything as the rootless test user ──
-            # Single-quoted su -c body: ``\$`` defers expansion to the
-            # inner shell; bare ``\$name`` etc. expand here in the
-            # outer double-quoted bash -c.
-            su - testrunner -c '
-                set -e
-                cd $WORKSPACE_DIR
+            echo '--- nix-wrapped python ---'
+            which python3.12
+            python3.12 --version
+            python3.12 --version | awk '{print \$2}' > /results/$name.python-version
 
-                echo \"--- nix-wrapped python ---\"
-                which python3.12
-                python3.12 --version
-                python3.12 --version | awk \"{print \\\$2}\" > /results/$name.python-version
+            # Nix disables user site-packages (PYTHONNOUSERSITE), so
+            # ``pip install --user`` is rejected.  Install into a venv
+            # instead — same shape the other matrix slots use.  The
+            # venv inherits the wrapper's sys.path scrubbing, which is
+            # the wrapped-Python failure mode we want to exercise.
+            python3.12 -m venv .venv
+            . .venv/bin/activate
+            pip install --quiet --upgrade pip
+            pip install --quiet . pytest pytest-asyncio pytest-cov pytest-tach
 
-                # Nix disables user site-packages (PYTHONNOUSERSITE),
-                # so ``pip install --user`` is rejected.  Install into
-                # a venv instead — same shape the other matrix slots
-                # use.  The venv inherits the wrapper's sys.path
-                # scrubbing, which is the wrapped-Python failure mode
-                # we want to exercise.
-                python3.12 -m venv .venv
-                . .venv/bin/activate
-                pip install --quiet --upgrade pip
-                pip install --quiet . pytest pytest-asyncio pytest-cov pytest-tach
+            echo ''
+            echo '--- unit tests ---'
+            pytest tests/unit -v --tb=short
 
-                echo \"\"
-                echo \"--- unit tests ---\"
-                pytest tests/unit -v --tb=short
-
-                echo \"\"
-                echo \"--- host-only integration tests ---\"
-                # Same marker filter ``make test-integration-host`` uses
-                # on GitHub-Actions: skip everything that wants podman
-                # or the internet.  Nix container has neither.
-                pytest tests/integration -v --tb=short \
-                    -m \"needs_host_features and not needs_internet and not needs_podman\"
-            '
+            echo ''
+            echo '--- host-only integration tests ---'
+            # Same marker filter ``make test-integration-host`` uses on
+            # GitHub-Actions: skip everything that wants podman or the
+            # internet.  Nix container has neither.
+            pytest tests/integration -v --tb=short \
+                -m 'needs_host_features and not needs_internet and not needs_podman'
         "
 
     local status=$?
