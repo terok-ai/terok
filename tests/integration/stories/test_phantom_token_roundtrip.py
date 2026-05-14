@@ -57,6 +57,15 @@ def _podman_env() -> dict[str, str]:
 
     Read the real home from ``/etc/passwd`` (immune to ``os.environ``
     edits) and splice it back in just for podman.
+
+    Safety boundary: this re-exposes the operator's real container
+    state to the test.  The only mutations the test performs against
+    that state are scoped to a single ``terok-itest-phantom-<uuid4>``
+    container — created, exec'd into, and removed in ``finally``.
+    No image build, no commits, no config writes; the image is
+    pulled with ``--pull=never`` so no registry traffic either.  If
+    you add subprocess calls that mutate user state more broadly,
+    re-evaluate whether they belong here at all.
     """
     real_home = pwd.getpwuid(os.getuid()).pw_dir
     return {**os.environ, "HOME": real_home}
@@ -203,8 +212,13 @@ def test_phantom_swap_through_container_socket(
         PODMAN_TEST_IMAGE if "/" in PODMAN_TEST_IMAGE else f"localhost/{PODMAN_TEST_IMAGE}"
     )
     try:
-        # Two podman knobs the matrix doesn't need but a personal dev
-        # host does:
+        # Podman knobs:
+        #   --rm  belt-and-suspenders cleanup.  ``finally`` already
+        #     runs ``podman rm -f``, but if pytest is SIGKILL'd between
+        #     ``podman run`` and the ``finally`` block, ``--rm`` ensures
+        #     the container is auto-removed once ``sleep 60`` exits.
+        #     Keeps the operator's container state pristine even on a
+        #     crashed test run.
         #   --pull=never  podman's default ``--pull=missing`` interprets
         #     the ``localhost/`` prefix as a real registry hostname and
         #     probes ``https://localhost/v2/`` before checking the local
@@ -219,6 +233,7 @@ def test_phantom_swap_through_container_socket(
                 "podman",
                 "run",
                 "-d",
+                "--rm",
                 "--pull",
                 "never",
                 "--security-opt",
