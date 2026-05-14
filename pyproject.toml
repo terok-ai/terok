@@ -60,8 +60,8 @@ textual-serve = ">=1.1.0"
 jinja2 = "^3.1"
 terok-executor = {git = "https://github.com/sliwowitz/terok-executor.git", branch = "feat/command-tree-adopt"}
 terok-sandbox = {git = "https://github.com/sliwowitz/terok-sandbox.git", branch = "feat/command-tree"}
-terok-shield = {url = "https://github.com/terok-ai/terok-shield/releases/download/v0.6.39/terok_shield-0.6.39-py3-none-any.whl"}
-terok-clearance = {url = "https://github.com/terok-ai/terok-clearance/releases/download/v0.6.11/terok_clearance-0.6.11-py3-none-any.whl"}
+terok-shield = {git = "https://github.com/sliwowitz/terok-shield.git", branch = "feat/command-def-children"}
+terok-clearance = {git = "https://github.com/sliwowitz/terok-clearance.git", branch = "feat/command-def-children"}
 
 [tool.poetry.group.dev.dependencies]
 pydevd-pycharm = "262.4852.46"

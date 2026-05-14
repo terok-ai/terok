@@ -3572,18 +3572,19 @@ description = "Shield clearance and desktop notifications for terok"
 optional = false
 python-versions = ">=3.12,<4.0"
 groups = ["main"]
-files = [
-    {file = "terok_clearance-0.6.11-py3-none-any.whl", hash = "sha256:eba3d21ff03a6ca927ce0fffa655a9602f0bb2a2920af751483d27eed272e935"},
-]
+files = []
+develop = false
 
 [package.dependencies]
-asyncvarlink = ">=0.3.1,<0.4.0"
+asyncvarlink = "^0.3.1"
 dbus-fast = ">=2.0,<5.0"
-pyyaml = ">=6.0,<7.0"
+pyyaml = "^6.0"
 
 [package.source]
-type = "url"
-url = "https://github.com/terok-ai/terok-clearance/releases/download/v0.6.11/terok_clearance-0.6.11-py3-none-any.whl"
+type = "git"
+url = "https://github.com/sliwowitz/terok-clearance.git"
+reference = "feat/command-def-children"
+resolved_reference = "27866ad9cdf73258b9a03836b83eca57264ec65a"
 
 [[package]]
 name = "terok-executor"
@@ -3631,14 +3632,14 @@ prompt-toolkit = ">=3.0"
 pydantic = ">=2.9"
 "ruamel.yaml" = ">=0.18"
 sqlcipher3 = ">=0.6.2"
-terok-clearance = {url = "https://github.com/terok-ai/terok-clearance/releases/download/v0.6.11/terok_clearance-0.6.11-py3-none-any.whl"}
-terok-shield = {url = "https://github.com/terok-ai/terok-shield/releases/download/v0.6.39/terok_shield-0.6.39-py3-none-any.whl"}
+terok-clearance = {git = "https://github.com/sliwowitz/terok-clearance.git", branch = "feat/command-def-children"}
+terok-shield = {git = "https://github.com/sliwowitz/terok-shield.git", branch = "feat/command-def-children"}
 
 [package.source]
 type = "git"
 url = "https://github.com/sliwowitz/terok-sandbox.git"
 reference = "feat/command-tree"
-resolved_reference = "b34239847f11c8888d75736933eba5c0bb33c058"
+resolved_reference = "3adf493236ff191158d2d82884b50bbda48af44d"
 
 [[package]]
 name = "terok-shield"
@@ -3647,17 +3648,18 @@ description = "nftables-based egress firewalling for Podman containers"
 optional = false
 python-versions = ">=3.12,<4.0"
 groups = ["main"]
-files = [
-    {file = "terok_shield-0.6.39-py3-none-any.whl", hash = "sha256:eb90c9b50d7ac688d95136318c2cb8b530bed65616d4d04d084b99d7d527a310"},
-]
+files = []
+develop = false
 
 [package.dependencies]
 pydantic = ">=2.0"
 PyYAML = ">=6.0"
 
 [package.source]
-type = "url"
-url = "https://github.com/terok-ai/terok-shield/releases/download/v0.6.39/terok_shield-0.6.39-py3-none-any.whl"
+type = "git"
+url = "https://github.com/sliwowitz/terok-shield.git"
+reference = "feat/command-def-children"
+resolved_reference = "9e56dc8c329e27ca1dd8043d3176f79188d5a172"
 
 [[package]]
 name = "textual"
@@ -4537,4 +4539,4 @@ propcache = ">=0.2.1"
 [metadata]
 lock-version = "2.1"
 python-versions = ">=3.12,<3.15"
-content-hash = "f3f19c26ee70790f99c8aea560462a9aecd291d409ca0651cadcd9dc76e2e103"
+content-hash = "131e62ee47c563bc8d33cf579b9a5d47c05925adb52a98e24c6bc29357a0da5f"

@@ -23,7 +23,6 @@ from .commands import (
     auth,
     clearance,
     completions,
-    dbus,
     image,
     info,
     panic,
@@ -68,7 +67,6 @@ _DISPATCHERS = [
     image.dispatch,
     _commandtree_dispatch,
     shield.dispatch,
-    dbus.dispatch,
     clearance.dispatch,
     sickbay.dispatch,
     info.dispatch,
@@ -179,7 +177,6 @@ def main(prog: str = "terok") -> None:
     _build_wired_tree().wire(sub)
 
     # Dev / shell niceties at the bottom of the help listing.
-    dbus.register(sub)
     completions.register(sub)
 
     # TUI launcher — only on the human-facing ``terok`` binary.  ``terokctl``
@@ -256,6 +253,7 @@ def _build_wired_tree() -> CommandTree:
       same [`CommandDef`][terok_sandbox.commands.CommandDef] instances
       living under ``sandbox`` so terok's cfg wrap propagates uniformly.
     """
+    from terok.lib.integrations.clearance import COMMANDS as CLEARANCE_COMMANDS
     from terok.lib.integrations.executor import COMMANDS as EXECUTOR_COMMANDS
 
     from ..lib.core.config import make_sandbox_config
@@ -278,6 +276,20 @@ def _build_wired_tree() -> CommandTree:
     gate_node = modified.find_at(("sandbox", "gate"))
     ssh_node = modified.find_at(("sandbox", "ssh"))
 
+    # Clearance's CommandDef is structurally compatible with sandbox's
+    # via the duck-typed wire layer.  Wrap as a ``dbus`` group at
+    # terok's top level — same UX as the old hand-rolled dbus.py,
+    # implemented as a CommandTree composition instead.
+    dbus_node = CommandDef(
+        name="dbus",
+        help="D-Bus tools (notifications, clearance)",
+        # Clearance defines its own CommandDef (different nominal type,
+        # same structural shape).  The wire layer reads via duck-typing,
+        # so the runtime path works; mypy's nominal check doesn't see
+        # the structural match.
+        children=CLEARANCE_COMMANDS,  # type: ignore[arg-type]
+    )
+
     return CommandTree(
         (
             CommandDef(
@@ -293,6 +305,7 @@ def _build_wired_tree() -> CommandTree:
             vault_node,
             gate_node,
             ssh_node,
+            dbus_node,
         )
     )
 

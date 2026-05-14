@@ -222,7 +222,6 @@ def test_every_project_id_and_task_id_has_completer(prog: str) -> None:
         auth,
         clearance,
         completions,
-        dbus,
         image,
         info,
         panic,
@@ -243,7 +242,6 @@ def test_every_project_id_and_task_id_has_completer(prog: str) -> None:
     sickbay.register(sub)
     shield.register(sub)
     info.register(sub)
-    dbus.register(sub)
     completions.register(sub)
 
     missing: list[str] = []
