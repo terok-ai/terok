@@ -32,7 +32,8 @@ RUN nix --extra-experimental-features 'nix-command flakes' \
         profile install \
         nixpkgs#python312 \
         nixpkgs#python312Packages.pip \
-        nixpkgs#shadow
+        nixpkgs#shadow \
+        nixpkgs#gawk
 
 # Non-root user (uid 1000) — parity with the other matrix slots, and
 # the prerequisite for rootless podman if/when this image starts
