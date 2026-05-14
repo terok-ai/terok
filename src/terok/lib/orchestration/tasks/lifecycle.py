@@ -265,8 +265,94 @@ class TaskDeleteResult:
     warnings: list[str]
 
 
+def _revoke_task_token(project_id: str, task_id: str, warnings: list[str]) -> None:
+    """Revoke the task's gate token; record a warning on failure."""
+    from terok.lib.integrations.sandbox import revoke_token_for_task
+
+    try:
+        revoke_token_for_task(project_id, task_id)
+    except Exception as exc:
+        _log_debug(f"task_delete: token revoke failed: {exc}")
+        warnings.append(f"Token revoke failed: {exc}")
+
+
+def _remove_task_containers(project_id: str, task_id: str, warnings: list[str]) -> bool:
+    """Force-remove every mode's container for the task.
+
+    Returns ``True`` only when every container was removed cleanly;
+    a raised error or per-container failure is collected into *warnings*
+    and yields ``False``.
+    """
+    names = [container_name(project_id, mode, str(task_id)) for mode in CONTAINER_MODES]
+    try:
+        rm_results = _rt.get_runtime().force_remove([_rt.get_runtime().container(n) for n in names])
+    except Exception as exc:
+        _log_debug(f"task_delete: stop_task_containers raised: {exc}")
+        warnings.append(f"Container removal failed: {exc}")
+        return False
+    removed = True
+    for r in rm_results:
+        if not r.removed:
+            _log_debug(f"task_delete: container {r.name} not removed: {r.error}")
+            warnings.append(f"Container {r.name}: {r.error}")
+            removed = False
+    return removed
+
+
+def _remove_workspace(workspace: Path, warnings: list[str]) -> None:
+    """Remove the task workspace directory; record a warning on failure."""
+    if not workspace.is_dir():
+        return
+    _log_debug("task_delete: removing workspace directory")
+    try:
+        shutil.rmtree(workspace)
+        _log_debug("task_delete: workspace directory removed")
+    except Exception as exc:
+        _log_debug(f"task_delete: workspace removal failed: {exc}")
+        warnings.append(f"Workspace removal failed: {exc}")
+
+
+def _remove_meta_files(paths: tuple[Path, ...], warnings: list[str]) -> None:
+    """Unlink the on-disk meta-file pair plus any legacy single-file remnants.
+
+    Each ``unlink(missing_ok=True)`` is independent so a half-installed
+    bundle still cleans up everything that was there.
+    """
+    if not any(p.is_file() for p in paths):
+        return
+    _log_debug("task_delete: removing metadata files")
+    try:
+        for p in paths:
+            p.unlink(missing_ok=True)
+        _log_debug("task_delete: metadata files removed")
+    except Exception as exc:
+        _log_debug(f"task_delete: metadata removal failed: {exc}")
+        warnings.append(f"Metadata removal failed: {exc}")
+
+
+def _release_task_web_port(
+    project_id: str, task_id: str, containers_removed: bool, warnings: list[str]
+) -> None:
+    """Release the task's claimed web port — only safe once its containers are gone."""
+    if not containers_removed:
+        warnings.append("Web port kept claimed — containers may still be running")
+        return
+    _log_debug("task_delete: releasing web port")
+    try:
+        from ..ports import release_web_port
+
+        release_web_port(project_id, task_id)
+    except Exception as exc:  # noqa: BLE001 — best-effort cleanup
+        _log_debug(f"task_delete: web port release failed: {exc}")
+
+
 def _task_delete(project: ProjectConfig, task_id: str) -> TaskDeleteResult:
-    """Delete a task's workspace, metadata, and associated containers."""
+    """Delete a task's workspace, metadata, and associated containers.
+
+    Always completes — each cleanup step is independent and best-effort,
+    collecting any failure into the returned warnings rather than
+    aborting the rest of the teardown.
+    """
     _log_debug(f"task_delete: start project_id={project.id} task_id={task_id}")
     warnings: list[str] = []
 
@@ -284,41 +370,20 @@ def _task_delete(project: ProjectConfig, task_id: str) -> TaskDeleteResult:
     )
 
     meta = read_task_meta(meta_dir, task_id) or {}
-
     mode = meta.get("mode")
+
     if mode:
         _log_debug("task_delete: capturing container logs")
         capture_task_logs(project, task_id, mode)
-
     if meta:
         _log_debug("task_delete: archiving task")
         _archive_task(project, task_id, meta)
 
-    _log_debug("task_delete: revoking gate tokens")
-    from terok.lib.integrations.sandbox import revoke_token_for_task
+    _log_debug("task_delete: revoking gate token")
+    _revoke_task_token(project.id, task_id, warnings)
 
-    try:
-        revoke_token_for_task(project.id, task_id)
-    except Exception as exc:
-        _log_debug(f"task_delete: token revoke failed: {exc}")
-        warnings.append(f"Token revoke failed: {exc}")
-
-    _log_debug("task_delete: calling stop_task_containers")
-    names = [container_name(project.id, mode, str(task_id)) for mode in CONTAINER_MODES]
-    containers_removed = True
-    try:
-        rm_results = _rt.get_runtime().force_remove([_rt.get_runtime().container(n) for n in names])
-    except Exception as exc:
-        _log_debug(f"task_delete: stop_task_containers raised: {exc}")
-        warnings.append(f"Container removal failed: {exc}")
-        rm_results = []
-        containers_removed = False
-    for r in rm_results:
-        if not r.removed:
-            _log_debug(f"task_delete: container {r.name} not removed: {r.error}")
-            warnings.append(f"Container {r.name}: {r.error}")
-            containers_removed = False
-    _log_debug("task_delete: stop_task_containers returned")
+    _log_debug("task_delete: removing task containers")
+    containers_removed = _remove_task_containers(project.id, task_id, warnings)
 
     if mode:
         from ..hooks import run_hook
@@ -334,39 +399,9 @@ def _task_delete(project: ProjectConfig, task_id: str) -> TaskDeleteResult:
             meta_path=meta_file,
         )
 
-    if workspace.is_dir():
-        _log_debug("task_delete: removing workspace directory")
-        try:
-            shutil.rmtree(workspace)
-            _log_debug("task_delete: workspace directory removed")
-        except Exception as exc:
-            _log_debug(f"task_delete: workspace removal failed: {exc}")
-            warnings.append(f"Workspace removal failed: {exc}")
-
-    # Drop both halves of the on-disk pair plus any legacy single-file
-    # remnants.  Each ``unlink(missing_ok=True)`` is independent so a
-    # half-installed bundle still cleans up everything that was there.
-    paths_to_remove = (dossier_file, meta_file, legacy_json, legacy_yml)
-    if any(p.is_file() for p in paths_to_remove):
-        _log_debug("task_delete: removing metadata files")
-        try:
-            for p in paths_to_remove:
-                p.unlink(missing_ok=True)
-            _log_debug("task_delete: metadata files removed")
-        except Exception as exc:
-            _log_debug(f"task_delete: metadata removal failed: {exc}")
-            warnings.append(f"Metadata removal failed: {exc}")
-
-    if containers_removed:
-        _log_debug("task_delete: releasing web port")
-        try:
-            from ..ports import release_web_port
-
-            release_web_port(project.id, task_id)
-        except Exception as exc:  # noqa: BLE001 — best-effort cleanup
-            _log_debug(f"task_delete: web port release failed: {exc}")
-    else:
-        warnings.append("Web port kept claimed — containers may still be running")
+    _remove_workspace(workspace, warnings)
+    _remove_meta_files((dossier_file, meta_file, legacy_json, legacy_yml), warnings)
+    _release_task_web_port(project.id, task_id, containers_removed, warnings)
 
     _log_debug("task_delete: finished")
     return TaskDeleteResult(task_id=task_id, warnings=warnings)
