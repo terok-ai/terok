@@ -257,7 +257,7 @@ def start_shielded_container(
 ) -> None:
     """Start a podman container with shield args and detailed failure output."""
     result = subprocess.run(
-        ["podman", "run", "-d", "--rm", "--name", name, *extra_args, image, *PODMAN_SLEEP_COMMAND],
+        ["podman", "run", "-d", "--name", name, *extra_args, image, *PODMAN_SLEEP_COMMAND],
         capture_output=True,
         text=True,
         timeout=timeout,
