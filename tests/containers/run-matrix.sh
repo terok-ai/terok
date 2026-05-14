@@ -378,7 +378,10 @@ run_nix_tests() {
             python3.12 -m venv .venv
             . .venv/bin/activate
             pip install --quiet --upgrade pip
-            pip install --quiet . pytest pytest-asyncio pytest-cov pytest-tach
+            # ``tach`` (not ``pytest-tach``) is the package that
+            # registers the pytest plugin; pyproject.toml's pytest
+            # config doesn't load it conditionally.
+            pip install --quiet . pytest pytest-asyncio pytest-cov tach
 
             echo ''
             echo '--- unit tests ---'
