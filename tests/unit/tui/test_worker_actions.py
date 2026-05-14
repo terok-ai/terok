@@ -183,18 +183,47 @@ def test_vault_to_keyring_calls_handle_with_cfg() -> None:
 
 
 def test_selinux_install_policy_runs_sudo_bash() -> None:
-    """``selinux_install_policy`` shells out to ``sudo bash <install_script>``."""
+    """``selinux_install_policy`` resolves sudo + bash via PATH and runs the bundled script."""
     from pathlib import Path
+
+    def _which(name: str) -> str:
+        return {"sudo": "/usr/bin/sudo", "bash": "/usr/bin/bash"}[name]
 
     with (
         mock.patch(
             "terok.lib.integrations.sandbox.selinux_install_script",
             return_value=Path("/bundled/install_policy.sh"),
         ),
+        mock.patch("shutil.which", side_effect=_which),
         mock.patch("subprocess.run") as m_run,
     ):
         worker_actions.selinux_install_policy()
-    m_run.assert_called_once_with(["sudo", "bash", "/bundled/install_policy.sh"], check=True)
+    # Absolute paths from ``shutil.which`` — no partial-path lookup at
+    # exec time (bandit B607 / Sonar partial-path).
+    m_run.assert_called_once_with(
+        ["/usr/bin/sudo", "/usr/bin/bash", "/bundled/install_policy.sh"], check=True
+    )
+
+
+def test_selinux_install_policy_aborts_when_sudo_missing() -> None:
+    """A missing ``sudo`` surfaces as SystemExit with the binary name."""
+    import pytest as _pytest
+
+    with mock.patch("shutil.which", return_value=None):
+        with _pytest.raises(SystemExit, match="sudo not on PATH"):
+            worker_actions.selinux_install_policy()
+
+
+def test_selinux_install_policy_aborts_when_bash_missing() -> None:
+    """A missing ``bash`` surfaces as SystemExit with the binary name."""
+    import pytest as _pytest
+
+    def _which(name: str) -> str | None:
+        return "/usr/bin/sudo" if name == "sudo" else None
+
+    with mock.patch("shutil.which", side_effect=_which):
+        with _pytest.raises(SystemExit, match="bash not on PATH"):
+            worker_actions.selinux_install_policy()
 
 
 def test_selinux_switch_to_tcp_writes_services_mode(tmp_path) -> None:

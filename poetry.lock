@@ -3587,7 +3587,7 @@ url = "https://github.com/terok-ai/terok-clearance/releases/download/v0.6.13/ter
 
 [[package]]
 name = "terok-executor"
-version = "0.0.146"
+version = "0.0.147"
 description = "Single-agent task runner for hardened Podman containers"
 optional = false
 python-versions = ">=3.12,<3.15"
@@ -3609,7 +3609,7 @@ tomli-w = ">=1.0"
 type = "git"
 url = "https://github.com/sliwowitz/terok-executor.git"
 reference = "chore/sandbox-selinux-pin"
-resolved_reference = "a505853e5c07269f7f341ca153ff6657b3255d30"
+resolved_reference = "3377b15c64af5f26417140b480121e615b807b51"
 
 [[package]]
 name = "terok-sandbox"

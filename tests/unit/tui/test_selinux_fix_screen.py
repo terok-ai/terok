@@ -26,6 +26,25 @@ def _import_screen() -> tuple[type, type]:
     return module.SelinuxFixScreen, module.SelinuxFixOutcome
 
 
+class TestSelinuxFixScreenLayout:
+    """The pure-yield helpers can be exercised without a full Textual app."""
+
+    def test_buttons_yield_three_with_known_ids(self) -> None:
+        """``_buttons`` produces exactly three buttons with the dispatch IDs the handler reads."""
+        screen_cls, _ = _import_screen()
+        # ``_buttons`` is a staticmethod yielding Textual ``Button`` instances;
+        # the test imports it via the class to verify ID + variant.
+        buttons = list(screen_cls._buttons())
+        assert [b.id for b in buttons] == [
+            "selinux-fix-skip",
+            "selinux-fix-tcp",
+            "selinux-fix-install",
+        ]
+        # The Install path is the primary variant (Textual's accent style)
+        # because it's the recommended remediation — Skip / TCP stay default.
+        assert buttons[-1].variant == "primary"
+
+
 class TestSelinuxFixScreenActions:
     """Each binding + button dismisses with the expected outcome."""
 

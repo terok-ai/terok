@@ -1814,6 +1814,114 @@ class TestVaultActionImplementations:
         )
 
 
+class TestSelinuxFixDispatch:
+    """``_run_setup_subprocess`` branches on exit code 5; ``_offer_selinux_fix`` routes outcomes."""
+
+    def _entry(self, *, exit_code: int) -> mock.Mock:
+        entry = mock.Mock()
+        entry.ok = exit_code == 0
+        entry.exit_code = exit_code
+        entry.wait = mock.AsyncMock()
+        return entry
+
+    def test_exit_5_invokes_offer_selinux_fix(self) -> None:
+        """``_run_setup_subprocess`` routes exit code 5 into ``_offer_selinux_fix``."""
+        _, app_class = import_app()
+        # Plain Mock (no spec) — the methods we exercise touch
+        # ``self.notify`` and ``self.push_screen`` from Textual's App
+        # base, which a spec'd mock doesn't auto-include.
+        instance = mock.Mock()
+        instance.dispatch_console_command.return_value = self._entry(exit_code=5)
+        instance.push_screen = mock.AsyncMock()
+        instance._offer_selinux_fix = mock.AsyncMock(return_value=True)
+        result = run(app_class._run_setup_subprocess(instance))
+        assert result is True
+        instance._offer_selinux_fix.assert_awaited_once()
+
+    def test_exit_nonzero_non_5_skips_selinux_fix(self) -> None:
+        """A generic phase failure (exit 1) notifies + returns False — no SELinux modal."""
+        _, app_class = import_app()
+        instance = mock.Mock()
+        instance.dispatch_console_command.return_value = self._entry(exit_code=1)
+        instance.push_screen = mock.AsyncMock()
+        instance._offer_selinux_fix = mock.AsyncMock()
+        result = run(app_class._run_setup_subprocess(instance))
+        assert result is False
+        instance.notify.assert_called_once()
+        instance._offer_selinux_fix.assert_not_awaited()
+
+    def test_exit_0_returns_true_without_selinux_fix(self) -> None:
+        """Happy path: exit 0 returns True, never opens the modal."""
+        _, app_class = import_app()
+        instance = mock.Mock()
+        instance.dispatch_console_command.return_value = self._entry(exit_code=0)
+        instance.push_screen = mock.AsyncMock()
+        instance._offer_selinux_fix = mock.AsyncMock()
+        result = run(app_class._run_setup_subprocess(instance))
+        assert result is True
+        instance._offer_selinux_fix.assert_not_awaited()
+
+    def test_offer_selinux_fix_install_dispatches_then_reruns_setup(self) -> None:
+        """Install button → dispatches selinux_install_policy worker + re-runs setup."""
+        from terok.tui.selinux_fix_screen import SelinuxFixOutcome
+
+        _, app_class = import_app()
+        instance = mock.Mock()
+        instance.push_screen_wait = mock.AsyncMock(return_value=SelinuxFixOutcome.INSTALL_POLICY)
+        instance.push_screen = mock.AsyncMock()
+        instance.dispatch_console_command.return_value = self._entry(exit_code=0)
+        instance._run_setup_subprocess = mock.AsyncMock(return_value=True)
+        result = run(app_class._offer_selinux_fix(instance))
+        assert result is True
+        # The install worker was dispatched (title gives away the branch).
+        title = instance.dispatch_console_command.call_args.kwargs["title"]
+        assert "Installing SELinux policy" in title
+        instance._run_setup_subprocess.assert_awaited_once()
+
+    def test_offer_selinux_fix_tcp_dispatches_then_reruns_setup(self) -> None:
+        """TCP-mode button → dispatches selinux_switch_to_tcp worker + re-runs setup."""
+        from terok.tui.selinux_fix_screen import SelinuxFixOutcome
+
+        _, app_class = import_app()
+        instance = mock.Mock()
+        instance.push_screen_wait = mock.AsyncMock(return_value=SelinuxFixOutcome.SWITCH_TO_TCP)
+        instance.push_screen = mock.AsyncMock()
+        instance.dispatch_console_command.return_value = self._entry(exit_code=0)
+        instance._run_setup_subprocess = mock.AsyncMock(return_value=True)
+        result = run(app_class._offer_selinux_fix(instance))
+        assert result is True
+        title = instance.dispatch_console_command.call_args.kwargs["title"]
+        assert "Switching services.mode" in title
+
+    def test_offer_selinux_fix_skipped_returns_false_no_dispatch(self) -> None:
+        """Skip → notifies + returns False; no worker dispatched, no setup re-run."""
+        from terok.tui.selinux_fix_screen import SelinuxFixOutcome
+
+        _, app_class = import_app()
+        instance = mock.Mock()
+        instance.push_screen_wait = mock.AsyncMock(return_value=SelinuxFixOutcome.SKIPPED)
+        instance._run_setup_subprocess = mock.AsyncMock()
+        result = run(app_class._offer_selinux_fix(instance))
+        assert result is False
+        instance.notify.assert_called_once()
+        instance.dispatch_console_command.assert_not_called()
+        instance._run_setup_subprocess.assert_not_awaited()
+
+    def test_offer_selinux_fix_remediation_failure_returns_false(self) -> None:
+        """If the remediation worker fails (exit != 0), setup is not re-run."""
+        from terok.tui.selinux_fix_screen import SelinuxFixOutcome
+
+        _, app_class = import_app()
+        instance = mock.Mock()
+        instance.push_screen_wait = mock.AsyncMock(return_value=SelinuxFixOutcome.INSTALL_POLICY)
+        instance.push_screen = mock.AsyncMock()
+        instance.dispatch_console_command.return_value = self._entry(exit_code=1)
+        instance._run_setup_subprocess = mock.AsyncMock()
+        result = run(app_class._offer_selinux_fix(instance))
+        assert result is False
+        instance._run_setup_subprocess.assert_not_awaited()
+
+
 class TestVaultStatusPill:
     """Bottom-of-app StatusBar pill driven by [`_render_status_pill`][terok.tui.app.TerokTUI._render_status_pill]."""
 
