@@ -252,11 +252,15 @@ can pass it to the container at create time.  The wire-format is the
 same in both modes — only the listening file descriptor differs
 (`AF_UNIX` vs `AF_INET`).
 
-Rootless podman *does* bind-mount Unix sockets cleanly when both ends
-run as the same mapped UID, which is the common case.  The TCP fallback
-exists for environments where bind-mounting isn't viable (some custom
-podman setups, restricted SELinux profiles) and for legacy clients
-that can only speak TCP — see `host.containers.internal:<port>`.
+Sockets are the preferred mode.  TCP exists for the SELinux case: on
+distros with SELinux enforcing, a host socket bind-mounted into a
+container is unreachable from the container's domain without a custom
+policy that lets the container side `connectto` the host service's
+type.  When you have root, terok's setup installs that policy
+alongside the systemd units and socket mode works transparently;
+without root the policy can't be installed, so the alternative is to
+fall back to TCP, accepting the trade-off that the loopback ports are
+visible to every other local user on the host.
 
 ### Shield (no socket service)
 
@@ -317,36 +321,15 @@ unevenly across the four bidirectional services:
 
 ### Gaps
 
-The lone asymmetry is **gate's TCP mode**.  Where the vault broker has
-a bridge for "host TCP → in-container Unix"
-(`ensure-bridges.sh` "Vault socket bridge (TCP mode)" block), gate has
-no corresponding bridge for "host TCP → in-container localhost" —
-instead the orchestrator rewrites the injected `CODE_REPO` URL to
-point at `host.containers.internal`.  That works because git speaks
-TCP to any host, but it means:
-
-- A container script that hardcodes `http://localhost:9418/` for gate
-  works in socket mode and silently breaks in TCP mode.
-- The "in-container endpoint is always the same" invariant that the
-  vault upholds doesn't hold for gate.
-
-Closing the gap is a one-block addition to `ensure-bridges.sh`:
-
-```bash
-if [[ -n "${TEROK_GATE_PORT:-}" ]] \
-   && command -v socat >/dev/null 2>&1 \
-   && ! _terok_bridge_alive "$_TEROK_PIDDIR/gate.pid"; then
-  socat TCP-LISTEN:9418,bind=127.0.0.1,fork,reuseaddr \
-    TCP:host.containers.internal:"${TEROK_GATE_PORT}" &
-  echo $! > "$_TEROK_PIDDIR/gate.pid"
-fi
-```
-
-After that `http://localhost:9418/` would be the single in-container
-endpoint for gate regardless of host mode, the executor wouldn't need
-to special-case `CODE_REPO` by transport, and gate's container side
-would match the vault's "one transport, two transports underneath"
-convention.
+The lone asymmetry is **gate's TCP mode**: the vault has a "host TCP →
+in-container Unix" bridge but gate doesn't have a "host TCP →
+in-container localhost" one.  The orchestrator absorbs the difference
+by rewriting the injected `CODE_REPO` to point at
+`host.containers.internal`, so the agent's `git` still works — but the
+"in-container endpoint is always the same" invariant the vault upholds
+doesn't hold for gate.  Whether to normalize this too is open: gate's
+clients are constrained to git, which is already TCP-fluent, so the
+case for adding a symmetric bridge is weaker than it was for vault.
 
 ---
 
