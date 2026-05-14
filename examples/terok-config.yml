@@ -58,6 +58,13 @@ tui:
   # Can be overridden with --no-tmux flag.
   # default_tmux: true
 
+  # Instruction-editing actions ("edit instructions") open the file in $EDITOR
+  # when it is set. Honoured only on a local-terminal TUI — the web TUI
+  # (terok-web / textual serve) always uses the integrated text editor, since
+  # there is no terminal to suspend to. Set false to always use the integrated
+  # editor, even when $EDITOR is set. Default: true.
+  # external_editor: false
+
 # Agent configuration
 # -----------------------------------------------------------------
 # Native Claude handles global agents and MCPs:

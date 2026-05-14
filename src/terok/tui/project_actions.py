@@ -8,6 +8,8 @@ and the project wizard.  Also provides shared TUI helpers used by both
 project and task actions.
 """
 
+import os
+import shlex
 import subprocess
 from collections.abc import Callable
 from pathlib import Path
@@ -301,13 +303,22 @@ class ProjectActionsMixin(_MixinBase):
     # ---------- Instructions editing ----------
 
     async def _edit_instructions_file(self, instr_path: Path, *, title: str, done_msg: str) -> None:
-        """Edit *instr_path* in a native TextEditorScreen, writing it back on Save.
+        """Edit *instr_path* — in ``$EDITOR`` or the integrated editor.
 
-        The web-compatible replacement for opening ``$EDITOR`` in a
-        suspended terminal: the file is loaded into a
-        [`TextEditorScreen`][terok.tui.text_screens.TextEditorScreen]
-        and only written back if the operator chooses Save.
+        ``$EDITOR`` is used when it is set, the ``tui.external_editor``
+        preference is on (the default), and the TUI is *not* web-served
+        — opening it suspends the TUI, which is fine in a real terminal
+        but impossible under textual-serve.  Otherwise (web TUI, the
+        preference off, or no ``$EDITOR``) the file opens in the
+        integrated [`TextEditorScreen`][terok.tui.text_screens.TextEditorScreen].
         """
+        from ..lib.api import get_config
+
+        editor = "" if self.is_web else os.environ.get("EDITOR", "").strip()
+        if editor and get_config().tui_external_editor:
+            await self._edit_in_external_editor(instr_path, editor, done_msg=done_msg)
+            return
+
         from .text_screens import TextEditorScreen
 
         existing = instr_path.read_text(encoding="utf-8") if instr_path.is_file() else ""
@@ -322,8 +333,29 @@ class ProjectActionsMixin(_MixinBase):
 
         await self.push_screen(TextEditorScreen(existing, title=title), _on_saved)
 
+    async def _edit_in_external_editor(
+        self, instr_path: Path, editor: str, *, done_msg: str
+    ) -> None:
+        """Open *instr_path* in ``$EDITOR`` via a suspended terminal.
+
+        Local-terminal only — the caller forces the integrated editor
+        under ``App.is_web``, so the ``suspend()`` here always has a real
+        terminal to suspend *to* (the same local-only suspend the CLI
+        login path keeps).
+        """
+        instr_path.parent.mkdir(parents=True, exist_ok=True)
+        with self.suspend():
+            try:
+                subprocess.run([*shlex.split(editor), str(instr_path)], check=False)
+            except Exception as exc:  # noqa: BLE001 — surface, never crash the TUI
+                print(f"Error launching {editor}: {exc}")
+                input("\n[Press Enter to return to TerokTUI] ")
+                return
+        self.notify(done_msg)
+        self._refresh_project_state()
+
     async def _action_edit_instructions(self) -> None:
-        """Edit the current project's instructions.md in a native editor modal."""
+        """Edit the current project's instructions.md in ``$EDITOR`` or the integrated editor."""
         if not self.current_project_id:
             self.notify("No project selected.")
             return
@@ -405,7 +437,7 @@ class ProjectActionsMixin(_MixinBase):
         await self.push_screen(TextViewScreen(text, title=f"Resolved instructions — {pid}"))
 
     async def _action_edit_global_instructions(self) -> None:
-        """Edit the global instructions.md in a native editor modal."""
+        """Edit the global instructions.md in ``$EDITOR`` or the integrated editor."""
         from ..lib.api import get_config
 
         global_instr = get_config().global_config_path.parent / "instructions.md"

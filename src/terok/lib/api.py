@@ -212,6 +212,7 @@ class Config:
     public_host: str
     shield_bypass_firewall_no_protection: bool
     tui_default_tmux: bool
+    tui_external_editor: bool
     # Presentation hints
     shield_security_hint: str
 
@@ -229,6 +230,7 @@ def get_config() -> Config:
         public_host=_config.get_public_host(),
         shield_bypass_firewall_no_protection=_config.get_shield_bypass_firewall_no_protection(),
         tui_default_tmux=_config.get_tui_default_tmux(),
+        tui_external_editor=_config.get_tui_external_editor(),
         shield_security_hint=_config.SHIELD_SECURITY_HINT,
     )
 

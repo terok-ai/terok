@@ -442,6 +442,15 @@ def get_tui_default_tmux() -> bool:
     return _load_validated().tui.default_tmux
 
 
+def get_tui_external_editor() -> bool:
+    """Return whether instruction editing should prefer ``$EDITOR`` over the integrated editor.
+
+    Default ``True``; the TUI still only honours it on a local-terminal
+    session — the web TUI always uses the integrated editor.
+    """
+    return _load_validated().tui.external_editor
+
+
 def get_tui_desktop_entry() -> str:
     """Return the XDG desktop-entry install policy for ``terok setup``.
 
