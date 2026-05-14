@@ -3610,7 +3610,7 @@ tomli-w = ">=1.0"
 type = "git"
 url = "https://github.com/sliwowitz/terok-executor.git"
 reference = "feat/command-tree-adopt"
-resolved_reference = "4a5e2904d6f959b8640760cbda220428fa1ec4ad"
+resolved_reference = "10ffa1043ece26e1493029f327f0ca2430ab2fe1"
 
 [[package]]
 name = "terok-sandbox"
@@ -3639,7 +3639,7 @@ terok-shield = {git = "https://github.com/sliwowitz/terok-shield.git", branch = 
 type = "git"
 url = "https://github.com/sliwowitz/terok-sandbox.git"
 reference = "feat/command-tree"
-resolved_reference = "3adf493236ff191158d2d82884b50bbda48af44d"
+resolved_reference = "b43224f753eca7b243f079d5ca1e9238326bba7f"
 
 [[package]]
 name = "terok-shield"
@@ -3659,7 +3659,7 @@ PyYAML = ">=6.0"
 type = "git"
 url = "https://github.com/sliwowitz/terok-shield.git"
 reference = "feat/command-def-children"
-resolved_reference = "9e56dc8c329e27ca1dd8043d3176f79188d5a172"
+resolved_reference = "e02631178c03f917b666a1041296e97e423a5a6d"
 
 [[package]]
 name = "textual"
