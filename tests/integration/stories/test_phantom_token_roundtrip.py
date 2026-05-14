@@ -174,26 +174,36 @@ def test_phantom_swap_through_container_socket(
 
     name = f"{PODMAN_CONTAINER_PREFIX}-phantom-{uuid.uuid4().hex[:8]}"
     try:
-        subprocess.run(
+        # ``label=disable`` mirrors what the matrix's outer-container run
+        # does, so SELinux relabeling doesn't trip nested-rootless podman
+        # bind-mounts (the prior ``:z`` flag did the wrong thing — it
+        # tried to relabel a file the outer container had marked
+        # unlabeled, and podman exited 125).  On non-SELinux hosts it is
+        # a no-op.
+        result = subprocess.run(
             [
                 "podman",
                 "run",
                 "-d",
+                "--security-opt",
+                "label=disable",
                 "--name",
                 name,
-                # Bind the broker's UNIX socket into the container.  ``:z``
-                # relabels for SELinux on hosts where it's enforcing —
-                # noop where it isn't.
                 "-v",
-                f"{host_socket}:/vault.sock:z",
+                f"{host_socket}:/vault.sock",
                 PODMAN_TEST_IMAGE,
                 "sleep",
                 "60",
             ],
-            check=True,
+            check=False,
             capture_output=True,
             text=True,
             timeout=30,
+        )
+        assert result.returncode == 0, (
+            f"podman run failed (exit {result.returncode}):\n"
+            f"  stdout: {result.stdout!r}\n"
+            f"  stderr: {result.stderr!r}"
         )
 
         # 1. Container's curl drives the request through the bind-mounted

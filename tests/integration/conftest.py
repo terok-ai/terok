@@ -407,10 +407,21 @@ def terok_env(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> TerokIntegrati
     monkeypatch.setenv("TEROK_EXECUTOR_STATE_DIR", str(agent_state))
     sandbox_live = tmp_path / "sandbox-live"
     sandbox_state = tmp_path / "sandbox-state"
+    sandbox_runtime = tmp_path / "sandbox-runtime"
     sandbox_live.mkdir(parents=True, exist_ok=True)
     sandbox_state.mkdir(parents=True, exist_ok=True)
+    sandbox_runtime.mkdir(parents=True, exist_ok=True)
     monkeypatch.setenv("TEROK_SANDBOX_LIVE_DIR", str(sandbox_live))
     monkeypatch.setenv("TEROK_SANDBOX_STATE_DIR", str(sandbox_state))
+    # Redirect sandbox's runtime_dir too — otherwise SandboxConfig.runtime_dir
+    # falls back to $XDG_RUNTIME_DIR/terok/sandbox and reads the operator's
+    # *real* ``vault.passphrase`` (written by ``terok-sandbox vault unlock``).
+    # The chain then prefers that over the test config's
+    # ``credentials.passphrase``, so the broker decrypts the test DB with
+    # the operator's real passphrase → ``file is not a database``.  Matrix
+    # containers have no such file so this only bites on developer hosts
+    # with an unlocked vault.
+    monkeypatch.setenv("TEROK_SANDBOX_RUNTIME_DIR", str(sandbox_runtime))
 
     # Seed a valid setup.stamp so subprocess CLIs don't exit 3 at the
     # verdict gate on ``terok task run`` / ``terok-executor run``.  Real
