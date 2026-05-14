@@ -22,89 +22,37 @@ layers =
 # ── Cross-package boundaries (tach can't do this) ────────────────
 #
 # ``protected`` contracts: "module X may ONLY be imported by modules Y, Z".
-# The allowed_importers lists are the *floor* — CI fails if a new module
-# imports the package.  Tighten them whenever a consolidation lands.
 #
-# Phase 2 (runtime protocol): container-runtime callers funnel through
-# ``terok.lib.core.runtime.get_runtime`` rather than instantiating
-# ``PodmanRuntime`` locally.  The files on this list are the ones that
-# legitimately need terok_sandbox for non-runtime reasons: service
-# wrappers (gate/shield/vault/SSH), value types (Sandbox, RunSpec,
-# VolumeSpec), or the shared command registry (CLI wiring).
+# Every sibling-wheel import funnels through a single adapter in
+# ``terok.lib.integrations`` — that adapter is the *only* allowed
+# importer.  A new ``from terok_sandbox import …`` anywhere else is a
+# CI failure: route it through the adapter instead (and extend the
+# adapter's re-export surface if the symbol is new).
+#
+# terok-shield is the one exception: terok never imports it from the
+# library at all — only the ``terok shield`` CLI command bridges to
+# shield's own CLI registry, so that one module is the allowed importer.
 
 [importlinter:contract:sandbox-boundary]
-name = terok_sandbox access restricted to designated modules
+name = terok_sandbox access restricted to the integrations adapter
 type = protected
 protected_modules = terok_sandbox
 allowed_importers =
-    terok.cli.commands.project
-    terok.cli.commands.setup
-    terok.cli.commands.shield
-    terok.cli.commands.sickbay
-    terok.cli.commands.task
-    terok.cli.commands.uninstall
-    terok.tui.clearance_screen
-    terok.cli.commands.vault_local
-    terok.cli.main
-    terok.cli.wiring
-    terok.lib.core.config
-    terok.lib.core.paths
-    terok.lib.core.projects
-    terok.lib.core.runtime
-    terok.lib.core.yaml_schema
-    terok.lib.domain.image_cleanup
-    terok.lib.domain.panic
-    terok.lib.domain.project
-    terok.lib.domain.ssh
-    terok.lib.domain.task_credentials
-    terok.lib.domain.vault
-    terok.lib.util.logging_utils
     terok.lib.integrations.sandbox
-    terok.lib.orchestration.agent_config
-    terok.lib.orchestration.container_doctor
-    terok.lib.orchestration.environment
-    terok.lib.orchestration.ports
-    terok.lib.orchestration.task_runners
-    terok.lib.orchestration.tasks
-    terok.tui.app
-    terok.tui.polling
-    terok.tui.project_actions
-    terok.tui.screens
-    terok.tui.setup_screen
-    terok.tui.task_actions
-    terok.tui.widgets.project_state
 
 [importlinter:contract:executor-boundary]
-name = terok_executor access restricted to designated modules
+name = terok_executor access restricted to the integrations adapter
 type = protected
 protected_modules = terok_executor
 allowed_importers =
-    terok.cli.commands.acp
-    terok.cli.commands.agents
-    terok.cli.commands.auth
-    terok.cli.commands.image
-    terok.cli.commands.setup
-    terok.cli.commands.task
-    terok.cli.main
-    terok.cli.wiring
-    terok.lib.core.config
-    terok.lib.core.images
-    terok.lib.core.yaml_schema
-    terok.lib.domain.auth
-    terok.lib.domain.project
-    terok.lib.domain.storage
-    terok.lib.domain.task_logs
     terok.lib.integrations.executor
-    terok.lib.orchestration.autopilot
-    terok.lib.orchestration.container_doctor
-    terok.lib.orchestration.environment
-    terok.lib.orchestration.image
-    terok.lib.orchestration.task_runners
-    terok.lib.orchestration.tasks
-    terok.tui.log_viewer
-    terok.tui.project_actions
-    terok.tui.screens
-    terok.tui.task_actions
+
+[importlinter:contract:clearance-boundary]
+name = terok_clearance access restricted to the integrations adapter
+type = protected
+protected_modules = terok_clearance
+allowed_importers =
+    terok.lib.integrations.clearance
 
 [importlinter:contract:shield-boundary]
 name = terok_shield access restricted to designated modules
