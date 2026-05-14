@@ -639,9 +639,9 @@ class TaskActionsMixin(_MixinBase):
 
         CLI login attaches a host terminal to the container — impossible
         when the TUI is served over the web (textual-serve), where there
-        is no host terminal.  Gated on [`App.is_web`][textual.app.App.is_web]:
-        web users get an error notification pointing at the toad-mode
-        alternative (its browser URL works without a host shell).
+        is no host terminal.  Gated on ``App.is_web``: web users get an
+        error notification pointing at the toad-mode alternative (its
+        browser URL works without a host shell).
         """
         if not self.current_project_id or not self.current_task:
             self.notify("No task selected.")

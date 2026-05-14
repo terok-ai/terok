@@ -110,9 +110,9 @@ class ProjectActionsMixin(_MixinBase):
     ) -> None:
         """Launch *cmd* via tmux/terminal, falling back to a suspended TUI.
 
-        Hard-gated on [`App.is_web`][textual.app.App.is_web]: a container
-        login attaches a host terminal, and under textual-serve there is
-        none — the in-process ``suspend()`` fallback would literally kill
+        Hard-gated on ``App.is_web``: a container login attaches a host
+        terminal, and under textual-serve there is none — the in-process
+        ``suspend()`` fallback would literally kill
         the served session.  Web users get an error notification instead;
         the local-terminal paths (tmux / desktop terminal / suspend) are
         unchanged.

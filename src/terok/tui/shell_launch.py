@@ -7,9 +7,9 @@ Provides tmux detection, desktop terminal detection, and an orchestrator
 that picks the best available method.
 
 Container login is only ever attempted from a *local-terminal* TUI —
-[`_launch_terminal_session`][terok.tui.project_actions.ProjectActionsMixin._launch_terminal_session]
-refuses it under textual-serve before reaching here (issue #473) — so
-nothing in this module needs to handle the web-served case.
+``ProjectActionsMixin._launch_terminal_session`` refuses it under
+textual-serve before reaching here (issue #473) — so nothing in this
+module needs to handle the web-served case.
 """
 
 import os
@@ -188,7 +188,7 @@ def is_web_mode() -> bool:
     ``textual-serve`` sets the ``TEXTUAL_DRIVER`` env var to a web
     driver.  This env probe is for callers that run *before* the app
     exists (e.g. the tmux-wrap decision in ``main()``); once the app is
-    running, prefer the canonical [`App.is_web`][textual.app.App.is_web].
+    running, prefer the canonical ``App.is_web``.
     """
     driver = os.environ.get("TEXTUAL_DRIVER", "")
     return "web" in driver.lower()

@@ -8,8 +8,8 @@ The web-compatible replacement for the ``$EDITOR``-subprocess and
 Both are plain in-process modals — no child process, no terminal:
 
 * [`TextEditorScreen`][terok.tui.text_screens.TextEditorScreen] — an
-  editable [`TextArea`][textual.widgets.TextArea]; dismisses with the
-  edited text on Save, ``None`` on Cancel.
+  editable ``TextArea``; dismisses with the edited text on Save,
+  ``None`` on Cancel.
 * [`TextViewScreen`][terok.tui.text_screens.TextViewScreen] — the same
   widget in read-only mode for display-only content.
 """
@@ -25,7 +25,7 @@ from textual.widgets import Button, TextArea
 
 
 class TextEditorScreen(ModalScreen[str | None]):
-    """Modal [`TextArea`][textual.widgets.TextArea] editor.
+    """Modal ``TextArea`` editor.
 
     Dismisses with the (possibly edited) text on Save, or ``None`` on
     Cancel / Escape — the caller decides whether to persist.
