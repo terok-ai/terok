@@ -526,12 +526,23 @@ if _HAS_TEXTUAL:
             screen — is awaited: hiding the log to the background must
             not stop the first-run flow from chaining into the wizard
             once setup actually finishes.
+
+            Exit code 5 (``EXIT_MANUAL_STEP_NEEDED`` — every install
+            phase succeeded but the SELinux policy is still missing on
+            a socket-mode host) routes through
+            [`_offer_selinux_fix`][terok.tui.app.TerokApp._offer_selinux_fix]
+            so the user can pick Install / Switch-to-TCP from a modal
+            instead of having to drop to a shell.
             """
+            from terok.lib.integrations.sandbox import EXIT_MANUAL_STEP_NEEDED
+
             entry = self.dispatch_console_command(["terok", "setup"], title="Running terok setup")
             await self.push_screen(WorkerLogScreen(entry))
             await entry.wait()
             if entry.ok:
                 return True
+            if entry.exit_code == EXIT_MANUAL_STEP_NEEDED:
+                return await self._offer_selinux_fix()
             self.notify(
                 "terok setup reported errors.  Re-run from the command palette "
                 "once the underlying issue is fixed.",
@@ -539,6 +550,58 @@ if _HAS_TEXTUAL:
                 timeout=15,
             )
             return False
+
+        async def _offer_selinux_fix(self) -> bool:
+            """Push the SELinux-fix modal; on a chosen remediation, re-run setup.
+
+            Both remediations (install policy / switch to TCP mode)
+            dispatch through the standard console-log pipeline so the
+            operator sees the streaming output, then a fresh setup run
+            picks up the now-resolvable state.  The recursion is
+            bounded — a second exit-5 just re-opens the same modal.
+            """
+            from .selinux_fix_screen import SelinuxFixOutcome, SelinuxFixScreen
+
+            outcome = await self.push_screen_wait(SelinuxFixScreen())
+            if outcome is SelinuxFixOutcome.SKIPPED:
+                self.notify(
+                    "SELinux policy is still missing.  Run setup again "
+                    "from the command palette once it's installed, or "
+                    "switch services.mode to tcp manually.",
+                    severity="warning",
+                    timeout=12,
+                )
+                return False
+            if outcome is SelinuxFixOutcome.INSTALL_POLICY:
+                entry = self.dispatch_console_command(
+                    [
+                        "python",
+                        "-c",
+                        "from terok.tui.worker_actions import selinux_install_policy; "
+                        "selinux_install_policy()",
+                    ],
+                    title="Installing SELinux policy (sudo bash …)",
+                )
+            else:  # SWITCH_TO_TCP
+                entry = self.dispatch_console_command(
+                    [
+                        "python",
+                        "-c",
+                        "from terok.tui.worker_actions import selinux_switch_to_tcp; "
+                        "selinux_switch_to_tcp()",
+                    ],
+                    title="Switching services.mode to tcp",
+                )
+            await self.push_screen(WorkerLogScreen(entry))
+            await entry.wait()
+            if not entry.ok:
+                self.notify(
+                    "The remediation step failed — see the log view for details.",
+                    severity="error",
+                    timeout=15,
+                )
+                return False
+            return await self._run_setup_subprocess()
 
         @work(exclusive=True, group="first-run-flow", exit_on_error=False)
         async def action_run_setup(self) -> None:

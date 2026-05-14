@@ -182,6 +182,32 @@ def test_vault_to_keyring_calls_handle_with_cfg() -> None:
     m_to_keyring.assert_called_once_with(cfg=cfg)
 
 
+def test_selinux_install_policy_runs_sudo_bash() -> None:
+    """``selinux_install_policy`` shells out to ``sudo bash <install_script>``."""
+    from pathlib import Path
+
+    with (
+        mock.patch(
+            "terok.lib.integrations.sandbox.selinux_install_script",
+            return_value=Path("/bundled/install_policy.sh"),
+        ),
+        mock.patch("subprocess.run") as m_run,
+    ):
+        worker_actions.selinux_install_policy()
+    m_run.assert_called_once_with(["sudo", "bash", "/bundled/install_policy.sh"], check=True)
+
+
+def test_selinux_switch_to_tcp_writes_services_mode(tmp_path) -> None:
+    """``selinux_switch_to_tcp`` writes ``services.mode: tcp`` to the user config.yml."""
+    user_config = tmp_path / "config.yml"
+    with (
+        mock.patch("terok.lib.core.config.global_config_path", return_value=user_config),
+        mock.patch("terok.lib.integrations.sandbox.yaml_update_section") as m_update,
+    ):
+        worker_actions.selinux_switch_to_tcp()
+    m_update.assert_called_once_with(user_config, "services", {"mode": "tcp"})
+
+
 # ── Task lifecycle ────────────────────────────────────────────────────
 
 
