@@ -810,7 +810,7 @@ class TestActionSelection:
     def test_task_start_cli_selects_created_task(self) -> None:
         _, app_class = import_app()
         instance = make_creation_app(app_class)
-        instance.run_worker = mock.Mock()
+        instance.dispatch_console_action = mock.Mock()
         instance.push_screen = mock.AsyncMock()
         fake_task_new = mock.Mock(return_value="42")
         action_globals = app_class._start_cli_task_background.__globals__
@@ -832,7 +832,12 @@ class TestActionSelection:
         assert instance._last_selected_tasks.get("proj1") == "42"
         fake_task_new.assert_called_once_with("proj1", name="test-name")
         instance._save_selection_state.assert_called_once()
-        instance.run_worker.assert_called_once()
+        # The container start is dispatched as a captured ConsoleLog action.
+        instance.dispatch_console_action.assert_called_once()
+        assert (
+            instance.dispatch_console_action.call_args[0][0]
+            == "terok.tui.worker_actions:start_cli_container"
+        )
         instance.refresh_tasks.assert_awaited()
 
     def test_autopilot_launch_selects_created_task(self) -> None:

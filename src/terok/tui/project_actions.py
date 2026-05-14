@@ -110,12 +110,22 @@ class ProjectActionsMixin(_MixinBase):
     ) -> None:
         """Launch *cmd* via tmux/terminal/web, falling back to a suspended TUI.
 
-        The in-process ``suspend()`` fallback is refused under
-        textual-serve — the web TUI has no terminal to suspend *to*,
-        and the attempt literally kills the served session.  Web users
-        get a notification with the equivalent CLI command instead.
+        Hard-gated on [`App.is_web`][textual.app.App.is_web]: a container
+        login attaches a host terminal, and under textual-serve there is
+        none — the in-process ``suspend()`` fallback would literally kill
+        the served session.  Web users get an error notification instead;
+        the local-terminal paths (tmux / desktop terminal / suspend) are
+        unchanged.
         """
-        from .shell_launch import is_web_mode
+        if self.is_web:
+            self.notify(
+                f"CLI login is unavailable in the web TUI — it needs a host "
+                f"terminal.  Open a host shell and run `terok login {cname}`, "
+                f"or start a task in toad mode (toad serves in the browser).",
+                severity="error",
+                timeout=12,
+            )
+            return
 
         method, port = launch_login(cmd, title=title)
 
@@ -126,14 +136,6 @@ class ProjectActionsMixin(_MixinBase):
         elif method == "web" and port is not None:
             self.open_url(f"http://localhost:{port}")
             self.notify(f"{label} in browser: {cname}")
-        elif is_web_mode():
-            self.notify(
-                f"No terminal available in web mode.  Open a host shell and run "
-                f"`terok login {cname}`, or start a new task in toad mode "
-                f"(toad runs in the browser, no host shell needed).",
-                severity="warning",
-                timeout=15,
-            )
         else:
             with self.suspend():
                 try:

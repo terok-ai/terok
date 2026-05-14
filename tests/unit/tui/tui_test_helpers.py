@@ -78,6 +78,10 @@ def build_textual_stubs() -> dict[str, types.ModuleType]:
     app_mod = types.ModuleType("textual.app")
 
     class App(_StubObject):
+        # Mirror Textual's App.is_web (added in 0.86) — False with no web
+        # driver attached, which is the case for every stub-based unit test.
+        is_web = False
+
         def get_system_commands(self, _screen: Any) -> Any:
             return iter(())
 

@@ -161,6 +161,35 @@ class TestTaskLaunchScreen:
         screen.on_button_pressed(event)
         screen.dismiss.assert_called_once_with(None)
 
+    def test_console_entry_stored_when_provided(self) -> None:
+        """The background-container-start entry is held for the Show-log button."""
+        screens, _ = import_screens()
+        entry = mock.Mock()
+        screen = screens.TaskLaunchScreen(
+            container_name="c", project_id="p", task_id="1", console_entry=entry
+        )
+        assert screen._console_entry is entry
+
+    def test_console_entry_defaults_to_none(self) -> None:
+        """Without a console_entry there is nothing to foreground — Show-log is omitted."""
+        screens, _ = import_screens()
+        screen = screens.TaskLaunchScreen(container_name="c", project_id="p", task_id="1")
+        assert screen._console_entry is None
+
+    def test_show_log_button_opens_worker_log_view(self) -> None:
+        """The Show-log button foregrounds the entry's WorkerLogScreen — and only then."""
+        screens, _ = import_screens()
+        entry = mock.Mock()
+        screen = screens.TaskLaunchScreen(
+            container_name="c", project_id="p", task_id="1", console_entry=entry
+        )
+        screen.app = mock.Mock()
+        event = mock.Mock()
+        event.button.id = "btn-show-log"
+        screen.on_button_pressed(event)
+        # A screen was pushed (the WorkerLogScreen view over the entry).
+        screen.app.push_screen.assert_called_once()
+
     def test_do_login_returns_agent_and_prompt(self) -> None:
         screens, _ = import_screens()
         screen = screens.TaskLaunchScreen(
@@ -359,102 +388,99 @@ class TestDefaultLoginConfig:
 # ---------------------------------------------------------------------------
 
 
-class TestWorkerGroupHandlers:
-    """Tests for cli-launch and toad-launch worker group handlers."""
+class TestBackgroundLaunchCompletion:
+    """The on_complete callback of the background CLI / Toad container start.
 
-    def test_cli_launch_error_notifies(self) -> None:
-        app_mod, app_class = import_app()
+    The start is dispatched as a captured ConsoleLog action; its
+    on_complete callback unmarks the launch badge, refreshes the task
+    list, and toasts the outcome.
+    """
+
+    @staticmethod
+    def _run_and_capture_on_complete(app_class, start_method: str):
+        """Run a ``_start_*_task_background`` with dispatch mocked; return (instance, on_complete)."""
         instance = app_class()
         instance.current_project_id = "proj1"
+        instance._last_selected_tasks = {}
+        instance._save_selection_state = mock.Mock()
         instance.notify = mock.Mock()
+        instance.push_screen = mock.AsyncMock()
         instance.refresh_tasks = mock.AsyncMock()
+        instance.run_worker = mock.Mock()
+        instance._mark_launching = mock.Mock()
+        instance._unmark_launching = mock.Mock()
 
-        worker = mock.Mock()
-        worker.group = "cli-launch"
-        worker.result = ("proj1", "5", "terok-proj1-cli-5", "container failed")
-        event = mock.Mock()
-        event.worker = worker
-        event.state = app_mod.WorkerState.SUCCESS
+        captured: dict = {}
 
-        run(app_class.handle_worker_state_changed(instance, event))
+        def _dispatch(ref, *args, title, on_complete=None):
+            captured["on_complete"] = on_complete
+            return mock.Mock()
 
-        instance.notify.assert_called_once_with("CLI task failed: container failed")
-        instance.refresh_tasks.assert_awaited_once()
+        instance.dispatch_console_action = _dispatch
 
-    def test_cli_launch_success_refreshes(self) -> None:
-        app_mod, app_class = import_app()
-        instance = app_class()
-        instance.current_project_id = "proj1"
-        instance.notify = mock.Mock()
-        instance.refresh_tasks = mock.AsyncMock()
+        fake_project = mock.Mock()
+        fake_project.default_login = None
+        action_globals = getattr(app_class, start_method).__globals__
+        with mock.patch.dict(
+            action_globals,
+            {
+                "task_new": mock.Mock(return_value="5"),
+                "load_project": mock.Mock(return_value=fake_project),
+                "container_name": lambda *a: "terok-proj1-cli-5",
+            },
+        ):
+            run(getattr(app_class, start_method)(instance, "deploy"))
+        return instance, captured["on_complete"]
 
-        worker = mock.Mock()
-        worker.group = "cli-launch"
-        worker.result = ("proj1", "5", "terok-proj1-cli-5", None)
-        event = mock.Mock()
-        event.worker = worker
-        event.state = app_mod.WorkerState.SUCCESS
+    @staticmethod
+    def _entry(*, ok: bool):
+        """Build a fake finished ConsoleLogEntry."""
+        entry = mock.Mock()
+        entry.ok = ok
+        return entry
 
-        run(app_class.handle_worker_state_changed(instance, event))
+    def test_cli_launch_failure_notifies_unmarks_refreshes(self) -> None:
+        _, app_class = import_app()
+        instance, on_complete = self._run_and_capture_on_complete(
+            app_class, "_start_cli_task_background"
+        )
+        on_complete(self._entry(ok=False))
+        instance._unmark_launching.assert_called_once_with("proj1", "5")
+        instance.notify.assert_called_once()
+        assert instance.notify.call_args[1].get("severity") == "error"
+        instance.refresh_tasks.assert_awaited()
 
+    def test_cli_launch_success_unmarks_and_refreshes_quietly(self) -> None:
+        _, app_class = import_app()
+        instance, on_complete = self._run_and_capture_on_complete(
+            app_class, "_start_cli_task_background"
+        )
+        instance.notify.reset_mock()
+        on_complete(self._entry(ok=True))
+        instance._unmark_launching.assert_called_once_with("proj1", "5")
         instance.notify.assert_not_called()
-        instance.refresh_tasks.assert_awaited_once()
+        instance.refresh_tasks.assert_awaited()
 
-    def test_toad_launch_error_notifies(self) -> None:
-        app_mod, app_class = import_app()
-        instance = app_class()
-        instance.current_project_id = "proj1"
-        instance.notify = mock.Mock()
-        instance.refresh_tasks = mock.AsyncMock()
+    def test_toad_launch_failure_notifies_error(self) -> None:
+        _, app_class = import_app()
+        instance, on_complete = self._run_and_capture_on_complete(
+            app_class, "_start_toad_task_background"
+        )
+        instance.notify.reset_mock()
+        on_complete(self._entry(ok=False))
+        instance._unmark_launching.assert_called_once_with("proj1", "5")
+        instance.notify.assert_called_once()
+        assert instance.notify.call_args[1].get("severity") == "error"
 
-        worker = mock.Mock()
-        worker.group = "toad-launch"
-        worker.result = ("proj1", "6", "terok-proj1-toad-6", "container failed")
-        event = mock.Mock()
-        event.worker = worker
-        event.state = app_mod.WorkerState.SUCCESS
-
-        run(app_class.handle_worker_state_changed(instance, event))
-
-        instance.notify.assert_called_once_with("Toad task failed: container failed")
-        instance.refresh_tasks.assert_awaited_once()
-
-    def test_toad_launch_success_notifies(self) -> None:
-        app_mod, app_class = import_app()
-        instance = app_class()
-        instance.current_project_id = "proj1"
-        instance.notify = mock.Mock()
-        instance.refresh_tasks = mock.AsyncMock()
-
-        worker = mock.Mock()
-        worker.group = "toad-launch"
-        worker.result = ("proj1", "6", "terok-proj1-toad-6", None)
-        event = mock.Mock()
-        event.worker = worker
-        event.state = app_mod.WorkerState.SUCCESS
-
-        run(app_class.handle_worker_state_changed(instance, event))
-
-        instance.notify.assert_called_once_with("Toad task 6 is running")
-        instance.refresh_tasks.assert_awaited_once()
-
-    def test_toad_launch_different_project_no_refresh(self) -> None:
-        app_mod, app_class = import_app()
-        instance = app_class()
-        instance.current_project_id = "other"
-        instance.notify = mock.Mock()
-        instance.refresh_tasks = mock.AsyncMock()
-
-        worker = mock.Mock()
-        worker.group = "toad-launch"
-        worker.result = ("proj1", "6", "terok-proj1-toad-6", None)
-        event = mock.Mock()
-        event.worker = worker
-        event.state = app_mod.WorkerState.SUCCESS
-
-        run(app_class.handle_worker_state_changed(instance, event))
-
-        instance.refresh_tasks.assert_not_awaited()
+    def test_toad_launch_success_notifies_running(self) -> None:
+        _, app_class = import_app()
+        instance, on_complete = self._run_and_capture_on_complete(
+            app_class, "_start_toad_task_background"
+        )
+        instance.notify.reset_mock()
+        on_complete(self._entry(ok=True))
+        instance._unmark_launching.assert_called_once_with("proj1", "5")
+        instance.notify.assert_called_once_with("Toad task 5 is running")
 
 
 # ---------------------------------------------------------------------------
@@ -594,6 +620,23 @@ class TestActionLoginTitle:
         instance.notify.assert_called_once_with("No task selected.")
         instance._launch_terminal_session.assert_not_awaited()
 
+    def test_action_login_refused_when_web_served(self) -> None:
+        """Under textual-serve there is no host terminal — CLI login is refused."""
+        _, app_class = import_app()
+        instance = app_class()
+        instance.is_web = True
+        instance.current_project_id = "proj1"
+        instance.current_task = mock.Mock()
+        instance.current_task.task_id = "5"
+        instance.notify = mock.Mock()
+        instance._launch_terminal_session = mock.AsyncMock()
+
+        run(app_class._action_login(instance))
+
+        instance._launch_terminal_session.assert_not_awaited()
+        instance.notify.assert_called_once()
+        assert instance.notify.call_args[1].get("severity") == "error"
+
 
 # ---------------------------------------------------------------------------
 # _login_title helper
@@ -712,7 +755,7 @@ class TestStartCliTaskBackgroundPassesName:
         instance._last_selected_tasks = {}
         instance._save_selection_state = mock.Mock()
         instance.notify = mock.Mock()
-        instance.run_worker = mock.Mock()
+        instance.dispatch_console_action = mock.Mock()
         instance.push_screen = mock.AsyncMock()
         instance.refresh_tasks = mock.AsyncMock()
         instance._mark_launching = mock.Mock()

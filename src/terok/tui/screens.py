@@ -21,6 +21,8 @@ if TYPE_CHECKING:
     from textual.timer import Timer
     from textual.widgets import Input, OptionList, SelectionList, TextArea
     from textual.widgets.option_list import Option
+
+    from .console_log import ConsoleLogEntry
 else:
     try:  # pragma: no cover - optional import for test stubs
         from textual.widgets import OptionList
@@ -1246,6 +1248,7 @@ class TaskLaunchScreen(screen.ModalScreen["tuple[str, str, str, str, str, str | 
         task_name: str | None = "",
         default_login: str = "bash",
         installed: frozenset[str] | None = None,
+        console_entry: "ConsoleLogEntry | None" = None,
     ) -> None:
         """Create the launch screen with container context and default agent.
 
@@ -1261,6 +1264,10 @@ class TaskLaunchScreen(screen.ModalScreen["tuple[str, str, str, str, str, str | 
         self._task_name = task_name or task_id
         self._default_login = default_login
         self._installed = installed
+        # ConsoleLogEntry for the background container start.  The start
+        # stays backgrounded; "Show log" is the only thing that foregrounds
+        # its WorkerLogScreen view.
+        self._console_entry = console_entry
         self._container_ready = False
         self._poll_timer: Timer | None = None
         self._probe_in_flight = False
@@ -1286,6 +1293,8 @@ class TaskLaunchScreen(screen.ModalScreen["tuple[str, str, str, str, str, str | 
             yield Select(choices, value=login_value, id="login-agent")
             yield Input(placeholder="Initial prompt (optional)", id="launch-prompt")
             with Horizontal(id="launch-buttons"):
+                if self._console_entry is not None:
+                    yield Button("Show log", id="btn-show-log", variant="default")
                 yield Button("Dismiss", id="btn-dismiss", variant="default")
                 yield Button("Login", id="btn-login", variant="primary", disabled=True)
         dialog.border_title = f"CLI Task {self._task_id} ({self._task_name})"
@@ -1376,11 +1385,15 @@ class TaskLaunchScreen(screen.ModalScreen["tuple[str, str, str, str, str, str | 
             self._do_login()
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
-        """Handle Login or Dismiss button clicks."""
+        """Handle Login, Dismiss, or Show-log button clicks."""
         if event.button.id == "btn-login":
             self._do_login()
         elif event.button.id == "btn-dismiss":
             self.dismiss(None)
+        elif event.button.id == "btn-show-log" and self._console_entry is not None:
+            from .worker_log_screen import WorkerLogScreen
+
+            self.app.push_screen(WorkerLogScreen(self._console_entry))
 
     def _do_login(self) -> None:
         """Dismiss with launch context + selected agent and optional prompt."""

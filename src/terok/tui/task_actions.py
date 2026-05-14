@@ -7,9 +7,7 @@ Handles task creation, deletion, renaming, running (CLI/toad/autopilot),
 login, restart, follow-up, log viewing, and diff copying.
 """
 
-import io
 from collections.abc import Callable
-from contextlib import redirect_stdout
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -32,9 +30,7 @@ from ..lib.api import (
     task_followup_headless,
     task_new,
     task_rename,
-    task_run_cli,
     task_run_headless,
-    task_run_toad,
     wait_for_container_exit,
 )
 from .clipboard import copy_to_clipboard_detailed
@@ -50,6 +46,8 @@ from .widgets import TaskList
 
 if TYPE_CHECKING:
     from textual.app import App
+
+    from .console_log import ConsoleLogEntry
 
     # At type-check time, the mixin "is-an" App so all of its methods resolve
     # naturally on `self`. At runtime it's plain `object` — the actual host
@@ -105,10 +103,18 @@ class TaskActionsMixin(_MixinBase):
             refresh: str | None = ...,
             on_complete: Callable[[], None] | None = ...,
         ) -> None: ...
+        def dispatch_console_action(
+            self,
+            ref: str,
+            *args: object,
+            title: str,
+            on_complete: Callable[[ConsoleLogEntry], None] | None = ...,
+        ) -> ConsoleLogEntry: ...
         def _launch_terminal_session(self, *args: Any, **kwargs: Any) -> Any: ...
         def _save_selection_state(self) -> None: ...
         def _update_task_details(self) -> None: ...
         def _mark_launching(self, project_id: str, task_id: str) -> None: ...
+        def _unmark_launching(self, project_id: str, task_id: str) -> None: ...
 
     # ---------- Helpers ----------
 
@@ -174,32 +180,6 @@ class TaskActionsMixin(_MixinBase):
         except Exception as e:
             return project_id, task_id, task_name, str(e), []
 
-    # ---------- Background container start helpers ----------
-
-    def _start_cli_container_quiet(
-        self, pid: str, task_id: str
-    ) -> tuple[str, str, str, str | None]:
-        """Background worker: start CLI container, suppress stdout."""
-        cname = container_name(pid, "cli", task_id)
-        try:
-            with redirect_stdout(io.StringIO()):
-                task_run_cli(pid, task_id)
-            return pid, task_id, cname, None
-        except (SystemExit, Exception) as e:
-            return pid, task_id, cname, str(e)
-
-    def _start_toad_container_quiet(
-        self, pid: str, task_id: str
-    ) -> tuple[str, str, str, str | None]:
-        """Background worker: start Toad container, suppress stdout."""
-        cname = container_name(pid, "toad", task_id)
-        try:
-            with redirect_stdout(io.StringIO()):
-                task_run_toad(pid, task_id)
-            return pid, task_id, cname, None
-        except (SystemExit, Exception) as e:
-            return pid, task_id, cname, str(e)
-
     # ---------- Task lifecycle actions ----------
 
     async def _action_task_start_cli(self) -> None:
@@ -221,7 +201,12 @@ class TaskActionsMixin(_MixinBase):
         await self._start_cli_task_background(name)
 
     async def _start_cli_task_background(self, name: str) -> None:
-        """Create a CLI task and start its container in the background."""
+        """Create a CLI task and start its container in the background.
+
+        The container start runs as a captured ConsoleLog entry — it
+        stays in the background; the launch modal's "Show log" button is
+        the only thing that foregrounds it.
+        """
         pid = self.current_project_id
         if not pid:
             return
@@ -234,12 +219,22 @@ class TaskActionsMixin(_MixinBase):
         cname = container_name(pid, "cli", task_id)
 
         self._mark_launching(pid, task_id)
-        self.run_worker(
-            lambda: self._start_cli_container_quiet(pid, task_id),
-            name=f"cli-launch:{pid}:{task_id}",
-            group="cli-launch",
-            thread=True,
-            exit_on_error=False,
+
+        def _on_done(entry: object) -> None:
+            self._unmark_launching(pid, task_id)
+            if not getattr(entry, "ok", False):
+                self.notify(
+                    f"CLI task {name} failed to start — open Console output for the log.",
+                    severity="error",
+                )
+            self.run_worker(self.refresh_tasks())
+
+        console_entry = self.dispatch_console_action(
+            "terok.tui.worker_actions:start_cli_container",
+            pid,
+            task_id,
+            title=f"Starting CLI container for {name}",
+            on_complete=_on_done,
         )
 
         # Resolve default login agent: project → global → "bash"
@@ -265,6 +260,7 @@ class TaskActionsMixin(_MixinBase):
                 task_name=name,
                 default_login=default_login,
                 installed=installed,
+                console_entry=console_entry,
             ),
             self._on_launch_screen_result,
         )
@@ -334,7 +330,11 @@ class TaskActionsMixin(_MixinBase):
         await self._start_toad_task_background(name)
 
     async def _start_toad_task_background(self, name: str) -> None:
-        """Create a Toad task and start its container in the background."""
+        """Create a Toad task and start its container in the background.
+
+        The container start runs as a captured ConsoleLog entry \u2014 view
+        it from the ``Console output`` command if it needs inspecting.
+        """
         pid = self.current_project_id
         if not pid:
             return
@@ -346,12 +346,24 @@ class TaskActionsMixin(_MixinBase):
         self._focus_task_after_creation(pid, task_id)
 
         self._mark_launching(pid, task_id)
-        self.run_worker(
-            lambda: self._start_toad_container_quiet(pid, task_id),
-            name=f"toad-launch:{pid}:{task_id}",
-            group="toad-launch",
-            thread=True,
-            exit_on_error=False,
+
+        def _on_done(entry: object) -> None:
+            self._unmark_launching(pid, task_id)
+            if getattr(entry, "ok", False):
+                self.notify(f"Toad task {task_id} is running")
+            else:
+                self.notify(
+                    f"Toad task {name} failed to start \u2014 open Console output for the log.",
+                    severity="error",
+                )
+            self.run_worker(self.refresh_tasks())
+
+        self.dispatch_console_action(
+            "terok.tui.worker_actions:start_toad_container",
+            pid,
+            task_id,
+            title=f"Starting Toad container for {name}",
+            on_complete=_on_done,
         )
         self.notify("Starting Toad task\u2026")
         await self.refresh_tasks()
@@ -623,9 +635,25 @@ class TaskActionsMixin(_MixinBase):
         )
 
     async def _action_login(self) -> None:
-        """Log into the selected task's running container."""
+        """Log into the selected task's running container.
+
+        CLI login attaches a host terminal to the container — impossible
+        when the TUI is served over the web (textual-serve), where there
+        is no host terminal.  Gated on [`App.is_web`][textual.app.App.is_web]:
+        web users get an error notification pointing at the toad-mode
+        alternative (its browser URL works without a host shell).
+        """
         if not self.current_project_id or not self.current_task:
             self.notify("No task selected.")
+            return
+        if self.is_web:
+            self.notify(
+                "CLI login is unavailable in the web TUI — it needs a host "
+                "terminal.  Run a task in toad mode instead (toad serves in "
+                "the browser), or open a host shell and use `terok login`.",
+                severity="error",
+                timeout=12,
+            )
             return
         pid = self.current_project_id
         tid = self.current_task.task_id

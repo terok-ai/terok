@@ -273,3 +273,17 @@ def task_stop(project_id: str, task_id: str) -> None:
     from terok.lib.api import task_stop as _task_stop
 
     _task_stop(project_id, task_id)
+
+
+def start_cli_container(project_id: str, task_id: str) -> None:
+    """Start the CLI container for the already-created task *task_id*."""
+    from terok.lib.api import task_run_cli
+
+    task_run_cli(project_id, task_id)
+
+
+def start_toad_container(project_id: str, task_id: str) -> None:
+    """Start the Toad container for the already-created task *task_id*."""
+    from terok.lib.api import task_run_toad
+
+    task_run_toad(project_id, task_id)

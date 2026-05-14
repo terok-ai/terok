@@ -1005,16 +1005,6 @@ if _HAS_TEXTUAL:
         async def handle_worker_state_changed(self, event: Worker.StateChanged) -> None:
             """Dispatch completed worker results to the appropriate UI panel."""
             worker = event.worker
-            # ERROR/CANCELLED need ⏳ cleanup too or the badge gets stuck.
-            if event.state in (
-                WorkerState.SUCCESS,
-                WorkerState.ERROR,
-                WorkerState.CANCELLED,
-            ) and worker.group in ("cli-launch", "toad-launch"):
-                name = worker.name if isinstance(worker.name, str) else ""
-                parts = name.split(":")
-                if len(parts) == 3:
-                    self._unmark_launching(parts[1], parts[2])
             if event.state != WorkerState.SUCCESS:
                 if worker.group == "project-state" and event.state == WorkerState.ERROR:
                     state_widget = self.query_one("#project-state", ProjectState)
@@ -1110,30 +1100,6 @@ if _HAS_TEXTUAL:
                 if project_id != self.current_project_id:
                     return
                 await self.refresh_tasks()
-
-            if worker.group == "cli-launch":
-                result = worker.result
-                if not result:
-                    return
-                project_id, task_id, _cname, error = result
-                if error:
-                    self.notify(f"CLI task failed: {error}")
-                if project_id == self.current_project_id:
-                    await self.refresh_tasks()
-                return
-
-            if worker.group == "toad-launch":
-                result = worker.result
-                if not result:
-                    return
-                project_id, task_id, _cname, error = result
-                if error:
-                    self.notify(f"Toad task failed: {error}")
-                else:
-                    self.notify(f"Toad task {task_id} is running")
-                if project_id == self.current_project_id:
-                    await self.refresh_tasks()
-                return
 
             if worker.group == "autopilot-launch":
                 result = worker.result
