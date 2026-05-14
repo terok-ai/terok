@@ -504,8 +504,15 @@ class InitProgressScreen(ModalScreen[InitOutcome]):
         "gate": "Gate sync",
     }
 
-    def __init__(self, project_id: str, rendered_yaml: str) -> None:
-        """Create the init screen with the project ID and final YAML text."""
+    def __init__(self, project_id: str, rendered_yaml: str | None = None) -> None:
+        """Create the init screen.
+
+        *rendered_yaml* is the ``project.yml`` content the new-project
+        wizard wants written (with an overwrite confirm) before init
+        runs.  ``None`` re-runs init against the *existing* on-disk
+        ``project.yml`` — the project-screen "Full setup" action —
+        writing and confirming nothing.
+        """
         super().__init__()
         self._project_id = project_id
         self._rendered_yaml = rendered_yaml
@@ -586,32 +593,35 @@ class InitProgressScreen(ModalScreen[InitOutcome]):
     async def _run_init_with_confirm(self) -> None:
         """Top-level coroutine that sequences overwrite-confirm → write → run.
 
-        The outer try/except is a safety net: any unexpected exception
-        from confirm/write/run is logged and the Close button is
-        enabled, so a user is never stuck in front of a frozen modal
-        wondering why nothing is happening.
+        With ``rendered_yaml`` unset (the re-run-on-an-existing-project
+        path) there is nothing to write or confirm — go straight to the
+        init steps.  The outer try/except is a safety net: any
+        unexpected exception from confirm/write/run is logged and the
+        Close button is enabled, so a user is never stuck in front of a
+        frozen modal wondering why nothing is happening.
         """
         log = self.query_one("#wizard-init-log", RichLog)
         try:
-            existing = self._existing_project_yaml_path()
-            if existing is not None:
-                if not await self._confirm_overwrite(existing):
-                    log.write(
-                        "[yellow]Keeping existing project.yml — nothing written, "
-                        "nothing initialised.[/]"
-                    )
-                    # A declined overwrite is the user's deliberate choice —
-                    # not a failure — so the screen dismisses with a distinct
-                    # outcome the caller can branch on.
-                    self._outcome = InitOutcome.DECLINED
-                    return
+            if self._rendered_yaml is not None:
+                existing = self._existing_project_yaml_path()
+                if existing is not None:
+                    if not await self._confirm_overwrite(existing):
+                        log.write(
+                            "[yellow]Keeping existing project.yml — nothing written, "
+                            "nothing initialised.[/]"
+                        )
+                        # A declined overwrite is the user's deliberate choice —
+                        # not a failure — so the screen dismisses with a distinct
+                        # outcome the caller can branch on.
+                        self._outcome = InitOutcome.DECLINED
+                        return
 
-            log.write(f"[dim]Writing project.yml for {self._project_id}…[/]")
-            try:
-                write_project_yaml(self._project_id, self._rendered_yaml, overwrite=True)
-            except (OSError, SystemExit) as exc:
-                log.write(f"[red]Failed to write project.yml: {exc}[/]")
-                return
+                log.write(f"[dim]Writing project.yml for {self._project_id}…[/]")
+                try:
+                    write_project_yaml(self._project_id, self._rendered_yaml, overwrite=True)
+                except (OSError, SystemExit) as exc:
+                    log.write(f"[red]Failed to write project.yml: {exc}[/]")
+                    return
             await self._run_init()
         except Exception as exc:  # noqa: BLE001 — modal must never freeze silently
             log.write(f"[red]Unexpected wizard error: {exc}[/]")
@@ -698,9 +708,10 @@ class InitProgressScreen(ModalScreen[InitOutcome]):
         )
 
     async def _askpass_subprocess_env(self, project: Any) -> dict[str, str] | None:
-        """Return env for ``_run_isolated`` — ``None`` for projects that don't opt into personal SSH.
+        """Return extra env for the dispatched build / gate-sync steps.
 
-        Three branches:
+        ``None`` for projects that don't opt into personal SSH.  Three
+        branches:
 
         - **Vault-only project (default).**  Return ``None`` so the
           subprocess inherits the ambient env — no socket, no helper,
@@ -732,6 +743,40 @@ class InitProgressScreen(ModalScreen[InitOutcome]):
         )
 
     # ── Background worker ─────────────────────────────────────────────
+
+    async def _run_dispatched_step(
+        self,
+        ref: str,
+        *args: object,
+        log: RichLog,
+        title: str,
+        env: dict[str, str] | None,
+        fail_msg: str,
+    ) -> None:
+        """Dispatch worker-action *ref* as a captured child process, tailing it into *log*.
+
+        The child owns its own file descriptors (no TUI-frame
+        corruption) and its output streams into the wizard's log pane
+        live — a multi-minute build is never a frozen screen.  A
+        non-zero exit raises ``RuntimeError(fail_msg)`` so the caller's
+        failed-step marking and outcome handling fire.
+        """
+        entry = self.app.dispatch_console_action(  # type: ignore[attr-defined]
+            ref, *args, title=title, env=env
+        )
+
+        def _tail(line: str) -> None:
+            # Raw subprocess output — wrap in Text so the markup-enabled
+            # log pane renders stray brackets literally rather than as markup.
+            log.write(Text(line))
+
+        unsubscribe = entry.subscribe(_tail)
+        try:
+            await entry.wait()
+        finally:
+            unsubscribe()
+        if not entry.ok:
+            raise RuntimeError(fail_msg)
 
     async def _run_init(self) -> None:
         """Drive the four init steps, updating UI between each.
@@ -808,47 +853,39 @@ class InitProgressScreen(ModalScreen[InitOutcome]):
             project = load_project(self._project_id)
             subprocess_env = await self._askpass_subprocess_env(project)
 
-            # Step 3: Build.  ``build_images`` invokes ``podman build``
-            # subprocesses that inherit the caller's stdout/stderr file
-            # descriptors; left alone, their raw output *corrupts the
-            # TUI frame* (colour codes, cursor moves, et al.).  We run
-            # the whole build in a fresh Python subprocess whose fds
-            # are captured by ``subprocess.run`` — parent-side fds stay
-            # untouched no matter what the build crashes on.  A proper
-            # log-tailer widget that streams subprocess output into
-            # this pane is tracked in issue #473.
+            # Step 3: Build.  ``build_images`` shells out to ``podman
+            # build``; dispatched as a captured ConsoleLog action so the
+            # child process owns its fds — its output streams into the
+            # log pane below instead of corrupting the TUI frame.
             self._mark("build", "running", "this can take several minutes")
-            log.write(
-                "[dim]Running image build in a subprocess (output suppressed to keep "
-                "the TUI intact; watch `podman images`, or see #473 for the planned "
-                "log-tailer widget).[/]"
+            log.write("[dim]Building images — output follows.[/]")
+            await self._run_dispatched_step(
+                "terok.tui.worker_actions:build",
+                self._project_id,
+                log=log,
+                title=f"Building images for {self._project_id}",
+                env=subprocess_env,
+                fail_msg="Image build failed",
             )
-            await asyncio.to_thread(_build_in_subprocess, self._project_id, env=subprocess_env)
             self._mark("build", "done")
 
-            # Step 4: Gate sync — sync itself runs in a subprocess for
-            # the same reason as the build: ``git clone --mirror`` and
-            # friends inherit stdout/stderr and would otherwise
-            # overwrite the TUI frame.
+            # Step 4: Gate sync — ``git clone --mirror`` and friends get
+            # the same captured-child treatment as the build.
             if not project.gate_enabled:
                 self._mark("gate", "skipped", "gate.enabled: false")
                 log.write("[dim]Gate disabled in project.yml — skipping gate-sync.[/]")
             else:
                 self._mark("gate", "running")
-                res = await asyncio.to_thread(
-                    _gate_sync_in_subprocess, self._project_id, env=subprocess_env
+                log.write("[dim]Syncing the git gate — output follows.[/]")
+                await self._run_dispatched_step(
+                    "terok.tui.worker_actions:sync_gate",
+                    self._project_id,
+                    log=log,
+                    title=f"Syncing gate for {self._project_id}",
+                    env=subprocess_env,
+                    fail_msg="Gate sync failed",
                 )
-                if res["success"]:
-                    upstream_hint = (
-                        f"upstream {res['upstream_url']}"
-                        if res.get("upstream_url")
-                        else "local-only bare repo"
-                    )
-                    self._mark("gate", "done", upstream_hint)
-                else:
-                    errors = ", ".join(res.get("errors", []))
-                    self._mark("gate", "failed", errors)
-                    raise RuntimeError(f"Gate sync failed: {errors}")
+                self._mark("gate", "done")
 
             self._outcome = InitOutcome.SUCCESS
             log.write(f"[green]Project '{self._project_id}' is ready.[/]")
@@ -983,99 +1020,3 @@ def _log_capture(log: RichLog) -> Iterator[None]:
             text = buffer.getvalue().rstrip()
             if text:
                 log.write(text)
-
-
-def _run_isolated(
-    child_body: str,
-    *,
-    label: str,
-    env: dict[str, str] | None = None,
-) -> None:
-    """Run *child_body* as a ``python -c`` subprocess with captured fds.
-
-    Several init steps shell out to long-running commands (``podman
-    build``, ``git clone --mirror``) that inherit the caller's
-    stdout/stderr file descriptors.  Left alone, their raw output
-    *corrupts the TUI frame* — colour codes, cursor moves, and progress
-    bars land directly on the terminal underneath Textual.  Running the
-    whole step in a child Python process moves those fds one layer
-    away: ``capture_output=True`` swallows them, and the parent's
-    terminal stays pristine regardless of what the step prints or
-    crashes with.
-
-    ``capture_output=True`` only intercepts stdout/stderr, not
-    ``/dev/tty``.  Tools like OpenSSH open ``/dev/tty`` directly to
-    read passphrases, which would land on the Textual frame despite
-    the captured fds.  ``start_new_session=True`` detaches the child
-    from its controlling terminal so ``/dev/tty`` has nothing to
-    resolve to, and ``stdin=DEVNULL`` closes the last input channel.
-    Combined, no subprocess below this call — however badly behaved —
-    can prompt the user over the TUI.
-
-    *env* is passed straight through to [`subprocess.run`][subprocess.run].  When
-    ``None`` the child inherits the parent's environment (default
-    behaviour); the wizard uses this parameter to inject askpass
-    variables for ``use_personal_ssh`` projects so OpenSSH routes
-    passphrase prompts to the TUI modal instead of failing silently.
-
-    *label* is the human-friendly step name used in the error message.
-    Any non-zero exit propagates as [`RuntimeError`][RuntimeError] carrying the
-    last few KiB of the child's combined output, which the wizard's
-    worker already logs as the failed step's detail.
-
-    Proper streaming (subprocess output → ``RichLog`` via a reader
-    thread) is tracked in issue #473 — this is the minimum-viable
-    isolation, not the final UX.
-    """
-    import subprocess  # noqa: S404 — launching a known python interpreter with fixed argv
-    import sys
-
-    result = subprocess.run(  # noqa: S603 — argv is sys.executable + -c + terok code we control
-        [sys.executable, "-c", child_body],
-        capture_output=True,
-        text=True,
-        check=False,
-        stdin=subprocess.DEVNULL,
-        start_new_session=True,
-        env=env,
-    )
-    if result.returncode != 0:
-        tail = (result.stderr or result.stdout or "").strip().splitlines()
-        snippet = "\n".join(tail[-20:]) if tail else "(no output)"
-        raise RuntimeError(f"{label} exited with code {result.returncode}:\n{snippet}")
-
-
-def _build_in_subprocess(project_id: str, *, env: dict[str, str] | None = None) -> None:
-    """Run [`build_images`][terok.cli.commands.project.build_images] in a child Python process."""
-    # Literal repr keeps project_id safely escaped into the -c body.
-    child_body = f"from terok.lib.api import build_images; build_images({project_id!r})"
-    _run_isolated(child_body, label="build_images", env=env)
-
-
-def _gate_sync_in_subprocess(
-    project_id: str, *, env: dict[str, str] | None = None
-) -> dict[str, Any]:
-    """Run the gate sync in a child Python process and return its result dict.
-
-    The result dict is serialised to a tempfile (rather than captured
-    stdout) so any ``git`` progress noise can't be mistaken for the
-    payload.  The tempfile is cleaned up regardless of subprocess
-    outcome.
-    """
-    import json
-    import tempfile
-
-    with tempfile.NamedTemporaryFile(suffix=".json", prefix="terok-gate-sync-", delete=False) as f:
-        result_path = Path(f.name)
-    try:
-        child_body = (
-            "import json\n"
-            "from terok.lib.api import load_project, make_git_gate\n"
-            f"_project = load_project({project_id!r})\n"
-            "_result = make_git_gate(_project).sync()\n"
-            f"json.dump(_result, open({str(result_path)!r}, 'w'))\n"
-        )
-        _run_isolated(child_body, label="gate sync", env=env)
-        return json.loads(result_path.read_text(encoding="utf-8"))
-    finally:
-        result_path.unlink(missing_ok=True)

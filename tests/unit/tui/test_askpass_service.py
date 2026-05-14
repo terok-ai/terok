@@ -135,6 +135,7 @@ class TestSocketPath:
             public_host="127.0.0.1",
             shield_bypass_firewall_no_protection=False,
             tui_default_tmux=False,
+            tui_external_editor=True,
             shield_security_hint="",
         )
 

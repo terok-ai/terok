@@ -120,6 +120,7 @@ if _HAS_TEXTUAL:
 
     from .askpass_service import AskpassService
     from .clipboard import get_clipboard_helper_status
+    from .console_log import ConsoleLogMixin, ConsoleLogRegistry
     from .polling import PollingMixin
     from .project_actions import ProjectActionsMixin
     from .screens import (
@@ -206,7 +207,7 @@ if _HAS_TEXTUAL:
         "show_clearance": "action_show_clearance",
     }
 
-    class TerokTUI(PollingMixin, ProjectActionsMixin, TaskActionsMixin, App):
+    class TerokTUI(PollingMixin, ProjectActionsMixin, TaskActionsMixin, ConsoleLogMixin, App):
         """Redesigned TUI frontend for terok core modules."""
 
         CSS_PATH = None
@@ -293,6 +294,11 @@ if _HAS_TEXTUAL:
             self._config: Config = get_config()
             # Set dynamic title with version and branch info
             self._update_title()
+
+            # Session-scoped registry of dispatched-action console logs
+            # (image builds, gate/vault ops, container starts).  In-memory
+            # only — forgotten when the app closes.
+            self.console_logs = ConsoleLogRegistry()
 
             self.current_project_id: str | None = None
             self.current_task: TaskMeta | None = None
@@ -513,11 +519,17 @@ if _HAS_TEXTUAL:
             return False
 
         async def _run_setup_subprocess(self) -> bool:
-            """Stream ``terok setup`` through [`WorkerLogScreen`][terok.tui.app.WorkerLogScreen]; True on exit 0."""
-            result = await self.push_screen_wait(
-                WorkerLogScreen(["terok", "setup"], title="Running terok setup…")
-            )
-            if result.ok:
+            """Stream ``terok setup`` through a ``WorkerLogScreen``; True on exit 0.
+
+            The view is pushed non-blocking and the *entry* — not the
+            screen — is awaited: hiding the log to the background must
+            not stop the first-run flow from chaining into the wizard
+            once setup actually finishes.
+            """
+            entry = self.dispatch_console_command(["terok", "setup"], title="Running terok setup")
+            await self.push_screen(WorkerLogScreen(entry))
+            await entry.wait()
+            if entry.ok:
                 return True
             self.notify(
                 "terok setup reported errors.  Re-run from the command palette "
@@ -993,16 +1005,6 @@ if _HAS_TEXTUAL:
         async def handle_worker_state_changed(self, event: Worker.StateChanged) -> None:
             """Dispatch completed worker results to the appropriate UI panel."""
             worker = event.worker
-            # ERROR/CANCELLED need ⏳ cleanup too or the badge gets stuck.
-            if event.state in (
-                WorkerState.SUCCESS,
-                WorkerState.ERROR,
-                WorkerState.CANCELLED,
-            ) and worker.group in ("cli-launch", "toad-launch"):
-                name = worker.name if isinstance(worker.name, str) else ""
-                parts = name.split(":")
-                if len(parts) == 3:
-                    self._unmark_launching(parts[1], parts[2])
             if event.state != WorkerState.SUCCESS:
                 if worker.group == "project-state" and event.state == WorkerState.ERROR:
                     state_widget = self.query_one("#project-state", ProjectState)
@@ -1098,30 +1100,6 @@ if _HAS_TEXTUAL:
                 if project_id != self.current_project_id:
                     return
                 await self.refresh_tasks()
-
-            if worker.group == "cli-launch":
-                result = worker.result
-                if not result:
-                    return
-                project_id, task_id, _cname, error = result
-                if error:
-                    self.notify(f"CLI task failed: {error}")
-                if project_id == self.current_project_id:
-                    await self.refresh_tasks()
-                return
-
-            if worker.group == "toad-launch":
-                result = worker.result
-                if not result:
-                    return
-                project_id, task_id, _cname, error = result
-                if error:
-                    self.notify(f"Toad task failed: {error}")
-                else:
-                    self.notify(f"Toad task {task_id} is running")
-                if project_id == self.current_project_id:
-                    await self.refresh_tasks()
-                return
 
             if worker.group == "autopilot-launch":
                 result = worker.result
@@ -1439,6 +1417,11 @@ if _HAS_TEXTUAL:
                 self.action_run_setup,
             )
             yield SystemCommand(
+                "Console output",
+                "View live and captured logs from dispatched actions (builds, gate/vault ops)",
+                self.action_show_console_output,
+            )
+            yield SystemCommand(
                 "Git Gate Server",
                 "Manage gate server status and operations",
                 self.action_show_gate_server,
@@ -1468,6 +1451,12 @@ if _HAS_TEXTUAL:
                 "Run the host-wide auth flow for an agent or tool — no project required",
                 self.action_authenticate,
             )
+
+        def action_show_console_output(self) -> None:
+            """Open the console-output list — every dispatched action's log this session."""
+            from .console_output_screen import ConsoleOutputScreen
+
+            self.push_screen(ConsoleOutputScreen(self.console_logs))
 
         async def action_authenticate(self) -> None:
             """Open the host-wide ``Authenticate agents and tools`` modal.

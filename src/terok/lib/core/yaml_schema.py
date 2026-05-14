@@ -412,6 +412,16 @@ class RawTUISection(BaseModel):
     default_tmux: bool = Field(
         default=False, description="Default to tmux mode when launching the TUI"
     )
+    external_editor: bool = Field(
+        default=True,
+        description=(
+            "Open instruction-editing actions in ``$EDITOR`` when it is set, "
+            "instead of the integrated text editor.  Honoured only on a "
+            "local-terminal TUI — the web TUI (``terok-web`` / textual-serve) "
+            "always uses the integrated editor, as there is no terminal to "
+            "suspend to.  Set ``false`` to always use the integrated editor."
+        ),
+    )
     desktop_entry: Literal["auto", "skip", "install"] = Field(
         default="auto",
         description=(

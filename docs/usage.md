@@ -380,8 +380,8 @@ method automatically:
 |---|---|
 | Inside tmux | Opens new tmux window (TUI stays visible) |
 | Desktop (GNOME/KDE) | Opens new terminal window |
-| Web (textual serve) | Opens new browser tab (via ttyd) |
 | Plain terminal | Suspends TUI, opens shell, resumes on exit |
+| Web (`terok-web` / `textual serve`) | CLI login is disabled — there is no host terminal; an error notification points at toad mode. Run a task in **toad** mode for an in-browser session. |
 
 #### Running the TUI under tmux (recommended)
 

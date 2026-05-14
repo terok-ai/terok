@@ -137,10 +137,10 @@ class TestScopeHasVaultKeyLockedVault:
 
 
 class TestLookupVaultPubLine:
-    """``tui.project_actions._lookup_vault_pub_line`` renders the public line."""
+    """``tui.worker_actions._lookup_vault_pub_line`` renders the public line."""
 
     def test_renders_ed25519_pub_line(self) -> None:
-        from terok.tui.project_actions import _lookup_vault_pub_line
+        from terok.tui.worker_actions import _lookup_vault_pub_line
 
         record = MagicMock()
         record.key_type = "ed25519"
@@ -159,7 +159,7 @@ class TestLookupVaultPubLine:
         db.close.assert_called_once()
 
     def test_returns_none_when_scope_has_no_keys(self) -> None:
-        from terok.tui.project_actions import _lookup_vault_pub_line
+        from terok.tui.worker_actions import _lookup_vault_pub_line
 
         db = MagicMock()
         db.load_ssh_keys_for_scope.return_value = []
@@ -170,7 +170,7 @@ class TestLookupVaultPubLine:
             assert _lookup_vault_pub_line("ghost") is None
 
     def test_renders_rsa_pub_line(self) -> None:
-        from terok.tui.project_actions import _lookup_vault_pub_line
+        from terok.tui.worker_actions import _lookup_vault_pub_line
 
         record = MagicMock()
         record.key_type = "rsa"

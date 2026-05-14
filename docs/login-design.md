@@ -26,8 +26,11 @@ session should open in a separate window/tab so the TUI remains usable.
 
 ### R4: Work across environments
 
-Users run terok in diverse environments. Login should work well in all of them:
-terminal (bare), terminal (under tmux), desktop (GNOME, KDE), and browser (web-served TUI).
+Users run terok in diverse environments. CLI login should work well in the
+terminal ones: terminal (bare), terminal (under tmux), desktop (GNOME, KDE).
+Under a web-served TUI (`terok-web` / `textual serve`) there is no host
+terminal to attach to, so CLI login is refused with a notification — toad
+mode (an in-browser session) is the web-served login path.
 
 ### R5: Minimize cognitive load for nested tmux
 
@@ -49,16 +52,17 @@ creates, subsequent logins reattach.
 ### Host layer: environment-aware terminal delivery (R3, R4)
 
 The login command is the same; what varies is how the user gets a terminal to run it.
-A dispatch chain selects the best available method:
+A web-served TUI is refused up front (see "Web mode" below); for a local-terminal TUI
+a dispatch chain selects the best available method:
 
     ┌─────────────────────────────────────────────────────────┐
     │ 1. Inside tmux?  → tmux new-window                      │
     │ 2. Desktop DE?   → gnome-terminal / konsole / ptyxis    │
-    │ 3. Web mode?     → ttyd + open new browser tab          │
-    │ 4. Fallback      → suspend TUI, run directly            │
+    │ 3. Fallback      → suspend TUI, run directly            │
     └─────────────────────────────────────────────────────────┘
 
-Methods 1-3 keep the TUI visible. Method 4 (suspend) blocks the TUI but works everywhere.
+Methods 1-2 keep the TUI visible. Method 3 (suspend) blocks the TUI but works in
+any real terminal.
 
 ### tmux UX: visual disambiguation (R5)
 
@@ -86,12 +90,16 @@ The TUI calls `get_login_command()` to get the validated command, then `launch_l
 to dispatch via the chain above. The return value indicates which method was used,
 and the TUI shows a notification or falls back to suspend accordingly.
 
-### Web mode: ttyd for browser-tab terminals (R4)
+### Web mode: CLI login refused (R4)
 
-When the TUI is served via `textual serve`, `suspend()` is silently ignored (no real
-terminal to suspend). Instead, ttyd (a lightweight HTTP terminal server using xterm.js)
-is started on the host, and `App.open_url()` opens a new browser tab pointing to it.
-The user gets a real terminal in the new tab while the TUI remains in the original tab.
+When the TUI is served via `textual serve` (`terok-web`), there is no host terminal:
+`suspend()` would kill the served session, and a browser tab cannot attach to a host
+process. `_launch_terminal_session` is hard-gated on `App.is_web` — under a web-served
+TUI it shows an error notification ("run a task in toad mode") and does nothing else.
+Toad mode is the web-served alternative: the task serves its own session in the browser,
+no host shell required. (An earlier iteration spawned `ttyd` for a browser-tab terminal;
+that was dropped — see issue #473 — because it is a CLI login, not the toad-URL login,
+and the goal is a single coherent web-served login story.)
 
 ### `--tmux` opt-in wrapper (R3, R5)
 

@@ -269,7 +269,12 @@ class TestSpawnTerminal:
 
 
 class TestLaunchLogin:
-    """Tests for the launch_login orchestrator."""
+    """Tests for the launch_login orchestrator.
+
+    ``launch_login`` is only reached from a local-terminal TUI — the
+    web-served case is refused upstream (issue #473) — so it picks
+    between tmux, a desktop terminal, or "none" (caller suspends).
+    """
 
     @pytest.mark.parametrize(
         ("patches", "expected"),
@@ -277,60 +282,32 @@ class TestLaunchLogin:
             (
                 {
                     "is_inside_tmux": True,
-                    "is_web_mode": False,
                     "spawn_terminal_with_command": False,
                     "tmux_new_window": True,
-                    "spawn_ttyd": None,
                 },
                 ("tmux", None),
             ),
             (
                 {
                     "is_inside_tmux": False,
-                    "is_web_mode": False,
                     "spawn_terminal_with_command": True,
                     "tmux_new_window": False,
-                    "spawn_ttyd": None,
                 },
                 ("terminal", None),
             ),
             (
                 {
                     "is_inside_tmux": True,
-                    "is_web_mode": False,
                     "spawn_terminal_with_command": True,
                     "tmux_new_window": False,
-                    "spawn_ttyd": None,
                 },
                 ("terminal", None),
             ),
             (
                 {
                     "is_inside_tmux": False,
-                    "is_web_mode": False,
                     "spawn_terminal_with_command": False,
                     "tmux_new_window": False,
-                    "spawn_ttyd": None,
-                },
-                ("none", None),
-            ),
-            (
-                {
-                    "is_inside_tmux": False,
-                    "is_web_mode": True,
-                    "spawn_terminal_with_command": False,
-                    "tmux_new_window": False,
-                    "spawn_ttyd": 12345,
-                },
-                ("web", 12345),
-            ),
-            (
-                {
-                    "is_inside_tmux": False,
-                    "is_web_mode": True,
-                    "spawn_terminal_with_command": False,
-                    "tmux_new_window": False,
-                    "spawn_ttyd": None,
                 },
                 ("none", None),
             ),
@@ -340,8 +317,6 @@ class TestLaunchLogin:
             "falls-back-to-terminal",
             "falls-back-after-tmux-failure",
             "returns-none",
-            "web-mode-with-ttyd",
-            "web-mode-without-ttyd",
         ],
     )
     def test_launch_login(
@@ -355,10 +330,6 @@ class TestLaunchLogin:
                 return_value=patches["is_inside_tmux"],
             ) as mock_inside_tmux,
             unittest.mock.patch(
-                "terok.tui.shell_launch.is_web_mode",
-                return_value=patches["is_web_mode"],
-            ) as mock_is_web_mode,
-            unittest.mock.patch(
                 "terok.tui.shell_launch.spawn_terminal_with_command",
                 return_value=patches["spawn_terminal_with_command"],
             ) as mock_spawn_terminal,
@@ -366,10 +337,6 @@ class TestLaunchLogin:
                 "terok.tui.shell_launch.tmux_new_window",
                 return_value=patches["tmux_new_window"],
             ) as mock_tmux,
-            unittest.mock.patch(
-                "terok.tui.shell_launch.spawn_ttyd",
-                return_value=patches["spawn_ttyd"],
-            ) as mock_spawn_ttyd,
         ):
             assert launch_login(SHELL_COMMAND, title="login:c1") == expected
 
@@ -378,21 +345,10 @@ class TestLaunchLogin:
         if expected == ("tmux", None):
             mock_tmux.assert_called_once_with(SHELL_COMMAND, title="login:c1")
             mock_spawn_terminal.assert_not_called()
-            mock_spawn_ttyd.assert_not_called()
-            mock_is_web_mode.assert_not_called()
             return
 
         if patches["is_inside_tmux"]:
             mock_tmux.assert_called_once_with(SHELL_COMMAND, title="login:c1")
         else:
             mock_tmux.assert_not_called()
-
-        expected_is_web_mode_calls = 1 if expected == ("terminal", None) else 2
-        if patches["is_web_mode"]:
-            assert mock_is_web_mode.call_count == expected_is_web_mode_calls
-            mock_spawn_terminal.assert_not_called()
-            mock_spawn_ttyd.assert_called_once_with(SHELL_COMMAND)
-        else:
-            assert mock_is_web_mode.call_count == expected_is_web_mode_calls
-            mock_spawn_terminal.assert_called_once_with(SHELL_COMMAND, title="login:c1")
-            mock_spawn_ttyd.assert_not_called()
+        mock_spawn_terminal.assert_called_once_with(SHELL_COMMAND, title="login:c1")

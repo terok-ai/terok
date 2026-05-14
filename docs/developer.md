@@ -583,6 +583,34 @@ See `src/terok/lib/util/emoji.py` module docstring for full background,
 references, and future terminal developments to watch (Kitty text sizing
 protocol, Mode 2027, terminal convergence).
 
+#### Web-compatible workflows (no suspended terminal)
+
+The TUI must work identically when served over the web via `terok-web` /
+`textual serve`, where there is **no terminal to suspend to**.  `app.suspend()`
+and the `_run_suspended()` helper have been retired (issue #473); a dispatched
+action that used to print to a suspended terminal now runs as a captured child
+process:
+
+- **`console_log.py`** — `ConsoleLogRegistry` holds in-memory `ConsoleLogEntry`
+  objects.  `ConsoleLogMixin.dispatch_console_action(ref, *args, …)` runs a
+  referenced callable in a child process (via the `_worker_entry` module) and
+  pumps its merged stdout/stderr into the entry.  The pump worker is
+  *app-scoped*, so the action survives a viewer being hidden.  `dispatch_*` is
+  **UI-free** — it never pushes a screen.
+- **`worker_actions.py`** — one thin child-process entrypoint per TUI action
+  (`build`, `gate_install`, `vault_seal`, `start_cli_container`, …).  Each is a
+  single importable, JSON-positional-args-able call — keep new dispatched
+  actions here rather than threading facade kwargs through `dispatch_*`.
+- **`WorkerLogScreen`** — a *view* over a `ConsoleLogEntry` (live tail + Hide
+  to background).  **`ConsoleOutputScreen`** (command palette → "Console
+  output") lists every entry.
+- **Interactive workflows** become native widgets: `TextEditorScreen` /
+  `TextViewScreen` (`text_screens.py`) for instructions; `ClearanceScreen`
+  for shield verdicts.
+- **Web detection:** prefer `App.is_web` (Textual 0.86+).  `shell_launch.is_web_mode()`
+  is an env-var probe kept only for the pre-app check in `main()`.  CLI container
+  login is hard-gated off under `App.is_web`.
+
 ### IDE Setup (PyCharm/VSCode)
 
 1. Open the repo and set up a Python 3.12+ interpreter

@@ -106,6 +106,25 @@ def test_tui_default_tmux(
     assert cfg.get_tui_default_tmux() is expected
 
 
+@pytest.mark.parametrize(
+    ("config_text", "expected"),
+    [
+        ("", True),
+        ("tui:\n  external_editor: true\n", True),
+        ("tui:\n  external_editor: false\n", False),
+    ],
+    ids=["default-true", "explicit-true", "explicit-false"],
+)
+def test_tui_external_editor(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    config_text: str,
+    expected: bool,
+) -> None:
+    monkeypatch.setenv("TEROK_CONFIG_FILE", str(write_config(tmp_path, config_text)))
+    assert cfg.get_tui_external_editor() is expected
+
+
 def test_experimental_flag_roundtrip() -> None:
     assert not cfg.is_experimental()
     cfg.set_experimental(True)

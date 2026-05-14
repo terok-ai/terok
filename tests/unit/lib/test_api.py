@@ -62,6 +62,9 @@ class TestGetConfig:
             patch(
                 "terok.lib.api._config.get_tui_default_tmux", return_value=True
             ) as get_tui_default_tmux_mock,
+            patch(
+                "terok.lib.api._config.get_tui_external_editor", return_value=False
+            ) as get_tui_external_editor_mock,
             patch("terok.lib.api._config.SHIELD_SECURITY_HINT", "HINT"),
         ):
             cfg = get_config()
@@ -77,6 +80,7 @@ class TestGetConfig:
         assert cfg.public_host == "1.2.3.4"
         assert cfg.shield_bypass_firewall_no_protection is True
         assert cfg.tui_default_tmux is True
+        assert cfg.tui_external_editor is False
         assert cfg.shield_security_hint == "HINT"
 
         # ``SHIELD_SECURITY_HINT`` is a constant, not a callable — exclude it.
@@ -91,6 +95,7 @@ class TestGetConfig:
             get_public_host_mock,
             get_shield_bypass_firewall_no_protection_mock,
             get_tui_default_tmux_mock,
+            get_tui_external_editor_mock,
         ):
             getter_mock.assert_called_once()
 

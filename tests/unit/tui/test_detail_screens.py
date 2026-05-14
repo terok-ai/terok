@@ -114,17 +114,6 @@ def make_creation_app(app_class: type) -> object:
     return instance
 
 
-def make_sync_gate_app(app_class: type) -> object:
-    """Build a TUI app instance prepared for gate-sync workflows."""
-    instance = app_class()
-    instance.current_project_id = "proj1"
-    instance.notify = mock.Mock()
-    instance.suspend = mock.Mock(return_value=contextlib.nullcontext())
-    instance._print_sync_gate_ssh_help = mock.Mock()
-    instance._refresh_project_state = mock.Mock()
-    return instance
-
-
 def make_gate_server_status(
     *, mode: str = "systemd", running: bool = True, port: int = GATE_PORT
 ) -> mock.Mock:
@@ -732,17 +721,8 @@ class TestActionDispatch:
         instance._action_follow_logs.assert_called_once()
 
 
-_FAKE_SSH_INIT_RESULT = {
-    "key_id": 42,
-    "key_type": "ed25519",
-    "fingerprint": "fp",
-    "comment": "c",
-    "public_line": "ssh-ed25519 AAAA c",
-}
-
-
 class TestSSHKeyRegistration:
-    """TUI SSH init and project-init go through the facade's ``provision_ssh_key``."""
+    """TUI SSH init / project-init dispatch to the worker_actions child entrypoints."""
 
     def _get_mixin(self):
         """Import ProjectActionsMixin directly — avoids import_app() Textual stubs."""
@@ -750,74 +730,214 @@ class TestSSHKeyRegistration:
 
         return ProjectActionsMixin
 
-    def test_action_init_ssh_provisions_key(self) -> None:
-        """action_init_ssh calls ``provision_ssh_key`` and renders the summary."""
+    def test_action_init_ssh_dispatches_init_ssh(self) -> None:
+        """action_init_ssh dispatches the init_ssh worker action for the selection."""
         mixin = self._get_mixin()
         instance = mock.Mock(spec=mixin)
         instance.current_project_id = "proj"
+        run(mixin.action_init_ssh(instance))
+        instance._run_console_action.assert_called_once_with(
+            "terok.tui.worker_actions:init_ssh",
+            "proj",
+            title="Initializing SSH key for proj",
+        )
 
-        with (
-            mock.patch("terok.tui.project_actions.provision_ssh_key") as m_provision,
-            mock.patch("terok.tui.project_actions.summarize_ssh_init") as m_summarize,
-        ):
-            m_provision.return_value = _FAKE_SSH_INIT_RESULT
-            instance._run_suspended = mock.AsyncMock(side_effect=lambda fn, **kw: fn())
-            run(mixin.action_init_ssh(instance))
+    def test_action_project_init_opens_init_progress_screen(self) -> None:
+        """_action_project_init reuses the wizard's InitProgressScreen.
 
-            m_provision.assert_called_once_with("proj")
-            m_summarize.assert_called_once_with(_FAKE_SSH_INIT_RESULT)
-
-    def test_action_project_init_provisions_key(self) -> None:
-        """_action_project_init runs provision_ssh_key, not raw manager + register."""
+        The full setup keeps the interactive deploy-key registration
+        pause — running it as a pause-less child process would let
+        gate-sync start before the key is registered.  The screen is
+        opened with ``rendered_yaml=None`` so the existing project.yml
+        is left untouched (no overwrite prompt, nothing rewritten).
+        """
         mixin = self._get_mixin()
         instance = mock.Mock(spec=mixin)
         instance.current_project_id = "proj"
+        instance.push_screen = mock.AsyncMock()
+        run(mixin._action_project_init(instance))
+        instance.push_screen.assert_awaited_once()
+        screen = instance.push_screen.call_args[0][0]
+        assert type(screen).__name__ == "InitProgressScreen"
+        assert screen._project_id == "proj"
+        assert screen._rendered_yaml is None
 
+
+class TestEditInstructionsRouting:
+    """``_edit_instructions_file`` chooses ``$EDITOR`` or the integrated editor."""
+
+    def _get_mixin(self):
+        """Import ProjectActionsMixin directly — avoids import_app() Textual stubs."""
+        from terok.tui.project_actions import ProjectActionsMixin
+
+        return ProjectActionsMixin
+
+    def _instance(self, mixin: object, *, is_web: bool) -> mock.Mock:
+        """Build a mixin mock with the collaborators the editor routing touches."""
+        instance = mock.Mock(spec=mixin)
+        instance.is_web = is_web
+        instance.push_screen = mock.AsyncMock()
+        instance._edit_in_external_editor = mock.AsyncMock()
+        instance._refresh_project_state = mock.Mock()
+        instance.notify = mock.Mock()
+        return instance
+
+    def test_external_editor_used_when_set_and_preferred(self, tmp_path: object) -> None:
+        """Local TUI + ``$EDITOR`` set + preference on → suspend into ``$EDITOR``."""
+        mixin = self._get_mixin()
+        instance = self._instance(mixin, is_web=False)
+        instr_path = tmp_path / "instructions.md"
         with (
-            mock.patch("terok.tui.project_actions.provision_ssh_key") as m_provision,
-            mock.patch("terok.tui.project_actions.summarize_ssh_init") as m_summarize,
-            mock.patch("terok.tui.project_actions.load_project"),
-            mock.patch("terok.tui.project_actions.maybe_pause_for_ssh_key_registration"),
-            mock.patch("terok.tui.project_actions.generate_dockerfiles"),
-            mock.patch("terok.tui.project_actions.build_images"),
-            mock.patch("terok.tui.project_actions.make_git_gate") as m_gate,
+            mock.patch.dict("terok.tui.project_actions.os.environ", {"EDITOR": "vim"}),
+            mock.patch(
+                "terok.lib.api.get_config",
+                return_value=mock.Mock(tui_external_editor=True),
+            ),
         ):
-            m_provision.return_value = _FAKE_SSH_INIT_RESULT
-            m_gate.return_value.sync.return_value = {
-                "success": True,
-                "path": "/tmp/terok-testing/g",
-            }
+            run(mixin._edit_instructions_file(instance, instr_path, title="T", done_msg="done"))
+        instance._edit_in_external_editor.assert_awaited_once_with(
+            instr_path, "vim", done_msg="done"
+        )
+        instance.push_screen.assert_not_awaited()
 
-            async def run_work(fn, **kw):
-                fn()
-                return True
+    def test_web_tui_forces_integrated_editor(self, tmp_path: object) -> None:
+        """Web TUI ignores ``$EDITOR`` — there is no terminal to suspend to."""
+        mixin = self._get_mixin()
+        instance = self._instance(mixin, is_web=True)
+        instr_path = tmp_path / "instructions.md"
+        instr_path.write_text("body", encoding="utf-8")
+        with (
+            mock.patch.dict("terok.tui.project_actions.os.environ", {"EDITOR": "vim"}),
+            mock.patch("terok.tui.text_screens.TextEditorScreen") as screen_cls,
+        ):
+            run(mixin._edit_instructions_file(instance, instr_path, title="T", done_msg="done"))
+        instance._edit_in_external_editor.assert_not_awaited()
+        instance.push_screen.assert_awaited_once()
+        screen_cls.assert_called_once_with("body", title="T")
 
-            instance._run_suspended = run_work
-            instance.notify = mock.Mock()
-            run(mixin._action_project_init(instance))
+    def test_preference_off_uses_integrated_editor(self, tmp_path: object) -> None:
+        """``external_editor: false`` keeps the integrated editor even with ``$EDITOR`` set."""
+        mixin = self._get_mixin()
+        instance = self._instance(mixin, is_web=False)
+        instr_path = tmp_path / "instructions.md"
+        with (
+            mock.patch.dict("terok.tui.project_actions.os.environ", {"EDITOR": "vim"}),
+            mock.patch(
+                "terok.lib.api.get_config",
+                return_value=mock.Mock(tui_external_editor=False),
+            ),
+            mock.patch("terok.tui.text_screens.TextEditorScreen") as screen_cls,
+        ):
+            run(mixin._edit_instructions_file(instance, instr_path, title="T", done_msg="done"))
+        instance._edit_in_external_editor.assert_not_awaited()
+        screen_cls.assert_called_once_with("", title="T")
 
-            m_provision.assert_called_once_with("proj")
-            m_summarize.assert_called_once_with(_FAKE_SSH_INIT_RESULT)
+    def test_no_editor_env_uses_integrated_editor(self, tmp_path: object) -> None:
+        """No ``$EDITOR`` → integrated editor, without even consulting the preference."""
+        mixin = self._get_mixin()
+        instance = self._instance(mixin, is_web=False)
+        instr_path = tmp_path / "instructions.md"
+        with (
+            mock.patch.dict("terok.tui.project_actions.os.environ", {}, clear=True),
+            mock.patch("terok.tui.text_screens.TextEditorScreen") as screen_cls,
+        ):
+            run(mixin._edit_instructions_file(instance, instr_path, title="T", done_msg="done"))
+        instance._edit_in_external_editor.assert_not_awaited()
+        screen_cls.assert_called_once_with("", title="T")
+
+    def test_integrated_editor_save_callback_writes_and_refreshes(self, tmp_path: object) -> None:
+        """The integrated editor's Save callback writes the file and refreshes state."""
+        mixin = self._get_mixin()
+        instance = self._instance(mixin, is_web=True)
+        instr_path = tmp_path / "nested" / "instructions.md"
+        with mock.patch("terok.tui.text_screens.TextEditorScreen"):
+            run(mixin._edit_instructions_file(instance, instr_path, title="T", done_msg="saved!"))
+        on_saved = instance.push_screen.await_args[0][1]
+
+        on_saved(None)
+        assert not instr_path.exists()
+        instance.notify.assert_not_called()
+
+        on_saved("new body")
+        assert instr_path.read_text(encoding="utf-8") == "new body"
+        instance.notify.assert_called_once_with("saved!")
+        instance._refresh_project_state.assert_called_once()
+
+
+class TestEditInExternalEditor:
+    """``_edit_in_external_editor`` suspends the TUI and shells out to ``$EDITOR``."""
+
+    def _get_mixin(self):
+        """Import ProjectActionsMixin directly — avoids import_app() Textual stubs."""
+        from terok.tui.project_actions import ProjectActionsMixin
+
+        return ProjectActionsMixin
+
+    def _instance(self, mixin: object) -> mock.Mock:
+        """Build a mixin mock with ``suspend`` wired as a context manager."""
+        instance = mock.Mock(spec=mixin)
+        instance.suspend = mock.MagicMock()
+        instance._refresh_project_state = mock.Mock()
+        instance.notify = mock.Mock()
+        return instance
+
+    def test_runs_editor_then_notifies_and_refreshes(self, tmp_path: object) -> None:
+        """A clean editor exit creates the parent dir, notifies, and refreshes state."""
+        mixin = self._get_mixin()
+        instance = self._instance(mixin)
+        instr_path = tmp_path / "nested" / "instructions.md"
+        proc = mock.AsyncMock()
+        with mock.patch(
+            "terok.tui.project_actions.asyncio.create_subprocess_exec",
+            new=mock.AsyncMock(return_value=proc),
+        ) as exec_mock:
+            run(mixin._edit_in_external_editor(instance, instr_path, "vim -u NONE", done_msg="ok"))
+        exec_mock.assert_awaited_once_with("vim", "-u", "NONE", str(instr_path))
+        proc.wait.assert_awaited_once()
+        assert instr_path.parent.is_dir()
+        instance.suspend.assert_called_once_with()
+        instance.notify.assert_called_once_with("ok")
+        instance._refresh_project_state.assert_called_once()
+
+    def test_launch_failure_is_surfaced_not_raised(self, tmp_path: object) -> None:
+        """A failed spawn prints an error and waits — it never crashes the TUI."""
+        mixin = self._get_mixin()
+        instance = self._instance(mixin)
+        instr_path = tmp_path / "instructions.md"
+        with (
+            mock.patch(
+                "terok.tui.project_actions.asyncio.create_subprocess_exec",
+                new=mock.AsyncMock(side_effect=FileNotFoundError("no such editor")),
+            ),
+            mock.patch("builtins.input") as input_mock,
+        ):
+            run(mixin._edit_in_external_editor(instance, instr_path, "bogus-editor", done_msg="ok"))
+        input_mock.assert_called_once()
+        instance.notify.assert_not_called()
+        instance._refresh_project_state.assert_not_called()
 
 
 class TestActionAuth:
-    """Per-project ``_action_auth`` and host-wide ``_action_auth_host_wide``."""
+    """Per-project ``_action_auth`` and host-wide ``_action_auth_host_wide`` dispatch."""
 
     def _get_mixin(self):
         from terok.tui.project_actions import ProjectActionsMixin
 
         return ProjectActionsMixin
 
-    def test_per_project_calls_authenticate_with_project_id(self) -> None:
+    def test_per_project_dispatches_auth_with_project_id(self) -> None:
         """``_action_auth`` is the project-details path — passes the selection."""
         mixin = self._get_mixin()
         instance = mock.Mock(spec=mixin)
         instance.current_project_id = "myproj"
-        instance._run_suspended = mock.AsyncMock(side_effect=lambda fn, **kw: fn())
-
-        with mock.patch("terok.tui.project_actions.authenticate") as m_auth:
-            run(mixin._action_auth(instance, "claude"))
-        m_auth.assert_called_once_with("claude", "myproj")
+        run(mixin._action_auth(instance, "claude"))
+        instance._run_console_action.assert_called_once_with(
+            "terok.tui.worker_actions:auth",
+            "claude",
+            "myproj",
+            title="Authenticating claude for myproj",
+            refresh=None,
+        )
 
     def test_per_project_without_selection_notifies_and_skips(self) -> None:
         """Without a selection ``_action_auth`` is a no-op — host-wide path is separate."""
@@ -827,24 +947,24 @@ class TestActionAuth:
         # ``notify`` lives on the App parent, not the mixin spec — wire it
         # explicitly so the early-return path can call it without erroring.
         instance.notify = mock.Mock()
-        instance._run_suspended = mock.AsyncMock()
 
-        with mock.patch("terok.tui.project_actions.authenticate") as m_auth:
-            run(mixin._action_auth(instance, "claude"))
-        m_auth.assert_not_called()
-        instance._run_suspended.assert_not_called()
+        run(mixin._action_auth(instance, "claude"))
+        instance._run_console_action.assert_not_called()
         instance.notify.assert_called_once()
 
-    def test_host_wide_passes_none_regardless_of_selection(self) -> None:
+    def test_host_wide_dispatches_auth_with_none(self) -> None:
         """``_action_auth_host_wide`` ignores ``current_project_id`` by design."""
         mixin = self._get_mixin()
         instance = mock.Mock(spec=mixin)
         instance.current_project_id = "selected-but-irrelevant"
-        instance._run_suspended = mock.AsyncMock(side_effect=lambda fn, **kw: fn())
-
-        with mock.patch("terok.tui.project_actions.authenticate") as m_auth:
-            run(mixin._action_auth_host_wide(instance, "claude"))
-        m_auth.assert_called_once_with("claude", None)
+        run(mixin._action_auth_host_wide(instance, "claude"))
+        instance._run_console_action.assert_called_once_with(
+            "terok.tui.worker_actions:auth",
+            "claude",
+            None,
+            title="Authenticating claude (host-wide)",
+            refresh=None,
+        )
 
 
 class TestActionSelection:
@@ -853,7 +973,7 @@ class TestActionSelection:
     def test_task_start_cli_selects_created_task(self) -> None:
         _, app_class = import_app()
         instance = make_creation_app(app_class)
-        instance.run_worker = mock.Mock()
+        instance.dispatch_console_action = mock.Mock()
         instance.push_screen = mock.AsyncMock()
         fake_task_new = mock.Mock(return_value="42")
         action_globals = app_class._start_cli_task_background.__globals__
@@ -875,7 +995,12 @@ class TestActionSelection:
         assert instance._last_selected_tasks.get("proj1") == "42"
         fake_task_new.assert_called_once_with("proj1", name="test-name")
         instance._save_selection_state.assert_called_once()
-        instance.run_worker.assert_called_once()
+        # The container start is dispatched as a captured ConsoleLog action.
+        instance.dispatch_console_action.assert_called_once()
+        assert (
+            instance.dispatch_console_action.call_args[0][0]
+            == "terok.tui.worker_actions:start_cli_container"
+        )
         instance.refresh_tasks.assert_awaited()
 
     def test_autopilot_launch_selects_created_task(self) -> None:
@@ -905,55 +1030,34 @@ class TestActionSelection:
 
 
 class TestGateSyncAction:
-    """Tests for gate sync action behavior in suspended terminal mode."""
+    """``_action_sync_gate`` dispatches the sync_gate worker action."""
 
-    def test_action_sync_gate_handles_system_exit_without_exiting_tui(self) -> None:
-        _, app_class = import_app()
-        instance = make_sync_gate_app(app_class)
-        fake_gate = mock.Mock()
-        fake_gate.sync = mock.Mock(side_effect=SystemExit("auth failed"))
-        action_globals = app_class._action_sync_gate.__globals__
+    def _get_mixin(self):
+        from terok.tui.project_actions import ProjectActionsMixin
 
-        with (
-            mock.patch.dict(
-                action_globals,
-                {
-                    "make_git_gate": mock.Mock(return_value=fake_gate),
-                    "load_project": mock.Mock(),
-                },
-            ),
-            mock.patch("builtins.input", return_value=""),
-        ):
-            run(app_class._action_sync_gate(instance))
+        return ProjectActionsMixin
 
-        fake_gate.sync.assert_called_once()
-        instance._print_sync_gate_ssh_help.assert_called_once_with("proj1")
-        instance.notify.assert_called_once_with("Gate sync failed. See terminal output.")
-        instance._refresh_project_state.assert_called_once()
+    def test_action_sync_gate_dispatches_sync_gate(self) -> None:
+        """With a selection, the action dispatches the sync_gate worker entrypoint."""
+        mixin = self._get_mixin()
+        instance = mock.Mock(spec=mixin)
+        instance.current_project_id = "proj1"
+        run(mixin._action_sync_gate(instance))
+        instance._run_console_action.assert_called_once_with(
+            "terok.tui.worker_actions:sync_gate",
+            "proj1",
+            title="Syncing gate for proj1",
+        )
 
-    def test_action_sync_gate_success_notifies_and_refreshes(self) -> None:
-        _, app_class = import_app()
-        instance = make_sync_gate_app(app_class)
-        fake_gate = mock.Mock()
-        fake_gate.sync = mock.Mock(return_value={"success": True, "created": False, "errors": []})
-        action_globals = app_class._action_sync_gate.__globals__
-
-        with (
-            mock.patch.dict(
-                action_globals,
-                {
-                    "make_git_gate": mock.Mock(return_value=fake_gate),
-                    "load_project": mock.Mock(),
-                },
-            ),
-            mock.patch("builtins.input", return_value=""),
-        ):
-            run(app_class._action_sync_gate(instance))
-
-        fake_gate.sync.assert_called_once()
-        instance._print_sync_gate_ssh_help.assert_not_called()
-        instance.notify.assert_called_once_with("Gate synced from upstream")
-        instance._refresh_project_state.assert_called_once()
+    def test_action_sync_gate_without_selection_skips(self) -> None:
+        """No project selected — the action notifies and dispatches nothing."""
+        mixin = self._get_mixin()
+        instance = mock.Mock(spec=mixin)
+        instance.current_project_id = None
+        instance.notify = mock.Mock()
+        run(mixin._action_sync_gate(instance))
+        instance._run_console_action.assert_not_called()
+        instance.notify.assert_called_once()
 
 
 class TestProjectScreenNoneState:
@@ -1674,65 +1778,27 @@ class TestVaultActionImplementations:
         assert type(modal_arg).__name__ == "VaultUnlockModal"
         assert callback_arg is instance._on_vault_unlock_result
 
-    def test_lock_unlinks_session_file_stops_daemon_and_refreshes(self, tmp_path) -> None:
-        """``_action_vault_lock`` clears the session-file, stops the daemon, re-probes."""
+    def test_lock_dispatches_vault_lock(self) -> None:
+        """``_action_vault_lock`` dispatches the vault_lock worker action + refreshes status."""
         mixin = self._get_mixin()
         instance = mock.Mock(spec=mixin)
-        instance._refresh_vault_status = mock.AsyncMock()
-        # ``_run_suspended`` is the indirection that runs ``fn`` inside a
-        # terminal-suspended block; invoke it inline so we exercise the
-        # callable the handler passes through.
-        instance._run_suspended = mock.AsyncMock(side_effect=lambda fn, **kw: fn())
+        run(mixin._action_vault_lock(instance))
+        instance._run_console_action.assert_called_once_with(
+            "terok.tui.worker_actions:vault_lock",
+            title="Locking vault (clearing session tier)",
+            refresh="vault_status",
+        )
 
-        passphrase_file = tmp_path / "vault.passphrase"
-        passphrase_file.write_text("not-a-real-passphrase\n", encoding="utf-8")
-        fake_cfg = mock.Mock()
-        fake_cfg.vault_passphrase_file = passphrase_file
-        with (
-            mock.patch("terok.tui.project_actions.stop_vault") as m_stop,
-            mock.patch(
-                "terok.lib.api.make_sandbox_config",
-                return_value=fake_cfg,
-            ),
-        ):
-            run(mixin._action_vault_lock(instance))
-        assert not passphrase_file.exists()
-        m_stop.assert_called_once()
-        instance._refresh_vault_status.assert_awaited_once_with()
-
-    def test_lock_tolerates_missing_session_file(self, tmp_path) -> None:
-        """No session-file on disk is the cold-start path — must not blow up."""
+    def test_seal_dispatches_vault_seal(self) -> None:
+        """``_action_vault_seal`` dispatches the vault_seal worker action + refreshes status."""
         mixin = self._get_mixin()
         instance = mock.Mock(spec=mixin)
-        instance._refresh_vault_status = mock.AsyncMock()
-        instance._run_suspended = mock.AsyncMock(side_effect=lambda fn, **kw: fn())
-
-        missing = tmp_path / "never-created.passphrase"
-        fake_cfg = mock.Mock()
-        fake_cfg.vault_passphrase_file = missing
-        with (
-            mock.patch("terok.tui.project_actions.stop_vault") as m_stop,
-            mock.patch("terok.lib.api.make_sandbox_config", return_value=fake_cfg),
-        ):
-            run(mixin._action_vault_lock(instance))
-        m_stop.assert_called_once()
-        instance._refresh_vault_status.assert_awaited_once_with()
-
-    def test_seal_invokes_sandbox_with_key_auto_and_refreshes(self) -> None:
-        """``_action_vault_seal`` calls ``_handle_vault_seal(cfg=, key='auto')`` + re-probes."""
-        mixin = self._get_mixin()
-        instance = mock.Mock(spec=mixin)
-        instance._refresh_vault_status = mock.AsyncMock()
-        instance._run_suspended = mock.AsyncMock(side_effect=lambda fn, **kw: fn())
-
-        fake_cfg = mock.Mock()
-        with (
-            mock.patch("terok.lib.integrations.sandbox._handle_vault_seal") as m_seal,
-            mock.patch("terok.lib.api.make_sandbox_config", return_value=fake_cfg),
-        ):
-            run(mixin._action_vault_seal(instance))
-        m_seal.assert_called_once_with(cfg=fake_cfg, key="auto")
-        instance._refresh_vault_status.assert_awaited_once_with()
+        run(mixin._action_vault_seal(instance))
+        instance._run_console_action.assert_called_once_with(
+            "terok.tui.worker_actions:vault_seal",
+            title="Sealing vault passphrase into systemd-creds",
+            refresh="vault_status",
+        )
 
 
 class TestVaultStatusPill:
