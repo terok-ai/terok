@@ -365,7 +365,11 @@ run_nix_tests() {
             echo '--- nix-wrapped python ---'
             which python3.12
             python3.12 --version
-            python3.12 --version | awk '{print \$2}' > /results/$name.python-version
+            # Capture the version into the shared results dir.  No awk
+            # in the nixos/nix base image; bash parameter expansion is
+            # all we need.  Same pattern run_tests uses for podman.
+            python_ver_line=\$(python3.12 --version 2>&1)
+            echo \"\${python_ver_line##* }\" > /results/$name.python-version
 
             # Install terok with all runtime + sibling deps (URL pins
             # in pyproject.toml resolve to released wheels), plus the
