@@ -742,16 +742,25 @@ class TestSSHKeyRegistration:
             title="Initializing SSH key for proj",
         )
 
-    def test_action_project_init_dispatches_project_init(self) -> None:
-        """_action_project_init dispatches the full-setup worker action."""
+    def test_action_project_init_opens_init_progress_screen(self) -> None:
+        """_action_project_init reuses the wizard's InitProgressScreen.
+
+        The full setup keeps the interactive deploy-key registration
+        pause — running it as a pause-less child process would let
+        gate-sync start before the key is registered.  The screen is
+        opened with ``rendered_yaml=None`` so the existing project.yml
+        is left untouched (no overwrite prompt, nothing rewritten).
+        """
         mixin = self._get_mixin()
         instance = mock.Mock(spec=mixin)
         instance.current_project_id = "proj"
+        instance.push_screen = mock.AsyncMock()
         run(mixin._action_project_init(instance))
-        args, kwargs = instance._run_console_action.call_args
-        assert args == ("terok.tui.worker_actions:project_init", "proj")
-        assert kwargs["title"] == "Full setup for proj"
-        assert kwargs["on_complete"] is instance._invalidate_image_caches
+        instance.push_screen.assert_awaited_once()
+        screen = instance.push_screen.call_args[0][0]
+        assert type(screen).__name__ == "InitProgressScreen"
+        assert screen._project_id == "proj"
+        assert screen._rendered_yaml is None
 
 
 class TestActionAuth:

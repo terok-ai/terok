@@ -504,8 +504,15 @@ class InitProgressScreen(ModalScreen[InitOutcome]):
         "gate": "Gate sync",
     }
 
-    def __init__(self, project_id: str, rendered_yaml: str) -> None:
-        """Create the init screen with the project ID and final YAML text."""
+    def __init__(self, project_id: str, rendered_yaml: str | None = None) -> None:
+        """Create the init screen.
+
+        *rendered_yaml* is the ``project.yml`` content the new-project
+        wizard wants written (with an overwrite confirm) before init
+        runs.  ``None`` re-runs init against the *existing* on-disk
+        ``project.yml`` — the project-screen "Full setup" action —
+        writing and confirming nothing.
+        """
         super().__init__()
         self._project_id = project_id
         self._rendered_yaml = rendered_yaml
@@ -586,32 +593,35 @@ class InitProgressScreen(ModalScreen[InitOutcome]):
     async def _run_init_with_confirm(self) -> None:
         """Top-level coroutine that sequences overwrite-confirm → write → run.
 
-        The outer try/except is a safety net: any unexpected exception
-        from confirm/write/run is logged and the Close button is
-        enabled, so a user is never stuck in front of a frozen modal
-        wondering why nothing is happening.
+        With ``rendered_yaml`` unset (the re-run-on-an-existing-project
+        path) there is nothing to write or confirm — go straight to the
+        init steps.  The outer try/except is a safety net: any
+        unexpected exception from confirm/write/run is logged and the
+        Close button is enabled, so a user is never stuck in front of a
+        frozen modal wondering why nothing is happening.
         """
         log = self.query_one("#wizard-init-log", RichLog)
         try:
-            existing = self._existing_project_yaml_path()
-            if existing is not None:
-                if not await self._confirm_overwrite(existing):
-                    log.write(
-                        "[yellow]Keeping existing project.yml — nothing written, "
-                        "nothing initialised.[/]"
-                    )
-                    # A declined overwrite is the user's deliberate choice —
-                    # not a failure — so the screen dismisses with a distinct
-                    # outcome the caller can branch on.
-                    self._outcome = InitOutcome.DECLINED
-                    return
+            if self._rendered_yaml is not None:
+                existing = self._existing_project_yaml_path()
+                if existing is not None:
+                    if not await self._confirm_overwrite(existing):
+                        log.write(
+                            "[yellow]Keeping existing project.yml — nothing written, "
+                            "nothing initialised.[/]"
+                        )
+                        # A declined overwrite is the user's deliberate choice —
+                        # not a failure — so the screen dismisses with a distinct
+                        # outcome the caller can branch on.
+                        self._outcome = InitOutcome.DECLINED
+                        return
 
-            log.write(f"[dim]Writing project.yml for {self._project_id}…[/]")
-            try:
-                write_project_yaml(self._project_id, self._rendered_yaml, overwrite=True)
-            except (OSError, SystemExit) as exc:
-                log.write(f"[red]Failed to write project.yml: {exc}[/]")
-                return
+                log.write(f"[dim]Writing project.yml for {self._project_id}…[/]")
+                try:
+                    write_project_yaml(self._project_id, self._rendered_yaml, overwrite=True)
+                except (OSError, SystemExit) as exc:
+                    log.write(f"[red]Failed to write project.yml: {exc}[/]")
+                    return
             await self._run_init()
         except Exception as exc:  # noqa: BLE001 — modal must never freeze silently
             log.write(f"[red]Unexpected wizard error: {exc}[/]")

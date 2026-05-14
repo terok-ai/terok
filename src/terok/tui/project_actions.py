@@ -220,17 +220,27 @@ class ProjectActionsMixin(_MixinBase):
         installed_agents.cache_clear()
 
     async def _action_project_init(self) -> None:
-        """Full project setup: ssh-init, generate, build, gate-sync."""
+        """Re-run full project setup: ssh-init, generate, build, gate-sync.
+
+        Reuses the wizard's
+        [`InitProgressScreen`][terok.tui.wizard_screens.InitProgressScreen]
+        against the existing ``project.yml`` — same per-step badges and
+        log pane, and crucially the **interactive deploy-key
+        registration pause** (with the full public key on screen).
+        Skipping that pause would let gate-sync run before the key is
+        registered upstream and hang on a long timeout — so a single
+        captured child process is the wrong shape for this action.
+        """
         if not self.current_project_id:
             self.notify("No project selected.")
             return
-        pid = self.current_project_id
-        self._run_console_action(
-            "terok.tui.worker_actions:project_init",
-            pid,
-            title=f"Full setup for {pid}",
-            on_complete=self._invalidate_image_caches,
-        )
+        from .wizard_screens import InitProgressScreen
+
+        def _on_init_done(_outcome: object) -> None:
+            self._invalidate_image_caches()
+            self._refresh_project_state()
+
+        await self.push_screen(InitProgressScreen(self.current_project_id), _on_init_done)
 
     # ---------- Authentication actions ----------
 

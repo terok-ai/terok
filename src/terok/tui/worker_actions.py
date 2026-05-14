@@ -60,44 +60,11 @@ def init_ssh(project_id: str) -> None:
     summarize_ssh_init(provision_ssh_key(project_id))
 
 
-def project_init(project_id: str) -> None:
-    """Full project setup for *project_id*: ssh-init, generate, build, gate-sync.
-
-    Unlike the CLI's ``terok project init``, this does **not** pause for
-    interactive deploy-key registration — a child process has no stdin.
-    The freshly minted public key is printed by the ssh-init step; if
-    the gate sync below then fails because it is not yet registered
-    upstream, the log says so and the operator re-runs gate-sync from
-    the project screen once the key is in place.
-    """
-    from terok.lib.api import (
-        build_images,
-        generate_dockerfiles,
-        load_project,
-        make_git_gate,
-        provision_ssh_key,
-        summarize_ssh_init,
-    )
-
-    print(f"=== Full Setup for {project_id} ===\n")
-    print("Step 1/4: Initializing SSH...")
-    summarize_ssh_init(provision_ssh_key(project_id))
-    print(
-        "\nIf this project uses an SSH upstream, register the public key shown "
-        "above as a deploy key before the gate sync below — otherwise re-run "
-        "gate-sync from the project screen once it is registered."
-    )
-    print("\nStep 2/4: Generating Dockerfiles...")
-    generate_dockerfiles(project_id)
-    print("\nStep 3/4: Building images...")
-    build_images(project_id)
-    print("\nStep 4/4: Syncing git gate...")
-    result = make_git_gate(load_project(project_id)).sync()
-    if result["success"]:
-        print(f"\nGate ready at {result['path']}")
-    else:
-        print(f"\nGate sync warnings: {', '.join(result['errors'])}")
-    print("\n=== Full Setup complete! ===")
+# Full project setup ("Full setup" project-screen action) is *not* a
+# worker_actions entrypoint: it needs the interactive deploy-key
+# registration pause, which a stdin-less child process cannot do.  It
+# reuses the wizard's InitProgressScreen instead — see
+# ProjectActionsMixin._action_project_init.
 
 
 # ── Authentication ────────────────────────────────────────────────────

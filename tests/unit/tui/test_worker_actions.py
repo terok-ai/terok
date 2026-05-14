@@ -53,28 +53,9 @@ def test_init_ssh_provisions_and_summarizes() -> None:
     m_sum.assert_called_once_with("RESULT")
 
 
-def test_project_init_runs_four_steps_without_interactive_pause() -> None:
-    """``project_init`` runs all four steps and never blocks on stdin.
-
-    The CLI's ``maybe_pause_for_ssh_key_registration`` is deliberately
-    *not* called — a child process has no stdin, so an ``input()`` pause
-    would raise ``EOFError``.  Completing here without one proves it.
-    """
-    fake_gate = mock.Mock()
-    fake_gate.sync.return_value = {"success": True, "path": "/tmp/terok-testing/g", "errors": []}
-    with (
-        mock.patch("terok.lib.api.provision_ssh_key", return_value="R"),
-        mock.patch("terok.lib.api.summarize_ssh_init") as m_sum,
-        mock.patch("terok.lib.api.generate_dockerfiles") as m_gen,
-        mock.patch("terok.lib.api.build_images") as m_build,
-        mock.patch("terok.lib.api.load_project"),
-        mock.patch("terok.lib.api.make_git_gate", return_value=fake_gate),
-    ):
-        worker_actions.project_init("proj")
-    m_sum.assert_called_once_with("R")
-    m_gen.assert_called_once_with("proj")
-    m_build.assert_called_once_with("proj")
-    fake_gate.sync.assert_called_once()
+# Full project setup has no worker_actions entrypoint — it reuses the
+# wizard's InitProgressScreen (for the interactive deploy-key pause).
+# Its coverage lives in test_detail_screens / test_wizard_screens.
 
 
 # ── Authentication ────────────────────────────────────────────────────
