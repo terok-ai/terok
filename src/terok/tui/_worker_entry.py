@@ -14,10 +14,13 @@ Invoked as::
 
     python -u -m terok.tui._worker_entry "<module.path:function>" "<json-args>"
 
-where ``<json-args>`` is a JSON array of positional arguments.  Exit
-code is 0 on success, the facade's own code on a ``SystemExit`` with an
-int code, 1 on any other exception, and 2 on a malformed invocation.
-The traceback / error text is printed so it lands in the captured log.
+where ``<json-args>`` is a JSON array of positional arguments.  Process
+exit code: 0 on success; 2 on a malformed invocation; 1 on an
+unexpected exception (traceback printed).  A ``SystemExit`` from the
+callable — the facade's user-facing-error convention — is left to
+propagate, so an int code passes straight through and a string code is
+printed and exits 1 (the interpreter's default).  Everything printed
+lands in the parent's captured log.
 """
 
 from __future__ import annotations
@@ -38,7 +41,14 @@ def _resolve(ref: str) -> Callable[..., object]:
 
 
 def main(argv: list[str]) -> int:
-    """Resolve and invoke the referenced callable; return its process exit code."""
+    """Resolve and invoke the referenced callable; return its process exit code.
+
+    A ``SystemExit`` raised by the callable is deliberately *not*
+    caught — it propagates so the child exits with that status (an int
+    code passes through; a string code the interpreter prints and exits
+    1).  Only the malformed-invocation and unexpected-crash paths
+    return a code from here.
+    """
     if len(argv) != 2:
         print("usage: python -m terok.tui._worker_entry '<module.path:function>' '<json-args>'")
         return 2
@@ -54,21 +64,11 @@ def main(argv: list[str]) -> int:
 
     try:
         func(*args)
-    except SystemExit as exc:
-        code = exc.code
-        if code is None or code == 0:
-            return 0
-        if isinstance(code, int):
-            return code
-        # Facade calls raise SystemExit(str(...)) for user-facing errors —
-        # surface the message and fail, mirroring the old suspended-run.
-        print(f"Error: {code}")
-        return 1
     except Exception:
         traceback.print_exc()
         return 1
     return 0
 
 
-if __name__ == "__main__":
+if __name__ == "__main__":  # pragma: no cover - process entrypoint
     sys.exit(main(sys.argv[1:]))

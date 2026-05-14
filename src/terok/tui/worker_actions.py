@@ -91,13 +91,19 @@ def _lookup_vault_pub_line(scope: str) -> str | None:
 
 
 def _print_sync_gate_ssh_help(project_id: str) -> None:
-    """Print SSH-specific troubleshooting for a gate-sync failure."""
+    """Print SSH-specific troubleshooting for a gate-sync failure.
+
+    Best-effort: a project that cannot be loaded just means no hint —
+    ``load_project`` here always succeeds in practice (``sync_gate``
+    loaded it moments earlier), so a failure is genuinely exceptional
+    and any ``SystemExit`` is left to propagate rather than swallowed.
+    """
     from terok.lib.api import load_project
     from terok.lib.integrations.sandbox import is_ssh_url
 
     try:
         project = load_project(project_id)
-    except (Exception, SystemExit):
+    except Exception:
         return
     if not is_ssh_url(project.upstream_url):
         return

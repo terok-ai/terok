@@ -321,8 +321,11 @@ class ConsoleLogMixin(_MixinBase):
             self._finalise_console_entry(entry, 127, on_complete)
             return
 
-        assert proc.stdout is not None
-        async for raw in proc.stdout:
+        stdout = proc.stdout
+        if stdout is None:  # pragma: no cover - stdout=PIPE above guarantees non-None
+            self._finalise_console_entry(entry, await proc.wait(), on_complete)
+            return
+        async for raw in stdout:
             entry.append(raw.decode(errors="replace").rstrip("\n"))
         self._finalise_console_entry(entry, await proc.wait(), on_complete)
 

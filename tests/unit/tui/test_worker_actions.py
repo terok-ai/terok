@@ -182,3 +182,144 @@ def test_task_restart_and_stop_delegate_to_facade() -> None:
     with mock.patch("terok.lib.api.task_stop") as m_stop:
         worker_actions.task_stop("proj", "tid")
     m_stop.assert_called_once_with("proj", "tid")
+
+
+def test_start_cli_container_delegates_to_task_run_cli() -> None:
+    """``start_cli_container`` forwards ``(project_id, task_id)`` to ``task_run_cli``."""
+    with mock.patch("terok.lib.api.task_run_cli") as m:
+        worker_actions.start_cli_container("proj", "tid")
+    m.assert_called_once_with("proj", "tid")
+
+
+def test_start_toad_container_delegates_to_task_run_toad() -> None:
+    """``start_toad_container`` forwards ``(project_id, task_id)`` to ``task_run_toad``."""
+    with mock.patch("terok.lib.api.task_run_toad") as m:
+        worker_actions.start_toad_container("proj", "tid")
+    m.assert_called_once_with("proj", "tid")
+
+
+# ── Gate server / vault (remaining entrypoints) ───────────────────────
+
+
+def test_gate_uninstall_uses_manager() -> None:
+    """``gate_uninstall`` removes the gate server's systemd units."""
+    with (
+        mock.patch("terok.lib.api.make_sandbox_config", return_value="CFG"),
+        mock.patch("terok.lib.integrations.sandbox.GateServerManager") as m_mgr,
+    ):
+        worker_actions.gate_uninstall()
+    m_mgr.assert_called_once_with("CFG")
+    m_mgr.return_value.uninstall_systemd_units.assert_called_once_with()
+
+
+def test_vault_install_generates_routes_then_installs_units() -> None:
+    """``vault_install`` generates routes, then installs the vault's systemd units."""
+    cfg = mock.Mock()
+    with (
+        mock.patch("terok.lib.api.make_sandbox_config", return_value=cfg),
+        mock.patch("terok.lib.integrations.executor.ensure_vault_routes") as m_routes,
+        mock.patch("terok.lib.integrations.sandbox.VaultManager") as m_mgr,
+    ):
+        worker_actions.vault_install()
+    m_routes.assert_called_once_with(cfg=cfg)
+    m_mgr.assert_called_once_with(cfg)
+    m_mgr.return_value.install_systemd_units.assert_called_once_with()
+
+
+def test_vault_uninstall_uses_manager() -> None:
+    """``vault_uninstall`` removes the vault's systemd units."""
+    with (
+        mock.patch("terok.lib.api.make_sandbox_config", return_value="CFG"),
+        mock.patch("terok.lib.integrations.sandbox.VaultManager") as m_mgr,
+    ):
+        worker_actions.vault_uninstall()
+    m_mgr.assert_called_once_with("CFG")
+    m_mgr.return_value.uninstall_systemd_units.assert_called_once_with()
+
+
+def test_vault_start_generates_routes_then_starts_daemon() -> None:
+    """``vault_start`` generates routes, then starts the vault daemon."""
+    cfg = mock.Mock()
+    with (
+        mock.patch("terok.lib.api.make_sandbox_config", return_value=cfg),
+        mock.patch("terok.lib.integrations.executor.ensure_vault_routes") as m_routes,
+        mock.patch("terok.lib.integrations.sandbox.start_vault") as m_start,
+    ):
+        worker_actions.vault_start()
+    m_routes.assert_called_once_with(cfg=cfg)
+    m_start.assert_called_once_with(cfg=cfg)
+
+
+def test_vault_stop_delegates_to_sandbox() -> None:
+    """``vault_stop`` stops the vault daemon."""
+    with mock.patch("terok.lib.integrations.sandbox.stop_vault") as m_stop:
+        worker_actions.vault_stop()
+    m_stop.assert_called_once_with()
+
+
+# ── _print_sync_gate_ssh_help ─────────────────────────────────────────
+
+
+def test_sync_gate_ssh_help_non_ssh_upstream_is_silent(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """A non-SSH upstream gets no hint — the helper returns early."""
+    with (
+        mock.patch("terok.lib.api.load_project", return_value=mock.Mock()),
+        mock.patch("terok.lib.integrations.sandbox.is_ssh_url", return_value=False),
+    ):
+        worker_actions._print_sync_gate_ssh_help("proj")
+    assert capsys.readouterr().out == ""
+
+
+def test_sync_gate_ssh_help_unloadable_project_is_silent(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """A project that cannot be loaded just yields no hint (best-effort)."""
+    with mock.patch("terok.lib.api.load_project", side_effect=Exception("boom")):
+        worker_actions._print_sync_gate_ssh_help("proj")
+    assert capsys.readouterr().out == ""
+
+
+def test_sync_gate_ssh_help_ssh_with_key_prints_pubkey(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """An SSH upstream with a vault key prints the public line to register."""
+    with (
+        mock.patch("terok.lib.api.load_project", return_value=mock.Mock()),
+        mock.patch("terok.lib.integrations.sandbox.is_ssh_url", return_value=True),
+        mock.patch(
+            "terok.tui.worker_actions._lookup_vault_pub_line",
+            return_value="ssh-ed25519 AAAA tk-main:proj",
+        ),
+    ):
+        worker_actions._print_sync_gate_ssh_help("proj")
+    out = capsys.readouterr().out
+    assert "ssh-ed25519 AAAA tk-main:proj" in out
+    assert "register" in out.lower()
+
+
+def test_sync_gate_ssh_help_ssh_without_key_points_at_ssh_init(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """An SSH upstream with no vault key points the operator at ``ssh-init``."""
+    with (
+        mock.patch("terok.lib.api.load_project", return_value=mock.Mock()),
+        mock.patch("terok.lib.integrations.sandbox.is_ssh_url", return_value=True),
+        mock.patch("terok.tui.worker_actions._lookup_vault_pub_line", return_value=None),
+    ):
+        worker_actions._print_sync_gate_ssh_help("proj")
+    assert "ssh-init" in capsys.readouterr().out
+
+
+def test_sync_gate_systemexit_from_sync_is_reraised_with_context() -> None:
+    """A ``SystemExit`` from ``gate.sync()`` is re-raised under a 'Gate sync failed' prefix."""
+    fake_gate = mock.Mock()
+    fake_gate.sync.side_effect = SystemExit("auth denied")
+    with (
+        mock.patch("terok.lib.api.load_project"),
+        mock.patch("terok.lib.api.make_git_gate", return_value=fake_gate),
+        mock.patch("terok.lib.integrations.sandbox.is_ssh_url", return_value=False),
+    ):
+        with pytest.raises(SystemExit, match="Gate sync failed: auth denied"):
+            worker_actions.sync_gate("proj")

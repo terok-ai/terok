@@ -86,3 +86,14 @@ async def test_escape_dismisses() -> None:
         await pilot.press("escape")
         await pilot.pause()
         assert not isinstance(pilot.app.screen, ConsoleOutputScreen)
+
+
+@pytest.mark.asyncio
+async def test_close_button_dismisses() -> None:
+    """The Close button closes the console-output list."""
+    app = _Host(ConsoleLogRegistry())
+    async with app.run_test() as pilot:
+        assert isinstance(pilot.app.screen, ConsoleOutputScreen)
+        await pilot.click("#console-output-close")
+        await pilot.pause()
+        assert not isinstance(pilot.app.screen, ConsoleOutputScreen)

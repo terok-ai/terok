@@ -176,6 +176,11 @@ def test_worker_entry_bad_ref_exits_2() -> None:
     assert _worker_entry.main(["builtins:does_not_exist", "[]"]) == 2
 
 
+def test_worker_entry_colonless_ref_exits_2() -> None:
+    """A ref without a 'module:function' colon is rejected as a malformed invocation."""
+    assert _worker_entry.main(["no-colon-here", "[]"]) == 2
+
+
 def test_worker_entry_malformed_argv_exits_2() -> None:
     """Wrong argument count exits 2 with a usage line."""
     assert _worker_entry.main(["only-one"]) == 2
@@ -187,16 +192,21 @@ def test_worker_entry_non_list_json_exits_2() -> None:
     assert _worker_entry.main(["builtins:print", '{"not": "a list"}']) == 2
 
 
-def test_worker_entry_systemexit_int_propagates_code() -> None:
-    """A callable raising ``SystemExit(int)`` propagates that exact code."""
-    assert _worker_entry.main(["sys:exit", "[5]"]) == 5
-    assert _worker_entry.main(["sys:exit", "[0]"]) == 0
+def test_worker_entry_systemexit_int_propagates() -> None:
+    """A ``SystemExit`` from the callable propagates — the child exits with its code."""
+    with pytest.raises(SystemExit) as exc:
+        _worker_entry.main(["sys:exit", "[5]"])
+    assert exc.value.code == 5
+    with pytest.raises(SystemExit) as exc_zero:
+        _worker_entry.main(["sys:exit", "[0]"])
+    assert exc_zero.value.code == 0
 
 
-def test_worker_entry_systemexit_str_exits_1(capsys: pytest.CaptureFixture[str]) -> None:
-    """``SystemExit(str)`` — the facade error convention — exits 1 and prints the message."""
-    assert _worker_entry.main(["sys:exit", '["something broke"]']) == 1
-    assert "something broke" in capsys.readouterr().out
+def test_worker_entry_systemexit_str_propagates() -> None:
+    """A string ``SystemExit`` code propagates — the interpreter prints it and exits 1."""
+    with pytest.raises(SystemExit) as exc:
+        _worker_entry.main(["sys:exit", '["something broke"]'])
+    assert exc.value.code == "something broke"
 
 
 def test_worker_entry_exception_exits_1(capsys: pytest.CaptureFixture[str]) -> None:
