@@ -31,20 +31,29 @@ _SPAWN_CALLABLES = {
 }
 
 
-def _argv_starts_with_sys_executable(call: ast.Call) -> bool:
-    """Return True when *call*'s first positional arg is ``[sys.executable, ...]``."""
+def _is_module_run(call: ast.Call) -> bool:
+    """Return True when *call*'s argv looks like ``[sys.executable, "-m", "<mod>", ...]``.
+
+    Only ``python -m module`` invocations need the ``PYTHONPATH`` shim —
+    they import the module and so depend on ``sys.path``.  Script-path
+    invocations (``python /path/to/script.py``) get their script dir
+    on ``sys.path[0]`` automatically, so they don't need the helper
+    (and stdlib-only scripts shouldn't pretend to).
+    """
     if not call.args:
         return False
     argv = call.args[0]
-    if not isinstance(argv, ast.List) or not argv.elts:
+    if not isinstance(argv, ast.List) or len(argv.elts) < 3:
         return False
-    first = argv.elts[0]
-    return (
+    first, second = argv.elts[0], argv.elts[1]
+    is_sys_executable = (
         isinstance(first, ast.Attribute)
         and isinstance(first.value, ast.Name)
         and first.value.id == "sys"
         and first.attr == "executable"
     )
+    is_dash_m = isinstance(second, ast.Constant) and second.value == "-m"
+    return is_sys_executable and is_dash_m
 
 
 def _is_spawn_call(call: ast.Call) -> bool:
@@ -94,7 +103,7 @@ def test_every_sys_executable_spawn_uses_child_process_env() -> None:
                 continue
             if not _is_spawn_call(node):
                 continue
-            if not _argv_starts_with_sys_executable(node):
+            if not _is_module_run(node):
                 continue
             if _env_kwarg_uses_helper(node):
                 continue
