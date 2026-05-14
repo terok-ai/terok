@@ -29,6 +29,8 @@ to drive the request from a separate process / namespace.
 
 from __future__ import annotations
 
+import os
+import pwd
 import shutil
 import subprocess
 import uuid
@@ -41,6 +43,24 @@ from tests.integration.stories.conftest import (
     VaultEnv,
     VaultSocketEnv,
 )
+
+
+def _podman_env() -> dict[str, str]:
+    """Return a subprocess env with ``HOME`` pointing at the real user home.
+
+    ``terok_env`` monkeypatches ``HOME`` to a per-test tmp dir so terok's
+    own config-resolution paths land inside the sandbox.  Podman uses
+    ``$HOME/.local/share/containers/storage`` for its rootless image
+    store, so inheriting the patched HOME makes ``podman run``
+    consult an empty store — even when ``_pull_image`` already built
+    the image in the real one.
+
+    Read the real home from ``/etc/passwd`` (immune to ``os.environ``
+    edits) and splice it back in just for podman.
+    """
+    real_home = pwd.getpwuid(os.getuid()).pw_dir
+    return {**os.environ, "HOME": real_home}
+
 
 # All stories in this file talk to a real DB + broker.
 pytestmark = pytest.mark.needs_vault
@@ -215,6 +235,7 @@ def test_phantom_swap_through_container_socket(
             capture_output=True,
             text=True,
             timeout=30,
+            env=_podman_env(),
         )
         assert result.returncode == 0, (
             f"podman run failed (exit {result.returncode}):\n"
@@ -244,6 +265,7 @@ def test_phantom_swap_through_container_socket(
             capture_output=True,
             text=True,
             timeout=15,
+            env=_podman_env(),
         )
         assert exec_result.returncode == 0, (
             f"curl from inside the container failed (exit {exec_result.returncode}):\n"
@@ -267,10 +289,16 @@ def test_phantom_swap_through_container_socket(
             capture_output=True,
             text=True,
             timeout=10,
+            env=_podman_env(),
         )
         assert real_key not in env_result.stdout, (
             "real API key leaked into container environment — vault transport "
             "should have kept it host-side"
         )
     finally:
-        subprocess.run(["podman", "rm", "-f", name], capture_output=True, timeout=30)
+        subprocess.run(
+            ["podman", "rm", "-f", name],
+            capture_output=True,
+            timeout=30,
+            env=_podman_env(),
+        )

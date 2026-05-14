@@ -85,8 +85,11 @@ class TestVaultUnlockStory:
         self._prime_locked_vault(terok_env)
         terok_env.write_project("alpha", _SOURCE_PROJECT)
 
+        # ``terok_env`` already creates this path and exports
+        # ``TEROK_SANDBOX_RUNTIME_DIR``; ``exist_ok=True`` keeps this
+        # explicit assignment idempotent.
         runtime_dir = tmp_path / "sandbox-runtime"
-        runtime_dir.mkdir()
+        runtime_dir.mkdir(exist_ok=True)
         sandbox_env = {"TEROK_SANDBOX_RUNTIME_DIR": str(runtime_dir)}
 
         # --- Act 1: locked vault → exit 2 + actionable hint ----------
