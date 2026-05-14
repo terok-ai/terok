@@ -202,7 +202,10 @@ def _pull_image() -> None:
             "-",
             ".",
         ],
-        input=f"FROM {PODMAN_BASE_IMAGE}\nRUN apk add --no-cache git\n",
+        # `curl` is for the container-launching story tests
+        # (`tests/integration/stories/`); busybox's wget can't speak
+        # `--unix-socket`, which the vault-broker socket transport needs.
+        input=f"FROM {PODMAN_BASE_IMAGE}\nRUN apk add --no-cache git curl\n",
         check=True,
         text=True,
         timeout=120,

@@ -19,18 +19,28 @@ End-to-end, this story exercises:
   roster generates in production)
 - An aiohttp upstream that records what authorization header it sees
 
-The container layer is *not* launched here — that would require real
-podman + the host-side networking wiring (host.containers.internal,
-vault transport mode) which is the bit I cannot validate without the
-dev hardware.  Container-launching variant is tracked as a follow-up
-(see this directory's ``__init__.py``).
+In-process tests at the bottom of the file run the broker in the
+same Python process and skip the container layer; the container-
+launching test (``test_phantom_swap_through_container_socket``)
+adds the missing transport hop: a real podman container with the
+broker's UNIX socket bind-mounted, exec'ing ``curl --unix-socket``
+to drive the request from a separate process / namespace.
 """
 
 from __future__ import annotations
 
+import shutil
+import subprocess
+import uuid
+
 import pytest
 
-from tests.integration.stories.conftest import MockUpstreamState, VaultEnv
+from tests.integration.helpers import PODMAN_CONTAINER_PREFIX, PODMAN_TEST_IMAGE
+from tests.integration.stories.conftest import (
+    MockUpstreamState,
+    VaultEnv,
+    VaultSocketEnv,
+)
 
 # All stories in this file talk to a real DB + broker.
 pytestmark = pytest.mark.needs_vault
@@ -126,3 +136,115 @@ async def test_revoked_phantom_is_rejected(
     assert mock_upstream_api.requests == [], (
         "revoked phantom reached the upstream — broker did not honour revocation"
     )
+
+
+# ── Container-launching variant ──────────────────────────────
+
+
+@pytest.mark.needs_podman
+def test_phantom_swap_through_container_socket(
+    running_token_broker_socket: VaultSocketEnv,
+    mock_upstream_api: MockUpstreamState,
+    _pull_image: None,
+) -> None:
+    """Same swap, but driven by ``curl`` *inside a real podman container*.
+
+    The in-process tests above prove the broker swaps phantom for real
+    *given a same-process HTTP client*.  This test adds the transport
+    hop the agent uses in production: the container has the broker's
+    UNIX socket bind-mounted and reaches it via
+    ``curl --unix-socket``.  No more shared event loop, no more
+    same-namespace shortcut.
+
+    UNIX socket (rather than ``host.containers.internal``) keeps the
+    test reliable across rootless backends — pasta and slirp4netns
+    resolve the host gateway differently, and that's not what this
+    story is testing.  Production's "socket" vault transport is
+    exactly this shape.
+
+    Marker: ``needs_podman`` — skipped where podman is absent (CI,
+    laptops without a runtime); the matrix runners exercise it.
+    """
+    if not shutil.which("podman"):
+        pytest.skip("podman not on PATH")
+
+    real_key = running_token_broker_socket.real_credential["key"]
+    phantom = running_token_broker_socket.phantom_token
+    host_socket = running_token_broker_socket.socket_path
+
+    name = f"{PODMAN_CONTAINER_PREFIX}-phantom-{uuid.uuid4().hex[:8]}"
+    try:
+        subprocess.run(
+            [
+                "podman",
+                "run",
+                "-d",
+                "--name",
+                name,
+                # Bind the broker's UNIX socket into the container.  ``:z``
+                # relabels for SELinux on hosts where it's enforcing —
+                # noop where it isn't.
+                "-v",
+                f"{host_socket}:/vault.sock:z",
+                PODMAN_TEST_IMAGE,
+                "sleep",
+                "60",
+            ],
+            check=True,
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+
+        # 1. Container's curl drives the request through the bind-mounted
+        #    socket.  The phantom token is what the agent in production
+        #    would send; the broker sees it and substitutes the real key
+        #    before forwarding to the upstream.
+        exec_result = subprocess.run(
+            [
+                "podman",
+                "exec",
+                name,
+                "curl",
+                "-sS",
+                "--fail",
+                "--unix-socket",
+                "/vault.sock",
+                "-H",
+                f"Authorization: Bearer {phantom}",
+                "http://localhost/v1/messages",
+            ],
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=15,
+        )
+        assert exec_result.returncode == 0, (
+            f"curl from inside the container failed (exit {exec_result.returncode}):\n"
+            f"  stdout: {exec_result.stdout!r}\n"
+            f"  stderr: {exec_result.stderr!r}"
+        )
+
+        # 2. The mock upstream got exactly one request, with the *real* key.
+        assert len(mock_upstream_api.requests) == 1
+        captured = mock_upstream_api.last
+        assert captured.path == "/v1/messages"
+        assert captured.headers.get("Authorization") == f"Bearer {real_key}"
+
+        # 3. The phantom never left the host — neither in any header the
+        #    upstream saw, nor anywhere in the container's environment.
+        raw_headers = " ".join(captured.headers.values())
+        assert phantom not in raw_headers
+        env_result = subprocess.run(
+            ["podman", "exec", name, "env"],
+            check=True,
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+        assert real_key not in env_result.stdout, (
+            "real API key leaked into container environment — vault transport "
+            "should have kept it host-side"
+        )
+    finally:
+        subprocess.run(["podman", "rm", "-f", name], capture_output=True, timeout=30)

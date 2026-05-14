@@ -202,6 +202,65 @@ async def running_token_broker(
         await runner.cleanup()
 
 
+@dataclass
+class VaultSocketEnv:
+    """Wired-up vault with a UNIX-socket-listening broker for container tests."""
+
+    db_path: Path
+    phantom_token: str
+    real_credential: dict[str, Any]
+    socket_path: Path
+    routes_path: Path
+
+
+@pytest.fixture
+async def running_token_broker_socket(
+    populated_vault_db: tuple[Path, str, dict[str, Any]],
+    vault_routes: Path,
+    mock_upstream_api: MockUpstreamState,
+    tmp_path: Path,
+) -> AsyncIterator[VaultSocketEnv]:
+    """Run the token broker on a UNIX domain socket instead of TCP.
+
+    This is the shape the container-launching story uses: a podman
+    container bind-mounts the socket and reaches the broker without
+    needing ``host.containers.internal`` resolution, which varies by
+    rootless network backend (pasta vs slirp4netns) and podman
+    version.  Production's "socket" vault transport is also this
+    shape — see ``terok_sandbox.config.get_vault_transport``.
+
+    The socket file is ``chmod 0666`` so a container running as a
+    different rootless UID (the in-namespace ``testrunner``) can still
+    reach the host-side broker through the bind-mount.
+    """
+    from aiohttp import web
+    from terok_sandbox.vault.daemon.token_broker import _build_app
+
+    db_path, phantom_token, real_credential = populated_vault_db
+    app = _build_app(str(db_path), str(vault_routes))
+
+    socket_path = tmp_path / "vault.sock"
+    runner = web.AppRunner(app)
+    await runner.setup()
+    site = web.UnixSite(runner, path=str(socket_path))
+    await site.start()
+    # Loosen perms so a container peer with a different mapped UID can
+    # still connect through the bind-mount — the file is in a per-test
+    # tmp dir, so the looser mode never escapes the test sandbox.
+    socket_path.chmod(0o666)
+
+    try:
+        yield VaultSocketEnv(
+            db_path=db_path,
+            phantom_token=phantom_token,
+            real_credential=real_credential,
+            socket_path=socket_path,
+            routes_path=vault_routes,
+        )
+    finally:
+        await runner.cleanup()
+
+
 # ── D-Bus mock notification daemon ──────────────────────────
 
 
