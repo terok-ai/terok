@@ -315,19 +315,22 @@ def _remove_workspace(workspace: Path, warnings: list[str]) -> None:
 def _remove_meta_files(paths: tuple[Path, ...], warnings: list[str]) -> None:
     """Unlink the on-disk meta-file pair plus any legacy single-file remnants.
 
-    Each ``unlink(missing_ok=True)`` is independent so a half-installed
-    bundle still cleans up everything that was there.
+    Each path is unlinked independently so a failure on one (e.g. a
+    permission error) still lets the rest be cleaned up.
     """
     if not any(p.is_file() for p in paths):
         return
     _log_debug("task_delete: removing metadata files")
-    try:
-        for p in paths:
+    all_removed = True
+    for p in paths:
+        try:
             p.unlink(missing_ok=True)
+        except Exception as exc:
+            _log_debug(f"task_delete: metadata removal failed for {p}: {exc}")
+            warnings.append(f"Metadata removal failed for {p}: {exc}")
+            all_removed = False
+    if all_removed:
         _log_debug("task_delete: metadata files removed")
-    except Exception as exc:
-        _log_debug(f"task_delete: metadata removal failed: {exc}")
-        warnings.append(f"Metadata removal failed: {exc}")
 
 
 def _release_task_web_port(
@@ -344,6 +347,7 @@ def _release_task_web_port(
         release_web_port(project_id, task_id)
     except Exception as exc:  # noqa: BLE001 — best-effort cleanup
         _log_debug(f"task_delete: web port release failed: {exc}")
+        warnings.append(f"Web port release failed: {exc}")
 
 
 def _task_delete(project: ProjectConfig, task_id: str) -> TaskDeleteResult:
