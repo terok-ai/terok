@@ -393,26 +393,28 @@ class TestRunContainerDoctor:
         assert "unknown host-side check" in results[0][2]
         mock_exec.assert_not_called()
 
-    @patch("terok.lib.orchestration.container_doctor.get_ssh_signer_port", return_value=2222)
-    @patch("terok.lib.orchestration.container_doctor.get_token_broker_port", return_value=8080)
+    @patch("terok.lib.orchestration.container_doctor.get_ssh_signer_port", return_value=None)
+    @patch("terok.lib.orchestration.container_doctor.get_token_broker_port", return_value=None)
     @patch("terok.lib.orchestration.container_doctor.make_sandbox_config")
-    def test_collect_all_checks_raises_when_gate_port_unset(
+    def test_collect_all_checks_raises_in_tcp_mode_with_unset_ports(
         self,
         mock_sandbox_cfg: MagicMock,
         _broker_port: MagicMock,
         _ssh_port: MagicMock,
         tmp_path: Path,
     ) -> None:
-        """Regression: ``_terok_doctor_checks`` requires a non-``None`` gate port.
+        """``_collect_all_checks`` refuses TCP mode without resolved ports.
 
-        Previously the call passed ``cfg.gate_port`` directly into a function
-        typed as ``int``, building checks that talked to ``host:None`` and
-        only failed deep inside the probe path with an opaque error.
+        In TCP mode the per-task probes need real port numbers — either
+        pinned in ``config.yml`` or auto-allocated by the port registry.
+        Socket mode is the opposite contract (no TCP ports expected) and
+        is covered by ``test_sickbay_collects_checks_in_socket_mode`` in
+        ``test_unified_layering_contracts``.
         """
         from terok.lib.orchestration.container_doctor import _collect_all_checks
 
-        mock_sandbox_cfg.return_value = MagicMock(gate_port=None)
-        with pytest.raises(SystemExit, match="gate server port|gate.port"):
+        mock_sandbox_cfg.return_value = MagicMock(services_mode="tcp", gate_port=None)
+        with pytest.raises(SystemExit, match="ports are not all configured"):
             _collect_all_checks("proj", tmp_path)
 
 

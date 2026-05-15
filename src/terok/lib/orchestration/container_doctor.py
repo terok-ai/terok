@@ -203,11 +203,17 @@ def _port_drift_check(env_var: str, label: str, expected: int) -> DoctorCheck:
 
 def _terok_doctor_checks(
     project_id: str,
-    gate_port: int,
-    token_broker_port: int,
-    ssh_signer_port: int,
+    gate_port: int | None,
+    token_broker_port: int | None,
+    ssh_signer_port: int | None,
 ) -> list[DoctorCheck]:
-    """Build terok-level health checks from project config."""
+    """Build terok-level health checks from project config.
+
+    ``None`` for any of the three port arguments selects socket mode
+    for that subsystem: the matching drift check is omitted because
+    sandbox doesn't bake a ``TEROK_*_PORT`` env into the container in
+    that mode, so there is no value to drift from.
+    """
     project = load_project(project_id)
 
     checks: list[DoctorCheck] = []
@@ -221,12 +227,16 @@ def _terok_doctor_checks(
     checks.append(_git_identity_check(human_name, human_email, "email"))
 
     checks.append(_git_remote_check(project.security_class, gate_port))
-    checks.append(
-        _port_drift_check("TEROK_TOKEN_BROKER_PORT", "Token broker port drift", token_broker_port)
-    )
-    checks.append(
-        _port_drift_check("TEROK_SSH_SIGNER_PORT", "SSH signer port drift", ssh_signer_port)
-    )
+    if token_broker_port is not None:
+        checks.append(
+            _port_drift_check(
+                "TEROK_TOKEN_BROKER_PORT", "Token broker port drift", token_broker_port
+            )
+        )
+    if ssh_signer_port is not None:
+        checks.append(
+            _port_drift_check("TEROK_SSH_SIGNER_PORT", "SSH signer port drift", ssh_signer_port)
+        )
 
     return checks
 
@@ -276,17 +286,30 @@ def _collect_all_checks(
     project_id: str,
     task_dir: Path,
 ) -> list[DoctorCheck]:
-    """Gather health checks from sandbox, agent, and terok layers."""
+    """Gather health checks from sandbox, agent, and terok layers.
+
+    In TCP mode all three port fields must resolve to an ``int`` (either
+    pinned via ``config.yml`` or auto-allocated by sandbox's port
+    registry).  In socket mode they are *supposed* to be ``None`` — no
+    TCP listener exists, comms go over Unix sockets — and every
+    downstream assembler ([`sandbox_doctor_checks`][terok_sandbox.doctor.sandbox_doctor_checks],
+    [`agent_doctor_checks`][terok_executor.doctor.agent_doctor_checks],
+    and the local [`_terok_doctor_checks`][terok.lib.orchestration.container_doctor._terok_doctor_checks])
+    already special-cases ``None`` to drop the TCP-only probes.  So the
+    "must be set" gate fires only in TCP mode.
+    """
     cfg = make_sandbox_config()
     token_broker_port = get_token_broker_port(cfg)
     ssh_signer_port = get_ssh_signer_port(cfg)
     desired_shield = _read_desired_shield_state(task_dir)
 
-    if cfg.gate_port is None or token_broker_port is None or ssh_signer_port is None:
+    if cfg.services_mode == "tcp" and (
+        cfg.gate_port is None or token_broker_port is None or ssh_signer_port is None
+    ):
         raise SystemExit(
-            "Sandbox service ports are not all configured — sickbay needs "
-            "gate.port / vault.token_broker_port / vault.ssh_signer_port in "
-            "config.yml or auto-allocation enabled."
+            "Sandbox service ports are not all configured — sickbay (TCP mode) "
+            "needs gate.port / vault.port / vault.ssh_signer_port in config.yml "
+            "or auto-allocation enabled."
         )
 
     checks: list[DoctorCheck] = []
