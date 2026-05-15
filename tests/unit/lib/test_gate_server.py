@@ -223,12 +223,7 @@ class TestInstallUninstall:
     """Tests for systemd unit install/uninstall."""
 
     @unittest.mock.patch("subprocess.run")
-    @unittest.mock.patch("shutil.which", return_value="/usr/local/bin/terok-gate")
-    def test_install_writes_files(
-        self,
-        _mock_which: unittest.mock.Mock,
-        mock_run: unittest.mock.Mock,
-    ) -> None:
+    def test_install_writes_files(self, mock_run: unittest.mock.Mock) -> None:
         mock_run.return_value = make_run_result(returncode=0)
         with tempfile.TemporaryDirectory() as td:
             unit_dir = Path(td) / "systemd" / "user"
@@ -240,25 +235,18 @@ class TestInstallUninstall:
             assert (unit_dir / SYSTEMD_SOCKET).is_file()
             assert (unit_dir / SYSTEMD_SERVICE).is_file()
             assert_contains_all(socket_content, (f"{LOCALHOST}:{GATE_PORT}", VERSION_STAMP))
+            # ExecStart now uses `sys.executable -m terok_sandbox.gate`
+            # (see terok-sandbox refactor that aligns gate with vault's
+            # _vault_exec_prefix pattern for venv-isolated installs).
             assert_contains_all(
                 service_content,
                 (
-                    "ExecStart=/usr/local/bin/terok-gate",
+                    "-m terok_sandbox.gate",
                     str(GATE_BASE_PATH),
                     "--token-file=",
                     VERSION_STAMP,
                 ),
             )
-
-    @unittest.mock.patch("subprocess.run")
-    @unittest.mock.patch("shutil.which", return_value=None)
-    def test_install_fails_without_binary(
-        self,
-        _mock_which: unittest.mock.Mock,
-        _mock_run: unittest.mock.Mock,
-    ) -> None:
-        with pytest.raises(SystemExit, match="terok-gate"):
-            GateServerManager().install_systemd_units()
 
     @unittest.mock.patch("subprocess.run")
     def test_uninstall_removes_files(self, mock_run: unittest.mock.Mock) -> None:

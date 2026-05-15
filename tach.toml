@@ -712,6 +712,7 @@ expose = [
     "write_task_meta",
     "iter_task_ids",
     "task_exists",
+    "lookup_container_by_pt",
 ]
 from = ["terok.lib.orchestration.tasks"]
 

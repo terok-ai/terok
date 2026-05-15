@@ -379,7 +379,22 @@ def make_sandbox_config() -> "SandboxConfig":
     in ``SandboxConfig.__post_init__``.
 
     This is the **single source of truth** for config bridging — every
-    SandboxConfig field that terok controls must be set here.
+    [`SandboxConfig`][terok_sandbox.SandboxConfig] field that terok
+    controls must be set here.
+
+    ## terok's config-equality promise
+
+    For every field with a representation in the shared ``config.yml``
+    schema that sandbox/executor own, the cfg this function constructs
+    matches what standalone sandbox would have read from the same file
+    — modulo user-supplied ``--flag`` / env overrides.  Runtime-only
+    ambient context with no config-file representation may be added
+    additively but must not shadow a schema field.  Sandbox/executor
+    accept any ``SandboxConfig`` without enforcement; third-party
+    orchestrators choose their own contracts.
+
+    Diff ``terok executor show-config`` against standalone
+    ``terok-executor show-config`` over the same config.yml to verify.
     """
     from terok.lib.integrations.sandbox import SandboxConfig
 

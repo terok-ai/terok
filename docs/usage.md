@@ -43,6 +43,46 @@ on a TTY to launch the TUI; pass a subcommand to drive the CLI.
 |------|-------------|
 | `--no-emoji` | Replace emojis with text labels (e.g. `[gate]` instead of emoji) |
 
+### Subsystem Surfaces
+
+terok exposes two surfaces over the sibling subsystems (`terok-executor`, `terok-sandbox`):
+
+| Surface | Identity | Config | When to use |
+|---------|----------|--------|-------------|
+| `terok <X>` (incl. `terok executor *`, `terok sandbox *`, `terok vault`, `terok ssh`, `terok gate`) | `(project, task)` for terok-native verbs; container id or `project/task` for forwarded per-container verbs | terok's resolved cfg | Anything tied to your terok install |
+| Standalone `terok-executor` / `terok-sandbox` | container id | sibling defaults / `TEROK_CONFIG_FILE` override | Raw, no-terok-context operations (testing, scripting, custom orchestration) |
+
+Every `terok <X>` invocation uses terok's configured state — same sandbox install, same vault, same auth, same image cache.  For raw operation, install the sibling separately:
+
+```bash
+pipx install terok-executor       # standalone executor
+terok-executor show-config         # raw cfg (no terok context)
+TEROK_CONFIG_FILE=/path/to/cfg.yml terok-executor run claude .  # explicit override
+```
+
+#### Identity forms on per-container verbs
+
+`terok executor stop` (and future `exec` / `logs` / `state` / `login`) accept either form:
+
+```bash
+terok executor stop <container-id>        # raw form
+terok executor stop <project>/<task>      # slash form — resolved via terok's task store
+```
+
+Same dual-form precedent as `git push origin master` vs `origin/master`.  `terok task <verb> p t` and `terok task <verb> p/t` are accepted interchangeably for the same reason.
+
+#### Diffing the effective config
+
+To verify that `terok executor *` operates on terok's configured state:
+
+```bash
+terok executor show-config              # cfg terok would pass down
+terok-executor show-config              # cfg standalone executor would read
+diff <(terok executor show-config) <(terok-executor show-config)
+```
+
+For fields with a representation in the shared `config.yml` schema that sandbox/executor own, the two outputs match.  Runtime-only ambient context (added by orchestrators) may differ.
+
 ### Shell Completion
 
 Tab completion is powered by [argcomplete](https://github.com/kislyuk/argcomplete).

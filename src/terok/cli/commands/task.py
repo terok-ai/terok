@@ -44,9 +44,46 @@ def _add_project_arg(parser: argparse.ArgumentParser, **kwargs: object) -> None:
 
 
 def _add_project_task_args(parser: argparse.ArgumentParser) -> None:
-    """Add ``project_id`` and ``task_id`` positionals with completers."""
+    """Add ``project_id`` and ``task_id`` positionals with completers.
+
+    The ``task_id`` positional is ``nargs="?"`` so the same parser
+    accepts both forms — ``terok task <verb> proj task`` (two
+    positionals, primary) and ``terok task <verb> proj/task`` (single
+    positional, alias).  Same dual-form precedent as ``git push
+    origin master`` vs ``origin/master``.
+    [`_normalize_pt`][terok.cli.commands.task._normalize_pt] runs at
+    the top of [`dispatch`][terok.cli.commands.task.dispatch] to split
+    the slash form into the canonical pair before any verb-specific
+    handling.
+    """
     add_project_id(parser)
-    add_task_id(parser)
+    add_task_id(parser, nargs="?", default=None)
+
+
+def _normalize_pt(args: argparse.Namespace) -> None:
+    """If ``project_id`` is ``"<p>/<t>"`` and ``task_id`` is unset, split it.
+
+    Idempotent — calling twice has the same effect.  Inputs without
+    ``/`` or with ``task_id`` already set pass through untouched.
+    Verbs that require ``task_id`` raise their own actionable errors
+    when it remains ``None`` after normalization.
+
+    Path-traversal guard: ``str.partition("/")`` splits at the *first*
+    ``/`` only, so the parts must be checked individually.  Each part
+    is rejected with ``SystemExit`` when it's empty (``"/task"`` or
+    ``"proj/"``), equals ``.`` or ``..``, starts with ``..`` (covers
+    ``"../etc/passwd"``, ``"proj/..secret"``), or itself contains
+    ``/`` (covers nested segments like ``"proj/a/b"`` where the tail
+    ``"a/b"`` would otherwise reach the filesystem helpers verbatim).
+    """
+    pid = getattr(args, "project_id", None)
+    if isinstance(pid, str) and "/" in pid and getattr(args, "task_id", None) is None:
+        project, _, task = pid.partition("/")
+        for part, label in ((project, "project_id"), (task, "task_id")):
+            if not part or part in (".", "..") or part.startswith("..") or "/" in part:
+                raise SystemExit(f"Invalid slash-form {label}: {part!r}")
+        args.project_id = project
+        args.task_id = task or None
 
 
 def _add_restriction_flags(parser: argparse.ArgumentParser) -> None:
@@ -348,6 +385,7 @@ def register(
 
 def dispatch(args: argparse.Namespace) -> bool:
     """Handle task-related commands.  Returns True if handled."""
+    _normalize_pt(args)
     if args.cmd == "login":
         tid = resolve_task_id(args.project_id, args.task_id)
         task_login(args.project_id, tid)
