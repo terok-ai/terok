@@ -378,21 +378,24 @@ run_nix_tests() {
             python3.12 -m venv .venv
             . .venv/bin/activate
             pip install --quiet --upgrade pip
-            # ``tach`` (not ``pytest-tach``) is the package that
-            # registers the pytest plugin; pyproject.toml's pytest
-            # config doesn't load it conditionally.
-            pip install --quiet . pytest pytest-asyncio pytest-cov tach
+            pip install --quiet poetry
+
+            # Poetry knows the full dev/test/docs/stories matrix from
+            # pyproject.toml — saves us from enumerating test deps by
+            # hand (``mkdocs_terok``, ``tach`` plugin, etc.).  Same
+            # group set the matrix's ``run_tests`` uses.
+            poetry install --with test --with stories --with docs --no-interaction
 
             echo ''
             echo '--- unit tests ---'
-            pytest tests/unit -v --tb=short
+            poetry run pytest tests/unit -v --tb=short
 
             echo ''
             echo '--- host-only integration tests ---'
             # Same marker filter ``make test-integration-host`` uses on
             # GitHub-Actions: skip everything that wants podman or the
             # internet.  Nix container has neither.
-            pytest tests/integration -v --tb=short \
+            poetry run pytest tests/integration -v --tb=short \
                 -m 'needs_host_features and not needs_internet and not needs_podman'
         "
 
