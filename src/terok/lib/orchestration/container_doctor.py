@@ -386,10 +386,24 @@ def _resolve_running_container(
 
 
 def _dispatch_host_side(check: DoctorCheck, task_dir: Path, cname: str) -> _CheckResult:
-    """Handle a host-side check that cannot use podman exec."""
+    """Handle a host-side check that cannot use ``podman exec``.
+
+    ``shield`` checks need terok-side state (the project task_dir) and
+    a real `terok_shield.Shield` instance — handled specially.  Every
+    other ``host_side=True`` check follows the standalone-doctor
+    convention: its ``evaluate`` callable is self-contained (does its
+    own probing via Python APIs) and tolerates a stub
+    ``rc=0, stdout="", stderr=""`` invocation.  Vault-tier passphrase
+    checks (``_make_vault_unlocked_check`` /
+    ``_make_plaintext_passphrase_warning_check``) fall in that bucket.
+    """
     if check.category == "shield":
         return _check_shield_state(task_dir, cname)
-    return ("warn", check.label, "unknown host-side check — skipped")
+    try:
+        verdict = check.evaluate(0, "", "")
+    except Exception as exc:  # noqa: BLE001
+        return ("warn", check.label, f"host-side probe failed: {exc}")
+    return (verdict.severity, check.label, verdict.detail)
 
 
 def run_container_doctor(
