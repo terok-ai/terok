@@ -27,8 +27,8 @@ dependencies = [
     "unique-namer>=1.3",
     "textual-serve>=1.1.0",
     "jinja2>=3.1,<4.0.0",
-    "terok-executor @ https://github.com/terok-ai/terok-executor/releases/download/v0.0.149a2/terok_executor-0.0.149a2-py3-none-any.whl",
-    "terok-sandbox @ https://github.com/terok-ai/terok-sandbox/releases/download/v0.0.124a2/terok_sandbox-0.0.124a2-py3-none-any.whl",
+    "terok-executor @ https://github.com/terok-ai/terok-executor/releases/download/v0.0.149a3/terok_executor-0.0.149a3-py3-none-any.whl",
+    "terok-sandbox @ https://github.com/terok-ai/terok-sandbox/releases/download/v0.0.124a3/terok_sandbox-0.0.124a3-py3-none-any.whl",
     "terok-shield @ https://github.com/terok-ai/terok-shield/releases/download/v0.6.42a2/terok_shield-0.6.42a2-py3-none-any.whl",
     "terok-clearance @ https://github.com/terok-ai/terok-clearance/releases/download/v0.6.14a2/terok_clearance-0.6.14a2-py3-none-any.whl",
 ]
