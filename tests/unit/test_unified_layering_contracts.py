@@ -424,6 +424,34 @@ def test_sickbay_collects_checks_in_socket_mode(tmp_path: Path) -> None:
     assert "SSH signer port drift" not in labels
 
 
+def test_terok_doctor_checks_emits_port_drift_in_tcp_mode() -> None:
+    """Mirror of the socket-mode test: real ports → drift checks present.
+
+    Exercises the ``if … is not None: checks.append(_port_drift_check(…))``
+    branches in [`_terok_doctor_checks`][terok.lib.orchestration.container_doctor._terok_doctor_checks].
+    """
+    from unittest.mock import MagicMock
+
+    from terok.lib.orchestration import container_doctor
+
+    with patch.object(container_doctor, "load_project") as load_proj:
+        load_proj.return_value = MagicMock(
+            human_name="N",
+            human_email="n@x",
+            security_class="gatekeeping",
+        )
+        checks = container_doctor._terok_doctor_checks(
+            "any-project",
+            gate_port=18700,
+            token_broker_port=18701,
+            ssh_signer_port=18702,
+        )
+
+    labels = [c.label for c in checks]
+    assert "Token broker port drift" in labels
+    assert "SSH signer port drift" in labels
+
+
 def test_terok_gate_ownership() -> None:
     """`terok-gate` console script is provided by terok-sandbox, not terok.
 
