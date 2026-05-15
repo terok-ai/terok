@@ -8,12 +8,32 @@ functions that hydrate it from disk and live container state.
 from dataclasses import dataclass
 
 from ...core import runtime as _rt
+from ...core.project_model import is_valid_project_id
 from ...core.projects import load_project
 from ...core.task_state import TaskState, container_name, effective_status
 from ...core.work_status import read_work_status
 from ..container_exec import container_git_diff
 from .identity import is_task_id
 from .meta import iter_task_ids, read_task_meta, tasks_meta_dir
+
+
+def _is_safe_id_segment(value: str) -> bool:
+    """Return True if *value* is safe to use as a path component.
+
+    Refuses empty strings, ``.``, ``..``, anything containing a path
+    separator, and anything starting with ``..``.  Used as the
+    defense-in-depth guard on identifier inputs that flow into
+    filesystem paths via [`tasks_meta_dir`][terok.lib.orchestration.tasks.meta.tasks_meta_dir]
+    / [`meta_path`][terok.lib.orchestration.tasks.meta.meta_path] /
+    [`dossier_path`][terok.lib.orchestration.tasks.meta.dossier_path].
+    """
+    return (
+        bool(value)
+        and value not in (".", "..")
+        and "/" not in value
+        and "\\" not in value
+        and not value.startswith("..")
+    )
 
 
 def get_task_container_state(project_id: str, task_id: str, mode: str | None) -> str | None:
@@ -31,11 +51,14 @@ def lookup_container_by_pt(project_id: str, task_id: str) -> str | None:
     ``terok executor *`` verbs (``stop``, future ``exec`` / ``logs`` /
     ``state`` / ``login``).  Reads the recorded mode from the task's
     meta file; returns ``None`` when the task is unknown or has never
-    been launched (no ``mode`` recorded).  The caller decides whether
-    to treat ``None`` as "pass the input through verbatim" (raw
-    container id) or "fail with an actionable error" (unknown
-    project/task).
+    been launched (no ``mode`` recorded), or when either input would
+    escape the project task store (path-traversal guard).  The caller
+    decides whether to treat ``None`` as "pass the input through
+    verbatim" (raw container id) or "fail with an actionable error"
+    (unknown project/task).
     """
+    if not is_valid_project_id(project_id) or not _is_safe_id_segment(task_id):
+        return None
     meta_dir = tasks_meta_dir(project_id)
     raw = read_task_meta(meta_dir, task_id)
     if raw is None:

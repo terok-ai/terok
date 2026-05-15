@@ -43,10 +43,15 @@ import pytest
 # terok also reads it in [`make_sandbox_config`][terok.lib.core.config.make_sandbox_config]
 # — the true round-trip surface.
 #
-# Port fields (gate/token_broker/ssh_signer) still flow through
-# sandbox's port-registry resolution rather than a config.yml factory,
-# so they're not pinned here.
-_TEROK_PROMISED_FIELDS: tuple[str, ...] = ("services_mode", "shield_audit", "shield_bypass")
+# ``shield_bypass`` is deliberately excluded: sandbox keeps it
+# hardcoded to ``False`` so a user-writable config-yml scope
+# (``~/.config/terok/config.yml``) or a ``TEROK_CONFIG_FILE`` env
+# override can never silently disable the egress firewall — even
+# though the orchestrator-driven path through ``make_sandbox_config``
+# does read it.  Port fields (gate/token_broker/ssh_signer) flow
+# through sandbox's port-registry resolution rather than a config.yml
+# factory, so they're not pinned either.
+_TEROK_PROMISED_FIELDS: tuple[str, ...] = ("services_mode", "shield_audit")
 
 
 def _write_user_config(tmp_path: Path, body: str) -> Path:
@@ -289,6 +294,43 @@ def test_normalize_pt_empty_task_guard() -> None:
     _normalize_pt(args)
     assert args.project_id == "myproj"
     assert args.task_id is None
+
+
+@pytest.mark.parametrize(
+    "slash_form",
+    [
+        "../etc/passwd",
+        "myproj/..",
+        "myproj/../other",
+        "./bad",
+    ],
+)
+def test_normalize_pt_rejects_path_traversal(slash_form: str) -> None:
+    """The slash-form split rejects parts that would traverse outside the task store."""
+    import argparse
+
+    from terok.cli.commands.task import _normalize_pt
+
+    args = argparse.Namespace(project_id=slash_form, task_id=None)
+    with pytest.raises(SystemExit, match="(?i)invalid"):
+        _normalize_pt(args)
+
+
+@pytest.mark.parametrize(
+    ("project_id", "task_id"),
+    [
+        ("../escape", "a1b2c"),
+        ("MYPROJ", "a1b2c"),  # validate_project_id is lowercase-only
+        ("myproj", ".."),
+        ("myproj", "evil/sub"),
+        ("myproj", ""),
+    ],
+)
+def test_lookup_container_by_pt_rejects_unsafe_ids(project_id: str, task_id: str) -> None:
+    """`lookup_container_by_pt` returns None for any input that could traverse out of the task store."""
+    from terok.lib.orchestration.tasks import lookup_container_by_pt
+
+    assert lookup_container_by_pt(project_id, task_id) is None
 
 
 def test_terok_gate_ownership() -> None:
