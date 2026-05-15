@@ -14,26 +14,7 @@ from ...core.task_state import TaskState, container_name, effective_status
 from ...core.work_status import read_work_status
 from ..container_exec import container_git_diff
 from .identity import is_task_id
-from .meta import iter_task_ids, read_task_meta, tasks_meta_dir
-
-
-def _is_safe_id_segment(value: str) -> bool:
-    """Return True if *value* is safe to use as a path component.
-
-    Refuses empty strings, ``.``, ``..``, anything containing a path
-    separator, and anything starting with ``..``.  Used as the
-    defense-in-depth guard on identifier inputs that flow into
-    filesystem paths via [`tasks_meta_dir`][terok.lib.orchestration.tasks.meta.tasks_meta_dir]
-    / [`meta_path`][terok.lib.orchestration.tasks.meta.meta_path] /
-    [`dossier_path`][terok.lib.orchestration.tasks.meta.dossier_path].
-    """
-    return (
-        bool(value)
-        and value not in (".", "..")
-        and "/" not in value
-        and "\\" not in value
-        and not value.startswith("..")
-    )
+from .meta import _is_safe_id_segment, iter_task_ids, read_task_meta, tasks_meta_dir
 
 
 def get_task_container_state(project_id: str, task_id: str, mode: str | None) -> str | None:

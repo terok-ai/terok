@@ -328,6 +328,56 @@ def test_lookup_container_by_pt_rejects_unsafe_ids(project_id: str, task_id: str
     assert lookup_container_by_pt(project_id, task_id) is None
 
 
+@pytest.mark.parametrize("bad", ["", ".", "..", "../escape", "..hidden", "a/b", "a\\b"])
+def test_meta_path_builders_reject_unsafe_project_id(bad: str) -> None:
+    """The five ``tasks/meta.py`` path-builders raise on a path-unsafe project_id.
+
+    Defense-in-depth: even if a caller smuggles past the CLI / resolver
+    guards (``_normalize_pt``, ``lookup_container_by_pt``), the
+    path-building layer itself refuses the construction with a loud
+    ``SystemExit``.  Covers
+    [`tasks_meta_dir`][terok.lib.orchestration.tasks.meta.tasks_meta_dir],
+    [`tasks_archive_dir`][terok.lib.orchestration.tasks.meta.tasks_archive_dir],
+    and [`agent_config_dir`][terok.lib.orchestration.tasks.meta.agent_config_dir]
+    (the project_id-consuming builders).
+    """
+    from terok.lib.orchestration.tasks.meta import (
+        agent_config_dir,
+        tasks_archive_dir,
+        tasks_meta_dir,
+    )
+
+    for builder in (tasks_meta_dir, tasks_archive_dir):
+        with pytest.raises(SystemExit, match="project_id"):
+            builder(bad)
+    with pytest.raises(SystemExit, match="project_id"):
+        agent_config_dir(bad, "a1b2c")
+
+
+@pytest.mark.parametrize("bad", ["", ".", "..", "../escape", "..hidden", "a/b", "a\\b"])
+def test_meta_path_builders_reject_unsafe_task_id(bad: str, tmp_path: Path) -> None:
+    """The three ``tasks/meta.py`` builders that take task_id refuse path-unsafe values.
+
+    Covers [`dossier_path`][terok.lib.orchestration.tasks.meta.dossier_path],
+    [`meta_path`][terok.lib.orchestration.tasks.meta.meta_path], and
+    [`agent_config_dir`][terok.lib.orchestration.tasks.meta.agent_config_dir]
+    (the task_id-consuming builders).  ``dossier_path`` / ``meta_path``
+    are given a real ``meta_dir`` so the failure is the id check, not
+    a missing-arg shape.
+    """
+    from terok.lib.orchestration.tasks.meta import (
+        agent_config_dir,
+        dossier_path,
+        meta_path,
+    )
+
+    for builder in (dossier_path, meta_path):
+        with pytest.raises(SystemExit, match="task_id"):
+            builder(tmp_path, bad)
+    with pytest.raises(SystemExit, match="task_id"):
+        agent_config_dir("myproj", bad)
+
+
 def test_terok_gate_ownership() -> None:
     """`terok-gate` console script is provided by terok-sandbox, not terok.
 
