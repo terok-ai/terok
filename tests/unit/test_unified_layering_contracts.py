@@ -280,22 +280,6 @@ def test_lookup_container_by_pt_resolves_and_handles_misses() -> None:
         assert "live-task" in resolved
 
 
-def test_normalize_pt_empty_task_guard() -> None:
-    """`terok task <verb> proj/` (trailing slash) keeps `task_id` as None.
-
-    Empty task partition must not become an empty string — downstream
-    verbs treat ``None`` as "missing" and raise actionable errors.
-    """
-    import argparse
-
-    from terok.cli.commands.task import _normalize_pt
-
-    args = argparse.Namespace(project_id="myproj/", task_id=None)
-    _normalize_pt(args)
-    assert args.project_id == "myproj"
-    assert args.task_id is None
-
-
 @pytest.mark.parametrize(
     "slash_form",
     [
@@ -303,10 +287,21 @@ def test_normalize_pt_empty_task_guard() -> None:
         "myproj/..",
         "myproj/../other",
         "./bad",
+        "/task",  # empty project part
+        "myproj/",  # empty task part
+        "myproj/a/b",  # nested separators in task
+        "a/b/c",  # nested separators in both
     ],
 )
 def test_normalize_pt_rejects_path_traversal(slash_form: str) -> None:
-    """The slash-form split rejects parts that would traverse outside the task store."""
+    """The slash-form split rejects any malformed part — empty, dotty, or nested.
+
+    ``str.partition("/")`` splits at the *first* slash, so each side has
+    to be validated independently: an empty leading or trailing part
+    (``"/task"`` / ``"proj/"``), a ``.``/``..`` segment, or a tail
+    containing further slashes (``"proj/a/b"`` where the task partition
+    would be ``"a/b"`` and reach filesystem helpers verbatim).
+    """
     import argparse
 
     from terok.cli.commands.task import _normalize_pt

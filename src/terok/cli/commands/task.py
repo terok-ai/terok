@@ -68,16 +68,19 @@ def _normalize_pt(args: argparse.Namespace) -> None:
     Verbs that require ``task_id`` raise their own actionable errors
     when it remains ``None`` after normalization.
 
-    Path-traversal guard: a split that would yield empty / ``.`` /
-    ``..`` parts (e.g. ``"../etc/passwd"``, ``"/secret"``, ``"foo/.."``)
-    is rejected with a ``SystemExit`` here, before the values reach
-    argparse-downstream code that builds filesystem paths from them.
+    Path-traversal guard: ``str.partition("/")`` splits at the *first*
+    ``/`` only, so the parts must be checked individually.  Each part
+    is rejected with ``SystemExit`` when it's empty (``"/task"`` or
+    ``"proj/"``), equals ``.`` or ``..``, starts with ``..`` (covers
+    ``"../etc/passwd"``, ``"proj/..secret"``), or itself contains
+    ``/`` (covers nested segments like ``"proj/a/b"`` where the tail
+    ``"a/b"`` would otherwise reach the filesystem helpers verbatim).
     """
     pid = getattr(args, "project_id", None)
     if isinstance(pid, str) and "/" in pid and getattr(args, "task_id", None) is None:
         project, _, task = pid.partition("/")
         for part, label in ((project, "project_id"), (task, "task_id")):
-            if part and part in (".", "..") or (part and part.startswith("..")):
+            if not part or part in (".", "..") or part.startswith("..") or "/" in part:
                 raise SystemExit(f"Invalid slash-form {label}: {part!r}")
         args.project_id = project
         args.task_id = task or None
