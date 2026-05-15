@@ -52,12 +52,45 @@ CONTAINER_TEROK_CONFIG = "/home/dev/.terok"
 """In-container mount point for the per-task agent-config dir."""
 
 
+def _is_safe_id_segment(value: str) -> bool:
+    """Return True if *value* is safe to use as a single path component.
+
+    Rejects empty, ``.``, ``..``, anything containing ``/`` or ``\\``,
+    and anything starting with ``..``.  The path-builders in this
+    module compose values via ``Path / value``, which treats embedded
+    separators as nested components and ``..`` as a parent reference;
+    this predicate is the defense-in-depth guard at that composition
+    point.
+    """
+    return (
+        bool(value)
+        and value not in (".", "..")
+        and "/" not in value
+        and "\\" not in value
+        and not value.startswith("..")
+    )
+
+
+def _reject_unsafe_id(value: str, what: str) -> None:
+    """Raise ``SystemExit`` if *value* would escape the task store.
+
+    Used at every path-builder boundary in this module so any caller
+    — internal or otherwise — that hands an unvetted identifier in
+    gets a loud error instead of a silent traversal.  The CLI entry
+    points (``_normalize_pt`` slash branch, ``lookup_container_by_pt``)
+    catch the obvious cases earlier; this layer catches the rest.
+    """
+    if not _is_safe_id_segment(value):
+        raise SystemExit(f"Refusing path-unsafe {what}: {value!r}")
+
+
 def dossier_path(meta_dir: Path, task_id: str) -> Path:
     """Path to the wire-dossier JSON file — what shield consumers read.
 
     The OCI ``dossier.meta_path`` annotation points operators at *this*
     file.  Companion bookkeeping lives at the ``_meta.yml`` sibling.
     """
+    _reject_unsafe_id(task_id, "task_id")
     return meta_dir / f"{task_id}{_DOSSIER_SUFFIX}"
 
 
@@ -67,6 +100,7 @@ def meta_path(meta_dir: Path, task_id: str) -> Path:
     Holds everything except the wire-dossier triple.  Single consumer
     (terok itself), so ruamel round-tripping is fine.
     """
+    _reject_unsafe_id(task_id, "task_id")
     return meta_dir / f"{task_id}{_META_SUFFIX}"
 
 
@@ -278,11 +312,14 @@ def task_exists(project_id: str, task_id: str) -> bool:
 
 def tasks_meta_dir(project_id: str) -> Path:
     """Return the directory containing task metadata files for *project_id*."""
+    _reject_unsafe_id(project_id, "project_id")
     return core_state_dir() / "projects" / project_id / "tasks"
 
 
 def agent_config_dir(project_id: str, task_id: str) -> Path:
     """Host path of the agent-config dir bind-mounted at `CONTAINER_TEROK_CONFIG`."""
+    _reject_unsafe_id(project_id, "project_id")
+    _reject_unsafe_id(task_id, "task_id")
     return load_project(project_id).tasks_root / str(task_id) / "agent-config"
 
 
@@ -294,6 +331,7 @@ def tasks_archive_dir(project_id: str) -> Path:
     deletion the entire ``archive/<pid>/`` subtree is bundled into the
     project snapshot and removed.
     """
+    _reject_unsafe_id(project_id, "project_id")
     return archive_dir() / project_id / "tasks"
 
 
