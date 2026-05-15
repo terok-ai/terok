@@ -72,7 +72,7 @@ def _normalize_pt(args: argparse.Namespace) -> None:
     if isinstance(pid, str) and "/" in pid and getattr(args, "task_id", None) is None:
         project, _, task = pid.partition("/")
         args.project_id = project
-        args.task_id = task
+        args.task_id = task or None
 
 
 def _add_restriction_flags(parser: argparse.ArgumentParser) -> None:

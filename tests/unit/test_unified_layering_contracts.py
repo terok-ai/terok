@@ -210,6 +210,7 @@ def test_per_container_identity_forms() -> None:
     ):
         lookup_mock.return_value = "resolved-container-name"
         stop_cmd.handler(name="myproj/mytask")
+        lookup_mock.assert_called_once_with("myproj", "mytask")
 
         lookup_mock.reset_mock()
         stop_cmd.handler(name="raw-container-id")
@@ -248,6 +249,46 @@ def test_terok_task_slash_alias() -> None:
 
     assert (space.project_id, space.task_id) == ("myproj", "mytask")
     assert (slash.project_id, slash.task_id) == ("myproj", "mytask")
+
+
+def test_lookup_container_by_pt_resolves_and_handles_misses() -> None:
+    """`lookup_container_by_pt` returns a container name on hit, None on miss.
+
+    Three branches exercised by patching ``read_task_meta``:
+      - unknown task (read_task_meta → None) → None
+      - known task with no recorded mode → None
+      - known task with mode → synthesized container name
+    """
+    from terok.lib.orchestration.tasks import lookup_container_by_pt
+
+    with patch("terok.lib.orchestration.tasks.query.read_task_meta") as read_mock:
+        read_mock.return_value = None
+        assert lookup_container_by_pt("myproj", "unknown") is None
+
+        read_mock.return_value = {"task_id": "no-mode-task"}
+        assert lookup_container_by_pt("myproj", "no-mode-task") is None
+
+        read_mock.return_value = {"task_id": "live-task", "mode": "cli"}
+        resolved = lookup_container_by_pt("myproj", "live-task")
+        assert resolved is not None
+        assert "myproj" in resolved
+        assert "live-task" in resolved
+
+
+def test_normalize_pt_empty_task_guard() -> None:
+    """`terok task <verb> proj/` (trailing slash) keeps `task_id` as None.
+
+    Empty task partition must not become an empty string — downstream
+    verbs treat ``None`` as "missing" and raise actionable errors.
+    """
+    import argparse
+
+    from terok.cli.commands.task import _normalize_pt
+
+    args = argparse.Namespace(project_id="myproj/", task_id=None)
+    _normalize_pt(args)
+    assert args.project_id == "myproj"
+    assert args.task_id is None
 
 
 def test_terok_gate_ownership() -> None:

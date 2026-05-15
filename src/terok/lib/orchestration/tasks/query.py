@@ -328,5 +328,6 @@ __all__ = [
     "get_task_meta",
     "get_tasks",
     "get_workspace_git_diff",
+    "lookup_container_by_pt",
     "task_list",
 ]
