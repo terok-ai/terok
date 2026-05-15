@@ -352,9 +352,6 @@ run_nix_tests() {
     echo -e "${C_CYAN}==> Testing ${C_BOLD}$name${C_CYAN} ($(version_expectation "$name"))${C_RESET}"
     echo ""
 
-    # Runs as root inside the Nix container — see Containerfile.nix
-    # for why (the wrapped-Python failure mode is uid-independent and
-    # ``su``/``newuidmap`` plumbing is deferred until podman lands).
     podman run --rm --name "$ctr_name" \
         --security-opt label=disable \
         -v "$REPO_ROOT:$SOURCE_MOUNT:ro,Z" \
@@ -362,49 +359,65 @@ run_nix_tests() {
         "$image" \
         bash -c "
             set -e
+
+            # ── Prep workspace as root ──
             cp -a $SOURCE_MOUNT $WORKSPACE_DIR
-            cd $WORKSPACE_DIR
+            chown -R testrunner:testrunner $WORKSPACE_DIR
 
-            echo '--- nix-wrapped python ---'
-            which python3.12
-            python3.12 --version
-            python3.12 --version | awk '{print \$2}' > /results/$name.python-version
+            # ── Tests as testrunner ──
+            # Running as a non-root user keeps terok-sandbox's
+            # ``systemd_user_unit_dir`` guard happy (it refuses on
+            # root because user units belong under \$XDG_RUNTIME_DIR).
+            # Single-quoted su -c body: ``\$`` defers expansion to the
+            # inner shell; bare ``\$name`` etc. expand here in the
+            # outer double-quoted bash -c.
+            su - testrunner -c '
+                set -e
+                cd $WORKSPACE_DIR
 
-            # Nix disables user site-packages (PYTHONNOUSERSITE), so
-            # ``pip install --user`` is rejected.  Install into a venv
-            # instead — same shape the other matrix slots use.  The
-            # venv inherits the wrapper's sys.path scrubbing, which is
-            # the wrapped-Python failure mode we want to exercise.
-            python3.12 -m venv .venv
-            . .venv/bin/activate
-            pip install --quiet --upgrade pip
-            pip install --quiet poetry
+                echo \"--- nix-wrapped python ---\"
+                which python3.12
+                python3.12 --version
+                python3.12 --version | awk \"{print \\\$2}\" > /results/$name.python-version
 
-            # ``test`` + ``docs`` is the minimum that makes the unit
-            # suite collect: ``test`` for pytest, ``docs`` for the
-            # ``mkdocs_terok`` module that two unit tests import.
-            #
-            # Skipped on purpose:
-            #   - ``stories`` pulls python-dbusmock → dbus-python,
-            #     which has no wheel and needs system libdbus headers
-            #     + ninja + meson to compile — would balloon the Nix
-            #     image for tests we filter out anyway.
-            #   - ``dev`` carries pydevd-pycharm, ruff, mypy, tach …
-            #     none load-bearing for running tests; ``-p no:tach``
-            #     below keeps pytest happy without the plugin.
-            poetry install --with test --with docs --no-interaction
+                # Nix disables user site-packages (PYTHONNOUSERSITE),
+                # so install into a venv — same shape the other
+                # matrix slots use.  The venv inherits the wrapper's
+                # sys.path scrubbing, which is the wrapped-Python
+                # failure mode (#717 family) we want to exercise.
+                python3.12 -m venv .venv
+                . .venv/bin/activate
+                pip install --quiet --upgrade pip
+                pip install --quiet poetry
 
-            echo ''
-            echo '--- unit tests ---'
-            poetry run pytest tests/unit -v --tb=short -p no:tach
+                # ``test`` + ``docs`` is the minimum that makes the
+                # unit suite collect: ``test`` for pytest, ``docs``
+                # for the ``mkdocs_terok`` module that two unit tests
+                # import.
+                #
+                # Skipped on purpose:
+                #   - ``stories`` pulls python-dbusmock → dbus-python,
+                #     no wheel + needs ninja/meson/libdbus headers
+                #     to compile, for tests our marker filter excludes
+                #     anyway.
+                #   - ``dev`` carries pydevd-pycharm, ruff, mypy, tach
+                #     — none load-bearing for running tests;
+                #     ``-p no:tach`` below keeps pytest happy without
+                #     the plugin.
+                poetry install --with test --with docs --no-interaction
 
-            echo ''
-            echo '--- host-only integration tests ---'
-            # Same marker filter ``make test-integration-host`` uses on
-            # GitHub-Actions: skip everything that wants podman or the
-            # internet.  Nix container has neither.
-            poetry run pytest tests/integration -v --tb=short -p no:tach \
-                -m 'needs_host_features and not needs_internet and not needs_podman'
+                echo \"\"
+                echo \"--- unit tests ---\"
+                poetry run pytest tests/unit -v --tb=short -p no:tach
+
+                echo \"\"
+                echo \"--- host-only integration tests ---\"
+                # Same marker filter ``make test-integration-host``
+                # uses on GitHub-Actions: skip everything that wants
+                # podman or the internet.  Nix container has neither.
+                poetry run pytest tests/integration -v --tb=short -p no:tach \
+                    -m \"needs_host_features and not needs_internet and not needs_podman\"
+            '
         "
 
     local status=$?

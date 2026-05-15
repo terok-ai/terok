@@ -14,15 +14,27 @@
 FROM docker.io/nixos/nix:latest
 
 # Pre-populate the system profile with what the tests need at runtime:
-# wrapped python + pip and awk.  Bash and git-minimal already ship in
-# the base image's profile; adding ``nixpkgs#bash`` or ``nixpkgs#git``
-# here conflicts on shared files (``bash/printenv``, ``bin/git-shell``).
+# wrapped python + pip, awk, util-linux (for ``su`` — the outer
+# ``bash -c`` drops to the testrunner uid; modern Linux moved ``su``
+# from ``shadow`` to ``util-linux``), and shadow (for the
+# ``newuidmap``/``newgidmap`` rootless-podman follow-up).
+#
+# Bash and git-minimal already ship in the base image's profile;
+# adding ``nixpkgs#bash`` or ``nixpkgs#git`` here conflicts on shared
+# files (``bash/printenv``, ``bin/git-shell``).
 #
 # ``--extra-experimental-features`` turns on flakes (off by default in
 # nix 2.18-).
 RUN nix --extra-experimental-features 'nix-command flakes' \
         profile add \
-        nixpkgs#gawk
+        nixpkgs#gawk \
+        nixpkgs#util-linux \
+        nixpkgs#shadow
+
+# Visibility for the next iteration if su still isn't there: dumps
+# every binary the system profile exposes.  Cheap; runs once at
+# build time.
+RUN ls /nix/var/nix/profiles/default/bin/ | sort
 
 # ``python312`` and ``python312Packages.pip`` are *separate* derivations
 # that don't share a site-packages; installing them side-by-side leaves
@@ -37,14 +49,24 @@ RUN nix --extra-experimental-features 'nix-command flakes' \
         profile add --impure --expr \
         '(builtins.getFlake "nixpkgs").legacyPackages.${builtins.currentSystem}.python312.withPackages (ps: [ ps.pip ])'
 
-# /bin/bash → the bash the base image already has, so shebangs resolve.
+# /bin/bash → the bash the base image already has, so shebangs and
+# the testrunner login shell resolve.
 RUN ln -s /nix/var/nix/profiles/default/bin/bash /bin/bash
 
-# Run as root.  The wrapped-Python failure mode this slot exercises is
-# uid-independent (the Nix wrapper rewrites sys.path the same way for
-# any uid).  When podman gets added to this slot later, that's when a
-# proper non-root user setup is needed for rootless operation —
-# bringing in ``shadow``/``util-linux`` for ``newuidmap``/``su`` and
-# the per-user nix profile dance.  Until then, root-only keeps the
-# image lean and avoids the user-switching plumbing entirely.
+# Non-root user (uid 1000) so terok-sandbox's ``systemd_user_unit_dir``
+# guard doesn't refuse on us — that path bails when running as root,
+# and several unit tests touch it.  Direct ``/etc/passwd`` write
+# instead of useradd: nixos/nix ships none of the files shadow's
+# userdb wants (``/etc/passwd``, ``/etc/login.defs``, the lastlog
+# skeleton on the bind-mounted ``/nix/store``), and an echo into
+# ``/etc/passwd`` is the same outcome with less ceremony.
+RUN install -d /etc \
+    && echo 'testrunner:x:1000:1000::/home/testrunner:/bin/bash' >> /etc/passwd \
+    && echo 'testrunner:x:1000:' >> /etc/group \
+    && install -d -o 1000 -g 1000 /home/testrunner /home/testrunner/.local/bin \
+    && install -d -o 1000 -g 1000 /nix/var/nix/profiles/per-user/testrunner
+
+# No USER directive — outer ``bash -c`` in run_nix_tests runs as root
+# to do the workspace prep, then ``su - testrunner`` for the venv +
+# tests.  See the dispatch in run-matrix.sh.
 ENV PATH=/nix/var/nix/profiles/default/bin:$PATH
