@@ -14,27 +14,21 @@
 FROM docker.io/nixos/nix:latest
 
 # Pre-populate the system profile with what the tests need at runtime:
-# wrapped python + pip, awk, util-linux (for ``su`` — the outer
-# ``bash -c`` drops to the testrunner uid; modern Linux moved ``su``
-# from ``shadow`` to ``util-linux``), and shadow (for the
-# ``newuidmap``/``newgidmap`` rootless-podman follow-up).
+# wrapped python + pip and awk.  Bash and git-minimal already ship in
+# the base image's profile; adding ``nixpkgs#bash`` or ``nixpkgs#git``
+# here conflicts on shared files (``bash/printenv``, ``bin/git-shell``).
 #
-# Bash and git-minimal already ship in the base image's profile;
-# adding ``nixpkgs#bash`` or ``nixpkgs#git`` here conflicts on shared
-# files (``bash/printenv``, ``bin/git-shell``).
+# No ``util-linux`` / ``shadow``: their ``su`` / ``runuser`` need SUID
+# (configured via NixOS security-wrappers, which the bare ``nixos/nix``
+# image doesn't ship).  ``run_nix_tests`` switches users via Python's
+# ``os.setuid`` instead.  When the rootless-podman follow-up lands
+# we'll add ``shadow`` for ``newuidmap``/``newgidmap``.
 #
 # ``--extra-experimental-features`` turns on flakes (off by default in
 # nix 2.18-).
 RUN nix --extra-experimental-features 'nix-command flakes' \
         profile add \
-        nixpkgs#gawk \
-        nixpkgs#util-linux \
-        nixpkgs#shadow
-
-# Visibility for the next iteration if su still isn't there: dumps
-# every binary the system profile exposes.  Cheap; runs once at
-# build time.
-RUN ls /nix/var/nix/profiles/default/bin/ | sort
+        nixpkgs#gawk
 
 # ``python312`` and ``python312Packages.pip`` are *separate* derivations
 # that don't share a site-packages; installing them side-by-side leaves
