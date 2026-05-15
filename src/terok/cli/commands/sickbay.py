@@ -92,7 +92,25 @@ def dispatch(args: argparse.Namespace) -> bool:
 
 
 def _check_gate_server() -> _CheckResult:
-    """Check gate server status."""
+    """Check gate server status.
+
+    Three "not running" paths get different messages because they need
+    different fixes:
+
+    * Operator-pending install → ``warn`` with a ``terok gate start``
+      pointer.
+    * Missing ``git`` on the host → ``warn`` naming the consequence
+      (no git push channel), no remediation pointer — installing git
+      is distro-specific and the operator's call.
+    * No user systemd → ``warn`` naming the gap (gate's inetd-style
+      architecture has no managed-daemon fallback yet, sandbox#…).
+
+    The latter two used to collapse to the same generic "run
+    'terok gate start'" line that would have failed to do anything;
+    the contextual messages match the executor preflight's verdicts.
+    """
+    import shutil
+
     cfg = make_sandbox_config()
     status = get_server_status(cfg)
     configured = get_services_mode()
@@ -111,8 +129,18 @@ def _check_gate_server() -> _CheckResult:
         return ("ok", label, detail)
     if status.mode == "systemd":
         return ("error", label, "socket installed but not active")
-    if is_systemd_available():
-        return ("warn", label, "not running — run 'terok gate start'")
+    if not shutil.which("git"):
+        return (
+            "warn",
+            label,
+            "disabled — git not on PATH (no host-side git push channel)",
+        )
+    if not is_systemd_available():
+        return (
+            "warn",
+            label,
+            "disabled — no user systemd (managed-daemon fallback not implemented yet)",
+        )
     return ("warn", label, "not running — run 'terok gate start'")
 
 
@@ -137,7 +165,14 @@ def _check_shield() -> _CheckResult:
     if ec.health != "ok":
         return ("warn", label, f"unexpected health: {ec.health}")
     dns = getattr(ec, "dns_tier", "unknown")
-    return ("ok", label, f"active ({ec.hooks}, {dns} DNS)")
+    detail = f"active ({ec.hooks}, {dns} DNS)"
+    # Surface the dnsmasq install hint when shield demoted to a lower
+    # tier: the lower tiers (dig, getent) work — they just can't handle
+    # runtime IP rotation or live domain allow-list updates, which is
+    # the daily-driver benefit dnsmasq pays for.
+    if dns != "dnsmasq":
+        detail += " — install dnsmasq for live IP rotation + domain updates"
+    return ("ok", label, detail)
 
 
 def _check_clearance_stack() -> _CheckResult:

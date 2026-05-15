@@ -5,6 +5,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import unittest.mock
 from pathlib import Path
 
@@ -388,6 +389,104 @@ class TestCheckGateServerTransport:
             sev, _, detail = _check_gate_server()
         assert sev == "warn"
         assert "services.mode: socket" in detail
+
+
+class TestCheckGateServerNotRunning:
+    """Three distinct "why" branches for a not-running gate."""
+
+    def _stack(self, *, git_path: str | None, systemd_available: bool) -> contextlib.ExitStack:
+        """Build a shared patch stack for the not-running-gate branches.
+
+        ``ExitStack`` here so each test reads as one block instead of a
+        repeated five-line ``with`` chain.  The returned stack must be
+        used as a context manager by the caller.
+        """
+        status = unittest.mock.MagicMock(mode="none", running=False, port=None, transport=None)
+        stack = contextlib.ExitStack()
+        stack.enter_context(unittest.mock.patch("terok.cli.commands.sickbay.make_sandbox_config"))
+        stack.enter_context(
+            unittest.mock.patch("terok.cli.commands.sickbay.get_server_status", return_value=status)
+        )
+        stack.enter_context(
+            unittest.mock.patch(
+                "terok.cli.commands.sickbay.check_units_outdated", return_value=None
+            )
+        )
+        stack.enter_context(
+            unittest.mock.patch(
+                "terok.cli.commands.sickbay.get_services_mode", return_value="socket"
+            )
+        )
+        stack.enter_context(unittest.mock.patch("shutil.which", return_value=git_path))
+        stack.enter_context(
+            unittest.mock.patch(
+                "terok.cli.commands.sickbay.is_systemd_available",
+                return_value=systemd_available,
+            )
+        )
+        return stack
+
+    def test_missing_git_named_as_consequence(self) -> None:
+        """git absent on PATH → gate disabled, message names the consequence."""
+        with self._stack(git_path=None, systemd_available=True):
+            sev, _, detail = _check_gate_server()
+        assert sev == "warn"
+        assert "git not on PATH" in detail
+        # Does not point at ``terok gate start`` — installing it wouldn't help.
+        assert "terok gate start" not in detail
+
+    def test_no_systemd_named_as_gap(self) -> None:
+        """No user systemd → gate disabled, message names the missing fallback."""
+        with self._stack(git_path="/usr/bin/git", systemd_available=False):
+            sev, _, detail = _check_gate_server()
+        assert sev == "warn"
+        assert "no user systemd" in detail
+        assert "terok gate start" not in detail
+
+    def test_installable_path_points_at_start(self) -> None:
+        """Operator-pending install (git + systemd present, gate down) → start hint."""
+        with self._stack(git_path="/usr/bin/git", systemd_available=True):
+            sev, _, detail = _check_gate_server()
+        assert sev == "warn"
+        assert "terok gate start" in detail
+
+
+class TestCheckShieldDnsTier:
+    """Shield row carries an install hint when not on the top DNS tier."""
+
+    def _patch(self, dns_tier: str) -> unittest.mock._patch[unittest.mock.MagicMock]:
+        """Patch ``check_environment`` so it returns a healthy shield on *dns_tier*."""
+        ec = unittest.mock.MagicMock(
+            health="ok", hooks="user", dns_tier=dns_tier, issues=[], setup_hint=""
+        )
+        return unittest.mock.patch("terok.cli.commands.sickbay.check_environment", return_value=ec)
+
+    def test_dnsmasq_tier_no_hint(self) -> None:
+        """Top tier → clean ok line, no install hint."""
+        from terok.cli.commands.sickbay import _check_shield
+
+        with self._patch("dnsmasq"):
+            sev, _, detail = _check_shield()
+        assert sev == "ok"
+        assert "install dnsmasq" not in detail
+
+    def test_dig_tier_carries_hint(self) -> None:
+        """dig tier works but loses IP rotation — hint surfaces."""
+        from terok.cli.commands.sickbay import _check_shield
+
+        with self._patch("dig"):
+            sev, _, detail = _check_shield()
+        assert sev == "ok"
+        assert "install dnsmasq" in detail
+
+    def test_getent_tier_carries_hint(self) -> None:
+        """getent tier (last resort) also gets the hint."""
+        from terok.cli.commands.sickbay import _check_shield
+
+        with self._patch("getent"):
+            sev, _, detail = _check_shield()
+        assert sev == "ok"
+        assert "install dnsmasq" in detail
 
 
 class TestCheckSelinuxPolicy:
