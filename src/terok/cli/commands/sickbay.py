@@ -22,6 +22,7 @@ from __future__ import annotations
 import argparse
 import shutil
 import sys
+from contextlib import suppress
 from pathlib import Path
 
 from terok.lib.integrations.clearance import (
@@ -215,11 +216,13 @@ def _passphrase_tier_label(source: str | None) -> str | None:
         return None
     label = f"passphrase via {source}"
     if source == "systemd-creds":
-        try:
+        # ``systemd-creds has-tpm2`` is best-effort — a missing binary
+        # or a hung probe must not break the sickbay row.  Suppress
+        # rather than ``try/except: pass`` so static analysers see the
+        # explicit "this is intentional" annotation.
+        with suppress(Exception):
             if systemd_creds_has_tpm2():
                 label = f"{label} (+TPM2)"
-        except Exception:  # noqa: BLE001 — TPM probe is best-effort
-            pass
     return label
 
 

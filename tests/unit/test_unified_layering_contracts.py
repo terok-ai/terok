@@ -452,6 +452,95 @@ def test_terok_doctor_checks_emits_port_drift_in_tcp_mode() -> None:
     assert "SSH signer port drift" in labels
 
 
+@pytest.mark.parametrize(
+    ("source", "tpm2", "expected"),
+    [
+        (None, False, None),
+        ("", False, None),
+        ("keyring", False, "passphrase via keyring"),
+        ("session-file", False, "passphrase via session-file"),
+        ("systemd-creds", False, "passphrase via systemd-creds"),
+        ("systemd-creds", True, "passphrase via systemd-creds (+TPM2)"),
+    ],
+)
+def test_passphrase_tier_label_handles_every_branch(
+    source: str | None, tpm2: bool, expected: str | None
+) -> None:
+    """`_passphrase_tier_label` renders the correct annotation per tier.
+
+    The ``(+TPM2)`` suffix only renders when the tier is
+    ``systemd-creds`` AND the host has a usable TPM2 — every other
+    combination should produce a plain ``passphrase via <tier>``
+    label.  ``None`` / empty source collapses to ``None`` so the
+    caller drops it from the detail string entirely.
+    """
+    from terok.cli.commands import sickbay
+
+    with patch.object(sickbay, "systemd_creds_has_tpm2", return_value=tpm2):
+        assert sickbay._passphrase_tier_label(source) == expected
+
+
+def test_passphrase_tier_label_swallows_tpm2_probe_failure() -> None:
+    """A raised ``systemd_creds_has_tpm2`` must not break the vault row."""
+    from terok.cli.commands import sickbay
+
+    with patch.object(
+        sickbay,
+        "systemd_creds_has_tpm2",
+        side_effect=RuntimeError("systemd-creds binary missing"),
+    ):
+        # No ``(+TPM2)`` suffix, no exception.
+        assert sickbay._passphrase_tier_label("systemd-creds") == "passphrase via systemd-creds"
+
+
+def test_check_vault_surfaces_passphrase_tier() -> None:
+    """The Vault row's detail string includes ``passphrase via <tier>`` when resolved."""
+    from unittest.mock import MagicMock
+
+    from terok.cli.commands import sickbay
+
+    fake_status = MagicMock(
+        running=True,
+        mode="systemd",
+        transport="socket",
+        credentials_stored=[],
+        passphrase_source="systemd-creds",
+    )
+
+    with (
+        patch.object(sickbay, "get_vault_status", return_value=fake_status),
+        patch.object(sickbay, "get_services_mode", return_value="socket"),
+        patch.object(sickbay, "systemd_creds_has_tpm2", return_value=False),
+    ):
+        status, label, detail = sickbay._check_vault()
+
+    assert status == "ok"
+    assert label == "Vault"
+    assert "passphrase via systemd-creds" in detail
+
+
+def test_dispatch_host_side_swallows_evaluate_failure(tmp_path: Path) -> None:
+    """`_dispatch_host_side` returns a warn row when a non-shield host check raises."""
+    from terok_sandbox.doctor import CheckVerdict, DoctorCheck
+
+    from terok.lib.orchestration.container_doctor import _dispatch_host_side
+
+    def _explode(_rc: int, _stdout: str, _stderr: str) -> CheckVerdict:
+        raise RuntimeError("probe died")
+
+    check = DoctorCheck(
+        category="vault",
+        label="Imaginary check",
+        probe_cmd=[],
+        evaluate=_explode,
+        host_side=True,
+    )
+    status, label, detail = _dispatch_host_side(check, tmp_path, "any-cname")
+    assert status == "warn"
+    assert label == "Imaginary check"
+    assert "probe died" in detail
+
+
 def test_terok_gate_ownership() -> None:
     """`terok-gate` console script is provided by terok-sandbox, not terok.
 

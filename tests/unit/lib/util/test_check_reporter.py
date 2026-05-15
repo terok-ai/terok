@@ -34,7 +34,7 @@ def buf() -> io.StringIO:
 @pytest.fixture
 def reporter(buf: io.StringIO) -> CheckReporter:
     """Reporter writing into the captured buffer at default width."""
-    return CheckReporter(stream=buf)
+    return CheckReporter(stream=buf, color=False)
 
 
 class TestWorstStatus:
@@ -65,7 +65,7 @@ class TestEmit:
 
     def test_streams_label_before_status(self, buf: io.StringIO) -> None:
         """``begin`` flushes the label before the check runs."""
-        reporter = CheckReporter(stream=buf)
+        reporter = CheckReporter(stream=buf, color=False)
         reporter.begin("Gate server")
         mid = buf.getvalue()
         # The label + dots must be on the buffer *before* end() runs.
@@ -79,7 +79,7 @@ class TestEmit:
 
     def test_marker_lands_after_dot_padding(self, buf: io.StringIO) -> None:
         """At default width, the status word starts at a predictable column."""
-        reporter = CheckReporter(stream=buf)
+        reporter = CheckReporter(stream=buf, color=False)
         reporter.emit("ok", "Vault", "ready")
         out = buf.getvalue()
         # "  Vault " + dots-to-width + " ok (ready)\n" — the ok marker is
@@ -88,7 +88,7 @@ class TestEmit:
         assert " ok (ready)\n" in out
 
     def test_empty_detail_omits_parens(self, buf: io.StringIO) -> None:
-        reporter = CheckReporter(stream=buf)
+        reporter = CheckReporter(stream=buf, color=False)
         reporter.emit("ok", "Silent check", "")
         assert buf.getvalue().rstrip().endswith(" ok")
 
@@ -128,11 +128,44 @@ class TestLabelPadding:
         assert DEFAULT_LABEL_WIDTH == 48
 
 
+class TestColoredMarkers:
+    """The status marker renders with severity-appropriate color."""
+
+    def test_ok_marker_is_green_when_color_on(self, buf: io.StringIO) -> None:
+        reporter = CheckReporter(stream=buf, color=True)
+        reporter.emit("ok", "X", "fine")
+        assert "\x1b[32mok\x1b[0m" in buf.getvalue()
+
+    def test_warn_marker_is_yellow_when_color_on(self, buf: io.StringIO) -> None:
+        reporter = CheckReporter(stream=buf, color=True)
+        reporter.emit("warn", "X", "uh")
+        assert "\x1b[33mWARN\x1b[0m" in buf.getvalue()
+
+    def test_error_marker_is_red_when_color_on(self, buf: io.StringIO) -> None:
+        reporter = CheckReporter(stream=buf, color=True)
+        reporter.emit("error", "X", "bad")
+        assert "\x1b[31mERROR\x1b[0m" in buf.getvalue()
+
+    def test_info_marker_stays_plain(self, buf: io.StringIO) -> None:
+        """``info`` is an annotation, not a verdict — never colored, never bolded."""
+        reporter = CheckReporter(stream=buf, color=True)
+        reporter.emit("info", "X", "fyi")
+        # No ANSI on the marker itself.
+        assert "\x1b[" not in buf.getvalue()
+        assert "info (fyi)" in buf.getvalue()
+
+    def test_unknown_severity_falls_through_uncolored(self, buf: io.StringIO) -> None:
+        reporter = CheckReporter(stream=buf, color=True)
+        reporter.emit("wat", "X", "")
+        assert "\x1b[" not in buf.getvalue()
+        assert "wat\n" in buf.getvalue()
+
+
 class TestGroupHappyPath:
     """All-ok groups collapse to a single summary line."""
 
     def test_all_ok_prints_single_summary(self, buf: io.StringIO) -> None:
-        reporter = CheckReporter(stream=buf)
+        reporter = CheckReporter(stream=buf, color=False)
         with reporter.group("Credential files") as g:
             g.track("ok", "Credential file (claude)", "no credential file")
             g.track("ok", "Credential file (codex)", "no credential file")
@@ -145,7 +178,7 @@ class TestGroupHappyPath:
 
     def test_ok_group_does_not_expand_members(self, buf: io.StringIO) -> None:
         """Member details never appear on the all-ok path."""
-        reporter = CheckReporter(stream=buf)
+        reporter = CheckReporter(stream=buf, color=False)
         with reporter.group("Bridges") as g:
             g.track("ok", "Bridge A", "alive")
             g.track("ok", "Bridge B", "alive")
@@ -155,7 +188,7 @@ class TestGroupHappyPath:
 
     def test_empty_group_still_closes_the_line(self, buf: io.StringIO) -> None:
         """A group with no members must terminate its open line."""
-        reporter = CheckReporter(stream=buf)
+        reporter = CheckReporter(stream=buf, color=False)
         with reporter.group("Nothing to see"):
             pass
         out = buf.getvalue()
@@ -173,7 +206,7 @@ class TestGroupFailurePath:
     """Non-ok groups expand member failures under the heading."""
 
     def test_warn_member_expands_into_bullet(self, buf: io.StringIO) -> None:
-        reporter = CheckReporter(stream=buf)
+        reporter = CheckReporter(stream=buf, color=False)
         with reporter.group("Phantom tokens") as g:
             g.track("ok", "Phantom token (GH_TOKEN)", "GH_TOKEN: phantom (gh)")
             g.track("warn", "Phantom token (SONAR_TOKEN)", "SONAR_TOKEN: not set")
@@ -187,7 +220,7 @@ class TestGroupFailurePath:
         assert "GH_TOKEN: phantom" not in out
 
     def test_error_member_summary_uses_error_marker(self, buf: io.StringIO) -> None:
-        reporter = CheckReporter(stream=buf)
+        reporter = CheckReporter(stream=buf, color=False)
         with reporter.group("Credential files") as g:
             g.track("ok", "Credential file (codex)", "clean")
             g.track("error", "Credential file (claude)", "real API key detected")
@@ -199,7 +232,7 @@ class TestGroupFailurePath:
         assert reporter.worst_status == "error"
 
     def test_failure_lines_are_indented(self, buf: io.StringIO) -> None:
-        reporter = CheckReporter(stream=buf)
+        reporter = CheckReporter(stream=buf, color=False)
         with reporter.group("Base URLs") as g:
             g.track("warn", "Base URL (ANTHROPIC_BASE_URL)", "not set — vault bypass possible")
         lines = buf.getvalue().splitlines()
