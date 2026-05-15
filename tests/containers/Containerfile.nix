@@ -57,7 +57,8 @@ RUN ln -s /nix/var/nix/profiles/default/bin/bash /bin/bash
 RUN install -d /etc \
     && echo 'testrunner:x:1000:1000::/home/testrunner:/bin/bash' >> /etc/passwd \
     && echo 'testrunner:x:1000:' >> /etc/group \
-    && install -d -o 1000 -g 1000 /home/testrunner /home/testrunner/.local/bin \
+    && mkdir -p /home/testrunner/.local/bin /home/testrunner/.local/share \
+    && chown -R 1000:1000 /home/testrunner \
     && install -d -o 1000 -g 1000 /nix/var/nix/profiles/per-user/testrunner
 
 # No USER directive — outer ``bash -c`` in run_nix_tests runs as root
