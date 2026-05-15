@@ -9,6 +9,9 @@ on:
   pull_request:
     branches: [master]
 
+permissions:
+  contents: read
+
 jobs:
   reuse:
     if: github.repository == 'terok-ai/terok'

@@ -11,6 +11,9 @@ on:
   pull_request:
     branches: [master]
 
+permissions:
+  contents: read
+
 jobs:
   # Unit tests are the authoritative producer of reports/coverage.xml.
   # On pull requests they also capture a tiny PR metadata artifact so the
