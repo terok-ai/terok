@@ -70,7 +70,7 @@ def _make_vault_status(
             None,
             False,
             1,
-            ["WARN", "gate start"],
+            ["WARN", "disabled", "no user systemd"],
             id="not-running-without-systemd",
         ),
         pytest.param(
@@ -133,6 +133,10 @@ def test_cmd_sickbay_reports_health(
         patch("terok.cli.commands.sickbay.get_server_status", return_value=status),
         patch("terok.cli.commands.sickbay.check_units_outdated", return_value=outdated),
         patch("terok.cli.commands.sickbay.is_systemd_available", return_value=systemd_available),
+        # ``_check_gate_server`` now branches on git availability before
+        # systemd; pin to "present" so the parametrised cases above
+        # exercise the systemd / not-running branches as intended.
+        patch("terok.cli.commands.sickbay.shutil.which", return_value="/usr/bin/git"),
         patch("terok.cli.commands.sickbay.check_environment", return_value=mock_ec),
         patch("terok.cli.commands.sickbay.get_vault_status", return_value=_make_vault_status()),
         patch("terok.cli.commands.sickbay.is_vault_systemd_available", return_value=False),
