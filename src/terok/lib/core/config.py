@@ -385,28 +385,16 @@ def make_sandbox_config() -> "SandboxConfig":
     ## terok's config-equality promise
 
     For every field with a representation in the shared ``config.yml``
-    schema that sandbox/executor own, terok promises:
-
-        the SandboxConfig terok constructs and passes down
-        produces the same sub-environment as if executor/sandbox had
-        read those parts of config.yml they own directly
-
-    modulo user-supplied ``--flag`` / env overrides (which are
-    authoritative over both file and orchestrator).  Runtime-only
+    schema that sandbox/executor own, the cfg this function constructs
+    matches what standalone sandbox would have read from the same file
+    — modulo user-supplied ``--flag`` / env overrides.  Runtime-only
     ambient context with no config-file representation may be added
-    additively but must not shadow a schema field.
+    additively but must not shadow a schema field.  Sandbox/executor
+    accept any ``SandboxConfig`` without enforcement; third-party
+    orchestrators choose their own contracts.
 
-    The promise binds terok specifically.  Third-party orchestrators
-    are accepted by sandbox/executor without enforcement — they decide
-    their own contracts.  The user can verify terok's promise by
-    diffing ``terok executor show-config`` against standalone
-    ``terok-executor show-config`` over the same config.yml: schema
-    fields must match.
-
-    Pattern precedent — same discipline as ``systemctl show`` /
-    Kubernetes pod-spec env (authoritative) + injected vars
-    (additive, distinctly namespaced) / Spring Boot's documented
-    source precedence / PostgreSQL ``SHOW <param>``.
+    Diff ``terok executor show-config`` against standalone
+    ``terok-executor show-config`` over the same config.yml to verify.
     """
     from terok.lib.integrations.sandbox import SandboxConfig
 

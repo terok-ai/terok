@@ -222,8 +222,6 @@ def test_per_container_identity_forms() -> None:
 
         lookup_mock.reset_mock()
         stop_cmd.handler(name="raw-container-id")
-
-        # No lookup for the raw-id form
         lookup_mock.assert_not_called()
 
     # Two container-name lookups on the runtime — the resolved one for
@@ -257,11 +255,8 @@ def test_terok_task_slash_alias() -> None:
     slash = parser.parse_args(["task", "stop", "myproj/mytask"])
     _normalize_pt(slash)
 
-    assert (
-        (space.project_id, space.task_id)
-        == (slash.project_id, slash.task_id)
-        == ("myproj", "mytask")
-    )
+    assert (space.project_id, space.task_id) == ("myproj", "mytask")
+    assert (slash.project_id, slash.task_id) == ("myproj", "mytask")
 
 
 def test_terok_gate_ownership() -> None:
