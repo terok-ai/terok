@@ -39,18 +39,14 @@ from unittest.mock import patch
 import pytest
 
 # Fields where sandbox's [`SandboxConfig`][terok_sandbox.SandboxConfig]
-# currently reads from `config.yml` via a `field(default_factory=…)`
-# *and* terok also reads it in [`make_sandbox_config`][terok.lib.core.config.make_sandbox_config]
-# — the only true round-trip surface today.
+# reads from `config.yml` via a `field(default_factory=…)` *and*
+# terok also reads it in [`make_sandbox_config`][terok.lib.core.config.make_sandbox_config]
+# — the true round-trip surface.
 #
-# Other sandbox-owned schema knobs (`shield.audit`,
-# `shield.bypass_firewall_no_protection`, port fields) live in
-# sandbox's pydantic schema (`RawShieldSection`, `RawGateServerSection`)
-# but are constants on the `SandboxConfig` dataclass — terok currently
-# fills them in itself.  Wiring those into factories is a follow-up in
-# terok-sandbox; this test pins what's *promised today* without
-# overreaching.
-_TEROK_PROMISED_FIELDS: tuple[str, ...] = ("services_mode",)
+# Port fields (gate/token_broker/ssh_signer) still flow through
+# sandbox's port-registry resolution rather than a config.yml factory,
+# so they're not pinned here.
+_TEROK_PROMISED_FIELDS: tuple[str, ...] = ("services_mode", "shield_audit", "shield_bypass")
 
 
 def _write_user_config(tmp_path: Path, body: str) -> Path:
@@ -79,9 +75,15 @@ def test_config_equality_contract(tmp_path: Path) -> None:
 
     with patch.dict(os.environ, {"TEROK_CONFIG_FILE": str(cfg_path)}, clear=False):
         # Reset cached resolution so both readers start from the same env.
+        # Two layers of cache to bust: the path-level section cache (read_config_section),
+        # and the validated-section `@lru_cache` factories that
+        # sandbox dataclass field-factories call through.
+        from terok_sandbox import config as _sandbox_config
         from terok_sandbox.paths import _config_section_cache
 
         _config_section_cache.clear()
+        _sandbox_config._shield_section.cache_clear()
+        _sandbox_config._credentials_section.cache_clear()
 
         from terok_sandbox import SandboxConfig
 
@@ -141,42 +143,31 @@ def test_terok_executor_run_uses_terok_state() -> None:
     """Cfg-injection wraps every `terok executor *` handler that opts in.
 
     The mechanism: `inject_cfg_factory` wraps any handler under the
-    overlay's subtree paths that declares a ``cfg`` parameter.  After
-    E2 extends ``subtree_paths`` to the whole executor tree,
-    *executor-native* verbs whose handler signature includes ``cfg``
-    are wrapped alongside the sandbox subtree.  ``show-config`` is the
-    canonical opt-in (handler:
-    [`_handle_show_config`][terok_executor.commands._handle_show_config]
-    declares ``cfg``); checking it pins the contract observably.
-
-    Verbs like ``run`` whose handlers don't yet accept ``cfg`` build
-    their own [`SandboxConfig`][terok_sandbox.SandboxConfig]
-    internally; today they still see terok's effective state because
-    standalone sandbox reads the same `config.yml` terok does.
-    Funneling those through the wrap is a follow-up that requires
-    executor-side handler refactors — out of scope here.
+    overlay's subtree paths that declares a ``cfg`` parameter.  ``run``
+    (and its siblings ``run-tool`` / ``setup`` / ``uninstall`` /
+    ``show-config``) all accept ``cfg``; the cfg-injection therefore
+    threads terok's resolved
+    [`SandboxConfig`][terok_sandbox.SandboxConfig] into each at
+    dispatch.  Sandbox-subtree handlers stay wrapped as well —
+    extending the overlay scope to the whole tree did not regress
+    them.
     """
     from terok.cli.main import _build_wired_tree
 
     tree = _build_wired_tree()
-    show_cfg = tree.find_at(("executor", "show-config"))
-    assert show_cfg is not None and show_cfg.handler is not None
 
-    # The cfg-wrap is `functools.wraps(handler)`-applied; the inner
-    # handler is reachable via `__wrapped__`.  Presence of that
-    # attribute is the smoking gun that the overlay fired on an
-    # executor-native (non-sandbox-subtree) verb.
-    assert hasattr(show_cfg.handler, "__wrapped__"), (
-        "terok executor show-config handler is not cfg-wrapped — "
-        "inject_cfg_factory's subtree_paths probably still excludes "
-        "executor-native verbs"
-    )
-
-    # Sandbox-subtree handlers stay wrapped — the existing scope didn't
-    # regress.
-    vault_start = tree.find_at(("executor", "sandbox", "vault", "start"))
-    if vault_start is not None and vault_start.handler is not None:
-        assert hasattr(vault_start.handler, "__wrapped__")
+    for path in (
+        ("executor", "run"),
+        ("executor", "show-config"),
+        ("executor", "sandbox", "vault", "start"),
+    ):
+        cmd = tree.find_at(path)
+        assert cmd is not None and cmd.handler is not None, f"missing: {path}"
+        assert hasattr(cmd.handler, "__wrapped__"), (
+            f"{'.'.join(path)} handler is not cfg-wrapped — "
+            "inject_cfg_factory's subtree_paths or the handler's "
+            "cfg parameter is likely missing"
+        )
 
 
 def test_per_container_identity_forms() -> None:

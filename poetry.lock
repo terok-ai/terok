@@ -3608,7 +3608,7 @@ tomli-w = ">=1.0"
 type = "git"
 url = "https://github.com/sliwowitz/terok-executor.git"
 reference = "feat/config-override-and-show-config"
-resolved_reference = "487595c517512498f0b1c1df1eaf6722df32eae9"
+resolved_reference = "e1a897ba1a331d09959bcab191b63c01530cd759"
 
 [[package]]
 name = "terok-sandbox"
