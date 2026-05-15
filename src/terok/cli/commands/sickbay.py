@@ -20,6 +20,7 @@ Exit codes:
 from __future__ import annotations
 
 import argparse
+import shutil
 import sys
 from pathlib import Path
 
@@ -109,8 +110,6 @@ def _check_gate_server() -> _CheckResult:
     'terok gate start'" line that would have failed to do anything;
     the contextual messages match the executor preflight's verdicts.
     """
-    import shutil
-
     cfg = make_sandbox_config()
     status = get_server_status(cfg)
     configured = get_services_mode()
