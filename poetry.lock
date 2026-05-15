@@ -3566,34 +3566,34 @@ tomli-w = ">=1.0,<2.0"
 
 [[package]]
 name = "terok-clearance"
-version = "0.6.13"
+version = "0.6.14a1"
 description = "Shield clearance and desktop notifications for terok"
 optional = false
 python-versions = ">=3.12,<4.0"
 groups = ["main"]
-files = []
-develop = false
+files = [
+    {file = "terok_clearance-0.6.14a1-py3-none-any.whl", hash = "sha256:ddfceaa29dd23dfaea77804960a578fd97dbe8313a63af1e309cd8ee79d2f07b"},
+]
 
 [package.dependencies]
-asyncvarlink = "^0.3.1"
+asyncvarlink = ">=0.3.1,<0.4.0"
 dbus-fast = ">=2.0,<5.0"
-pyyaml = "^6.0"
+pyyaml = ">=6.0,<7.0"
 
 [package.source]
-type = "git"
-url = "https://github.com/sliwowitz/terok-clearance.git"
-reference = "feat/uniform-command-registry"
-resolved_reference = "c417b56e4a91c7bfd9b7d65f3d3ebf915c69c26e"
+type = "url"
+url = "https://github.com/terok-ai/terok-clearance/releases/download/v0.6.14a1/terok_clearance-0.6.14a1-py3-none-any.whl"
 
 [[package]]
 name = "terok-executor"
-version = "0.0.148"
+version = "0.0.149a1"
 description = "Single-agent task runner for hardened Podman containers"
 optional = false
 python-versions = ">=3.12,<3.15"
 groups = ["main"]
-files = []
-develop = false
+files = [
+    {file = "terok_executor-0.0.149a1-py3-none-any.whl", hash = "sha256:4ee37d47a6719d3913b8d196016e15901353ef3361c53eeb3e82cc52a7f1b797"},
+]
 
 [package.dependencies]
 agent-client-protocol = ">=0.7"
@@ -3602,24 +3602,23 @@ prompt-toolkit = ">=3.0"
 pydantic = ">=2.9"
 rich = ">=13.0"
 "ruamel.yaml" = ">=0.18"
-terok-sandbox = {git = "https://github.com/sliwowitz/terok-sandbox.git", branch = "feat/uniform-command-registry"}
+terok_sandbox = {url = "https://github.com/terok-ai/terok-sandbox/releases/download/v0.0.124a1/terok_sandbox-0.0.124a1-py3-none-any.whl"}
 tomli-w = ">=1.0"
 
 [package.source]
-type = "git"
-url = "https://github.com/sliwowitz/terok-executor.git"
-reference = "feat/uniform-command-registry"
-resolved_reference = "761e803b2e5e41b6bf73c5265ebf92b9dbe3f7e6"
+type = "url"
+url = "https://github.com/terok-ai/terok-executor/releases/download/v0.0.149a1/terok_executor-0.0.149a1-py3-none-any.whl"
 
 [[package]]
 name = "terok-sandbox"
-version = "0.0.123"
+version = "0.0.124a1"
 description = "Hardened Podman container runner with gate server and shield integration"
 optional = false
 python-versions = ">=3.12,<4.0"
 groups = ["main"]
-files = []
-develop = false
+files = [
+    {file = "terok_sandbox-0.0.124a1-py3-none-any.whl", hash = "sha256:42a2a77c657816887a30f4af1ba07a96b11999f9e875562518a83a4a5db6946e"},
+]
 
 [package.dependencies]
 aiohttp = ">=3.9"
@@ -3631,34 +3630,31 @@ prompt-toolkit = ">=3.0"
 pydantic = ">=2.9"
 "ruamel.yaml" = ">=0.18"
 sqlcipher3 = ">=0.6.2"
-terok-clearance = {git = "https://github.com/sliwowitz/terok-clearance.git", branch = "feat/uniform-command-registry"}
-terok-shield = {git = "https://github.com/sliwowitz/terok-shield.git", branch = "feat/uniform-command-registry"}
+terok_clearance = {url = "https://github.com/terok-ai/terok-clearance/releases/download/v0.6.14a1/terok_clearance-0.6.14a1-py3-none-any.whl"}
+terok_shield = {url = "https://github.com/terok-ai/terok-shield/releases/download/v0.6.42a1/terok_shield-0.6.42a1-py3-none-any.whl"}
 
 [package.source]
-type = "git"
-url = "https://github.com/sliwowitz/terok-sandbox.git"
-reference = "feat/uniform-command-registry"
-resolved_reference = "668b3fd7aa728db322d7425624554447c3d5b4c1"
+type = "url"
+url = "https://github.com/terok-ai/terok-sandbox/releases/download/v0.0.124a1/terok_sandbox-0.0.124a1-py3-none-any.whl"
 
 [[package]]
 name = "terok-shield"
-version = "0.6.41"
+version = "0.6.42a1"
 description = "nftables-based egress firewalling for Podman containers"
 optional = false
 python-versions = ">=3.12,<4.0"
 groups = ["main"]
-files = []
-develop = false
+files = [
+    {file = "terok_shield-0.6.42a1-py3-none-any.whl", hash = "sha256:c1178b8d80eab860e74d0c141ba749bfc83a18c5e0276425829030cf05c17418"},
+]
 
 [package.dependencies]
 pydantic = ">=2.0"
 PyYAML = ">=6.0"
 
 [package.source]
-type = "git"
-url = "https://github.com/sliwowitz/terok-shield.git"
-reference = "feat/uniform-command-registry"
-resolved_reference = "3a0535ff473090bdf78e9c095c6c30e4a845b003"
+type = "url"
+url = "https://github.com/terok-ai/terok-shield/releases/download/v0.6.42a1/terok_shield-0.6.42a1-py3-none-any.whl"
 
 [[package]]
 name = "textual"
@@ -4538,4 +4534,4 @@ propcache = ">=0.2.1"
 [metadata]
 lock-version = "2.1"
 python-versions = ">=3.12,<3.15"
-content-hash = "2ce416a11aece396cce542b411427b46e9175cdc9b12a79dda32a9b36f5641be"
+content-hash = "c8a2adac4b4581b7699df7157be6c408a67eafbc2fa90d2bc7a936a64ea6857c"
