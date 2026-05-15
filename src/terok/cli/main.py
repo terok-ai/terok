@@ -132,7 +132,7 @@ def main(prog: str = "terok") -> None:
     parser.add_argument(
         "--version",
         action="version",
-        version=f"{prog} {version_string}\nLicense: Apache-2.0\nCopyright: 2025 Jiri Vyskocil",
+        version=f"{prog} {version_string}",
     )
     parser.add_argument(
         "--experimental",
