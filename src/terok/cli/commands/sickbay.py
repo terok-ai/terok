@@ -41,6 +41,7 @@ from terok.lib.integrations.sandbox import (
     is_vault_socket_active,
     is_vault_systemd_available,
     resolve_container_state_dir,
+    systemd_creds_has_tpm2,
 )
 
 from ...lib.core import runtime as _rt
@@ -200,8 +201,30 @@ def _check_clearance_stack() -> _CheckResult:
     return ("ok", label, ", ".join(parts))
 
 
+def _passphrase_tier_label(source: str | None) -> str | None:
+    """Render the resolved passphrase tier for the sickbay vault detail line.
+
+    Mirrors the wording ``terok vault status`` uses (``resolved via
+    systemd-creds`` etc.); adds a ``+TPM2`` suffix when the tier is
+    ``systemd-creds`` and the host actually has a TPM2 device — same
+    signal ``systemd-creds`` ships under, surfaced where operators are
+    already looking.  ``None`` collapses to an empty annotation
+    (caller drops it from the detail string).
+    """
+    if not source:
+        return None
+    label = f"passphrase via {source}"
+    if source == "systemd-creds":
+        try:
+            if systemd_creds_has_tpm2():
+                label = f"{label} (+TPM2)"
+        except Exception:  # noqa: BLE001 — TPM probe is best-effort
+            pass
+    return label
+
+
 def _check_vault() -> _CheckResult:
-    """Check vault status."""
+    """Check vault status, surfacing the resolved passphrase tier."""
     label = "Vault"
     try:
         status = get_vault_status()
@@ -210,7 +233,12 @@ def _check_vault() -> _CheckResult:
     if status.running:
         configured = get_services_mode()
         creds = len(status.credentials_stored) if status.credentials_stored else 0
-        detail = f"{status.mode}, {status.transport or 'tcp'}, {creds} credential(s) stored"
+        parts = [status.mode, status.transport or "tcp"]
+        tier = _passphrase_tier_label(status.passphrase_source)
+        if tier:
+            parts.append(tier)
+        parts.append(f"{creds} credential(s) stored")
+        detail = ", ".join(parts)
         if configured != (status.transport or "tcp"):
             return (
                 "warn",

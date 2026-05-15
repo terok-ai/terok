@@ -340,7 +340,7 @@ class TestRunContainerDoctor:
     @patch("terok.lib.orchestration.container_doctor.make_sandbox_config")
     @patch("terok.lib.orchestration.container_doctor.load_task_meta")
     @patch("terok.lib.orchestration.tasks.meta.tasks_meta_dir")
-    def test_host_side_unknown_check_skipped(
+    def test_host_side_non_shield_check_calls_evaluate(
         self,
         mock_meta_dir: MagicMock,
         mock_load_meta: MagicMock,
@@ -372,25 +372,26 @@ class TestRunContainerDoctor:
         fake_project.tasks_root = MOCK_BASE / "projects" / "proj" / "tasks"
         mock_load_project.return_value = fake_project
 
-        # An unknown host-side check
-        unknown_host_check = DoctorCheck(
-            category="future",
+        # A host-side check outside the special-cased "shield" category —
+        # its ``evaluate`` callable is self-contained and the dispatcher
+        # must call it (vault-tier passphrase checks fall in this bucket).
+        host_check = DoctorCheck(
+            category="vault",
             label="Future check",
             probe_cmd=[],
-            evaluate=lambda rc, out, err: CheckVerdict("ok", "unused"),
+            evaluate=lambda rc, out, err: CheckVerdict("warn", "evaluated locally"),
             host_side=True,
         )
-        mock_sandbox_checks.return_value = [unknown_host_check]
+        mock_sandbox_checks.return_value = [host_check]
         mock_agent_checks.return_value = []
         mock_terok_checks.return_value = []
 
         # Act
         results = run_container_doctor("proj", "42")
 
-        # Assert — unknown host-side check is skipped with warning
+        # Assert — the host-side ``evaluate`` ran and its verdict reached us
         assert len(results) == 1
-        assert results[0][0] == "warn"
-        assert "unknown host-side check" in results[0][2]
+        assert results[0] == ("warn", "Future check", "evaluated locally")
         mock_exec.assert_not_called()
 
     @patch("terok.lib.orchestration.container_doctor.get_ssh_signer_port", return_value=None)

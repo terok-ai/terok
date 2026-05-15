@@ -103,30 +103,29 @@ class TestEmit:
         assert reporter.worst_status == "error"
 
 
-class TestDotPadding:
+class TestLabelPadding:
     """Label padding keeps status markers aligned on clean output."""
 
     def test_short_label_padded_to_width(self, buf: io.StringIO) -> None:
-        """Short labels get enough dots to hit the configured column."""
-        reporter = CheckReporter(stream=buf, width=40)
+        """Short labels get enough spaces to hit the configured column."""
+        reporter = CheckReporter(stream=buf, width=40, color=False)
         reporter.emit("ok", "X", "done")
         line = buf.getvalue()
-        # "  X " + dots + " ok (done)\n" — column count up to the space
-        # before "ok" should equal 2 + label_len + 1 + dot_count + 1.
-        assert line.index("ok (done)") == 2 + 1 + 1 + (40 - 1) + 1
+        # "  {label}{pad}{marker} ({detail})\n" — column of "ok (done)"
+        # should equal 2-space indent + label_len + pad_len.
+        assert line.index("ok (done)") == 2 + 1 + (40 - 1)
 
-    def test_overlong_label_gets_minimum_dots(self, buf: io.StringIO) -> None:
-        """Labels longer than the width still render — with three dots."""
-        reporter = CheckReporter(stream=buf, width=10)
+    def test_overlong_label_gets_minimum_padding(self, buf: io.StringIO) -> None:
+        """Labels longer than the width still render — with the 3-space minimum."""
+        reporter = CheckReporter(stream=buf, width=10, color=False)
         reporter.emit("ok", "A long label that exceeds width", "ok")
         line = buf.getvalue()
-        # Minimum three dots, not a negative multiplier.
-        assert " ... " in line
+        assert "width   ok (ok)" in line
         assert line.rstrip().endswith(" ok (ok)")
 
     def test_default_width_constant(self) -> None:
-        """The default width is the documented 60 columns."""
-        assert DEFAULT_LABEL_WIDTH == 60
+        """Default width fits the longest sickbay row at the time of writing."""
+        assert DEFAULT_LABEL_WIDTH == 48
 
 
 class TestGroupHappyPath:

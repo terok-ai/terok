@@ -25,9 +25,16 @@ from collections.abc import Iterator
 from contextlib import contextmanager
 from typing import Any
 
-#: Default label column — dots pad the label up to this width so ``ok``
-#: or ``ERROR`` always lands at the same column on clean output.
-DEFAULT_LABEL_WIDTH = 60
+from .ansi import green, red, supports_color, yellow
+
+#: Default label column — labels are padded with spaces to this width so
+#: ``ok`` / ``WARN`` / ``ERROR`` markers land at the same column on
+#: clean output.  Picked to fit ``Task <project>/<task_id>: <longest
+#: per-task label>`` (the longest sickbay row at the time of writing)
+#: with a few characters of breathing room; shorter labels get wider
+#: padding (still readable), longer ones fall back to a 3-space
+#: minimum.
+DEFAULT_LABEL_WIDTH = 48
 
 #: Human-friendly markers for each severity.
 STATUS_MARKERS = {
@@ -46,6 +53,24 @@ def _worse(a: str, b: str) -> str:
     return a if _SEVERITY_RANK.get(a, 0) >= _SEVERITY_RANK.get(b, 0) else b
 
 
+def _paint_marker(status: str, *, color_on: bool) -> str:
+    """Return the colour-painted status marker for *status*.
+
+    ``info`` is left plain — it's a status-line annotation, not a
+    severity verdict, and dimming it would over-emphasise things like
+    "task skipped because not running".  ``ok`` → green, ``WARN`` →
+    yellow, ``ERROR`` → red.
+    """
+    marker = STATUS_MARKERS.get(status, status)
+    if status == "ok":
+        return green(marker, color_on)
+    if status == "warn":
+        return yellow(marker, color_on)
+    if status == "error":
+        return red(marker, color_on)
+    return marker
+
+
 class CheckReporter:
     """Print check progress line-by-line with aligned ``ok``/``WARN``/``ERROR`` markers.
 
@@ -59,10 +84,17 @@ class CheckReporter:
     without touching stdout.
     """
 
-    def __init__(self, *, width: int = DEFAULT_LABEL_WIDTH, stream: Any = None) -> None:
+    def __init__(
+        self,
+        *,
+        width: int = DEFAULT_LABEL_WIDTH,
+        stream: Any = None,
+        color: bool | None = None,
+    ) -> None:
         self._width = width
         self._stream = stream if stream is not None else sys.stdout
         self._worst = "ok"
+        self._color = supports_color() if color is None else color
 
     @property
     def worst_status(self) -> str:
@@ -74,13 +106,13 @@ class CheckReporter:
     # ------------------------------------------------------------------
 
     def begin(self, label: str) -> None:
-        """Emit ``  <label> ....`` without a trailing newline and flush.
+        """Emit ``  <label>     `` (space-padded) without a newline and flush.
 
         The caller is expected to follow with [`end`][terok.lib.util.check_reporter.CheckReporter.end] on the same
         logical check — the status marker and detail land on the same
         visible line.
         """
-        self._stream.write(f"  {label} {self._dots(label)} ")
+        self._stream.write(f"  {label}{self._pad(label)}")
         self._stream.flush()
 
     def end(self, status: str, detail: str) -> None:
@@ -90,7 +122,7 @@ class CheckReporter:
         parentheses — leave it empty for a bare marker.
         """
         self._worst = _worse(self._worst, status)
-        marker = STATUS_MARKERS.get(status, status)
+        marker = _paint_marker(status, color_on=self._color)
         if detail:
             self._stream.write(f"{marker} ({detail})\n")
         else:
@@ -124,7 +156,7 @@ class CheckReporter:
                     status, label, detail = run(check)
                     g.track(status, label, detail)
         """
-        self._stream.write(f"  {label} {self._dots(label)} ")
+        self._stream.write(f"  {label}{self._pad(label)}")
         self._stream.flush()
         ctx = _GroupContext()
         try:
@@ -137,7 +169,7 @@ class CheckReporter:
         if not results:
             # Empty group — defensively print a "skipped" marker so the
             # dangling line never stays open.
-            self._stream.write("ok (0 checks)\n")
+            self._stream.write(f"{_paint_marker('ok', color_on=self._color)} (0 checks)\n")
             self._stream.flush()
             return
 
@@ -148,23 +180,23 @@ class CheckReporter:
         self._worst = _worse(self._worst, worst)
 
         if worst == "ok":
-            self._stream.write(f"ok ({len(results)} checks)\n")
+            ok_marker = _paint_marker("ok", color_on=self._color)
+            self._stream.write(f"{ok_marker} ({len(results)} checks)\n")
             self._stream.flush()
             return
 
         # Non-ok branch: summary counts in severity order, then detail
-        # lines for every non-ok member.  Format is intentionally plain;
-        # polish can come in a follow-up once we've lived with it.
+        # lines for every non-ok member.
         counts = []
         for sev in ("error", "warn", "info", "ok"):
             n = sum(1 for s in statuses if s == sev)
             if n:
                 counts.append(f"{n} {sev}")
-        marker = STATUS_MARKERS.get(worst, worst)
+        marker = _paint_marker(worst, color_on=self._color)
         self._stream.write(f"{marker} ({', '.join(counts)})\n")
         for status, _label, detail in results:
             if status != "ok":
-                tag = STATUS_MARKERS.get(status, status)
+                tag = _paint_marker(status, color_on=self._color)
                 self._stream.write(f"    {tag}: {detail}\n")
         self._stream.flush()
 
@@ -172,12 +204,13 @@ class CheckReporter:
     # Helpers
     # ------------------------------------------------------------------
 
-    def _dots(self, label: str) -> str:
-        """Return the dot-run that pads *label* up to the target column."""
-        # "  {label} {dots} " — two leading spaces, one space either side of
-        # the dots, so the column after the dots is at (width + 4).  Keep a
-        # three-dot minimum for labels that already exceed the width.
-        return "." * max(3, self._width - len(label))
+    def _pad(self, label: str) -> str:
+        """Return the space-run that pads *label* up to the target column.
+
+        Three-space minimum for labels that already exceed the target
+        width so the marker never glues onto the label.
+        """
+        return " " * max(3, self._width - len(label))
 
 
 class _GroupContext:
