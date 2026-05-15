@@ -27,8 +27,8 @@ dependencies = [
     "unique-namer>=1.3",
     "textual-serve>=1.1.0",
     "jinja2>=3.1,<4.0.0",
-    "terok-executor @ https://github.com/terok-ai/terok-executor/releases/download/v0.0.149a4/terok_executor-0.0.149a4-py3-none-any.whl",
-    "terok-sandbox @ https://github.com/terok-ai/terok-sandbox/releases/download/v0.0.124a4/terok_sandbox-0.0.124a4-py3-none-any.whl",
+    "terok-executor @ git+https://github.com/sliwowitz/terok-executor.git@feat/config-override-and-show-config",
+    "terok-sandbox @ git+https://github.com/sliwowitz/terok-sandbox.git@feat/gate-exec-prefix-via-module",
     "terok-shield @ https://github.com/terok-ai/terok-shield/releases/download/v0.6.42a3/terok_shield-0.6.42a3-py3-none-any.whl",
     "terok-clearance @ https://github.com/terok-ai/terok-clearance/releases/download/v0.6.14a3/terok_clearance-0.6.14a3-py3-none-any.whl",
 ]
@@ -47,7 +47,6 @@ terokctl = "terok.cli.main:terokctl_main"
 terok-tui = "terok.tui.app:main"
 terok-web = "terok.tui.serve:main"
 terok-clearance = "terok.tui.clearance_screen:main"
-terok-gate = "terok_sandbox.gate.server:main"
 terok-askpass = "terok.tui.askpass:main"
 
 [tool.poetry]

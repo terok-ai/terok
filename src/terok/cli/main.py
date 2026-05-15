@@ -33,7 +33,7 @@ from .commands import (
     task,
     uninstall,
 )
-from .tree import CommandDef, CommandTree, inject_cfg_factory
+from .tree import CommandDef, CommandTree, inject_cfg_factory, inject_pt_resolver
 
 # Optional: bash completion via argcomplete
 try:
@@ -259,13 +259,30 @@ def _build_wired_tree() -> CommandTree:
     from ..lib.core.config import make_sandbox_config
 
     # Executor exposes ``CommandTree`` (its top-level forest).  Apply
-    # terok's cfg wrap to every handler under the ``sandbox`` namespace
-    # that declares a ``cfg`` parameter — sandbox-rooted gate, ssh,
-    # vault, credentials, etc. all funnel through ``make_sandbox_config``.
+    # terok's cfg wrap to every handler that declares a ``cfg``
+    # parameter, anywhere in the tree — executor-native verbs (run,
+    # build, setup, show-config, …) and the sandbox subtree (gate,
+    # ssh, vault, credentials) all funnel through
+    # ``make_sandbox_config``.  Without this, ``terok executor run``
+    # would silently use sandbox's bare-default ``SandboxConfig`` while
+    # ``terok vault start`` saw terok's resolved one — a layer
+    # inconsistency users hit as "I authenticated already, why is
+    # ``terok executor run`` re-prompting?"
     modified = inject_cfg_factory(
         EXECUTOR_COMMANDS,
-        subtree_paths=(("sandbox",),),
+        subtree_paths=((),),
         factory=make_sandbox_config,
+    )
+
+    # Per-container verbs accept either ``<container-id>`` or
+    # ``<project>/<task>``; the resolver splits on ``/`` (invalid in
+    # podman container names and in any reasonable project / task
+    # slug) and looks the (p, t) pair up in terok's task store.
+    # Future verbs (``exec``, ``logs``, ``state``, ``login``) join
+    # this list as they're added in executor.
+    modified = inject_pt_resolver(
+        modified,
+        verb_specs=((("stop",), "name"),),
     )
 
     # The shortcut nodes share identity with their counterparts inside

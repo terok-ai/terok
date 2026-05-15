@@ -81,4 +81,59 @@ def _wrap_with_cfg(handler: Callable[..., Any], factory: Callable[[], Any]) -> C
     return wrapped
 
 
-__all__ = ["CommandDef", "CommandTree", "inject_cfg_factory"]
+def inject_pt_resolver(
+    tree: CommandTree,
+    *,
+    verb_specs: Sequence[tuple[tuple[str, ...], str]],
+) -> CommandTree:
+    """Overlay listed verbs so a positional accepts `project/task` or raw container id.
+
+    For each ``(path, kwarg)`` entry, wraps the handler at *path* so
+    that, if the named keyword argument is a string containing ``/``,
+    it's split on the first slash, treated as ``(project_id,
+    task_id)``, and resolved to the task's current container name via
+    [`lookup_container_by_pt`][terok.lib.orchestration.tasks.query.lookup_container_by_pt].
+    Inputs without ``/`` (raw container ids) pass through untouched —
+    same handler, same kwargs.
+
+    ``/`` is the disambiguator because it's invalid in podman
+    container names and in any sensible project or task slug.  The
+    convention follows git's dual-form precedent (``origin master``
+    vs ``origin/master``) and Docker-Compose's "service vs container"
+    split.
+    """
+    overrides: dict[tuple[str, ...], Callable[..., Any]] = {}
+    for path, kwarg in verb_specs:
+        cmd = tree.find_at(path)
+        if cmd is None or cmd.handler is None:
+            continue
+        overrides[path] = _wrap_with_pt_resolver(cmd.handler, kwarg)
+    return tree.overlay(overrides)
+
+
+def _wrap_with_pt_resolver(handler: Callable[..., Any], kwarg: str) -> Callable[..., Any]:
+    """Return a wrapper that resolves ``project/task`` in *kwarg* before delegating.
+
+    The import of
+    [`lookup_container_by_pt`][terok.lib.orchestration.tasks.query.lookup_container_by_pt]
+    is deferred to call time so tests can substitute it via
+    ``patch`` at the canonical location and the resolver picks up the
+    substitution on the next dispatch.
+    """
+
+    @functools.wraps(handler)
+    def wrapped(**kwargs: Any) -> Any:
+        value = kwargs.get(kwarg)
+        if isinstance(value, str) and "/" in value:
+            from terok.lib.orchestration.tasks import lookup_container_by_pt
+
+            project, _, task = value.partition("/")
+            resolved = lookup_container_by_pt(project, task)
+            if resolved is not None:
+                kwargs[kwarg] = resolved
+        return handler(**kwargs)
+
+    return wrapped
+
+
+__all__ = ["CommandDef", "CommandTree", "inject_cfg_factory", "inject_pt_resolver"]

@@ -24,6 +24,28 @@ def get_task_container_state(project_id: str, task_id: str, mode: str | None) ->
     return _rt.get_runtime().container(cname).state
 
 
+def lookup_container_by_pt(project_id: str, task_id: str) -> str | None:
+    """Resolve a `project/task` pair to the current container name, or `None`.
+
+    Powers the slash-form identity acceptance on per-container
+    ``terok executor *`` verbs (``stop``, future ``exec`` / ``logs`` /
+    ``state`` / ``login``).  Reads the recorded mode from the task's
+    meta file; returns ``None`` when the task is unknown or has never
+    been launched (no ``mode`` recorded).  The caller decides whether
+    to treat ``None`` as "pass the input through verbatim" (raw
+    container id) or "fail with an actionable error" (unknown
+    project/task).
+    """
+    meta_dir = tasks_meta_dir(project_id)
+    raw = read_task_meta(meta_dir, task_id)
+    if raw is None:
+        return None
+    mode = raw.get("mode")
+    if not mode:
+        return None
+    return container_name(project_id, mode, task_id)
+
+
 @dataclass(kw_only=True)
 class TaskMeta(TaskState):
     """Lightweight metadata snapshot for a single task.
