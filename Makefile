@@ -115,7 +115,7 @@ deadcode:
 
 # Static type check with mypy.
 typecheck:
-	poetry run mypy src/terok/
+	poetry run mypy src/terok/ $(MYPYFLAGS)
 
 # Check REUSE (SPDX license/copyright) compliance
 reuse:
