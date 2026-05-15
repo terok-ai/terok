@@ -380,22 +380,30 @@ run_nix_tests() {
             pip install --quiet --upgrade pip
             pip install --quiet poetry
 
-            # Poetry knows the full dev/test/docs/stories matrix from
-            # pyproject.toml — saves us from enumerating test deps by
-            # hand (``mkdocs_terok``, ``tach`` plugin, etc.).  Same
-            # group set the matrix's ``run_tests`` uses.
-            poetry install --with test --with stories --with docs --no-interaction
+            # ``test`` + ``docs`` is the minimum that makes the unit
+            # suite collect: ``test`` for pytest, ``docs`` for the
+            # ``mkdocs_terok`` module that two unit tests import.
+            #
+            # Skipped on purpose:
+            #   - ``stories`` pulls python-dbusmock → dbus-python,
+            #     which has no wheel and needs system libdbus headers
+            #     + ninja + meson to compile — would balloon the Nix
+            #     image for tests we filter out anyway.
+            #   - ``dev`` carries pydevd-pycharm, ruff, mypy, tach …
+            #     none load-bearing for running tests; ``-p no:tach``
+            #     below keeps pytest happy without the plugin.
+            poetry install --with test --with docs --no-interaction
 
             echo ''
             echo '--- unit tests ---'
-            poetry run pytest tests/unit -v --tb=short
+            poetry run pytest tests/unit -v --tb=short -p no:tach
 
             echo ''
             echo '--- host-only integration tests ---'
             # Same marker filter ``make test-integration-host`` uses on
             # GitHub-Actions: skip everything that wants podman or the
             # internet.  Nix container has neither.
-            poetry run pytest tests/integration -v --tb=short \
+            poetry run pytest tests/integration -v --tb=short -p no:tach \
                 -m 'needs_host_features and not needs_internet and not needs_podman'
         "
 
