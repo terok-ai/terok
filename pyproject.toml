@@ -27,10 +27,10 @@ dependencies = [
     "unique-namer>=1.3",
     "textual-serve>=1.1.0",
     "jinja2>=3.1,<4.0.0",
-    "terok-executor @ git+https://github.com/sliwowitz/terok-executor.git@feat/optional-git-and-gate-degradation",
-    "terok-sandbox @ git+https://github.com/sliwowitz/terok-sandbox.git@feat/vault-manual-daemon-fallback",
-    "terok-shield @ https://github.com/terok-ai/terok-shield/releases/download/v0.6.42a2/terok_shield-0.6.42a2-py3-none-any.whl",
-    "terok-clearance @ https://github.com/terok-ai/terok-clearance/releases/download/v0.6.14a2/terok_clearance-0.6.14a2-py3-none-any.whl",
+    "terok-executor @ https://github.com/terok-ai/terok-executor/releases/download/v0.0.149a4/terok_executor-0.0.149a4-py3-none-any.whl",
+    "terok-sandbox @ https://github.com/terok-ai/terok-sandbox/releases/download/v0.0.124a4/terok_sandbox-0.0.124a4-py3-none-any.whl",
+    "terok-shield @ https://github.com/terok-ai/terok-shield/releases/download/v0.6.42a3/terok_shield-0.6.42a3-py3-none-any.whl",
+    "terok-clearance @ https://github.com/terok-ai/terok-clearance/releases/download/v0.6.14a3/terok_clearance-0.6.14a3-py3-none-any.whl",
 ]
 
 [project.urls]
