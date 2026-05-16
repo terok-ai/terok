@@ -1367,9 +1367,11 @@ class TaskLaunchScreen(screen.ModalScreen["tuple[str, str, str, str, str, str | 
             return
         choices = self._build_agent_choices()
         select.set_options(choices)
+        # ``set_options`` resets the value; pick the configured login if it's
+        # still available, else fall back to ``bash`` (always in choices) so
+        # the dropdown is never left blank.
         valid_values = {v for _, v in choices}
-        if self._default_login in valid_values:
-            select.value = self._default_login
+        select.value = self._default_login if self._default_login in valid_values else "bash"
         select.prompt = "Select an agent"
         select.disabled = False
 
