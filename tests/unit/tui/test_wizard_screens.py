@@ -19,7 +19,7 @@ from unittest.mock import AsyncMock, MagicMock, PropertyMock, patch
 
 import pytest
 from textual.app import App
-from textual.widgets import Input, Label, RadioButton, RadioSet, Static, TextArea
+from textual.widgets import Checkbox, Input, Label, RadioButton, RadioSet, Static, TextArea
 
 from terok.lib.domain.wizards.new_project import QUESTIONS, Question
 from terok.tui.wizard_screens import ProjectReviewScreen, WizardFormScreen
@@ -109,6 +109,10 @@ async def test_wizard_form_submit_returns_collected_dict() -> None:
     assert app.result["upstream_url"] == ""
     assert app.result["default_branch"] == ""
     assert app.result["user_snippet"] == ""
+    # The multichoice "agents" question seeds the master "All" checkbox
+    # on by default, which submits the literal "all" token — keeps
+    # first-time users from having to discover the question to proceed.
+    assert app.result["agents"] == "all"
 
 
 @pytest.mark.asyncio
@@ -122,6 +126,171 @@ async def test_wizard_form_lowercases_project_id() -> None:
         await pilot.pause()
     assert isinstance(app.result, dict)
     assert app.result["project_id"] == "mixedcaseid"
+
+
+def _agent_slugs() -> list[str]:
+    """Return the live roster slugs in the same order the form renders them."""
+    from terok.lib.integrations.executor import get_roster
+
+    return list(get_roster().agent_names)
+
+
+def _master_cb(screen, key: str = "agents") -> Checkbox:
+    return screen.query_one(f"#wizard-field-{key}-__all__", Checkbox)
+
+
+def _item_cb(screen, slug: str, key: str = "agents") -> Checkbox:
+    return screen.query_one(f"#wizard-field-{key}-{slug}", Checkbox)
+
+
+@pytest.mark.asyncio
+async def test_multichoice_default_state_is_master_on_items_on() -> None:
+    """Fresh form opens with master checked and every item cascade-checked."""
+    app = _WizardHost(WizardFormScreen())
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        screen = app.screen
+        assert _master_cb(screen).value is True
+        for slug in _agent_slugs():
+            assert _item_cb(screen, slug).value is True, f"item {slug} should be on"
+
+
+@pytest.mark.asyncio
+async def test_multichoice_unchecking_item_flips_master_off() -> None:
+    """Removing one agent while master is on means the snapshot diverges from 'all'."""
+    app = _WizardHost(WizardFormScreen())
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        screen = app.screen
+        target = _agent_slugs()[0]
+        _item_cb(screen, target).value = False
+        await pilot.pause()
+        assert _master_cb(screen).value is False
+        # The other items are untouched — only the explicit toggle moved.
+        for slug in _agent_slugs()[1:]:
+            assert _item_cb(screen, slug).value is True
+
+
+@pytest.mark.asyncio
+async def test_multichoice_unchecking_master_clears_every_item() -> None:
+    """Unchecking master is a fast 'clear' gesture — every item goes off."""
+    app = _WizardHost(WizardFormScreen())
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        screen = app.screen
+        _master_cb(screen).value = False
+        await pilot.pause()
+        assert _master_cb(screen).value is False
+        for slug in _agent_slugs():
+            assert _item_cb(screen, slug).value is False
+
+
+@pytest.mark.asyncio
+async def test_multichoice_checking_master_cascades_every_item_on() -> None:
+    """Checking master after a clear restores the 'everything' snapshot."""
+    app = _WizardHost(WizardFormScreen())
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        screen = app.screen
+        master = _master_cb(screen)
+        master.value = False
+        await pilot.pause()
+        master.value = True
+        await pilot.pause()
+        for slug in _agent_slugs():
+            assert _item_cb(screen, slug).value is True
+
+
+@pytest.mark.asyncio
+async def test_multichoice_manual_full_set_does_not_promote_to_all() -> None:
+    """User-built enumeration must not silently collapse to the 'all' token.
+
+    The literal "all" means "current set plus any agent added later"; an
+    enumeration is a snapshot.  Promoting one to the other would change
+    the project's behaviour on the next executor release.
+    """
+    app = _WizardHost(WizardFormScreen())
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        screen = app.screen
+        # Start from cleared state.
+        _master_cb(screen).value = False
+        await pilot.pause()
+        # User manually checks every individual agent.
+        for slug in _agent_slugs():
+            _item_cb(screen, slug).value = True
+            await pilot.pause()
+        # Master must remain off — the enumeration is the user's intent.
+        assert _master_cb(screen).value is False
+        # Submit and confirm the dispatched value is the comma list, not "all".
+        app.screen.query_one("#wizard-field-project_id", Input).value = "demo"
+        await pilot.click("#wizard-form-create")
+        await pilot.pause()
+    assert isinstance(app.result, dict)
+    assert app.result["agents"] == ",".join(_agent_slugs())
+
+
+@pytest.mark.asyncio
+async def test_multichoice_partial_selection_submits_as_comma_list() -> None:
+    """Unchecking one item + submitting yields the remaining comma list."""
+    app = _WizardHost(WizardFormScreen())
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        screen = app.screen
+        drop = _agent_slugs()[0]
+        _item_cb(screen, drop).value = False
+        await pilot.pause()
+        screen.query_one("#wizard-field-project_id", Input).value = "demo"
+        await pilot.click("#wizard-form-create")
+        await pilot.pause()
+    assert isinstance(app.result, dict)
+    assert app.result["agents"] == ",".join(_agent_slugs()[1:])
+
+
+@pytest.mark.asyncio
+async def test_multichoice_cleared_submit_is_rejected_by_validator() -> None:
+    """Submitting with master off and no items selected must surface a 'required' error."""
+    app = _WizardHost(WizardFormScreen())
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        screen = app.screen
+        _master_cb(screen).value = False
+        await pilot.pause()
+        screen.query_one("#wizard-field-project_id", Input).value = "demo"
+        await pilot.click("#wizard-form-create")
+        await pilot.pause()
+        error_label = screen.query_one("#wizard-error-agents", Label)
+        rendered = str(error_label.render())
+        assert "required" in rendered.lower()
+    # Form not dismissed.
+    assert app.result is _SENTINEL_PENDING
+
+
+@pytest.mark.asyncio
+async def test_multichoice_preset_all_restores_master_and_items() -> None:
+    """Re-opening the form with previous answer 'all' rehydrates master+items on."""
+    app = _WizardHost(WizardFormScreen(initial={"agents": "all"}))
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        screen = app.screen
+        assert _master_cb(screen).value is True
+        for slug in _agent_slugs():
+            assert _item_cb(screen, slug).value is True
+
+
+@pytest.mark.asyncio
+async def test_multichoice_preset_comma_list_restores_only_named_items() -> None:
+    """A prior enumeration prefill leaves master off and only the named items on."""
+    chosen = _agent_slugs()[:2]
+    preset = ",".join(chosen)
+    app = _WizardHost(WizardFormScreen(initial={"agents": preset}))
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        screen = app.screen
+        assert _master_cb(screen).value is False
+        for slug in _agent_slugs():
+            expected = slug in chosen
+            assert _item_cb(screen, slug).value is expected, slug
 
 
 @pytest.mark.asyncio
@@ -233,6 +402,7 @@ def test_touched_wizard_yaml_survives_roundtrip() -> None:
         "project_id": "roundtrip",
         "upstream_url": "",
         "default_branch": "main",
+        "agents": "all",
         "user_snippet": "",
     }
     rendered = render_project_yaml(values)

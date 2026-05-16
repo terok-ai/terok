@@ -24,6 +24,7 @@ git:
 
 image:
   base_image: "{{BASE_IMAGE}}"
+  agents: "{{AGENTS}}"
   # Optional: extra Dockerfile commands injected into the project image.
   # Use user_snippet_file to point to an external .dockerinclude file.
   # Both can be set — file is included first, inline appended.
