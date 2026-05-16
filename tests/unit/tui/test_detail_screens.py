@@ -111,6 +111,7 @@ def make_creation_app(app_class: type) -> object:
     instance.refresh_tasks = mock.AsyncMock()
     instance.push_screen = fake_push_screen
     instance._mark_launching = mock.Mock()
+    instance.run_worker = mock.Mock()
     return instance
 
 

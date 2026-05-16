@@ -207,6 +207,11 @@ class TaskActionsMixin(_MixinBase):
         The container start runs as a captured ConsoleLog entry — it
         stays in the background; the launch modal's "Show log" button is
         the only thing that foregrounds it.
+
+        The launch screen is pushed *immediately* with a placeholder
+        (loading) agent dropdown; the slow ``installed_agents`` lookup
+        runs in a worker and fills the dropdown when it returns.  This
+        keeps the prompt TextArea instantly typeable.
         """
         pid = self.current_project_id
         if not pid:
@@ -238,37 +243,54 @@ class TaskActionsMixin(_MixinBase):
             on_complete=_on_done,
         )
 
-        # Resolve default login agent: project → global → "bash"
+        # ``load_project`` is a fast file read, so it stays inline — that
+        # gives the launch screen its default login agent without delaying
+        # the push.  The slow ``installed_agents`` lookup (podman inspect)
+        # is offloaded to a worker so the screen surfaces immediately.
         default_login = "bash"
-        installed: frozenset[str] | None = None
+        project = None
         try:
             project = load_project(pid)
             default_login = project.default_login or "bash"
-            # podman inspect would block the event loop; offload it.
-            import asyncio
-
-            from ..lib.api import installed_agents_for_project
-
-            installed = await asyncio.to_thread(installed_agents_for_project, project)
         except (SystemExit, Exception) as exc:
             self._log_debug(
-                f"_action_login: project/agents lookup failed for {pid!r}; "
+                f"_start_cli_task_background: project lookup failed for {pid!r}; "
                 f"falling back to bash. {exc}"
             )
 
-        await self.push_screen(
-            TaskLaunchScreen(
-                container_name=cname,
-                project_id=pid,
-                task_id=task_id,
-                task_name=name,
-                default_login=default_login,
-                installed=installed,
-                console_entry=console_entry,
-            ),
-            self._on_launch_screen_result,
+        launch_screen = TaskLaunchScreen(
+            container_name=cname,
+            project_id=pid,
+            task_id=task_id,
+            task_name=name,
+            default_login=default_login,
+            installed=None,  # None = still loading; populated by the worker
+            console_entry=console_entry,
         )
+
+        if project is not None:
+            self.run_worker(self._fill_installed_agents(launch_screen, project))
+        else:
+            launch_screen.set_installed(frozenset())
+
+        await self.push_screen(launch_screen, self._on_launch_screen_result)
         await self.refresh_tasks()
+
+    async def _fill_installed_agents(self, launch_screen: TaskLaunchScreen, project: Any) -> None:
+        """Resolve installed agents off-thread and feed them to *launch_screen*."""
+        import asyncio
+
+        from ..lib.api import installed_agents_for_project
+
+        try:
+            installed = await asyncio.to_thread(installed_agents_for_project, project)
+        except (SystemExit, Exception) as exc:
+            self._log_debug(
+                f"_fill_installed_agents: agents lookup failed for project "
+                f"{getattr(project, 'id', '?')!r}; dropdown will show all. {exc}"
+            )
+            installed = frozenset()
+        launch_screen.set_installed(installed)
 
     async def _on_launch_screen_result(
         self, result: "tuple[str, str, str, str, str, str | None] | None"

@@ -1192,6 +1192,26 @@ class TaskCreateScreen(screen.ModalScreen["tuple[str, str] | None"]):
 # ---------------------------------------------------------------------------
 
 
+if TextArea is not None:
+
+    class _SubmittablePromptArea(TextArea):
+        """TextArea where Enter bubbles up to the parent screen for submission.
+
+        Textual's stock TextArea consumes ``enter`` in its ``_on_key`` (calls
+        ``event.stop()`` and inserts ``\\n``), which prevents an enclosing
+        screen from treating Enter as form submit.  This subclass forwards
+        ``enter`` and ``ctrl+enter`` upstream untouched — the host screen's
+        ``on_key`` distinguishes them (Enter submits, Ctrl+Enter inserts).
+        """
+
+        async def _on_key(self, event: events.Key) -> None:
+            if event.key in {"enter", "ctrl+enter"}:
+                return
+            await super()._on_key(event)
+else:  # pragma: no cover - stub TextArea in test envs
+    _SubmittablePromptArea = TextArea  # type: ignore[assignment,misc]
+
+
 class TaskLaunchScreen(screen.ModalScreen["tuple[str, str, str, str, str, str | None] | None"]):
     """Post-creation modal for CLI tasks: agent selection + optional prompt.
 
@@ -1257,9 +1277,13 @@ class TaskLaunchScreen(screen.ModalScreen["tuple[str, str, str, str, str, str | 
         """Create the launch screen with container context and default agent.
 
         *installed* is the set of agents present in the project's L1 image
-        (from the ``ai.terok.agents`` label).  When provided and non-empty,
-        the agent dropdown only lists those agents.  ``None`` or empty means
-        no filtering — every known provider is shown.
+        (from the ``ai.terok.agents`` label).  ``None`` means the lookup is
+        still in flight — the agent dropdown renders disabled with only
+        ``bash`` as a placeholder until the caller invokes
+        [`set_installed`][terok.tui.screens.TaskLaunchScreen.set_installed]
+        with the resolved set.  A non-empty frozenset filters the dropdown
+        to those agents; an empty frozenset means no filter (legacy /
+        unlabeled images) — every known provider is shown.
         """
         super().__init__()
         self._container_name = container_name
@@ -1279,25 +1303,28 @@ class TaskLaunchScreen(screen.ModalScreen["tuple[str, str, str, str, str, str | 
 
     def compose(self) -> ComposeResult:
         """Build prompt input, agent selector, status, and action buttons."""
-        from terok.lib.integrations.executor import AGENT_PROVIDERS
-
         with Vertical(id="launch-dialog") as dialog:
             yield Static("Status: Starting container\u2026", id="launch-status")
 
             # Prompt input first (multiline TextArea with Ctrl+Enter for newline)
-            yield TextArea(placeholder="Initial prompt (optional)", id="launch-prompt")
+            yield _SubmittablePromptArea(
+                placeholder="Initial prompt (optional)", id="launch-prompt"
+            )
 
             # bash is always offered (login shell); the rest are filtered by
-            # what's installed in the project's L1 image.
-            choices: list[tuple[str, str]] = [("bash", "bash")]
-            for name in _visible_providers(self._installed):
-                p = AGENT_PROVIDERS[name]
-                choices.append((p.label, p.name))
-
-            # Validate default_login against available choices; fall back to "bash"
+            # what's installed in the project's L1 image \u2014 populated lazily
+            # by ``set_installed`` once the (slow) image inspect returns.
+            loading = self._installed is None
+            choices = self._build_agent_choices()
             valid_values = {v for _, v in choices}
             login_value = self._default_login if self._default_login in valid_values else "bash"
-            yield Select(choices, value=login_value, id="login-agent")
+            yield Select(
+                choices,
+                value=login_value,
+                id="login-agent",
+                disabled=loading,
+                prompt="Loading agents\u2026" if loading else "Select an agent",
+            )
 
             with Horizontal(id="launch-buttons"):
                 if self._console_entry is not None:
@@ -1306,6 +1333,45 @@ class TaskLaunchScreen(screen.ModalScreen["tuple[str, str, str, str, str, str | 
                 yield Button("Login", id="btn-login", variant="primary", disabled=True)
         dialog.border_title = f"CLI Task {self._task_id} ({self._task_name})"
         dialog.border_subtitle = "Esc to dismiss"
+
+    def _build_agent_choices(self) -> list[tuple[str, str]]:
+        """Build the (label, value) list for the agent Select.
+
+        Returns only ``bash`` while the installed-agents lookup is in
+        flight (``_installed is None``); once populated, prepends ``bash``
+        to the visible providers.
+        """
+        from terok.lib.integrations.executor import AGENT_PROVIDERS
+
+        choices: list[tuple[str, str]] = [("bash", "bash")]
+        if self._installed is None:
+            return choices
+        for name in _visible_providers(self._installed):
+            p = AGENT_PROVIDERS[name]
+            choices.append((p.label, p.name))
+        return choices
+
+    def set_installed(self, installed: frozenset[str]) -> None:
+        """Populate the agent dropdown once the background lookup finishes.
+
+        Replaces the placeholder ``bash``-only choice list with the real
+        set of installed agents, restores the configured *default_login*
+        if it's now selectable, and enables the dropdown.  Safe to call
+        before ``compose`` has run \u2014 in that case it just updates state
+        and the dropdown renders enabled on first mount.
+        """
+        self._installed = installed
+        try:
+            select = self.query_one("#login-agent", Select)
+        except Exception:  # pragma: no cover - compose hasn't run yet
+            return
+        choices = self._build_agent_choices()
+        select.set_options(choices)
+        valid_values = {v for _, v in choices}
+        if self._default_login in valid_values:
+            select.value = self._default_login
+        select.prompt = "Select an agent"
+        select.disabled = False
 
     def on_mount(self) -> None:
         """Start polling for container readiness and focus the prompt input."""
