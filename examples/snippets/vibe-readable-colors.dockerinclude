@@ -1,0 +1,34 @@
+# SPDX-FileCopyrightText: 2026 Jiri Vyskocil
+# SPDX-License-Identifier: Apache-2.0
+#
+# Vibe — lift `ansi_bright_black` to a readable mid-gray.
+#
+# Vibe's Textual UI uses `ansi_bright_black` in ~40 places for borders,
+# hints, and secondary text.  On terminal palettes that render that
+# slot as a near-black gray (notably GNOME's default Ptyxis scheme),
+# the affected text is almost invisible on a black background.  Upstream
+# hard-codes `self.theme = "textual-ansi"` with no override knob, so
+# the cleanest fix without changing the terminal palette is to patch
+# the installed stylesheet at image-build time.
+#
+# Tweak the replacement to taste: `#aaa` for higher contrast,
+# `#666` to stay subtle, etc.  Hex colors land verbatim in Textual CSS.
+#
+# Usage: drop this into your project's `user.dockerinclude`, or point
+# `image.user_snippet_file:` at this file from `project.yml`.  The
+# snippet runs after L1 has installed every agent CLI, so the pipx
+# venv exists when this RUN executes.
+#
+# terok's L1 template sets `PIPX_HOME=/opt/pipx`, so pipx-installed
+# agent venvs (mistral-vibe among them) land at
+# `/opt/pipx/venvs/<package>/`.  Don't try to resolve `vibe` via
+# `command -v` / `which` — terok's interactive shells source a
+# `vibe()` shell-function wrapper that shadows the binary, and PATH
+# resolution at L2 build time vs. at an interactive prompt would
+# give different answers; the venv root is the stable thing to anchor
+# on.  `find` skips the python-version subdir (`lib/python3.12/` vs
+# `python3.13/` etc.) without us hard-coding it.
+RUN set -eux; \
+    TCSS=$(find /opt/pipx/venvs/mistral-vibe \
+                -path '*/vibe/cli/textual_ui/app.tcss' 2>/dev/null | head -1); \
+    [ -n "$TCSS" ] && sed -i 's/ansi_bright_black/#888888/g' "$TCSS"

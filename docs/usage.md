@@ -276,7 +276,9 @@ Create `~/.config/terok/projects/myproj/user.dockerinclude`:
 RUN apt-get update && apt-get install -y ripgrep jq && rm -rf /var/lib/apt/lists/*
 ```
 
-This text is pasted near the end of your project image (L2) Dockerfile.
+This text is pasted near the end of your project image (L2) Dockerfile. You can also set `image.user_snippet_inline` in `project.yml` for short one-liners and keep the per-project `.dockerinclude` for longer recipes — both are concatenated.
+
+Ready-to-use snippets for personal-taste tweaks (e.g. retuning an agent's terminal colors) live in [`examples/snippets/`](../examples/snippets/) — append to your `user.dockerinclude` as-is, or use `image.user_snippet_file` to point at one directly.
 
 ### Step 4: Generate Dockerfiles
 

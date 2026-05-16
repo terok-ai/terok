@@ -24,6 +24,20 @@ image:
     RUN update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-14 140 \
      && update-alternatives --install /usr/bin/g++ g++ /usr/bin/g++-14 140
 
+    # Personal-taste UI tweak: lift Vibe's ansi_bright_black to a
+    # readable mid-gray so menus + hints stop disappearing on the
+    # default GNOME Ptyxis palette.  Same recipe as
+    # examples/snippets/vibe-readable-colors.dockerinclude — inlined
+    # here to demonstrate the user_snippet_inline form.
+    #
+    # terok's L1 sets PIPX_HOME=/opt/pipx, so mistral-vibe's venv is
+    # always at /opt/pipx/venvs/mistral-vibe.  Find skips the python-
+    # version subdir without us hard-coding it.
+    RUN set -eux; \
+        TCSS=$(find /opt/pipx/venvs/mistral-vibe \
+                    -path '*/vibe/cli/textual_ui/app.tcss' 2>/dev/null | head -1); \
+        [ -n "$TCSS" ] && sed -i 's/ansi_bright_black/#888888/g' "$TCSS"
+
 # Gatekeeping mode settings
 gatekeeping:
   # Expose the upstream URL as a remote named "external" inside the container.
