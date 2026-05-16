@@ -3566,33 +3566,33 @@ tomli-w = ">=1.0,<2.0"
 
 [[package]]
 name = "terok-clearance"
-version = "0.6.14a3"
+version = "0.6.14a4"
 description = "Shield clearance and desktop notifications for terok"
 optional = false
 python-versions = ">=3.12,<4.0"
 groups = ["main"]
 files = [
-    {file = "terok_clearance-0.6.14a3-py3-none-any.whl", hash = "sha256:b1ff1e2ed7aedafc1577d9a18400dde1998bddcdf608f145da5452dca045eff9"},
+    {file = "terok_clearance-0.6.14a4-py3-none-any.whl", hash = "sha256:67ed8a9d07b953d652f051a7dae8e7d8600c4943262dcf60dc950bbcb26dbbbd"},
 ]
 
 [package.dependencies]
 asyncvarlink = ">=0.3.1,<0.4.0"
 dbus-fast = ">=2.0,<5.0"
-pyyaml = ">=6.0,<7.0.0"
+pyyaml = ">=6.0"
 
 [package.source]
 type = "url"
-url = "https://github.com/terok-ai/terok-clearance/releases/download/v0.6.14a3/terok_clearance-0.6.14a3-py3-none-any.whl"
+url = "https://github.com/terok-ai/terok-clearance/releases/download/v0.6.14a4/terok_clearance-0.6.14a4-py3-none-any.whl"
 
 [[package]]
 name = "terok-executor"
-version = "0.0.149a6"
+version = "0.0.149a7"
 description = "Single-agent task runner for hardened Podman containers"
 optional = false
 python-versions = ">=3.12,<3.15"
 groups = ["main"]
 files = [
-    {file = "terok_executor-0.0.149a6-py3-none-any.whl", hash = "sha256:a286601ff31ab237624d2e9b3abdd9fa4a4fff82459aa13b4065c92f1cdd123e"},
+    {file = "terok_executor-0.0.149a7-py3-none-any.whl", hash = "sha256:de88dadb2daf7eb3ae1a6f902cde75ed5e04f83a9967f152649c047c1c7f5337"},
 ]
 
 [package.dependencies]
@@ -3602,22 +3602,22 @@ prompt-toolkit = ">=3.0"
 pydantic = ">=2.9"
 rich = ">=13.0"
 "ruamel.yaml" = ">=0.18"
-terok_sandbox = {url = "https://github.com/terok-ai/terok-sandbox/releases/download/v0.0.124a6/terok_sandbox-0.0.124a6-py3-none-any.whl"}
+terok_sandbox = {url = "https://github.com/terok-ai/terok-sandbox/releases/download/v0.0.124a7/terok_sandbox-0.0.124a7-py3-none-any.whl"}
 tomli-w = ">=1.0"
 
 [package.source]
 type = "url"
-url = "https://github.com/terok-ai/terok-executor/releases/download/v0.0.149a6/terok_executor-0.0.149a6-py3-none-any.whl"
+url = "https://github.com/terok-ai/terok-executor/releases/download/v0.0.149a7/terok_executor-0.0.149a7-py3-none-any.whl"
 
 [[package]]
 name = "terok-sandbox"
-version = "0.0.124a6"
+version = "0.0.124a7"
 description = "Hardened Podman container runner with gate server and shield integration"
 optional = false
 python-versions = ">=3.12,<4.0"
 groups = ["main"]
 files = [
-    {file = "terok_sandbox-0.0.124a6-py3-none-any.whl", hash = "sha256:ddac4cb1a88b5ff6499873c08f757c4580bdff19e4c36f73ad2de769d1be8b4a"},
+    {file = "terok_sandbox-0.0.124a7-py3-none-any.whl", hash = "sha256:2e97542078e38824b716dfc61899b1df5ef02e73096763f34cf9c0b83d9359f4"},
 ]
 
 [package.dependencies]
@@ -3630,22 +3630,22 @@ prompt-toolkit = ">=3.0"
 pydantic = ">=2.9"
 "ruamel.yaml" = ">=0.18"
 sqlcipher3 = ">=0.6.2"
-terok_clearance = {url = "https://github.com/terok-ai/terok-clearance/releases/download/v0.6.14a3/terok_clearance-0.6.14a3-py3-none-any.whl"}
-terok_shield = {url = "https://github.com/terok-ai/terok-shield/releases/download/v0.6.42a3/terok_shield-0.6.42a3-py3-none-any.whl"}
+terok_clearance = {url = "https://github.com/terok-ai/terok-clearance/releases/download/v0.6.14a4/terok_clearance-0.6.14a4-py3-none-any.whl"}
+terok_shield = {url = "https://github.com/terok-ai/terok-shield/releases/download/v0.6.42a4/terok_shield-0.6.42a4-py3-none-any.whl"}
 
 [package.source]
 type = "url"
-url = "https://github.com/terok-ai/terok-sandbox/releases/download/v0.0.124a6/terok_sandbox-0.0.124a6-py3-none-any.whl"
+url = "https://github.com/terok-ai/terok-sandbox/releases/download/v0.0.124a7/terok_sandbox-0.0.124a7-py3-none-any.whl"
 
 [[package]]
 name = "terok-shield"
-version = "0.6.42a3"
+version = "0.6.42a4"
 description = "nftables-based egress firewalling for Podman containers"
 optional = false
 python-versions = ">=3.12,<4.0"
 groups = ["main"]
 files = [
-    {file = "terok_shield-0.6.42a3-py3-none-any.whl", hash = "sha256:3c8c455bfda608d88f3bc822fc6fb016dcdf0a622842749a2faa86670484e1ba"},
+    {file = "terok_shield-0.6.42a4-py3-none-any.whl", hash = "sha256:4d9751f814785ac202944a10239dadbde352e2e814e9509b56d5393a06870a08"},
 ]
 
 [package.dependencies]
@@ -3654,7 +3654,7 @@ PyYAML = ">=6.0"
 
 [package.source]
 type = "url"
-url = "https://github.com/terok-ai/terok-shield/releases/download/v0.6.42a3/terok_shield-0.6.42a3-py3-none-any.whl"
+url = "https://github.com/terok-ai/terok-shield/releases/download/v0.6.42a4/terok_shield-0.6.42a4-py3-none-any.whl"
 
 [[package]]
 name = "textual"
@@ -4534,4 +4534,4 @@ propcache = ">=0.2.1"
 [metadata]
 lock-version = "2.1"
 python-versions = ">=3.12,<3.15"
-content-hash = "444ea5ca511e9f01aea1a11c0286d7a815b1cb0a82e713d1798365736e32b991"
+content-hash = "3a427b635ba438c4d8c64659d0f54ef0baea9ff4d5f8538676c29d124c831384"
