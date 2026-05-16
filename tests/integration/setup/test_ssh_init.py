@@ -23,11 +23,15 @@ git:
 class TestSshInit:
     """Verify ``project ssh-init`` provisions a vault-backed key via the real CLI."""
 
-    def test_ssh_init_is_additive(self, terok_env: TerokIntegrationEnv) -> None:
-        """Re-running ``ssh-init`` on the same scope adds a second key.
+    def test_ssh_init_is_idempotent(self, terok_env: TerokIntegrationEnv) -> None:
+        """Re-running ``ssh-init`` on the same scope shows the same primary key (#856).
 
-        ``ssh-init`` is additive by default — each call produces a fresh
-        keypair alongside any existing ones.  Only ``--force`` rotates.
+        A bare second invocation used to mint a fresh ``tk-side:`` key,
+        leaving the operator to figure out which public line to register
+        upstream and why the previous one no longer worked alone.  The
+        fixed contract: same scope, no flags → same key, idempotent
+        output.  ``--force`` still rotates; ``--comment`` still opts
+        into additive minting for multi-deploy-key setups.
         """
         terok_env.write_project(
             "demo",
@@ -40,12 +44,9 @@ class TestSshInit:
         fp1 = _extract_fingerprint(first.stdout)
         fp2 = _extract_fingerprint(second.stdout)
         assert fp1 is not None and fp2 is not None
-        assert fp1 != fp2  # two independent keys
-
-        # The second key gets a ``tk-side:`` comment so only the first
-        # remains tk-main for the signer's promotion heuristic.
+        assert fp1 == fp2  # same key shown twice
         assert "tk-main:demo" in first.stdout
-        assert "tk-side:demo" in second.stdout
+        assert "tk-main:demo" in second.stdout
 
     def test_ssh_init_rotation_picks_new_key(self, terok_env: TerokIntegrationEnv) -> None:
         """``--force`` rotates: scope ends up with a fresh key, distinct fingerprint."""
