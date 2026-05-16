@@ -14,7 +14,7 @@ high-level wrappers (``make_shield``, ``up``, ``down``, ``quarantine``,
 command registry has its own adapter, ``terok.lib.integrations.shield``.
 """
 
-from terok_sandbox import (  # noqa: F401 — re-exported public API
+from terok_sandbox.api import (  # noqa: F401 — re-exported public API
     EXIT_MANUAL_STEP_NEEDED,
     GATE_COMMANDS,
     SERVICES_TCP_OPTOUT_YAML,
