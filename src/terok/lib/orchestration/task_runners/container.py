@@ -164,7 +164,9 @@ def _run_container(
         "--annotation",
         f"dossier.meta_path={task_dossier_path}",
     ]
-    merged_args = annotations + list(extra_args or ()) + _project_runtime_flags(project)
+    merged_args = (
+        annotations + list(extra_args or ()) + _project_runtime_flags(project, cname=cname)
+    )
     try:
         _agent_runner().launch_prepared(
             env=env,
@@ -193,7 +195,7 @@ def _agent_runner() -> AgentRunner:
     return AgentRunner(sandbox=Sandbox(make_sandbox_config()))
 
 
-def _project_runtime_flags(project: ProjectConfig) -> list[str]:
+def _project_runtime_flags(project: ProjectConfig, *, cname: str) -> list[str]:
     """Return extra ``podman run`` flags derived from project-level capabilities.
 
     ``run.nested_containers`` → ``--security-opt label=nested`` plus
@@ -205,9 +207,9 @@ def _project_runtime_flags(project: ProjectConfig) -> list[str]:
     "unknown label option: nested" and the user is expected to upgrade.
 
     ``run.runtime: krun`` → ``--runtime krun`` plus krun OCI annotations
-    for microVM sizing.  Validates the krun-incompatible combinations
-    before emitting any flag so the operator sees a clear error rather
-    than a podman launch failure.
+    for microVM sizing and a per-container vsock CID.  Validates the
+    krun-incompatible combinations before emitting any flag so the
+    operator sees a clear error rather than a podman launch failure.
     """
     flags: list[str] = []
     if project.nested_containers:
@@ -220,13 +222,12 @@ def _project_runtime_flags(project: ProjectConfig) -> list[str]:
         if project.krun_ram_mib is not None:
             flags += ["--annotation", f"run.oci.krun.ram_mib={project.krun_ram_mib}"]
         # The CID annotation is the contract between the orchestrator and
-        # `VsockSSHTransport`'s podman_annotation_resolver.  Allocation is
-        # deferred to a follow-up; for now the orchestrator allocates per
-        # container name via a hash modulo the 32-bit CID space, biased
-        # away from reserved CIDs (0, 1, 2).
+        # `VsockSSHTransport`'s podman_annotation_resolver — the resolver
+        # reads it back per *container name* at exec time, so the binding
+        # is container-scoped on both ends.
         flags += [
             "--annotation",
-            f"{DEFAULT_CID_ANNOTATION}={_allocate_krun_cid(project.id)}",
+            f"{DEFAULT_CID_ANNOTATION}={_allocate_krun_cid(cname)}",
         ]
     return flags
 
@@ -259,21 +260,33 @@ def _validate_krun_compatibility(project: ProjectConfig) -> None:
         )
 
 
-def _allocate_krun_cid(project_id: str) -> int:
-    """Deterministically assign a vsock CID to *project_id*.
+def _allocate_krun_cid(cname: str) -> int:
+    """Deterministically assign a vsock CID to *cname*.
 
-    Stable across launches of the same project so the host-side resolver
-    can find the running guest.  Stays in the unreserved 32-bit range —
-    CIDs 0, 1, 2 are reserved by the vsock spec; ``VMADDR_CID_HOST`` is
-    2 and would short-circuit reads.
+    Stable across re-execs of the same container so the host-side
+    resolver finds the same guest.  Keyed on the container name (not
+    the project id) so two concurrent tasks under the same project
+    get distinct CIDs — same-project multi-task is the most likely
+    collision shape, and per-container keying eliminates it.
 
-    Trivial placeholder for the first cut; a free-CID-tracker that
-    survives multi-project concurrency is a follow-up.
+    Stays in the unreserved range ``[3, 2**31)``.  CIDs 0, 1, 2 are
+    reserved by the vsock spec (``ANY``, ``HYPERVISOR``, ``HOST``);
+    the upper half stays clear of the vendor-reserved 2**32-1
+    sentinel and leaves headroom.
+
+    **Threat model note** — the vsock kernel module enforces CID
+    uniqueness at bind time: two guests cannot simultaneously hold
+    the same CID.  A hash collision therefore causes the second
+    ``podman run`` to fail at startup, not a silent wrong-guest
+    dispatch.  At realistic concurrency (tens to low hundreds of
+    containers) the birthday probability inside a 2**31 range is
+    negligible.  A proper free-CID tracker with a persistent
+    freelist + lock would still be needed before terok supports
+    very-high-concurrency deploys or wants graceful CID reuse after
+    crashes — tracked as a follow-up.
     """
-    digest = hashlib.sha1(project_id.encode("utf-8"), usedforsecurity=False).digest()
-    raw = int.from_bytes(digest[:4], "big")
-    # Range [3, 2**31) — comfortably below the reserved-host end of the
-    # spec while leaving plenty of headroom; biased away from 0–2.
+    digest = hashlib.sha1(cname.encode("utf-8"), usedforsecurity=False).digest()
+    raw = int.from_bytes(digest[:8], "big")
     return 3 + (raw % (2**31 - 3))
 
 

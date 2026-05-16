@@ -76,18 +76,31 @@ class TestGetRuntimeKrunBranch:
 
 
 class TestKrunCidAllocation:
-    """The placeholder CID allocator is stable, deterministic, and unreserved."""
+    """The CID allocator is stable, deterministic, per-container, and unreserved."""
 
-    def test_stable_for_same_project(self) -> None:
-        assert _allocate_krun_cid("proj-x") == _allocate_krun_cid("proj-x")
+    def test_stable_for_same_container(self) -> None:
+        assert _allocate_krun_cid("task-proj-x") == _allocate_krun_cid("task-proj-x")
 
-    def test_differs_across_projects(self) -> None:
-        assert _allocate_krun_cid("a") != _allocate_krun_cid("b")
+    def test_differs_across_containers(self) -> None:
+        assert _allocate_krun_cid("task-a") != _allocate_krun_cid("task-b")
+
+    def test_per_container_under_same_project(self) -> None:
+        """Two concurrent tasks under the same project get distinct CIDs.
+
+        Keying on the container name (which already encodes project +
+        mode + task) means same-project multi-task — the most likely
+        collision shape — doesn't collide.  Without this, every task
+        after the first under one project would fail to start because
+        the vsock kernel module rejects a duplicate CID bind.
+        """
+        a = _allocate_krun_cid("terok-cli-projx-taskA")
+        b = _allocate_krun_cid("terok-cli-projx-taskB")
+        assert a != b
 
     def test_avoids_reserved_low_cids(self) -> None:
         """CIDs 0, 1, 2 are reserved by the vsock spec."""
-        for project in ("a", "abc", "x" * 50, "proj-with-dashes"):
-            assert _allocate_krun_cid(project) >= 3
+        for cname in ("a", "abc", "x" * 50, "terok-cli-proj-task-with-dashes"):
+            assert _allocate_krun_cid(cname) >= 3
 
 
 class TestKrunCompatibilityGuard:
@@ -187,12 +200,14 @@ class TestProjectRuntimeFlags:
     def test_no_runtime_no_flags(self) -> None:
         from terok.lib.orchestration.task_runners.container import _project_runtime_flags
 
-        assert _project_runtime_flags(self._project()) == []
+        assert _project_runtime_flags(self._project(), cname="terok-cli-demoproj-task-a") == []
 
     def test_krun_emits_runtime_flag(self, _experimental_enabled) -> None:
         from terok.lib.orchestration.task_runners.container import _project_runtime_flags
 
-        flags = _project_runtime_flags(self._project(runtime="krun"))
+        flags = _project_runtime_flags(
+            self._project(runtime="krun"), cname="terok-cli-demoproj-task-a"
+        )
         assert "--runtime" in flags
         assert flags[flags.index("--runtime") + 1] == "krun"
 
@@ -200,7 +215,9 @@ class TestProjectRuntimeFlags:
         from terok.lib.integrations.sandbox import DEFAULT_CID_ANNOTATION
         from terok.lib.orchestration.task_runners.container import _project_runtime_flags
 
-        flags = _project_runtime_flags(self._project(runtime="krun"))
+        flags = _project_runtime_flags(
+            self._project(runtime="krun"), cname="terok-cli-demoproj-task-a"
+        )
         annotations = [flags[i + 1] for i, t in enumerate(flags) if t == "--annotation"]
         cid_annotations = [a for a in annotations if a.startswith(DEFAULT_CID_ANNOTATION + "=")]
         assert len(cid_annotations) == 1
@@ -208,11 +225,34 @@ class TestProjectRuntimeFlags:
         _, _, cid_str = cid_annotations[0].partition("=")
         assert int(cid_str) >= 3
 
+    def test_krun_cid_differs_per_container(self, _experimental_enabled) -> None:
+        """Two containers under the same project get distinct CID annotations.
+
+        Pins the per-container keying — same-project multi-task is the
+        most likely collision shape, and the kernel rejects duplicate
+        vsock CID binds, so without this property the second task
+        under a project would fail to start.
+        """
+        from terok.lib.integrations.sandbox import DEFAULT_CID_ANNOTATION
+        from terok.lib.orchestration.task_runners.container import _project_runtime_flags
+
+        def cid_of(cname: str) -> str:
+            flags = _project_runtime_flags(self._project(runtime="krun"), cname=cname)
+            (entry,) = [
+                flags[i + 1]
+                for i, t in enumerate(flags)
+                if t == "--annotation" and flags[i + 1].startswith(DEFAULT_CID_ANNOTATION + "=")
+            ]
+            return entry
+
+        assert cid_of("terok-cli-demoproj-task-a") != cid_of("terok-cli-demoproj-task-b")
+
     def test_krun_emits_cpu_and_ram_when_set(self, _experimental_enabled) -> None:
         from terok.lib.orchestration.task_runners.container import _project_runtime_flags
 
         flags = _project_runtime_flags(
-            self._project(runtime="krun", krun_cpus=4, krun_ram_mib=8192)
+            self._project(runtime="krun", krun_cpus=4, krun_ram_mib=8192),
+            cname="terok-cli-demoproj-task-a",
         )
         annotations = [flags[i + 1] for i, t in enumerate(flags) if t == "--annotation"]
         assert "run.oci.krun.cpus=4" in annotations
@@ -221,7 +261,9 @@ class TestProjectRuntimeFlags:
     def test_krun_skips_cpu_ram_when_unset(self, _experimental_enabled) -> None:
         from terok.lib.orchestration.task_runners.container import _project_runtime_flags
 
-        flags = _project_runtime_flags(self._project(runtime="krun"))
+        flags = _project_runtime_flags(
+            self._project(runtime="krun"), cname="terok-cli-demoproj-task-a"
+        )
         joined = " ".join(flags)
         assert "krun.cpus" not in joined
         assert "krun.ram_mib" not in joined
@@ -230,7 +272,10 @@ class TestProjectRuntimeFlags:
         from terok.lib.orchestration.task_runners.container import _project_runtime_flags
 
         with pytest.raises(SystemExit, match="incompatible.*nested"):
-            _project_runtime_flags(self._project(runtime="krun", nested_containers=True))
+            _project_runtime_flags(
+                self._project(runtime="krun", nested_containers=True),
+                cname="terok-cli-demoproj-task-a",
+            )
 
     def test_krun_without_experimental_rejected(self) -> None:
         """No experimental flag → config-driven krun selection refused."""
@@ -243,12 +288,14 @@ class TestProjectRuntimeFlags:
             ),
             pytest.raises(SystemExit, match="requires the experimental flag"),
         ):
-            _project_runtime_flags(self._project(runtime="krun"))
+            _project_runtime_flags(self._project(runtime="krun"), cname="terok-cli-demoproj-task-a")
 
     def test_nested_only_unaffected(self) -> None:
         """`nested_containers` alone still emits its existing flags."""
         from terok.lib.orchestration.task_runners.container import _project_runtime_flags
 
-        flags = _project_runtime_flags(self._project(nested_containers=True))
+        flags = _project_runtime_flags(
+            self._project(nested_containers=True), cname="terok-cli-demoproj-task-a"
+        )
         assert "label=nested" in flags
         assert "--runtime" not in flags
