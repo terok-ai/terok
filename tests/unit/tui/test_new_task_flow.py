@@ -199,13 +199,13 @@ class TestTaskLaunchScreen:
 
         mock_select = mock.Mock()
         mock_select.value = "claude"
-        mock_input = mock.Mock()
-        mock_input.value = "fix the bug"
+        mock_textarea = mock.Mock()
+        mock_textarea.text = "fix the bug"
 
         def query_one(selector, cls=None):
             if "login-agent" in selector:
                 return mock_select
-            return mock_input
+            return mock_textarea
 
         screen.query_one = query_one
 
@@ -221,13 +221,13 @@ class TestTaskLaunchScreen:
 
         mock_select = mock.Mock()
         mock_select.value = "bash"
-        mock_input = mock.Mock()
-        mock_input.value = "scribble for the agent"
+        mock_textarea = mock.Mock()
+        mock_textarea.text = "scribble for the agent"
 
         def query_one(selector, cls=None):
             if "login-agent" in selector:
                 return mock_select
-            return mock_input
+            return mock_textarea
 
         screen.query_one = query_one
 
@@ -245,13 +245,13 @@ class TestTaskLaunchScreen:
 
         mock_select = mock.Mock()
         mock_select.value = "bash"
-        mock_input = mock.Mock()
-        mock_input.value = "   "
+        mock_textarea = mock.Mock()
+        mock_textarea.text = "   "
 
         def query_one(selector, cls=None):
             if "login-agent" in selector:
                 return mock_select
-            return mock_input
+            return mock_textarea
 
         screen.query_one = query_one
 
@@ -279,6 +279,118 @@ class TestTaskLaunchScreen:
         event = mock.Mock()
         screen.on_input_submitted(event)
         screen._do_login.assert_called_once()
+
+    def test_on_key_ctrl_enter_inserts_newline(self) -> None:
+        """Ctrl+Enter in focused prompt TextArea inserts a newline."""
+        screens, _ = import_screens()
+        screen = screens.TaskLaunchScreen(container_name="c", project_id="p", task_id="1")
+
+        mock_textarea = mock.Mock()
+        mock_textarea.text = "line1"
+        mock_textarea.has_focus = True
+        mock_textarea.insert = mock.Mock()
+
+        mock_select = mock.Mock()
+
+        def query_one(selector, cls=None):
+            if "login-agent" in selector:
+                return mock_select
+            return mock_textarea
+
+        screen.query_one = query_one
+
+        # Simulate Ctrl+Enter
+        event = mock.Mock()
+        event.key = "ctrl+enter"
+        screen.on_key(event)
+
+        # Verify newline was inserted
+        mock_textarea.insert.assert_called_once_with("\n")
+        event.stop.assert_called_once()
+
+    def test_on_key_enter_submits_when_ready_and_focused(self) -> None:
+        """Enter (without Ctrl) submits when container ready and prompt has focus."""
+        screens, _ = import_screens()
+        screen = screens.TaskLaunchScreen(container_name="c", project_id="p", task_id="1")
+        screen._container_ready = True
+        screen._do_login = mock.Mock()
+
+        mock_textarea = mock.Mock()
+        mock_textarea.has_focus = True
+
+        mock_select = mock.Mock()
+
+        def query_one(selector, cls=None):
+            if "login-agent" in selector:
+                return mock_select
+            return mock_textarea
+
+        screen.query_one = query_one
+
+        # Simulate Enter (without Ctrl)
+        event = mock.Mock()
+        event.key = "enter"
+        event.ctrl = False
+        screen.on_key(event)
+
+        screen._do_login.assert_called_once()
+        event.stop.assert_called_once()
+
+    def test_on_key_enter_noop_when_not_ready(self) -> None:
+        """Enter does nothing when container is not ready, even with focus."""
+        screens, _ = import_screens()
+        screen = screens.TaskLaunchScreen(container_name="c", project_id="p", task_id="1")
+        screen._container_ready = False
+        screen._do_login = mock.Mock()
+
+        mock_textarea = mock.Mock()
+        mock_textarea.has_focus = True
+
+        mock_select = mock.Mock()
+
+        def query_one(selector, cls=None):
+            if "login-agent" in selector:
+                return mock_select
+            return mock_textarea
+
+        screen.query_one = query_one
+
+        # Simulate Enter (without Ctrl)
+        event = mock.Mock()
+        event.key = "enter"
+        event.ctrl = False
+        screen.on_key(event)
+
+        screen._do_login.assert_not_called()
+        event.stop.assert_not_called()
+
+    def test_on_key_enter_noop_when_not_focused(self) -> None:
+        """Enter does nothing when prompt doesn't have focus, even if ready."""
+        screens, _ = import_screens()
+        screen = screens.TaskLaunchScreen(container_name="c", project_id="p", task_id="1")
+        screen._container_ready = True
+        screen._do_login = mock.Mock()
+
+        mock_textarea = mock.Mock()
+        mock_textarea.has_focus = False  # No focus
+
+        mock_select = mock.Mock()
+
+        def query_one(selector, cls=None):
+            if "login-agent" in selector:
+                return mock_select
+            return mock_textarea
+
+        screen.query_one = query_one
+
+        # Simulate Enter (without Ctrl)
+        event = mock.Mock()
+        event.key = "enter"
+        event.ctrl = False
+        screen.on_key(event)
+
+        screen._do_login.assert_not_called()
+        event.stop.assert_not_called()
 
 
 # ---------------------------------------------------------------------------
@@ -711,10 +823,12 @@ class TestTaskLaunchScreenNamePropagation:
 
         mock_select = mock.Mock()
         mock_select.value = "vibe"
-        mock_input = mock.Mock()
-        mock_input.value = "refactor auth"
+        mock_textarea = mock.Mock()
+        mock_textarea.text = "refactor auth"
 
-        screen.query_one = lambda sel, cls=None: mock_select if "login-agent" in sel else mock_input
+        screen.query_one = lambda sel, cls=None: (
+            mock_select if "login-agent" in sel else mock_textarea
+        )
 
         screen._do_login()
         result = screen.dismiss.call_args[0][0]
@@ -729,10 +843,12 @@ class TestTaskLaunchScreenNamePropagation:
 
         mock_select = mock.Mock()
         mock_select.value = "bash"
-        mock_input = mock.Mock()
-        mock_input.value = ""
+        mock_textarea = mock.Mock()
+        mock_textarea.text = ""
 
-        screen.query_one = lambda sel, cls=None: mock_select if "login-agent" in sel else mock_input
+        screen.query_one = lambda sel, cls=None: (
+            mock_select if "login-agent" in sel else mock_textarea
+        )
 
         screen._do_login()
         result = screen.dismiss.call_args[0][0]
