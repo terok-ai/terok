@@ -12,12 +12,18 @@ and ``_project_runtime_flags`` assemble the podman invocation.
 
 from __future__ import annotations
 
+import hashlib
 import shlex
 from typing import TYPE_CHECKING
 
 from terok.lib.core.config import is_experimental
 from terok.lib.integrations.executor import AgentRunner, BuildError
-from terok.lib.integrations.sandbox import LifecycleHooks, Sandbox, VolumeSpec
+from terok.lib.integrations.sandbox import (
+    DEFAULT_CID_ANNOTATION,
+    LifecycleHooks,
+    Sandbox,
+    VolumeSpec,
+)
 
 from ...core import runtime as _rt
 from ...core.config import make_sandbox_config
@@ -171,8 +177,6 @@ def _project_runtime_flags(project: ProjectConfig) -> list[str]:
         # deferred to a follow-up; for now the orchestrator allocates per
         # container name via a hash modulo the 32-bit CID space, biased
         # away from reserved CIDs (0, 1, 2).
-        from terok.lib.integrations.sandbox import DEFAULT_CID_ANNOTATION
-
         flags += [
             "--annotation",
             f"{DEFAULT_CID_ANNOTATION}={_allocate_krun_cid(project.id)}",
@@ -219,8 +223,6 @@ def _allocate_krun_cid(project_id: str) -> int:
     Trivial placeholder for the first cut; a free-CID-tracker that
     survives multi-project concurrency is a follow-up.
     """
-    import hashlib
-
     digest = hashlib.sha1(project_id.encode("utf-8"), usedforsecurity=False).digest()
     raw = int.from_bytes(digest[:4], "big")
     # Range [3, 2**31) — comfortably below the reserved-host end of the
