@@ -611,6 +611,31 @@ def _check_vault_migration() -> _CheckResult:
     return ("ok", label, "no legacy directory")
 
 
+def _check_default_agents() -> _CheckResult:
+    """Warn when no global ``image.agents`` default is configured.
+
+    Bare scope is fine on first run but noisy for fleets that want a
+    deliberate roster across projects.
+    """
+    label = "Default agents"
+    try:
+        from terok.lib.integrations.executor import get_global_image_agents
+
+        current = get_global_image_agents()
+    except Exception as exc:  # noqa: BLE001 — probe is best-effort; never crash sickbay
+        return ("warn", label, f"check failed — {exc}")
+
+    if current:
+        return ("ok", label, f"image.agents = {current!r}")
+    return (
+        "warn",
+        label,
+        "no default selection — projects fall back to the bundled "
+        "roster.  Run 'terok agents set' to pick a roster baked into "
+        "L1 by default.",
+    )
+
+
 _GLOBAL_CHECKS = [
     ("Gate server", _check_gate_server),
     ("Shield", _check_shield),
@@ -619,6 +644,7 @@ _GLOBAL_CHECKS = [
     ("SSH signer", _check_ssh_signer),
     ("SELinux policy", _check_selinux_policy),
     ("Clearance stack", _check_clearance_stack),
+    ("Default agents", _check_default_agents),
 ]
 """Global checks paired with the label shown while they run.
 

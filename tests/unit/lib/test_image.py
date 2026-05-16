@@ -19,7 +19,14 @@ DEFAULT_BRANCH = "main"
 
 @contextmanager
 def image_project(project_id: str, *, security_class: str = "online") -> Iterator[object]:
-    """Create a minimal project config suitable for Dockerfile generation tests."""
+    """Create a minimal project config suitable for Dockerfile generation tests.
+
+    Pins ``image.base_image`` to ubuntu:24.04 so generated Dockerfiles
+    consistently exercise the deb-family branch — the tests below assert
+    on apt-specific tokens (``locales``, ``locale-gen``).  Without this
+    pin, the test tracks the executor's default and would flip family
+    every time the upstream default moves (e.g. ubuntu→fedora).
+    """
     lines = [
         f"project:\n  id: {project_id}\n",
         f"  security_class: {security_class}\n",
@@ -27,6 +34,7 @@ def image_project(project_id: str, *, security_class: str = "online") -> Iterato
     ]
     lines.append(f"  upstream_url: {UPSTREAM_URL}\n")
     lines.append(f"  default_branch: {DEFAULT_BRANCH}\n")
+    lines.append("image:\n  base_image: ubuntu:24.04\n")
     yaml = "".join(lines)
     with project_env(yaml, project_id=project_id) as env:
         yield env

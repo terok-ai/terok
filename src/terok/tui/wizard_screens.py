@@ -41,13 +41,11 @@ from textual.css.query import NoMatches
 from textual.screen import ModalScreen
 from textual.widgets import (
     Button,
-    Checkbox,
     Input,
     Label,
     RadioButton,
     RadioSet,
     RichLog,
-    Rule,
     Static,
     TextArea,
 )
@@ -59,15 +57,8 @@ from ..lib.api import (
     validate_answer,
     write_project_yaml,
 )
+from .agents_screen import AgentsSelectScreen
 from .askpass_service import build_askpass_env, gui_askpass_usable
-
-#: Literal value the wizard emits for a multichoice question when the user
-#: has the master "All" checkbox on — meaning "every current option plus
-#: anything added to the roster later".  Kept in sync with the executor's
-#: [`parse_agent_selection`][terok_executor.parse_agent_selection] grammar.
-#: (The name avoids ``_TOKEN`` so Sonar's S2068 secret-name heuristic
-#: doesn't flag the short literal as a possible hardcoded password.)
-_MASTER_ALL = "all"
 
 # ── Step 1: the form ──────────────────────────────────────────────────
 
@@ -132,21 +123,6 @@ class WizardFormScreen(ModalScreen["dict[str, str] | None"]):
         padding: 0 1;
     }
 
-    .wizard-multichoice {
-        border: round $primary-darken-2;
-        padding: 0 1;
-        height: auto;
-    }
-
-    .wizard-multichoice-all {
-        /* Visually separates "select everything" from the per-agent list. */
-        color: $accent;
-    }
-
-    .wizard-multichoice-sep {
-        margin: 0 1;
-    }
-
     TextArea {
         height: 8;
     }
@@ -155,14 +131,15 @@ class WizardFormScreen(ModalScreen["dict[str, str] | None"]):
     def __init__(self, initial: dict[str, str] | None = None) -> None:
         """Build a fresh wizard form, optionally pre-filled with previous answers.
 
-        *initial* is the dict returned by a prior run of this screen —
-        passed back in when the user clicks "Back" on the review screen
-        so their typing survives the round trip.  Keys not in *initial*
-        fall back to "first choice selected" / empty string.
+        *initial* survives the form/review "Back" round-trip.  The
+        ``agents`` key seeds the on-demand override modal opened from
+        the "Override agents…" button.
         """
         super().__init__()
         self._errors: dict[str, Label] = {}
-        self._initial: dict[str, str] = dict(initial) if initial else {}
+        initial = dict(initial) if initial else {}
+        self._agents_override: str | None = initial.pop("agents", None) or None
+        self._initial: dict[str, str] = initial
 
     def compose(self) -> ComposeResult:
         """Lay out one widget per question, plus footer buttons.
@@ -178,6 +155,11 @@ class WizardFormScreen(ModalScreen["dict[str, str] | None"]):
                 for q in QUESTIONS:
                     yield from self._field(q)
             with Horizontal(id="wizard-form-buttons"):
+                yield Button(
+                    self._agents_button_label(),
+                    id="wizard-form-agents",
+                    variant="default",
+                )
                 yield Button("Cancel", id="wizard-form-cancel", variant="default")
                 yield Button("Create", id="wizard-form-create", variant="primary")
 
@@ -191,8 +173,6 @@ class WizardFormScreen(ModalScreen["dict[str, str] | None"]):
         match q.kind:
             case "choice":
                 yield from self._choice_widget(q, selected_slug=preset)
-            case "multichoice":
-                yield from self._multichoice_widget(q, selected=preset)
             case "text":
                 yield Input(value=preset, placeholder=q.placeholder, id=self._widget_id(q))
             case "editor":
@@ -216,103 +196,13 @@ class WizardFormScreen(ModalScreen["dict[str, str] | None"]):
                 selected = (slug == preset_slug) if preset_slug else (i == 0)
                 yield RadioButton(label, value=selected, name=slug)
 
-    def _multichoice_widget(self, q: Question, *, selected: str = "") -> ComposeResult:
-        """Render a master "All" checkbox + ``Rule`` + one ``Checkbox`` per option.
-
-        *selected* is the raw value previously submitted by this screen:
-        the literal ``"all"`` (cascade everything) or a comma-separated
-        list of slugs (only the named items checked).  Empty preset
-        seeds the screen with master-on, matching the CLI default —
-        the wizard should never show an "everything off" initial state
-        when no prior answer exists.
-        """
-        choices = q.resolve_choices()
-        normalised = selected.strip().lower()
-        is_all = normalised == _MASTER_ALL or not normalised
-        preset_slugs: set[str] = (
-            set() if is_all else {s.strip() for s in selected.split(",") if s.strip()}
-        )
-
-        with Vertical(id=self._widget_id(q), classes="wizard-multichoice"):
-            yield Checkbox(
-                "All agents (inherit any added in future releases)",
-                value=is_all,
-                id=self._master_id(q),
-                classes="wizard-multichoice-all",
-                name=_MASTER_ALL,
-            )
-            yield Rule(line_style="dashed", classes="wizard-multichoice-sep")
-            for slug, label in choices:
-                yield Checkbox(
-                    label,
-                    value=(is_all or slug in preset_slugs),
-                    id=self._item_id(q, slug),
-                    name=slug,
-                )
-
     @staticmethod
     def _widget_id(q: Question) -> str:
         return f"wizard-field-{q.key}"
 
     @staticmethod
-    def _master_id(q: Question) -> str:
-        # Underscore-bracketed so it can't collide with a roster slug.
-        return f"wizard-field-{q.key}-__all__"
-
-    @staticmethod
-    def _item_id(q: Question, slug: str) -> str:
-        return f"wizard-field-{q.key}-{slug}"
-
-    @staticmethod
     def _error_id(q: Question) -> str:
         return f"wizard-error-{q.key}"
-
-    # ── Multichoice cascade ───────────────────────────────────────────
-    #
-    # State machine for the master "All" checkbox vs the per-agent boxes:
-    #
-    # - Master on  → cascade-check every item; submit emits ``"all"``.
-    # - Master off → cascade-uncheck every item; submit emits ``""``
-    #   (a deliberately empty selection that the validator rejects with
-    #   "Select agents to install is required", forcing the user to
-    #   make an explicit choice).
-    # - Any item turned off while master is on → master flips off.  The
-    #   submit value becomes the remaining checked items, not ``"all"``.
-    # - Master starts off and the user manually checks every item → the
-    #   master stays off.  Submit emits the explicit comma list, not
-    #   ``"all"`` — the literal token means "and any future additions",
-    #   an enumeration freezes the current set, so we must not
-    #   silently promote one to the other.
-    #
-    # Programmatic ``checkbox.value = …`` writes also dispatch
-    # ``Checkbox.Changed``; ``cb.prevent(Checkbox.Changed)`` short-
-    # circuits that synchronously (a self-managed re-entry flag would
-    # be queue-late and let cascade events leak through).
-
-    @on(Checkbox.Changed)
-    def _on_multichoice_changed(self, event: Checkbox.Changed) -> None:
-        cb = event.checkbox
-        cb_id = cb.id or ""
-        for q in QUESTIONS:
-            if q.kind != "multichoice":
-                continue
-            if cb_id == self._master_id(q):
-                self._cascade_from_master(q, target=cb.value)
-                return
-            if cb_id.startswith(f"{self._widget_id(q)}-") and not cb.value:
-                # An individual item was turned off — uncheck master.
-                master = self.query_one(f"#{self._master_id(q)}", Checkbox)
-                if master.value:
-                    with master.prevent(Checkbox.Changed):
-                        master.value = False
-                return
-
-    def _cascade_from_master(self, q: Question, *, target: bool) -> None:
-        """Mirror the master checkbox onto every item, suppressing item events."""
-        for slug, _ in q.resolve_choices():
-            item = self.query_one(f"#{self._item_id(q, slug)}", Checkbox)
-            with item.prevent(Checkbox.Changed):
-                item.value = target
 
     # ── Actions ────────────────────────────────────────────────────────
 
@@ -323,6 +213,29 @@ class WizardFormScreen(ModalScreen["dict[str, str] | None"]):
     @on(Button.Pressed, "#wizard-form-cancel")
     def _on_cancel(self) -> None:
         self.dismiss(None)
+
+    @on(Button.Pressed, "#wizard-form-agents")
+    def _on_open_agents_modal(self) -> None:
+        """Open the agents picker; capture the result in ``_agents_override``."""
+        self.app.push_screen(
+            AgentsSelectScreen(
+                initial=self._agents_override or "",
+                title="Override agents for this project",
+            ),
+            self._on_agents_dismissed,
+        )
+
+    def _on_agents_dismissed(self, selection: str | None) -> None:
+        if selection is None:
+            return
+        self._agents_override = selection
+        with contextlib.suppress(NoMatches):
+            self.query_one("#wizard-form-agents", Button).label = self._agents_button_label()
+
+    def _agents_button_label(self) -> str:
+        if self._agents_override:
+            return f"Agents: {self._agents_override}"
+        return "Override agents…"
 
     @on(Button.Pressed, "#wizard-form-create")
     def _on_create(self) -> None:
@@ -338,6 +251,8 @@ class WizardFormScreen(ModalScreen["dict[str, str] | None"]):
             else:
                 self._errors[q.key].update(error)
                 any_error = True
+        if self._agents_override:
+            values["agents"] = self._agents_override
         if not any_error:
             self.dismiss(values)
 
@@ -351,19 +266,15 @@ class WizardFormScreen(ModalScreen["dict[str, str] | None"]):
                 # ``RadioSet`` always has a pressed button because we
                 # initialised the first one pressed; name holds the slug.
                 return (pressed.name or "") if pressed is not None else ""
-            case "multichoice":
-                master = self.query_one(f"#{self._master_id(q)}", Checkbox)
-                if master.value:
-                    return _MASTER_ALL
-                return ",".join(
-                    slug
-                    for slug, _ in q.resolve_choices()
-                    if self.query_one(f"#{self._item_id(q, slug)}", Checkbox).value
-                )
             case "text":
                 return self.query_one(widget_id, Input).value
             case "editor":
                 return self.query_one(widget_id, TextArea).text
+            case "multichoice":
+                # The only multichoice question (``AGENTS_QUESTION``) is
+                # gated behind the on-demand modal — never asked through
+                # the inline form, so this branch is unreachable.
+                raise AssertionError(f"{q.key!r}: multichoice questions are presented out-of-band")
 
 
 # ── Step 2: review rendered YAML ──────────────────────────────────────

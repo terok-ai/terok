@@ -99,21 +99,20 @@ def _resolve_host_auth_image(provider: str) -> str:
 
     from terok.lib.integrations.executor import (
         AUTH_PROVIDERS,
+        DEFAULT_BASE_IMAGE,
         build_base_images,
         ensure_default_l1,
+        get_global_image_base_image,
         image_agents,
         l1_image_tag,
     )
 
-    from ..core.config import (
-        get_global_image_agents,
-        get_global_image_base_image,
-    )
+    from ..core.config import get_global_image_agents
 
     info = AUTH_PROVIDERS.get(provider)
     needs_container = info is not None and info.supports_oauth
 
-    base = get_global_image_base_image()
+    base = get_global_image_base_image() or DEFAULT_BASE_IMAGE
     agents = get_global_image_agents()
     default_alias = l1_image_tag(base)
     per_agent = l1_image_tag(base, agents=(provider,))

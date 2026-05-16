@@ -24,7 +24,13 @@ git:
 
 image:
   base_image: "{{BASE_IMAGE}}"
+{%- if AGENTS %}
   agents: "{{AGENTS}}"
+{%- else %}
+  # agents: "all"    # uncomment to override the global default — see
+  #                  # `terok agents set` (global) or
+  #                  # `terok project agents set {{PROJECT_ID}}` (per-project).
+{%- endif %}
   # Optional: extra Dockerfile commands injected into the project image.
   # Use user_snippet_file to point to an external .dockerinclude file.
   # Both can be set — file is included first, inline appended.

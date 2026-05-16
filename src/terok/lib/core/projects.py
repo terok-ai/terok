@@ -528,3 +528,16 @@ def load_project(project_id: str) -> ProjectConfig:
         raise SystemExit(
             _format_validation_error(exc, cfg_path) + f"\n  (git identity merged from: {sources})"
         )
+
+
+def set_project_image_agents(project_id: str, selection: str) -> Path:
+    """Write *selection* into the project's ``project.yml`` under ``image.agents``.
+
+    Caller validates *selection* up-front; on success returns the
+    project.yml path written.
+    """
+    from terok.lib.integrations.sandbox import yaml_update_section
+
+    cfg_path = _find_project_root(project_id) / _PROJECT_YML
+    yaml_update_section(cfg_path, "image", {"agents": selection})
+    return cfg_path

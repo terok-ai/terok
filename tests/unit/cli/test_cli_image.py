@@ -177,7 +177,7 @@ class TestCmdBuild:
         # accidental "use the raw input string" regression sneak past.
         with (
             patch(
-                "terok.lib.core.config.get_global_image_base_image",
+                "terok.lib.integrations.executor.get_global_image_base_image",
                 return_value="fedora:43",
             ),
             patch("terok.lib.core.config.get_global_image_agents", return_value="all"),
@@ -216,7 +216,7 @@ class TestCmdBuild:
         fake_images = MagicMock(l0="terok-l0:test", l1="terok-l1-cli:test")
         with (
             patch(
-                "terok.lib.core.config.get_global_image_base_image",
+                "terok.lib.integrations.executor.get_global_image_base_image",
                 return_value="fedora:43",  # would normally be picked
             ),
             patch("terok.lib.core.config.get_global_image_agents", return_value="all"),
@@ -255,7 +255,7 @@ class TestCmdBuild:
         fake_images = MagicMock(l0="L0", l1="L1")
         with (
             patch(
-                "terok.lib.core.config.get_global_image_base_image",
+                "terok.lib.integrations.executor.get_global_image_base_image",
                 return_value="ubuntu:24.04",
             ),
             patch("terok.lib.core.config.get_global_image_agents", return_value="all"),
@@ -285,7 +285,7 @@ class TestCmdBuild:
 
         with (
             patch(
-                "terok.lib.core.config.get_global_image_base_image",
+                "terok.lib.integrations.executor.get_global_image_base_image",
                 return_value="ubuntu:24.04",
             ),
             patch("terok.lib.core.config.get_global_image_agents", return_value="all"),

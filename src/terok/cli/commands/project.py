@@ -15,6 +15,7 @@ from ...lib.api import (
     find_projects_sharing_gate,
     generate_dockerfiles,
     provision_ssh_key,
+    set_project_image_agents,
     summarize_ssh_init,
 )
 from ...lib.core.projects import list_presets, list_projects, load_project
@@ -170,6 +171,33 @@ def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) ->
     p_presets_list = presets_sub.add_parser("list", help="List available presets for a project")
     _add_project_arg(p_presets_list)
 
+    # agents — subgroup mirroring `terok agents` but scoped per-project
+    p_agents = sub.add_parser(
+        "agents",
+        help="Inspect or set the per-project image.agents override",
+    )
+    agents_sub = p_agents.add_subparsers(dest="agents_cmd", required=True)
+    p_agents_set = agents_sub.add_parser(
+        "set",
+        help="Write image.agents in the project's project.yml (interactive when no arg)",
+        description=(
+            "Set the agent selection baked into this project's L1 image, "
+            "overriding the global default.  Validated against the installed "
+            "roster.  Interactive picker when SELECTION is omitted."
+        ),
+    )
+    _add_project_arg(p_agents_set)
+    p_agents_set.add_argument(
+        "selection",
+        nargs="?",
+        default=None,
+        help=(
+            'Agent selection in the executor\'s canonical grammar: "all", '
+            'a comma list ("claude,vibe"), or "all,-name" to exclude one '
+            '("all,-vibe").  Interactive picker when omitted.'
+        ),
+    )
+
 
 def dispatch(args: argparse.Namespace) -> bool:
     """Handle the ``project`` group.  Returns True if handled."""
@@ -205,6 +233,9 @@ def dispatch(args: argparse.Namespace) -> bool:
         case "presets":
             if args.presets_cmd == "list":
                 _cmd_presets(args.project_id)
+        case "agents":
+            if args.agents_cmd == "set":
+                _cmd_agents_set(args.project_id, getattr(args, "selection", None))
         case _:  # pragma: no cover — required=True makes argparse enforce this
             return False
     return True
@@ -361,3 +392,16 @@ def _cmd_presets(project_id: str) -> None:
     print(f"Presets for '{project_id}':")
     for info in presets:
         print(f"  - {info.name} ({info.source})")
+
+
+def _cmd_agents_set(project_id: str, selection: str | None) -> None:
+    """Validate *selection* and write it to the project's ``image.agents``."""
+    from terok.lib.integrations.executor import (
+        prompt_agents_selection,
+        validate_agent_selection,
+    )
+
+    raw = selection if selection is not None else prompt_agents_selection()
+    validate_agent_selection(raw)
+    path = set_project_image_agents(project_id, raw)
+    print(f"Wrote image.agents = {raw!r} to {path}")

@@ -369,6 +369,10 @@ class TestResolveHostAuthImage:
             return tag == "terok-l1-cli:ubuntu-24.04"
 
         with (
+            patch(
+                "terok.lib.integrations.executor.get_global_image_base_image",
+                return_value="ubuntu:24.04",
+            ),
             patch("terok.lib.domain.auth.image_exists", side_effect=exists),
             patch(
                 "terok.lib.integrations.executor.image_agents",
@@ -392,6 +396,10 @@ class TestResolveHostAuthImage:
             }
 
         with (
+            patch(
+                "terok.lib.integrations.executor.get_global_image_base_image",
+                return_value="ubuntu:24.04",
+            ),
             patch("terok.lib.domain.auth.image_exists", side_effect=exists),
             patch("terok.lib.integrations.executor.image_agents", return_value={"claude"}),
         ):
@@ -405,6 +413,10 @@ class TestResolveHostAuthImage:
             return tag == "terok-l1-cli:ubuntu-24.04-claude"
 
         with (
+            patch(
+                "terok.lib.integrations.executor.get_global_image_base_image",
+                return_value="ubuntu:24.04",
+            ),
             patch("terok.lib.domain.auth.image_exists", side_effect=exists),
             patch("terok.lib.integrations.executor.image_agents", return_value=set()),
         ):
@@ -448,7 +460,7 @@ class TestResolveHostAuthImage:
             patch("sys.stdout.isatty", return_value=True),
             patch("terok.lib.core.config.get_global_image_agents", return_value="all"),
             patch(
-                "terok.lib.core.config.get_global_image_base_image",
+                "terok.lib.integrations.executor.get_global_image_base_image",
                 return_value="ubuntu:24.04",
             ),
             patch("builtins.input", return_value=""),  # empty → default Y
@@ -474,7 +486,7 @@ class TestResolveHostAuthImage:
             patch("sys.stdout.isatty", return_value=True),
             patch("terok.lib.core.config.get_global_image_agents", return_value="all"),
             patch(
-                "terok.lib.core.config.get_global_image_base_image",
+                "terok.lib.integrations.executor.get_global_image_base_image",
                 return_value="ubuntu:24.04",
             ),
             patch("builtins.input", return_value="1"),
@@ -502,7 +514,7 @@ class TestResolveHostAuthImage:
             patch("sys.stdout.isatty", return_value=True),
             patch("terok.lib.core.config.get_global_image_agents", return_value="all"),
             patch(
-                "terok.lib.core.config.get_global_image_base_image",
+                "terok.lib.integrations.executor.get_global_image_base_image",
                 return_value="ubuntu:24.04",
             ),
             patch("builtins.input", return_value="n"),
@@ -525,7 +537,7 @@ class TestResolveHostAuthImage:
                 return_value={"claude", "codex", "gh"},
             ),
             patch(
-                "terok.lib.core.config.get_global_image_base_image",
+                "terok.lib.integrations.executor.get_global_image_base_image",
                 return_value="fedora:43",
             ),
             patch("terok.lib.core.config.get_global_image_agents", return_value="all"),

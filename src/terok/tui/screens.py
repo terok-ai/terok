@@ -311,6 +311,7 @@ class ProjectDetailsScreen(screen.Screen[str | None]):
         _modal_binding("f", "build_full", "Full rebuild from L0 (no cache)"),
         _modal_binding("s", "init_ssh", "Init SSH"),
         _modal_binding("a", "auth", "Authenticate"),
+        _modal_binding("A", "set_agents", "Set agents"),
         _modal_binding("I", "edit_instructions", "Edit instructions"),
         _modal_binding("t", "toggle_inherit", "Toggle inherit"),
         _modal_binding("v", "show_resolved", "Show resolved instructions"),
@@ -362,6 +363,7 @@ class ProjectDetailsScreen(screen.Screen[str | None]):
             Option("initialize \\[s]sh", id="init_ssh"),
             None,
             Option("\\[a]uthenticate...", id="auth"),
+            Option("set \\[A]gents (image.agents in project.yml)...", id="set_agents"),
             None,
             Option("edit \\[I]nstructions", id="edit_instructions"),
             Option("\\[t]oggle instructions inherit", id="toggle_inherit"),
@@ -385,10 +387,12 @@ class ProjectDetailsScreen(screen.Screen[str | None]):
         actions.focus()
 
     def on_option_list_option_selected(self, event: OptionList.OptionSelected) -> None:
-        """Dismiss with the chosen action ID, or open the auth sub-modal."""
+        """Dismiss with the chosen action ID, or open a sub-modal for nested flows."""
         option_id = event.option_id
         if option_id == "auth":
             self._open_auth_modal()
+        elif option_id == "set_agents":
+            self._open_agents_modal()
         elif option_id:
             self.dismiss(option_id)
 
@@ -400,6 +404,34 @@ class ProjectDetailsScreen(screen.Screen[str | None]):
         """Forward the selected auth action from the sub-modal as this screen's result."""
         if result:
             self.dismiss(result)
+
+    def _open_agents_modal(self) -> None:
+        """Push the shared agents picker seeded with this project's current value."""
+        from terok.tui.agents_screen import AgentsSelectScreen
+
+        self.app.push_screen(
+            AgentsSelectScreen(
+                initial=self._project.agents,
+                title=f"Agents for {self._project.id}",
+            ),
+            self._on_agents_modal_result,
+        )
+
+    def _on_agents_modal_result(self, selection: str | None) -> None:
+        """Persist the new selection to ``project.yml``; ``None`` = no change."""
+        if selection is None:
+            return
+        from terok.lib.api import set_project_image_agents
+
+        path = set_project_image_agents(self._project.id, selection)
+        # Keep the cached config in sync so a re-open of the modal in
+        # this same screen instance seeds from the freshly-saved value.
+        # ``ProjectConfig`` is frozen, hence the model_copy.
+        self._project = self._project.model_copy(update={"agents": selection})
+        self.notify(
+            f"Wrote image.agents = {selection!r} to {path}",
+            severity="information",
+        )
 
     # Action methods invoked by BINDINGS
     async def action_dismiss(self, result: str | None = None) -> None:
@@ -437,6 +469,10 @@ class ProjectDetailsScreen(screen.Screen[str | None]):
     def action_auth(self) -> None:
         """Open the authenticate agents and tools modal."""
         self._open_auth_modal()
+
+    def action_set_agents(self) -> None:
+        """Open the per-project agent multi-select modal."""
+        self._open_agents_modal()
 
     def action_edit_instructions(self) -> None:
         """Open instructions for editing."""

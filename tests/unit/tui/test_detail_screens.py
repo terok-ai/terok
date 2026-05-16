@@ -458,6 +458,61 @@ class TestScreenConstruction:
         assert screen._task_count == 5
         assert screen._staleness == staleness
 
+    def test_project_details_binds_uppercase_a_to_set_agents(self) -> None:
+        """Uppercase ``A`` must map to ``set_agents`` so users can rebind freely."""
+        screens, _ = import_screens()
+        bindings = {
+            (b._stub_args[0], b._stub_args[1]) for b in screens.ProjectDetailsScreen.BINDINGS
+        }
+        assert ("A", "set_agents") in bindings
+
+    def test_project_details_action_set_agents_opens_modal(self) -> None:
+        """``action_set_agents`` calls ``_open_agents_modal`` — keeps the wiring honest."""
+        screens, _ = import_screens()
+        project = make_project(id="proj1")
+        screen = screens.ProjectDetailsScreen(project=project, state=None, task_count=0)
+        screen._open_agents_modal = mock.Mock()
+        screen.action_set_agents()
+        screen._open_agents_modal.assert_called_once_with()
+
+    def test_project_details_option_list_routes_set_agents(self) -> None:
+        """Selecting the OptionList entry pushes the modal instead of dismissing."""
+        screens, _ = import_screens()
+        project = make_project(id="proj1")
+        screen = screens.ProjectDetailsScreen(project=project, state=None, task_count=0)
+        screen._open_agents_modal = mock.Mock()
+        screen.dismiss = mock.Mock()
+        event = mock.Mock()
+        event.option_id = "set_agents"
+        screen.on_option_list_option_selected(event)
+        screen._open_agents_modal.assert_called_once_with()
+        screen.dismiss.assert_not_called()
+
+    def test_project_details_agents_modal_writes_selection(self) -> None:
+        """A non-None selection from the modal lands in ``set_project_image_agents``."""
+        screens, _ = import_screens()
+        project = make_project(id="proj1", agents="all")
+        screen = screens.ProjectDetailsScreen(project=project, state=None, task_count=0)
+        screen.notify = mock.Mock()
+        with mock.patch("terok.lib.api.set_project_image_agents") as write_mock:
+            write_mock.return_value = "/tmp/terok-testing/proj1/project.yml"
+            screen._on_agents_modal_result("claude,vibe")
+        write_mock.assert_called_once_with("proj1", "claude,vibe")
+        screen.notify.assert_called_once()
+        call = screen.notify.call_args
+        assert "claude,vibe" in call.args[0]
+
+    def test_project_details_agents_modal_cancel_is_noop(self) -> None:
+        """``None`` from the modal must NOT touch project.yml."""
+        screens, _ = import_screens()
+        project = make_project(id="proj1", agents="all")
+        screen = screens.ProjectDetailsScreen(project=project, state=None, task_count=0)
+        screen.notify = mock.Mock()
+        with mock.patch("terok.lib.api.set_project_image_agents") as write_mock:
+            screen._on_agents_modal_result(None)
+        write_mock.assert_not_called()
+        screen.notify.assert_not_called()
+
     def test_task_details_screen_construction(self) -> None:
         screens, widgets = import_screens()
         task = make_task(widgets, task_id="7", backend="codex")
@@ -1168,6 +1223,44 @@ class TestCommandPalette:
             commands = list(app_class.get_system_commands(instance, screen=mock.Mock()))
         titles = [cmd.title for cmd in commands]
         assert "Authenticate agents and tools" in titles
+
+    def test_get_system_commands_includes_set_default_agents(self) -> None:
+        """The global agent default is reachable from the command palette."""
+        from tests.unit.tui.tui_test_helpers import build_textual_stubs
+
+        stubs = build_textual_stubs()
+        _, app_class = import_app(stubs)
+        instance = app_class()
+        with mock.patch.dict(sys.modules, stubs):
+            commands = list(app_class.get_system_commands(instance, screen=mock.Mock()))
+        titles = [cmd.title for cmd in commands]
+        assert "Set default agents" in titles
+
+
+class TestDefaultAgentsAction:
+    """The command-palette entry that writes ``image.agents`` in config.yml."""
+
+    def test_on_default_agents_result_writes_selection(self) -> None:
+        """A non-None selection is delegated to set_global_image_agents and notified."""
+        _, app_class = import_app()
+        instance = mock.MagicMock()
+        instance.notify = mock.Mock()
+        with mock.patch("terok.lib.integrations.executor.set_global_image_agents") as write_mock:
+            write_mock.return_value = MOCK_CONFIG_ROOT / "config.yml"
+            run(app_class._on_default_agents_result(instance, "claude,vibe"))
+        write_mock.assert_called_once_with("claude,vibe")
+        instance.notify.assert_called_once()
+        assert "claude,vibe" in instance.notify.call_args.args[0]
+
+    def test_on_default_agents_result_cancel_is_noop(self) -> None:
+        """``None`` from the modal must NOT touch config.yml."""
+        _, app_class = import_app()
+        instance = mock.MagicMock()
+        instance.notify = mock.Mock()
+        with mock.patch("terok.lib.integrations.executor.set_global_image_agents") as write_mock:
+            run(app_class._on_default_agents_result(instance, None))
+        write_mock.assert_not_called()
+        instance.notify.assert_not_called()
 
 
 class TestGlobalAuthBinding:

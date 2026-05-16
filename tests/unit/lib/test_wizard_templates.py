@@ -80,6 +80,20 @@ class TestProjectTemplate:
         assert "gpus: all" in _render("online", "nvidia")
         assert "gpus: all" not in _render("online", "ubuntu")
 
+    def test_agents_line_omitted_when_unset(self) -> None:
+        """Empty AGENTS suppresses the line and surfaces the commented hint."""
+        rendered = _render("online", "ubuntu", agents="")
+        parsed = yaml.safe_load(rendered)
+        assert "agents" not in parsed["image"]
+        # Hint pointing at the new commands for setting agents on demand.
+        assert "terok agents set" in rendered
+
+    def test_agents_line_present_when_set(self) -> None:
+        """Non-empty AGENTS produces the ``agents:`` key with the quoted value."""
+        rendered = _render("online", "ubuntu", agents="all,-vibe")
+        parsed = yaml.safe_load(rendered)
+        assert parsed["image"]["agents"] == "all,-vibe"
+
     def test_renders_user_snippet_inline(self) -> None:
         rendered = _render("online", "ubuntu", user_snippet="RUN apt-get update")
         assert "RUN apt-get update" in rendered

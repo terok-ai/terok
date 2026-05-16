@@ -13,6 +13,7 @@ import pytest
 from terok_sandbox import SelinuxCheckResult, SelinuxStatus
 
 from terok.cli.commands.sickbay import (
+    _check_default_agents,
     _check_gate_server,
     _check_selinux_policy,
     _check_ssh_signer,
@@ -915,3 +916,40 @@ class TestCheckClearanceStack:
         assert sev == "ok"
         assert "terok-clearance-hub" not in detail
         assert "terok-clearance-notifier.service v3" in detail
+
+
+class TestCheckDefaultAgents:
+    """``_check_default_agents`` warns when ``image.agents`` has no global default."""
+
+    def test_warn_when_unset(self) -> None:
+        """No global default → warn with a pointer at the new setter."""
+        with unittest.mock.patch(
+            "terok.lib.integrations.executor.get_global_image_agents",
+            return_value=None,
+        ):
+            sev, label, detail = _check_default_agents()
+        assert sev == "warn"
+        assert label == "Default agents"
+        assert "terok agents set" in detail
+
+    def test_ok_when_set(self) -> None:
+        """Any non-empty value → ok with the configured selection echoed back."""
+        with unittest.mock.patch(
+            "terok.lib.integrations.executor.get_global_image_agents",
+            return_value="all,-vibe",
+        ):
+            sev, label, detail = _check_default_agents()
+        assert sev == "ok"
+        assert label == "Default agents"
+        assert "all,-vibe" in detail
+
+    def test_warn_when_probe_raises(self) -> None:
+        """A failing probe is surfaced as a warn — never crashes sickbay."""
+        with unittest.mock.patch(
+            "terok.lib.integrations.executor.get_global_image_agents",
+            side_effect=RuntimeError("boom"),
+        ):
+            sev, label, detail = _check_default_agents()
+        assert sev == "warn"
+        assert label == "Default agents"
+        assert "boom" in detail

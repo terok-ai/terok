@@ -48,6 +48,7 @@ from .core.projects import (  # noqa: F401 — re-exported public API
     ProjectConfig,
     discover_projects,
     load_project,
+    set_project_image_agents,
 )
 
 # Presentation tables for status/mode/badge rendering.
@@ -128,6 +129,7 @@ from .domain.vault import vault_db  # noqa: F401 — re-exported public API
 
 # Wizard pieces shared between CLI prompts and TUI screens.
 from .domain.wizards.new_project import (  # noqa: F401 — re-exported public API
+    AGENTS_QUESTION,
     QUESTIONS,
     Question,
     render_project_yaml,
@@ -268,6 +270,7 @@ __all__ = [
     "BrokenProject",
     "discover_projects",
     "load_project",
+    "set_project_image_agents",
     # Image management
     "generate_dockerfiles",
     "build_images",
@@ -344,6 +347,7 @@ __all__ = [
     "get_project_state",
     "is_task_image_old",
     # Wizards
+    "AGENTS_QUESTION",
     "QUESTIONS",
     "Question",
     "render_project_yaml",

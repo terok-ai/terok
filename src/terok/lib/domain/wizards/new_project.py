@@ -258,20 +258,6 @@ QUESTIONS: tuple[Question, ...] = (
         default_visible=True,
     ),
     Question(
-        key="agents",
-        kind="multichoice",
-        prompt="Select agents to install",
-        help=(
-            "Which AI coding agents to bake into the container image.  "
-            "Pick 'All agents' to inherit future additions, or enumerate "
-            "specific agents to freeze the set.  Exclude with ``-name`` "
-            "(e.g. ``all,-vibe``) on the CLI."
-        ),
-        required=True,
-        choices_loader=_load_agent_choices,
-        validate=_validate_agents,
-    ),
-    Question(
         key="user_snippet",
         kind="editor",
         prompt="Custom image snippet",
@@ -281,6 +267,25 @@ QUESTIONS: tuple[Question, ...] = (
         ),
         default_visible=True,
     ),
+)
+
+
+#: Agent-roster question gated behind an explicit opt-in (CLI y/N prompt or
+#: TUI button) so first-time users land on the global default instead of being
+#: forced to pick a roster up front.  Outside [`QUESTIONS`][terok.lib.domain.wizards.new_project.QUESTIONS]
+#: because the wizard's main loop does not ask it unconditionally.
+AGENTS_QUESTION = Question(
+    key="agents",
+    kind="multichoice",
+    prompt="Select agents to install",
+    help=(
+        "Which AI coding agents to bake into this project's image, "
+        "overriding the global default.  Pick 'All agents' to inherit "
+        "future additions, or enumerate specific agents to freeze the set."
+    ),
+    required=True,
+    choices_loader=_load_agent_choices,
+    validate=_validate_agents,
 )
 
 
@@ -437,6 +442,11 @@ def collect_wizard_inputs() -> dict | None:
     Returns a dict keyed by ``Question.key`` when all answers are
     accepted, or ``None`` if the user cancels (Ctrl+C, EOF, or an
     invalid choice-menu selection).
+
+    After the main loop, asks an opt-in for the per-project agent
+    override via [`prompt_agent_override`][terok.lib.domain.wizards.new_project.prompt_agent_override]
+    — the default path leaves ``image.agents`` unset so projects inherit
+    the global ``terok agents set`` value.
     """
     values: dict[str, str] = {}
     try:
@@ -457,10 +467,35 @@ def collect_wizard_inputs() -> dict | None:
                     values[question.key] = value
                     break
                 print(error, file=sys.stderr)
+        agents = prompt_agent_override()
+        if agents:
+            values["agents"] = agents
         return values
     except (KeyboardInterrupt, EOFError):
         print("\nWizard cancelled.")
         return None
+
+
+def prompt_agent_override() -> str:
+    """Two-stage opt-in for the per-project agents override.
+
+    Asks ``Override default agents for this project? [y/N]``; on yes,
+    runs the multichoice picker and returns the validated selection.
+    Returns ``""`` when the user declines — caller leaves
+    ``image.agents`` unset so the project inherits the global default.
+    """
+    answer = input("\nOverride default agents for this project? [y/N]: ").strip().lower()
+    if answer not in ("y", "yes"):
+        return ""
+    while True:
+        raw = _prompt_multichoice(
+            AGENTS_QUESTION.prompt + ":",
+            list(AGENTS_QUESTION.resolve_choices()),
+        )
+        value, error = validate_answer(AGENTS_QUESTION, raw)
+        if error is None:
+            return value
+        print(error, file=sys.stderr)
 
 
 # ── Config rendering ──────────────────────────────────────────────────
@@ -516,7 +551,10 @@ def render_project_yaml(values: dict) -> str:
             "SECURITY_CLASS": values["security_class"],
             "BASE": values["base"],
             "BASE_IMAGE": BASE_IMAGES[values["base"]],
-            "AGENTS": values["agents"],
+            # Empty string suppresses the ``agents:`` line via the
+            # template's ``{% if AGENTS %}`` gate — the project then
+            # inherits the global default written by ``terok agents set``.
+            "AGENTS": values.get("agents", ""),
         },
     )
 
@@ -590,11 +628,33 @@ def run_wizard(init_fn: Callable[[str], None] | None = None) -> Path | None:
     project_id = values["project_id"]
     print(f"\nProject configuration created: {config_path}")
 
+    _maybe_print_global_agents_hint(values)
     offer_edit_then_init(config_path, project_id, init_fn)
     return config_path
 
 
+def _maybe_print_global_agents_hint(values: dict) -> None:
+    """Nudge with ``terok agents set`` when neither scope configures agents.
+
+    Silent when the project overrode the default *or* the global is
+    already set — both states already produce a deliberate roster.
+    """
+    if values.get("agents"):
+        return
+    try:
+        from terok.lib.integrations.executor import get_global_image_agents
+    except ImportError:  # pragma: no cover — executor adapter is always present in shipped builds
+        return
+    if get_global_image_agents():
+        return
+    print(
+        "\nTip: no default agents are configured.  "
+        "Run `terok agents set` to pick the roster baked into L1 by default.",
+    )
+
+
 __all__ = [
+    "AGENTS_QUESTION",
     "BASES",
     "QUESTIONS",
     "Question",
@@ -603,6 +663,7 @@ __all__ = [
     "collect_wizard_inputs",
     "generate_config",
     "offer_edit_then_init",
+    "prompt_agent_override",
     "render_project_yaml",
     "run_wizard",
     "validate_answer",

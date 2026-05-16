@@ -115,6 +115,13 @@ from terok.cli.commands.project import (
             {"positional": ("p1",)},
             id="presets-list",
         ),
+        pytest.param(
+            "agents",
+            {"agents_cmd": "set", "project_id": "p1", "selection": "claude,vibe"},
+            "terok.cli.commands.project._cmd_agents_set",
+            {"positional": ("p1", "claude,vibe")},
+            id="agents-set",
+        ),
     ],
 )
 def test_dispatch_routes_to_handler(
@@ -473,3 +480,95 @@ def test_presets_populated_prints_each(capsys: pytest.CaptureFixture[str]) -> No
     assert "Presets for 'p1':" in out
     assert "solo (bundled)" in out
     assert "team (user)" in out
+
+
+# ---------------------------------------------------------------------------
+# _cmd_agents_set — validate + write
+# ---------------------------------------------------------------------------
+
+
+def _fake_roster_for_agents() -> SimpleNamespace:
+    """Roster stand-in: every selection resolves cleanly."""
+    return SimpleNamespace(
+        agent_names=("claude", "vibe"),
+        providers={
+            "claude": SimpleNamespace(label="Claude"),
+            "vibe": SimpleNamespace(label="Vibe"),
+        },
+        auth_providers={},
+        resolve_selection=lambda _sel: ("claude", "vibe"),
+    )
+
+
+def test_agents_set_writes_after_validation(capsys: pytest.CaptureFixture[str]) -> None:
+    """Valid selection passes validation and reaches the writer."""
+    from pathlib import Path
+
+    from terok.cli.commands.project import _cmd_agents_set
+
+    target = Path("/tmp/terok-testing/p1/project.yml")
+    with (
+        patch(
+            "terok.lib.integrations.executor.get_roster",
+            return_value=_fake_roster_for_agents(),
+        ),
+        patch(
+            "terok.lib.integrations.executor.parse_agent_selection",
+            side_effect=lambda raw: raw,
+        ),
+        patch(
+            "terok.cli.commands.project.set_project_image_agents",
+            side_effect=lambda _pid, _sel: target,
+        ) as write_mock,
+    ):
+        _cmd_agents_set("p1", "claude,vibe")
+    write_mock.assert_called_once_with("p1", "claude,vibe")
+    out = capsys.readouterr().out
+    assert "claude,vibe" in out
+    assert str(target) in out
+
+
+def test_agents_set_rejects_unknown_agent(capsys: pytest.CaptureFixture[str]) -> None:
+    """``resolve_selection`` raising → SystemExit(2) and no write."""
+    from terok.cli.commands.project import _cmd_agents_set
+
+    roster = _fake_roster_for_agents()
+    roster.resolve_selection = lambda _sel: (_ for _ in ()).throw(
+        ValueError("Unknown roster entries: foo")
+    )
+    with (
+        patch("terok.lib.integrations.executor.get_roster", return_value=roster),
+        patch(
+            "terok.lib.integrations.executor.parse_agent_selection",
+            side_effect=lambda raw: raw,
+        ),
+        patch("terok.cli.commands.project.set_project_image_agents") as write_mock,
+        pytest.raises(SystemExit) as excinfo,
+    ):
+        _cmd_agents_set("p1", "foo")
+    assert excinfo.value.code == 2
+    write_mock.assert_not_called()
+    assert "Invalid agent selection" in capsys.readouterr().err
+
+
+def test_agents_set_prompts_when_no_selection(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Empty input from the interactive picker defaults to ``"all"``."""
+    from terok.cli.commands.project import _cmd_agents_set
+
+    monkeypatch.setattr("builtins.input", lambda _prompt="": "")
+    with (
+        patch(
+            "terok.lib.integrations.executor.get_roster",
+            return_value=_fake_roster_for_agents(),
+        ),
+        patch(
+            "terok.lib.integrations.executor.parse_agent_selection",
+            side_effect=lambda raw: raw,
+        ),
+        patch(
+            "terok.cli.commands.project.set_project_image_agents",
+            side_effect=lambda _pid, sel: SimpleNamespace(__str__=lambda _self: sel),
+        ) as write_mock,
+    ):
+        _cmd_agents_set("p1", None)
+    write_mock.assert_called_once_with("p1", "all")

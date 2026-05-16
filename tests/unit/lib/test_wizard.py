@@ -12,6 +12,7 @@ from unittest.mock import Mock, patch
 import pytest
 
 from terok.lib.domain.wizards.new_project import (
+    AGENTS_QUESTION,
     BASES,
     QUESTIONS,
     SECURITY_CLASSES,
@@ -20,6 +21,7 @@ from terok.lib.domain.wizards.new_project import (
     _validate_project_id,
     collect_wizard_inputs,
     generate_config,
+    prompt_agent_override,
     render_project_yaml,
     run_wizard,
     validate_answer,
@@ -35,19 +37,21 @@ def wizard_values(
     project_id: str = "test-proj",
     upstream_url: str = "https://github.com/user/repo.git",
     default_branch: str = "main",
-    agents: str = "all",
+    agents: str | None = None,
     user_snippet: str = "",
 ) -> dict[str, object]:
     """Build a wizard value dict with sensible defaults."""
-    return {
+    values: dict[str, object] = {
         "security_class": security_class,
         "base": base,
         "project_id": project_id,
         "upstream_url": upstream_url,
         "default_branch": default_branch,
-        "agents": agents,
         "user_snippet": user_snippet,
     }
+    if agents is not None:
+        values["agents"] = agents
+    return values
 
 
 @pytest.mark.parametrize(
@@ -76,12 +80,13 @@ def test_validate_project_id(project_id: str, valid: bool) -> None:
     ("inputs", "expected"),
     [
         pytest.param(
-            ["1", "1", "myproj", "https://example.com/r.git", "main", "", "n"],
+            # sec, base, pid, upstream, branch, snippet-y/N, override-agents-y/N
+            ["1", "1", "myproj", "https://example.com/r.git", "main", "n", "n"],
             wizard_values(project_id="myproj", upstream_url="https://example.com/r.git"),
-            id="collect-all-values",
+            id="collect-all-values-no-override",
         ),
         pytest.param(
-            ["2", "1", "gkproj", "git@host:r.git", "", "", "n"],
+            ["2", "1", "gkproj", "git@host:r.git", "", "n", "n"],
             wizard_values(
                 security_class="gatekeeping",
                 project_id="gkproj",
@@ -91,7 +96,7 @@ def test_validate_project_id(project_id: str, valid: bool) -> None:
             id="gatekeeping-selection",
         ),
         pytest.param(
-            ["1", "2", "proj", "https://example.com/r.git", "", "", "n"],
+            ["1", "2", "proj", "https://example.com/r.git", "", "n", "n"],
             wizard_values(
                 base="nvidia",
                 project_id="proj",
@@ -101,7 +106,17 @@ def test_validate_project_id(project_id: str, valid: bool) -> None:
             id="empty-default-branch",
         ),
         pytest.param(
-            ["1", "2", "proj", "https://example.com/r.git", "dev", "claude,vibe", "n"],
+            # ... snippet=n, override-agents=y, then a comma-list selection
+            [
+                "1",
+                "2",
+                "proj",
+                "https://example.com/r.git",
+                "dev",
+                "n",
+                "y",
+                "claude,vibe",
+            ],
             wizard_values(
                 base="nvidia",
                 project_id="proj",
@@ -109,15 +124,15 @@ def test_validate_project_id(project_id: str, valid: bool) -> None:
                 default_branch="dev",
                 agents="claude,vibe",
             ),
-            id="custom-branch-and-agents",
+            id="opt-in-agents-override",
         ),
         pytest.param(
-            ["1", "1", "!!!", "good-id", "https://example.com/r.git", "main", "", "n"],
+            ["1", "1", "!!!", "good-id", "https://example.com/r.git", "main", "n", "n"],
             wizard_values(project_id="good-id", upstream_url="https://example.com/r.git"),
             id="retry-invalid-project-id",
         ),
         pytest.param(
-            ["1", "1", "proj", "", "main", "", "n"],
+            ["1", "1", "proj", "", "main", "n", "n"],
             wizard_values(project_id="proj", upstream_url=""),
             id="empty-upstream-url-accepted",
         ),
@@ -392,6 +407,8 @@ def test_run_wizard(
 
 def _q(key: str) -> Question:
     """Look up the declared question for *key* — fails fast on drift."""
+    if key == AGENTS_QUESTION.key:
+        return AGENTS_QUESTION
     for q in QUESTIONS:
         if q.key == key:
             return q
@@ -543,13 +560,15 @@ class TestQuestionsRegistry:
             if q.kind == "choice":
                 assert q.choices, f"{q.key} has empty choices"
 
-    def test_multichoice_has_loader_not_static_choices(self) -> None:
-        """Multichoice questions resolve options at runtime — empty static list is fine."""
-        for q in QUESTIONS:
-            if q.kind == "multichoice":
-                assert q.choices_loader is not None, f"{q.key} multichoice missing loader"
-                resolved = q.resolve_choices()
-                assert resolved, f"{q.key} loader returned no options"
+    def test_agents_question_lives_outside_questions(self) -> None:
+        """The agents prompt is gated and presented separately — not part of the main loop."""
+        assert all(q.key != "agents" for q in QUESTIONS)
+
+    def test_agents_question_has_runtime_loader(self) -> None:
+        """The gated agents question resolves the roster at render time."""
+        assert AGENTS_QUESTION.kind == "multichoice"
+        assert AGENTS_QUESTION.choices_loader is not None
+        assert AGENTS_QUESTION.resolve_choices()  # loader returns the live roster
 
 
 # ---------------------------------------------------------------------------
@@ -609,3 +628,89 @@ class TestAgentsQuestion:
         rendered = render_project_yaml(wizard_values(agents="all"))
         parsed = yaml.safe_load(rendered)
         assert parsed["image"]["agents"] == "all"
+
+    def test_render_omits_agents_line_when_unset(self) -> None:
+        """No override → no ``agents:`` key; the project inherits the global default."""
+        import yaml
+
+        rendered = render_project_yaml(wizard_values())  # agents=None default
+        parsed = yaml.safe_load(rendered)
+        assert "agents" not in parsed["image"]
+        # Sanity: the commented-out hint pointing at the new commands.
+        assert "terok agents set" in rendered
+        assert "terok project agents set" in rendered
+
+
+# ---------------------------------------------------------------------------
+# prompt_agent_override — the two-stage gate the CLI wizard uses
+# ---------------------------------------------------------------------------
+
+
+class TestPromptAgentOverride:
+    """Behaviour of the gated agents prompt that runs after the main wizard loop."""
+
+    def test_returns_empty_when_user_declines(self) -> None:
+        """Pressing Enter (or 'n') at the gate skips the multichoice and returns ''."""
+        with patch("builtins.input", side_effect=[""]):
+            assert prompt_agent_override() == ""
+
+    def test_returns_all_on_empty_multichoice(self) -> None:
+        """Opting in then pressing Enter at the multichoice means ``"all"``."""
+        with patch("builtins.input", side_effect=["y", ""]):
+            assert prompt_agent_override() == "all"
+
+    def test_returns_comma_list(self) -> None:
+        """Opt-in followed by a comma list returns that list verbatim."""
+        from terok.lib.integrations.executor import get_roster
+
+        names = get_roster().agent_names
+        if len(names) < 2:
+            pytest.skip("Need at least 2 agents in roster")
+        raw = f"{names[0]},{names[1]}"
+        with patch("builtins.input", side_effect=["yes", raw]):
+            assert prompt_agent_override() == raw
+
+    def test_retries_on_invalid_selection(self, capsys: pytest.CaptureFixture[str]) -> None:
+        """Invalid agent name re-prompts the multichoice; the error is surfaced."""
+        with patch("builtins.input", side_effect=["y", "claude,definitely-not-an-agent", "all"]):
+            assert prompt_agent_override() == "all"
+        # Validator's error message routes through stderr.
+        assert "definitely-not-an-agent" in capsys.readouterr().err
+
+
+class TestGlobalAgentsHint:
+    """The post-wizard hint fires only when neither scope configures agents."""
+
+    def test_hint_printed_when_both_scopes_unset(self, capsys: pytest.CaptureFixture[str]) -> None:
+        """No project override + no global default → hint surfaces to stdout."""
+        from terok.lib.domain.wizards.new_project import _maybe_print_global_agents_hint
+
+        with patch(
+            "terok.lib.integrations.executor.get_global_image_agents",
+            return_value=None,
+        ):
+            _maybe_print_global_agents_hint({})
+        out = capsys.readouterr().out
+        assert "terok agents set" in out
+
+    def test_hint_skipped_when_project_overrides(self, capsys: pytest.CaptureFixture[str]) -> None:
+        """Per-project override → no need to nudge about the global default."""
+        from terok.lib.domain.wizards.new_project import _maybe_print_global_agents_hint
+
+        with patch(
+            "terok.lib.integrations.executor.get_global_image_agents",
+            return_value=None,
+        ):
+            _maybe_print_global_agents_hint({"agents": "claude"})
+        assert "terok agents set" not in capsys.readouterr().out
+
+    def test_hint_skipped_when_global_already_set(self, capsys: pytest.CaptureFixture[str]) -> None:
+        """Global already configured → no nudge."""
+        from terok.lib.domain.wizards.new_project import _maybe_print_global_agents_hint
+
+        with patch(
+            "terok.lib.integrations.executor.get_global_image_agents",
+            return_value="all",
+        ):
+            _maybe_print_global_agents_hint({})
+        assert "terok agents set" not in capsys.readouterr().out

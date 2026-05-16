@@ -614,6 +614,7 @@ expose = [
     "derive_project",
     "effective_ssh_key_name",
     "resolve_ssh_host_dir",
+    "set_project_image_agents",
     "validate_project_id",
 ]
 from = ["terok.lib.core.projects"]
@@ -853,11 +854,13 @@ from = ["terok.lib.orchestration.autopilot"]
 
 [[interfaces]]
 expose = [
+    "AGENTS_QUESTION",
     "QUESTIONS",
     "Question",
     "collect_wizard_inputs",
     "generate_config",
     "offer_edit_then_init",
+    "prompt_agent_override",
     "render_project_yaml",
     "run_wizard",
     "validate_answer",

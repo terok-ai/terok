@@ -441,19 +441,6 @@ def get_global_image_agents() -> str:
     return _load_validated().image.agents or "all"
 
 
-def get_global_image_base_image() -> str:
-    """Return ``image.base_image`` from the global config.
-
-    Defaults to [`DEFAULT_BASE_IMAGE`][terok_executor.DEFAULT_BASE_IMAGE]
-    when unset.  Used by host-wide flows (e.g. ``terok auth``) so users
-    on Fedora/NVIDIA/Podman bases don't end up with a parallel default
-    L1 just for auth.
-    """
-    from terok.lib.integrations.executor import DEFAULT_BASE_IMAGE
-
-    return _load_validated().image.base_image or DEFAULT_BASE_IMAGE
-
-
 def get_tui_default_tmux() -> bool:
     """Return whether to default to tmux mode for TUI, or False if not set."""
     return _load_validated().tui.default_tmux

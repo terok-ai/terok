@@ -137,19 +137,18 @@ def _cmd_build(
 ) -> None:
     """Build the host-wide default L0+L1 images via the executor primitive."""
     from terok.lib.integrations.executor import (
+        DEFAULT_BASE_IMAGE,
         BuildError,
         build_base_images,
         build_sidecar_image,
+        get_global_image_base_image,
         parse_agent_selection,
     )
 
-    from ...lib.core.config import (
-        get_global_image_agents,
-        get_global_image_base_image,
-    )
+    from ...lib.core.config import get_global_image_agents
 
     try:
-        resolved_base = base or get_global_image_base_image()
+        resolved_base = base or get_global_image_base_image() or DEFAULT_BASE_IMAGE
         resolved_agents = parse_agent_selection(agents or get_global_image_agents())
         images = build_base_images(
             base_image=resolved_base,

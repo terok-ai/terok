@@ -132,6 +132,8 @@ def test_cmd_sickbay_reports_health(
             "Clearance notifier",
             "terok-clearance-notifier.service not installed",
         ),
+        # contract covered in test_sickbay.py::TestCheckDefaultAgents
+        "_check_default_agents": ("ok", "Default agents", "image.agents = 'all'"),
     }
     patched_checks = [
         (label, (lambda r=_stubs[fn.__name__]: r) if fn.__name__ in _stubs else fn)

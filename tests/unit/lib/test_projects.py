@@ -13,7 +13,13 @@ from pathlib import Path
 import pytest
 
 from terok.lib.core.config import build_dir, make_sandbox_config, sandbox_live_dir
-from terok.lib.core.projects import BrokenProject, discover_projects, list_projects, load_project
+from terok.lib.core.projects import (
+    BrokenProject,
+    discover_projects,
+    list_projects,
+    load_project,
+    set_project_image_agents,
+)
 from terok.lib.domain.project_state import get_project_state
 from tests.test_utils import project_env, write_project
 
@@ -528,3 +534,61 @@ class TestShareSshKeyAssignments:
         with self._patch_vault_db(db):
             _share_ssh_key_assignments("alpha", "beta")
         db.assign_ssh_key.assert_not_called()
+
+
+class TestSetProjectImageAgents:
+    """Round-trip writer for the per-project ``image.agents`` field."""
+
+    def test_writes_into_existing_image_section(self) -> None:
+        """Updating ``image.agents`` keeps unrelated keys in the same section."""
+        project_id = "proj-set-agents"
+        yaml_text = (
+            "project:\n"
+            f"  id: {project_id}\n"
+            "git:\n"
+            "  upstream_url: https://example.com/repo.git\n"
+            "image:\n"
+            "  base_image: ubuntu:24.04\n"
+            "  agents: claude\n"
+        )
+        with project_env(yaml_text, project_id=project_id) as env:
+            written = set_project_image_agents(project_id, "all,-vibe")
+            content = written.read_text(encoding="utf-8")
+            assert "agents: all,-vibe" in content
+            assert "base_image: ubuntu:24.04" in content
+            # Sanity-check the path landed where the loader expects it.
+            assert written == env.config_root / project_id / "project.yml"
+
+    def test_creates_image_section_when_missing(self) -> None:
+        """A project.yml without ``image:`` gets the section minted on write."""
+        project_id = "proj-no-image"
+        yaml_text = (
+            f"project:\n  id: {project_id}\ngit:\n  upstream_url: https://example.com/repo.git\n"
+        )
+        with project_env(yaml_text, project_id=project_id):
+            written = set_project_image_agents(project_id, "claude")
+            content = written.read_text(encoding="utf-8")
+            assert "image:" in content
+            assert "agents: claude" in content
+
+    def test_preserves_comments_on_write(self) -> None:
+        """ruamel round-trip keeps inline comments around the edited section."""
+        project_id = "proj-comments"
+        yaml_text = (
+            f"project:\n  id: {project_id}\n"
+            "git:\n  upstream_url: https://example.com/repo.git\n"
+            "image:\n"
+            "  # base image pin\n"
+            "  base_image: ubuntu:24.04\n"
+            "  agents: claude\n"
+        )
+        with project_env(yaml_text, project_id=project_id):
+            written = set_project_image_agents(project_id, "vibe")
+            content = written.read_text(encoding="utf-8")
+            assert "# base image pin" in content
+            assert "agents: vibe" in content
+
+    def test_missing_project_raises(self) -> None:
+        """An unknown project ID raises ``SystemExit`` with a not-found message."""
+        with pytest.raises(SystemExit, match="not found"):
+            set_project_image_agents("nonexistent-project", "all")

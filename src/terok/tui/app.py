@@ -1525,6 +1525,11 @@ if _HAS_TEXTUAL:
                 "Run the host-wide auth flow for an agent or tool — no project required",
                 self.action_authenticate,
             )
+            yield SystemCommand(
+                "Set default agents",
+                "Pick the agent roster baked into L1 images by default (image.agents in config.yml)",
+                self.action_configure_default_agents,
+            )
 
         def action_show_console_output(self) -> None:
             """Open the console-output list — every dispatched action's log this session."""
@@ -1559,6 +1564,38 @@ if _HAS_TEXTUAL:
                 return
             if result == "import_opencode_config":
                 await self._action_import_opencode_config()
+
+        async def action_configure_default_agents(self) -> None:
+            """Open the shared agents modal scoped to the global default.
+
+            On dismissal the selection is written to ``image.agents`` in
+            ``~/.config/terok/config.yml``.  Cancel dismisses without
+            touching the file.
+            """
+            from terok.lib.integrations.executor import get_global_image_agents
+
+            from .agents_screen import AgentsSelectScreen
+
+            current = get_global_image_agents()
+            await self.push_screen(
+                AgentsSelectScreen(
+                    initial=current or "",
+                    title="Default agents (config.yml)",
+                ),
+                self._on_default_agents_result,
+            )
+
+        async def _on_default_agents_result(self, result: str | None) -> None:
+            """Write the chosen selection to the global config; ``None`` = no change."""
+            if result is None:
+                return
+            from terok.lib.integrations.executor import set_global_image_agents
+
+            path = set_global_image_agents(result)
+            self.notify(
+                f"Wrote image.agents = {result!r} to {path}",
+                severity="information",
+            )
 
         async def action_show_gate_server(self) -> None:
             """Open the gate server management screen."""

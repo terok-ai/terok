@@ -548,6 +548,7 @@ class ProjectActionsMixin(_MixinBase):
         match outcome:
             case InitOutcome.SUCCESS:
                 self.notify(f"Project '{project_id}' is ready.")
+                self._maybe_nudge_global_agents(values)
             case InitOutcome.DECLINED:
                 # User chose to keep the existing project.yml — benign
                 # no-op, not an error.  No notification needed; the log
@@ -571,6 +572,31 @@ class ProjectActionsMixin(_MixinBase):
                     timeout=10,
                 )
         await self.refresh_projects()
+
+    def _maybe_nudge_global_agents(self, values: dict[str, str]) -> None:
+        """Notify with a command-palette hint when neither scope configures agents.
+
+        Silent when the project overrode the default *or* the global is
+        already set — both states already produce a deliberate roster.
+        """
+        if values.get("agents"):
+            return
+        # Best-effort advisory: anything that goes wrong probing the
+        # global config should be swallowed.  The wizard already
+        # succeeded; a probe failure must not look like a failed run.
+        try:
+            from terok.lib.integrations.executor import get_global_image_agents
+
+            if get_global_image_agents():
+                return
+        except Exception:  # noqa: BLE001 — advisory probe, must not surface
+            return
+        self.notify(
+            "Tip: no default agents are configured.  "
+            "Open 'Set default agents' from the command palette (Ctrl+P) "
+            "to pick the roster baked into L1 by default.",
+            timeout=15,
+        )
 
     # --- Project delete ---
 

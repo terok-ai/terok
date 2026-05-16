@@ -24,11 +24,15 @@ class RawProjectYamlTests(unittest.TestCase):
     """Tests for the top-level project.yml model."""
 
     def test_minimal_valid_input(self) -> None:
-        """Empty dict produces all defaults."""
+        """Empty dict produces all defaults — base image is the executor's default."""
+        from terok.lib.integrations.executor import RawImageSection
+
         raw = RawProjectYaml.model_validate({})
         self.assertEqual(raw.project.security_class, "gatekeeping")
         self.assertIsNone(raw.git.upstream_url)
-        self.assertEqual(raw.image.base_image, "ubuntu:24.04")
+        # Pin the assertion to the executor's own default so this test
+        # tracks the schema rather than freezing one specific OS choice.
+        self.assertEqual(raw.image.base_image, RawImageSection.model_fields["base_image"].default)
         self.assertEqual(raw.run.shutdown_timeout, 10)
         self.assertIsNone(raw.shield.drop_on_task_run)
         self.assertIsNone(raw.shield.on_task_restart)
