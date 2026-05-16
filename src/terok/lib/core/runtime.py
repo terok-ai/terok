@@ -106,7 +106,7 @@ def ensure_krun_host_keypair(
     """Provision the host-side ed25519 keypair used by the krun transport.
 
     Generates the keypair under *runtime_dir* (default:
-    [`namespace_runtime_dir()`][terok.lib.integrations.sandbox.namespace_runtime_dir])
+    [`namespace_runtime_dir()`][terok_sandbox.namespace_runtime_dir])
     on first call; subsequent calls return the cached path.  The public
     half (``krun_host.pub``) must be baked into the L0G guest image at
     build time so the guest accepts our auth.
