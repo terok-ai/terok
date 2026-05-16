@@ -374,9 +374,11 @@ def make_sandbox_config() -> "SandboxConfig":
     sandbox's plain dataclass.  Sandbox uses its own ``state_dir`` default
     (``~/.local/share/terok/sandbox/``) — terok no longer overrides it.
 
-    Port fields pass ``None`` (auto-allocate via sandbox's shared port
-    registry) or an explicit ``int`` from config.yml.  Resolution happens
-    in ``SandboxConfig.__post_init__``.
+    Port fields pass ``None`` (unresolved — consumers that launch services
+    call ``cfg.with_resolved_ports()`` to allocate via sandbox's shared
+    port registry) or an explicit ``int`` from config.yml.  This factory
+    is side-effect-free, matching sandbox's R2 contract: config inspection
+    and sickbay paths must not silently bind sockets.
 
     This is the **single source of truth** for config bridging — every
     [`SandboxConfig`][terok_sandbox.SandboxConfig] field that terok

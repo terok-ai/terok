@@ -569,26 +569,40 @@ def test_make_sandbox_config_ssh_signer_port(
     assert cfg.make_sandbox_config().ssh_signer_port == 19001
 
 
-def test_make_sandbox_config_auto_allocates_ports(
+def test_make_sandbox_config_leaves_ports_unresolved_until_consumer_resolves(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """Factory auto-allocates distinct ports and reuses them on second call.
+    """Factory carries unresolved ports; consumers opt in via ``with_resolved_ports``.
 
-    Port auto-allocation runs in tcp mode only; opt in explicitly so
-    this regression stays about port registry behaviour, not the mode
-    default.
+    Post-R2 (sandbox#315), ``SandboxConfig`` is side-effect-free at
+    construction — port allocation hits the shared registry and binds
+    test sockets, so it's kept out of the constructor and run only by
+    service consumers (``Sandbox``, ``VaultManager``, ``GateServerManager``)
+    that actually launch services.  ``make_sandbox_config`` therefore
+    must NOT resolve ports up-front: passing the resulting cfg into
+    sickbay or a config-inspection path stays free of side effects.
+
+    The pair below pins both halves: unresolved out of the factory,
+    fully-resolved (distinct, in-range, stable across calls) once a
+    consumer explicitly wraps via ``with_resolved_ports``.
     """
     monkeypatch.setenv("TEROK_CONFIG_FILE", str(write_config(tmp_path, "services:\n  mode: tcp\n")))
     sc = cfg.make_sandbox_config()
-    ports = {sc.gate_port, sc.token_broker_port, sc.ssh_signer_port}
+    assert sc.gate_port is None
+    assert sc.token_broker_port is None
+    assert sc.ssh_signer_port is None
+
+    resolved = sc.with_resolved_ports()
+    ports = {resolved.gate_port, resolved.token_broker_port, resolved.ssh_signer_port}
     assert len(ports) == 3, "Auto-allocated ports must be distinct"
     for p in ports:
         assert p in reg.PORT_RANGE, f"Port {p} outside expected range"
 
-    sc2 = cfg.make_sandbox_config()
-    assert sc2.gate_port == sc.gate_port
-    assert sc2.token_broker_port == sc.token_broker_port
-    assert sc2.ssh_signer_port == sc.ssh_signer_port
+    # Second resolution returns the same claim (registry-backed).
+    resolved2 = cfg.make_sandbox_config().with_resolved_ports()
+    assert resolved2.gate_port == resolved.gate_port
+    assert resolved2.token_broker_port == resolved.token_broker_port
+    assert resolved2.ssh_signer_port == resolved.ssh_signer_port
 
 
 def test_make_sandbox_config_credentials_propagation(
