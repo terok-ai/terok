@@ -1,20 +1,21 @@
 # SPDX-FileCopyrightText: 2026 Jiri Vyskocil
 # SPDX-License-Identifier: Apache-2.0
 
-"""Tests for terok's krun wiring: get_runtime() krun branch, %host keypair
-helper, project config plumbing, and the `run.runtime: krun` flag set
-emitted at task launch.
+"""Tests for terok's krun wiring: get_runtime() krun branch, project
+config plumbing, and the `run.runtime: krun` flag set emitted at task
+launch.  Host-side keypair provisioning + the runtime factory itself
+live in terok-executor (`terok_executor.krun`) and are tested there.
 """
 
 from __future__ import annotations
 
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 
 from terok.lib.core import runtime as runtime_mod
-from terok.lib.core.runtime import ensure_krun_host_keypair, get_runtime
+from terok.lib.core.runtime import get_runtime
 from terok.lib.integrations.sandbox import KrunRuntime, NullRuntime, PodmanRuntime
 from terok.lib.orchestration.task_runners.container import (
     _allocate_krun_cid,
@@ -48,202 +49,30 @@ class TestGetRuntimeKrunBranch:
             with pytest.raises(SystemExit, match="experimental"):
                 get_runtime()
 
-    def test_krun_with_experimental_returns_krun_runtime(
-        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    def test_krun_with_experimental_delegates_to_executor_factory(
+        self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """Experimental on + env=krun yields a KrunRuntime backed by VsockSSHTransport."""
+        """Experimental on + env=krun calls executor's `make_krun_runtime`.
+
+        terok no longer owns the host-key materialisation — it just
+        flips the runtime selector and lets executor do the rest.  The
+        test patches both the experimental gate (off-by-default) and
+        the factory (so no vault/tmpfs is touched).
+        """
         monkeypatch.setenv("TEROK_RUNTIME", "krun")
+        fake_runtime = MagicMock(spec=KrunRuntime)
         with (
             patch("terok.lib.core.runtime.is_experimental", return_value=True),
-            patch("terok.lib.core.runtime.ensure_krun_host_keypair", return_value=tmp_path / "k"),
+            patch("terok.lib.core.runtime.make_krun_runtime", return_value=fake_runtime) as factory,
         ):
             rt = get_runtime()
-        assert isinstance(rt, KrunRuntime)
+        assert rt is fake_runtime
+        factory.assert_called_once()  # cfg= injected from make_sandbox_config()
 
     def test_unknown_value_is_loud(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setenv("TEROK_RUNTIME", "tomato")
         with pytest.raises(SystemExit, match="podman.*null.*krun"):
             get_runtime()
-
-
-@pytest.fixture()
-def _vault_backed(tmp_path: Path):
-    """Wire ``ensure_krun_host_keypair`` to an in-memory vault DB.
-
-    Patches ``make_sandbox_config`` so the helper opens a fresh
-    ``CredentialDB`` against a per-test temp path with a known
-    passphrase — no real vault unlock needed.
-    """
-    from unittest.mock import MagicMock
-
-    from terok_sandbox import CredentialDB
-
-    db_path = tmp_path / "vault" / "credentials.db"
-
-    def _open(*, prompt_on_tty: bool = False) -> CredentialDB:
-        # New connection per call — mirrors the production flow where
-        # each call opens and closes its own handle.
-        return CredentialDB(db_path, passphrase="test")
-
-    cfg = MagicMock()
-    cfg.open_credential_db = _open
-    with patch("terok.lib.core.runtime.make_sandbox_config", return_value=cfg):
-        yield
-
-
-class TestEnsureKrunHostKeypair:
-    """`ensure_krun_host_keypair` mints via the vault, materialises to tmpfs.
-
-    The vault is the system of record (``%host`` infrastructure scope);
-    these tests use a per-test ``CredentialDB`` patched in via
-    ``make_sandbox_config`` to keep the production wiring honest while
-    exercising real key generation + storage.
-    """
-
-    def test_creates_keypair_when_missing(self, tmp_path: Path, _vault_backed) -> None:
-        """First call mints in the vault, writes 0600 OpenSSH PEM to tmpfs."""
-        runtime_dir = tmp_path / "runtime"
-        result = ensure_krun_host_keypair(runtime_dir=runtime_dir)
-
-        assert result == runtime_dir / "krun_host.key"
-        private = result.read_bytes()
-        assert private.startswith(b"-----BEGIN OPENSSH PRIVATE KEY-----")
-        # 0o600 = owner-only read/write; matches what ``ssh -i`` requires.
-        assert (result.stat().st_mode & 0o777) == 0o600
-
-        public = runtime_dir / "krun_host.key.pub"
-        assert public.exists()
-        line = public.read_text()
-        assert line.startswith("ssh-ed25519 ")
-        assert line.rstrip().endswith("krun-host (terok)")
-
-    def test_refuses_persistent_disk_when_no_xdg_runtime_dir(
-        self, _vault_backed, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        """No ``$XDG_RUNTIME_DIR`` → refuse to write private bytes to disk.
-
-        The default ``namespace_runtime_dir()`` would otherwise fall
-        back to ``$XDG_STATE_HOME/terok`` (persistent disk).  Letting
-        the vault-backed private key land there defeats the whole
-        "vault is the system of record, tmpfs is a transient handle"
-        property — fail closed instead.
-        """
-        monkeypatch.delenv("XDG_RUNTIME_DIR", raising=False)
-        with pytest.raises(SystemExit, match="requires .*XDG_RUNTIME_DIR"):
-            ensure_krun_host_keypair()  # no explicit runtime_dir
-
-    def test_tightens_existing_dir_to_0700(self, tmp_path: Path, _vault_backed) -> None:
-        """A pre-existing runtime dir wider than 0700 is re-tightened.
-
-        ``mkdir(mode=0o700, exist_ok=True)`` is no-op for an existing
-        dir, so a previous run under a more permissive umask could
-        leave the cache dir world-listable.  Re-chmod every time.
-        """
-        runtime_dir = tmp_path / "runtime"
-        runtime_dir.mkdir(mode=0o755)  # too wide
-        ensure_krun_host_keypair(runtime_dir=runtime_dir)
-        assert (runtime_dir.stat().st_mode & 0o777) == 0o700
-
-    def test_private_write_is_atomic_no_symlink_clobber(
-        self, tmp_path: Path, _vault_backed
-    ) -> None:
-        """A symlink at the target path is replaced atomically, not followed.
-
-        ``os.replace`` is atomic and never follows a symlink at the
-        destination — so an attacker who pre-creates ``krun_host.key``
-        as a symlink to ``/etc/passwd`` can't trick us into writing
-        the PEM through to that target.  The replace cuts the symlink
-        out of the way, leaving a regular file with the PEM bytes.
-        """
-        runtime_dir = tmp_path / "runtime"
-        runtime_dir.mkdir(mode=0o700)
-        # Pre-plant a hostile symlink at the destination.
-        decoy = tmp_path / "decoy-target"
-        decoy.write_text("untouched")
-        (runtime_dir / "krun_host.key").symlink_to(decoy)
-
-        ensure_krun_host_keypair(runtime_dir=runtime_dir)
-
-        # The destination is now a regular file with PEM bytes — not
-        # a symlink that wrote through to the decoy.
-        priv = runtime_dir / "krun_host.key"
-        assert not priv.is_symlink()
-        assert priv.read_bytes().startswith(b"-----BEGIN OPENSSH PRIVATE KEY-----")
-        # The decoy target is unchanged — we did not follow the symlink.
-        assert decoy.read_text() == "untouched"
-
-    def test_public_write_also_resists_symlink_clobber(self, tmp_path: Path, _vault_backed) -> None:
-        """Same atomic-replace protection applies to the public key file."""
-        runtime_dir = tmp_path / "runtime"
-        runtime_dir.mkdir(mode=0o700)
-        decoy = tmp_path / "decoy-pub"
-        decoy.write_text("untouched")
-        (runtime_dir / "krun_host.key.pub").symlink_to(decoy)
-
-        ensure_krun_host_keypair(runtime_dir=runtime_dir)
-
-        pub = runtime_dir / "krun_host.key.pub"
-        assert not pub.is_symlink()
-        assert pub.read_text().startswith("ssh-ed25519 ")
-        assert decoy.read_text() == "untouched"
-
-    def test_idempotent_returns_same_key_material(self, tmp_path: Path, _vault_backed) -> None:
-        """Second call reloads the existing %host key — same public line.
-
-        The on-disk private bytes differ across calls because OpenSSH
-        PEM serialisation embeds a random ``checkint`` — compare the
-        public line (stable identity) instead.
-        """
-        runtime_dir = tmp_path / "runtime"
-        ensure_krun_host_keypair(runtime_dir=runtime_dir)
-        first_pub = (runtime_dir / "krun_host.key.pub").read_text()
-
-        ensure_krun_host_keypair(runtime_dir=runtime_dir)
-        second_pub = (runtime_dir / "krun_host.key.pub").read_text()
-
-        assert second_pub == first_pub
-
-    def test_tmpfs_cache_rewritten_from_vault_on_every_call(
-        self, tmp_path: Path, _vault_backed
-    ) -> None:
-        """Out-of-band tmpfs tampering is overwritten from the vault.
-
-        The vault is the source of truth — if an operator (or anything
-        else) modifies the tmpfs private file between calls, the next
-        call must restore it.  This is what makes vault-side rotation
-        propagate without manual intervention.
-        """
-        runtime_dir = tmp_path / "runtime"
-        ensure_krun_host_keypair(runtime_dir=runtime_dir)
-        priv = runtime_dir / "krun_host.key"
-        priv.write_bytes(b"-----BEGIN OPENSSH PRIVATE KEY-----\nGARBAGE\n")
-
-        ensure_krun_host_keypair(runtime_dir=runtime_dir)
-
-        # The garbage was replaced with a real PEM from the vault.
-        restored = priv.read_bytes()
-        assert restored.startswith(b"-----BEGIN OPENSSH PRIVATE KEY-----")
-        assert b"GARBAGE" not in restored
-        # Still 0600 after the rewrite (even if the operator's chmod
-        # widened it on inspection).
-        assert (priv.stat().st_mode & 0o777) == 0o600
-
-    def test_pubkey_is_baked_in_authorized_keys_form(self, tmp_path: Path, _vault_backed) -> None:
-        """The .pub file is exactly what L0G ``build_l0g_image`` consumes.
-
-        Loose round-trip: parse the public line via cryptography to
-        confirm it's a valid OpenSSH public key — that's the contract
-        ``ssh`` and ``authorized_keys`` rely on.
-        """
-        from cryptography.hazmat.primitives import serialization
-
-        runtime_dir = tmp_path / "runtime"
-        ensure_krun_host_keypair(runtime_dir=runtime_dir)
-        line = (runtime_dir / "krun_host.key.pub").read_text().strip()
-        # Strip the comment trailer for parsing (``cryptography`` accepts
-        # the bare ``<type> <b64>``).
-        key_part = " ".join(line.split()[:2])
-        serialization.load_ssh_public_key(key_part.encode())  # no raise
 
 
 class TestKrunCidAllocation:

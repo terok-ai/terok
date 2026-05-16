@@ -3608,7 +3608,7 @@ tomli-w = ">=1.0"
 type = "git"
 url = "https://github.com/sliwowitz/terok-executor.git"
 reference = "feat/krun-guest-image"
-resolved_reference = "8ae0e8dd7e9910b3bb13eaf8503a6f16ac77e8d5"
+resolved_reference = "4f8bcdb47707900acbbad10999e1b90c7f0af663"
 
 [[package]]
 name = "terok-sandbox"
@@ -3637,7 +3637,7 @@ terok_shield = {url = "https://github.com/terok-ai/terok-shield/releases/downloa
 type = "git"
 url = "https://github.com/sliwowitz/terok-sandbox.git"
 reference = "feat/krun-vsock-transport"
-resolved_reference = "6786789ed37b89b3ac07717741b57662dd2716db"
+resolved_reference = "6d3418eb7276b865523142533254c6ba2a58cb89"
 
 [[package]]
 name = "terok-shield"
