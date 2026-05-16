@@ -3637,7 +3637,7 @@ terok_shield = {url = "https://github.com/terok-ai/terok-shield/releases/downloa
 type = "git"
 url = "https://github.com/sliwowitz/terok-sandbox.git"
 reference = "feat/krun-vsock-transport"
-resolved_reference = "08c14d6dcdaa439bca1e597592fc9bb2cc0ac347"
+resolved_reference = "6786789ed37b89b3ac07717741b57662dd2716db"
 
 [[package]]
 name = "terok-shield"
