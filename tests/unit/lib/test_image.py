@@ -88,14 +88,17 @@ def test_generate_dockerfiles_outputs_expected_files_and_content() -> None:
             for name in ("L0.Dockerfile", "L1.cli.Dockerfile", "L2.Dockerfile")
         )
         l0_content = (out_dir / "L0.Dockerfile").read_text(encoding="utf-8")
+        # Default base is fedora:44 (terok-executor#333), which renders the
+        # rpm branch — glibc-langpack-en in place of the deb `locales` +
+        # locale-gen pair.  The LANG/LC_ALL/LANGUAGE ENV lines are
+        # family-independent and the meaningful invariant to assert here.
         assert all(
             token in l0_content
             for token in (
                 'LANG="en_US.UTF-8"',
                 'LC_ALL="en_US.UTF-8"',
                 'LANGUAGE="en_US:en"',
-                "locales",
-                "locale-gen en_US.UTF-8",
+                "glibc-langpack-en",
             )
         )
         l2_content = (out_dir / "L2.Dockerfile").read_text(encoding="utf-8")

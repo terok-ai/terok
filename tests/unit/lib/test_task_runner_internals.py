@@ -445,6 +445,9 @@ class TestRunContainer:
         p.memory_limit = None
         p.cpu_limit = None
         p.nested_containers = False
+        p.runtime = None
+        p.krun_cpus = None
+        p.krun_ram_mib = None
         return p
 
     def test_builds_runspec_and_delegates(self) -> None:

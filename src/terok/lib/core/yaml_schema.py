@@ -1,4 +1,5 @@
 # SPDX-FileCopyrightText: 2025 Jiri Vyskocil
+# SPDX-FileCopyrightText: 2026 Jiri Vyskocil
 # SPDX-License-Identifier: Apache-2.0
 
 """Pydantic v2 models mirroring the raw YAML structure of project.yml and config.yml.
@@ -290,6 +291,30 @@ class RawRunSection(BaseModel):
             "When true, the outer container is launched with ``--security-opt "
             "label=nested`` and ``--device /dev/fuse`` so rootless nested "
             "containers work under SELinux without disabling labels wholesale."
+        ),
+    )
+    runtime: Literal["podman", "krun"] | None = Field(
+        default=None,
+        description=(
+            "OCI runtime: ``podman`` (default) for the conventional container, "
+            "or ``krun`` for a KVM microVM (Phase 3, experimental).  Requires "
+            "``experimental: true`` in global config when set to ``krun``."
+        ),
+    )
+    krun_cpus: int | None = Field(
+        default=None,
+        description=(
+            "vCPU count for the krun microVM (forwarded as the "
+            "``run.oci.krun.cpus`` annotation).  Ignored when ``runtime`` is "
+            "not ``krun``."
+        ),
+    )
+    krun_ram_mib: int | None = Field(
+        default=None,
+        description=(
+            "Guest RAM in MiB for the krun microVM (forwarded as the "
+            "``run.oci.krun.ram_mib`` annotation).  Ignored when ``runtime`` "
+            "is not ``krun``."
         ),
     )
     timezone: str | None = Field(

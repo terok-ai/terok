@@ -1,4 +1,5 @@
 # SPDX-FileCopyrightText: 2025 Jiri Vyskocil
+# SPDX-FileCopyrightText: 2026 Jiri Vyskocil
 # SPDX-License-Identifier: Apache-2.0
 
 """Podman container launch + lifecycle primitives shared by every task runner.
@@ -148,11 +149,68 @@ def _project_runtime_flags(project: ProjectConfig) -> list[str]:
     ``/dev/fuse`` is required by rootless podman's fuse-overlayfs driver.
     Available on podman v4.5.0+ (April 2023); older podmans error with
     "unknown label option: nested" and the user is expected to upgrade.
+
+    ``run.runtime: krun`` → ``--runtime krun`` plus krun OCI annotations
+    for microVM sizing.  Validates the krun-incompatible combinations
+    before emitting any flag so the operator sees a clear error rather
+    than a podman launch failure.
     """
     flags: list[str] = []
     if project.nested_containers:
         flags += ["--security-opt", "label=nested", "--device", "/dev/fuse"]
+    if project.runtime == "krun":
+        _validate_krun_compatibility(project)
+        flags += ["--runtime", "krun"]
+        if project.krun_cpus is not None:
+            flags += ["--annotation", f"run.oci.krun.cpus={project.krun_cpus}"]
+        if project.krun_ram_mib is not None:
+            flags += ["--annotation", f"run.oci.krun.ram_mib={project.krun_ram_mib}"]
+        # The CID annotation is the contract between the orchestrator and
+        # `VsockSSHTransport`'s podman_annotation_resolver.  Allocation is
+        # deferred to a follow-up; for now the orchestrator allocates per
+        # container name via a hash modulo the 32-bit CID space, biased
+        # away from reserved CIDs (0, 1, 2).
+        from terok.lib.integrations.sandbox import DEFAULT_CID_ANNOTATION
+
+        flags += [
+            "--annotation",
+            f"{DEFAULT_CID_ANNOTATION}={_allocate_krun_cid(project.id)}",
+        ]
     return flags
+
+
+def _validate_krun_compatibility(project: ProjectConfig) -> None:
+    """Reject combinations that can't be honoured under krun.
+
+    - ``nested_containers``: krun guests can't host nested podman/docker
+      with our current image; ask the operator to drop one of the two.
+    """
+    if project.nested_containers:
+        raise SystemExit(
+            "run.runtime: krun is incompatible with run.nested_containers: true — "
+            "the L0G guest image doesn't ship a nested-container stack.  "
+            "Pick one or move the nested workload to a podman task."
+        )
+
+
+def _allocate_krun_cid(project_id: str) -> int:
+    """Deterministically assign a vsock CID to *project_id*.
+
+    Stable across launches of the same project so the host-side resolver
+    can find the running guest.  Stays in the unreserved 32-bit range —
+    CIDs 0, 1, 2 are reserved by the vsock spec; ``VMADDR_CID_HOST`` is
+    2 and would short-circuit reads.
+
+    Trivial placeholder for the first cut; a free-CID-tracker that
+    survives multi-project concurrency is a follow-up.
+    """
+    import hashlib
+
+    digest = hashlib.sha1(project_id.encode("utf-8"), usedforsecurity=False).digest()
+    raw = int.from_bytes(digest[:4], "big")
+    # Range [3, 2**31) — comfortably below the reserved-host end of the
+    # spec while leaving plenty of headroom; biased away from 0–2.
+    return 3 + (raw % (2**31 - 3))
 
 
 __all__ = [

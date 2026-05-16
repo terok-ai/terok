@@ -1,4 +1,5 @@
 # SPDX-FileCopyrightText: 2025 Jiri Vyskocil
+# SPDX-FileCopyrightText: 2026 Jiri Vyskocil
 # SPDX-License-Identifier: Apache-2.0
 
 """Tests for raw YAML Pydantic models (typo detection, type validation, coercion)."""
@@ -28,7 +29,9 @@ class RawProjectYamlTests(unittest.TestCase):
         raw = RawProjectYaml.model_validate({})
         self.assertEqual(raw.project.security_class, "gatekeeping")
         self.assertIsNone(raw.git.upstream_url)
-        self.assertEqual(raw.image.base_image, "ubuntu:24.04")
+        # Default base image is owned by terok-executor's RawImageSection
+        # and was switched to ``fedora:44`` in terok-executor#333.
+        self.assertEqual(raw.image.base_image, "fedora:44")
         self.assertEqual(raw.run.shutdown_timeout, 10)
         self.assertIsNone(raw.shield.drop_on_task_run)
         self.assertIsNone(raw.shield.on_task_restart)
