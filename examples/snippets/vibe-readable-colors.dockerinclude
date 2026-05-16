@@ -1,0 +1,6 @@
+# SPDX-FileCopyrightText: 2026 Jiri Vyskocil
+# SPDX-License-Identifier: Apache-2.0
+#
+# Better contrast for Mistral Vibe on the default GNOME / Ptyxis palette.
+RUN grep -rl 'ansi_bright_black' /opt/pipx/venvs/mistral-vibe/ \
+    | xargs sed -i 's/ansi_bright_black/#888888/g'
