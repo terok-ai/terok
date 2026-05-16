@@ -1195,7 +1195,7 @@ If the image doesn't have podman preinstalled, `nested_containers: true` still s
 
 ```yaml
 image:
-  base_image: fedora:43
+  base_image: fedora:44
   user_snippet_inline: RUN dnf install -y podman fuse-overlayfs
 run:
   nested_containers: true

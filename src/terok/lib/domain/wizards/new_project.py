@@ -50,7 +50,7 @@ SECURITY_CLASSES: list[tuple[str, str]] = [
 BASES: list[tuple[str, str]] = sorted(
     [
         ("ubuntu", "Ubuntu 24.04"),
-        ("fedora", "Fedora 43"),
+        ("fedora", "Fedora 44"),
         ("podman", "Podman (Fedora-based)"),
         ("nvidia", "NVIDIA CUDA (GPU)"),
     ],
@@ -58,7 +58,7 @@ BASES: list[tuple[str, str]] = sorted(
 )
 BASE_IMAGES: dict[str, str] = {
     "ubuntu": "ubuntu:24.04",
-    "fedora": "fedora:43",
+    "fedora": "fedora:44",
     "podman": "quay.io/podman/stable:latest",
     "nvidia": "nvcr.io/nvidia/nvhpc:25.9-devel-cuda13.0-ubuntu24.04",
 }

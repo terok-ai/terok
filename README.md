@@ -196,7 +196,7 @@ terok agents                            # list available AI coding agents
 ```
 
 Officially-tested base images for `image.base_image`: `ubuntu:24.04`,
-`fedora:43`, `quay.io/podman/stable`, `nvcr.io/nvidia/nvhpc`.  Other
+`fedora:44`, `quay.io/podman/stable`, `nvcr.io/nvidia/nvhpc`.  Other
 images in the same family (`ubuntu:*`, `debian:*`, `fedora:*`,
 `nvcr.io/nvidia/*`, `quay.io/podman/*`) work via auto-detection;
 anything else needs an explicit `image.family: deb|rpm` override.

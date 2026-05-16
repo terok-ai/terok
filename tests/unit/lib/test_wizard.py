@@ -240,7 +240,7 @@ def generate_into_tmp(values: dict[str, object]) -> tuple[str, str, str]:
                 project_id="fedora-proj",
                 upstream_url="https://example.com/r.git",
             ),
-            ['base_image: "fedora:43"', 'security_class: "online"'],
+            ['base_image: "fedora:44"', 'security_class: "online"'],
             id="online-fedora",
         ),
         pytest.param(

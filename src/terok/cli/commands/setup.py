@@ -83,7 +83,7 @@ def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) ->
         default=None,
         help=(
             "Pre-build L0/L1 for BASE_IMAGE (e.g. ``ubuntu:24.04``, "
-            "``fedora:43``, ``nvidia/cuda:12.6.0-runtime-ubuntu24.04``).  "
+            "``fedora:44``, ``nvidia/cuda:12.6.0-runtime-ubuntu24.04``).  "
             "Normally images build lazily on first ``terok task run`` or "
             "``terok project init``, keyed by each project's declared "
             "base — so this flag is only useful when you *know* your "

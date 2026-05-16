@@ -445,9 +445,9 @@ def get_global_image_base_image() -> str:
     """Return ``image.base_image`` from the global config.
 
     Defaults to [`DEFAULT_BASE_IMAGE`][terok_executor.DEFAULT_BASE_IMAGE]
-    (currently ``ubuntu:24.04``) when unset.  Used by host-wide flows
-    (e.g. ``terok auth``) so users on Fedora/NVIDIA/Podman bases don't
-    end up with a parallel Ubuntu L1 just for auth.
+    when unset.  Used by host-wide flows (e.g. ``terok auth``) so users
+    on Fedora/NVIDIA/Podman bases don't end up with a parallel default
+    L1 just for auth.
     """
     from terok.lib.integrations.executor import DEFAULT_BASE_IMAGE
 
