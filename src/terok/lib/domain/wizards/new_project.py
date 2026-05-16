@@ -69,7 +69,7 @@ _TEMPLATE_NAME = "project.yml.template"
 
 # ── Question declarations ─────────────────────────────────────────────
 
-QuestionKind = Literal["choice", "text", "editor"]
+QuestionKind = Literal["choice", "text", "editor", "multichoice"]
 
 
 @dataclass(frozen=True)
@@ -94,7 +94,15 @@ class Question:
     """Longer explanation, rendered next to the input in the TUI; unused in CLI."""
 
     choices: tuple[tuple[str, str], ...] = ()
-    """Allowed values for ``kind="choice"`` as ``(value, label)`` pairs."""
+    """Static ``(value, label)`` pairs for ``kind in {"choice", "multichoice"}``."""
+
+    choices_loader: Callable[[], tuple[tuple[str, str], ...]] | None = None
+    """Runtime resolver for choices that aren't known at import time.
+
+    Set this when the option set lives in a sibling wheel (e.g. the
+    agent roster) and can drift between releases.  When set, takes
+    precedence over [`choices`][terok.lib.domain.wizards.new_project.Question.choices].
+    """
 
     required: bool = False
     """Reject empty answers with ``"<prompt> is required."``"""
@@ -110,6 +118,16 @@ class Question:
 
     default_visible: bool = False
     """When True, CLI prompt shows ``"(optional)"`` to telegraph "Enter is fine"."""
+
+    def resolve_choices(self) -> tuple[tuple[str, str], ...]:
+        """Return the effective option list — runtime loader wins over static.
+
+        Called by both presenters whenever they need to render or validate
+        a ``choice`` / ``multichoice`` question.  The loader is expected
+        to be cheap; the executor's roster lookup is itself ``lru_cache``'d
+        so repeated calls are free.
+        """
+        return self.choices_loader() if self.choices_loader is not None else self.choices
 
 
 def _validate_project_id(project_id: str) -> str | None:
@@ -144,6 +162,57 @@ def _slugify_project_id(raw: str) -> str:
     kept = "".join(_SLUG_ALLOWED.findall(hyphenated))
     collapsed = _SLUG_RUNS.sub("-", kept)
     return collapsed.strip("-_")
+
+
+# ── Agent roster — choices/validator resolved lazily ─────────────────
+#
+# The roster lives in the ``terok-executor`` sibling wheel and can grow
+# between releases.  Wrapping it in a callable keeps the wizard schema
+# importable without paying the roster load up front and lets the choice
+# list reflect whatever wheel is installed at runtime.
+
+#: Literal selector accepted by [`terok_executor.parse_agent_selection`][terok_executor.parse_agent_selection]
+#: meaning "every installable roster entry, plus any added later".  Distinct
+#: from a comma-list that happens to enumerate all current agents — that
+#: list freezes the snapshot, ``"all"`` does not.
+_AGENTS_ALL_TOKEN = "all"
+
+
+def _load_agent_choices() -> tuple[tuple[str, str], ...]:
+    """Return ``(slug, label)`` pairs for every roster ``kind: agent`` entry.
+
+    The "all" pseudo-option is purely a presenter concern — it lives in
+    the TUI's master checkbox and the CLI's prompt default, not in this
+    list.  Including it here would force every callsite to filter it out.
+    """
+    from terok.lib.integrations.executor import get_roster
+
+    roster = get_roster()
+    return tuple(
+        (name, roster.providers[name].label if name in roster.providers else name)
+        for name in roster.agent_names
+    )
+
+
+def _validate_agents(value: str) -> str | None:
+    """Reject unknown agent names; accept ``"all"`` and any comma-list of slugs.
+
+    Defers to the executor's canonical grammar so the wizard speaks the
+    same dialect as ``terok image build --agents …``:
+    [`parse_agent_selection`][terok_executor.parse_agent_selection] folds the
+    raw string into ``"all"`` or a token tuple, and
+    [`AgentRoster.resolve_selection`][terok_executor.AgentRoster.resolve_selection]
+    raises ``ValueError`` with a "Unknown roster entries: …" message when
+    a token doesn't match the installed roster.  Excludes (``"-vibe"``)
+    and the combined form (``"all,-vibe"``) come for free.
+    """
+    from terok.lib.integrations.executor import get_roster, parse_agent_selection
+
+    try:
+        get_roster().resolve_selection(parse_agent_selection(value))
+    except ValueError as exc:
+        return str(exc)
+    return None
 
 
 QUESTIONS: tuple[Question, ...] = (
@@ -185,6 +254,20 @@ QUESTIONS: tuple[Question, ...] = (
         help="Leave empty to use the remote's default (or ``main`` when no remote).",
         placeholder="main",
         default_visible=True,
+    ),
+    Question(
+        key="agents",
+        kind="multichoice",
+        prompt="Select agents to install",
+        help=(
+            "Which AI coding agents to bake into the container image.  "
+            "Pick 'All agents' to inherit future additions, or enumerate "
+            "specific agents to freeze the set.  Exclude with ``-name`` "
+            "(e.g. ``all,-vibe``) on the CLI."
+        ),
+        required=True,
+        choices_loader=_load_agent_choices,
+        validate=_validate_agents,
     ),
     Question(
         key="user_snippet",
@@ -308,6 +391,22 @@ def _trim_snippet_preamble(content: str) -> str:
     return content.rstrip("\n").rstrip()
 
 
+def _prompt_multichoice(title: str, options: list[tuple[str, str]]) -> str:
+    """Lists *options*, then takes one line of comma-separated tokens (default ``"all"``).
+
+    Discovery without the menu juggling: we print the slug-and-label
+    table so the user can see what's available, then accept the
+    executor's canonical selection syntax verbatim (``"all"``,
+    ``"claude,vibe"``, ``"all,-vibe"``).  Empty input means "all" —
+    matches the CLI build flag and what most users want first time.
+    """
+    print(f"\n{title}")
+    for slug, label in options:
+        print(f"  · {slug}  — {label}")
+    raw = input("\nType a comma list, or '-name' to exclude [all]: ").strip()
+    return raw or _AGENTS_ALL_TOKEN
+
+
 def _ask_cli(question: Question) -> str | None:
     """Elicit a raw string from the terminal for *question*.
 
@@ -318,6 +417,8 @@ def _ask_cli(question: Question) -> str | None:
     match question.kind:
         case "choice":
             return _prompt_choice(question.prompt + ":", list(question.choices))
+        case "multichoice":
+            return _prompt_multichoice(question.prompt + ":", list(question.resolve_choices()))
         case "editor":
             return _prompt_image_snippet()
         case "text":
@@ -413,6 +514,7 @@ def render_project_yaml(values: dict) -> str:
             "SECURITY_CLASS": values["security_class"],
             "BASE": values["base"],
             "BASE_IMAGE": BASE_IMAGES[values["base"]],
+            "AGENTS": values["agents"],
         },
     )
 

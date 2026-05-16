@@ -35,6 +35,7 @@ def wizard_values(
     project_id: str = "test-proj",
     upstream_url: str = "https://github.com/user/repo.git",
     default_branch: str = "main",
+    agents: str = "all",
     user_snippet: str = "",
 ) -> dict[str, object]:
     """Build a wizard value dict with sensible defaults."""
@@ -44,6 +45,7 @@ def wizard_values(
         "project_id": project_id,
         "upstream_url": upstream_url,
         "default_branch": default_branch,
+        "agents": agents,
         "user_snippet": user_snippet,
     }
 
@@ -74,12 +76,12 @@ def test_validate_project_id(project_id: str, valid: bool) -> None:
     ("inputs", "expected"),
     [
         pytest.param(
-            ["1", "1", "myproj", "https://example.com/r.git", "main", "n"],
+            ["1", "1", "myproj", "https://example.com/r.git", "main", "", "n"],
             wizard_values(project_id="myproj", upstream_url="https://example.com/r.git"),
             id="collect-all-values",
         ),
         pytest.param(
-            ["2", "1", "gkproj", "git@host:r.git", "", "n"],
+            ["2", "1", "gkproj", "git@host:r.git", "", "", "n"],
             wizard_values(
                 security_class="gatekeeping",
                 project_id="gkproj",
@@ -89,7 +91,7 @@ def test_validate_project_id(project_id: str, valid: bool) -> None:
             id="gatekeeping-selection",
         ),
         pytest.param(
-            ["1", "2", "proj", "https://example.com/r.git", "", "n"],
+            ["1", "2", "proj", "https://example.com/r.git", "", "", "n"],
             wizard_values(
                 base="nvidia",
                 project_id="proj",
@@ -99,22 +101,23 @@ def test_validate_project_id(project_id: str, valid: bool) -> None:
             id="empty-default-branch",
         ),
         pytest.param(
-            ["1", "2", "proj", "https://example.com/r.git", "dev", "n"],
+            ["1", "2", "proj", "https://example.com/r.git", "dev", "claude,vibe", "n"],
             wizard_values(
                 base="nvidia",
                 project_id="proj",
                 upstream_url="https://example.com/r.git",
                 default_branch="dev",
+                agents="claude,vibe",
             ),
-            id="custom-branch",
+            id="custom-branch-and-agents",
         ),
         pytest.param(
-            ["1", "1", "!!!", "good-id", "https://example.com/r.git", "main", "n"],
+            ["1", "1", "!!!", "good-id", "https://example.com/r.git", "main", "", "n"],
             wizard_values(project_id="good-id", upstream_url="https://example.com/r.git"),
             id="retry-invalid-project-id",
         ),
         pytest.param(
-            ["1", "1", "proj", "", "main", "n"],
+            ["1", "1", "proj", "", "main", "", "n"],
             wizard_values(project_id="proj", upstream_url=""),
             id="empty-upstream-url-accepted",
         ),
@@ -154,7 +157,7 @@ def test_collect_wizard_inputs_lowercases_project_id() -> None:
     with (
         patch(
             "builtins.input",
-            side_effect=["1", "1", "MyProject", "https://example.com/r.git", "main", "n"],
+            side_effect=["1", "1", "MyProject", "https://example.com/r.git", "main", "", "n"],
         ),
         patch("builtins.print") as mock_print,
     ):
@@ -281,6 +284,7 @@ def test_generate_config_replaces_all_placeholders() -> None:
                 "{{UPSTREAM_URL}}",
                 "{{DEFAULT_BRANCH}}",
                 "{{USER_SNIPPET}}",
+                "{{AGENTS}}",
             ):
                 assert placeholder not in content, f"{sec_slug}-{base_slug}: {placeholder}"
 
@@ -538,3 +542,70 @@ class TestQuestionsRegistry:
         for q in QUESTIONS:
             if q.kind == "choice":
                 assert q.choices, f"{q.key} has empty choices"
+
+    def test_multichoice_has_loader_not_static_choices(self) -> None:
+        """Multichoice questions resolve options at runtime — empty static list is fine."""
+        for q in QUESTIONS:
+            if q.kind == "multichoice":
+                assert q.choices_loader is not None, f"{q.key} multichoice missing loader"
+                resolved = q.resolve_choices()
+                assert resolved, f"{q.key} loader returned no options"
+
+
+# ---------------------------------------------------------------------------
+# Agents question — multichoice grammar delegated to terok_executor.
+# These tests pin the contract the wizard relies on: "all" + comma-list +
+# exclude tokens accepted, unknown slugs rejected with the executor's
+# canonical error message, empty input rejected by ``required``.
+# ---------------------------------------------------------------------------
+
+
+class TestAgentsQuestion:
+    """Validation contract shared by the CLI prompt loop and the TUI form."""
+
+    def test_all_token_accepted(self) -> None:
+        value, err = validate_answer(_q("agents"), "all")
+        assert err is None
+        assert value == "all"
+
+    def test_comma_list_of_known_agents_accepted(self) -> None:
+        from terok.lib.integrations.executor import get_roster
+
+        first, second = get_roster().agent_names[:2]
+        raw = f"{first},{second}"
+        value, err = validate_answer(_q("agents"), raw)
+        assert err is None
+        assert value == raw
+
+    def test_exclude_syntax_accepted(self) -> None:
+        """``all,-name`` is the executor's canonical exclude form — must flow through."""
+        from terok.lib.integrations.executor import get_roster
+
+        omit = get_roster().agent_names[0]
+        value, err = validate_answer(_q("agents"), f"all,-{omit}")
+        assert err is None
+        assert value == f"all,-{omit}"
+
+    def test_unknown_agent_rejected_with_helpful_message(self) -> None:
+        value, err = validate_answer(_q("agents"), "claude,definitely-not-an-agent")
+        assert err is not None
+        assert "definitely-not-an-agent" in err
+
+    def test_empty_required(self) -> None:
+        """Empty submit (e.g. TUI master + all items unchecked) must be rejected."""
+        value, err = validate_answer(_q("agents"), "")
+        assert err is not None
+        assert "required" in err
+
+    def test_render_emits_agents_line_quoted(self) -> None:
+        """Template must quote the agents scalar so future roster names can't break YAML."""
+        rendered = render_project_yaml(wizard_values(agents="claude,vibe"))
+        assert 'agents: "claude,vibe"' in rendered
+
+    def test_render_round_trips_through_yaml_safe_load(self) -> None:
+        """The rendered ``project.yml`` parses; ``agents`` is the string we set."""
+        import yaml
+
+        rendered = render_project_yaml(wizard_values(agents="all"))
+        parsed = yaml.safe_load(rendered)
+        assert parsed["image"]["agents"] == "all"

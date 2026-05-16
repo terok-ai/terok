@@ -21,6 +21,7 @@ REQUIRED_PLACEHOLDERS: list[str] = [
     "{{DEFAULT_BRANCH}}",
     "{{USER_SNIPPET | indent(4)}}",
     "{{BASE_IMAGE}}",
+    "{{AGENTS}}",
     '"{{SECURITY_CLASS}}"',
 ]
 
@@ -35,6 +36,7 @@ def _full_variables(*, security_class: str, base: str, **overrides: str) -> dict
         "SECURITY_CLASS": security_class,
         "BASE": base,
         "BASE_IMAGE": BASE_IMAGES[base],
+        "AGENTS": overrides.get("agents", "all"),
     }
 
 
