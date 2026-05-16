@@ -1228,6 +1228,7 @@ class TaskLaunchScreen(screen.ModalScreen["tuple[str, str, str, str, str, str | 
 
     #launch-prompt {
         margin-bottom: 1;
+        height: 10;
     }
 
     #launch-buttons {
@@ -1274,11 +1275,14 @@ class TaskLaunchScreen(screen.ModalScreen["tuple[str, str, str, str, str, str | 
         self._start_time = 0.0
 
     def compose(self) -> ComposeResult:
-        """Build status, agent selector, prompt input, and action buttons."""
+        """Build prompt input, agent selector, status, and action buttons."""
         from terok.lib.integrations.executor import AGENT_PROVIDERS
 
         with Vertical(id="launch-dialog") as dialog:
             yield Static("Status: Starting container\u2026", id="launch-status")
+
+            # Prompt input first (multiline TextArea with Ctrl+Enter for newline)
+            yield TextArea(placeholder="Initial prompt (optional)", id="launch-prompt")
 
             # bash is always offered (login shell); the rest are filtered by
             # what's installed in the project's L1 image.
@@ -1291,7 +1295,7 @@ class TaskLaunchScreen(screen.ModalScreen["tuple[str, str, str, str, str, str | 
             valid_values = {v for _, v in choices}
             login_value = self._default_login if self._default_login in valid_values else "bash"
             yield Select(choices, value=login_value, id="login-agent")
-            yield Input(placeholder="Initial prompt (optional)", id="launch-prompt")
+
             with Horizontal(id="launch-buttons"):
                 if self._console_entry is not None:
                     yield Button("Show log", id="btn-show-log", variant="default")
@@ -1304,10 +1308,38 @@ class TaskLaunchScreen(screen.ModalScreen["tuple[str, str, str, str, str, str | 
         """Start polling for container readiness and focus the prompt input."""
         import time
 
-        prompt = self.query_one("#launch-prompt", Input)
+        prompt = self.query_one("#launch-prompt", TextArea)
         prompt.focus()
         self._start_time = time.monotonic()
         self._poll_timer = self.set_interval(1.5, self._poll_status)
+
+    def on_key(self, event: events.Key) -> None:
+        """Handle special keys when prompt input has focus.
+
+        - Ctrl+Enter inserts a newline character (for multi-line prompts)
+        - Enter (without Ctrl) submits the form (presses Login)
+        - Tab moves focus between widgets (default behavior)
+        """
+        # Only handle keys when the prompt TextArea has focus
+        if not self.query_one("#launch-prompt", TextArea).has_focus:
+            return
+
+        if event.key == "ctrl+enter":
+            # Insert a newline character at cursor position
+            prompt = self.query_one("#launch-prompt", TextArea)
+            cursor_pos = prompt.cursor_position
+            current_value = prompt.text
+            # Insert newline at cursor position
+            new_value = current_value[:cursor_pos] + "\n" + current_value[cursor_pos:]
+            prompt.text = new_value
+            # Move cursor past the newline
+            prompt.cursor_position = cursor_pos + 1
+            event.stop()
+        elif event.key == "enter":
+            # Enter submits the form (presses Login) if container is ready
+            if self._container_ready:
+                self._do_login()
+                event.stop()
 
     # If no container has appeared within this many wall-clock seconds, assume
     # the launch failed and surface a hint.  Wall-clock based (not tick count)
@@ -1404,8 +1436,8 @@ class TaskLaunchScreen(screen.ModalScreen["tuple[str, str, str, str, str, str | 
         if isinstance(agent, NoSelection):
             self.app.notify("Pick an agent first.")
             return
-        prompt_input = self.query_one("#launch-prompt", Input)
-        prompt = prompt_input.value.strip() or None
+        prompt_input = self.query_one("#launch-prompt", TextArea)
+        prompt = prompt_input.text.strip() or None
         self.dismiss(
             (
                 self._project_id,

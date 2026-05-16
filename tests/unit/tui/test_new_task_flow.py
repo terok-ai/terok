@@ -199,13 +199,13 @@ class TestTaskLaunchScreen:
 
         mock_select = mock.Mock()
         mock_select.value = "claude"
-        mock_input = mock.Mock()
-        mock_input.value = "fix the bug"
+        mock_textarea = mock.Mock()
+        mock_textarea.text = "fix the bug"
 
         def query_one(selector, cls=None):
             if "login-agent" in selector:
                 return mock_select
-            return mock_input
+            return mock_textarea
 
         screen.query_one = query_one
 
@@ -221,13 +221,13 @@ class TestTaskLaunchScreen:
 
         mock_select = mock.Mock()
         mock_select.value = "bash"
-        mock_input = mock.Mock()
-        mock_input.value = "scribble for the agent"
+        mock_textarea = mock.Mock()
+        mock_textarea.text = "scribble for the agent"
 
         def query_one(selector, cls=None):
             if "login-agent" in selector:
                 return mock_select
-            return mock_input
+            return mock_textarea
 
         screen.query_one = query_one
 
@@ -245,13 +245,13 @@ class TestTaskLaunchScreen:
 
         mock_select = mock.Mock()
         mock_select.value = "bash"
-        mock_input = mock.Mock()
-        mock_input.value = "   "
+        mock_textarea = mock.Mock()
+        mock_textarea.text = "   "
 
         def query_one(selector, cls=None):
             if "login-agent" in selector:
                 return mock_select
-            return mock_input
+            return mock_textarea
 
         screen.query_one = query_one
 
@@ -711,10 +711,12 @@ class TestTaskLaunchScreenNamePropagation:
 
         mock_select = mock.Mock()
         mock_select.value = "vibe"
-        mock_input = mock.Mock()
-        mock_input.value = "refactor auth"
+        mock_textarea = mock.Mock()
+        mock_textarea.text = "refactor auth"
 
-        screen.query_one = lambda sel, cls=None: mock_select if "login-agent" in sel else mock_input
+        screen.query_one = lambda sel, cls=None: (
+            mock_select if "login-agent" in sel else mock_textarea
+        )
 
         screen._do_login()
         result = screen.dismiss.call_args[0][0]
@@ -729,10 +731,12 @@ class TestTaskLaunchScreenNamePropagation:
 
         mock_select = mock.Mock()
         mock_select.value = "bash"
-        mock_input = mock.Mock()
-        mock_input.value = ""
+        mock_textarea = mock.Mock()
+        mock_textarea.text = ""
 
-        screen.query_one = lambda sel, cls=None: mock_select if "login-agent" in sel else mock_input
+        screen.query_one = lambda sel, cls=None: (
+            mock_select if "login-agent" in sel else mock_textarea
+        )
 
         screen._do_login()
         result = screen.dismiss.call_args[0][0]
