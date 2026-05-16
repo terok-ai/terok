@@ -1,12 +1,15 @@
 #!/usr/bin/env python3
 
 # SPDX-FileCopyrightText: 2025 Jiri Vyskocil
+# SPDX-FileCopyrightText: 2026 Jiri Vyskocil
 # SPDX-License-Identifier: Apache-2.0
 
 """Terok TUI application built on Textual."""
 
+import getpass
 import inspect
 import os
+import socket
 import sys
 from collections.abc import Iterator
 from typing import Any, Literal
@@ -343,7 +346,13 @@ if _HAS_TEXTUAL:
             self._launching_tasks: set[tuple[str, str]] = set()
 
         def _update_title(self) -> None:
-            """Update the TUI title with version and branch information."""
+            """Update the TUI title with version and branch information.
+
+            Right-aligned ``sub_title`` carries ``user@host`` so a TUI
+            opened over SSH can't be confused with a local one — the
+            most frequent footgun reported in #683 was running a task
+            on the wrong host because the header looked identical.
+            """
             version, branch_name = _get_version_info()
             display_ver = _short_version(version)
 
@@ -353,6 +362,7 @@ if _HAS_TEXTUAL:
                 title = f"Terok TUI v{display_ver}"
 
             self.title = title
+            self.sub_title = f"{getpass.getuser()}@{socket.gethostname()}"
 
         # ---------- Layout ----------
 
