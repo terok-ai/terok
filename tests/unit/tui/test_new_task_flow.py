@@ -394,6 +394,98 @@ class TestTaskLaunchScreen:
 
 
 # ---------------------------------------------------------------------------
+# TaskLaunchScreen — lazy agent dropdown
+# ---------------------------------------------------------------------------
+
+
+class TestTaskLaunchScreenLazyAgents:
+    """Tests for the loading → loaded transition on the agent Select."""
+
+    def test_build_agent_choices_loading_returns_bash_only(self) -> None:
+        screens, _ = import_screens()
+        screen = screens.TaskLaunchScreen(
+            container_name="c", project_id="p", task_id="1", installed=None
+        )
+        assert screen._build_agent_choices() == [("bash", "bash")]
+
+    def test_build_agent_choices_loaded_prepends_bash_to_providers(self) -> None:
+        from terok.lib.integrations.executor import AGENT_PROVIDERS
+
+        screens, _ = import_screens()
+        # Filter to a single known provider so the assertion is stable.
+        target = next(iter(AGENT_PROVIDERS))
+        screen = screens.TaskLaunchScreen(
+            container_name="c",
+            project_id="p",
+            task_id="1",
+            installed=frozenset({target}),
+        )
+        choices = screen._build_agent_choices()
+        assert choices[0] == ("bash", "bash")
+        assert (AGENT_PROVIDERS[target].label, target) in choices
+
+    def test_set_installed_populates_select_and_restores_default(self) -> None:
+        from terok.lib.integrations.executor import AGENT_PROVIDERS
+
+        screens, _ = import_screens()
+        target = next(iter(AGENT_PROVIDERS))
+        screen = screens.TaskLaunchScreen(
+            container_name="c",
+            project_id="p",
+            task_id="1",
+            default_login=target,
+            installed=None,
+        )
+        mock_select = mock.Mock()
+        mock_select.disabled = True
+        screen.query_one = mock.Mock(return_value=mock_select)
+
+        screen.set_installed(frozenset({target}))
+
+        assert screen._installed == frozenset({target})
+        mock_select.set_options.assert_called_once()
+        passed_choices = mock_select.set_options.call_args[0][0]
+        assert ("bash", "bash") in passed_choices
+        assert (AGENT_PROVIDERS[target].label, target) in passed_choices
+        assert mock_select.value == target
+        assert mock_select.prompt == "Select an agent"
+        assert mock_select.disabled is False
+
+    def test_set_installed_falls_back_to_bash_when_default_unavailable(self) -> None:
+        """If the configured default_login isn't installed, the dropdown still picks bash."""
+        screens, _ = import_screens()
+        screen = screens.TaskLaunchScreen(
+            container_name="c",
+            project_id="p",
+            task_id="1",
+            default_login="not-installed-agent",
+            installed=None,
+        )
+        mock_select = mock.Mock()
+        screen.query_one = mock.Mock(return_value=mock_select)
+
+        # Empty frozenset means "no filter" → all providers visible, but
+        # ``not-installed-agent`` isn't a registered provider, so the
+        # fallback should kick in.
+        screen.set_installed(frozenset())
+
+        assert mock_select.value == "bash"
+        assert mock_select.disabled is False
+
+    def test_set_installed_returns_silently_when_select_missing(self) -> None:
+        """Calling set_installed before compose mounted the Select is a no-op."""
+        screens, _ = import_screens()
+        screen = screens.TaskLaunchScreen(
+            container_name="c", project_id="p", task_id="1", installed=None
+        )
+        screen.query_one = mock.Mock(side_effect=RuntimeError("not mounted"))
+        # Must not raise.
+        screen.set_installed(frozenset())
+        # State is still updated even if the Select can't be reached.
+        assert screen._installed == frozenset()
+
+
+# ---------------------------------------------------------------------------
 # Launch command shape — prompt travels via the on-disk file, not as a CLI arg
 # ---------------------------------------------------------------------------
 
@@ -658,6 +750,89 @@ class TestTaskLaunchScreenCompose:
         assert dialog is not None
         assert dialog.border_title == "CLI Task 7 (7)"
 
+    def test_compose_renders_select_disabled_while_loading(self) -> None:
+        """While ``_installed is None`` the agent Select is rendered disabled."""
+        screens, _ = import_screens()
+        screen = screens.TaskLaunchScreen(
+            container_name="c", project_id="p", task_id="1", installed=None
+        )
+        widgets = list(screen.compose())
+        selects = [w for w in widgets if isinstance(w, screens.Select)]
+        assert selects, "compose() yielded no Select widget"
+        sel = selects[0]
+        assert sel._stub_kwargs.get("disabled") is True
+        assert sel._stub_kwargs.get("prompt") == "Loading agents…"
+        # In the loading state only bash is in choices.
+        choices = sel._stub_args[0]
+        assert choices == [("bash", "bash")]
+
+    def test_compose_renders_select_enabled_when_loaded(self) -> None:
+        """Once ``_installed`` is set, the dropdown renders enabled with providers."""
+        from terok.lib.integrations.executor import AGENT_PROVIDERS
+
+        screens, _ = import_screens()
+        target = next(iter(AGENT_PROVIDERS))
+        screen = screens.TaskLaunchScreen(
+            container_name="c",
+            project_id="p",
+            task_id="1",
+            installed=frozenset({target}),
+        )
+        widgets = list(screen.compose())
+        selects = [w for w in widgets if isinstance(w, screens.Select)]
+        sel = selects[0]
+        assert sel._stub_kwargs.get("disabled") is False
+        assert sel._stub_kwargs.get("prompt") == "Select an agent"
+        choices = sel._stub_args[0]
+        assert ("bash", "bash") in choices
+        assert (AGENT_PROVIDERS[target].label, target) in choices
+
+
+# ---------------------------------------------------------------------------
+# _SubmittablePromptArea — Enter / Ctrl+Enter bubble up instead of inserting
+# ---------------------------------------------------------------------------
+
+
+class TestSubmittablePromptArea:
+    """Verify the prompt TextArea forwards Enter/Ctrl+Enter to the parent screen."""
+
+    def test_on_key_returns_early_on_enter(self) -> None:
+        screens, _ = import_screens()
+        area = screens._SubmittablePromptArea()
+        event = mock.Mock()
+        event.key = "enter"
+        # Should return without stopping the event or invoking ``super()._on_key``
+        # (which would explode against the test-stub TextArea).
+        asyncio.run(area._on_key(event))
+        event.stop.assert_not_called()
+        event.prevent_default.assert_not_called()
+
+    def test_on_key_returns_early_on_ctrl_enter(self) -> None:
+        screens, _ = import_screens()
+        area = screens._SubmittablePromptArea()
+        event = mock.Mock()
+        event.key = "ctrl+enter"
+        asyncio.run(area._on_key(event))
+        event.stop.assert_not_called()
+        event.prevent_default.assert_not_called()
+
+    def test_on_key_delegates_other_keys_to_super(self) -> None:
+        """Non-Enter keys fall through to ``TextArea._on_key`` unchanged."""
+        screens, _ = import_screens()
+        area = screens._SubmittablePromptArea()
+        event = mock.Mock()
+        event.key = "a"
+
+        called: list[Any] = []
+
+        async def fake_parent(self: Any, ev: Any) -> None:
+            called.append(ev)
+
+        with mock.patch.object(screens.TextArea, "_on_key", fake_parent, create=True):
+            asyncio.run(area._on_key(event))
+
+        assert called == [event]
+
 
 # ---------------------------------------------------------------------------
 # _action_login uses _login_title
@@ -898,6 +1073,109 @@ class TestStartCliTaskBackgroundPassesName:
         assert launch_screen._task_id == "7"
         assert launch_screen._project_id == "proj1"
         assert launch_screen._default_login == "claude"
+        # Launch screen is pushed in the "loading" state so the prompt
+        # TextArea is typeable immediately — the agent dropdown fills in
+        # when the worker resolves _fill_installed_agents.
+        assert launch_screen._installed is None
+        # The worker for the agents lookup was kicked off.
+        instance.run_worker.assert_called_once()
+
+
+# ---------------------------------------------------------------------------
+# _start_cli_task_background — load_project failure path
+# ---------------------------------------------------------------------------
+
+
+class TestStartCliTaskBackgroundLoadFailure:
+    """When ``load_project`` fails, the launch screen still surfaces immediately.
+
+    The agent dropdown is finalised with an empty (no-filter) installed set
+    in-line — no worker — and a debug line records the failure.
+    """
+
+    def test_launch_screen_finalised_when_load_project_fails(self) -> None:
+        _, app_class = import_app()
+        instance = app_class()
+        instance.current_project_id = "proj1"
+        instance._last_selected_tasks = {}
+        instance._save_selection_state = mock.Mock()
+        instance.notify = mock.Mock()
+        instance.dispatch_console_action = mock.Mock()
+        instance.push_screen = mock.AsyncMock()
+        instance.refresh_tasks = mock.AsyncMock()
+        instance._mark_launching = mock.Mock()
+        instance.run_worker = mock.Mock()
+        instance._log_debug = mock.Mock()
+
+        action_globals = app_class._start_cli_task_background.__globals__
+        with mock.patch.dict(
+            action_globals,
+            {
+                "task_new": mock.Mock(return_value="9"),
+                "load_project": mock.Mock(side_effect=RuntimeError("boom")),
+                "container_name": lambda *a: "terok-proj1-cli-9",
+            },
+        ):
+            run(app_class._start_cli_task_background(instance, "fix-thing"))
+
+        # Failure was logged via _log_debug (the project lookup failure path).
+        instance._log_debug.assert_called()
+        # No worker — the helper short-circuits to set_installed(frozenset()).
+        instance.run_worker.assert_not_called()
+        # Launch screen was pushed with installed already resolved (empty set).
+        instance.push_screen.assert_awaited_once()
+        launch_screen = instance.push_screen.call_args[0][0]
+        assert launch_screen._installed == frozenset()
+        assert launch_screen._default_login == "bash"
+
+
+# ---------------------------------------------------------------------------
+# _fill_installed_agents — off-thread worker that feeds set_installed
+# ---------------------------------------------------------------------------
+
+
+class TestFillInstalledAgents:
+    """The worker that resolves installed agents and pushes them into the screen."""
+
+    def test_resolves_and_feeds_set_installed(self) -> None:
+        _, app_class = import_app()
+        instance = app_class()
+        instance._log_debug = mock.Mock()
+
+        fake_project = mock.Mock()
+        launch_screen = mock.Mock()
+
+        # The helper does ``from ..lib.api import installed_agents_for_project``
+        # at call time, so patch the symbol on the source module.
+        with mock.patch(
+            "terok.lib.api.installed_agents_for_project",
+            return_value=frozenset({"claude"}),
+        ):
+            run(app_class._fill_installed_agents(instance, launch_screen, fake_project))
+
+        launch_screen.set_installed.assert_called_once_with(frozenset({"claude"}))
+        instance._log_debug.assert_not_called()
+
+    def test_failure_falls_back_to_empty_and_logs(self) -> None:
+        _, app_class = import_app()
+        instance = app_class()
+        instance._log_debug = mock.Mock()
+
+        fake_project = mock.Mock()
+        fake_project.id = "proj1"
+        launch_screen = mock.Mock()
+
+        with mock.patch(
+            "terok.lib.api.installed_agents_for_project",
+            side_effect=RuntimeError("podman exploded"),
+        ):
+            run(app_class._fill_installed_agents(instance, launch_screen, fake_project))
+
+        launch_screen.set_installed.assert_called_once_with(frozenset())
+        instance._log_debug.assert_called_once()
+        msg = instance._log_debug.call_args[0][0]
+        assert "podman exploded" in msg
+        assert "proj1" in msg
 
 
 # ---------------------------------------------------------------------------
