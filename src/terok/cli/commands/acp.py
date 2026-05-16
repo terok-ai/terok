@@ -43,6 +43,7 @@ from terok.lib.integrations.executor import acp_socket_is_live
 from ...lib.api import list_projects
 from ...lib.core.config import is_experimental
 from ...lib.core.paths import acp_log_path, acp_socket_path
+from ...lib.orchestration.tasks import resolve_task_id
 from ...lib.util.subprocess_env import child_process_env
 from ._completers import add_project_id, add_task_id
 
@@ -176,6 +177,7 @@ def _cmd_connect(project_id: str, task_id: str) -> None:
     either side reaches EOF.
     """
     _check_experimental_ack()
+    task_id = resolve_task_id(project_id, task_id)
     sock_path = acp_socket_path(project_id, task_id)
     log_path = acp_log_path(project_id, task_id)
     if not acp_socket_is_live(sock_path):

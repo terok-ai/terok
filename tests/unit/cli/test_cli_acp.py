@@ -251,6 +251,80 @@ class TestExperimentalAck:
         assert called == ["check"]
 
 
+class TestCmdConnectResolvesTaskIdPrefix:
+    """Regression for #761 — ``acp connect`` must resolve task-ID prefixes.
+
+    Every other CLI verb that takes ``<project_id> <task_id>``
+    (``task …``, ``shield …``, ``sickbay``) goes through
+    [`resolve_task_id`][terok.lib.orchestration.tasks.identity.resolve_task_id]
+    so users can type the shortest unambiguous prefix.  ``acp connect``
+    used to skip the call and hand the raw string straight to the
+    socket-path/dossier-lookup helpers, surfacing "Unknown task 42d"
+    where every neighbouring verb would have accepted the prefix.
+    The fix is one call between the experimental-ack gate and the
+    socket-path derivation; this test pins the call ordering so a
+    future refactor can't quietly drop it again.
+    """
+
+    def test_resolver_is_called_and_resolved_id_used_downstream(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Resolver is called between the ack and ``_spawn_daemon``; the resolved id flows downstream."""
+        calls: list[tuple[str, object]] = []
+
+        monkeypatch.setattr(acp_mod, "_check_experimental_ack", lambda: calls.append(("ack", None)))
+
+        def _stub_resolve(project_id: str, prefix: str) -> str:
+            calls.append(("resolve", (project_id, prefix)))
+            return "42d1ca5e"
+
+        def _stub_socket_path(project_id: str, task_id: str) -> str:
+            calls.append(("socket_path", (project_id, task_id)))
+            return str(MOCK_BASE / "terok-testing" / "fake.sock")
+
+        def _stub_log_path(project_id: str, task_id: str) -> str:
+            return str(MOCK_BASE / "terok-testing" / "fake.log")
+
+        def _stub_socket_live(_path: str) -> bool:
+            return True  # short-circuit past _spawn_daemon / _wait_for_socket
+
+        def _stub_pump(*_args: object, **_kwargs: object) -> None:
+            calls.append(("pump", None))
+
+        monkeypatch.setattr(acp_mod, "resolve_task_id", _stub_resolve)
+        monkeypatch.setattr(acp_mod, "acp_socket_path", _stub_socket_path)
+        monkeypatch.setattr(acp_mod, "acp_log_path", _stub_log_path)
+        monkeypatch.setattr(acp_mod, "acp_socket_is_live", _stub_socket_live)
+        monkeypatch.setattr(acp_mod, "_inprocess_pump", _stub_pump)
+
+        acp_mod._cmd_connect("myproj", "42d")
+
+        # Ack first, then resolver, then socket path is built from the
+        # *resolved* id, not the prefix.
+        assert calls[0] == ("ack", None)
+        assert calls[1] == ("resolve", ("myproj", "42d"))
+        assert calls[2] == ("socket_path", ("myproj", "42d1ca5e"))
+        assert ("pump", None) in calls
+
+    def test_resolver_failure_bubbles_through(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """An ambiguous-/unknown-prefix ``SystemExit`` from the resolver is not caught."""
+        monkeypatch.setattr(acp_mod, "_check_experimental_ack", lambda: None)
+
+        def _stub_resolve(*_args: object, **_kwargs: object) -> str:
+            raise SystemExit("Ambiguous task ID '42d' — matches: 42d1ca5e, 42d9beef")
+
+        def _unreachable(*_args: object, **_kwargs: object) -> None:
+            raise AssertionError("downstream must not run on resolver failure")
+
+        monkeypatch.setattr(acp_mod, "resolve_task_id", _stub_resolve)
+        monkeypatch.setattr(acp_mod, "_spawn_daemon", _unreachable)
+        monkeypatch.setattr(acp_mod, "_inprocess_pump", _unreachable)
+
+        with pytest.raises(SystemExit) as excinfo:
+            acp_mod._cmd_connect("myproj", "42d")
+        assert "Ambiguous" in str(excinfo.value)
+
+
 class TestFail:
     """``_fail`` writes to stderr only — no malformed JSON-RPC frame."""
 
