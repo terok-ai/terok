@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 
 # SPDX-FileCopyrightText: 2025 Jiri Vyskocil
-# SPDX-FileCopyrightText: 2026 Jiri Vyskocil
+# SPDX-License-Identifier: Apache-2.0
 # SPDX-License-Identifier: Apache-2.0
 
 """Terok TUI application built on Textual."""
