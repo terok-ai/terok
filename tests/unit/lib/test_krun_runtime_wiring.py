@@ -117,6 +117,76 @@ class TestEnsureKrunHostKeypair:
         assert line.startswith("ssh-ed25519 ")
         assert line.rstrip().endswith("krun-host (terok)")
 
+    def test_refuses_persistent_disk_when_no_xdg_runtime_dir(
+        self, _vault_backed, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """No ``$XDG_RUNTIME_DIR`` → refuse to write private bytes to disk.
+
+        The default ``namespace_runtime_dir()`` would otherwise fall
+        back to ``$XDG_STATE_HOME/terok`` (persistent disk).  Letting
+        the vault-backed private key land there defeats the whole
+        "vault is the system of record, tmpfs is a transient handle"
+        property — fail closed instead.
+        """
+        monkeypatch.delenv("XDG_RUNTIME_DIR", raising=False)
+        with pytest.raises(SystemExit, match="requires .*XDG_RUNTIME_DIR"):
+            ensure_krun_host_keypair()  # no explicit runtime_dir
+
+    def test_tightens_existing_dir_to_0700(self, tmp_path: Path, _vault_backed) -> None:
+        """A pre-existing runtime dir wider than 0700 is re-tightened.
+
+        ``mkdir(mode=0o700, exist_ok=True)`` is no-op for an existing
+        dir, so a previous run under a more permissive umask could
+        leave the cache dir world-listable.  Re-chmod every time.
+        """
+        runtime_dir = tmp_path / "runtime"
+        runtime_dir.mkdir(mode=0o755)  # too wide
+        ensure_krun_host_keypair(runtime_dir=runtime_dir)
+        assert (runtime_dir.stat().st_mode & 0o777) == 0o700
+
+    def test_private_write_is_atomic_no_symlink_clobber(
+        self, tmp_path: Path, _vault_backed
+    ) -> None:
+        """A symlink at the target path is replaced atomically, not followed.
+
+        ``os.replace`` is atomic and never follows a symlink at the
+        destination — so an attacker who pre-creates ``krun_host.key``
+        as a symlink to ``/etc/passwd`` can't trick us into writing
+        the PEM through to that target.  The replace cuts the symlink
+        out of the way, leaving a regular file with the PEM bytes.
+        """
+        runtime_dir = tmp_path / "runtime"
+        runtime_dir.mkdir(mode=0o700)
+        # Pre-plant a hostile symlink at the destination.
+        decoy = tmp_path / "decoy-target"
+        decoy.write_text("untouched")
+        (runtime_dir / "krun_host.key").symlink_to(decoy)
+
+        ensure_krun_host_keypair(runtime_dir=runtime_dir)
+
+        # The destination is now a regular file with PEM bytes — not
+        # a symlink that wrote through to the decoy.
+        priv = runtime_dir / "krun_host.key"
+        assert not priv.is_symlink()
+        assert priv.read_bytes().startswith(b"-----BEGIN OPENSSH PRIVATE KEY-----")
+        # The decoy target is unchanged — we did not follow the symlink.
+        assert decoy.read_text() == "untouched"
+
+    def test_public_write_also_resists_symlink_clobber(self, tmp_path: Path, _vault_backed) -> None:
+        """Same atomic-replace protection applies to the public key file."""
+        runtime_dir = tmp_path / "runtime"
+        runtime_dir.mkdir(mode=0o700)
+        decoy = tmp_path / "decoy-pub"
+        decoy.write_text("untouched")
+        (runtime_dir / "krun_host.key.pub").symlink_to(decoy)
+
+        ensure_krun_host_keypair(runtime_dir=runtime_dir)
+
+        pub = runtime_dir / "krun_host.key.pub"
+        assert not pub.is_symlink()
+        assert pub.read_text().startswith("ssh-ed25519 ")
+        assert decoy.read_text() == "untouched"
+
     def test_idempotent_returns_same_key_material(self, tmp_path: Path, _vault_backed) -> None:
         """Second call reloads the existing %host key — same public line.
 

@@ -127,8 +127,7 @@ def ensure_krun_host_keypair(
     open for the session.  A ``NoPassphraseError`` propagates as
     ``SystemExit`` with a pointer at the unlock verb.
     """
-    target_dir = runtime_dir or namespace_runtime_dir()
-    target_dir.mkdir(parents=True, exist_ok=True, mode=0o700)
+    target_dir = _ensure_safe_runtime_dir(runtime_dir)
     private = target_dir / f"{_HOST_KEYPAIR_BASENAME}.key"
     public = target_dir / f"{_HOST_KEYPAIR_BASENAME}.key.pub"
 
@@ -143,34 +142,76 @@ def ensure_krun_host_keypair(
     finally:
         db.close()
 
-    _write_private(private, infra.private_pem)
-    public.write_text(infra.public_line + "\n")
+    _write_atomic(private, infra.private_pem, mode=0o600)
+    _write_atomic(public, (infra.public_line + "\n").encode(), mode=0o644)
     return private
 
 
-def _write_private(path: Path, pem: bytes) -> None:
-    """Write *pem* to *path* with 0600 perms, refusing to follow symlinks.
+def _ensure_safe_runtime_dir(runtime_dir: Path | None) -> Path:
+    """Resolve the krun runtime dir and refuse persistent-disk fallbacks.
 
-    The file lives under a per-user tmpfs runtime dir.  We rewrite on
-    every call so vault-side rotation propagates; that means we may
-    overwrite an existing file, so use ``O_TRUNC`` (race-safe rewrite
-    of our own file) without ``O_EXCL`` (which would forbid the
-    overwrite).  ``O_NOFOLLOW`` refuses to follow a symlink an
-    attacker might have planted in the runtime dir between calls.
+    ``namespace_runtime_dir()`` falls back to ``$XDG_STATE_HOME/terok``
+    (persistent disk) when ``$XDG_RUNTIME_DIR`` is unset.  Writing
+    plaintext private-key material to persistent disk is the exact
+    "vault → disk" leak the vault-backed flow was supposed to prevent,
+    so refuse the fallback and surface a clear error pointing at the
+    fix (operator runs under a session with ``$XDG_RUNTIME_DIR`` set,
+    typically a logind-managed user session under
+    ``/run/user/$UID``).
+
+    Also tightens an existing dir to 0700 if a previous run left it
+    wider — ``mkdir(mode=0o700, exist_ok=True)`` is umask-masked and
+    no-op for an existing directory.
     """
-    fd = os.open(
-        str(path),
-        os.O_WRONLY | os.O_CREAT | os.O_TRUNC | os.O_NOFOLLOW,
-        0o600,
-    )
+    if runtime_dir is not None:
+        # Caller-supplied path: trust they know what they're doing
+        # (tests, alternate runtime dirs in operator setups).
+        target = runtime_dir
+    else:
+        xdg_runtime = os.environ.get("XDG_RUNTIME_DIR")
+        if not xdg_runtime:
+            raise SystemExit(
+                "krun host-key cache requires $XDG_RUNTIME_DIR (a tmpfs "
+                "user-runtime dir) to be set so the vault-backed private "
+                "key never lands on persistent disk.  Run terok under a "
+                "logind-managed session (the usual interactive shell), "
+                "or set XDG_RUNTIME_DIR to a tmpfs path before launching."
+            )
+        target = namespace_runtime_dir()
+
+    target.mkdir(parents=True, exist_ok=True, mode=0o700)
+    # ``mkdir(mode=0o700, exist_ok=True)`` doesn't fix an existing
+    # wider directory — re-chmod unconditionally so a previous run
+    # under a more permissive umask doesn't leave the cache dir
+    # world-listable.
+    os.chmod(target, 0o700)
+    return target
+
+
+def _write_atomic(path: Path, data: bytes, *, mode: int) -> None:
+    """Write *data* to *path* atomically with *mode* perms.
+
+    Uses the standard create-temp + rename pattern so a partial write
+    or a concurrent reader never sees a half-rewritten file, and so
+    the final ``chmod`` happens on a file we just minted (no TOCTOU
+    window where an attacker could swap in a hardlink between the
+    write and the chmod-by-path).  The temp file is created with
+    ``O_NOFOLLOW`` semantics implicitly via ``mkstemp`` (which uses
+    ``O_EXCL`` so symlinks at the target path don't matter), and the
+    rename is atomic within the parent dir.
+    """
+    import tempfile
+
+    parent = path.parent
+    fd, tmp_path = tempfile.mkstemp(prefix=path.name + ".", dir=str(parent))
     try:
-        os.write(fd, pem)
+        os.fchmod(fd, mode)
+        os.write(fd, data)
+        os.fsync(fd)
     finally:
         os.close(fd)
-    # Existing-file path: O_CREAT alone doesn't chmod; explicit chmod
-    # ensures a wider pre-existing mode (e.g. operator inspecting with
-    # ``cat``) gets tightened back down on every refresh.
-    os.chmod(path, 0o600)
+    # Atomic rename inside the same dir — no chmod-by-path window.
+    os.replace(tmp_path, path)
 
 
 def set_runtime(runtime: ContainerRuntime) -> None:
