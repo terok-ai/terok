@@ -95,6 +95,57 @@ class TestEnsureKrunHostKeypair:
             ensure_krun_host_keypair(runtime_dir=tmp_path)
         run.assert_not_called()
 
+    def test_self_heals_orphan_private_key(self, tmp_path: Path) -> None:
+        """Private-only state derives the missing pubkey via ssh-keygen -y.
+
+        Rotating the keypair here would brick guest images baked against
+        the prior pubkey, so we must derive the public from the existing
+        private rather than minting fresh material.
+        """
+        private = tmp_path / "krun_host.key"
+        public = tmp_path / "krun_host.key.pub"
+        private.write_text("existing-private-bytes\n")
+
+        from subprocess import CompletedProcess
+
+        with patch(
+            "subprocess.run",
+            return_value=CompletedProcess(
+                args=[],
+                returncode=0,
+                stdout="ssh-ed25519 AAAArecovered krun-host\n",
+                stderr="",
+            ),
+        ) as run:
+            ensure_krun_host_keypair(runtime_dir=tmp_path)
+
+        argv = run.call_args[0][0]
+        assert argv[:3] == ["ssh-keygen", "-y", "-f"]
+        assert public.exists()
+        assert public.read_text().startswith("ssh-ed25519 AAAArecovered")
+
+    def test_orphan_public_is_cleared_and_keypair_regenerated(self, tmp_path: Path) -> None:
+        """Public-only state means the private was lost — start fresh.
+
+        Without unlinking the orphan, ssh-keygen would prompt "overwrite?"
+        and hang under the non-interactive subprocess invocation.
+        """
+        private = tmp_path / "krun_host.key"
+        public = tmp_path / "krun_host.key.pub"
+        public.write_text("ssh-ed25519 AAAAorphan krun-host\n")
+
+        def fake_keygen(argv, *_args, **_kwargs):  # type: ignore[no-untyped-def]
+            private.write_text("new-private\n")
+            public.write_text("ssh-ed25519 AAAAnew krun-host\n")
+            return None
+
+        with patch("subprocess.run", side_effect=fake_keygen) as run:
+            ensure_krun_host_keypair(runtime_dir=tmp_path)
+
+        argv = run.call_args[0][0]
+        assert argv[:4] == ["ssh-keygen", "-t", "ed25519", "-f"]
+        assert "AAAAnew" in public.read_text()
+
 
 class TestKrunCidAllocation:
     """The placeholder CID allocator is stable, deterministic, and unreserved."""

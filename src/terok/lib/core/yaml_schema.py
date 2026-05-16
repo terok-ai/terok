@@ -1,5 +1,4 @@
 # SPDX-FileCopyrightText: 2025 Jiri Vyskocil
-# SPDX-FileCopyrightText: 2026 Jiri Vyskocil
 # SPDX-License-Identifier: Apache-2.0
 
 """Pydantic v2 models mirroring the raw YAML structure of project.yml and config.yml.
@@ -303,18 +302,20 @@ class RawRunSection(BaseModel):
     )
     krun_cpus: int | None = Field(
         default=None,
+        ge=1,
         description=(
             "vCPU count for the krun microVM (forwarded as the "
-            "``run.oci.krun.cpus`` annotation).  Ignored when ``runtime`` is "
-            "not ``krun``."
+            "``run.oci.krun.cpus`` annotation).  Must be ≥ 1.  Ignored "
+            "when ``runtime`` is not ``krun``."
         ),
     )
     krun_ram_mib: int | None = Field(
         default=None,
+        ge=1,
         description=(
             "Guest RAM in MiB for the krun microVM (forwarded as the "
-            "``run.oci.krun.ram_mib`` annotation).  Ignored when ``runtime`` "
-            "is not ``krun``."
+            "``run.oci.krun.ram_mib`` annotation).  Must be ≥ 1.  "
+            "Ignored when ``runtime`` is not ``krun``."
         ),
     )
     timezone: str | None = Field(

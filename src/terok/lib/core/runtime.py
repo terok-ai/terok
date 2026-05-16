@@ -108,8 +108,14 @@ def ensure_krun_host_keypair(
     Generates the keypair under *runtime_dir* (default:
     [`namespace_runtime_dir()`][terok_sandbox.namespace_runtime_dir])
     on first call; subsequent calls return the cached path.  The public
-    half (``krun_host.pub``) must be baked into the L0G guest image at
-    build time so the guest accepts our auth.
+    half (``krun_host.key.pub``) must be baked into the L0G guest image
+    at build time so the guest accepts our auth.
+
+    Self-heals a half-present keypair: if the private key exists but the
+    public is missing (a previous run was interrupted between
+    ``ssh-keygen``'s two writes), derives the public from the private via
+    ``ssh-keygen -y`` rather than refusing.  The reverse case — public
+    present, private gone — clears the orphaned public and regenerates.
 
     The full vault-backed ``%host`` scope flow is a follow-up — see
     Phase 3 step 1 in terok-ai/terok#767, which already loosened the
@@ -119,8 +125,29 @@ def ensure_krun_host_keypair(
     target_dir.mkdir(parents=True, exist_ok=True)
     private = target_dir / f"{_HOST_KEYPAIR_BASENAME}.key"
     public = target_dir / f"{_HOST_KEYPAIR_BASENAME}.key.pub"
+
     if private.exists() and public.exists():
         return private
+
+    if private.exists() and not public.exists():
+        # Derive the public from the existing private without rotating
+        # the keypair — the matching pubkey is baked into guest images
+        # at build time, so silently rotating would brick existing L0G
+        # images until rebuild.
+        result = subprocess.run(  # nosec B603 B607 — argv is fixed under our control
+            ["ssh-keygen", "-y", "-f", str(private)],
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+        public.write_text(result.stdout)
+        return private
+
+    # Either both missing (fresh setup) or pubkey-only orphan from an
+    # interrupted prior run — clear the orphan so ssh-keygen doesn't
+    # refuse to overwrite, then mint a fresh keypair.
+    if public.exists():
+        public.unlink()
 
     # ssh-keygen handles all the format work (PEM, perms, OpenSSH magic).
     # ``-N ''`` empty passphrase: the file already lives under a per-user
