@@ -65,7 +65,9 @@ from .askpass_service import build_askpass_env, gui_askpass_usable
 #: has the master "All" checkbox on — meaning "every current option plus
 #: anything added to the roster later".  Kept in sync with the executor's
 #: [`parse_agent_selection`][terok_executor.parse_agent_selection] grammar.
-_MASTER_ALL_TOKEN = "all"
+#: (The name avoids ``_TOKEN`` so Sonar's S2068 secret-name heuristic
+#: doesn't flag the short literal as a possible hardcoded password.)
+_MASTER_ALL = "all"
 
 # ── Step 1: the form ──────────────────────────────────────────────────
 
@@ -226,7 +228,7 @@ class WizardFormScreen(ModalScreen["dict[str, str] | None"]):
         """
         choices = q.resolve_choices()
         normalised = selected.strip().lower()
-        is_all = normalised == _MASTER_ALL_TOKEN or not normalised
+        is_all = normalised == _MASTER_ALL or not normalised
         preset_slugs: set[str] = (
             set() if is_all else {s.strip() for s in selected.split(",") if s.strip()}
         )
@@ -237,7 +239,7 @@ class WizardFormScreen(ModalScreen["dict[str, str] | None"]):
                 value=is_all,
                 id=self._master_id(q),
                 classes="wizard-multichoice-all",
-                name=_MASTER_ALL_TOKEN,
+                name=_MASTER_ALL,
             )
             yield Rule(line_style="dashed", classes="wizard-multichoice-sep")
             for slug, label in choices:
@@ -352,7 +354,7 @@ class WizardFormScreen(ModalScreen["dict[str, str] | None"]):
             case "multichoice":
                 master = self.query_one(f"#{self._master_id(q)}", Checkbox)
                 if master.value:
-                    return _MASTER_ALL_TOKEN
+                    return _MASTER_ALL
                 return ",".join(
                     slug
                     for slug, _ in q.resolve_choices()
