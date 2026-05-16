@@ -27,8 +27,13 @@ dependencies = [
     "unique-namer>=1.3",
     "textual-serve>=1.1.0",
     "jinja2>=3.1",
-    "terok-executor @ https://github.com/terok-ai/terok-executor/releases/download/v0.0.149a10/terok_executor-0.0.149a10-py3-none-any.whl",
-    "terok-sandbox @ https://github.com/terok-ai/terok-sandbox/releases/download/v0.0.124a8/terok_sandbox-0.0.124a8-py3-none-any.whl",
+    # Phase 3 KrunRuntime work — sandbox/executor pinned to PR branches in
+    # sliwowitz forks until the chain merges and tagged releases are cut.
+    # shield's krun_guest profile (#318) is independent — terok doesn't
+    # reference the profile name directly, it ships as a bundled allowlist
+    # for operators to opt into.  Restore release-wheel pins before merge.
+    "terok-executor @ git+https://github.com/sliwowitz/terok-executor.git@feat/krun-l0g-guest",
+    "terok-sandbox @ git+https://github.com/sliwowitz/terok-sandbox.git@feat/krun-runtime",
     "terok-shield @ https://github.com/terok-ai/terok-shield/releases/download/v0.6.42a4/terok_shield-0.6.42a4-py3-none-any.whl",
     "terok-clearance @ https://github.com/terok-ai/terok-clearance/releases/download/v0.6.14a4/terok_clearance-0.6.14a4-py3-none-any.whl",
 ]

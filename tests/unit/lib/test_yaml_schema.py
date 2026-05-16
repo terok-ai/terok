@@ -37,6 +37,24 @@ class RawProjectYamlTests(unittest.TestCase):
         self.assertIsNone(raw.shield.drop_on_task_run)
         self.assertIsNone(raw.shield.on_task_restart)
 
+    def test_krun_sizing_rejects_zero_and_negative(self) -> None:
+        """``run.krun_cpus`` / ``run.krun_ram_mib`` must be ≥ 1."""
+        for field, value in (
+            ("krun_cpus", 0),
+            ("krun_cpus", -1),
+            ("krun_ram_mib", 0),
+            ("krun_ram_mib", -512),
+        ):
+            with self.assertRaises(ValidationError) as ctx:
+                RawProjectYaml.model_validate({"run": {field: value}})
+            self.assertIn(field, str(ctx.exception))
+
+    def test_krun_sizing_accepts_positive(self) -> None:
+        """Positive sizing values round-trip into the validated model."""
+        raw = RawProjectYaml.model_validate({"run": {"krun_cpus": 4, "krun_ram_mib": 8192}})
+        self.assertEqual(raw.run.krun_cpus, 4)
+        self.assertEqual(raw.run.krun_ram_mib, 8192)
+
     def test_full_valid_input(self) -> None:
         """A complete valid project.yml parses correctly."""
         data = {

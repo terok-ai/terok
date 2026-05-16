@@ -466,7 +466,7 @@ depends_on = ["terok.lib.core.runtime"]
 [[modules]]
 path = "terok.lib.core.runtime"
 layer = "core"
-depends_on = []
+depends_on = ["terok.lib.core.config"]
 
 # Task lifecycle state — domain value object, status computation, container naming
 [[modules]]

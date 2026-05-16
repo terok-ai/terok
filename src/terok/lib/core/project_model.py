@@ -62,6 +62,18 @@ class ProjectConfig(BaseModel):
     """Podman ``--cpus`` limit from ``run.cpus`` in project.yml."""
     nested_containers: bool = False
     """Project runs podman/docker inside its container (see ``run.nested_containers``)."""
+    runtime: Literal["podman", "krun"] | None = None
+    """OCI runtime selector from ``run.runtime``.
+
+    ``None`` (default) means podman's own default — ``crun`` — without
+    an explicit ``--runtime`` flag.  ``"krun"`` selects KVM-microVM
+    isolation; gated on the global ``experimental: true`` flag at config
+    validation time so a typo never silently boots the experimental backend.
+    """
+    krun_cpus: int | None = Field(default=None, ge=1)
+    """vCPU count for the krun microVM (``run.krun_cpus``); must be ≥ 1."""
+    krun_ram_mib: int | None = Field(default=None, ge=1)
+    """Guest RAM in MiB for the krun microVM (``run.krun_ram_mib``); must be ≥ 1."""
     timezone: str | None = None
     """IANA timezone for task containers (from ``run.timezone``).
 
