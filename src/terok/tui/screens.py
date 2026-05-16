@@ -1325,15 +1325,9 @@ class TaskLaunchScreen(screen.ModalScreen["tuple[str, str, str, str, str, str | 
             return
 
         if event.key == "ctrl+enter":
-            # Insert a newline character at cursor position
+            # Insert a newline at cursor position using TextArea.insert()
             prompt = self.query_one("#launch-prompt", TextArea)
-            cursor_pos = prompt.cursor_position
-            current_value = prompt.text
-            # Insert newline at cursor position
-            new_value = current_value[:cursor_pos] + "\n" + current_value[cursor_pos:]
-            prompt.text = new_value
-            # Move cursor past the newline
-            prompt.cursor_position = cursor_pos + 1
+            prompt.insert("\n")
             event.stop()
         elif event.key == "enter":
             # Enter submits the form (presses Login) if container is ready
