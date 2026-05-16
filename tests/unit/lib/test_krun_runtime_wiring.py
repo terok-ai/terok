@@ -9,7 +9,6 @@ live in terok-executor (`terok_executor.krun`) and are tested there.
 
 from __future__ import annotations
 
-from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -21,6 +20,7 @@ from terok.lib.orchestration.task_runners.container import (
     _allocate_krun_cid,
     _validate_krun_compatibility,
 )
+from tests.testfs import MOCK_BASE
 
 
 @pytest.fixture(autouse=True)
@@ -102,9 +102,9 @@ class TestKrunCompatibilityGuard:
             "security_class": "online",
             "upstream_url": None,
             "default_branch": None,
-            "root": Path("/tmp/p"),  # noqa: S108
-            "tasks_root": Path("/tmp/p/tasks"),  # noqa: S108
-            "gate_path": Path("/tmp/p/gate"),  # noqa: S108
+            "root": MOCK_BASE / "p",
+            "tasks_root": MOCK_BASE / "p" / "tasks",
+            "gate_path": MOCK_BASE / "p" / "gate",
             "staging_root": None,
             "runtime": "krun",
         }
@@ -176,9 +176,9 @@ class TestProjectRuntimeFlags:
             "security_class": "online",
             "upstream_url": None,
             "default_branch": None,
-            "root": Path("/tmp/demoproj"),  # noqa: S108
-            "tasks_root": Path("/tmp/demoproj/tasks"),  # noqa: S108
-            "gate_path": Path("/tmp/demoproj/gate"),  # noqa: S108
+            "root": MOCK_BASE / "demoproj",
+            "tasks_root": MOCK_BASE / "demoproj" / "tasks",
+            "gate_path": MOCK_BASE / "demoproj" / "gate",
             "staging_root": None,
         }
         defaults.update(overrides)
