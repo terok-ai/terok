@@ -250,8 +250,11 @@ class TaskActionsMixin(_MixinBase):
             from ..lib.api import installed_agents_for_project
 
             installed = await asyncio.to_thread(installed_agents_for_project, project)
-        except (SystemExit, Exception):
-            pass
+        except (SystemExit, Exception) as exc:
+            self._log_debug(
+                f"_action_login: project/agents lookup failed for {pid!r}; "
+                f"falling back to bash. {exc}"
+            )
 
         await self.push_screen(
             TaskLaunchScreen(

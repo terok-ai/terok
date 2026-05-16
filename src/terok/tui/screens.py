@@ -252,7 +252,10 @@ class GateServerScreen(screen.Screen[str | None]):
 
         try:
             self._status = get_server_status()
-        except Exception:
+        except Exception as exc:
+            from ..lib.util.logging_utils import _log_debug
+
+            _log_debug(f"Gate server status refresh failed: {exc}")
             self._status = None
         self._render_status()
 
@@ -1328,7 +1331,10 @@ class TaskLaunchScreen(screen.ModalScreen["tuple[str, str, str, str, str, str | 
         if state == "running":
             try:
                 has_mode = get_task_meta(self._project_id, self._task_id).mode is not None
-            except (SystemExit, Exception):
+            except (SystemExit, Exception) as exc:
+                from ..lib.util.logging_utils import _log_debug
+
+                _log_debug(f"Task meta fetch failed for {self._project_id}/{self._task_id}: {exc}")
                 has_mode = False
         return state, has_mode
 
@@ -1729,7 +1735,10 @@ def render_shield_status(
         from importlib.metadata import version as _meta_version
 
         shield_version = _meta_version("terok-shield")
-    except Exception:
+    except Exception as exc:
+        from terok.lib.util.logging_utils import _log_debug
+
+        _log_debug(f"importlib.metadata lookup for terok-shield failed: {exc}")
         shield_version = "unknown"
 
     podman_str = ".".join(str(v) for v in env_check.podman_version)
@@ -1830,7 +1839,10 @@ class ShieldScreen(screen.Screen[str | None]):
 
         try:
             self._shield_info = shield_status()
-        except Exception:
+        except Exception as exc:
+            from ..lib.util.logging_utils import _log_debug
+
+            _log_debug(f"Shield status load failed: {exc}")
             self._shield_info = None
 
     def _render_status(self) -> None:
@@ -1876,12 +1888,16 @@ class ShieldScreen(screen.Screen[str | None]):
         info: dict | None = None
         try:
             env = shield_check_environment()
-        except Exception:
-            pass
+        except Exception as exc:
+            from terok.lib.util.logging_utils import _log_debug
+
+            _log_debug(f"shield_check_environment failed in background fetch: {exc}")
         try:
             info = shield_status()
-        except Exception:
-            pass
+        except Exception as exc:
+            from terok.lib.util.logging_utils import _log_debug
+
+            _log_debug(f"shield status load failed in background fetch: {exc}")
         return env, info
 
     def on_worker_state_changed(self, event: Any) -> None:

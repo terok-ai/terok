@@ -156,7 +156,10 @@ def render_project_details(
     yaml_instructions = project.agent_config.get("instructions")
     try:
         has_file = (project.root / "instructions.md").is_file()
-    except (TypeError, AttributeError):
+    except (TypeError, AttributeError) as exc:
+        from terok.lib.util.logging_utils import _log_debug
+
+        _log_debug(f"project_state: instructions.md existence probe failed: {exc}")
         has_file = False
     has_yaml = yaml_instructions is not None
 

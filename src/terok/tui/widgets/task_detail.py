@@ -25,7 +25,10 @@ def _get_css_variables(widget: Static) -> dict[str, str]:
         return {}  # type: ignore[unreachable]
     try:
         return widget.app.get_css_variables()
-    except Exception:
+    except Exception as exc:
+        from terok.lib.util.logging_utils import _log_debug
+
+        _log_debug(f"task_detail: get_css_variables failed: {exc}")
         return {}
 
 
@@ -236,8 +239,10 @@ class TaskDetails(Static):
             shield_env = getattr(self.app, "_last_shield_env", None)
             if shield_env is not None:
                 hooks_ok = shield_env.health == "ok"
-        except Exception:
-            pass
+        except Exception as exc:
+            from terok.lib.util.logging_utils import _log_debug
+
+            _log_debug(f"task_detail: shield env probe failed: {exc}")
 
         rendered = render_task_details(
             self._current_task,
