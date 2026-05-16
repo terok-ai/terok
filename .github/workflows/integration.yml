@@ -6,6 +6,9 @@ name: Integration Tests
 on:
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 jobs:
   integration:
     if: github.repository == 'terok-ai/terok'

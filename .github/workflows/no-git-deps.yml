@@ -5,6 +5,9 @@ on:
     branches: [master]
   workflow_call:
 
+permissions:
+  contents: read
+
 jobs:
   scan:
     runs-on: ubuntu-latest
