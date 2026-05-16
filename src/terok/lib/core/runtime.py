@@ -28,16 +28,16 @@ in setup and [`reset_runtime`][terok.lib.core.runtime.reset_runtime] in teardown
 from __future__ import annotations
 
 import os
-import subprocess  # nosec B404 — ssh-keygen wrapper for %host bootstrap
 from pathlib import Path
 
-from terok.lib.core.config import is_experimental
+from terok.lib.core.config import is_experimental, make_sandbox_config
 from terok.lib.integrations.sandbox import (
     ContainerRuntime,
     KrunRuntime,
     NullRuntime,
     PodmanRuntime,
     VsockSSHTransport,
+    ensure_infra_keypair,
     namespace_runtime_dir,
     podman_annotation_resolver,
 )
@@ -103,72 +103,74 @@ def _build_krun_runtime() -> KrunRuntime:
 def ensure_krun_host_keypair(
     runtime_dir: Path | None = None,
 ) -> Path:
-    """Provision the host-side ed25519 keypair used by the krun transport.
+    """Materialise the vault-backed ``%host`` keypair onto a tmpfs file
+    that ``ssh -i`` can read.
 
-    Generates the keypair under *runtime_dir* (default:
-    [`namespace_runtime_dir()`][terok_sandbox.namespace_runtime_dir])
-    on first call; subsequent calls return the cached path.  The public
-    half (``krun_host.key.pub``) must be baked into the L0G guest image
-    at build time so the guest accepts our auth.
+    The vault is the system of record: the keypair lives in the sandbox
+    credential DB under the ``%host`` infrastructure scope.  This
+    helper opens the DB, calls
+    [`ensure_infra_keypair`][terok_sandbox.ensure_infra_keypair] (which
+    generates the key on first call and reloads it thereafter), and
+    writes the OpenSSH-PEM private + the public-key line into
+    *runtime_dir* (default:
+    [`namespace_runtime_dir()`][terok_sandbox.namespace_runtime_dir]).
 
-    Self-heals a half-present keypair: if the private key exists but the
-    public is missing (a previous run was interrupted between
-    ``ssh-keygen``'s two writes), derives the public from the private via
-    ``ssh-keygen -y`` rather than refusing.  The reverse case — public
-    present, private gone — clears the orphaned public and regenerates.
+    Rotation = clear the ``%host`` scope in the vault, then re-run.
+    The tmpfs cache files are rewritten from the vault bytes on every
+    call so an out-of-band rotation in the vault propagates without
+    needing operator action.  The public half (``krun_host.key.pub``)
+    must be baked into the L0G guest image at build time so the guest
+    accepts our auth.
 
-    The full vault-backed ``%host`` scope flow is a follow-up — see
-    Phase 3 step 1 in terok-ai/terok#767, which already loosened the
-    scope-name validator to accept ``%host`` for that future move.
+    Requires the vault to be unlocked — the krun runtime is gated on
+    ``experimental: true`` and assumes the operator has the vault
+    open for the session.  A ``NoPassphraseError`` propagates as
+    ``SystemExit`` with a pointer at the unlock verb.
     """
     target_dir = runtime_dir or namespace_runtime_dir()
-    target_dir.mkdir(parents=True, exist_ok=True)
+    target_dir.mkdir(parents=True, exist_ok=True, mode=0o700)
     private = target_dir / f"{_HOST_KEYPAIR_BASENAME}.key"
     public = target_dir / f"{_HOST_KEYPAIR_BASENAME}.key.pub"
 
-    if private.exists() and public.exists():
-        return private
+    # The vault is the source of truth.  Open it, fetch (or mint) the
+    # %host keypair, and overwrite the tmpfs cache files with the
+    # vault's bytes on every call — that way a rotation done out-of-band
+    # (e.g. ``terok vault rotate %host``) takes effect without operator
+    # intervention here.
+    db = make_sandbox_config().open_credential_db(prompt_on_tty=False)
+    try:
+        infra = ensure_infra_keypair("%host", db=db, comment="krun-host (terok)")
+    finally:
+        db.close()
 
-    if private.exists() and not public.exists():
-        # Derive the public from the existing private without rotating
-        # the keypair — the matching pubkey is baked into guest images
-        # at build time, so silently rotating would brick existing L0G
-        # images until rebuild.
-        result = subprocess.run(  # nosec B603 B607 — argv is fixed under our control
-            ["ssh-keygen", "-y", "-f", str(private)],
-            check=True,
-            capture_output=True,
-            text=True,
-        )
-        public.write_text(result.stdout)
-        return private
-
-    # Either both missing (fresh setup) or pubkey-only orphan from an
-    # interrupted prior run — clear the orphan so ssh-keygen doesn't
-    # refuse to overwrite, then mint a fresh keypair.
-    if public.exists():
-        public.unlink()
-
-    # ssh-keygen handles all the format work (PEM, perms, OpenSSH magic).
-    # ``-N ''`` empty passphrase: the file already lives under a per-user
-    # tmpfs dir; an extra passphrase would have to be cached somewhere
-    # less safe to unlock it on every transport call.
-    subprocess.run(  # nosec B603 B607 — argv is a fixed list under our control
-        [
-            "ssh-keygen",
-            "-t",
-            "ed25519",
-            "-f",
-            str(private),
-            "-N",
-            "",
-            "-C",
-            "krun-host (terok)",
-            "-q",
-        ],
-        check=True,
-    )
+    _write_private(private, infra.private_pem)
+    public.write_text(infra.public_line + "\n")
     return private
+
+
+def _write_private(path: Path, pem: bytes) -> None:
+    """Write *pem* to *path* with 0600 perms, refusing to follow symlinks.
+
+    The file lives under a per-user tmpfs runtime dir.  We rewrite on
+    every call so vault-side rotation propagates; that means we may
+    overwrite an existing file, so use ``O_TRUNC`` (race-safe rewrite
+    of our own file) without ``O_EXCL`` (which would forbid the
+    overwrite).  ``O_NOFOLLOW`` refuses to follow a symlink an
+    attacker might have planted in the runtime dir between calls.
+    """
+    fd = os.open(
+        str(path),
+        os.O_WRONLY | os.O_CREAT | os.O_TRUNC | os.O_NOFOLLOW,
+        0o600,
+    )
+    try:
+        os.write(fd, pem)
+    finally:
+        os.close(fd)
+    # Existing-file path: O_CREAT alone doesn't chmod; explicit chmod
+    # ensures a wider pre-existing mode (e.g. operator inspecting with
+    # ``cat``) gets tightened back down on every refresh.
+    os.chmod(path, 0o600)
 
 
 def set_runtime(runtime: ContainerRuntime) -> None:

@@ -15,6 +15,7 @@ from __future__ import annotations
 import shlex
 from typing import TYPE_CHECKING
 
+from terok.lib.core.config import is_experimental
 from terok.lib.integrations.executor import AgentRunner, BuildError
 from terok.lib.integrations.sandbox import LifecycleHooks, Sandbox, VolumeSpec
 
@@ -182,9 +183,23 @@ def _project_runtime_flags(project: ProjectConfig) -> list[str]:
 def _validate_krun_compatibility(project: ProjectConfig) -> None:
     """Reject combinations that can't be honoured under krun.
 
+    Both the env-var path ([`get_runtime`][terok.lib.core.runtime.get_runtime])
+    and the project-config path (this function) must gate on the global
+    ``experimental`` flag — otherwise a typo or accidental config edit
+    silently switches the workload to the less-audited experimental
+    backend.
+
+    - ``experimental``: required for krun selection by any path.
     - ``nested_containers``: krun guests can't host nested podman/docker
       with our current image; ask the operator to drop one of the two.
     """
+    if not is_experimental():
+        raise SystemExit(
+            "run.runtime: krun requires the experimental flag.  Set "
+            "`experimental: true` in your config.yml, or pass "
+            "`--experimental` on the command line."
+        )
+
     if project.nested_containers:
         raise SystemExit(
             "run.runtime: krun is incompatible with run.nested_containers: true — "

@@ -66,85 +66,114 @@ class TestGetRuntimeKrunBranch:
             get_runtime()
 
 
+@pytest.fixture()
+def _vault_backed(tmp_path: Path):
+    """Wire ``ensure_krun_host_keypair`` to an in-memory vault DB.
+
+    Patches ``make_sandbox_config`` so the helper opens a fresh
+    ``CredentialDB`` against a per-test temp path with a known
+    passphrase — no real vault unlock needed.
+    """
+    from unittest.mock import MagicMock
+
+    from terok_sandbox import CredentialDB
+
+    db_path = tmp_path / "vault" / "credentials.db"
+
+    def _open(*, prompt_on_tty: bool = False) -> CredentialDB:
+        # New connection per call — mirrors the production flow where
+        # each call opens and closes its own handle.
+        return CredentialDB(db_path, passphrase="test")
+
+    cfg = MagicMock()
+    cfg.open_credential_db = _open
+    with patch("terok.lib.core.runtime.make_sandbox_config", return_value=cfg):
+        yield
+
+
 class TestEnsureKrunHostKeypair:
-    """`ensure_krun_host_keypair` generates once, returns the cached path after."""
+    """`ensure_krun_host_keypair` mints via the vault, materialises to tmpfs.
 
-    def test_creates_keypair_when_missing(self, tmp_path: Path) -> None:
-        """First call shells out to ssh-keygen; both halves end up on disk."""
-        private_path = tmp_path / "krun_host.key"
+    The vault is the system of record (``%host`` infrastructure scope);
+    these tests use a per-test ``CredentialDB`` patched in via
+    ``make_sandbox_config`` to keep the production wiring honest while
+    exercising real key generation + storage.
+    """
 
-        def fake_keygen(argv, *args, **kwargs):  # type: ignore[no-untyped-def]
-            # Mirror what real ssh-keygen would write so the existence
-            # check passes on second invocation.
-            private_path.write_text("fake-key\n")
-            (tmp_path / "krun_host.key.pub").write_text("ssh-ed25519 AAAA test\n")
-            return None
+    def test_creates_keypair_when_missing(self, tmp_path: Path, _vault_backed) -> None:
+        """First call mints in the vault, writes 0600 OpenSSH PEM to tmpfs."""
+        runtime_dir = tmp_path / "runtime"
+        result = ensure_krun_host_keypair(runtime_dir=runtime_dir)
 
-        with patch("subprocess.run", side_effect=fake_keygen) as run:
-            result = ensure_krun_host_keypair(runtime_dir=tmp_path)
-        assert result == private_path
-        argv = run.call_args[0][0]
-        assert argv[0] == "ssh-keygen"
-        assert "-t" in argv and argv[argv.index("-t") + 1] == "ed25519"
+        assert result == runtime_dir / "krun_host.key"
+        private = result.read_bytes()
+        assert private.startswith(b"-----BEGIN OPENSSH PRIVATE KEY-----")
+        # 0o600 = owner-only read/write; matches what ``ssh -i`` requires.
+        assert (result.stat().st_mode & 0o777) == 0o600
 
-    def test_idempotent_when_keypair_exists(self, tmp_path: Path) -> None:
-        """Second call returns the path without re-invoking ssh-keygen."""
-        (tmp_path / "krun_host.key").write_text("existing\n")
-        (tmp_path / "krun_host.key.pub").write_text("ssh-ed25519 AAAA existing\n")
-        with patch("subprocess.run") as run:
-            ensure_krun_host_keypair(runtime_dir=tmp_path)
-        run.assert_not_called()
-
-    def test_self_heals_orphan_private_key(self, tmp_path: Path) -> None:
-        """Private-only state derives the missing pubkey via ssh-keygen -y.
-
-        Rotating the keypair here would brick guest images baked against
-        the prior pubkey, so we must derive the public from the existing
-        private rather than minting fresh material.
-        """
-        private = tmp_path / "krun_host.key"
-        public = tmp_path / "krun_host.key.pub"
-        private.write_text("existing-private-bytes\n")
-
-        from subprocess import CompletedProcess
-
-        with patch(
-            "subprocess.run",
-            return_value=CompletedProcess(
-                args=[],
-                returncode=0,
-                stdout="ssh-ed25519 AAAArecovered krun-host\n",
-                stderr="",
-            ),
-        ) as run:
-            ensure_krun_host_keypair(runtime_dir=tmp_path)
-
-        argv = run.call_args[0][0]
-        assert argv[:3] == ["ssh-keygen", "-y", "-f"]
+        public = runtime_dir / "krun_host.key.pub"
         assert public.exists()
-        assert public.read_text().startswith("ssh-ed25519 AAAArecovered")
+        line = public.read_text()
+        assert line.startswith("ssh-ed25519 ")
+        assert line.rstrip().endswith("krun-host (terok)")
 
-    def test_orphan_public_is_cleared_and_keypair_regenerated(self, tmp_path: Path) -> None:
-        """Public-only state means the private was lost — start fresh.
+    def test_idempotent_returns_same_key_material(self, tmp_path: Path, _vault_backed) -> None:
+        """Second call reloads the existing %host key — same public line.
 
-        Without unlinking the orphan, ssh-keygen would prompt "overwrite?"
-        and hang under the non-interactive subprocess invocation.
+        The on-disk private bytes differ across calls because OpenSSH
+        PEM serialisation embeds a random ``checkint`` — compare the
+        public line (stable identity) instead.
         """
-        private = tmp_path / "krun_host.key"
-        public = tmp_path / "krun_host.key.pub"
-        public.write_text("ssh-ed25519 AAAAorphan krun-host\n")
+        runtime_dir = tmp_path / "runtime"
+        ensure_krun_host_keypair(runtime_dir=runtime_dir)
+        first_pub = (runtime_dir / "krun_host.key.pub").read_text()
 
-        def fake_keygen(argv, *_args, **_kwargs):  # type: ignore[no-untyped-def]
-            private.write_text("new-private\n")
-            public.write_text("ssh-ed25519 AAAAnew krun-host\n")
-            return None
+        ensure_krun_host_keypair(runtime_dir=runtime_dir)
+        second_pub = (runtime_dir / "krun_host.key.pub").read_text()
 
-        with patch("subprocess.run", side_effect=fake_keygen) as run:
-            ensure_krun_host_keypair(runtime_dir=tmp_path)
+        assert second_pub == first_pub
 
-        argv = run.call_args[0][0]
-        assert argv[:4] == ["ssh-keygen", "-t", "ed25519", "-f"]
-        assert "AAAAnew" in public.read_text()
+    def test_tmpfs_cache_rewritten_from_vault_on_every_call(
+        self, tmp_path: Path, _vault_backed
+    ) -> None:
+        """Out-of-band tmpfs tampering is overwritten from the vault.
+
+        The vault is the source of truth — if an operator (or anything
+        else) modifies the tmpfs private file between calls, the next
+        call must restore it.  This is what makes vault-side rotation
+        propagate without manual intervention.
+        """
+        runtime_dir = tmp_path / "runtime"
+        ensure_krun_host_keypair(runtime_dir=runtime_dir)
+        priv = runtime_dir / "krun_host.key"
+        priv.write_bytes(b"-----BEGIN OPENSSH PRIVATE KEY-----\nGARBAGE\n")
+
+        ensure_krun_host_keypair(runtime_dir=runtime_dir)
+
+        # The garbage was replaced with a real PEM from the vault.
+        restored = priv.read_bytes()
+        assert restored.startswith(b"-----BEGIN OPENSSH PRIVATE KEY-----")
+        assert b"GARBAGE" not in restored
+        # Still 0600 after the rewrite (even if the operator's chmod
+        # widened it on inspection).
+        assert (priv.stat().st_mode & 0o777) == 0o600
+
+    def test_pubkey_is_baked_in_authorized_keys_form(self, tmp_path: Path, _vault_backed) -> None:
+        """The .pub file is exactly what L0G ``build_l0g_image`` consumes.
+
+        Loose round-trip: parse the public line via cryptography to
+        confirm it's a valid OpenSSH public key — that's the contract
+        ``ssh`` and ``authorized_keys`` rely on.
+        """
+        from cryptography.hazmat.primitives import serialization
+
+        runtime_dir = tmp_path / "runtime"
+        ensure_krun_host_keypair(runtime_dir=runtime_dir)
+        line = (runtime_dir / "krun_host.key.pub").read_text().strip()
+        # Strip the comment trailer for parsing (``cryptography`` accepts
+        # the bare ``<type> <b64>``).
+        key_part = " ".join(line.split()[:2])
+        serialization.load_ssh_public_key(key_part.encode())  # no raise
 
 
 class TestKrunCidAllocation:
@@ -163,41 +192,78 @@ class TestKrunCidAllocation:
 
 
 class TestKrunCompatibilityGuard:
-    """`_validate_krun_compatibility` rejects nested-container combos."""
+    """`_validate_krun_compatibility` rejects nested-container combos
+    and refuses krun selection without the experimental flag."""
 
-    def test_rejects_nested_containers(self) -> None:
+    def _krun_project(self, **overrides):  # type: ignore[no-untyped-def]
         from terok.lib.core.project_model import ProjectConfig
 
-        project = ProjectConfig(
-            id="p",
-            security_class="online",
-            upstream_url=None,
-            default_branch=None,
-            root=Path("/tmp/p"),  # noqa: S108
-            tasks_root=Path("/tmp/p/tasks"),  # noqa: S108
-            gate_path=Path("/tmp/p/gate"),  # noqa: S108
-            staging_root=None,
-            nested_containers=True,
-            runtime="krun",
-        )
-        with pytest.raises(SystemExit, match="incompatible.*nested_containers"):
+        defaults: dict[str, object] = {
+            "id": "p",
+            "security_class": "online",
+            "upstream_url": None,
+            "default_branch": None,
+            "root": Path("/tmp/p"),  # noqa: S108
+            "tasks_root": Path("/tmp/p/tasks"),  # noqa: S108
+            "gate_path": Path("/tmp/p/gate"),  # noqa: S108
+            "staging_root": None,
+            "runtime": "krun",
+        }
+        defaults.update(overrides)
+        return ProjectConfig(**defaults)
+
+    def test_rejects_nested_containers(self) -> None:
+        project = self._krun_project(nested_containers=True)
+        with (
+            patch(
+                "terok.lib.orchestration.task_runners.container.is_experimental",
+                return_value=True,
+            ),
+            pytest.raises(SystemExit, match="incompatible.*nested_containers"),
+        ):
             _validate_krun_compatibility(project)
 
     def test_accepts_krun_without_nested(self) -> None:
-        from terok.lib.core.project_model import ProjectConfig
+        project = self._krun_project()
+        with patch(
+            "terok.lib.orchestration.task_runners.container.is_experimental",
+            return_value=True,
+        ):
+            _validate_krun_compatibility(project)  # no raise
 
-        project = ProjectConfig(
-            id="p",
-            security_class="online",
-            upstream_url=None,
-            default_branch=None,
-            root=Path("/tmp/p"),  # noqa: S108
-            tasks_root=Path("/tmp/p/tasks"),  # noqa: S108
-            gate_path=Path("/tmp/p/gate"),  # noqa: S108
-            staging_root=None,
-            runtime="krun",
-        )
-        _validate_krun_compatibility(project)  # no raise
+    def test_rejects_krun_without_experimental_flag(self) -> None:
+        """run.runtime: krun is gated on `experimental: true`.
+
+        The env-var path (``TEROK_RUNTIME=krun``) and the project-config
+        path must both refuse to enable the experimental backend without
+        the explicit opt-in.  Otherwise a typo in project.yml silently
+        switches the workload to less-audited isolation.
+        """
+        project = self._krun_project()
+        with (
+            patch(
+                "terok.lib.orchestration.task_runners.container.is_experimental",
+                return_value=False,
+            ),
+            pytest.raises(SystemExit, match="requires the experimental flag"),
+        ):
+            _validate_krun_compatibility(project)
+
+
+@pytest.fixture()
+def _experimental_enabled():
+    """Patch ``is_experimental`` true for tests that exercise the krun path.
+
+    The compatibility guard now refuses krun selection unless the
+    experimental flag is set — that's the gate we want to honour in
+    every path, including config-driven.  These tests verify the
+    happy-path *after* the gate, so the gate is patched out.
+    """
+    with patch(
+        "terok.lib.orchestration.task_runners.container.is_experimental",
+        return_value=True,
+    ):
+        yield
 
 
 class TestProjectRuntimeFlags:
@@ -224,14 +290,14 @@ class TestProjectRuntimeFlags:
 
         assert _project_runtime_flags(self._project()) == []
 
-    def test_krun_emits_runtime_flag(self) -> None:
+    def test_krun_emits_runtime_flag(self, _experimental_enabled) -> None:
         from terok.lib.orchestration.task_runners.container import _project_runtime_flags
 
         flags = _project_runtime_flags(self._project(runtime="krun"))
         assert "--runtime" in flags
         assert flags[flags.index("--runtime") + 1] == "krun"
 
-    def test_krun_emits_cid_annotation(self) -> None:
+    def test_krun_emits_cid_annotation(self, _experimental_enabled) -> None:
         from terok.lib.integrations.sandbox import DEFAULT_CID_ANNOTATION
         from terok.lib.orchestration.task_runners.container import _project_runtime_flags
 
@@ -243,7 +309,7 @@ class TestProjectRuntimeFlags:
         _, _, cid_str = cid_annotations[0].partition("=")
         assert int(cid_str) >= 3
 
-    def test_krun_emits_cpu_and_ram_when_set(self) -> None:
+    def test_krun_emits_cpu_and_ram_when_set(self, _experimental_enabled) -> None:
         from terok.lib.orchestration.task_runners.container import _project_runtime_flags
 
         flags = _project_runtime_flags(
@@ -253,7 +319,7 @@ class TestProjectRuntimeFlags:
         assert "run.oci.krun.cpus=4" in annotations
         assert "run.oci.krun.ram_mib=8192" in annotations
 
-    def test_krun_skips_cpu_ram_when_unset(self) -> None:
+    def test_krun_skips_cpu_ram_when_unset(self, _experimental_enabled) -> None:
         from terok.lib.orchestration.task_runners.container import _project_runtime_flags
 
         flags = _project_runtime_flags(self._project(runtime="krun"))
@@ -261,11 +327,24 @@ class TestProjectRuntimeFlags:
         assert "krun.cpus" not in joined
         assert "krun.ram_mib" not in joined
 
-    def test_krun_plus_nested_rejected(self) -> None:
+    def test_krun_plus_nested_rejected(self, _experimental_enabled) -> None:
         from terok.lib.orchestration.task_runners.container import _project_runtime_flags
 
         with pytest.raises(SystemExit, match="incompatible.*nested"):
             _project_runtime_flags(self._project(runtime="krun", nested_containers=True))
+
+    def test_krun_without_experimental_rejected(self) -> None:
+        """No experimental flag → config-driven krun selection refused."""
+        from terok.lib.orchestration.task_runners.container import _project_runtime_flags
+
+        with (
+            patch(
+                "terok.lib.orchestration.task_runners.container.is_experimental",
+                return_value=False,
+            ),
+            pytest.raises(SystemExit, match="requires the experimental flag"),
+        ):
+            _project_runtime_flags(self._project(runtime="krun"))
 
     def test_nested_only_unaffected(self) -> None:
         """`nested_containers` alone still emits its existing flags."""
