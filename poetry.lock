@@ -3637,7 +3637,7 @@ terok_shield = {url = "https://github.com/terok-ai/terok-shield/releases/downloa
 type = "git"
 url = "https://github.com/sliwowitz/terok-sandbox.git"
 reference = "feat/recovery-key-acknowledgement"
-resolved_reference = "5274abb3139cffbdcf3c9c106b51b12070fc85d2"
+resolved_reference = "97c3fb765b6e357479f00f2ccaff36f91abbcf69"
 
 [[package]]
 name = "terok-shield"

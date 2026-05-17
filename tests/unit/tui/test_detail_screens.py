@@ -1967,7 +1967,15 @@ class TestVaultActionImplementations:
 
 
 class TestVaultRevealAction:
-    """``_action_vault_reveal`` resolves + pushes the reveal modal + acks on True."""
+    """``_action_vault_reveal`` pushes the reveal modal via the callback pattern.
+
+    Uses ``push_screen(modal, callback)`` rather than
+    ``push_screen_wait()`` because the action runs from the vault
+    chooser's ``_on_vault_action_result`` callback, which is not a
+    worker context — ``push_screen_wait`` raises ``NoActiveWorker``
+    there.  The dismissal value flows through
+    ``_on_vault_reveal_result`` (separate test class below).
+    """
 
     def _get_mixin(self) -> type:
         from terok.tui.project_actions import ProjectActionsMixin
@@ -1984,13 +1992,12 @@ class TestVaultRevealAction:
         mixin = self._get_mixin()
         instance = mock.Mock(spec=mixin)
         instance.notify = mock.Mock()
-        instance.push_screen_wait = mock.AsyncMock()
+        instance.push_screen = mock.AsyncMock()
         stubs = {
             "terok.lib.integrations.sandbox": mock.Mock(
                 SandboxConfig=lambda: self._make_cfg(passphrase=None),
                 NoPassphraseError=Exception,
                 WrongPassphraseError=Exception,
-                acknowledge_recovery=mock.Mock(),
                 is_recovery_acknowledged=mock.Mock(return_value=False),
             ),
         }
@@ -1999,14 +2006,14 @@ class TestVaultRevealAction:
         instance.notify.assert_called_once()
         # "unlock first" hint surfaces.
         assert "unlock" in instance.notify.call_args[0][0].lower()
-        instance.push_screen_wait.assert_not_called()
+        instance.push_screen.assert_not_called()
 
     def test_resolver_raises_translates_to_error_notify(self) -> None:
         """``WrongPassphraseError`` from resolver → error notification, no modal."""
         mixin = self._get_mixin()
         instance = mock.Mock(spec=mixin)
         instance.notify = mock.Mock()
-        instance.push_screen_wait = mock.AsyncMock()
+        instance.push_screen = mock.AsyncMock()
 
         class _Wrong(Exception):
             pass
@@ -2018,7 +2025,6 @@ class TestVaultRevealAction:
                 SandboxConfig=lambda: cfg,
                 NoPassphraseError=_Wrong,
                 WrongPassphraseError=_Wrong,
-                acknowledge_recovery=mock.Mock(),
                 is_recovery_acknowledged=mock.Mock(return_value=False),
             ),
         }
@@ -2026,76 +2032,115 @@ class TestVaultRevealAction:
             run(mixin._action_vault_reveal(instance))
         instance.notify.assert_called_once()
         assert instance.notify.call_args.kwargs["severity"] == "error"
-        instance.push_screen_wait.assert_not_called()
+        instance.push_screen.assert_not_called()
 
-    def test_resolved_pushes_reveal_modal_and_acks_on_true(self) -> None:
-        """Modal returns ``True`` → ack written + status refresh."""
+    def test_resolved_pushes_reveal_modal_with_callback(self) -> None:
+        """Resolved passphrase → modal pushed via callback pattern (not push_screen_wait)."""
         mixin = self._get_mixin()
         instance = mock.Mock(spec=mixin)
         instance.notify = mock.Mock()
-        instance.push_screen_wait = mock.AsyncMock(return_value=True)
-        instance._refresh_vault_status = mock.AsyncMock()
-        ack_recovery = mock.Mock(return_value=True)
+        instance.push_screen = mock.AsyncMock()
         stubs = {
             "terok.lib.integrations.sandbox": mock.Mock(
                 SandboxConfig=lambda: self._make_cfg(),
                 NoPassphraseError=Exception,
                 WrongPassphraseError=Exception,
-                acknowledge_recovery=ack_recovery,
                 is_recovery_acknowledged=mock.Mock(return_value=False),
             ),
         }
         with mock.patch.dict(sys.modules, stubs):
             run(mixin._action_vault_reveal(instance))
-        instance.push_screen_wait.assert_awaited_once()
-        modal_arg = instance.push_screen_wait.call_args[0][0]
+        instance.push_screen.assert_awaited_once()
+        modal_arg, callback_arg = instance.push_screen.call_args[0]
         assert type(modal_arg).__name__ == "VaultRevealModal"
-        ack_recovery.assert_called_once()
-        instance._refresh_vault_status.assert_awaited_once()
-
-    def test_resolved_modal_false_skips_ack(self) -> None:
-        """Modal returns ``False`` (operator declined) → no ack written."""
-        mixin = self._get_mixin()
-        instance = mock.Mock(spec=mixin)
-        instance.notify = mock.Mock()
-        instance.push_screen_wait = mock.AsyncMock(return_value=False)
-        instance._refresh_vault_status = mock.AsyncMock()
-        ack_recovery = mock.Mock(return_value=True)
-        stubs = {
-            "terok.lib.integrations.sandbox": mock.Mock(
-                SandboxConfig=lambda: self._make_cfg(),
-                NoPassphraseError=Exception,
-                WrongPassphraseError=Exception,
-                acknowledge_recovery=ack_recovery,
-                is_recovery_acknowledged=mock.Mock(return_value=False),
-            ),
-        }
-        with mock.patch.dict(sys.modules, stubs):
-            run(mixin._action_vault_reveal(instance))
-        ack_recovery.assert_not_called()
-        instance._refresh_vault_status.assert_not_awaited()
+        # Callback is the bound ``_on_vault_reveal_result`` — pinning
+        # the wiring catches regressions to inline (worker-required)
+        # ``push_screen_wait`` calls.
+        assert callback_arg is instance._on_vault_reveal_result
 
     def test_resolved_passes_already_acked_flag_to_modal(self) -> None:
         """The modal is told whether the marker already matches."""
         mixin = self._get_mixin()
         instance = mock.Mock(spec=mixin)
         instance.notify = mock.Mock()
-        instance.push_screen_wait = mock.AsyncMock(return_value=None)
+        instance.push_screen = mock.AsyncMock()
         instance._refresh_vault_status = mock.AsyncMock()
         stubs = {
             "terok.lib.integrations.sandbox": mock.Mock(
                 SandboxConfig=lambda: self._make_cfg(),
                 NoPassphraseError=Exception,
                 WrongPassphraseError=Exception,
-                acknowledge_recovery=mock.Mock(),
                 is_recovery_acknowledged=mock.Mock(return_value=True),
             ),
         }
         with mock.patch.dict(sys.modules, stubs):
             run(mixin._action_vault_reveal(instance))
-        modal_arg = instance.push_screen_wait.call_args[0][0]
+        modal_arg = instance.push_screen.call_args[0][0]
         # The modal stashes the already_acked flag as ``_already_acked``.
         assert getattr(modal_arg, "_already_acked", False) is True
+
+
+class TestVaultRevealResult:
+    """``_on_vault_reveal_result`` handles the three dismissal outcomes."""
+
+    def _get_mixin(self) -> type:
+        from terok.tui.project_actions import ProjectActionsMixin
+
+        return ProjectActionsMixin
+
+    def test_true_outcome_acks_and_refreshes(self) -> None:
+        """Operator clicked Mark-as-saved → ack lands, pill refresh fires."""
+        mixin = self._get_mixin()
+        instance = mock.Mock(spec=mixin)
+        instance.notify = mock.Mock()
+        instance._refresh_vault_status = mock.AsyncMock()
+        ack_recovery = mock.Mock(return_value=True)
+        stubs = {
+            "terok.lib.integrations.sandbox": mock.Mock(
+                SandboxConfig=lambda: mock.Mock(),
+                acknowledge_recovery=ack_recovery,
+            ),
+        }
+        with mock.patch.dict(sys.modules, stubs):
+            run(mixin._on_vault_reveal_result(instance, True))
+        ack_recovery.assert_called_once()
+        instance._refresh_vault_status.assert_awaited_once()
+
+    def test_false_outcome_does_nothing(self) -> None:
+        """Operator clicked Close → no ack, no refresh."""
+        mixin = self._get_mixin()
+        instance = mock.Mock(spec=mixin)
+        instance.notify = mock.Mock()
+        instance._refresh_vault_status = mock.AsyncMock()
+        ack_recovery = mock.Mock(return_value=True)
+        stubs = {
+            "terok.lib.integrations.sandbox": mock.Mock(
+                SandboxConfig=lambda: mock.Mock(),
+                acknowledge_recovery=ack_recovery,
+            ),
+        }
+        with mock.patch.dict(sys.modules, stubs):
+            run(mixin._on_vault_reveal_result(instance, False))
+        ack_recovery.assert_not_called()
+        instance._refresh_vault_status.assert_not_awaited()
+
+    def test_none_outcome_does_nothing(self) -> None:
+        """Esc / already-acked dialog → no state change."""
+        mixin = self._get_mixin()
+        instance = mock.Mock(spec=mixin)
+        instance.notify = mock.Mock()
+        instance._refresh_vault_status = mock.AsyncMock()
+        ack_recovery = mock.Mock(return_value=True)
+        stubs = {
+            "terok.lib.integrations.sandbox": mock.Mock(
+                SandboxConfig=lambda: mock.Mock(),
+                acknowledge_recovery=ack_recovery,
+            ),
+        }
+        with mock.patch.dict(sys.modules, stubs):
+            run(mixin._on_vault_reveal_result(instance, None))
+        ack_recovery.assert_not_called()
+        instance._refresh_vault_status.assert_not_awaited()
 
 
 class TestVaultAcknowledgeAction:

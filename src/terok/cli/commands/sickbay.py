@@ -635,6 +635,10 @@ def _check_recovery_acknowledged() -> _CheckResult:
         return ("warn", label, f"check failed — {exc}")
     if status.acknowledged:
         return ("ok", label, "recovery key acknowledged")
+    from terok.lib.integrations.sandbox import bold
+
+    reveal = bold("terok vault passphrase reveal")
+    ack = bold("terok vault passphrase acknowledge")
     if status.urgent:
         return (
             "error",
@@ -642,18 +646,16 @@ def _check_recovery_acknowledged() -> _CheckResult:
             "vault recovery key UNCONFIRMED and the passphrase lives ONLY"
             " in the session-unlock tmpfs file — it will be wiped on the"
             " next reboot and your vault becomes UNRECOVERABLE then."
-            " Run `terok vault passphrase reveal` NOW and save the value"
-            " off-host, or `terok vault passphrase acknowledge` if you"
-            " already captured it (CI / TUI flow).",
+            f" Run {reveal} NOW and save the value off-host,"
+            f" or {ack} if you already captured it.",
         )
     return (
         "warn",
         label,
         "vault recovery key unconfirmed — every keystore tier is"
         " machine-bound, so a hardware failure strands the vault."
-        " Run `terok vault passphrase reveal` to view and save the value"
-        " off-host, or `terok vault passphrase acknowledge` if you"
-        " already captured it (CI / TUI flow).",
+        f" Run {reveal} to view and save the value off-host,"
+        f" or {ack} if you already captured it.",
     )
 
 
