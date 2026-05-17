@@ -31,8 +31,8 @@ dependencies = [
     # branches in sliwowitz forks until the chain merges and tagged
     # releases are cut.  Restore release-wheel pins before this PR
     # itself merges.
-    "terok-executor @ git+https://github.com/sliwowitz/terok-executor.git@feat/unified-l0-and-krun-rename",
-    "terok-sandbox @ git+https://github.com/sliwowitz/terok-sandbox.git@feat/run-section-on-sandbox",
+    "terok-executor @ https://github.com/terok-ai/terok-executor/releases/download/v0.0.149a12/terok_executor-0.0.149a12-py3-none-any.whl",
+    "terok-sandbox @ https://github.com/terok-ai/terok-sandbox/releases/download/v0.0.124a10/terok_sandbox-0.0.124a10-py3-none-any.whl",
     "terok-shield @ https://github.com/terok-ai/terok-shield/releases/download/v0.6.42a4/terok_shield-0.6.42a4-py3-none-any.whl",
     "terok-clearance @ https://github.com/terok-ai/terok-clearance/releases/download/v0.6.14a4/terok_clearance-0.6.14a4-py3-none-any.whl",
 ]
