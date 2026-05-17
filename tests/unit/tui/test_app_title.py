@@ -33,9 +33,9 @@ class TestUpdateTitle:
     """The title carries version + branch; ``sub_title`` carries ``user@host``."""
 
     def test_title_includes_version_and_branch(self, title_stub: SimpleNamespace) -> None:
-        """Title is unchanged from pre-#683 — version + branch in brackets."""
+        """Title is ``Terok <version> [<branch>]`` — bare version, no ``TUI`` prefix or ``v`` sigil."""
         TerokTUI._update_title(title_stub)
-        assert title_stub.title == "Terok TUI v1.2.3 [feat/foo]"
+        assert title_stub.title == "Terok 1.2.3 [feat/foo]"
 
     def test_sub_title_carries_user_at_host(self, title_stub: SimpleNamespace) -> None:
         """``sub_title`` is ``user@host`` — Textual renders that on the right."""
@@ -48,5 +48,5 @@ class TestUpdateTitle:
         """No branch → no brackets; sub_title is unaffected."""
         monkeypatch.setattr(app_mod, "_get_version_info", lambda: ("1.2.3", ""))
         TerokTUI._update_title(title_stub)
-        assert title_stub.title == "Terok TUI v1.2.3"
+        assert title_stub.title == "Terok 1.2.3"
         assert title_stub.sub_title == "strazce@spark"

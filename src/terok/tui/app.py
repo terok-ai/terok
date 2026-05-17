@@ -360,9 +360,9 @@ if _HAS_TEXTUAL:
             display_ver = _short_version(version)
 
             if branch_name:
-                title = f"Terok TUI v{display_ver} [{branch_name}]"
+                title = f"Terok {display_ver} [{branch_name}]"
             else:
-                title = f"Terok TUI v{display_ver}"
+                title = f"Terok {display_ver}"
 
             self.title = title
             self.sub_title = f"{getpass.getuser()}@{socket.gethostname()}"
@@ -1392,13 +1392,33 @@ if _HAS_TEXTUAL:
             )
 
         async def action_quit(self) -> None:
-            """Exit the TUI cleanly."""
+            """Exit the TUI cleanly.
+
+            If real-work workers (task delete, image build, etc.) are
+            still in flight after the pollers have been torn down, surface
+            them in Textual's exit message so the user knows the terminal
+            isn't hung — the process is just waiting for the threads to
+            drain before returning the prompt.
+            """
             self._stop_upstream_polling()
             self._stop_container_status_polling()
             self._stop_gate_server_polling()
             if self._askpass_service is not None:
                 await self._askpass_service.stop()
-            self.exit()
+
+            pending = [
+                w for w in self.workers if w.state in (WorkerState.PENDING, WorkerState.RUNNING)
+            ]
+            if pending:
+                groups = sorted({w.group for w in pending if w.group})
+                suffix = f" ({', '.join(groups)})" if groups else ""
+                self.exit(
+                    message=(
+                        f"Exiting. Waiting for {len(pending)} background task(s) to finish{suffix}."
+                    )
+                )
+            else:
+                self.exit()
 
         async def ensure_askpass_service(self) -> AskpassService:
             """Return the running [`AskpassService`][terok.tui.app.AskpassService], starting it on first use.
