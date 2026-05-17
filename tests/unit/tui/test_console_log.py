@@ -310,3 +310,43 @@ async def test_dispatch_action_threads_env_to_child() -> None:
         await asyncio.wait_for(entry.wait(), timeout=10.0)
     assert entry.ok
     assert any("marker=threaded-through" in line for line in entry.lines)
+
+
+@pytest.mark.asyncio
+async def test_pump_forces_colour_for_child_so_log_viewer_shows_ansi() -> None:
+    """``stdout=PIPE`` makes the child's ``isatty()`` return False, which
+    flips Rich/click-style CLIs to plain-text mode.  The pump compensates
+    by setting ``FORCE_COLOR=1`` + ``CLICOLOR_FORCE=1`` so colourised
+    output reaches the worker log viewer (which already parses ANSI)."""
+    app = _DispatchHost()
+    async with app.run_test():
+        entry = app.dispatch_console_command(
+            [
+                sys.executable,
+                "-c",
+                "import os; "
+                "print('FC=' + os.environ.get('FORCE_COLOR', 'unset')); "
+                "print('CCF=' + os.environ.get('CLICOLOR_FORCE', 'unset'))",
+            ],
+            title="color env probe",
+        )
+        await asyncio.wait_for(entry.wait(), timeout=10.0)
+    assert entry.ok
+    assert "FC=1" in entry.lines
+    assert "CCF=1" in entry.lines
+
+
+@pytest.mark.asyncio
+async def test_caller_supplied_force_color_wins_over_default() -> None:
+    """A caller that explicitly passes ``FORCE_COLOR=0`` (e.g. to suppress
+    a noisy CLI's colour in tests) overrides the pump's default."""
+    app = _DispatchHost()
+    async with app.run_test():
+        entry = app.dispatch_console_action(
+            "os:system",
+            "echo FC=$FORCE_COLOR",
+            title="caller wins",
+            env={"FORCE_COLOR": "0"},
+        )
+        await asyncio.wait_for(entry.wait(), timeout=10.0)
+    assert "FC=0" in entry.lines

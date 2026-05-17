@@ -29,6 +29,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from typing import TYPE_CHECKING
 
+from rich.text import Text
 from textual import on
 from textual.app import ComposeResult
 from textual.binding import Binding
@@ -124,11 +125,15 @@ class WorkerLogScreen(ModalScreen[None]):
         """Replay captured output, then live-tail if the entry is still running."""
         log = self.query_one("#worker-log-output", RichLog)
         for line in self._entry.lines:
-            log.write(line)
+            log.write(Text.from_ansi(line))
         if self._entry.running:
             self._unsubscribe = self._entry.subscribe(self._append_line, self._on_entry_finished)
         else:
             self._render_finished()
+        # Focus the dismiss button so Enter dismisses immediately — the
+        # viewer is read-only otherwise, so there's no other useful
+        # focus target.
+        self.query_one("#worker-log-close", Button).focus()
 
     def on_unmount(self) -> None:
         """Drop the live subscription so a hidden entry has no dangling viewer."""
@@ -137,8 +142,15 @@ class WorkerLogScreen(ModalScreen[None]):
             self._unsubscribe = None
 
     def _append_line(self, line: str) -> None:
-        """Write one live-tailed *line* into the log pane."""
-        self.query_one("#worker-log-output", RichLog).write(line)
+        """Write one live-tailed *line* into the log pane.
+
+        Lines come from subprocess stdout and routinely carry ANSI
+        colour escapes (``terok setup``, image builds, ``git`` output).
+        ``Text.from_ansi`` parses those into a styled
+        [`Text`][rich.text.Text] so RichLog can render them with
+        colour instead of printing the raw escape sequences.
+        """
+        self.query_one("#worker-log-output", RichLog).write(Text.from_ansi(line))
 
     def _on_entry_finished(self) -> None:
         """The entry finished while this view was open — reflect it in the button."""

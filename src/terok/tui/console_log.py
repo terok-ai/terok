@@ -297,6 +297,12 @@ class ConsoleLogMixin(_MixinBase):
         ``/dev/tty`` and draw over the Textual frame.  *env* layers
         extra variables onto [`child_process_env`][terok.lib.util.subprocess_env.child_process_env].
         """
+        # Force ANSI colour out of the child even though stdout=PIPE
+        # makes ``isatty()`` return False — most Rich/click-based CLIs
+        # disable colour in that case and we'd see flat output in the
+        # log viewer.  Caller-supplied env wins so a caller can opt out
+        # by setting either var to "0".
+        env = {"FORCE_COLOR": "1", "CLICOLOR_FORCE": "1", **(env or {})}
         try:
             proc = await asyncio.create_subprocess_exec(
                 *entry.argv,
