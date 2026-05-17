@@ -1017,9 +1017,10 @@ Hooks can be set globally (all projects) or per-project:
 
 ```yaml
 # ~/.config/terok/config.yml (global)
-hooks:
-  post_ready: ~/.config/terok/hooks/on-ready.sh
-  post_stop: ~/.config/terok/hooks/on-stop.sh
+run:
+  hooks:
+    post_ready: ~/.config/terok/hooks/on-ready.sh
+    post_stop: ~/.config/terok/hooks/on-stop.sh
 ```
 
 ```yaml
