@@ -1238,10 +1238,18 @@ if TextArea is not None:
         screen from treating Enter as form submit.  This subclass forwards
         ``enter`` and ``ctrl+enter`` upstream untouched — the host screen's
         ``on_key`` distinguishes them (Enter submits, Ctrl+Enter inserts).
+
+        ``event.prevent_default()`` is the load-bearing call: returning early
+        from ``_on_key`` is *not* enough — Textual's message-pump runs the
+        widget's default handler after the user override unless that flag is
+        set, and TextArea's default would insert ``\\n`` for ``enter``.
+        ``event.stop()`` is deliberately *not* called so the host screen's
+        ``on_key`` still sees the key and can submit.
         """
 
         async def _on_key(self, event: events.Key) -> None:
             if event.key in {"enter", "ctrl+enter"}:
+                event.prevent_default()
                 return
             await super()._on_key(event)
 else:  # pragma: no cover - stub TextArea in test envs

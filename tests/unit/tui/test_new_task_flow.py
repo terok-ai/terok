@@ -794,44 +794,120 @@ class TestTaskLaunchScreenCompose:
 
 
 class TestSubmittablePromptArea:
-    """Verify the prompt TextArea forwards Enter/Ctrl+Enter to the parent screen."""
+    """Verify the prompt TextArea forwards Enter/Ctrl+Enter to the parent screen.
 
-    def test_on_key_returns_early_on_enter(self) -> None:
-        screens, _ = import_screens()
-        area = screens._SubmittablePromptArea()
-        event = mock.Mock()
-        event.key = "enter"
-        # Should return without stopping the event or invoking ``super()._on_key``
-        # (which would explode against the test-stub TextArea).
-        asyncio.run(area._on_key(event))
-        event.stop.assert_not_called()
-        event.prevent_default.assert_not_called()
+    These tests use Textual's ``Pilot`` against a real ``App`` so the
+    actual message-pump dispatch is exercised — the previous mock-event
+    shape couldn't catch a regression where the override returned early
+    but Textual still ran the default handler, because the assertion only
+    checked that ``event.stop`` / ``event.prevent_default`` were *not*
+    called.  That's exactly how the missing-``prevent_default()`` bug
+    that surfaced as "Enter inserts a newline instead of submitting"
+    got past CI.
 
-    def test_on_key_returns_early_on_ctrl_enter(self) -> None:
-        screens, _ = import_screens()
-        area = screens._SubmittablePromptArea()
-        event = mock.Mock()
-        event.key = "ctrl+enter"
-        asyncio.run(area._on_key(event))
-        event.stop.assert_not_called()
-        event.prevent_default.assert_not_called()
+    Imports the real ``terok.tui.screens`` (not via the stub-injecting
+    ``import_screens`` helper used elsewhere in this file) because a stub
+    Textual won't dispatch events through a real message-pump.
+    """
 
-    def test_on_key_delegates_other_keys_to_super(self) -> None:
-        """Non-Enter keys fall through to ``TextArea._on_key`` unchanged."""
-        screens, _ = import_screens()
-        area = screens._SubmittablePromptArea()
-        event = mock.Mock()
-        event.key = "a"
+    @pytest.mark.asyncio
+    async def test_enter_does_not_insert_into_textarea(self) -> None:
+        """Pressing Enter while the prompt has focus must not write ``\\n``.
 
-        called: list[Any] = []
+        The override needs ``event.prevent_default()``; without it the
+        widget's stock handler still runs and inserts a newline.
+        """
+        from textual.app import App
+        from textual.widgets import TextArea
 
-        async def fake_parent(self: Any, ev: Any) -> None:
-            called.append(ev)
+        from terok.tui.screens import _SubmittablePromptArea
 
-        with mock.patch.object(screens.TextArea, "_on_key", fake_parent, create=True):
-            asyncio.run(area._on_key(event))
+        class _Host(App):
+            def compose(self):
+                yield _SubmittablePromptArea(id="probe")
 
-        assert called == [event]
+        app = _Host()
+        async with app.run_test() as pilot:
+            area = app.query_one("#probe", TextArea)
+            area.focus()
+            await pilot.pause()
+            await pilot.press("enter")
+            await pilot.pause()
+        assert area.text == "", "Enter must not insert into the prompt"
+
+    @pytest.mark.asyncio
+    async def test_ctrl_enter_does_not_insert_into_textarea(self) -> None:
+        """Pressing Ctrl+Enter while the prompt has focus must not insert.
+
+        The host screen handles Ctrl+Enter explicitly (it does its own
+        ``prompt.insert("\\n")``); the TextArea must NOT also insert one,
+        or every Ctrl+Enter would double-up.
+        """
+        from textual.app import App
+        from textual.widgets import TextArea
+
+        from terok.tui.screens import _SubmittablePromptArea
+
+        class _Host(App):
+            def compose(self):
+                yield _SubmittablePromptArea(id="probe")
+
+        app = _Host()
+        async with app.run_test() as pilot:
+            area = app.query_one("#probe", TextArea)
+            area.focus()
+            await pilot.pause()
+            await pilot.press("ctrl+enter")
+            await pilot.pause()
+        assert area.text == ""
+
+    @pytest.mark.asyncio
+    async def test_enter_bubbles_to_parent_screen_on_key(self) -> None:
+        """The override must *not* call ``event.stop()`` — the host screen's
+        ``on_key`` is what turns Enter into a form-submit."""
+        from textual.app import App
+        from textual.widgets import TextArea
+
+        from terok.tui.screens import _SubmittablePromptArea
+
+        seen: list[str] = []
+
+        class _Host(App):
+            def compose(self):
+                yield _SubmittablePromptArea(id="probe")
+
+            def on_key(self, event) -> None:  # type: ignore[no-untyped-def]
+                seen.append(event.key)
+
+        app = _Host()
+        async with app.run_test() as pilot:
+            area = app.query_one("#probe", TextArea)
+            area.focus()
+            await pilot.pause()
+            await pilot.press("enter")
+            await pilot.pause()
+        assert "enter" in seen, "Enter must bubble to the parent for submission"
+
+    @pytest.mark.asyncio
+    async def test_other_keys_still_insert_normally(self) -> None:
+        """Non-Enter keys fall through to TextArea's default — typing still works."""
+        from textual.app import App
+        from textual.widgets import TextArea
+
+        from terok.tui.screens import _SubmittablePromptArea
+
+        class _Host(App):
+            def compose(self):
+                yield _SubmittablePromptArea(id="probe")
+
+        app = _Host()
+        async with app.run_test() as pilot:
+            area = app.query_one("#probe", TextArea)
+            area.focus()
+            await pilot.pause()
+            await pilot.press("h", "i")
+            await pilot.pause()
+        assert area.text == "hi"
 
 
 # ---------------------------------------------------------------------------
