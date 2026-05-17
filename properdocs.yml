@@ -103,6 +103,7 @@ nav:
     - Getting Started: usage.md
     - Config Reference: config-reference.md
     - Container Layers: container-layers.md
+    - Container Runtimes: runtimes.md
     - Container Lifecycle: container-lifecycle.md
     - Shared Directories: shared-dirs.md
     - Security Modes: git-gate-and-security-modes.md
