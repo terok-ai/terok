@@ -15,7 +15,7 @@ command registry has its own adapter, ``terok.lib.integrations.shield``.
 """
 
 from terok_sandbox import (  # noqa: F401 — re-exported public API
-    DEFAULT_PORT_ANNOTATION,
+    DEFAULT_GUEST_SSHD_PORT,
     DEFAULT_SSH_HOST,
     DEFAULT_SSH_USER,
     EXIT_MANUAL_STEP_NEEDED,
@@ -96,7 +96,7 @@ from terok_sandbox import (  # noqa: F401 — re-exported public API
     namespace_runtime_dir,
     namespace_state_dir,
     needs_setup,
-    port_annotation_resolver,
+    podman_port_resolver,
     public_line_of,
     quarantine,
     read_stamp,
@@ -136,7 +136,7 @@ __all__ = [
     "ConfigStack",
     "ContainerRuntime",
     "CredentialDB",
-    "DEFAULT_PORT_ANNOTATION",
+    "DEFAULT_GUEST_SSHD_PORT",
     "DEFAULT_SSH_HOST",
     "DEFAULT_SSH_USER",
     "DoctorCheck",
@@ -209,7 +209,7 @@ __all__ = [
     "namespace_runtime_dir",
     "namespace_state_dir",
     "needs_setup",
-    "port_annotation_resolver",
+    "podman_port_resolver",
     "public_line_of",
     "quarantine",
     "read_stamp",

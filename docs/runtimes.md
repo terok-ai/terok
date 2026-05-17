@@ -69,9 +69,10 @@ Accepted values: `crun` (default), `krun`, `null` (in-memory stub for CI).
 At task launch under krun, terok:
 
 1. Reserves a free loopback TCP port on the host.
-2. Adds `-p <host_port>:22` to the `podman run` invocation so passt forwards it into the guest's sshd:22.
+2. Adds `-p 127.0.0.1:<host_port>:22` to the `podman run` invocation so passt forwards it into the guest's sshd:22 — pinned to loopback so the forward isn't reachable from external interfaces.
 3. Bind-mounts the live host SSH public key onto `/etc/ssh/authorized_keys.d/terok` inside the guest.
-4. Records the host port in a `terok.krun.port` annotation so `terok exec` / `terok login` can find it again.
+
+`terok exec` / `terok login` find the host port at exec time by asking podman directly (`podman port <container> 22/tcp`) — no terok-private annotation in the middle.
 
 The guest's sshd is gated by `ConditionFileNotEmpty=/etc/ssh/authorized_keys.d/terok` — under crun the file ships empty and the service stays dormant; under krun the bind-mount makes it non-empty and the service starts on TCP 22.  One L0 image serves both runtimes, no per-installation secret baked in.
 

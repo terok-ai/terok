@@ -21,7 +21,8 @@ from terok.lib.integrations.executor import (
     ensure_krun_host_keypair,
 )
 from terok.lib.integrations.sandbox import (
-    DEFAULT_PORT_ANNOTATION,
+    DEFAULT_GUEST_SSHD_PORT,
+    DEFAULT_SSH_HOST,
     LifecycleHooks,
     PodmanRuntime,
     Sandbox,
@@ -229,17 +230,16 @@ def _project_runtime_flags(project: ProjectConfig, *, cname: str) -> list[str]:
     "unknown label option: nested" and the user is expected to upgrade.
 
     ``run.runtime: krun`` → ``--runtime krun`` plus krun OCI annotations
-    for microVM sizing, a per-container ``-p <host>:22`` port forward
-    bridging into the guest's sshd via podman's passt, the matching
-    ``terok.krun.port`` annotation so the host-side transport can find
-    it again, **and** a bind-mount of the live host SSH public key into
-    the guest's ``/etc/ssh/authorized_keys.d/terok``.  The L0 image
-    ships an empty placeholder there; the mount overlays it so the
-    guest's sshd accepts our private key.  Validates the
-    krun-incompatible combinations before emitting any flag so the
-    operator sees a clear error rather than a podman launch failure.
+    for microVM sizing, a per-container ``-p 127.0.0.1:<host>:22`` port
+    forward bridging into the guest's sshd via podman's passt, **and** a
+    bind-mount of the live host SSH public key into the guest's
+    ``/etc/ssh/authorized_keys.d/terok``.  The L0 image ships an empty
+    placeholder there; the mount overlays it so the guest's sshd
+    accepts our private key.  Validates the krun-incompatible
+    combinations before emitting any flag so the operator sees a clear
+    error rather than a podman launch failure.
     """
-    del cname  # only used by the krun branch's reservation log; kept for caller stability
+    del cname  # signature kept for caller stability; no longer read here
     flags: list[str] = []
     if project.nested_containers:
         flags += ["--security-opt", "label=nested", "--device", "/dev/fuse"]
@@ -251,21 +251,21 @@ def _project_runtime_flags(project: ProjectConfig, *, cname: str) -> list[str]:
         if project.krun_ram_mib is not None:
             flags += ["--annotation", f"run.oci.krun.ram_mib={project.krun_ram_mib}"]
         # Reserve a free loopback TCP port and forward it to the guest's
-        # sshd:22.  ``reserve_port`` binds-then-releases, so there's a
+        # sshd.  ``reserve_port`` binds-then-releases, so there's a
         # small race window before podman picks the port back up — same
         # pattern the executor uses for toad's web port; tolerated as a
         # rare-by-construction failure that fails loud rather than
-        # silently mis-binding.  The port number is also written into
-        # ``terok.krun.port`` so the SSH transport's
-        # ``port_annotation_resolver`` finds it at exec time, container-
-        # scoped on both ends.
+        # silently mis-binding.  The bind is pinned to ``127.0.0.1`` so
+        # the forward isn't reachable from external interfaces — pasta's
+        # default binds ``*``, which would otherwise expose the krun
+        # task's sshd to any host on the network.  No annotation: podman
+        # already records the mapping, and ``podman_port_resolver`` on
+        # the host side reads it back via ``podman port`` at exec time.
         with PodmanRuntime().reserve_port() as reservation:
             host_port = reservation.port
         flags += [
             "-p",
-            f"{host_port}:22",
-            "--annotation",
-            f"{DEFAULT_PORT_ANNOTATION}={host_port}",
+            f"{DEFAULT_SSH_HOST}:{host_port}:{DEFAULT_GUEST_SSHD_PORT}",
         ]
         # Bind-mount the live host pubkey into the guest.  The L0 image
         # ships an empty placeholder at this path; the mount overlays

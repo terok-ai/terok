@@ -248,23 +248,26 @@ class TestProjectRuntimeFlags:
         assert "--runtime" in flags
         assert flags[flags.index("--runtime") + 1] == "krun"
 
-    def test_krun_emits_port_forward_and_matching_annotation(
+    def test_krun_emits_loopback_pinned_port_forward(
         self, _experimental_enabled, _krun_keypair, _stub_port_reservation
     ) -> None:
-        """``-p <reserved>:22`` and the ``terok.krun.port=<reserved>`` annotation
-        carry the same value — the SSH transport's resolver reads the annotation
-        back at exec time to find which host port maps to this container's sshd."""
-        from terok.lib.integrations.sandbox import DEFAULT_PORT_ANNOTATION
+        """``-p 127.0.0.1:<reserved>:22`` — the host side of the forward is
+        pinned to loopback so pasta doesn't expose the krun task's sshd on
+        external interfaces.  No terok-private annotation: podman already
+        tracks the mapping; ``podman_port_resolver`` reads it back via
+        ``podman port`` at exec time."""
         from terok.lib.orchestration.task_runners.container import _project_runtime_flags
 
         flags = _project_runtime_flags(_project(runtime="krun"), cname="terok-cli-demoproj-task-a")
 
         p_idx = flags.index("-p")
-        assert flags[p_idx + 1] == "42201:22"
+        assert flags[p_idx + 1] == "127.0.0.1:42201:22"
 
+        # The previous design carried a terok.krun.port annotation; assert
+        # nothing of the sort remains, so a regression that brings it back
+        # would also have to delete this assertion.
         annotations = [flags[i + 1] for i, t in enumerate(flags) if t == "--annotation"]
-        port_annotations = [a for a in annotations if a.startswith(DEFAULT_PORT_ANNOTATION + "=")]
-        assert port_annotations == [f"{DEFAULT_PORT_ANNOTATION}=42201"]
+        assert not any("terok.krun.port" in a for a in annotations)
 
     def test_krun_emits_pubkey_bind_mount(
         self, _experimental_enabled, _krun_keypair, _stub_port_reservation
