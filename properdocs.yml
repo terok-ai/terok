@@ -6,8 +6,8 @@ repo_name: terok-ai/terok
 
 theme:
   name: material
-  logo: terok-logo.png
-  favicon: terok-logo.png
+  logo: terok-logo.svg
+  favicon: terok-logo-b.svg
   font:
     text: Ubuntu
     code: Ubuntu Mono

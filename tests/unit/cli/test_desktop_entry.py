@@ -77,7 +77,7 @@ class TestInstallViaXdgUtils:
         assert "gtk-update-icon-cache" not in binaries
 
     def test_stages_files_with_target_basenames(self, xdg_data_home: Path) -> None:
-        """Staged paths handed to xdg-utils use the final ``terok.desktop`` / ``terok.png`` names.
+        """Staged paths handed to xdg-utils use the final ``terok.desktop`` / ``terok.svg`` names.
 
         xdg-desktop-menu names the installed ``.desktop`` after the
         source basename, so staging to ``/tmp/.../foo.desktop`` would
@@ -105,20 +105,20 @@ class TestInstallViaXdgUtils:
         desktop_call = next(argv for argv in calls if argv[0].endswith("xdg-desktop-menu"))
         icon_call = next(argv for argv in calls if argv[0].endswith("xdg-icon-resource"))
         assert Path(desktop_call[-1]).name == "terok.desktop"
-        # xdg-icon-resource argv: ... <staged.png> <resource-name>.  The
+        # xdg-icon-resource argv: ... <staged.svg> <resource-name>.  The
         # trailing positional is the resource name; the one before it is
         # the source path.
         assert icon_call[-1] == "terok"
-        assert Path(icon_call[-2]).name == "terok.png"
+        assert Path(icon_call[-2]).name == "terok.svg"
         # The ``--novendor`` flag is mandatory for ``.desktop`` files not
         # named ``{vendor}-{appname}.desktop``; xdg-utils would otherwise
         # refuse the install.
         assert "--novendor" in desktop_call
         assert "--novendor" in icon_call
         # Icon size + context are explicit so xdg-icon-resource drops us
-        # into ``hicolor/256x256/apps/`` rather than guessing.
+        # into ``hicolor/scalable/apps/`` rather than guessing.
         assert "--size" in icon_call
-        assert icon_call[icon_call.index("--size") + 1] == "256"
+        assert icon_call[icon_call.index("--size") + 1] == "scalable"
         assert "--context" in icon_call
         assert icon_call[icon_call.index("--context") + 1] == "apps"
 
@@ -207,7 +207,7 @@ class TestInstallViaXdgUtils:
         # the same size + context we installed under.
         assert icon_call[-1] == "terok"
         assert "--size" in icon_call
-        assert icon_call[icon_call.index("--size") + 1] == "256"
+        assert icon_call[icon_call.index("--size") + 1] == "scalable"
         assert "--context" in icon_call
         assert icon_call[icon_call.index("--context") + 1] == "apps"
 
@@ -332,15 +332,15 @@ class TestInstallManualFallback:
         assert "Terminal=true" in content
 
     def test_writes_icon_into_hicolor_tree(self, xdg_data_home: Path) -> None:
-        """The bundled PNG ends up under hicolor/256x256/apps/terok.png."""
+        """The bundled SVG ends up under hicolor/scalable/apps/terok.svg."""
         with mock.patch(
             "terok.cli.commands._desktop_entry.shutil.which", side_effect=_which_nothing
         ):
             desktop.install_desktop_entry("terok-tui")
-        icon = xdg_data_home / "icons" / "hicolor" / "256x256" / "apps" / "terok.png"
+        icon = xdg_data_home / "icons" / "hicolor" / "scalable" / "apps" / "terok.svg"
         assert icon.is_file()
-        # PNG magic header — cheap check that it's the real file, not an empty write.
-        assert icon.read_bytes().startswith(b"\x89PNG\r\n\x1a\n")
+        # SVG root marker — cheap check that it's the real file, not an empty write.
+        assert b"<svg" in icon.read_bytes()[:512]
 
     def test_runs_cache_refresh_binaries_when_present(self, xdg_data_home: Path) -> None:
         """Manual path invokes ``update-desktop-database`` + ``gtk-update-icon-cache``."""

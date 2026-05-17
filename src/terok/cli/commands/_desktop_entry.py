@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: 2026 Jiri Vyskocil
 # SPDX-License-Identifier: Apache-2.0
 
-"""Install the XDG desktop entry + icon theme PNG for ``terok-tui``.
+"""Install the XDG desktop entry + scalable SVG icon for ``terok-tui``.
 
 ``terok setup`` calls `install_desktop_entry` (or the matching
 `uninstall_desktop_entry`) as a default-on phase, so the TUI
@@ -28,7 +28,7 @@ layout drift.  `install_desktop_entry` returns a
 `DesktopBackend` so the caller can surface a gentle warning
 when the fallback kicks in.
 
-The passive assets (``.desktop`` template, logo PNG) live under
+The passive assets (``.desktop`` template, logo SVG) live under
 ``terok/resources/desktop/`` — this module is the *builder* that
 renders them and delegates to the XDG tool of choice.  When ``ptyxis``
 is on PATH, `_render_desktop_file` routes the launch through the
@@ -60,10 +60,15 @@ _log = logging.getLogger(__name__)
 APP_NAME = "terok"
 
 _DESKTOP_FILE = f"{APP_NAME}.desktop"
-_ICON_FILE = f"{APP_NAME}.png"
-_ICON_SIZE = "256"  # logo is 283x283, close enough for the 256x256 bucket
+_ICON_FILE = f"{APP_NAME}.svg"
+# ``scalable`` is the hicolor-theme well-known directory for vector icons;
+# also the value xdg-icon-resource accepts as ``--size scalable`` since
+# xdg-utils 1.1.0.  Renderers prefer the SVG over a pixel-bucket PNG so
+# we get correct sizing on HiDPI panels + dark-theme colour adaptation
+# (the bundled SVG uses ``fill=currentColor``).
+_ICON_SIZE = "scalable"
 _TEMPLATE_NAME = "terok.desktop.template"
-_LOGO_NAME = "terok-logo.png"
+_LOGO_NAME = "terok-logo.svg"
 _PTYXIS_SHIM_NAME = "terok-xdg-terminal-exec.sh"
 
 # XDG Base Directory + Icon Theme spec path fragments.  Named so a
@@ -74,7 +79,7 @@ _APPLICATIONS_SUBDIR = "applications"
 _ICONS_SUBDIR = "icons"
 _HICOLOR_THEME = "hicolor"
 _APPS_SUBDIR = "apps"
-_ICON_SIZE_DIR = f"{_ICON_SIZE}x{_ICON_SIZE}"
+_ICON_SIZE_DIR = _ICON_SIZE  # "scalable" — no NxN format for vector icons
 _DEFAULT_DATA_HOME = (".local", "share")  # $HOME/.local/share — XDG fallback
 
 _XDG_MENU_BINARY = "xdg-desktop-menu"
@@ -310,7 +315,7 @@ def _desktop_entry_path() -> Path:
 
 
 def _icon_path() -> Path:
-    """Return ``$XDG_DATA_HOME/icons/hicolor/256x256/apps/terok.png``."""
+    """Return ``$XDG_DATA_HOME/icons/hicolor/scalable/apps/terok.svg``."""
     return (
         _data_home() / _ICONS_SUBDIR / _HICOLOR_THEME / _ICON_SIZE_DIR / _APPS_SUBDIR / _ICON_FILE
     )
