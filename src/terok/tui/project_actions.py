@@ -798,3 +798,119 @@ class ProjectActionsMixin(_MixinBase):
             title="Moving vault passphrase to OS keyring",
             refresh="vault_status",
         )
+
+    async def _action_vault_reveal(self) -> None:
+        """Resolve the current passphrase, display it, and offer a save ack.
+
+        Pushes [`VaultRevealModal`][terok.tui.screens.VaultRevealModal]
+        with the cleartext + source so the operator can copy the value
+        somewhere durable.  The dismissal value (True = "Mark as
+        saved", False = explicit decline, None = Esc / close) flows
+        through
+        [`_on_vault_reveal_result`][terok.tui.project_actions.ProjectActionsMixin._on_vault_reveal_result]
+        — the callback pattern (same as
+        [`VaultUnlockModal`][terok.tui.screens.VaultUnlockModal]) is
+        required because the action runs from
+        [`_on_vault_action_result`][terok.tui.app.TerokTUI._on_vault_action_result],
+        which is not a worker context — ``push_screen_wait`` would
+        raise ``NoActiveWorker`` there.
+
+        Suppressed when the vault is locked — there's nothing to reveal
+        without a resolvable passphrase, and the unlock modal is the
+        right next step.
+        """
+        from terok.lib.integrations.sandbox import (
+            NoPassphraseError,
+            SandboxConfig,
+            WrongPassphraseError,
+            is_recovery_acknowledged,
+        )
+
+        from .screens import VaultRevealModal
+
+        cfg = SandboxConfig()
+        try:
+            passphrase, source = cfg.resolve_passphrase_with_source(prompt_on_tty=False)
+        except (NoPassphraseError, WrongPassphraseError) as exc:
+            self.notify(
+                f"Cannot reveal recovery key: {exc}",
+                severity="error",
+                timeout=10,
+            )
+            return
+        if not passphrase:
+            self.notify(
+                "Vault is locked — unlock first (n key), then reveal.",
+                severity="warning",
+                timeout=8,
+            )
+            return
+
+        already_acked = is_recovery_acknowledged(cfg)
+        await self.push_screen(
+            VaultRevealModal(passphrase, source or "?", already_acked=already_acked),
+            self._on_vault_reveal_result,
+        )
+
+    async def _on_vault_reveal_result(self, outcome: object) -> None:
+        """Handle [`VaultRevealModal`][terok.tui.screens.VaultRevealModal] dismissal.
+
+        ``outcome`` shape:
+
+        * ``True``  — operator clicked Mark-as-saved; write the marker
+          and refresh the pill so the unconfirmed state clears.
+        * ``False`` — explicit decline (Close button); nothing to do,
+          the pill keeps warning.
+        * ``None``  — Esc / already-acked dialog dismissed; no state
+          change.
+        """
+        if outcome is not True:
+            return
+        from terok.lib.integrations.sandbox import (
+            SandboxConfig,
+            acknowledge_recovery,
+        )
+
+        if acknowledge_recovery(SandboxConfig()):
+            self.notify(
+                "Recovery key marked as saved.",
+                severity="information",
+                timeout=5,
+            )
+            await self._refresh_vault_status()
+        else:
+            self.notify(
+                "Could not write recovery marker (vault locked?).",
+                severity="warning",
+                timeout=8,
+            )
+
+    async def _action_vault_acknowledge(self) -> None:
+        """Silent ack — mark the current passphrase as saved without re-displaying.
+
+        Counterpart to
+        [`_action_vault_reveal`][terok.tui.project_actions.ProjectActionsMixin._action_vault_reveal]
+        for the operator who already has the value stashed and just
+        wants to clear the pill.  No-op on a locked vault (the only
+        path that returns False from
+        [`acknowledge_recovery`][terok_sandbox.acknowledge_recovery]).
+        """
+        from terok.lib.integrations.sandbox import (
+            SandboxConfig,
+            acknowledge_recovery,
+        )
+
+        cfg = SandboxConfig()
+        if acknowledge_recovery(cfg):
+            self.notify(
+                "Recovery key marked as saved.",
+                severity="information",
+                timeout=5,
+            )
+            await self._refresh_vault_status()
+        else:
+            self.notify(
+                "Vault is locked — unlock first before acknowledging.",
+                severity="warning",
+                timeout=8,
+            )

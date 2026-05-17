@@ -1756,6 +1756,62 @@ class TestVaultUnlockModal:
         modal.dismiss.assert_called_once_with(None)
 
 
+class TestVaultRevealModal:
+    """Behaviour of [`VaultRevealModal`][terok.tui.screens.VaultRevealModal]."""
+
+    def _modal(self, screens, *, already_acked: bool = False):  # type: ignore[no-untyped-def]
+        return screens.VaultRevealModal(
+            "correct-horse-battery-staple", "keyring", already_acked=already_acked
+        )
+
+    def test_action_cancel_dismisses_none(self) -> None:
+        """``escape`` is a soft close — leaves the marker untouched."""
+        screens, _ = import_screens()
+        modal = self._modal(screens)
+        modal.dismiss = mock.Mock()
+        modal.action_cancel()
+        modal.dismiss.assert_called_once_with(None)
+
+    def test_button_ack_dismisses_true(self) -> None:
+        """``Mark as saved`` → dismiss(True) so the caller writes the marker."""
+        screens, _ = import_screens()
+        modal = self._modal(screens)
+        modal.dismiss = mock.Mock()
+        event = mock.Mock()
+        event.button = mock.Mock()
+        event.button.id = "vault-reveal-ack"
+        modal.on_button_pressed(event)
+        modal.dismiss.assert_called_once_with(True)
+
+    def test_button_already_acked_dismisses_none(self) -> None:
+        """``Already marked saved`` is informational only — no state change."""
+        screens, _ = import_screens()
+        modal = self._modal(screens, already_acked=True)
+        modal.dismiss = mock.Mock()
+        event = mock.Mock()
+        event.button = mock.Mock()
+        event.button.id = "vault-reveal-acked"
+        modal.on_button_pressed(event)
+        modal.dismiss.assert_called_once_with(None)
+
+    def test_button_close_dismisses_false(self) -> None:
+        """``Close`` is explicit decline — dismiss(False) so the caller treats it as such."""
+        screens, _ = import_screens()
+        modal = self._modal(screens)
+        modal.dismiss = mock.Mock()
+        event = mock.Mock()
+        event.button = mock.Mock()
+        event.button.id = "vault-reveal-cancel"
+        modal.on_button_pressed(event)
+        modal.dismiss.assert_called_once_with(False)
+
+    def test_already_acked_flag_round_trips(self) -> None:
+        """The flag is observable on the constructed modal — used by callers/tests."""
+        screens, _ = import_screens()
+        assert self._modal(screens, already_acked=False)._already_acked is False
+        assert self._modal(screens, already_acked=True)._already_acked is True
+
+
 class TestVaultScreenRefresh:
     """Tests for vault screen refresh logic."""
 
@@ -1822,6 +1878,8 @@ class TestVaultActionDispatch:
             ("vault_lock", "_action_vault_lock"),
             ("vault_seal", "_action_vault_seal"),
             ("vault_to_keyring", "_action_vault_to_keyring"),
+            ("vault_reveal", "_action_vault_reveal"),
+            ("vault_acknowledge", "_action_vault_acknowledge"),
         ],
     )
     def test_vault_action_dispatch_all(self, action: str, handler: str) -> None:
@@ -1906,6 +1964,352 @@ class TestVaultActionImplementations:
             title="Moving vault passphrase to OS keyring",
             refresh="vault_status",
         )
+
+
+class TestVaultRevealAction:
+    """``_action_vault_reveal`` pushes the reveal modal via the callback pattern.
+
+    Uses ``push_screen(modal, callback)`` rather than
+    ``push_screen_wait()`` because the action runs from the vault
+    chooser's ``_on_vault_action_result`` callback, which is not a
+    worker context — ``push_screen_wait`` raises ``NoActiveWorker``
+    there.  The dismissal value flows through
+    ``_on_vault_reveal_result`` (separate test class below).
+    """
+
+    def _get_mixin(self) -> type:
+        from terok.tui.project_actions import ProjectActionsMixin
+
+        return ProjectActionsMixin
+
+    def _make_cfg(self, *, passphrase: str | None = "p4ss", source: str | None = "keyring"):
+        cfg = mock.Mock()
+        cfg.resolve_passphrase_with_source.return_value = (passphrase, source)
+        return cfg
+
+    def test_locked_vault_notifies_and_skips_modal(self) -> None:
+        """No resolvable passphrase → notify, no modal."""
+        mixin = self._get_mixin()
+        instance = mock.Mock(spec=mixin)
+        instance.notify = mock.Mock()
+        instance.push_screen = mock.AsyncMock()
+        stubs = {
+            "terok.lib.integrations.sandbox": mock.Mock(
+                SandboxConfig=lambda: self._make_cfg(passphrase=None),
+                NoPassphraseError=Exception,
+                WrongPassphraseError=Exception,
+                is_recovery_acknowledged=mock.Mock(return_value=False),
+            ),
+        }
+        with mock.patch.dict(sys.modules, stubs):
+            run(mixin._action_vault_reveal(instance))
+        instance.notify.assert_called_once()
+        # "unlock first" hint surfaces.
+        assert "unlock" in instance.notify.call_args[0][0].lower()
+        instance.push_screen.assert_not_called()
+
+    def test_resolver_raises_translates_to_error_notify(self) -> None:
+        """``WrongPassphraseError`` from resolver → error notification, no modal."""
+        mixin = self._get_mixin()
+        instance = mock.Mock(spec=mixin)
+        instance.notify = mock.Mock()
+        instance.push_screen = mock.AsyncMock()
+
+        class _Wrong(Exception):
+            pass
+
+        cfg = mock.Mock()
+        cfg.resolve_passphrase_with_source.side_effect = _Wrong("wrong key")
+        stubs = {
+            "terok.lib.integrations.sandbox": mock.Mock(
+                SandboxConfig=lambda: cfg,
+                NoPassphraseError=_Wrong,
+                WrongPassphraseError=_Wrong,
+                is_recovery_acknowledged=mock.Mock(return_value=False),
+            ),
+        }
+        with mock.patch.dict(sys.modules, stubs):
+            run(mixin._action_vault_reveal(instance))
+        instance.notify.assert_called_once()
+        assert instance.notify.call_args.kwargs["severity"] == "error"
+        instance.push_screen.assert_not_called()
+
+    def test_resolved_pushes_reveal_modal_with_callback(self) -> None:
+        """Resolved passphrase → modal pushed via callback pattern (not push_screen_wait)."""
+        mixin = self._get_mixin()
+        instance = mock.Mock(spec=mixin)
+        instance.notify = mock.Mock()
+        instance.push_screen = mock.AsyncMock()
+        stubs = {
+            "terok.lib.integrations.sandbox": mock.Mock(
+                SandboxConfig=lambda: self._make_cfg(),
+                NoPassphraseError=Exception,
+                WrongPassphraseError=Exception,
+                is_recovery_acknowledged=mock.Mock(return_value=False),
+            ),
+        }
+        with mock.patch.dict(sys.modules, stubs):
+            run(mixin._action_vault_reveal(instance))
+        instance.push_screen.assert_awaited_once()
+        modal_arg, callback_arg = instance.push_screen.call_args[0]
+        assert type(modal_arg).__name__ == "VaultRevealModal"
+        # Callback is the bound ``_on_vault_reveal_result`` — pinning
+        # the wiring catches regressions to inline (worker-required)
+        # ``push_screen_wait`` calls.
+        assert callback_arg is instance._on_vault_reveal_result
+
+    def test_resolved_passes_already_acked_flag_to_modal(self) -> None:
+        """The modal is told whether the marker already matches."""
+        mixin = self._get_mixin()
+        instance = mock.Mock(spec=mixin)
+        instance.notify = mock.Mock()
+        instance.push_screen = mock.AsyncMock()
+        instance._refresh_vault_status = mock.AsyncMock()
+        stubs = {
+            "terok.lib.integrations.sandbox": mock.Mock(
+                SandboxConfig=lambda: self._make_cfg(),
+                NoPassphraseError=Exception,
+                WrongPassphraseError=Exception,
+                is_recovery_acknowledged=mock.Mock(return_value=True),
+            ),
+        }
+        with mock.patch.dict(sys.modules, stubs):
+            run(mixin._action_vault_reveal(instance))
+        modal_arg = instance.push_screen.call_args[0][0]
+        # The modal stashes the already_acked flag as ``_already_acked``.
+        assert getattr(modal_arg, "_already_acked", False) is True
+
+
+class TestVaultRevealResult:
+    """``_on_vault_reveal_result`` handles the three dismissal outcomes."""
+
+    def _get_mixin(self) -> type:
+        from terok.tui.project_actions import ProjectActionsMixin
+
+        return ProjectActionsMixin
+
+    def test_true_outcome_acks_and_refreshes(self) -> None:
+        """Operator clicked Mark-as-saved → ack lands, pill refresh fires."""
+        mixin = self._get_mixin()
+        instance = mock.Mock(spec=mixin)
+        instance.notify = mock.Mock()
+        instance._refresh_vault_status = mock.AsyncMock()
+        ack_recovery = mock.Mock(return_value=True)
+        stubs = {
+            "terok.lib.integrations.sandbox": mock.Mock(
+                SandboxConfig=lambda: mock.Mock(),
+                acknowledge_recovery=ack_recovery,
+            ),
+        }
+        with mock.patch.dict(sys.modules, stubs):
+            run(mixin._on_vault_reveal_result(instance, True))
+        ack_recovery.assert_called_once()
+        instance._refresh_vault_status.assert_awaited_once()
+
+    def test_false_outcome_does_nothing(self) -> None:
+        """Operator clicked Close → no ack, no refresh."""
+        mixin = self._get_mixin()
+        instance = mock.Mock(spec=mixin)
+        instance.notify = mock.Mock()
+        instance._refresh_vault_status = mock.AsyncMock()
+        ack_recovery = mock.Mock(return_value=True)
+        stubs = {
+            "terok.lib.integrations.sandbox": mock.Mock(
+                SandboxConfig=lambda: mock.Mock(),
+                acknowledge_recovery=ack_recovery,
+            ),
+        }
+        with mock.patch.dict(sys.modules, stubs):
+            run(mixin._on_vault_reveal_result(instance, False))
+        ack_recovery.assert_not_called()
+        instance._refresh_vault_status.assert_not_awaited()
+
+    def test_none_outcome_does_nothing(self) -> None:
+        """Esc / already-acked dialog → no state change."""
+        mixin = self._get_mixin()
+        instance = mock.Mock(spec=mixin)
+        instance.notify = mock.Mock()
+        instance._refresh_vault_status = mock.AsyncMock()
+        ack_recovery = mock.Mock(return_value=True)
+        stubs = {
+            "terok.lib.integrations.sandbox": mock.Mock(
+                SandboxConfig=lambda: mock.Mock(),
+                acknowledge_recovery=ack_recovery,
+            ),
+        }
+        with mock.patch.dict(sys.modules, stubs):
+            run(mixin._on_vault_reveal_result(instance, None))
+        ack_recovery.assert_not_called()
+        instance._refresh_vault_status.assert_not_awaited()
+
+
+class TestVaultAcknowledgeAction:
+    """``_action_vault_acknowledge`` — silent ack from the screen."""
+
+    def _get_mixin(self) -> type:
+        from terok.tui.project_actions import ProjectActionsMixin
+
+        return ProjectActionsMixin
+
+    def test_acknowledge_success_notifies_and_refreshes(self) -> None:
+        """A successful ack notifies + triggers a pill refresh."""
+        mixin = self._get_mixin()
+        instance = mock.Mock(spec=mixin)
+        instance.notify = mock.Mock()
+        instance._refresh_vault_status = mock.AsyncMock()
+        ack_recovery = mock.Mock(return_value=True)
+        stubs = {
+            "terok.lib.integrations.sandbox": mock.Mock(
+                SandboxConfig=lambda: mock.Mock(),
+                acknowledge_recovery=ack_recovery,
+            ),
+        }
+        with mock.patch.dict(sys.modules, stubs):
+            run(mixin._action_vault_acknowledge(instance))
+        ack_recovery.assert_called_once()
+        instance.notify.assert_called_once()
+        assert "marked as saved" in instance.notify.call_args[0][0]
+        instance._refresh_vault_status.assert_awaited_once()
+
+    def test_acknowledge_locked_notifies_warning(self) -> None:
+        """Locked vault → wrapper returns False, surface warning, no refresh."""
+        mixin = self._get_mixin()
+        instance = mock.Mock(spec=mixin)
+        instance.notify = mock.Mock()
+        instance._refresh_vault_status = mock.AsyncMock()
+        ack_recovery = mock.Mock(return_value=False)
+        stubs = {
+            "terok.lib.integrations.sandbox": mock.Mock(
+                SandboxConfig=lambda: mock.Mock(),
+                acknowledge_recovery=ack_recovery,
+            ),
+        }
+        with mock.patch.dict(sys.modules, stubs):
+            run(mixin._action_vault_acknowledge(instance))
+        ack_recovery.assert_called_once()
+        instance.notify.assert_called_once()
+        assert instance.notify.call_args.kwargs["severity"] == "warning"
+        instance._refresh_vault_status.assert_not_awaited()
+
+
+class TestMaybeWarnRecoveryUnconfirmed:
+    """One-shot startup notification for an unconfirmed recovery key.
+
+    Three severity bands — silent / yellow warning / red error — picked
+    by ``RecoveryStatus.urgent`` so the message escalates when the
+    operator is one reboot away from losing the vault.
+    """
+
+    @staticmethod
+    def _fake_status(*, acknowledged: bool, source: object) -> object:
+        """Build a duck-typed ``RecoveryStatus`` stand-in for the notify branches."""
+        from terok.lib.integrations.sandbox import RecoveryStatus
+
+        return RecoveryStatus(acknowledged=acknowledged, source=source)
+
+    def test_warns_once_when_unlocked_and_unacked_durable(self) -> None:
+        """Fresh process + unlocked vault + missing marker + durable tier → ``warning``."""
+        app_mod, app_class = import_app()
+        instance = mock.Mock(spec=app_class)
+        instance.notify = mock.Mock()
+        instance._last_vault_status = make_vault_status(locked=False, passphrase_source="keyring")
+        if hasattr(instance, "_recovery_warning_shown"):
+            del instance._recovery_warning_shown
+        with mock.patch.object(
+            app_mod,
+            "recovery_status",
+            return_value=self._fake_status(acknowledged=False, source="keyring"),
+        ):
+            app_class._maybe_warn_recovery_unconfirmed(instance)
+        instance.notify.assert_called_once()
+        assert instance.notify.call_args.kwargs["severity"] == "warning"
+
+    def test_errors_when_session_only(self) -> None:
+        """Unacked + session-file source → red ``error`` (one reboot away from loss)."""
+        app_mod, app_class = import_app()
+        instance = mock.Mock(spec=app_class)
+        instance.notify = mock.Mock()
+        instance._last_vault_status = make_vault_status(
+            locked=False, passphrase_source="session-file"
+        )
+        if hasattr(instance, "_recovery_warning_shown"):
+            del instance._recovery_warning_shown
+        with mock.patch.object(
+            app_mod,
+            "recovery_status",
+            return_value=self._fake_status(acknowledged=False, source="session-file"),
+        ):
+            app_class._maybe_warn_recovery_unconfirmed(instance)
+        instance.notify.assert_called_once()
+        assert instance.notify.call_args.kwargs["severity"] == "error"
+        body = instance.notify.call_args[0][0]
+        assert "UNRECOVERABLE" in body
+        assert "reboot" in body.lower()
+
+    def test_quiet_when_already_acknowledged(self) -> None:
+        """Marker already lands → silent, no notification."""
+        app_mod, app_class = import_app()
+        instance = mock.Mock(spec=app_class)
+        instance.notify = mock.Mock()
+        instance._last_vault_status = make_vault_status(locked=False, passphrase_source="keyring")
+        if hasattr(instance, "_recovery_warning_shown"):
+            del instance._recovery_warning_shown
+        with mock.patch.object(
+            app_mod,
+            "recovery_status",
+            return_value=self._fake_status(acknowledged=True, source="keyring"),
+        ):
+            app_class._maybe_warn_recovery_unconfirmed(instance)
+        instance.notify.assert_not_called()
+
+    def test_quiet_when_locked(self) -> None:
+        """Locked vault → unlock modal already pulls attention; suppress warning."""
+        app_mod, app_class = import_app()
+        instance = mock.Mock(spec=app_class)
+        instance.notify = mock.Mock()
+        instance._last_vault_status = make_vault_status(locked=True, passphrase_source=None)
+        if hasattr(instance, "_recovery_warning_shown"):
+            del instance._recovery_warning_shown
+        with mock.patch.object(
+            app_mod,
+            "recovery_status",
+            return_value=self._fake_status(acknowledged=False, source=None),
+        ):
+            app_class._maybe_warn_recovery_unconfirmed(instance)
+        instance.notify.assert_not_called()
+
+    def test_fires_at_most_once_per_session(self) -> None:
+        """Second invocation does nothing — the flag survives the call."""
+        app_mod, app_class = import_app()
+        instance = mock.Mock(spec=app_class)
+        instance.notify = mock.Mock()
+        instance._last_vault_status = make_vault_status(locked=False, passphrase_source="keyring")
+        if hasattr(instance, "_recovery_warning_shown"):
+            del instance._recovery_warning_shown
+        with mock.patch.object(
+            app_mod,
+            "recovery_status",
+            return_value=self._fake_status(acknowledged=False, source="keyring"),
+        ):
+            app_class._maybe_warn_recovery_unconfirmed(instance)
+            app_class._maybe_warn_recovery_unconfirmed(instance)
+        instance.notify.assert_called_once()
+
+    def test_quiet_when_status_is_none(self) -> None:
+        """No probe yet (status=None) → nothing to warn about."""
+        app_mod, app_class = import_app()
+        instance = mock.Mock(spec=app_class)
+        instance.notify = mock.Mock()
+        instance._last_vault_status = None
+        if hasattr(instance, "_recovery_warning_shown"):
+            del instance._recovery_warning_shown
+        with mock.patch.object(
+            app_mod,
+            "recovery_status",
+            return_value=self._fake_status(acknowledged=False, source="keyring"),
+        ):
+            app_class._maybe_warn_recovery_unconfirmed(instance)
+        instance.notify.assert_not_called()
 
 
 class TestSelinuxFixDispatch:
@@ -2030,15 +2434,65 @@ class TestVaultStatusPill:
         bar.set_message.assert_called_once()
         assert "LOCKED" in bar.set_message.call_args[0][0]
 
-    def test_render_pill_unlocked_shows_source(self) -> None:
-        """Resolved tier surfaces in the pill text."""
-        _, app_class = import_app()
+    @staticmethod
+    def _fake_status(*, acknowledged: bool, source: object) -> object:
+        from terok.lib.integrations.sandbox import RecoveryStatus
+
+        return RecoveryStatus(acknowledged=acknowledged, source=source)
+
+    def test_render_pill_unlocked_shows_source(self, monkeypatch) -> None:
+        """Resolved tier surfaces in the pill text (recovery key already acked)."""
+        app_mod, app_class = import_app()
+        monkeypatch.setattr(
+            app_mod,
+            "recovery_status",
+            lambda: self._fake_status(acknowledged=True, source="keyring"),
+        )
         instance = mock.Mock(spec=app_class)
         bar = mock.Mock()
         instance.query_one = mock.Mock(return_value=bar)
         status = make_vault_status(passphrase_source="keyring")
         app_class._render_status_pill(instance, status)
         bar.set_message.assert_called_once_with("Vault: unlocked (keyring)")
+
+    def test_render_pill_unlocked_appends_unconfirmed_recovery(self, monkeypatch) -> None:
+        """Missing recovery-ack marker on a durable tier → ``UNCONFIRMED`` suffix."""
+        app_mod, app_class = import_app()
+        monkeypatch.setattr(
+            app_mod,
+            "recovery_status",
+            lambda: self._fake_status(acknowledged=False, source="systemd-creds"),
+        )
+        instance = mock.Mock(spec=app_class)
+        bar = mock.Mock()
+        instance.query_one = mock.Mock(return_value=bar)
+        status = make_vault_status(passphrase_source="systemd-creds")
+        app_class._render_status_pill(instance, status)
+        message = bar.set_message.call_args[0][0]
+        assert "systemd-creds" in message
+        assert "recovery key UNCONFIRMED" in message
+        # The session-only escalation must not bleed into the durable branch.
+        assert "vault dies on reboot" not in message
+
+    def test_render_pill_session_only_escalates_pill_text(self, monkeypatch) -> None:
+        """Missing marker + session-file source → louder pill text."""
+        app_mod, app_class = import_app()
+        monkeypatch.setattr(
+            app_mod,
+            "recovery_status",
+            lambda: self._fake_status(acknowledged=False, source="session-file"),
+        )
+        instance = mock.Mock(spec=app_class)
+        bar = mock.Mock()
+        instance.query_one = mock.Mock(return_value=bar)
+        status = make_vault_status(passphrase_source="session-file")
+        app_class._render_status_pill(instance, status)
+        message = bar.set_message.call_args[0][0]
+        assert "session-file" in message
+        # The escalation explicitly names the reboot-loss risk so the
+        # operator sees the asymmetry against durable tiers at a glance.
+        assert "UNSAVED" in message
+        assert "vault dies on reboot" in message
 
     def test_render_pill_unlocked_appends_plaintext_marker(self) -> None:
         """sandbox#282: pill flags plaintext-on-disk even when another tier unlocked."""

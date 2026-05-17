@@ -82,6 +82,7 @@ if _HAS_TEXTUAL:
         get_server_status,
         get_vault_status,
         needs_setup,
+        recovery_status,
         state as _shield_state,
     )
 
@@ -188,6 +189,8 @@ if _HAS_TEXTUAL:
         "vault_lock": "_action_vault_lock",
         "vault_seal": "_action_vault_seal",
         "vault_to_keyring": "_action_vault_to_keyring",
+        "vault_reveal": "_action_vault_reveal",
+        "vault_acknowledge": "_action_vault_acknowledge",
     }
 
     TASK_ACTION_HANDLERS: dict[str, str] = {
@@ -433,6 +436,13 @@ if _HAS_TEXTUAL:
             # the ``maybe_vault_db`` graceful-degradation state and the
             # operator sees a silent empty SSH tile with no remediation.
             await self._refresh_vault_status(push_modal_if_locked=True)
+
+            # Once per session, surface the unconfirmed-recovery warning
+            # as a notification — the pill catches the operator's eye
+            # only on a TUI that's already running.  Anyone who's just
+            # logged in (or just finished setup) deserves a louder
+            # reminder; subsequent sessions get the pill alone.
+            self._maybe_warn_recovery_unconfirmed()
 
             # Startup gate server health check
             self.run_worker(
@@ -1646,6 +1656,52 @@ if _HAS_TEXTUAL:
             if handler:
                 await getattr(self, handler)()
 
+        def _maybe_warn_recovery_unconfirmed(self) -> None:
+            """One-shot startup notification when no recovery acknowledgement is on disk.
+
+            The pill in the status bar carries the same signal on every
+            refresh; this lifts it to a notification once per process
+            so a user who just finished setup (and hasn't yet learned
+            to look at the pill) gets a louder reminder.  Suppressed
+            silently on a locked vault — the unlock prompt is already
+            pulling the operator's attention.
+
+            Severity escalates from ``warning`` to ``error`` when the
+            resolver lands on the session-unlock tmpfs tier and the
+            marker is missing — the operator is literally one reboot
+            away from losing the vault.
+            """
+            if getattr(self, "_recovery_warning_shown", False):
+                return
+            self._recovery_warning_shown = True
+            vault_status = getattr(self, "_last_vault_status", None)
+            if vault_status is None or vault_status.locked:
+                return
+            rstatus = recovery_status()
+            if rstatus.acknowledged:
+                return
+            if rstatus.urgent:
+                self.notify(
+                    "Vault recovery key UNCONFIRMED and the passphrase lives "
+                    "ONLY in the session-unlock tmpfs file — it will be wiped "
+                    "on the next reboot and your vault becomes UNRECOVERABLE "
+                    "then.  Open the Vault screen → Reveal NOW and save the "
+                    "key off-host.",
+                    title="Recovery key — saving NOW or lose the vault on reboot",
+                    severity="error",
+                    timeout=30,
+                )
+                return
+            self.notify(
+                "Vault recovery key unconfirmed — every keystore tier is "
+                "machine-bound, so a hardware failure strands the vault. "
+                "Run `terok vault passphrase reveal` (or open the Vault "
+                "screen and click Reveal) to save the key off-host.",
+                title="Recovery key unconfirmed",
+                severity="warning",
+                timeout=20,
+            )
+
         async def _refresh_vault_status(self, *, push_modal_if_locked: bool = False) -> None:
             """Read fresh ``VaultStatus``, update the pill, optionally push the unlock modal."""
             try:
@@ -1676,15 +1732,27 @@ if _HAS_TEXTUAL:
             plaintext = getattr(status, "plaintext_passphrase_path", None)
             if status.locked:
                 bar.set_message("Vault: LOCKED — open Vault from the command palette to unlock")
-            elif status.passphrase_source is not None:
-                # The plaintext-on-disk tier (sandbox#282) needs visibility
-                # even when a higher tier unlocked the call — fold it into
-                # the pill so the operator sees it without opening the
-                # vault status screen.
-                suffix = " — plaintext on disk" if plaintext is not None else ""
-                bar.set_message(f"Vault: unlocked ({status.passphrase_source}){suffix}")
-            else:
+                return
+            if status.passphrase_source is None:
                 bar.set_message("")
+                return
+            # The plaintext-on-disk tier (sandbox#282) needs visibility
+            # even when a higher tier unlocked the call — fold it into
+            # the pill so the operator sees it without opening the
+            # vault status screen.
+            suffix = " — plaintext on disk" if plaintext is not None else ""
+            # The recovery-acknowledgement marker is one more bit of
+            # "visible until acted on" state.  When the resolver lands
+            # on the session-unlock tmpfs file AND the marker is
+            # missing, the operator is one reboot away from losing the
+            # vault — escalate the pill text accordingly.
+            rstatus = recovery_status()
+            if not rstatus.acknowledged:
+                if rstatus.urgent:
+                    suffix += " — recovery key UNSAVED, vault dies on reboot"
+                else:
+                    suffix += " — recovery key UNCONFIRMED"
+            bar.set_message(f"Vault: unlocked ({status.passphrase_source}){suffix}")
 
         async def _on_vault_unlock_result(self, passphrase: "str | None") -> None:
             """Write the typed passphrase to the session-unlock tmpfs file.
