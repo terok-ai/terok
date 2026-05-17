@@ -464,9 +464,10 @@ def _get_login_command(project: ProjectConfig, task_id: str) -> list[str]:
 
     Routes through the per-project runtime so the returned argv matches
     the backend that booted the container — under crun it's the
-    familiar ``podman exec -it`` form; under krun it's an SSH-over-vsock
-    invocation (``ssh -tt -i … ProxyCommand="socat - VSOCK-CONNECT:<cid>:22"
-    dev@krun-guest``) because ``podman exec`` can't enter a krun guest.
+    familiar ``podman exec -it`` form; under krun it's an SSH invocation
+    (``ssh -tt -p <host_port> -i … dev@127.0.0.1``) over the per-task
+    TCP port podman's passt has forwarded into the guest, because
+    ``podman exec`` can't enter a krun guest.
     """
     cname, _mode = _validate_login(project, task_id)
     return _rt.resolve_runtime(project).container(cname).login_command()

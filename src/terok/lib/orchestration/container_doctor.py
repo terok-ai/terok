@@ -79,7 +79,7 @@ def _exec_in_container(
     [`run_container_doctor`][terok.lib.orchestration.container_doctor.run_container_doctor]
     call so the doctor's probes route through the same backend that
     booted the container — under crun that's ``podman exec``; under
-    krun it's SSH-over-vsock.
+    krun it's SSH over a passt-forwarded TCP port.
     """
     return runtime.exec(runtime.container(cname), cmd, timeout=timeout)
 
@@ -454,7 +454,7 @@ def run_container_doctor(
 
     # Resolve the runtime once per doctor run so every probe / fix
     # reaches the container through the same backend that booted it
-    # (under krun: SSH-over-vsock; under crun: podman exec).
+    # (under krun: SSH over a passt-forwarded TCP port; under crun: podman exec).
     runtime = _rt.resolve_runtime(load_project(project_id))
     checks = list(_collect_all_checks(project_id, task_dir))
 

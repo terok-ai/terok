@@ -17,10 +17,7 @@ import pytest
 
 from terok.lib.core.runtime import resolve_runtime
 from terok.lib.integrations.sandbox import KrunRuntime, NullRuntime, PodmanRuntime
-from terok.lib.orchestration.task_runners.container import (
-    _allocate_krun_cid,
-    _validate_krun_compatibility,
-)
+from terok.lib.orchestration.task_runners.container import _validate_krun_compatibility
 from tests.testfs import MOCK_BASE
 
 
@@ -134,34 +131,6 @@ class TestResolveRuntime:
             resolve_runtime(None)
 
 
-class TestKrunCidAllocation:
-    """The CID allocator is stable, deterministic, per-container, and unreserved."""
-
-    def test_stable_for_same_container(self) -> None:
-        assert _allocate_krun_cid("task-proj-x") == _allocate_krun_cid("task-proj-x")
-
-    def test_differs_across_containers(self) -> None:
-        assert _allocate_krun_cid("task-a") != _allocate_krun_cid("task-b")
-
-    def test_per_container_under_same_project(self) -> None:
-        """Two concurrent tasks under the same project get distinct CIDs.
-
-        Keying on the container name (which already encodes project +
-        mode + task) means same-project multi-task — the most likely
-        collision shape — doesn't collide.  Without this, every task
-        after the first under one project would fail to start because
-        the vsock kernel module rejects a duplicate CID bind.
-        """
-        a = _allocate_krun_cid("terok-cli-projx-taskA")
-        b = _allocate_krun_cid("terok-cli-projx-taskB")
-        assert a != b
-
-    def test_avoids_reserved_low_cids(self) -> None:
-        """CIDs 0, 1, 2 are reserved by the vsock spec."""
-        for cname in ("a", "abc", "x" * 50, "terok-cli-proj-task-with-dashes"):
-            assert _allocate_krun_cid(cname) >= 3
-
-
 class TestKrunCompatibilityGuard:
     """`_validate_krun_compatibility` rejects nested-container combos
     and refuses krun selection without the experimental flag."""
@@ -239,56 +208,67 @@ def _krun_keypair(tmp_path):
         yield fake
 
 
+@pytest.fixture()
+def _stub_port_reservation():
+    """Patch ``PodmanRuntime.reserve_port`` to hand back a fixed port.
+
+    The real reservation binds an ephemeral TCP socket and releases on
+    exit; tests just need the port number to be stable so the assertions
+    can spot it in the assembled flag list.
+    """
+
+    class _StubReservation:
+        port = 42201
+
+        def __enter__(self):  # type: ignore[no-untyped-def]
+            return self
+
+        def __exit__(self, *exc):  # type: ignore[no-untyped-def]
+            return None
+
+    with patch("terok.lib.orchestration.task_runners.container.PodmanRuntime") as podman_cls:
+        podman_cls.return_value.reserve_port.return_value = _StubReservation()
+        yield _StubReservation
+
+
 class TestProjectRuntimeFlags:
-    """`_project_runtime_flags` emits --runtime + krun annotations + pubkey mount."""
+    """`_project_runtime_flags` emits --runtime + krun annotations + port-forward + pubkey mount."""
 
     def test_no_runtime_no_flags(self) -> None:
         from terok.lib.orchestration.task_runners.container import _project_runtime_flags
 
         assert _project_runtime_flags(_project(), cname="terok-cli-demoproj-task-a") == []
 
-    def test_krun_emits_runtime_flag(self, _experimental_enabled, _krun_keypair) -> None:
+    def test_krun_emits_runtime_flag(
+        self, _experimental_enabled, _krun_keypair, _stub_port_reservation
+    ) -> None:
         from terok.lib.orchestration.task_runners.container import _project_runtime_flags
 
         flags = _project_runtime_flags(_project(runtime="krun"), cname="terok-cli-demoproj-task-a")
         assert "--runtime" in flags
         assert flags[flags.index("--runtime") + 1] == "krun"
 
-    def test_krun_emits_cid_annotation(self, _experimental_enabled, _krun_keypair) -> None:
-        from terok.lib.integrations.sandbox import DEFAULT_CID_ANNOTATION
+    def test_krun_emits_port_forward_and_matching_annotation(
+        self, _experimental_enabled, _krun_keypair, _stub_port_reservation
+    ) -> None:
+        """``-p <reserved>:22`` and the ``terok.krun.port=<reserved>`` annotation
+        carry the same value — the SSH transport's resolver reads the annotation
+        back at exec time to find which host port maps to this container's sshd."""
+        from terok.lib.integrations.sandbox import DEFAULT_PORT_ANNOTATION
         from terok.lib.orchestration.task_runners.container import _project_runtime_flags
 
         flags = _project_runtime_flags(_project(runtime="krun"), cname="terok-cli-demoproj-task-a")
+
+        p_idx = flags.index("-p")
+        assert flags[p_idx + 1] == "42201:22"
+
         annotations = [flags[i + 1] for i, t in enumerate(flags) if t == "--annotation"]
-        cid_annotations = [a for a in annotations if a.startswith(DEFAULT_CID_ANNOTATION + "=")]
-        assert len(cid_annotations) == 1
-        # The value is an integer in the unreserved CID range.
-        _, _, cid_str = cid_annotations[0].partition("=")
-        assert int(cid_str) >= 3
+        port_annotations = [a for a in annotations if a.startswith(DEFAULT_PORT_ANNOTATION + "=")]
+        assert port_annotations == [f"{DEFAULT_PORT_ANNOTATION}=42201"]
 
-    def test_krun_cid_differs_per_container(self, _experimental_enabled, _krun_keypair) -> None:
-        """Two containers under the same project get distinct CID annotations.
-
-        Pins the per-container keying — same-project multi-task is the
-        most likely collision shape, and the kernel rejects duplicate
-        vsock CID binds, so without this property the second task
-        under a project would fail to start.
-        """
-        from terok.lib.integrations.sandbox import DEFAULT_CID_ANNOTATION
-        from terok.lib.orchestration.task_runners.container import _project_runtime_flags
-
-        def cid_of(cname: str) -> str:
-            flags = _project_runtime_flags(_project(runtime="krun"), cname=cname)
-            (entry,) = [
-                flags[i + 1]
-                for i, t in enumerate(flags)
-                if t == "--annotation" and flags[i + 1].startswith(DEFAULT_CID_ANNOTATION + "=")
-            ]
-            return entry
-
-        assert cid_of("terok-cli-demoproj-task-a") != cid_of("terok-cli-demoproj-task-b")
-
-    def test_krun_emits_pubkey_bind_mount(self, _experimental_enabled, _krun_keypair) -> None:
+    def test_krun_emits_pubkey_bind_mount(
+        self, _experimental_enabled, _krun_keypair, _stub_port_reservation
+    ) -> None:
         """The live host pubkey is bind-mounted into the guest at task launch.
 
         This is what keeps the L0 image byte-identical across crun/krun:
@@ -304,7 +284,9 @@ class TestProjectRuntimeFlags:
         assert "/etc/ssh/authorized_keys.d/terok:ro" in mount_spec
         assert str(_krun_keypair.public_path) in mount_spec
 
-    def test_krun_emits_cpu_and_ram_when_set(self, _experimental_enabled, _krun_keypair) -> None:
+    def test_krun_emits_cpu_and_ram_when_set(
+        self, _experimental_enabled, _krun_keypair, _stub_port_reservation
+    ) -> None:
         from terok.lib.orchestration.task_runners.container import _project_runtime_flags
 
         flags = _project_runtime_flags(
@@ -315,7 +297,9 @@ class TestProjectRuntimeFlags:
         assert "run.oci.krun.cpus=4" in annotations
         assert "run.oci.krun.ram_mib=8192" in annotations
 
-    def test_krun_skips_cpu_ram_when_unset(self, _experimental_enabled, _krun_keypair) -> None:
+    def test_krun_skips_cpu_ram_when_unset(
+        self, _experimental_enabled, _krun_keypair, _stub_port_reservation
+    ) -> None:
         from terok.lib.orchestration.task_runners.container import _project_runtime_flags
 
         flags = _project_runtime_flags(_project(runtime="krun"), cname="terok-cli-demoproj-task-a")

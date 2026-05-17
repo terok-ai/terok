@@ -18,7 +18,7 @@ def _mock_load_project():
 
     ``container_git_diff`` resolves the per-project runtime via
     ``load_project(project_id)`` so it can route through krun's
-    SSH-over-vsock transport when needed.  Every test here passes
+    SSH-over-passt-TCP transport when needed.  Every test here passes
     fake project IDs and patches ``resolve_runtime`` (via the autouse
     ``mock_runtime``) to ignore the actual project, so we just need
     ``load_project`` not to raise on a non-existent ID.

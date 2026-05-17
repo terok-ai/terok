@@ -11,7 +11,6 @@ and ``_project_runtime_flags`` assemble the podman invocation.
 
 from __future__ import annotations
 
-import hashlib
 import shlex
 from typing import TYPE_CHECKING
 
@@ -22,8 +21,9 @@ from terok.lib.integrations.executor import (
     ensure_krun_host_keypair,
 )
 from terok.lib.integrations.sandbox import (
-    DEFAULT_CID_ANNOTATION,
+    DEFAULT_PORT_ANNOTATION,
     LifecycleHooks,
+    PodmanRuntime,
     Sandbox,
     VolumeSpec,
 )
@@ -66,8 +66,8 @@ def _print_login_instructions(project_id: str, task_id: str, cname: str, color: 
 
     Resolves the runtime per *project_id* so the printed raw-command
     line matches what the operator's about to invoke — under crun
-    that's ``podman exec``; under krun it's ``ssh -tt … ProxyCommand=
-    "socat - VSOCK-CONNECT:<cid>:22" dev@krun-guest``.
+    that's ``podman exec``; under krun it's
+    ``ssh -p <host_port> -i <key> … dev@127.0.0.1``.
     """
     project = load_project(project_id)
     login_cmd = f"terok login {project_id} {task_id}"
@@ -229,14 +229,17 @@ def _project_runtime_flags(project: ProjectConfig, *, cname: str) -> list[str]:
     "unknown label option: nested" and the user is expected to upgrade.
 
     ``run.runtime: krun`` → ``--runtime krun`` plus krun OCI annotations
-    for microVM sizing and a per-container vsock CID, **and** a
-    bind-mount of the live host SSH public key into the guest's
-    ``/etc/ssh/authorized_keys.d/terok``.  The L0 image ships an empty
-    placeholder there; the mount overlays it so the guest's
-    sshd-on-vsock accepts our private key.  Validates the
+    for microVM sizing, a per-container ``-p <host>:22`` port forward
+    bridging into the guest's sshd via podman's passt, the matching
+    ``terok.krun.port`` annotation so the host-side transport can find
+    it again, **and** a bind-mount of the live host SSH public key into
+    the guest's ``/etc/ssh/authorized_keys.d/terok``.  The L0 image
+    ships an empty placeholder there; the mount overlays it so the
+    guest's sshd accepts our private key.  Validates the
     krun-incompatible combinations before emitting any flag so the
     operator sees a clear error rather than a podman launch failure.
     """
+    del cname  # only used by the krun branch's reservation log; kept for caller stability
     flags: list[str] = []
     if project.nested_containers:
         flags += ["--security-opt", "label=nested", "--device", "/dev/fuse"]
@@ -247,19 +250,28 @@ def _project_runtime_flags(project: ProjectConfig, *, cname: str) -> list[str]:
             flags += ["--annotation", f"run.oci.krun.cpus={project.krun_cpus}"]
         if project.krun_ram_mib is not None:
             flags += ["--annotation", f"run.oci.krun.ram_mib={project.krun_ram_mib}"]
-        # The CID annotation is the contract between the orchestrator and
-        # `VsockSSHTransport`'s podman_annotation_resolver — the resolver
-        # reads it back per *container name* at exec time, so the binding
-        # is container-scoped on both ends.
+        # Reserve a free loopback TCP port and forward it to the guest's
+        # sshd:22.  ``reserve_port`` binds-then-releases, so there's a
+        # small race window before podman picks the port back up — same
+        # pattern the executor uses for toad's web port; tolerated as a
+        # rare-by-construction failure that fails loud rather than
+        # silently mis-binding.  The port number is also written into
+        # ``terok.krun.port`` so the SSH transport's
+        # ``port_annotation_resolver`` finds it at exec time, container-
+        # scoped on both ends.
+        with PodmanRuntime().reserve_port() as reservation:
+            host_port = reservation.port
         flags += [
+            "-p",
+            f"{host_port}:22",
             "--annotation",
-            f"{DEFAULT_CID_ANNOTATION}={_allocate_krun_cid(cname)}",
+            f"{DEFAULT_PORT_ANNOTATION}={host_port}",
         ]
         # Bind-mount the live host pubkey into the guest.  The L0 image
         # ships an empty placeholder at this path; the mount overlays
-        # it so the guest's sshd-on-vsock accepts our identity.  This
-        # is what keeps the L0 image byte-identical for crun and krun
-        # consumers — no per-installation secret baked in at build.
+        # it so the guest's sshd accepts our identity.  This is what
+        # keeps the L0 image byte-identical for crun and krun consumers
+        # — no per-installation secret baked in at build.
         keypair = ensure_krun_host_keypair(cfg=make_sandbox_config())
         flags += [
             "-v",
@@ -292,39 +304,9 @@ def _validate_krun_compatibility(project: ProjectConfig) -> None:
     if project.nested_containers:
         raise SystemExit(
             "run.runtime: krun is incompatible with run.nested_containers: true — "
-            "the krun guest's vsock-only sshd doesn't host a nested-container stack.  "
+            "the krun guest's hardened sshd doesn't host a nested-container stack.  "
             "Pick one or move the nested workload to a crun task."
         )
-
-
-def _allocate_krun_cid(cname: str) -> int:
-    """Deterministically assign a vsock CID to *cname*.
-
-    Stable across re-execs of the same container so the host-side
-    resolver finds the same guest.  Keyed on the container name (not
-    the project id) so two concurrent tasks under the same project
-    get distinct CIDs — same-project multi-task is the most likely
-    collision shape, and per-container keying eliminates it.
-
-    Stays in the unreserved range ``[3, 2**31)``.  CIDs 0, 1, 2 are
-    reserved by the vsock spec (``ANY``, ``HYPERVISOR``, ``HOST``);
-    the upper half stays clear of the vendor-reserved 2**32-1
-    sentinel and leaves headroom.
-
-    **Threat model note** — the vsock kernel module enforces CID
-    uniqueness at bind time: two guests cannot simultaneously hold
-    the same CID.  A hash collision therefore causes the second
-    ``podman run`` to fail at startup, not a silent wrong-guest
-    dispatch.  At realistic concurrency (tens to low hundreds of
-    containers) the birthday probability inside a 2**31 range is
-    negligible.  A proper free-CID tracker with a persistent
-    freelist + lock would still be needed before terok supports
-    very-high-concurrency deploys or wants graceful CID reuse after
-    crashes — tracked as a follow-up.
-    """
-    digest = hashlib.sha1(cname.encode("utf-8"), usedforsecurity=False).digest()
-    raw = int.from_bytes(digest[:8], "big")
-    return 3 + (raw % (2**31 - 3))
 
 
 __all__ = [
