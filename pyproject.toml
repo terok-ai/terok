@@ -50,7 +50,6 @@ terok-clearance = "terok.tui.clearance_screen:main"
 terok-askpass = "terok.tui.askpass:main"
 
 [tool.poetry]
-version = "0.7.8"
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Environment :: Console",
@@ -77,6 +76,7 @@ include = [
   { path = "docs/*.md" },
   { path = "examples/**" },
 ]
+version = "0.7.8"
 
 [tool.poetry.group.dev.dependencies]
 pydevd-pycharm = "262.4852.46"
