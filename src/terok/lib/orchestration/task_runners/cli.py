@@ -54,7 +54,7 @@ def task_run_cli(
     meta, meta_path = load_task_meta(project.id, task_id, "cli")
 
     cname = container_name(project.id, "cli", task_id)
-    container_state = _rt.get_runtime().container(cname).state
+    container_state = _rt.resolve_runtime(project).container(cname).state
 
     # If container already exists, handle it
     if container_state is not None:
@@ -66,8 +66,8 @@ def task_run_cli(
             return
         # Container exists but is stopped/exited - start it
         print(f"Starting existing container {_green(cname, color_enabled)}...")
-        _podman_start(cname)
-        _assert_running(cname)
+        _podman_start(project, cname)
+        _assert_running(project, cname)
         task_dir = project.tasks_root / str(task_id)
         run_hook(
             "post_start",
@@ -147,13 +147,13 @@ def task_run_cli(
     )
 
     # Stream initial logs until ready marker is seen (or timeout), then detach
-    _rt.get_runtime().container(cname).stream_initial_logs(
+    _rt.resolve_runtime(project).container(cname).stream_initial_logs(
         ready_check=lambda line: "__CLI_READY__" in line or ">> init complete" in line,
         timeout_sec=60.0,
     )
 
     # Verify the container is still alive after log streaming
-    _assert_running(cname)
+    _assert_running(project, cname)
     run_hook(
         "post_ready",
         project.hook_post_ready,

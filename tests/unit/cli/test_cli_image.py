@@ -142,6 +142,7 @@ class TestImageDispatch:
         args = argparse.Namespace(
             cmd="image",
             image_cmd="build",
+            project_id=None,
             base=None,
             agents=None,
             family=None,
@@ -152,6 +153,7 @@ class TestImageDispatch:
         with patch("terok.cli.commands.image._cmd_build") as mock:
             assert dispatch(args) is True
         mock.assert_called_once_with(
+            project_id=None,
             base=None,
             agents=None,
             family=None,
@@ -191,6 +193,7 @@ class TestCmdBuild:
             patch("terok.lib.integrations.executor.build_sidecar_image"),
         ):
             _cmd_build(
+                project_id=None,
                 base=None,
                 agents=None,
                 family=None,
@@ -230,6 +233,7 @@ class TestCmdBuild:
             patch("terok.lib.integrations.executor.build_sidecar_image"),
         ):
             _cmd_build(
+                project_id=None,
                 base="ubuntu:24.04",
                 agents="claude,codex",
                 family="deb",
@@ -267,6 +271,7 @@ class TestCmdBuild:
             ) as mock_sidecar,
         ):
             _cmd_build(
+                project_id=None,
                 base=None,
                 agents=None,
                 family=None,
@@ -277,6 +282,46 @@ class TestCmdBuild:
 
         mock_sidecar.assert_called_once()
         assert "terok-l1-sidecar:ubuntu-24.04" in capsys.readouterr().out
+
+    def test_project_id_drives_base_and_agents_from_project_config(self) -> None:
+        """``image build <project>`` derives base + agents from the project, not globals."""
+        from unittest.mock import MagicMock, sentinel
+
+        from terok.cli.commands.image import _cmd_build
+
+        fake_project = MagicMock(
+            base_image="fedora:43",
+            family="rpm",
+            agents=["claude", "codex"],
+        )
+        fake_images = MagicMock(l0="L0", l1="L1")
+        with (
+            patch("terok.lib.core.projects.load_project", return_value=fake_project),
+            patch(
+                "terok.lib.integrations.executor.parse_agent_selection",
+                return_value=sentinel.RESOLVED_AGENTS,
+            ) as mock_parse,
+            patch(
+                "terok.lib.integrations.executor.build_base_images", return_value=fake_images
+            ) as mock_build,
+        ):
+            _cmd_build(
+                project_id="myproj",
+                base=None,
+                agents=None,
+                family=None,
+                rebuild=False,
+                full_rebuild=False,
+                sidecar=False,
+            )
+
+        mock_parse.assert_called_once_with("claude,codex")
+        kwargs = mock_build.call_args.kwargs
+        assert kwargs["base_image"] == "fedora:43"
+        assert kwargs["family"] == "rpm"
+        assert kwargs["agents"] is sentinel.RESOLVED_AGENTS
+        # Per-project builds must NOT clobber the user's host-wide default tag.
+        assert kwargs["tag_as_default"] is False
 
     def test_build_error_exits_cleanly(self) -> None:
         from terok_executor import BuildError
@@ -297,6 +342,7 @@ class TestCmdBuild:
         ):
             with pytest.raises(SystemExit, match="podman missing"):
                 _cmd_build(
+                    project_id=None,
                     base=None,
                     agents=None,
                     family=None,

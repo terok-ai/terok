@@ -13,6 +13,7 @@ to ``~/.local/share/terok/sandbox/``.
 """
 
 from collections.abc import Iterator
+from contextlib import ExitStack
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -102,11 +103,13 @@ def _stub_credential_db(tmp_path_factory: pytest.TempPathFactory) -> Iterator[No
 
 @pytest.fixture(autouse=True)
 def mock_runtime() -> Iterator[MagicMock]:
-    """Install a fresh [`MagicMock`][unittest.mock.MagicMock] as the process-wide ``ContainerRuntime``.
+    """Install a fresh [`MagicMock`][unittest.mock.MagicMock] as the per-project ``ContainerRuntime``.
 
     Every unit test gets an isolated mock runtime patched into
-    [`terok.lib.core.runtime.get_runtime`][terok.lib.core.runtime.get_runtime].  Tests that care about
-    specific container-level behaviour configure the mock directly
+    [`terok.lib.core.runtime.resolve_runtime`][terok.lib.core.runtime.resolve_runtime]
+    and the project-agnostic ``PodmanRuntime`` constructor that
+    image-management call sites use.  Tests that care about specific
+    container-level behaviour configure the mock directly
     (``mock_runtime.container.return_value.state = "running"``); tests
     that don't care pay no cost beyond the patch overhead.
 
@@ -131,5 +134,33 @@ def mock_runtime() -> Iterator[MagicMock]:
     container.wait.return_value = 0
     container.login_command.return_value = ["podman", "exec", "-it", "ctr", "bash"]
     container.stream_initial_logs.return_value = True
-    with patch("terok.lib.core.runtime.get_runtime", return_value=fake):
-        yield fake
+    # Image-management call sites bypass the resolver and construct
+    # ``PodmanRuntime`` directly.  Each ``from terok.lib.integrations.sandbox
+    # import PodmanRuntime`` creates a module-local binding that survives a
+    # patch on the source module, so we patch every binding the production
+    # code uses — keeps the fixture self-contained.
+    _podman_runtime_sites = (
+        "terok.lib.api.PodmanRuntime",
+        "terok.lib.core.images.PodmanRuntime",
+        "terok.lib.domain.image_cleanup.PodmanRuntime",
+        "terok.lib.domain.panic.PodmanRuntime",
+        "terok.lib.domain.project_state.PodmanRuntime",
+        "terok.lib.orchestration.image.PodmanRuntime",
+        "terok.lib.orchestration.tasks.query.PodmanRuntime",
+    )
+    with patch("terok.lib.core.runtime.resolve_runtime", return_value=fake):
+        with ExitStack() as stack:
+            for site in _podman_runtime_sites:
+                try:
+                    stack.enter_context(patch(site, return_value=fake))
+                except (AttributeError, ModuleNotFoundError):
+                    # Some sites import lazily inside a function; the
+                    # module-level name doesn't exist until the function
+                    # runs.  Lazy importers also re-bind to whatever
+                    # ``terok.lib.integrations.sandbox.PodmanRuntime`` is,
+                    # so patching the source once covers them.
+                    pass
+            stack.enter_context(
+                patch("terok.lib.integrations.sandbox.PodmanRuntime", return_value=fake)
+            )
+            yield fake

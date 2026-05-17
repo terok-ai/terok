@@ -11,7 +11,8 @@ for overview displays.
 from collections.abc import Callable
 from typing import TYPE_CHECKING, Any
 
-from ..core import runtime as _rt
+from terok.lib.integrations.sandbox import PodmanRuntime
+
 from ..core.config import build_dir
 from ..core.images import project_cli_image
 from ..core.projects import load_project
@@ -75,9 +76,12 @@ def get_project_state(
     ]
     has_dockerfiles = all(p.is_file() for p in dockerfiles)
 
-    # Images: rely on image tags created by build_images().
+    # Images: rely on image tags created by build_images().  Image
+    # existence is runtime-agnostic — podman's image store is the
+    # same regardless of which OCI runtime ends up booting them — so
+    # PodmanRuntime directly is the right cheap path here.
     required_tags = [project_cli_image(project.id)]
-    runtime = _rt.get_runtime()
+    runtime = PodmanRuntime()
     has_images = all(runtime.image(tag).exists() for tag in required_tags)
 
     rendered: dict[str, str] | None = None
@@ -202,7 +206,11 @@ def is_task_image_old(project_id: str | None, task: Any) -> bool | None:
         return None
 
     cname = _container_name(project_id, task.mode, task.task_id)
-    container = _rt.get_runtime().container(cname)
+    # State + image probes are runtime-agnostic (``podman inspect``
+    # returns the same shape regardless of OCI runtime), so reach for
+    # ``PodmanRuntime`` directly — avoids a redundant ``load_project``
+    # call before the cheap state check.
+    container = PodmanRuntime().container(cname)
     if not container.running:
         return None
     image = container.image

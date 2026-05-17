@@ -284,8 +284,10 @@ def _remove_task_containers(project_id: str, task_id: str, warnings: list[str]) 
     and yields ``False``.
     """
     names = [container_name(project_id, mode, str(task_id)) for mode in CONTAINER_MODES]
+    project = load_project(project_id)
+    runtime = _rt.resolve_runtime(project)
     try:
-        rm_results = _rt.get_runtime().force_remove([_rt.get_runtime().container(n) for n in names])
+        rm_results = runtime.force_remove([runtime.container(n) for n in names])
     except Exception as exc:
         _log_debug(f"task_delete: stop_task_containers raised: {exc}")
         warnings.append(f"Container removal failed: {exc}")
@@ -443,7 +445,7 @@ def _validate_login(project: ProjectConfig, task_id: str) -> tuple[str, str]:
         )
 
     cname = container_name(project.id, mode, task_id)
-    state = _rt.get_runtime().container(cname).state
+    state = _rt.resolve_runtime(project).container(cname).state
     if state is None:
         raise SystemExit(
             f"Container {cname} does not exist. "
@@ -458,9 +460,16 @@ def _validate_login(project: ProjectConfig, task_id: str) -> tuple[str, str]:
 
 
 def _get_login_command(project: ProjectConfig, task_id: str) -> list[str]:
-    """Return the command to interactively log into a task container."""
+    """Return the command to interactively log into a task container.
+
+    Routes through the per-project runtime so the returned argv matches
+    the backend that booted the container — under crun it's the
+    familiar ``podman exec -it`` form; under krun it's an SSH-over-vsock
+    invocation (``ssh -tt -i … ProxyCommand="socat - VSOCK-CONNECT:<cid>:22"
+    dev@krun-guest``) because ``podman exec`` can't enter a krun guest.
+    """
     cname, _mode = _validate_login(project, task_id)
-    return _rt.get_runtime().container(cname).login_command()
+    return _rt.resolve_runtime(project).container(cname).login_command()
 
 
 def _task_login(project: ProjectConfig, task_id: str) -> None:
@@ -488,15 +497,16 @@ def _task_stop(project: ProjectConfig, task_id: str, *, timeout: int | None = No
         raise SystemExit(f"Task {task_id} has never been run (no mode set)")
 
     cname = container_name(project.id, mode, task_id)
+    runtime = _rt.resolve_runtime(project)
 
-    state = _rt.get_runtime().container(cname).state
+    state = runtime.container(cname).state
     if state is None:
         raise SystemExit(f"Task {task_id} container does not exist")
     if state not in ("running", "paused"):
         raise SystemExit(f"Task {task_id} container is not stoppable (state: {state})")
 
     try:
-        _rt.get_runtime().container(cname).stop(timeout=effective_timeout)
+        runtime.container(cname).stop(timeout=effective_timeout)
     except FileNotFoundError:
         raise SystemExit("podman not found; please install podman")
     except RuntimeError as exc:
@@ -566,7 +576,7 @@ def task_status(project_id: str, task_id: str) -> None:
     cs = None
     if mode:
         cname = container_name(project.id, mode, task_id)
-        cs = _rt.get_runtime().container(cname).state
+        cs = _rt.resolve_runtime(project).container(cname).state
 
     # Build TaskMeta for effective_status / mode_emoji computation
     task = TaskMeta(

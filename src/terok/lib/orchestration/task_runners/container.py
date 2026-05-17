@@ -16,7 +16,11 @@ import shlex
 from typing import TYPE_CHECKING
 
 from terok.lib.core.config import is_experimental
-from terok.lib.integrations.executor import AgentRunner, BuildError
+from terok.lib.integrations.executor import (
+    AgentRunner,
+    BuildError,
+    ensure_krun_host_keypair,
+)
 from terok.lib.integrations.sandbox import (
     DEFAULT_CID_ANNOTATION,
     LifecycleHooks,
@@ -26,6 +30,7 @@ from terok.lib.integrations.sandbox import (
 
 from ...core import runtime as _rt
 from ...core.config import make_sandbox_config
+from ...core.projects import load_project
 from ...core.task_state import has_gpu
 from ...util.ansi import blue as _blue, yellow as _yellow
 from ..tasks import dossier_path, tasks_meta_dir
@@ -36,19 +41,19 @@ if TYPE_CHECKING:
     from ...core.project_model import ProjectConfig
 
 
-def _podman_start(cname: str) -> None:
+def _podman_start(project: ProjectConfig, cname: str) -> None:
     """Start an existing container, raising SystemExit on failure."""
     try:
-        _rt.get_runtime().container(cname).start()
+        _rt.resolve_runtime(project).container(cname).start()
     except FileNotFoundError:
         raise SystemExit("podman not found; please install podman")
     except RuntimeError as exc:
         raise SystemExit(f"Failed to start container:\n{exc}")
 
 
-def _assert_running(cname: str) -> None:
+def _assert_running(project: ProjectConfig, cname: str) -> None:
     """Verify a container is running after start, or raise SystemExit."""
-    post_state = _rt.get_runtime().container(cname).state
+    post_state = _rt.resolve_runtime(project).container(cname).state
     if post_state != "running":
         raise SystemExit(
             f"Container {cname} failed to start (state: {post_state}). "
@@ -57,9 +62,18 @@ def _assert_running(cname: str) -> None:
 
 
 def _print_login_instructions(project_id: str, task_id: str, cname: str, color: bool) -> None:
-    """Print how to log into a CLI container; warn if the vault recovery key is unconfirmed."""
+    """Print how to log into a CLI container; warn if the vault recovery key is unconfirmed.
+
+    Resolves the runtime per *project_id* so the printed raw-command
+    line matches what the operator's about to invoke — under crun
+    that's ``podman exec``; under krun it's ``ssh -tt … ProxyCommand=
+    "socat - VSOCK-CONNECT:<cid>:22" dev@krun-guest``.
+    """
+    project = load_project(project_id)
     login_cmd = f"terok login {project_id} {task_id}"
-    raw_cmd = shlex.join(_rt.get_runtime().container(cname).login_command(command=("bash",)))
+    raw_cmd = shlex.join(
+        _rt.resolve_runtime(project).container(cname).login_command(command=("bash",))
+    )
     print(f"Login with: {_blue(login_cmd, color)}")
     print(f"  (or:      {_blue(raw_cmd, color)})")
     _maybe_warn_recovery_unconfirmed(color)
@@ -168,7 +182,7 @@ def _run_container(
         annotations + list(extra_args or ()) + _project_runtime_flags(project, cname=cname)
     )
     try:
-        _agent_runner().launch_prepared(
+        _agent_runner(project).launch_prepared(
             env=env,
             volumes=volumes,
             image=image,
@@ -190,9 +204,17 @@ def _run_container(
         raise SystemExit(str(exc)) from exc
 
 
-def _agent_runner() -> AgentRunner:
-    """Return an `AgentRunner` bound to terok's bridged sandbox config."""
-    return AgentRunner(sandbox=Sandbox(make_sandbox_config()))
+def _agent_runner(project: ProjectConfig) -> AgentRunner:
+    """Return an `AgentRunner` whose `Sandbox` is bound to *project*'s runtime.
+
+    Resolving the runtime here (rather than letting `Sandbox` default
+    to crun) is what makes ``run.runtime: krun`` actually take effect
+    on launch — `AgentRunner` then routes every podman invocation
+    through the matching backend.
+    """
+    cfg = make_sandbox_config()
+    runtime = _rt.resolve_runtime(project)
+    return AgentRunner(sandbox=Sandbox(cfg, runtime=runtime))
 
 
 def _project_runtime_flags(project: ProjectConfig, *, cname: str) -> list[str]:
@@ -207,7 +229,11 @@ def _project_runtime_flags(project: ProjectConfig, *, cname: str) -> list[str]:
     "unknown label option: nested" and the user is expected to upgrade.
 
     ``run.runtime: krun`` → ``--runtime krun`` plus krun OCI annotations
-    for microVM sizing and a per-container vsock CID.  Validates the
+    for microVM sizing and a per-container vsock CID, **and** a
+    bind-mount of the live host SSH public key into the guest's
+    ``/etc/ssh/authorized_keys.d/terok``.  The L0 image ships an empty
+    placeholder there; the mount overlays it so the guest's
+    sshd-on-vsock accepts our private key.  Validates the
     krun-incompatible combinations before emitting any flag so the
     operator sees a clear error rather than a podman launch failure.
     """
@@ -229,14 +255,25 @@ def _project_runtime_flags(project: ProjectConfig, *, cname: str) -> list[str]:
             "--annotation",
             f"{DEFAULT_CID_ANNOTATION}={_allocate_krun_cid(cname)}",
         ]
+        # Bind-mount the live host pubkey into the guest.  The L0 image
+        # ships an empty placeholder at this path; the mount overlays
+        # it so the guest's sshd-on-vsock accepts our identity.  This
+        # is what keeps the L0 image byte-identical for crun and krun
+        # consumers — no per-installation secret baked in at build.
+        keypair = ensure_krun_host_keypair(cfg=make_sandbox_config())
+        flags += [
+            "-v",
+            f"{keypair.public_path}:/etc/ssh/authorized_keys.d/terok:ro",
+        ]
     return flags
 
 
 def _validate_krun_compatibility(project: ProjectConfig) -> None:
     """Reject combinations that can't be honoured under krun.
 
-    Both the env-var path ([`get_runtime`][terok.lib.core.runtime.get_runtime])
-    and the project-config path (this function) must gate on the global
+    Both the env-var path
+    ([`resolve_runtime`][terok.lib.core.runtime.resolve_runtime]) and
+    the project-config path (this function) must gate on the global
     ``experimental`` flag — otherwise a typo or accidental config edit
     silently switches the workload to the less-audited experimental
     backend.
@@ -255,8 +292,8 @@ def _validate_krun_compatibility(project: ProjectConfig) -> None:
     if project.nested_containers:
         raise SystemExit(
             "run.runtime: krun is incompatible with run.nested_containers: true — "
-            "the L0G guest image doesn't ship a nested-container stack.  "
-            "Pick one or move the nested workload to a podman task."
+            "the krun guest's vsock-only sshd doesn't host a nested-container stack.  "
+            "Pick one or move the nested workload to a crun task."
         )
 
 

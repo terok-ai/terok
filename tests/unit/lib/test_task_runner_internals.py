@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import contextlib
 from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock, Mock, patch
 
 import pytest
 from terok_executor import BuildError
@@ -79,7 +79,7 @@ class TestPodmanStart:
 
         mock_runtime.container.return_value.start.side_effect = FileNotFoundError
         with pytest.raises(SystemExit, match="podman not found"):
-            _podman_start("test-ctr")
+            _podman_start(Mock(), "test-ctr")
 
     def test_raises_on_start_failure(self, mock_runtime) -> None:
         """Runtime failure surfaces as a user-facing SystemExit."""
@@ -87,7 +87,7 @@ class TestPodmanStart:
 
         mock_runtime.container.return_value.start.side_effect = RuntimeError("container not found")
         with pytest.raises(SystemExit, match="container not found"):
-            _podman_start("test-ctr")
+            _podman_start(Mock(), "test-ctr")
 
     def test_raises_on_start_failure_empty_stderr(self, mock_runtime) -> None:
         """Any RuntimeError from the runtime is translated to SystemExit."""
@@ -95,7 +95,7 @@ class TestPodmanStart:
 
         mock_runtime.container.return_value.start.side_effect = RuntimeError("rc=125")
         with pytest.raises(SystemExit):
-            _podman_start("test-ctr")
+            _podman_start(Mock(), "test-ctr")
 
 
 # ── _apply_shield_policy ─────────────────────────────────

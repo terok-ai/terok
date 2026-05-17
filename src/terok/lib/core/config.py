@@ -607,9 +607,21 @@ def get_gate_server_suppress_warning() -> bool:
 
 
 def get_global_hooks() -> tuple[str | None, str | None, str | None, str | None]:
-    """Return ``(pre_start, post_start, post_ready, post_stop)`` from global config hooks."""
-    h = _load_validated().hooks
+    """Return ``(pre_start, post_start, post_ready, post_stop)`` from ``run.hooks``."""
+    h = _load_validated().run.hooks
     return h.pre_start, h.post_start, h.post_ready, h.post_stop
+
+
+def get_global_run_runtime() -> str | None:
+    """Return the global ``run.runtime`` default, or ``None`` if unset.
+
+    Source of truth for the installation-wide OCI-runtime preference —
+    consulted by [`resolve_runtime`][terok.lib.core.runtime.resolve_runtime]
+    when no project value (and no ``TEROK_RUNTIME`` env var) override
+    is present.  ``None`` means "no opinion, take the resolver's
+    fallback" (``"crun"``).
+    """
+    return _load_validated().run.runtime
 
 
 def get_global_agent_config() -> dict[str, Any]:

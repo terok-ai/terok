@@ -160,8 +160,8 @@ def _resume_toad_container(
         return
     print(f"Starting existing container {_green(cname, color_enabled)}...")
     task_dir = project.tasks_root / str(task_id)
-    _podman_start(cname)
-    _assert_running(cname)
+    _podman_start(project, cname)
+    _assert_running(project, cname)
     run_hook(
         "post_start",
         project.hook_post_start,
@@ -197,7 +197,7 @@ def task_run_toad(
     meta, meta_path = load_task_meta(project.id, task_id, "toad")
 
     cname = container_name(project.id, "toad", task_id)
-    container_state = _rt.get_runtime().container(cname).state
+    container_state = _rt.resolve_runtime(project).container(cname).state
 
     pub_host = get_public_host()
 
@@ -304,16 +304,13 @@ def task_run_toad(
         """Return True when the supervisor wrapper reports both listeners are up."""
         return "TEROK_READY" in line
 
-    ready = (
-        _rt.get_runtime()
-        .container(cname)
-        .stream_initial_logs(
-            ready_check=_toad_ready,
-            timeout_sec=None,
-        )
+    runtime = _rt.resolve_runtime(project)
+    ready = runtime.container(cname).stream_initial_logs(
+        ready_check=_toad_ready,
+        timeout_sec=None,
     )
 
-    if not ready or not _rt.get_runtime().container(cname).running:
+    if not ready or not runtime.container(cname).running:
         print(f"Toad failed to start. Check logs: podman logs {cname}")
         raise SystemExit(1)
 

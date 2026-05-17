@@ -7,7 +7,6 @@ functions that hydrate it from disk and live container state.
 
 from dataclasses import dataclass
 
-from ...core import runtime as _rt
 from ...core.project_model import is_valid_project_id
 from ...core.projects import load_project
 from ...core.task_state import TaskState, container_name, effective_status
@@ -18,11 +17,20 @@ from .meta import _is_safe_id_segment, iter_task_ids, read_task_meta, tasks_meta
 
 
 def get_task_container_state(project_id: str, task_id: str, mode: str | None) -> str | None:
-    """Get actual container state for a task (TUI helper)."""
+    """Get actual container state for a task (TUI helper).
+
+    Container state queries are runtime-agnostic — ``podman inspect``
+    returns the same shape regardless of OCI runtime — so this short
+    cuts to ``PodmanRuntime`` rather than walking through the
+    per-project resolver (which would force a ``load_project`` for a
+    one-shot state probe).
+    """
     if not mode:
         return None
+    from terok.lib.integrations.sandbox import PodmanRuntime
+
     cname = container_name(project_id, mode, task_id)
-    return _rt.get_runtime().container(cname).state
+    return PodmanRuntime().container(cname).state
 
 
 def lookup_container_by_pt(project_id: str, task_id: str) -> str | None:
@@ -110,11 +118,14 @@ def get_task_meta(project_id: str, task_id: str) -> TaskMeta:
     # when the on-disk record predates the field.
     tid = str(raw.get("task_id") or task_id)
     # Hydrate live container state only for tasks that have actually been started
+    # (state probe is runtime-agnostic — see ``get_task_container_state``).
     live_state: str | None = None
     if mode is not None:
         try:
+            from terok.lib.integrations.sandbox import PodmanRuntime
+
             cname = container_name(project_id, mode, task_id)
-            live_state = _rt.get_runtime().container(cname).state
+            live_state = PodmanRuntime().container(cname).state
         except Exception:
             pass
     # Hydrate work status from agent-config (same logic as _get_tasks)
@@ -263,9 +274,11 @@ def get_all_task_states(
     Returns:
         ``{task_id: container_state_or_None}`` dict.
     """
-    # container_states isn't on the ContainerRuntime Protocol (only the
-    # concrete podman impl) — upstream surface gap; the call works at runtime.
-    container_states = _rt.get_runtime().container_states(project_id)  # type: ignore[attr-defined]
+    # Use PodmanRuntime directly: this is a `podman ps` enumeration that
+    # doesn't differ across OCI runtimes.
+    from terok.lib.integrations.sandbox import PodmanRuntime
+
+    container_states = PodmanRuntime().container_states(project_id)
     result: dict[str, str | None] = {}
     for t in tasks:
         if t.mode:

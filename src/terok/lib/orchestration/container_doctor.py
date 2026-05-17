@@ -21,6 +21,7 @@ from urllib.parse import ParseResult, urlparse, urlunparse
 from terok.lib.integrations.executor import agent_doctor_checks, get_roster
 from terok.lib.integrations.sandbox import (
     CheckVerdict,
+    ContainerRuntime,
     DoctorCheck,
     ExecResult,
     get_ssh_signer_port,
@@ -66,13 +67,20 @@ _GROUP_HEADINGS: tuple[tuple[str, str | None, str], ...] = (
 
 
 def _exec_in_container(
+    runtime: ContainerRuntime,
     cname: str,
     cmd: list[str],
     *,
     timeout: int = 10,
 ) -> ExecResult:
-    """Run *cmd* inside *cname* via the container runtime."""
-    runtime = _rt.get_runtime()
+    """Run *cmd* inside *cname* via *runtime*.
+
+    The runtime is threaded in from the top-level
+    [`run_container_doctor`][terok.lib.orchestration.container_doctor.run_container_doctor]
+    call so the doctor's probes route through the same backend that
+    booted the container — under crun that's ``podman exec``; under
+    krun it's SSH-over-vsock.
+    """
     return runtime.exec(runtime.container(cname), cmd, timeout=timeout)
 
 
@@ -327,10 +335,10 @@ def _collect_all_checks(
     return checks
 
 
-def _run_probe(cname: str, check: DoctorCheck) -> CheckVerdict:
-    """Execute a single probe inside *cname* and evaluate the result."""
+def _run_probe(runtime: ContainerRuntime, cname: str, check: DoctorCheck) -> CheckVerdict:
+    """Execute a single probe inside *cname* via *runtime* and evaluate the result."""
     try:
-        proc = _exec_in_container(cname, check.probe_cmd)
+        proc = _exec_in_container(runtime, cname, check.probe_cmd)
     except subprocess.TimeoutExpired:
         return CheckVerdict("warn", f"{check.label}: probe timed out")
     except OSError as exc:
@@ -342,11 +350,11 @@ def _run_probe(cname: str, check: DoctorCheck) -> CheckVerdict:
         return CheckVerdict("warn", f"{check.label}: evaluate failed — {exc}")
 
 
-def _apply_fix(cname: str, check: DoctorCheck) -> _CheckResult:
-    """Attempt to apply a fix command and return the result tuple."""
+def _apply_fix(runtime: ContainerRuntime, cname: str, check: DoctorCheck) -> _CheckResult:
+    """Attempt to apply a fix command via *runtime* and return the result tuple."""
     _log_debug(f"container_doctor: fixing {check.label}")
     try:
-        fix_proc = _exec_in_container(cname, check.fix_cmd)  # type: ignore[arg-type]
+        fix_proc = _exec_in_container(runtime, cname, check.fix_cmd)  # type: ignore[arg-type]
     except (subprocess.TimeoutExpired, OSError) as exc:
         return ("warn", f"  fix: {check.label}", f"fix failed: {exc}")
     if fix_proc.ok:
@@ -377,7 +385,14 @@ def _resolve_running_container(
         return ("", Path(), [("warn", label, "never started (no mode)")])
 
     cname = container_name(project_id, mode, task_id)
-    state = _rt.get_runtime().container(cname).state
+    # State probe is runtime-agnostic — ``podman inspect`` returns
+    # the same shape whether the container booted under crun or krun
+    # — so the early reachability check goes through PodmanRuntime
+    # directly.  The doctor proper resolves the per-project runtime
+    # below for the exec-routed probes.
+    from terok.lib.integrations.sandbox import PodmanRuntime
+
+    state = PodmanRuntime().container(cname).state
     if state != "running":
         return ("", Path(), [("info", label, f"not running ({state}) — skipped")])
 
@@ -437,21 +452,28 @@ def run_container_doctor(
             return []
         return early
 
+    # Resolve the runtime once per doctor run so every probe / fix
+    # reaches the container through the same backend that booted it
+    # (under krun: SSH-over-vsock; under crun: podman exec).
+    runtime = _rt.resolve_runtime(load_project(project_id))
     checks = list(_collect_all_checks(project_id, task_dir))
 
     if reporter is None:
         # Legacy path: collect-and-return.  No streaming, no grouping.
         results: list[_CheckResult] = []
         for check in checks:
-            results.extend(_execute_check(check, cname, task_dir, fix=fix))
+            results.extend(_execute_check(runtime, check, cname, task_dir, fix=fix))
         return results
 
     # Streaming path with grouping.
-    _stream_checks(checks, cname, task_dir, fix=fix, reporter=reporter, label_prefix=label_prefix)
+    _stream_checks(
+        runtime, checks, cname, task_dir, fix=fix, reporter=reporter, label_prefix=label_prefix
+    )
     return []
 
 
 def _execute_check(
+    runtime: ContainerRuntime,
     check: DoctorCheck,
     cname: str,
     task_dir: Path,
@@ -462,10 +484,10 @@ def _execute_check(
     if check.host_side:
         return [_dispatch_host_side(check, task_dir, cname)]
 
-    verdict = _run_probe(cname, check)
+    verdict = _run_probe(runtime, cname, check)
     out: list[_CheckResult] = [(verdict.severity, check.label, verdict.detail)]
     if fix and verdict.fixable and check.fix_cmd:
-        out.append(_apply_fix(cname, check))
+        out.append(_apply_fix(runtime, cname, check))
     return out
 
 
@@ -484,6 +506,7 @@ def _group_key(check: DoctorCheck) -> tuple[str | None, str]:
 
 
 def _stream_checks(
+    runtime: ContainerRuntime,
     checks: list[DoctorCheck],
     cname: str,
     task_dir: Path,
@@ -520,6 +543,7 @@ def _stream_checks(
     for kind, payload in plan:
         if kind == "one":
             _emit_individual(
+                runtime,
                 payload,  # type: ignore[arg-type]
                 cname,
                 task_dir,
@@ -531,6 +555,7 @@ def _stream_checks(
             if not isinstance(payload, str):  # plan kind == "group" carries a heading
                 raise RuntimeError(f"unexpected plan entry: kind=group payload={payload!r}")
             _emit_group(
+                runtime,
                 slots[payload],
                 payload,
                 cname,
@@ -542,6 +567,7 @@ def _stream_checks(
 
 
 def _emit_individual(
+    runtime: ContainerRuntime,
     check: DoctorCheck,
     cname: str,
     task_dir: Path,
@@ -553,7 +579,7 @@ def _emit_individual(
     """Stream one check through the reporter (begin → run → end)."""
     label = f"{label_prefix}{check.label}"
     reporter.begin(label)
-    results = _execute_check(check, cname, task_dir, fix=fix)
+    results = _execute_check(runtime, check, cname, task_dir, fix=fix)
     # First tuple is the check itself; any extra is a fix follow-up.
     status, _, detail = results[0]
     reporter.end(status, detail)
@@ -562,6 +588,7 @@ def _emit_individual(
 
 
 def _emit_group(
+    runtime: ContainerRuntime,
     members: list[DoctorCheck],
     heading: str,
     cname: str,
@@ -576,7 +603,7 @@ def _emit_group(
     fix_followups: list[_CheckResult] = []
     with reporter.group(full_heading) as g:
         for check in members:
-            results = _execute_check(check, cname, task_dir, fix=fix)
+            results = _execute_check(runtime, check, cname, task_dir, fix=fix)
             status, _, detail = results[0]
             g.track(status, check.label, detail)
             # Fix follow-ups don't belong inside the group summary —

@@ -30,7 +30,6 @@ from terok.lib.integrations.executor import (
     stage_toad_agents,
 )
 
-from ..core import runtime as _rt
 from ..core.config import build_dir
 from ..core.images import project_cli_image, project_dev_image
 from ..core.project_model import ProjectConfig
@@ -53,7 +52,10 @@ def _image_exists(image: str) -> bool:
     ``patch("terok.lib.orchestration.image._image_exists", fake)`` reaches
     every caller — an ``image_exists = _image_exists`` alias would not.
     """
-    return _rt.get_runtime().image(image).exists()
+    # Image existence is runtime-agnostic — podman's image store is shared.
+    from terok.lib.integrations.sandbox import PodmanRuntime
+
+    return PodmanRuntime().image(image).exists()
 
 
 # ---------- Hashing ----------

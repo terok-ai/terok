@@ -368,20 +368,40 @@ class RawGlobalConfigTests(unittest.TestCase):
             RawGlobalConfig.model_validate({"shield": {"on_task_restart": "invalid"}})
         self.assertIn("on_task_restart", str(ctx.exception))
 
-    def test_global_hooks_section(self) -> None:
-        """Global hooks section parses all four hook fields."""
-        cfg = RawGlobalConfig.model_validate(
-            {"hooks": {"post_ready": "notify.sh", "post_stop": "cleanup.sh"}}
-        )
-        self.assertIsNone(cfg.hooks.pre_start)
-        self.assertIsNone(cfg.hooks.post_start)
-        self.assertEqual(cfg.hooks.post_ready, "notify.sh")
-        self.assertEqual(cfg.hooks.post_stop, "cleanup.sh")
+    def test_global_run_hooks_section(self) -> None:
+        """Global ``run.hooks`` section parses all four hook fields.
 
-    def test_global_hooks_rejects_unknown_keys(self) -> None:
-        """Global hooks section rejects unknown hook names."""
+        Hooks moved from a top-level ``hooks:`` key to ``run.hooks``
+        when sandbox took ownership of the whole ``run:`` slice — same
+        schema at the global and project levels now.
+        """
+        cfg = RawGlobalConfig.model_validate(
+            {"run": {"hooks": {"post_ready": "notify.sh", "post_stop": "cleanup.sh"}}}
+        )
+        self.assertIsNone(cfg.run.hooks.pre_start)
+        self.assertIsNone(cfg.run.hooks.post_start)
+        self.assertEqual(cfg.run.hooks.post_ready, "notify.sh")
+        self.assertEqual(cfg.run.hooks.post_stop, "cleanup.sh")
+
+    def test_global_run_hooks_rejects_unknown_keys(self) -> None:
+        """Global run.hooks section rejects unknown hook names."""
         with self.assertRaises(ValidationError):
-            RawGlobalConfig.model_validate({"hooks": {"on_crash": "oops.sh"}})
+            RawGlobalConfig.model_validate({"run": {"hooks": {"on_crash": "oops.sh"}}})
+
+    def test_global_run_runtime_field(self) -> None:
+        """Global ``run.runtime`` selects the installation-wide OCI runtime default."""
+        cfg = RawGlobalConfig.model_validate({"run": {"runtime": "krun"}})
+        self.assertEqual(cfg.run.runtime, "krun")
+
+    def test_global_rejects_top_level_hooks(self) -> None:
+        """The legacy top-level ``hooks:`` key is no longer accepted.
+
+        Pre-release: no migration shim; ``hooks`` must move under
+        ``run:`` to be picked up.  ``extra="forbid"`` at the top level
+        of RawGlobalConfig catches the legacy shape.
+        """
+        with self.assertRaises(ValidationError):
+            RawGlobalConfig.model_validate({"hooks": {"pre_start": "setup.sh"}})
 
     def test_project_run_hooks(self) -> None:
         """Project run.hooks section parses correctly."""

@@ -242,7 +242,7 @@ def get_project_storage_detail(project_id: str) -> ProjectDetail:
     project = load_project(project_id)
     project_images = [img for img in list_images(project_id) if not _is_global_image(img)]
     tasks = get_tasks_storage(project.tasks_root)
-    runtime = _rt.get_runtime()
+    runtime = _rt.resolve_runtime(project)
     # ``container_rw_sizes`` is podman-specific; not every backend exposes it.
     overlays = (
         runtime.container_rw_sizes(project_id) if hasattr(runtime, "container_rw_sizes") else {}

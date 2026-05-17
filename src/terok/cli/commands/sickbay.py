@@ -299,7 +299,7 @@ def _check_task_hook(
         return None
 
     cname = container_name(pid, mode, tid)
-    if _rt.get_runtime().container(cname).state == "running":
+    if _rt.resolve_runtime(project).container(cname).state == "running":
         return None
 
     fired = meta.get("hooks_fired") or []
@@ -361,7 +361,7 @@ def _check_task_shield_annotation(
     if not mode:
         return None
     cname = container_name(pid, mode, tid)
-    if _rt.get_runtime().container(cname).state != "running":
+    if _rt.resolve_runtime(project).container(cname).state != "running":
         return None
 
     expected = (project.tasks_root / tid / "shield").resolve()

@@ -62,7 +62,7 @@ def _stop_running_container(
 ) -> None:
     """Stop the running task container, then fire its ``post_stop`` hook."""
     try:
-        _rt.get_runtime().container(cname).stop(timeout=project.shutdown_timeout)
+        _rt.resolve_runtime(project).container(cname).stop(timeout=project.shutdown_timeout)
     except FileNotFoundError:
         raise SystemExit("podman not found; please install podman")
     except RuntimeError as exc:
@@ -84,8 +84,8 @@ def _start_and_report_restart(
 ) -> None:
     """Start the (stopped) container, apply shield policy, print how to reach it."""
     task_dir = project.tasks_root / str(task_id)
-    _podman_start(cname)
-    _assert_running(cname)
+    _podman_start(project, cname)
+    _assert_running(project, cname)
     run_hook(
         "post_start",
         project.hook_post_start,
@@ -126,7 +126,7 @@ def task_restart(project_id: str, task_id: str) -> None:
         raise SystemExit(f"Task {task_id} has never been run (no mode set)")
 
     cname = container_name(project.id, mode, task_id)
-    container_state = _rt.get_runtime().container(cname).state
+    container_state = _rt.resolve_runtime(project).container(cname).state
 
     print(f"Restarting task {project_id}/{task_id} ({mode})...")
     ensure_vault()

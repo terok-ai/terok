@@ -11,26 +11,9 @@ poisoned git hooks or scripts executing with host privileges.
 from subprocess import TimeoutExpired
 
 from ..core import runtime as _rt
+from ..core.projects import load_project
 from ..core.task_state import container_name as _container_name
 from ..util.logging_utils import _log_debug
-
-
-def _temporarily_start(cname: str) -> bool:
-    """Start a stopped container for a brief exec window; return ``True`` on success."""
-    try:
-        _rt.get_runtime().container(cname).start()
-    except (FileNotFoundError, RuntimeError) as exc:
-        _log_debug(f"container_exec._temporarily_start({cname}): {exc}")
-        return False
-    return True
-
-
-def _stop_quietly(cname: str, *, timeout: int = 10) -> None:
-    """Stop a container best-effort; swallow missing-binary and runtime errors."""
-    try:
-        _rt.get_runtime().container(cname).stop(timeout=timeout)
-    except (FileNotFoundError, RuntimeError):
-        pass
 
 
 def container_git_diff(
@@ -58,7 +41,8 @@ def container_git_diff(
     ``/workspace`` path — the host ``workspace-dangerous`` path is never
     passed to any subprocess.
     """
-    runtime = _rt.get_runtime()
+    project = load_project(project_id)
+    runtime = _rt.resolve_runtime(project)
     cname = _container_name(project_id, mode, task_id)
     container = runtime.container(cname)
     state = container.state
@@ -75,7 +59,10 @@ def container_git_diff(
             # commits, network calls, and other side effects.
             _log_debug(f"container_git_diff: refusing to restart exited headless container {cname}")
             return None
-        if not _temporarily_start(cname):
+        try:
+            container.start()
+        except (FileNotFoundError, RuntimeError) as exc:
+            _log_debug(f"container_git_diff: temporary start({cname}) failed: {exc}")
             return None
         restarted = True
 
@@ -92,4 +79,7 @@ def container_git_diff(
         return None
     finally:
         if restarted:
-            _stop_quietly(cname)
+            try:
+                container.stop(timeout=10)
+            except (FileNotFoundError, RuntimeError):
+                pass

@@ -17,18 +17,28 @@ def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) ->
     p_image = subparsers.add_parser("image", help="Manage terok container images")
     image_sub = p_image.add_subparsers(dest="image_cmd", required=True)
 
-    # image build — host-wide L0+L1 build, defaults from config.image.*
+    # image build — L0+L1 build; defaults from config.image.* or a named project
     p_build = image_sub.add_parser(
         "build",
-        help="Build the host-wide default L0+L1 images (no project required)",
+        help="Build the L0+L1 image chain (host-wide default, or a named project)",
         description=(
-            "Build the user's default L0+L1 images.  Defaults to the agent set "
+            "Build the L0+L1 images.  With no project arg, uses the agent set "
             "and base image declared in ~/.config/terok/config.yml "
             "(image.agents, image.base_image), falling back to ``all`` agents "
-            "on ubuntu:24.04.  Use --rebuild to refresh agent versions; "
-            "--full-rebuild also re-pulls the base OS and rebuilds L0 from "
-            "scratch."
+            "on ubuntu:24.04.  With a project arg, uses that project's "
+            "configured base image + agent roster instead.  Use --rebuild to "
+            "refresh agent versions; --full-rebuild also re-pulls the base OS "
+            "and rebuilds L0 from scratch."
         ),
+    )
+    set_completer(
+        p_build.add_argument(
+            "project_id",
+            nargs="?",
+            default=None,
+            help="Project whose base + agents to build for (optional)",
+        ),
+        _complete_project_ids,
     )
     p_build.add_argument(
         "--base",
@@ -105,6 +115,7 @@ def dispatch(args: argparse.Namespace) -> bool:
     match args.image_cmd:
         case "build":
             _cmd_build(
+                project_id=getattr(args, "project_id", None),
                 base=getattr(args, "base", None),
                 agents=getattr(args, "agents", None),
                 family=getattr(args, "family", None),
@@ -128,6 +139,7 @@ def dispatch(args: argparse.Namespace) -> bool:
 
 def _cmd_build(
     *,
+    project_id: str | None,
     base: str | None,
     agents: str | None,
     family: str | None,
@@ -135,7 +147,12 @@ def _cmd_build(
     full_rebuild: bool,
     sidecar: bool,
 ) -> None:
-    """Build the host-wide default L0+L1 images via the executor primitive."""
+    """Build the L0+L1 images via the executor primitive.
+
+    With *project_id* set, derives the base image, family, and agent roster
+    from the project's config (CLI overrides still win for any of the three).
+    Without it, falls back to the user's global ``image.*`` defaults.
+    """
     from terok.lib.integrations.executor import (
         DEFAULT_BASE_IMAGE,
         BuildError,
@@ -146,17 +163,26 @@ def _cmd_build(
     )
 
     from ...lib.core.config import get_global_image_agents
+    from ...lib.core.projects import load_project
+
+    project = load_project(project_id) if project_id else None
 
     try:
-        resolved_base = base or get_global_image_base_image() or DEFAULT_BASE_IMAGE
-        resolved_agents = parse_agent_selection(agents or get_global_image_agents())
+        if project is not None:
+            resolved_base = base or project.base_image or DEFAULT_BASE_IMAGE
+            resolved_family = family or project.family
+            resolved_agents = parse_agent_selection(agents or ",".join(project.agents))
+        else:
+            resolved_base = base or get_global_image_base_image() or DEFAULT_BASE_IMAGE
+            resolved_family = family
+            resolved_agents = parse_agent_selection(agents or get_global_image_agents())
         images = build_base_images(
             base_image=resolved_base,
-            family=family,
+            family=resolved_family,
             agents=resolved_agents,
             rebuild=rebuild,
             full_rebuild=full_rebuild,
-            tag_as_default=True,
+            tag_as_default=project is None,
         )
     except (BuildError, ValueError) as exc:
         raise SystemExit(str(exc)) from exc
@@ -167,7 +193,7 @@ def _cmd_build(
         try:
             sidecar_tag = build_sidecar_image(
                 base_image=resolved_base,
-                family=family,
+                family=resolved_family,
                 rebuild=rebuild,
                 full_rebuild=full_rebuild,
             )

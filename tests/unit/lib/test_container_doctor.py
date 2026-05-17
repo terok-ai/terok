@@ -29,8 +29,15 @@ class TestExecInContainer:
     """Low-level sandbox exec helper."""
 
     def test_delegates_to_runtime_exec(self, mock_runtime) -> None:
+        """Threads the caller-supplied runtime through to ``runtime.exec``.
+
+        The runtime is passed in explicitly (rather than resolved
+        inside the helper) so the doctor can resolve once per
+        ``run_container_doctor`` invocation and reuse the same handle
+        across every probe + fix — and so tests can hand in a mock.
+        """
         mock_runtime.exec.return_value = ExecResult(exit_code=0, stdout="ok\n", stderr="")
-        result = _exec_in_container("proj-cli-42", ["echo", "hello"])
+        result = _exec_in_container(mock_runtime, "proj-cli-42", ["echo", "hello"])
         assert result.exit_code == 0
         mock_runtime.container.assert_any_call("proj-cli-42")
         mock_runtime.exec.assert_called_once()

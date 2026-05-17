@@ -4,10 +4,27 @@
 """Unit tests for container-based command execution."""
 
 import subprocess
+from unittest.mock import MagicMock, patch
 
+import pytest
 from terok_sandbox import ExecResult
 
 from terok.lib.orchestration.container_exec import container_git_diff
+
+
+@pytest.fixture(autouse=True)
+def _mock_load_project():
+    """Skip real project resolution — these tests care about exec dispatch only.
+
+    ``container_git_diff`` resolves the per-project runtime via
+    ``load_project(project_id)`` so it can route through krun's
+    SSH-over-vsock transport when needed.  Every test here passes
+    fake project IDs and patches ``resolve_runtime`` (via the autouse
+    ``mock_runtime``) to ignore the actual project, so we just need
+    ``load_project`` not to raise on a non-existent ID.
+    """
+    with patch("terok.lib.orchestration.container_exec.load_project", return_value=MagicMock()):
+        yield
 
 
 class TestContainerGitDiff:

@@ -149,7 +149,7 @@ def _report_headless_result(
     """
     color_enabled = _supports_color()
     if follow:
-        exit_code = _rt.get_runtime().container(cname).wait()
+        exit_code = _rt.resolve_runtime(load_project(project_id)).container(cname).wait()
         _print_run_summary(project_id, task_id, "run", task_dir / WORKSPACE_DANGEROUS_DIRNAME)
         update_task_exit_code(project_id, task_id, exit_code)
         if exit_code != 0:
@@ -400,7 +400,7 @@ def task_followup_headless(
         )
 
     cname = container_name(project.id, "run", task_id)
-    container_state = _rt.get_runtime().container(cname).state
+    container_state = _rt.resolve_runtime(project).container(cname).state
     if container_state == "running":
         raise SystemExit(
             f"Container {cname} is still running. "
@@ -443,8 +443,8 @@ def task_followup_headless(
 
     # Restart the existing container (re-runs the original bash command,
     # which reads prompt.txt and session files from the volume)
-    _podman_start(cname)
-    _assert_running(cname)
+    _podman_start(project, cname)
+    _assert_running(project, cname)
     run_hook(
         "post_start",
         project.hook_post_start,

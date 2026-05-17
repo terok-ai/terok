@@ -184,7 +184,7 @@ def run_headless_request(
     Relies on the ``mock_runtime`` autouse fixture to intercept container
     operations; container.wait() already returns 0 by default.
     """
-    from terok.lib.core.runtime import get_runtime
+    from terok.lib.core.runtime import resolve_runtime as get_runtime
 
     wait_mock = get_runtime().container.return_value.wait
     with unittest.mock.patch.dict(os.environ, runner_env_vars(base, config_file), clear=True):
@@ -216,7 +216,7 @@ def run_followup_request(
     follow: bool = True,
 ) -> TaskRunnerResult:
     """Run ``task_followup_headless`` with the standard patched success harness."""
-    from terok.lib.core.runtime import get_runtime
+    from terok.lib.core.runtime import resolve_runtime as get_runtime
 
     runtime = get_runtime()
     container = runtime.container.return_value

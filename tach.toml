@@ -796,6 +796,7 @@ expose = [
     "is_experimental",
     "set_experimental",
     "get_global_hooks",
+    "get_global_run_runtime",
     "get_claude_allow_oauth",
     "get_claude_expose_oauth_token",
     "is_claude_oauth_proxied",

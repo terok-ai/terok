@@ -16,12 +16,17 @@ Sections owned by lower-level packages live in those packages' own
   ``ssh`` (eight sandbox-consumed sections).
 - [`terok_executor.config_schema`][terok_executor.config_schema] owns ``image``.
 
-terok itself owns the remaining five sections (``tui``, ``logs``,
-``tasks``-global, ``git``-global, ``hooks``-global) plus every
-``project.yml``-only section.  [`RawGlobalConfig`][terok.lib.core.yaml_schema.RawGlobalConfig] inherits from
-[`ExecutorConfigView`][terok_executor.config_schema.ExecutorConfigView] and flips
-back to ``extra="forbid"`` because terok knows the full ecosystem
-section set — a typo at the top level (``tuii:``) is caught here.
+terok itself owns the remaining four global sections (``tui``,
+``logs``, ``tasks``-global, ``git``-global) plus every
+``project.yml``-only section.  Task-lifecycle hooks (``run.hooks``)
+and the ``run:`` section as a whole live in sandbox and inherit
+through to both ``RawProjectYaml`` and ``RawGlobalConfig`` — same
+schema both levels, project values override globals.
+[`RawGlobalConfig`][terok.lib.core.yaml_schema.RawGlobalConfig]
+inherits from [`ExecutorConfigView`][terok_executor.config_schema.ExecutorConfigView]
+and flips back to ``extra="forbid"`` because terok knows the full
+ecosystem section set — a typo at the top level (``tuii:``) is
+caught here.
 """
 
 from __future__ import annotations
@@ -31,7 +36,7 @@ from typing import Annotated, Any, ClassVar, Literal
 from pydantic import BaseModel, BeforeValidator, ConfigDict, Field, field_validator, model_validator
 
 from terok.lib.integrations.executor import ExecutorConfigView, RawImageSection
-from terok.lib.integrations.sandbox import RawSSHSection
+from terok.lib.integrations.sandbox import RawRunSection, RawSSHSection
 
 # ---------------------------------------------------------------------------
 # Shared reusable validators / annotated types
@@ -258,95 +263,6 @@ class RawGatekeepingSection(BaseModel):
         return data
 
 
-class RawHooksSection(BaseModel):
-    """Task lifecycle hook commands (run on host, not inside containers)."""
-
-    model_config = ConfigDict(extra="forbid")
-
-    pre_start: str | None = None
-    post_start: str | None = None
-    post_ready: str | None = None
-    post_stop: str | None = None
-
-
-class RawRunSection(BaseModel):
-    """The ``run:`` section of project.yml."""
-
-    model_config = ConfigDict(extra="forbid")
-
-    shutdown_timeout: int = Field(
-        default=10, description="Seconds to wait before SIGKILL on container stop"
-    )
-    gpus: str | bool | None = Field(
-        default=None,
-        description='GPU passthrough: ``true``, ``"all"``, or omit to disable',
-    )
-    memory: str | None = None
-    cpus: str | None = None
-    nested_containers: bool = Field(
-        default=False,
-        description=(
-            "Declares that the project runs podman/docker inside its container. "
-            "When true, the outer container is launched with ``--security-opt "
-            "label=nested`` and ``--device /dev/fuse`` so rootless nested "
-            "containers work under SELinux without disabling labels wholesale."
-        ),
-    )
-    runtime: Literal["podman", "krun"] | None = Field(
-        default=None,
-        description=(
-            "OCI runtime: ``podman`` (default) for the conventional container, "
-            "or ``krun`` for a KVM microVM (Phase 3, experimental).  Requires "
-            "``experimental: true`` in global config when set to ``krun``."
-        ),
-    )
-    krun_cpus: int | None = Field(
-        default=None,
-        ge=1,
-        description=(
-            "vCPU count for the krun microVM (forwarded as the "
-            "``run.oci.krun.cpus`` annotation).  Must be ≥ 1.  Ignored "
-            "when ``runtime`` is not ``krun``."
-        ),
-    )
-    krun_ram_mib: int | None = Field(
-        default=None,
-        ge=1,
-        description=(
-            "Guest RAM in MiB for the krun microVM (forwarded as the "
-            "``run.oci.krun.ram_mib`` annotation).  Must be ≥ 1.  "
-            "Ignored when ``runtime`` is not ``krun``."
-        ),
-    )
-    timezone: str | None = Field(
-        default=None,
-        description=(
-            "IANA timezone for the task container (e.g. ``Europe/Prague``, "
-            "``UTC``).  Propagated as ``TZ`` — resolved against the image's "
-            "``tzdata``.  Unset (default) means follow the host's timezone."
-        ),
-    )
-    hooks: RawHooksSection = Field(default_factory=RawHooksSection)
-
-    @field_validator("memory", "cpus", mode="before")
-    @classmethod
-    def _blank_to_none(cls, v: Any) -> str | None:
-        """Normalise empty / whitespace-only strings to ``None``."""
-        if isinstance(v, str) and not v.strip():
-            return None
-        return v
-
-    @model_validator(mode="before")
-    @classmethod
-    def _coerce_none_subsections(cls, data: Any) -> Any:
-        """Coerce None sub-sections to empty dicts."""
-        if isinstance(data, dict):
-            for key in ("hooks",):
-                if data.get(key) is None:
-                    data[key] = {}
-        return data
-
-
 class RawShieldProjectSection(BaseModel):
     """The ``shield:`` section of project.yml.
 
@@ -499,7 +415,12 @@ class RawGlobalConfig(ExecutorConfigView):
       via [`ExecutorConfigView`][terok_executor.config_schema.ExecutorConfigView].
     - Executor-owned ``image`` comes from
       [`ExecutorConfigView`][terok_executor.config_schema.ExecutorConfigView].
-    - The five terok-owned sections below are added explicitly.
+    - The ``run`` section (including the nested ``hooks``) is
+      inherited transparently from sandbox via the same chain — the
+      same schema applies at both project and global level, with
+      project values overriding globals per the resolver below.
+    - The four terok-owned global sections (``tui``, ``logs``,
+      ``tasks``-global, ``git``-global) are added explicitly.
 
     ``extra="forbid"`` flips back on at this top-of-stack layer because
     terok knows every legitimate section.  A typo at the top level
@@ -513,7 +434,6 @@ class RawGlobalConfig(ExecutorConfigView):
     logs: RawLogsSection = Field(default_factory=RawLogsSection)
     tasks: RawTasksGlobalSection = Field(default_factory=RawTasksGlobalSection)
     git: RawGlobalGitSection = Field(default_factory=RawGlobalGitSection)
-    hooks: RawHooksSection = Field(default_factory=RawHooksSection)
     experimental: bool = False
     default_agent: str | None = None
     default_login: str | None = None
@@ -533,7 +453,7 @@ class RawGlobalConfig(ExecutorConfigView):
             "ssh",
             "tasks",
             "git",
-            "hooks",
+            "run",
             "image",
             "agent",
         }

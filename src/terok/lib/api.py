@@ -30,7 +30,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 
-from .core import config as _config, paths as _paths, runtime as _runtime
+from .core import config as _config, paths as _paths
 
 # Side-effecting / factory helpers that don't fit on the frozen Config object.
 from .core.config import (  # noqa: F401 — re-exported public API
@@ -136,6 +136,7 @@ from .domain.wizards.new_project import (  # noqa: F401 — re-exported public A
     validate_answer,
     write_project_yaml,
 )
+from .integrations.sandbox import PodmanRuntime
 from .orchestration.agent_config import (  # noqa: F401 — re-exported public API
     resolve_agent_config,
 )
@@ -243,11 +244,13 @@ def get_config() -> Config:
 def get_container_state(cname: str) -> str | None:
     """Return the live podman state for a container, or ``None`` if not found.
 
-    Thin wrapper around the runtime driver so callers do not need to
-    reach into [`terok.lib.core.runtime`][terok.lib.core.runtime] for
-    one-shot state lookups.
+    Thin wrapper for one-shot state lookups.  The probe goes through
+    plain ``PodmanRuntime`` because container-state reads are
+    runtime-agnostic (``podman inspect`` returns the same shape under
+    every OCI runtime), and the caller may not have project context
+    in scope to resolve the per-project runtime.
     """
-    return _runtime.get_runtime().container(cname).state
+    return PodmanRuntime().container(cname).state
 
 
 __all__ = [

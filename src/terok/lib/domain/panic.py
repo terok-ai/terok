@@ -29,6 +29,8 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+from terok.lib.integrations.sandbox import PodmanRuntime
+
 from ..core.config import get_shield_bypass_firewall_no_protection
 from ..core.paths import core_state_dir
 from ..core.projects import list_projects
@@ -283,10 +285,14 @@ def _stop_gate() -> tuple[bool, str | None]:
 
 
 def _stop_containers(targets: list[_Target]) -> tuple[list[str], list[tuple[str, str]]]:
-    """Stop all container modes for each target."""
-    from ..core import runtime as _rt
+    """Stop all container modes for each target.
 
-    runtime = _rt.get_runtime()
+    Panic crosses projects (possibly under different runtimes); plain
+    ``PodmanRuntime`` is correct here because ``force_remove`` is a
+    podman-level teardown that works identically regardless of which
+    OCI runtime booted any individual container.
+    """
+    runtime = PodmanRuntime()
     names = [container_name(pid, m, tid) for pid, tid, _, _, _ in targets for m in CONTAINER_MODES]
     if not names:
         return [], []

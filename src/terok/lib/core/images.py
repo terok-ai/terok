@@ -12,8 +12,7 @@ from functools import lru_cache
 from typing import TYPE_CHECKING
 
 from terok.lib.integrations.executor import AGENTS_LABEL
-
-from . import runtime as _rt
+from terok.lib.integrations.sandbox import PodmanRuntime
 
 if TYPE_CHECKING:
     from terok.lib.core.project_model import ProjectConfig
@@ -66,7 +65,9 @@ def installed_agents(image_tag: str) -> frozenset[str]:
     empty set — callers treat empty as "unknown / unrestricted" so older
     images keep working.
     """
-    csv = (_rt.get_runtime().image(image_tag).labels().get(AGENTS_LABEL) or "").strip()
+    # Image label reads are runtime-agnostic — podman's image store is the
+    # same regardless of which OCI runtime ends up booting it.
+    csv = (PodmanRuntime().image(image_tag).labels().get(AGENTS_LABEL) or "").strip()
     if not csv:
         return frozenset()
     return frozenset(name.strip() for name in csv.split(",") if name.strip())

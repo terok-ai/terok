@@ -99,7 +99,7 @@ def task_logs(
     cname = container_name(project.id, mode, task_id)
 
     # Verify container exists (running or exited)
-    state = _rt.get_runtime().container(cname).state
+    state = _rt.resolve_runtime(project).container(cname).state
     if state is None:
         # Fall back to persisted log files on the host
         task_dir = project.tasks_root / str(task_id)

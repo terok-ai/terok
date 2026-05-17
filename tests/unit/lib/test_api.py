@@ -116,11 +116,9 @@ class TestGetContainerState:
         fake_container = MagicMock(state="running")
         fake_runtime = MagicMock()
         fake_runtime.container.return_value = fake_container
-        with patch(
-            "terok.lib.api._runtime.get_runtime", return_value=fake_runtime
-        ) as mock_get_runtime:
+        with patch("terok.lib.api.PodmanRuntime", return_value=fake_runtime) as mock_podman_runtime:
             assert get_container_state("proj-cli-42") == "running"
-        mock_get_runtime.assert_called_once()
+        mock_podman_runtime.assert_called_once()
         fake_runtime.container.assert_called_once_with("proj-cli-42")
 
     def test_returns_none_when_container_absent(self) -> None:
@@ -128,9 +126,7 @@ class TestGetContainerState:
         fake_container = MagicMock(state=None)
         fake_runtime = MagicMock()
         fake_runtime.container.return_value = fake_container
-        with patch(
-            "terok.lib.api._runtime.get_runtime", return_value=fake_runtime
-        ) as mock_get_runtime:
+        with patch("terok.lib.api.PodmanRuntime", return_value=fake_runtime) as mock_podman_runtime:
             assert get_container_state("ghost") is None
-        mock_get_runtime.assert_called_once()
+        mock_podman_runtime.assert_called_once()
         fake_runtime.container.assert_called_once_with("ghost")
