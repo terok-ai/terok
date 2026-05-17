@@ -2,19 +2,14 @@
 
 terok supports two OCI runtimes:
 
-- **crun** (default) — conventional OS-level containers via crun.  Mature, fast startup, no extra deps beyond podman itself.
-- **krun** (experimental) — KVM microVM isolation via libkrun.  Each task runs in its own tiny VM; the host kernel is the security boundary, not just namespaces.
-
-## When to use which
+- **crun** (default) — OS-level containers via crun.
+- **krun** (experimental) — KVM microVM isolation via libkrun.
 
 | | crun | krun |
 |---|---|---|
 | Isolation | namespaces + cgroups + SELinux | KVM hypervisor |
-| Startup | <1 s | a few seconds |
 | Status in terok | stable, default | **experimental** |
 | Needs KVM (`/dev/kvm`) | no | yes |
-
-Pick crun unless you specifically want hardware-mediated isolation.  krun's blast-radius story is stronger, but it ships behind an opt-in flag while the integration matures.
 
 ## Optional dependencies for krun
 
@@ -62,24 +57,21 @@ TEROK_RUNTIME=krun terok task start <project>
 
 Accepted values: `crun` (default), `krun`, `null` (in-memory stub for CI).
 
-## How terok reaches into a krun guest
+## krun runner behaviour
 
-`podman exec` can't enter a krun microVM (libkrun can't inject processes post-boot — see [crun#1098](https://github.com/containers/crun/issues/1098)), so terok runs a hardened sshd inside the guest and reaches it from the host over a per-task host TCP port that podman's passt has forwarded into the guest namespace.
+- The container's PID 1 runs as `root`.
+- `sudo` is not available inside the guest.
+- `run.nested_containers: true` is rejected at launch.
 
-At task launch under krun, terok:
+## Login
 
-1. Reserves a free loopback TCP port on the host.
-2. Adds `-p 127.0.0.1:<host_port>:22` to the `podman run` invocation so passt forwards it into the guest's sshd:22 — pinned to loopback so the forward isn't reachable from external interfaces.
-3. Bind-mounts the live host SSH public key onto `/etc/ssh/authorized_keys.d/terok` inside the guest.
+`terok login <project> <task>` works for both runtimes.  Under crun it uses `podman exec`.  Under krun it uses `ssh` to an in-container sshd reached via a per-task loopback port forward.  Two users can log in with the same key:
 
-`terok exec` / `terok login` find the host port at exec time by asking podman directly (`podman port <container> 22/tcp`) — no terok-private annotation in the middle.
+- `dev` — default; use this for agents that refuse uid 0.
+- `root` — log in as root.
 
-The guest's sshd is gated by `ConditionFileNotEmpty=/etc/ssh/authorized_keys.d/terok` — under crun the file ships empty and the service stays dormant; under krun the bind-mount makes it non-empty and the service starts on TCP 22.  One L0 image serves both runtimes, no per-installation secret baked in.
+Under krun, each running task holds one loopback TCP port for sshd, visible to every local user on the box.
 
-## Operational notes
+## Image build
 
-- **Login.**  `terok login <project> <task>` works for both backends — under krun it prints an `ssh -tt -p <host_port> -i <key> … dev@127.0.0.1` invocation instead of `podman exec -it …`.  The shortcut command is the same.
-- **Host-visible ports.**  Each running krun task holds one loopback TCP port for sshd.  Visible to every local user on the box — acceptable while krun is experimental; revisit if/when the runtime stabilises.
-- **`run.nested_containers: true` is incompatible with krun.**  The microVM image doesn't ship a nested-container stack; terok refuses the combination at task launch.
-- **Image build.**  A single L0/L1/L2 image chain serves both runtimes — the L0 layer ships sshd dormant under crun, active under krun.  No separate krun image, no rebuild churn when toggling a project's runtime.
-- **Host SSH key.**  terok mints a `%host`-scope keypair in the vault on first use and bind-mounts the public half into `/etc/ssh/authorized_keys.d/terok` at task launch.  Rotating the vault key means tasks launched after the rotation use the new key; in-flight tasks keep working until they exit.
+One L0/L1/L2 chain serves both runtimes — toggling `run.runtime` doesn't trigger a rebuild.
