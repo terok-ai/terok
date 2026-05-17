@@ -3637,7 +3637,7 @@ terok_shield = {url = "https://github.com/terok-ai/terok-shield/releases/downloa
 type = "git"
 url = "https://github.com/sliwowitz/terok-sandbox.git"
 reference = "feat/krun-runtime"
-resolved_reference = "40755de4ffb37eadd4fb5c46a4853ce0dde49bc6"
+resolved_reference = "4292b425fc364c8b56111df88f16e6ae072ef455"
 
 [[package]]
 name = "terok-shield"
