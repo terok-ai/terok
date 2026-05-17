@@ -20,7 +20,7 @@ from terok.lib.integrations.sandbox import LifecycleHooks, Sandbox, VolumeSpec
 from ...core import runtime as _rt
 from ...core.config import make_sandbox_config
 from ...core.task_state import has_gpu
-from ...util.ansi import blue as _blue
+from ...util.ansi import blue as _blue, yellow as _yellow
 from ..tasks import dossier_path, tasks_meta_dir
 
 if TYPE_CHECKING:
@@ -50,11 +50,40 @@ def _assert_running(cname: str) -> None:
 
 
 def _print_login_instructions(project_id: str, task_id: str, cname: str, color: bool) -> None:
-    """Print how to log into a CLI container."""
+    """Print how to log into a CLI container; warn if the vault recovery key is unconfirmed."""
     login_cmd = f"terok login {project_id} {task_id}"
     raw_cmd = shlex.join(_rt.get_runtime().container(cname).login_command(command=("bash",)))
     print(f"Login with: {_blue(login_cmd, color)}")
     print(f"  (or:      {_blue(raw_cmd, color)})")
+    _maybe_warn_recovery_unconfirmed(color)
+
+
+def _maybe_warn_recovery_unconfirmed(color: bool) -> None:
+    """One-line nudge after every CLI task launch when no recovery ack is on disk.
+
+    Cheap probe: walks the resolution chain once and compares the
+    passphrase fingerprint to the sidecar marker.  Failures (locked
+    vault, missing wheel symbol on an old sandbox pin) are swallowed
+    so the launch-time message never blocks the operator from getting
+    their login command.
+    """
+    try:
+        from terok.lib.integrations.sandbox import is_recovery_acknowledged
+    except ImportError:
+        # Older sandbox pin without the wrapper — the warning is
+        # opt-in by adapter exposure; absence is fine.
+        return
+    try:
+        if is_recovery_acknowledged():
+            return
+    except Exception:  # noqa: BLE001 — best-effort hint, never the source of truth
+        return
+    msg = (
+        "Vault recovery key unconfirmed — every keystore tier is"
+        " machine-bound, so a hardware failure strands the vault.\n"
+        "  Save it off-host: terok vault passphrase reveal"
+    )
+    print(_yellow(msg, color))
 
 
 def _run_container(

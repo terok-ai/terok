@@ -2351,6 +2351,114 @@ class VaultUnlockModal(screen.ModalScreen["str | None"]):
 
 
 # ---------------------------------------------------------------------------
+# Vault Reveal Modal — show the passphrase + offer recovery ack
+# ---------------------------------------------------------------------------
+
+
+class VaultRevealModal(screen.ModalScreen["bool | None"]):
+    """Display the resolved vault passphrase and collect an off-host save ack.
+
+    Dismisses with ``True`` if the operator confirms they've saved the
+    value (caller writes the recovery marker), ``False`` if they
+    explicitly say not yet, or ``None`` on Esc.  The modal never
+    contacts the resolver itself — the caller does the lookup and
+    passes the cleartext in, so a future "reveal via Python API" path
+    can reuse the same modal without re-walking the chain.
+    """
+
+    BINDINGS = [
+        _modal_binding("escape", "cancel", "Close without acknowledging"),
+    ]
+
+    CSS = """
+    VaultRevealModal {
+        align: center middle;
+    }
+
+    #vault-reveal-dialog {
+        width: 80;
+        max-width: 100%;
+        height: auto;
+        border: heavy $warning;
+        border-title-align: right;
+        background: $surface;
+        padding: 1 2;
+    }
+
+    #vault-reveal-explainer {
+        margin-bottom: 1;
+        color: $text-muted;
+    }
+
+    #vault-reveal-passphrase {
+        margin: 1 0;
+        padding: 1;
+        background: $boost;
+        color: $text;
+        text-style: bold;
+        text-align: center;
+    }
+
+    #vault-reveal-warning {
+        color: $warning;
+        margin-bottom: 1;
+    }
+
+    #vault-reveal-buttons {
+        height: 3;
+        align-horizontal: right;
+        margin-top: 1;
+    }
+
+    #vault-reveal-buttons Button {
+        margin-left: 1;
+    }
+    """
+
+    def __init__(self, passphrase: str, source: str, *, already_acked: bool) -> None:
+        """Build the modal with the cleartext + source label + ack state."""
+        super().__init__()
+        self._passphrase = passphrase
+        self._source = source
+        self._already_acked = already_acked
+
+    def compose(self) -> ComposeResult:
+        """Lay out the explainer, the passphrase box, the buttons."""
+        dialog = Vertical(id="vault-reveal-dialog")
+        dialog.border_title = "Vault recovery key"
+        with dialog:
+            yield Static(
+                "Save this off-host (password manager, paper safe, "
+                "sealed envelope). Every storage tier we resolve through "
+                "(systemd-creds, keyring, session-file) is bound to this "
+                "machine, account, or boot — a hardware failure or TPM "
+                "transplant strands the vault without it.",
+                id="vault-reveal-explainer",
+            )
+            yield Static(self._passphrase, id="vault-reveal-passphrase")
+            yield Static(f"resolved via: {self._source}", id="vault-reveal-warning")
+            with Horizontal(id="vault-reveal-buttons"):
+                yield Button("Close", id="vault-reveal-cancel", variant="default")
+                if self._already_acked:
+                    yield Button("Already marked saved", id="vault-reveal-acked", variant="default")
+                else:
+                    yield Button("Mark as saved", id="vault-reveal-ack", variant="primary")
+
+    def action_cancel(self) -> None:
+        """Esc — dismiss without changing the marker."""
+        self.dismiss(None)
+
+    def on_button_pressed(self, event: Button.Pressed) -> None:
+        """Route the buttons to ``dismiss(True | False | None)``."""
+        if event.button.id == "vault-reveal-ack":
+            self.dismiss(True)
+        elif event.button.id == "vault-reveal-acked":
+            self.dismiss(None)
+        else:
+            self.dismiss(False)
+
+
+# ---------------------------------------------------------------------------
 # Vault Screen
 # ---------------------------------------------------------------------------
 
@@ -2369,6 +2477,8 @@ class VaultScreen(screen.Screen[str | None]):
         _modal_binding("l", "vault_lock", "Lock (clear session-file)"),
         _modal_binding("e", "vault_seal", "Seal into systemd-creds"),
         _modal_binding("k", "vault_to_keyring", "Move passphrase to keyring"),
+        _modal_binding("v", "vault_reveal", "Reveal recovery passphrase"),
+        _modal_binding("a", "vault_acknowledge", "Mark recovery key as saved"),
         _modal_binding("r", "vault_refresh", "Refresh status"),
     ]
 
@@ -2405,6 +2515,9 @@ class VaultScreen(screen.Screen[str | None]):
             Option("\\[l]ock (clear session-file, stop daemon)", id="vault_lock"),
             Option("s\\[e]al current passphrase into systemd-creds", id="vault_seal"),
             Option("move passphrase to \\[k]eyring", id="vault_to_keyring"),
+            None,
+            Option("re\\[v]eal recovery passphrase", id="vault_reveal"),
+            Option("mark recovery key as s\\[a]ved", id="vault_acknowledge"),
             None,
             Option("\\[r]efresh status", id="vault_refresh"),
             id="actions-list",
@@ -2481,6 +2594,14 @@ class VaultScreen(screen.Screen[str | None]):
     def action_vault_to_keyring(self) -> None:
         """Trigger the to-keyring relocation flow."""
         self.dismiss("vault_to_keyring")
+
+    def action_vault_reveal(self) -> None:
+        """Open the reveal modal — surfaces the passphrase + offers a save-ack."""
+        self.dismiss("vault_reveal")
+
+    def action_vault_acknowledge(self) -> None:
+        """Mark the current passphrase as saved without re-displaying it."""
+        self.dismiss("vault_acknowledge")
 
     def action_vault_refresh(self) -> None:
         """Refresh the status display."""

@@ -2030,15 +2030,29 @@ class TestVaultStatusPill:
         bar.set_message.assert_called_once()
         assert "LOCKED" in bar.set_message.call_args[0][0]
 
-    def test_render_pill_unlocked_shows_source(self) -> None:
-        """Resolved tier surfaces in the pill text."""
-        _, app_class = import_app()
+    def test_render_pill_unlocked_shows_source(self, monkeypatch) -> None:
+        """Resolved tier surfaces in the pill text (recovery key already acked)."""
+        app_mod, app_class = import_app()
+        monkeypatch.setattr(app_mod, "is_recovery_acknowledged", lambda: True)
         instance = mock.Mock(spec=app_class)
         bar = mock.Mock()
         instance.query_one = mock.Mock(return_value=bar)
         status = make_vault_status(passphrase_source="keyring")
         app_class._render_status_pill(instance, status)
         bar.set_message.assert_called_once_with("Vault: unlocked (keyring)")
+
+    def test_render_pill_unlocked_appends_unconfirmed_recovery(self, monkeypatch) -> None:
+        """Missing recovery-ack marker surfaces in the pill text."""
+        app_mod, app_class = import_app()
+        monkeypatch.setattr(app_mod, "is_recovery_acknowledged", lambda: False)
+        instance = mock.Mock(spec=app_class)
+        bar = mock.Mock()
+        instance.query_one = mock.Mock(return_value=bar)
+        status = make_vault_status(passphrase_source="systemd-creds")
+        app_class._render_status_pill(instance, status)
+        message = bar.set_message.call_args[0][0]
+        assert "systemd-creds" in message
+        assert "recovery key UNCONFIRMED" in message
 
     def test_render_pill_unlocked_appends_plaintext_marker(self) -> None:
         """sandbox#282: pill flags plaintext-on-disk even when another tier unlocked."""
