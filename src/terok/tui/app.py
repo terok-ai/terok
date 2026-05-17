@@ -503,7 +503,7 @@ if _HAS_TEXTUAL:
                 )
                 raise
 
-        async def _run_setup_flow(self, verdict: SetupVerdict) -> bool:
+        async def _run_setup_flow(self, verdict: SetupVerdict, *, force: bool = False) -> bool:
             """Show the setup screen + worker log; return True if the wizard may follow.
 
             ``True`` covers both "setup completed cleanly" and "verdict
@@ -513,8 +513,14 @@ if _HAS_TEXTUAL:
             failure: the wizard is gated behind a working sandbox stack,
             so chaining into it on a known-broken host would just
             produce confusing follow-on errors.
+
+            *force* bypasses the OK short-circuit: the auto-first-run
+            flow uses ``force=False`` (don't nag a healthy install);
+            palette invocations use ``force=True`` (the user explicitly
+            asked for the dialog, so honour it — re-running setup is
+            idempotent and the screen's headline already says so).
             """
-            if verdict is SetupVerdict.OK:
+            if verdict is SetupVerdict.OK and not force:
                 return True
 
             outcome = await self.push_screen_wait(SetupScreen(verdict=verdict))
@@ -629,6 +635,9 @@ if _HAS_TEXTUAL:
             Always probes the current verdict so the user sees the live
             state — useful even on a healthy install when they want to
             re-apply the (idempotent) systemd cycle after an upgrade.
+            Passes ``force=True`` so an OK verdict shows the dialog
+            (with its "re-running is safe but optional" headline)
+            instead of silently no-op'ing on healthy installs.
 
             Runs on a worker because ``_run_setup_flow`` calls
             ``push_screen_wait``, which requires a worker context.
@@ -637,7 +646,7 @@ if _HAS_TEXTUAL:
                 verdict = needs_setup()
             except Exception:
                 verdict = SetupVerdict.FIRST_RUN
-            await self._run_setup_flow(verdict)
+            await self._run_setup_flow(verdict, force=True)
 
         def _log_layout_debug(self) -> None:
             """Write a one-shot snapshot of key widget sizes to the state dir.
