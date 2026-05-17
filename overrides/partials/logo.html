@@ -1,0 +1,14 @@
+{# Two-image logo with CSS-driven theme swap.
+
+   Material's default logo.html renders the SVG via <img src=...>, which
+   loads the SVG in an isolated document context.  Host-page CSS (incl.
+   data-md-color-scheme switching) can't reach inside, so the SVG always
+   renders with its built-in fill — black, regardless of which theme is
+   active.
+
+   We render both light- and dark-fill variants and let CSS reach the
+   *outer* <img> tags to hide the wrong one based on Material's
+   data-md-color-scheme attribute.  See docs/stylesheets/extra.css for
+   the visibility rules. #}
+<img class="terok-logo-light" src="{{ 'terok-logo-b.svg' | url }}" alt="{{ config.site_name }}">
+<img class="terok-logo-dark"  src="{{ 'terok-logo-w.svg' | url }}" alt="{{ config.site_name }}">

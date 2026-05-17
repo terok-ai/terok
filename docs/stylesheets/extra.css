@@ -20,3 +20,10 @@
 .tabbed-labels > label:focus-visible {
   border-bottom-color: var(--md-accent-fg-color);
 }
+
+/* Logo theme swap — overrides/partials/logo.html renders both light and
+   dark variants; hide the one that doesn't match the active palette.
+   CSS reaches the outer <img> tag, which the inside of an <img>-loaded
+   SVG can't (isolated document context, no inherited color or media). */
+[data-md-color-scheme="default"] .terok-logo-dark { display: none; }
+[data-md-color-scheme="slate"]   .terok-logo-light { display: none; }

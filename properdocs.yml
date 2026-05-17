@@ -6,7 +6,8 @@ repo_name: terok-ai/terok
 
 theme:
   name: material
-  logo: terok-logo.svg
+  custom_dir: overrides   # overrides/partials/logo.html → theme-aware two-img logo
+  logo: terok-logo-b.svg  # fallback used by social-card / OpenGraph generators only
   favicon: terok-logo-b.svg
   font:
     text: Ubuntu

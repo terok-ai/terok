@@ -41,7 +41,16 @@
          width="11.705091"
          height="4.2333326"
          x="-1.6016018"
-         y="4.2333331" /></clipPath></defs><g
+         y="4.2333331" /></clipPath></defs><style>
+    /* Adapts to OS theme when rendered via <img> (panel icons,
+       desktop menus).  Light contexts: currentColor falls back to
+       the SVG document default (black).  Dark contexts: override
+       to white.  Hosts that DO inherit color (inline <svg>) keep
+       the currentColor cascade and ignore this rule. */
+    @media (prefers-color-scheme: dark) {
+      path, circle { fill: #fff !important; }
+    }
+  </style><g
      inkscape:label="Layer 1"
      inkscape:groupmode="layer"
      id="layer1"
