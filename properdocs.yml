@@ -6,8 +6,8 @@ repo_name: terok-ai/terok
 
 theme:
   name: material
-  custom_dir: overrides   # overrides/partials/logo.html → theme-aware two-img logo
-  logo: terok-logo-b.svg  # fallback used by social-card / OpenGraph generators only
+  custom_dir: overrides   # overrides/partials/logo.html inlines the SVG via {% include %}
+  logo: terok-logo-b.svg  # consumed by Material's social-card / OG plugins (not by the partial)
   favicon: terok-logo-b.svg
   font:
     text: Ubuntu
