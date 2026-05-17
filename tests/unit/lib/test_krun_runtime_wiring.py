@@ -287,6 +287,30 @@ class TestProjectRuntimeFlags:
         assert "/etc/ssh/authorized_keys.d/terok:ro" in mount_spec
         assert str(_krun_keypair.public_path) in mount_spec
 
+    def test_krun_emits_container_runtime_env_var(
+        self, _experimental_enabled, _krun_keypair, _stub_port_reservation
+    ) -> None:
+        """``-e TEROK_CONTAINER_RUNTIME=krun`` is the explicit runtime signal
+        the in-container init script gates the sshd supervisor on.  Explicit
+        env var rather than inferring from the bind-mount, so a botched L0
+        with a non-empty authorized_keys placeholder can't accidentally
+        expose sshd under crun."""
+        from terok.lib.orchestration.task_runners.container import _project_runtime_flags
+
+        flags = _project_runtime_flags(_project(runtime="krun"), cname="terok-cli-demoproj-task-a")
+        env_assignments = [flags[i + 1] for i, t in enumerate(flags) if t == "-e"]
+        assert "TEROK_CONTAINER_RUNTIME=krun" in env_assignments
+
+    def test_non_krun_does_not_emit_container_runtime_env_var(self) -> None:
+        """Under any runtime other than krun, the sshd-trigger env var must
+        be absent — otherwise an L0 with an accidentally-populated
+        authorized_keys file could expose sshd in a crun task."""
+        from terok.lib.orchestration.task_runners.container import _project_runtime_flags
+
+        flags = _project_runtime_flags(_project(), cname="terok-cli-demoproj-task-a")
+        env_assignments = [flags[i + 1] for i, t in enumerate(flags) if t == "-e"]
+        assert not any(e.startswith("TEROK_CONTAINER_RUNTIME") for e in env_assignments)
+
     def test_krun_emits_cpu_and_ram_when_set(
         self, _experimental_enabled, _krun_keypair, _stub_port_reservation
     ) -> None:

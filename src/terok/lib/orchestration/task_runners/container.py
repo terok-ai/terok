@@ -277,6 +277,13 @@ def _project_runtime_flags(project: ProjectConfig, *, cname: str) -> list[str]:
             "-v",
             f"{keypair.public_path}:/etc/ssh/authorized_keys.d/terok:ro",
         ]
+        # Explicit runtime signal for the in-container init script's
+        # sshd launch.  init-ssh-and-repo.sh gates the sshd supervisor
+        # loop on this value (``== "krun"``) — explicit signal rather
+        # than inferring from the bind-mount, so a botched L0 with a
+        # non-empty authorized_keys placeholder can't accidentally
+        # expose sshd under crun.
+        flags += ["-e", "TEROK_CONTAINER_RUNTIME=krun"]
     return flags
 
 
