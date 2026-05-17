@@ -365,10 +365,8 @@ class TestResolveHostAuthImage:
         """Default alias wins iff the OCI label confirms it has the provider."""
         from terok.lib.domain import auth
 
-        # terok-executor#333 made fedora:44 the default L0 base, so the
-        # resolved L1 alias slugifies that base image.
         def exists(tag: str) -> bool:
-            return tag == "terok-l1-cli:fedora-44"
+            return tag == "terok-l1-cli:ubuntu-24.04"
 
         with (
             patch(
@@ -382,7 +380,7 @@ class TestResolveHostAuthImage:
             ),
         ):
             image = auth._resolve_host_auth_image("claude")
-        assert image == "terok-l1-cli:fedora-44"
+        assert image == "terok-l1-cli:ubuntu-24.04"
 
     def test_alias_present_but_label_missing_provider_falls_through(self) -> None:
         """Stale alias from a partial build must not silently route auth at it."""
@@ -393,8 +391,8 @@ class TestResolveHostAuthImage:
         # (label says "claude" only) and pick up the per-agent codex tag.
         def exists(tag: str) -> bool:
             return tag in {
-                "terok-l1-cli:fedora-44",
-                "terok-l1-cli:fedora-44-codex",
+                "terok-l1-cli:ubuntu-24.04",
+                "terok-l1-cli:ubuntu-24.04-codex",
             }
 
         with (
@@ -406,13 +404,13 @@ class TestResolveHostAuthImage:
             patch("terok.lib.integrations.executor.image_agents", return_value={"claude"}),
         ):
             image = auth._resolve_host_auth_image("codex")
-        assert image == "terok-l1-cli:fedora-44-codex"
+        assert image == "terok-l1-cli:ubuntu-24.04-codex"
 
     def test_falls_back_to_per_agent_l1(self) -> None:
         from terok.lib.domain import auth
 
         def exists(tag: str) -> bool:
-            return tag == "terok-l1-cli:fedora-44-claude"
+            return tag == "terok-l1-cli:ubuntu-24.04-claude"
 
         with (
             patch(
@@ -423,7 +421,7 @@ class TestResolveHostAuthImage:
             patch("terok.lib.integrations.executor.image_agents", return_value=set()),
         ):
             image = auth._resolve_host_auth_image("claude")
-        assert image == "terok-l1-cli:fedora-44-claude"
+        assert image == "terok-l1-cli:ubuntu-24.04-claude"
 
     def test_api_key_only_provider_skips_build_when_missing(self) -> None:
         """API-key-only providers never launch a container; any tag is fine."""
