@@ -1,0 +1,9 @@
+{# SPDX-FileCopyrightText: 2026 Jiri Vyskocil #}
+{# SPDX-License-Identifier: Apache-2.0 #}
+{# Override Material's stock <img>-based logo with an inline include —
+   <img> loads the SVG in an isolated document context where
+   currentColor falls back to black regardless of host theme.  Inlining
+   puts the SVG inside the page DOM so currentColor cascades from
+   Material's text color and follows the theme toggle automatically
+   (same mechanism Material's own default icons use). #}
+{% include ".icons/terok-logo.svg" %}

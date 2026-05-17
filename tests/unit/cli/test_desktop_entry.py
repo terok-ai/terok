@@ -26,7 +26,7 @@ def xdg_data_home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
 
 def _which_no_xdg_utils(name: str) -> str | None:
     """``shutil.which`` side-effect: xdg-utils missing, manual cache bins present."""
-    if name in ("xdg-desktop-menu", "xdg-icon-resource"):
+    if name == "xdg-desktop-menu":
         return None
     return f"/usr/bin/{name}"
 
@@ -45,10 +45,14 @@ def _which_everything(name: str) -> str:
 
 
 class TestInstallViaXdgUtils:
-    """When xdg-utils is on PATH, delegate install + cache refresh to it."""
+    """When xdg-desktop-menu is on PATH, delegate the .desktop install + DB refresh
+    to it; the symbolic icon is always written manually (xdg-icon-resource rejects
+    ``--size symbolic``)."""
 
-    def test_invokes_xdg_desktop_menu_and_icon(self, xdg_data_home: Path) -> None:
-        """Install shells out to both xdg-utils front-ends, not manual cache bins."""
+    def test_install_uses_xdg_for_desktop_only(self, xdg_data_home: Path) -> None:
+        """Install shells out to xdg-desktop-menu (.desktop side) and
+        gtk-update-icon-cache (icon-cache refresh for the manual icon write).
+        It must NOT call xdg-icon-resource — that path rejects --size symbolic."""
         calls: list[list[str]] = []
 
         def record(argv: list[str], *_a, **_kw):
@@ -65,25 +69,26 @@ class TestInstallViaXdgUtils:
             desktop.install_desktop_entry("/opt/venv/bin/terok-tui")
 
         binaries = [argv[0].split("/")[-1] for argv in calls]
-        # xdg-utils exclusively — the manual update-desktop-database /
-        # gtk-update-icon-cache fallbacks must not fire.
         assert "xdg-desktop-menu" in binaries
-        assert "xdg-icon-resource" in binaries
-        # xdg-desktop-icon is the *wrong* tool — it installs to the
-        # user's Desktop folder, skipping the hicolor theme.  Guard the
-        # regression explicitly.
+        # xdg-icon-resource only accepts numeric / 'scalable' for --size, so
+        # symbolic icons can't go through it.  Guard against regression.
+        assert "xdg-icon-resource" not in binaries
+        # xdg-desktop-icon is the *wrong* tool — it installs to the user's
+        # Desktop folder, skipping the hicolor theme.  Explicit guard.
         assert "xdg-desktop-icon" not in binaries
+        # Icon cache refresh runs after the manual icon write.
+        assert "gtk-update-icon-cache" in binaries
+        # update-desktop-database is xdg-desktop-menu's own job; we don't
+        # call it ourselves when xdg-utils handled the .desktop side.
         assert "update-desktop-database" not in binaries
-        assert "gtk-update-icon-cache" not in binaries
 
-    def test_stages_files_with_target_basenames(self, xdg_data_home: Path) -> None:
-        """Staged paths handed to xdg-utils use the final ``terok.desktop`` / ``terok.svg`` names.
+    def test_stages_desktop_file_with_target_basename(self, xdg_data_home: Path) -> None:
+        """Staged .desktop handed to xdg-utils uses the final ``terok.desktop`` name.
 
-        xdg-desktop-menu names the installed ``.desktop`` after the
-        source basename, so staging to ``/tmp/.../foo.desktop`` would
-        register the launcher as ``foo``.  xdg-icon-resource takes the
-        icon resource name as a positional argument, which we pass
-        explicitly so the theme entry is always ``terok``.
+        xdg-desktop-menu names the installed file after the source basename,
+        so staging to ``/tmp/.../foo.desktop`` would register the launcher
+        as ``foo``.  Icon staging is gone — symbolic icons go via manual
+        write, not xdg-icon-resource.
         """
         calls: list[list[str]] = []
 
@@ -103,24 +108,11 @@ class TestInstallViaXdgUtils:
             desktop.install_desktop_entry("terok-tui")
 
         desktop_call = next(argv for argv in calls if argv[0].endswith("xdg-desktop-menu"))
-        icon_call = next(argv for argv in calls if argv[0].endswith("xdg-icon-resource"))
         assert Path(desktop_call[-1]).name == "terok.desktop"
-        # xdg-icon-resource argv: ... <staged.svg> <resource-name>.  The
-        # trailing positional is the resource name; the one before it is
-        # the source path.
-        assert icon_call[-1] == "terok"
-        assert Path(icon_call[-2]).name == "terok.svg"
         # The ``--novendor`` flag is mandatory for ``.desktop`` files not
         # named ``{vendor}-{appname}.desktop``; xdg-utils would otherwise
         # refuse the install.
         assert "--novendor" in desktop_call
-        assert "--novendor" in icon_call
-        # Icon size + context are explicit so xdg-icon-resource drops us
-        # into ``hicolor/scalable/apps/`` rather than guessing.
-        assert "--size" in icon_call
-        assert icon_call[icon_call.index("--size") + 1] == "scalable"
-        assert "--context" in icon_call
-        assert icon_call[icon_call.index("--context") + 1] == "apps"
 
     def test_install_returns_xdg_utils_backend(self, xdg_data_home: Path) -> None:
         """Return value advertises which backend was used so callers can warn."""
@@ -180,8 +172,8 @@ class TestInstallViaXdgUtils:
         # xdg-utils claimed failure.
         assert not desktop.is_desktop_entry_installed()
 
-    def test_uninstall_delegates_to_xdg_utils(self) -> None:
-        """``uninstall`` invokes the matching xdg-utils ``uninstall`` subcommands."""
+    def test_uninstall_delegates_desktop_to_xdg_utils(self) -> None:
+        """``uninstall`` invokes ``xdg-desktop-menu uninstall``; icon unlink is manual."""
         calls: list[list[str]] = []
 
         with (
@@ -201,15 +193,11 @@ class TestInstallViaXdgUtils:
 
         verbs = [(argv[0].split("/")[-1], argv[1]) for argv in calls]
         assert ("xdg-desktop-menu", "uninstall") in verbs
-        assert ("xdg-icon-resource", "uninstall") in verbs
-        icon_call = next(argv for argv in calls if argv[0].endswith("xdg-icon-resource"))
-        # Uninstall takes the icon resource *name* (not a file path), in
-        # the same size + context we installed under.
-        assert icon_call[-1] == "terok"
-        assert "--size" in icon_call
-        assert icon_call[icon_call.index("--size") + 1] == "scalable"
-        assert "--context" in icon_call
-        assert icon_call[icon_call.index("--context") + 1] == "apps"
+        # Icon side: no xdg-icon-resource call — symbolic icons go via manual
+        # unlink, with gtk-update-icon-cache picking up the removal.
+        binaries = [argv[0].split("/")[-1] for argv in calls]
+        assert "xdg-icon-resource" not in binaries
+        assert "gtk-update-icon-cache" in binaries
 
     def test_xdg_subprocess_failure_is_swallowed(self, xdg_data_home: Path) -> None:
         """A hung / broken xdg-utils front-end must not raise."""
@@ -256,36 +244,6 @@ class TestInstallViaXdgUtils:
         # no files on disk would be the worst of both worlds.
         assert desktop.is_desktop_entry_installed()
 
-    def test_xdg_partial_failure_still_falls_back(self, xdg_data_home: Path) -> None:
-        """Menu install OK but icon install fails → still FALLBACK.
-
-        A half-success is the nastiest case — ``.desktop`` would be
-        registered with ``Icon=terok`` but the theme entry would be
-        missing, which is exactly the bug this whole change is about.
-        """
-        ok = subprocess.CompletedProcess(args=[], returncode=0, stdout=b"", stderr=b"")
-        fail = subprocess.CompletedProcess(args=[], returncode=2, stdout=b"", stderr=b"boom")
-        # _install_via_xdg_utils runs menu first, icon second — make
-        # only the icon call fail.  The cache-refresh subprocesses from
-        # the manual fallback run after and also see this sequence, so
-        # we pad with successes.
-        returns = iter([ok, fail, ok, ok, ok, ok])
-
-        with (
-            mock.patch(
-                "terok.cli.commands._desktop_entry.shutil.which",
-                side_effect=_which_everything,
-            ),
-            mock.patch(
-                "terok.cli.commands._desktop_entry.subprocess.run",
-                side_effect=lambda *a, **kw: next(returns),
-            ),
-        ):
-            backend = desktop.install_desktop_entry("terok-tui")
-
-        assert backend is desktop.DesktopBackend.FALLBACK
-        assert desktop.is_desktop_entry_installed()
-
     def test_non_zero_xdg_exit_is_logged(
         self,
         xdg_data_home: Path,
@@ -328,16 +286,19 @@ class TestInstallManualFallback:
         content = (xdg_data_home / "applications" / "terok.desktop").read_text()
         assert "Exec=/usr/local/bin/terok-tui" in content
         assert "TryExec=/usr/local/bin/terok-tui" in content
-        assert "Icon=terok" in content
+        # ``Icon=terok-symbolic`` — the ``-symbolic`` suffix is the GTK/Qt
+        # marker that triggers the symbolic-icon rendering pipeline so the
+        # placeholder fill gets substituted with the theme foreground colour.
+        assert "Icon=terok-symbolic" in content
         assert "Terminal=true" in content
 
     def test_writes_icon_into_hicolor_tree(self, xdg_data_home: Path) -> None:
-        """The bundled SVG ends up under hicolor/scalable/apps/terok.svg."""
+        """The bundled SVG ends up under hicolor/symbolic/apps/terok-symbolic.svg."""
         with mock.patch(
             "terok.cli.commands._desktop_entry.shutil.which", side_effect=_which_nothing
         ):
             desktop.install_desktop_entry("terok-tui")
-        icon = xdg_data_home / "icons" / "hicolor" / "scalable" / "apps" / "terok.svg"
+        icon = xdg_data_home / "icons" / "hicolor" / "symbolic" / "apps" / "terok-symbolic.svg"
         assert icon.is_file()
         # SVG root marker — cheap check that it's the real file, not an empty write.
         assert b"<svg" in icon.read_bytes()[:512]
@@ -463,16 +424,17 @@ class TestIsDesktopEntryInstalled:
 
 
 class TestBackendSelection:
-    """``xdg_utils_available`` gates the whole strategy."""
+    """``xdg_utils_available`` gates whether the .desktop install delegates to
+    xdg-desktop-menu.  The icon install is always manual regardless."""
 
-    def test_both_binaries_required(self) -> None:
-        """Half-installed xdg-utils (one of the two missing) → manual fallback."""
+    def test_xdg_desktop_menu_alone_is_enough(self) -> None:
+        """Only ``xdg-desktop-menu`` is required — the icon side never uses xdg-utils."""
 
         def only_menu(name: str) -> str | None:
             return "/usr/bin/xdg-desktop-menu" if name == "xdg-desktop-menu" else None
 
         with mock.patch("terok.cli.commands._desktop_entry.shutil.which", side_effect=only_menu):
-            assert desktop.xdg_utils_available() is False
+            assert desktop.xdg_utils_available() is True
 
     def test_xdg_desktop_icon_alone_is_not_enough(self) -> None:
         """Presence of ``xdg-desktop-icon`` (wrong tool) must not flip the gate on.
@@ -491,12 +453,12 @@ class TestBackendSelection:
         ):
             assert desktop.xdg_utils_available() is False
 
-    def test_returns_true_when_both_on_path(self) -> None:
-        """Full xdg-utils → backend switches to the delegated install."""
+    def test_returns_false_when_xdg_desktop_menu_missing(self) -> None:
+        """Without xdg-desktop-menu on PATH → manual fallback for .desktop too."""
         with mock.patch(
-            "terok.cli.commands._desktop_entry.shutil.which", side_effect=_which_everything
+            "terok.cli.commands._desktop_entry.shutil.which", side_effect=_which_nothing
         ):
-            assert desktop.xdg_utils_available() is True
+            assert desktop.xdg_utils_available() is False
 
 
 # ── Ptyxis-gate render-form selection ─────────────────────────────────

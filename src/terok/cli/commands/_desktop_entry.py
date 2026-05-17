@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: 2026 Jiri Vyskocil
 # SPDX-License-Identifier: Apache-2.0
 
-"""Install the XDG desktop entry + scalable SVG icon for ``terok-tui``.
+"""Install the XDG desktop entry + symbolic SVG icon for ``terok-tui``.
 
 ``terok setup`` calls `install_desktop_entry` (or the matching
 `uninstall_desktop_entry`) as a default-on phase, so the TUI
@@ -10,23 +10,24 @@ operator knowing the template layout.  Every step soft-fails so a
 headless host without ``.local/share`` or without ``xdg-utils`` never
 kills the wider ``terok setup`` flow.
 
-Preferred path is ``xdg-utils`` — ``xdg-desktop-menu install`` for the
-launcher plus ``xdg-icon-resource install --context apps`` for the
-hicolor icon theme entry.  Standard freedesktop tooling: it validates
-the ``.desktop`` via ``desktop-file-install``, drops the icon into
-``hicolor/<size>/apps/`` so ``Icon=terok`` resolves, and kicks the
-``update-desktop-database`` + ``gtk-update-icon-cache`` refreshes for
-us.  Also the same API we'd hook into later from an rpm/deb ``%post``
-with ``--mode=system``.
+Preferred path for the ``.desktop`` file is ``xdg-utils`` —
+``xdg-desktop-menu install`` runs ``desktop-file-install`` (validates
+the file, catches malformed keys) and refreshes
+``update-desktop-database`` for us.  The icon, however, is always
+written manually: ``xdg-icon-resource install --size`` only accepts
+numeric sizes or ``scalable`` (per the upstream xdg-utils source —
+``size argument must be numeric or the word 'scalable'``), so a
+symbolic icon (which lives in ``hicolor/symbolic/apps/``) can't be
+registered through that path.  We drop the icon directly into the
+hicolor tree and kick ``gtk-update-icon-cache`` ourselves.
 
 When ``xdg-utils`` isn't on PATH (minimal container images, some CI
-runners) we fall back to writing the XDG tree ourselves and firing the
-cache-refresh binaries directly.  This is *best-effort*: the files end
-up in the right place on hosts that match the spec, but there's no
-``desktop-file-install`` validation and no cover for DE-specific
-layout drift.  `install_desktop_entry` returns a
-`DesktopBackend` so the caller can surface a gentle warning
-when the fallback kicks in.
+runners) we fall back to writing the ``.desktop`` ourselves too.
+This is *best-effort*: the file ends up in the right place on hosts
+that match the spec, but there's no ``desktop-file-install``
+validation and no cover for DE-specific layout drift.
+`install_desktop_entry` returns a `DesktopBackend` so the caller can
+surface a gentle warning when the fallback kicks in.
 
 The passive assets (``.desktop`` template, logo SVG) live under
 ``terok/resources/desktop/`` — this module is the *builder* that
@@ -55,40 +56,39 @@ from ...lib.util.template_utils import render_resource_template
 
 _log = logging.getLogger(__name__)
 
-#: Base name of the application launcher and icon — must match
-#: ``Icon=terok`` in the template for GNOME's icon-theme resolver.
+#: Base name of the application launcher.
 APP_NAME = "terok"
 
+#: Icon name — the ``-symbolic`` suffix is honoured by GTK and Qt as a
+#: marker that triggers the toolkit's symbolic-icon rendering pipeline,
+#: which substitutes the placeholder fill (``#bebebe`` in our SVG) with
+#: the active theme's foreground colour.  Same mechanism as ``Icon=
+#: <name>-symbolic`` on every well-behaved GNOME / KDE app.
+_ICON_NAME = f"{APP_NAME}-symbolic"
+
 _DESKTOP_FILE = f"{APP_NAME}.desktop"
-_ICON_FILE = f"{APP_NAME}.svg"
-# ``scalable`` is the hicolor-theme well-known directory for vector icons;
-# also the value xdg-icon-resource accepts as ``--size scalable`` since
-# xdg-utils 1.1.0.  Renderers prefer the SVG over a pixel-bucket PNG so
-# we get correct sizing on HiDPI panels + dark-theme colour adaptation
-# (the bundled SVG uses ``fill=currentColor``).
-_ICON_SIZE = "scalable"
+_ICON_FILE = f"{_ICON_NAME}.svg"
 _TEMPLATE_NAME = "terok.desktop.template"
-_LOGO_NAME = "terok-logo.svg"
+_LOGO_NAME = _ICON_FILE
 _PTYXIS_SHIM_NAME = "terok-xdg-terminal-exec.sh"
 
 # XDG Base Directory + Icon Theme spec path fragments.  Named so a
-# future theme-dir shift (e.g. an Adwaita-symbolic install path) is a
-# single-constant change and so ``grep`` for the fragment lands on the
-# canonical definition rather than every join site.
+# future theme-dir shift is a single-constant change and so ``grep`` for
+# the fragment lands on the canonical definition rather than every join
+# site.  Symbolic icons live under ``hicolor/symbolic/apps/`` (the
+# ``symbolic`` directory is hicolor's well-known symbolic-icon slot).
 _APPLICATIONS_SUBDIR = "applications"
 _ICONS_SUBDIR = "icons"
 _HICOLOR_THEME = "hicolor"
 _APPS_SUBDIR = "apps"
-_ICON_SIZE_DIR = _ICON_SIZE  # "scalable" — no NxN format for vector icons
+_ICON_SIZE_DIR = "symbolic"
 _DEFAULT_DATA_HOME = (".local", "share")  # $HOME/.local/share — XDG fallback
 
 _XDG_MENU_BINARY = "xdg-desktop-menu"
-# ``xdg-icon-resource`` registers an icon in the hicolor theme so
-# ``Icon=terok`` in the .desktop file resolves.  The similarly-named
-# ``xdg-desktop-icon`` would put the PNG on the *user's Desktop folder*
-# instead — looks plausible, skips the theme entirely.
-_XDG_ICON_RESOURCE_BINARY = "xdg-icon-resource"
-_XDG_ICON_CONTEXT = "apps"
+# xdg-icon-resource intentionally NOT used — its ``--size`` accepts only
+# numeric values or ``scalable``, never ``symbolic``, so symbolic icons
+# can't be registered through it.  Manual write into
+# ``hicolor/symbolic/apps/`` instead.
 
 _SUBPROCESS_TIMEOUT_S = 10
 
@@ -169,76 +169,62 @@ def is_desktop_entry_installed() -> bool:
 
 
 def xdg_utils_available() -> bool:
-    """Return True only when *both* xdg-utils front-ends are on PATH."""
-    return bool(shutil.which(_XDG_MENU_BINARY) and shutil.which(_XDG_ICON_RESOURCE_BINARY))
+    """Return True when xdg-desktop-menu is on PATH (icon side is always manual)."""
+    return bool(shutil.which(_XDG_MENU_BINARY))
 
 
 def _install_via_xdg_utils(desktop_contents: str, logo_bytes: bytes) -> bool:
-    """Stage the rendered files and delegate install + cache refresh to xdg-utils.
+    """Install the ``.desktop`` via xdg-utils; write the icon manually.
 
     ``xdg-desktop-menu install`` runs ``desktop-file-install`` (catches
     malformed keys), drops the file under the user's applications dir,
-    and kicks ``update-desktop-database``.  ``xdg-icon-resource install
-    --context apps`` does the equivalent for the hicolor theme tree —
-    it's the tool that makes ``Icon=terok`` resolvable — and runs
-    ``gtk-update-icon-cache`` itself.  We stage the ``.desktop`` to a
-    tempdir (xdg-desktop-menu names it by source basename) and pass the
-    icon resource name (``terok``) explicitly to ``xdg-icon-resource``
-    so the theme entry is deterministic regardless of source filename.
+    and kicks ``update-desktop-database``.  We stage to a tempdir
+    because xdg-desktop-menu names the installed file after the source
+    basename — staging to ``/tmp/.../terok.desktop`` makes the launcher
+    register as ``terok``.
+
+    Icon: ``xdg-icon-resource install --size`` accepts only numeric
+    sizes or ``scalable``, never ``symbolic``, so we write the symbolic
+    icon directly into ``hicolor/symbolic/apps/`` and refresh
+    ``gtk-update-icon-cache`` ourselves.
 
     Returns:
-        True only when *both* front-ends reported success.  A partial
-        install (menu OK, icon failed — or vice versa) reads as False
-        so the caller can retry via the manual path and land in a
-        consistent state rather than advertising XDG_UTILS for an
-        install that half-failed.
+        True only when the ``.desktop`` install reported success.
+        Icon install is always attempted (manual write).  A failed
+        ``.desktop`` install reads as False so the caller retries via
+        the manual path.
     """
     with tempfile.TemporaryDirectory(prefix="terok-desktop-") as td:
-        staged_dir = Path(td)
-        staged_desktop = staged_dir / _DESKTOP_FILE
-        staged_icon = staged_dir / _ICON_FILE
+        staged_desktop = Path(td) / _DESKTOP_FILE
         staged_desktop.write_text(desktop_contents, encoding="utf-8")
-        staged_icon.write_bytes(logo_bytes)
         menu_ok = _run_xdg(
             _XDG_MENU_BINARY,
             "install",
             "--novendor",
             str(staged_desktop),
         )
-        icon_ok = _run_xdg(
-            _XDG_ICON_RESOURCE_BINARY,
-            "install",
-            "--novendor",
-            "--size",
-            _ICON_SIZE,
-            "--context",
-            _XDG_ICON_CONTEXT,
-            str(staged_icon),
-            APP_NAME,
-        )
-    return menu_ok and icon_ok
+    if not menu_ok:
+        return False
+    _write_icon(logo_bytes)
+    _refresh_icon_cache()
+    return True
 
 
 def _uninstall_via_xdg_utils() -> bool:
-    """Delegate removal + cache refresh to xdg-utils.
+    """Remove the ``.desktop`` via xdg-utils; unlink the icon manually.
+
+    Symmetric with `_install_via_xdg_utils` — xdg-utils can't manage
+    symbolic icons, so the icon side is always direct unlink +
+    ``gtk-update-icon-cache``.
 
     Returns:
-        True only when *both* front-ends reported success.  A half-
-        completed teardown (menu removed, icon theme still holds
-        ``terok`` — or vice versa) reads as False so the caller can
-        retry via the manual unlinks and actually clear the state.
+        True when the xdg-desktop-menu uninstall reports success.
+        Icon unlink is always attempted.
     """
     menu_ok = _run_xdg(_XDG_MENU_BINARY, "uninstall", "--novendor", _DESKTOP_FILE)
-    icon_ok = _run_xdg(
-        _XDG_ICON_RESOURCE_BINARY,
-        "uninstall",
-        "--size",
-        _ICON_SIZE,
-        "--context",
-        _XDG_ICON_CONTEXT,
-        APP_NAME,
-    )
-    return menu_ok and icon_ok
+    _unlink_icon()
+    _refresh_icon_cache()
+    return menu_ok
 
 
 def _run_xdg(binary: str, *args: str) -> bool:
@@ -286,10 +272,7 @@ def _install_manually(desktop_contents: str, logo_bytes: bytes) -> None:
     desktop_path.write_text(desktop_contents, encoding="utf-8")
     desktop_path.chmod(0o644)
 
-    icon_path = _icon_path()
-    icon_path.parent.mkdir(parents=True, exist_ok=True)
-    icon_path.write_bytes(logo_bytes)
-    icon_path.chmod(0o644)
+    _write_icon(logo_bytes)
 
     _refresh_desktop_database()
     _refresh_icon_cache()
@@ -297,13 +280,36 @@ def _install_manually(desktop_contents: str, logo_bytes: bytes) -> None:
 
 def _uninstall_manually() -> None:
     """Unlink the launcher + icon and refresh caches so menus forget."""
-    for path in (_desktop_entry_path(), _icon_path()):
-        try:
-            path.unlink(missing_ok=True)
-        except OSError as exc:
-            _log.warning("failed to unlink %s: %s", path, exc)
+    try:
+        _desktop_entry_path().unlink(missing_ok=True)
+    except OSError as exc:
+        _log.warning("failed to unlink %s: %s", _desktop_entry_path(), exc)
+    _unlink_icon()
     _refresh_desktop_database()
     _refresh_icon_cache()
+
+
+def _write_icon(logo_bytes: bytes) -> None:
+    """Write the symbolic SVG to ``hicolor/symbolic/apps/`` directly.
+
+    Used by both the xdg-utils path and the manual path — xdg-icon-resource
+    can't register symbolic icons (its ``--size`` rejects anything but a
+    numeric value or ``scalable``), so the symbolic install is always a
+    direct write.  Caller is expected to refresh the icon cache afterwards.
+    """
+    icon_path = _icon_path()
+    icon_path.parent.mkdir(parents=True, exist_ok=True)
+    icon_path.write_bytes(logo_bytes)
+    icon_path.chmod(0o644)
+
+
+def _unlink_icon() -> None:
+    """Remove the installed icon; symmetric with `_write_icon`."""
+    icon_path = _icon_path()
+    try:
+        icon_path.unlink(missing_ok=True)
+    except OSError as exc:
+        _log.warning("failed to unlink %s: %s", icon_path, exc)
 
 
 # ── Path derivation ───────────────────────────────────────────────────
@@ -315,7 +321,7 @@ def _desktop_entry_path() -> Path:
 
 
 def _icon_path() -> Path:
-    """Return ``$XDG_DATA_HOME/icons/hicolor/scalable/apps/terok.svg``."""
+    """Return ``$XDG_DATA_HOME/icons/hicolor/symbolic/apps/terok-symbolic.svg``."""
     return (
         _data_home() / _ICONS_SUBDIR / _HICOLOR_THEME / _ICON_SIZE_DIR / _APPS_SUBDIR / _ICON_FILE
     )

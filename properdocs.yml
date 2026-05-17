@@ -6,7 +6,8 @@ repo_name: terok-ai/terok
 
 theme:
   name: material
-  logo: terok-logo.svg
+  custom_dir: overrides   # overrides/partials/logo.html inlines the SVG via {% include %}
+  logo: terok-logo-b.svg  # consumed by Material's social-card / OG plugins (not by the partial)
   favicon: terok-logo-b.svg
   font:
     text: Ubuntu
