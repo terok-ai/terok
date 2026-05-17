@@ -134,6 +134,13 @@ def test_cmd_sickbay_reports_health(
         ),
         # contract covered in test_sickbay.py::TestCheckDefaultAgents
         "_check_default_agents": ("ok", "Default agents", "image.agents = 'all'"),
+        # Recovery-key check needs the sandbox marker file present; stub
+        # to ok here so the gate-server assertions above stay focused.
+        "_check_recovery_acknowledged": (
+            "ok",
+            "Recovery key acknowledged",
+            "recovery key acknowledged",
+        ),
     }
     patched_checks = [
         (label, (lambda r=_stubs[fn.__name__]: r) if fn.__name__ in _stubs else fn)

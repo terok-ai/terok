@@ -611,6 +611,34 @@ def _check_vault_migration() -> _CheckResult:
     return ("ok", label, "no legacy directory")
 
 
+def _check_recovery_acknowledged() -> _CheckResult:
+    """Warn when the operator hasn't confirmed they saved the recovery key.
+
+    Sandbox-side check; the marker is a zero-byte sidecar per install,
+    so this is host-level (one row at the top, not per-task — terok's
+    container loop deliberately excludes it from the
+    [`sandbox_doctor_checks`][terok_sandbox.doctor.sandbox_doctor_checks]
+    bundle).
+    """
+    label = "Recovery key acknowledged"
+    try:
+        from terok.lib.integrations.sandbox import is_recovery_acknowledged
+
+        if is_recovery_acknowledged():
+            return ("ok", label, "recovery key acknowledged")
+    except Exception as exc:  # noqa: BLE001 — best-effort probe, never block sickbay
+        return ("warn", label, f"check failed — {exc}")
+    return (
+        "warn",
+        label,
+        "vault recovery key unconfirmed — every keystore tier is"
+        " machine-bound, so a hardware failure strands the vault."
+        " Run `terok vault passphrase reveal` to view and save the value"
+        " off-host, or `terok vault passphrase acknowledge` if you"
+        " already captured it (CI / TUI flow).",
+    )
+
+
 def _check_default_agents() -> _CheckResult:
     """Warn when no global ``image.agents`` default is configured.
 
@@ -641,6 +669,7 @@ _GLOBAL_CHECKS = [
     ("Shield", _check_shield),
     ("Vault", _check_vault),
     ("Vault migration", _check_vault_migration),
+    ("Recovery key acknowledged", _check_recovery_acknowledged),
     ("SSH signer", _check_ssh_signer),
     ("SELinux policy", _check_selinux_policy),
     ("Clearance stack", _check_clearance_stack),

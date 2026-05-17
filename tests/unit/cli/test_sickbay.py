@@ -15,6 +15,7 @@ from terok_sandbox import SelinuxCheckResult, SelinuxStatus
 from terok.cli.commands.sickbay import (
     _check_default_agents,
     _check_gate_server,
+    _check_recovery_acknowledged,
     _check_selinux_policy,
     _check_ssh_signer,
     _check_task_hook,
@@ -952,4 +953,48 @@ class TestCheckDefaultAgents:
             sev, label, detail = _check_default_agents()
         assert sev == "warn"
         assert label == "Default agents"
+        assert "boom" in detail
+
+
+class TestCheckRecoveryAcknowledged:
+    """``_check_recovery_acknowledged`` produces the host-level row.
+
+    Pre-fix the recovery check was bundled into
+    ``sandbox_doctor_checks`` and rendered per-task; terok's host-level
+    sickbay now owns its own row instead so the warning appears
+    exactly once.
+    """
+
+    def test_ok_when_marker_present(self) -> None:
+        """Acknowledged → ``ok`` with a brief detail."""
+        with unittest.mock.patch(
+            "terok.lib.integrations.sandbox.is_recovery_acknowledged",
+            return_value=True,
+        ):
+            sev, label, detail = _check_recovery_acknowledged()
+        assert sev == "ok"
+        assert label == "Recovery key acknowledged"
+        assert "acknowledged" in detail
+
+    def test_warn_when_marker_missing(self) -> None:
+        """Unacknowledged → ``warn`` naming both remediation verbs."""
+        with unittest.mock.patch(
+            "terok.lib.integrations.sandbox.is_recovery_acknowledged",
+            return_value=False,
+        ):
+            sev, label, detail = _check_recovery_acknowledged()
+        assert sev == "warn"
+        assert label == "Recovery key acknowledged"
+        assert "unconfirmed" in detail
+        assert "terok vault passphrase reveal" in detail
+        assert "terok vault passphrase acknowledge" in detail
+
+    def test_warn_when_probe_raises(self) -> None:
+        """A failing probe degrades to a warn — never crashes sickbay."""
+        with unittest.mock.patch(
+            "terok.lib.integrations.sandbox.is_recovery_acknowledged",
+            side_effect=RuntimeError("boom"),
+        ):
+            sev, label, detail = _check_recovery_acknowledged()
+        assert sev == "warn"
         assert "boom" in detail
