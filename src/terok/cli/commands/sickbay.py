@@ -612,22 +612,40 @@ def _check_vault_migration() -> _CheckResult:
 
 
 def _check_recovery_acknowledged() -> _CheckResult:
-    """Warn when the operator hasn't confirmed they saved the recovery key.
+    """Warn / error when the operator hasn't confirmed they saved the recovery key.
 
     Sandbox-side check; the marker is a zero-byte sidecar per install,
     so this is host-level (one row at the top, not per-task — terok's
     container loop deliberately excludes it from the
     [`sandbox_doctor_checks`][terok_sandbox.doctor.sandbox_doctor_checks]
     bundle).
+
+    Two severity bands when the marker is missing: an ``error`` when
+    the resolver lands on the session-unlock tmpfs file (the
+    passphrase is wiped on the next reboot and the vault becomes
+    unrecoverable then), a ``warn`` for any durable tier (machine-
+    bound; needs an off-host copy for hardware-failure DR).
     """
     label = "Recovery key acknowledged"
     try:
-        from terok.lib.integrations.sandbox import is_recovery_acknowledged
+        from terok.lib.integrations.sandbox import recovery_status
 
-        if is_recovery_acknowledged():
-            return ("ok", label, "recovery key acknowledged")
+        status = recovery_status()
     except Exception as exc:  # noqa: BLE001 — best-effort probe, never block sickbay
         return ("warn", label, f"check failed — {exc}")
+    if status.acknowledged:
+        return ("ok", label, "recovery key acknowledged")
+    if status.urgent:
+        return (
+            "error",
+            label,
+            "vault recovery key UNCONFIRMED and the passphrase lives ONLY"
+            " in the session-unlock tmpfs file — it will be wiped on the"
+            " next reboot and your vault becomes UNRECOVERABLE then."
+            " Run `terok vault passphrase reveal` NOW and save the value"
+            " off-host, or `terok vault passphrase acknowledge` if you"
+            " already captured it (CI / TUI flow).",
+        )
     return (
         "warn",
         label,

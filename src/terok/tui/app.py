@@ -81,8 +81,8 @@ if _HAS_TEXTUAL:
         check_environment as _shield_check_environment,
         get_server_status,
         get_vault_status,
-        is_recovery_acknowledged,
         needs_setup,
+        recovery_status,
         state as _shield_state,
     )
 
@@ -1665,14 +1665,32 @@ if _HAS_TEXTUAL:
             to look at the pill) gets a louder reminder.  Suppressed
             silently on a locked vault — the unlock prompt is already
             pulling the operator's attention.
+
+            Severity escalates from ``warning`` to ``error`` when the
+            resolver lands on the session-unlock tmpfs tier and the
+            marker is missing — the operator is literally one reboot
+            away from losing the vault.
             """
             if getattr(self, "_recovery_warning_shown", False):
                 return
             self._recovery_warning_shown = True
-            status = getattr(self, "_last_vault_status", None)
-            if status is None or status.locked:
+            vault_status = getattr(self, "_last_vault_status", None)
+            if vault_status is None or vault_status.locked:
                 return
-            if is_recovery_acknowledged():
+            rstatus = recovery_status()
+            if rstatus.acknowledged:
+                return
+            if rstatus.urgent:
+                self.notify(
+                    "Vault recovery key UNCONFIRMED and the passphrase lives "
+                    "ONLY in the session-unlock tmpfs file — it will be wiped "
+                    "on the next reboot and your vault becomes UNRECOVERABLE "
+                    "then.  Open the Vault screen → Reveal NOW and save the "
+                    "key off-host.",
+                    title="Recovery key — saving NOW or lose the vault on reboot",
+                    severity="error",
+                    timeout=30,
+                )
                 return
             self.notify(
                 "Vault recovery key unconfirmed — every keystore tier is "
@@ -1723,14 +1741,17 @@ if _HAS_TEXTUAL:
             # the pill so the operator sees it without opening the
             # vault status screen.
             suffix = " — plaintext on disk" if plaintext is not None else ""
-            # The recovery-acknowledgement marker is one more bit
-            # of "visible until acted on" state: every keystore tier
-            # we resolve through is machine/account/boot-bound, so
-            # the operator needs an off-host copy of the passphrase
-            # — and the only place we know they haven't grabbed
-            # one yet is the missing sidecar.
-            if not is_recovery_acknowledged():
-                suffix += " — recovery key UNCONFIRMED"
+            # The recovery-acknowledgement marker is one more bit of
+            # "visible until acted on" state.  When the resolver lands
+            # on the session-unlock tmpfs file AND the marker is
+            # missing, the operator is one reboot away from losing the
+            # vault — escalate the pill text accordingly.
+            rstatus = recovery_status()
+            if not rstatus.acknowledged:
+                if rstatus.urgent:
+                    suffix += " — recovery key UNSAVED, vault dies on reboot"
+                else:
+                    suffix += " — recovery key UNCONFIRMED"
             bar.set_message(f"Vault: unlocked ({status.passphrase_source}){suffix}")
 
         async def _on_vault_unlock_result(self, passphrase: "str | None") -> None:

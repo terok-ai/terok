@@ -2148,21 +2148,58 @@ class TestVaultAcknowledgeAction:
 
 
 class TestMaybeWarnRecoveryUnconfirmed:
-    """One-shot startup notification for an unconfirmed recovery key."""
+    """One-shot startup notification for an unconfirmed recovery key.
 
-    def test_warns_once_when_unlocked_and_unacked(self) -> None:
-        """Fresh process + unlocked vault + missing marker → notify once."""
+    Three severity bands — silent / yellow warning / red error — picked
+    by ``RecoveryStatus.urgent`` so the message escalates when the
+    operator is one reboot away from losing the vault.
+    """
+
+    @staticmethod
+    def _fake_status(*, acknowledged: bool, source: object) -> object:
+        """Build a duck-typed ``RecoveryStatus`` stand-in for the notify branches."""
+        from terok.lib.integrations.sandbox import RecoveryStatus
+
+        return RecoveryStatus(acknowledged=acknowledged, source=source)
+
+    def test_warns_once_when_unlocked_and_unacked_durable(self) -> None:
+        """Fresh process + unlocked vault + missing marker + durable tier → ``warning``."""
         app_mod, app_class = import_app()
         instance = mock.Mock(spec=app_class)
         instance.notify = mock.Mock()
         instance._last_vault_status = make_vault_status(locked=False, passphrase_source="keyring")
-        # No prior call — flag attribute is missing.
         if hasattr(instance, "_recovery_warning_shown"):
             del instance._recovery_warning_shown
-        with mock.patch.object(app_mod, "is_recovery_acknowledged", return_value=False):
+        with mock.patch.object(
+            app_mod,
+            "recovery_status",
+            return_value=self._fake_status(acknowledged=False, source="keyring"),
+        ):
             app_class._maybe_warn_recovery_unconfirmed(instance)
         instance.notify.assert_called_once()
         assert instance.notify.call_args.kwargs["severity"] == "warning"
+
+    def test_errors_when_session_only(self) -> None:
+        """Unacked + session-file source → red ``error`` (one reboot away from loss)."""
+        app_mod, app_class = import_app()
+        instance = mock.Mock(spec=app_class)
+        instance.notify = mock.Mock()
+        instance._last_vault_status = make_vault_status(
+            locked=False, passphrase_source="session-file"
+        )
+        if hasattr(instance, "_recovery_warning_shown"):
+            del instance._recovery_warning_shown
+        with mock.patch.object(
+            app_mod,
+            "recovery_status",
+            return_value=self._fake_status(acknowledged=False, source="session-file"),
+        ):
+            app_class._maybe_warn_recovery_unconfirmed(instance)
+        instance.notify.assert_called_once()
+        assert instance.notify.call_args.kwargs["severity"] == "error"
+        body = instance.notify.call_args[0][0]
+        assert "UNRECOVERABLE" in body
+        assert "reboot" in body.lower()
 
     def test_quiet_when_already_acknowledged(self) -> None:
         """Marker already lands → silent, no notification."""
@@ -2172,7 +2209,11 @@ class TestMaybeWarnRecoveryUnconfirmed:
         instance._last_vault_status = make_vault_status(locked=False, passphrase_source="keyring")
         if hasattr(instance, "_recovery_warning_shown"):
             del instance._recovery_warning_shown
-        with mock.patch.object(app_mod, "is_recovery_acknowledged", return_value=True):
+        with mock.patch.object(
+            app_mod,
+            "recovery_status",
+            return_value=self._fake_status(acknowledged=True, source="keyring"),
+        ):
             app_class._maybe_warn_recovery_unconfirmed(instance)
         instance.notify.assert_not_called()
 
@@ -2184,7 +2225,11 @@ class TestMaybeWarnRecoveryUnconfirmed:
         instance._last_vault_status = make_vault_status(locked=True, passphrase_source=None)
         if hasattr(instance, "_recovery_warning_shown"):
             del instance._recovery_warning_shown
-        with mock.patch.object(app_mod, "is_recovery_acknowledged", return_value=False):
+        with mock.patch.object(
+            app_mod,
+            "recovery_status",
+            return_value=self._fake_status(acknowledged=False, source=None),
+        ):
             app_class._maybe_warn_recovery_unconfirmed(instance)
         instance.notify.assert_not_called()
 
@@ -2196,7 +2241,11 @@ class TestMaybeWarnRecoveryUnconfirmed:
         instance._last_vault_status = make_vault_status(locked=False, passphrase_source="keyring")
         if hasattr(instance, "_recovery_warning_shown"):
             del instance._recovery_warning_shown
-        with mock.patch.object(app_mod, "is_recovery_acknowledged", return_value=False):
+        with mock.patch.object(
+            app_mod,
+            "recovery_status",
+            return_value=self._fake_status(acknowledged=False, source="keyring"),
+        ):
             app_class._maybe_warn_recovery_unconfirmed(instance)
             app_class._maybe_warn_recovery_unconfirmed(instance)
         instance.notify.assert_called_once()
@@ -2209,7 +2258,11 @@ class TestMaybeWarnRecoveryUnconfirmed:
         instance._last_vault_status = None
         if hasattr(instance, "_recovery_warning_shown"):
             del instance._recovery_warning_shown
-        with mock.patch.object(app_mod, "is_recovery_acknowledged", return_value=False):
+        with mock.patch.object(
+            app_mod,
+            "recovery_status",
+            return_value=self._fake_status(acknowledged=False, source="keyring"),
+        ):
             app_class._maybe_warn_recovery_unconfirmed(instance)
         instance.notify.assert_not_called()
 
@@ -2336,10 +2389,20 @@ class TestVaultStatusPill:
         bar.set_message.assert_called_once()
         assert "LOCKED" in bar.set_message.call_args[0][0]
 
+    @staticmethod
+    def _fake_status(*, acknowledged: bool, source: object) -> object:
+        from terok.lib.integrations.sandbox import RecoveryStatus
+
+        return RecoveryStatus(acknowledged=acknowledged, source=source)
+
     def test_render_pill_unlocked_shows_source(self, monkeypatch) -> None:
         """Resolved tier surfaces in the pill text (recovery key already acked)."""
         app_mod, app_class = import_app()
-        monkeypatch.setattr(app_mod, "is_recovery_acknowledged", lambda: True)
+        monkeypatch.setattr(
+            app_mod,
+            "recovery_status",
+            lambda: self._fake_status(acknowledged=True, source="keyring"),
+        )
         instance = mock.Mock(spec=app_class)
         bar = mock.Mock()
         instance.query_one = mock.Mock(return_value=bar)
@@ -2348,9 +2411,13 @@ class TestVaultStatusPill:
         bar.set_message.assert_called_once_with("Vault: unlocked (keyring)")
 
     def test_render_pill_unlocked_appends_unconfirmed_recovery(self, monkeypatch) -> None:
-        """Missing recovery-ack marker surfaces in the pill text."""
+        """Missing recovery-ack marker on a durable tier → ``UNCONFIRMED`` suffix."""
         app_mod, app_class = import_app()
-        monkeypatch.setattr(app_mod, "is_recovery_acknowledged", lambda: False)
+        monkeypatch.setattr(
+            app_mod,
+            "recovery_status",
+            lambda: self._fake_status(acknowledged=False, source="systemd-creds"),
+        )
         instance = mock.Mock(spec=app_class)
         bar = mock.Mock()
         instance.query_one = mock.Mock(return_value=bar)
@@ -2359,6 +2426,28 @@ class TestVaultStatusPill:
         message = bar.set_message.call_args[0][0]
         assert "systemd-creds" in message
         assert "recovery key UNCONFIRMED" in message
+        # The session-only escalation must not bleed into the durable branch.
+        assert "vault dies on reboot" not in message
+
+    def test_render_pill_session_only_escalates_pill_text(self, monkeypatch) -> None:
+        """Missing marker + session-file source → louder pill text."""
+        app_mod, app_class = import_app()
+        monkeypatch.setattr(
+            app_mod,
+            "recovery_status",
+            lambda: self._fake_status(acknowledged=False, source="session-file"),
+        )
+        instance = mock.Mock(spec=app_class)
+        bar = mock.Mock()
+        instance.query_one = mock.Mock(return_value=bar)
+        status = make_vault_status(passphrase_source="session-file")
+        app_class._render_status_pill(instance, status)
+        message = bar.set_message.call_args[0][0]
+        assert "session-file" in message
+        # The escalation explicitly names the reboot-loss risk so the
+        # operator sees the asymmetry against durable tiers at a glance.
+        assert "UNSAVED" in message
+        assert "vault dies on reboot" in message
 
     def test_render_pill_unlocked_appends_plaintext_marker(self) -> None:
         """sandbox#282: pill flags plaintext-on-disk even when another tier unlocked."""

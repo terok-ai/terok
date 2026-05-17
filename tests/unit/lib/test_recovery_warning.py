@@ -6,7 +6,8 @@
 [`_maybe_warn_recovery_unconfirmed`][terok.lib.orchestration.task_runners.container._maybe_warn_recovery_unconfirmed]
 prints one line after the SSH login hint when no recovery-ack marker
 is on disk.  Coverage here protects against silent regressions on
-both the "warn" and the "stay quiet" branches.
+the three states (acked / unacked-durable / unacked-session-only)
+plus probe failure and adapter-too-old.
 """
 
 from __future__ import annotations
@@ -18,31 +19,66 @@ from terok.lib.orchestration.task_runners.container import (
 )
 
 
+def _status(*, acknowledged: bool, source: str | None):
+    """Build a fake ``RecoveryStatus`` for monkeypatching the probe.
+
+    Uses the real ``RecoveryStatus`` dataclass so the ``urgent``
+    property derives correctly from ``acknowledged`` + ``source``.
+    """
+    from terok.lib.integrations.sandbox import RecoveryStatus
+
+    return RecoveryStatus(acknowledged=acknowledged, source=source)
+
+
 class TestMaybeWarnRecoveryUnconfirmed:
-    """Branches: acked / unacked / probe-raises / sandbox-too-old."""
+    """Branches: acked / unacked-durable / unacked-session / probe-raises / no-symbol."""
 
     def test_acknowledged_prints_nothing(
         self, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
     ) -> None:
         """Marker present → silent.  No noise on the happy path."""
         monkeypatch.setattr(
-            "terok.lib.integrations.sandbox.is_recovery_acknowledged",
-            lambda: True,
+            "terok.lib.integrations.sandbox.recovery_status",
+            lambda: _status(acknowledged=True, source="systemd-creds"),
         )
         _maybe_warn_recovery_unconfirmed(color=False)
         assert capsys.readouterr().out == ""
 
-    def test_unacknowledged_prints_warning(
+    def test_unacknowledged_durable_tier_prints_warn(
         self, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
     ) -> None:
-        """Marker missing → one-line nudge with the reveal command."""
+        """Marker missing + non-session source → yellow ``warn`` footer."""
         monkeypatch.setattr(
-            "terok.lib.integrations.sandbox.is_recovery_acknowledged",
-            lambda: False,
+            "terok.lib.integrations.sandbox.recovery_status",
+            lambda: _status(acknowledged=False, source="keyring"),
         )
         _maybe_warn_recovery_unconfirmed(color=False)
         out = capsys.readouterr().out
         assert "recovery key unconfirmed" in out.lower()
+        assert "terok vault passphrase reveal" in out
+        # The escalated wording must NOT appear on the durable branch.
+        assert "UNRECOVERABLE" not in out
+
+    def test_unacknowledged_session_only_escalates(
+        self, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """Marker missing + session-file source → loud ``error`` footer.
+
+        The session tier is wiped on the next reboot, so this state is
+        a genuinely different severity from the durable-tier warning.
+        The text must call out "session-unlock", "reboot", and
+        "UNRECOVERABLE" so the operator understands the asymmetry.
+        """
+        monkeypatch.setattr(
+            "terok.lib.integrations.sandbox.recovery_status",
+            lambda: _status(acknowledged=False, source="session-file"),
+        )
+        _maybe_warn_recovery_unconfirmed(color=False)
+        out = capsys.readouterr().out
+        assert "UNCONFIRMED" in out
+        assert "session-unlock" in out
+        assert "reboot" in out.lower()
+        assert "UNRECOVERABLE" in out
         assert "terok vault passphrase reveal" in out
 
     def test_probe_raises_swallowed(
@@ -50,10 +86,10 @@ class TestMaybeWarnRecoveryUnconfirmed:
     ) -> None:
         """A best-effort probe must never block the operator's login hint."""
 
-        def _boom() -> bool:
+        def _boom() -> object:
             raise RuntimeError("vault chain broke")
 
-        monkeypatch.setattr("terok.lib.integrations.sandbox.is_recovery_acknowledged", _boom)
+        monkeypatch.setattr("terok.lib.integrations.sandbox.recovery_status", _boom)
         _maybe_warn_recovery_unconfirmed(color=False)
         assert capsys.readouterr().out == ""
 
@@ -61,17 +97,16 @@ class TestMaybeWarnRecoveryUnconfirmed:
         self, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
     ) -> None:
         """An older sandbox pin without the wrapper degrades to no-op, no crash."""
-        # Simulate an older adapter that doesn't re-export the symbol.
         import terok.lib.integrations.sandbox as adapter
 
-        original = getattr(adapter, "is_recovery_acknowledged", None)
+        original = getattr(adapter, "recovery_status", None)
         monkeypatch.delattr(
-            "terok.lib.integrations.sandbox.is_recovery_acknowledged",
+            "terok.lib.integrations.sandbox.recovery_status",
             raising=False,
         )
         try:
             _maybe_warn_recovery_unconfirmed(color=False)
         finally:
             if original is not None:
-                adapter.is_recovery_acknowledged = original
+                adapter.recovery_status = original
         assert capsys.readouterr().out == ""
