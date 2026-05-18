@@ -2,11 +2,11 @@
 # SPDX-License-Identifier: Apache-2.0
 
 """Tests for terok's krun wiring: `resolve_runtime` priority chain,
-project config plumbing, the `run.runtime: krun` flag set emitted at
-task launch, and the bind-mount that delivers the host pubkey into
-the guest.  Host-side keypair provisioning + the runtime factory
-itself live in terok-executor (`terok_executor.krun`) and are tested
-there.
+project config plumbing, and the orchestration-owned flags emitted at
+task launch (``--runtime krun`` + microVM annotations + port forward).
+The image/keypair/sshd-trigger trio is delegated to
+[`krun_launch_args`][terok_executor.krun.krun_launch_args] in
+terok-executor and tested there; terok only verifies the delegation.
 """
 
 from __future__ import annotations
@@ -188,24 +188,24 @@ def _experimental_enabled():
         yield
 
 
-@pytest.fixture()
-def _krun_keypair(tmp_path):
-    """Patch `ensure_krun_host_keypair` to return a deterministic stub keypair
-    so flag-emission tests don't have to materialise a real vault key."""
-    from terok_executor.krun import KrunHostKeypair
+_LAUNCH_ARGS_STUB = ["__stub_launch_args__"]
 
-    fake = KrunHostKeypair(
-        private_path=tmp_path / "krun_host.key",
-        public_path=tmp_path / "krun_host.key.pub",
-        public_line="ssh-ed25519 AAAA test krun-host (terok)",
-        fingerprint="SHA256:fake",
-        created=False,
-    )
+
+@pytest.fixture()
+def _krun_launch_args_stub():
+    """Patch `krun_launch_args` to return a sentinel list.
+
+    Terok's job is to splice executor's helper output into its flag
+    stream — the helper's contents (host-pubkey mount, sshd-trigger
+    env var, ``--user root``) are pinned in
+    [`tests.unit.test_krun.TestKrunLaunchArgs`][terok_executor.tests]
+    on the executor side.
+    """
     with patch(
-        "terok.lib.orchestration.task_runners.container.ensure_krun_host_keypair",
-        return_value=fake,
-    ):
-        yield fake
+        "terok.lib.orchestration.task_runners.container.krun_launch_args",
+        return_value=list(_LAUNCH_ARGS_STUB),
+    ) as m:
+        yield m
 
 
 @pytest.fixture()
@@ -232,7 +232,8 @@ def _stub_port_reservation():
 
 
 class TestProjectRuntimeFlags:
-    """`_project_runtime_flags` emits --runtime + krun annotations + port-forward + pubkey mount."""
+    """`_project_runtime_flags` emits --runtime + krun annotations + port-forward,
+    and splices in executor's [`krun_launch_args`][terok_executor.krun.krun_launch_args]."""
 
     def test_no_runtime_no_flags(self) -> None:
         from terok.lib.orchestration.task_runners.container import _project_runtime_flags
@@ -240,7 +241,7 @@ class TestProjectRuntimeFlags:
         assert _project_runtime_flags(_project(), cname="terok-cli-demoproj-task-a") == []
 
     def test_krun_emits_runtime_flag(
-        self, _experimental_enabled, _krun_keypair, _stub_port_reservation
+        self, _experimental_enabled, _krun_launch_args_stub, _stub_port_reservation
     ) -> None:
         from terok.lib.orchestration.task_runners.container import _project_runtime_flags
 
@@ -249,7 +250,7 @@ class TestProjectRuntimeFlags:
         assert flags[flags.index("--runtime") + 1] == "krun"
 
     def test_krun_emits_loopback_pinned_port_forward(
-        self, _experimental_enabled, _krun_keypair, _stub_port_reservation
+        self, _experimental_enabled, _krun_launch_args_stub, _stub_port_reservation
     ) -> None:
         """``-p 127.0.0.1:<reserved>:22`` — the host side of the forward is
         pinned to loopback so pasta doesn't expose the krun task's sshd on
@@ -269,75 +270,31 @@ class TestProjectRuntimeFlags:
         annotations = [flags[i + 1] for i, t in enumerate(flags) if t == "--annotation"]
         assert not any("terok.krun.port" in a for a in annotations)
 
-    def test_krun_emits_pubkey_bind_mount(
-        self, _experimental_enabled, _krun_keypair, _stub_port_reservation
+    def test_krun_splices_executor_launch_args(
+        self, _experimental_enabled, _krun_launch_args_stub, _stub_port_reservation
     ) -> None:
-        """The live host pubkey is bind-mounted into the guest at task launch.
-
-        This is what keeps the L0 image byte-identical across crun/krun:
-        no per-installation secret baked at build time; the orchestrator
-        threads ``ensure_krun_host_keypair().public_path`` in at launch.
-        ``z`` (shared SELinux relabel — never ``Z``, the source is
-        host-wide and concurrent containers share it).
+        """The image-side trio (host-pubkey mount, sshd-trigger env var,
+        ``--user root``) is owned by executor; terok must delegate and
+        splice the result rather than open-code it.
         """
         from terok.lib.orchestration.task_runners.container import _project_runtime_flags
 
         flags = _project_runtime_flags(_project(runtime="krun"), cname="terok-cli-demoproj-task-a")
-        v_idx = flags.index("-v")
-        mount_spec = flags[v_idx + 1]
-        assert "/etc/ssh/authorized_keys.d/terok:ro" in mount_spec
-        assert str(_krun_keypair.public_path) in mount_spec
-        assert ",z" in mount_spec or ":z" in mount_spec
-        assert ",Z" not in mount_spec and ":Z" not in mount_spec
+        _krun_launch_args_stub.assert_called_once()
+        for token in _LAUNCH_ARGS_STUB:
+            assert token in flags
 
-    def test_krun_emits_container_runtime_env_var(
-        self, _experimental_enabled, _krun_keypair, _stub_port_reservation
-    ) -> None:
-        """``-e TEROK_CONTAINER_RUNTIME=krun`` is the explicit runtime signal
-        the in-container init script gates the sshd supervisor on.  Explicit
-        env var rather than inferring from the bind-mount, so a botched L0
-        with a non-empty authorized_keys placeholder can't accidentally
-        expose sshd under crun."""
+    def test_non_krun_does_not_call_launch_args(self, _krun_launch_args_stub) -> None:
+        """Under any runtime other than krun the executor helper is never
+        consulted — its outputs (sshd-trigger env var, ``--user root``,
+        host-pubkey mount) belong exclusively to the krun launch path."""
         from terok.lib.orchestration.task_runners.container import _project_runtime_flags
 
-        flags = _project_runtime_flags(_project(runtime="krun"), cname="terok-cli-demoproj-task-a")
-        env_assignments = [flags[i + 1] for i, t in enumerate(flags) if t == "-e"]
-        assert "TEROK_CONTAINER_RUNTIME=krun" in env_assignments
-
-    def test_non_krun_does_not_emit_container_runtime_env_var(self) -> None:
-        """Under any runtime other than krun, the sshd-trigger env var must
-        be absent — otherwise an L0 with an accidentally-populated
-        authorized_keys file could expose sshd in a crun task."""
-        from terok.lib.orchestration.task_runners.container import _project_runtime_flags
-
-        flags = _project_runtime_flags(_project(), cname="terok-cli-demoproj-task-a")
-        env_assignments = [flags[i + 1] for i, t in enumerate(flags) if t == "-e"]
-        assert not any(e.startswith("TEROK_CONTAINER_RUNTIME") for e in env_assignments)
-
-    def test_krun_launches_as_root_overriding_image_user(
-        self, _experimental_enabled, _krun_keypair, _stub_port_reservation
-    ) -> None:
-        """``--user root`` overrides the L0's ``USER dev`` directive only
-        under krun — the in-guest sshd needs to start as root so it can
-        listen on TCP 22, write to /run/sshd, and drop to the authenticated
-        user on connection.  Crun keeps the image's ``USER dev`` (correct
-        for AI agents that refuse uid 0)."""
-        from terok.lib.orchestration.task_runners.container import _project_runtime_flags
-
-        flags = _project_runtime_flags(_project(runtime="krun"), cname="terok-cli-demoproj-task-a")
-        user_idx = flags.index("--user")
-        assert flags[user_idx + 1] == "root"
-
-    def test_non_krun_does_not_override_image_user(self) -> None:
-        """Under crun the image's ``USER dev`` is what we want — terok must
-        not pass ``--user`` and silently elevate the agent to root."""
-        from terok.lib.orchestration.task_runners.container import _project_runtime_flags
-
-        flags = _project_runtime_flags(_project(), cname="terok-cli-demoproj-task-a")
-        assert "--user" not in flags
+        _project_runtime_flags(_project(), cname="terok-cli-demoproj-task-a")
+        _krun_launch_args_stub.assert_not_called()
 
     def test_krun_emits_cpu_and_ram_when_set(
-        self, _experimental_enabled, _krun_keypair, _stub_port_reservation
+        self, _experimental_enabled, _krun_launch_args_stub, _stub_port_reservation
     ) -> None:
         from terok.lib.orchestration.task_runners.container import _project_runtime_flags
 
@@ -350,7 +307,7 @@ class TestProjectRuntimeFlags:
         assert "run.oci.krun.ram_mib=8192" in annotations
 
     def test_krun_skips_cpu_ram_when_unset(
-        self, _experimental_enabled, _krun_keypair, _stub_port_reservation
+        self, _experimental_enabled, _krun_launch_args_stub, _stub_port_reservation
     ) -> None:
         from terok.lib.orchestration.task_runners.container import _project_runtime_flags
 
@@ -381,7 +338,7 @@ class TestProjectRuntimeFlags:
         ):
             _project_runtime_flags(_project(runtime="krun"), cname="terok-cli-demoproj-task-a")
 
-    def test_nested_only_unaffected(self) -> None:
+    def test_nested_only_unaffected(self, _krun_launch_args_stub) -> None:
         """`nested_containers` alone still emits its existing flags (no krun bits)."""
         from terok.lib.orchestration.task_runners.container import _project_runtime_flags
 
@@ -390,5 +347,4 @@ class TestProjectRuntimeFlags:
         )
         assert "label=nested" in flags
         assert "--runtime" not in flags
-        # No krun-mode mount when runtime != krun.
-        assert "/etc/ssh/authorized_keys.d/terok:ro" not in " ".join(flags)
+        _krun_launch_args_stub.assert_not_called()
