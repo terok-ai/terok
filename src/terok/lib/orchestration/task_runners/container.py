@@ -284,6 +284,15 @@ def _project_runtime_flags(project: ProjectConfig, *, cname: str) -> list[str]:
         # non-empty authorized_keys placeholder can't accidentally
         # expose sshd under crun.
         flags += ["-e", "TEROK_CONTAINER_RUNTIME=krun"]
+        # Override the L0's ``USER dev`` directive — the in-guest sshd
+        # needs to start as root so it can listen on TCP 22, write to
+        # /run/sshd, etc., and drop to the authenticated user
+        # (``dev`` or ``root``) on connection.  ``USER dev`` is the
+        # right default under crun for AI agents that refuse uid 0;
+        # under krun the sshd-via-podman model takes over and the
+        # agent's session uid comes from which ``ssh user@…`` the
+        # operator picks, not from the container's PID 1.
+        flags += ["--user", "root"]
     return flags
 
 

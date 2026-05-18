@@ -311,6 +311,28 @@ class TestProjectRuntimeFlags:
         env_assignments = [flags[i + 1] for i, t in enumerate(flags) if t == "-e"]
         assert not any(e.startswith("TEROK_CONTAINER_RUNTIME") for e in env_assignments)
 
+    def test_krun_launches_as_root_overriding_image_user(
+        self, _experimental_enabled, _krun_keypair, _stub_port_reservation
+    ) -> None:
+        """``--user root`` overrides the L0's ``USER dev`` directive only
+        under krun — the in-guest sshd needs to start as root so it can
+        listen on TCP 22, write to /run/sshd, and drop to the authenticated
+        user on connection.  Crun keeps the image's ``USER dev`` (correct
+        for AI agents that refuse uid 0)."""
+        from terok.lib.orchestration.task_runners.container import _project_runtime_flags
+
+        flags = _project_runtime_flags(_project(runtime="krun"), cname="terok-cli-demoproj-task-a")
+        user_idx = flags.index("--user")
+        assert flags[user_idx + 1] == "root"
+
+    def test_non_krun_does_not_override_image_user(self) -> None:
+        """Under crun the image's ``USER dev`` is what we want — terok must
+        not pass ``--user`` and silently elevate the agent to root."""
+        from terok.lib.orchestration.task_runners.container import _project_runtime_flags
+
+        flags = _project_runtime_flags(_project(), cname="terok-cli-demoproj-task-a")
+        assert "--user" not in flags
+
     def test_krun_emits_cpu_and_ram_when_set(
         self, _experimental_enabled, _krun_keypair, _stub_port_reservation
     ) -> None:
