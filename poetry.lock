@@ -3622,7 +3622,7 @@ tomli-w = ">=1.0"
 type = "git"
 url = "https://github.com/sliwowitz/terok-executor.git"
 reference = "refactor/krun-launch-args"
-resolved_reference = "48c225d10bc1943e1ea628d680ca0dfc5c474453"
+resolved_reference = "8c237dee9d3d9a6a1c8c762a5c2c7882e30a4bdb"
 
 [[package]]
 name = "terok-sandbox"
