@@ -277,15 +277,18 @@ class TestProjectRuntimeFlags:
         This is what keeps the L0 image byte-identical across crun/krun:
         no per-installation secret baked at build time; the orchestrator
         threads ``ensure_krun_host_keypair().public_path`` in at launch.
+        ``z`` (shared SELinux relabel — never ``Z``, the source is
+        host-wide and concurrent containers share it).
         """
         from terok.lib.orchestration.task_runners.container import _project_runtime_flags
 
         flags = _project_runtime_flags(_project(runtime="krun"), cname="terok-cli-demoproj-task-a")
-        # The volume mount is added as ``-v <host>:<guest>:ro``.
         v_idx = flags.index("-v")
         mount_spec = flags[v_idx + 1]
         assert "/etc/ssh/authorized_keys.d/terok:ro" in mount_spec
         assert str(_krun_keypair.public_path) in mount_spec
+        assert ",z" in mount_spec or ":z" in mount_spec
+        assert ",Z" not in mount_spec and ":Z" not in mount_spec
 
     def test_krun_emits_container_runtime_env_var(
         self, _experimental_enabled, _krun_keypair, _stub_port_reservation

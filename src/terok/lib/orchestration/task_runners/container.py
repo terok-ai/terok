@@ -275,7 +275,7 @@ def _project_runtime_flags(project: ProjectConfig, *, cname: str) -> list[str]:
         keypair = ensure_krun_host_keypair(cfg=make_sandbox_config())
         flags += [
             "-v",
-            f"{keypair.public_path}:/etc/ssh/authorized_keys.d/terok:ro",
+            f"{keypair.public_path}:/etc/ssh/authorized_keys.d/terok:ro,z",
         ]
         # Explicit runtime signal for the in-container init script's
         # sshd launch.  init-ssh-and-repo.sh gates the sshd supervisor
