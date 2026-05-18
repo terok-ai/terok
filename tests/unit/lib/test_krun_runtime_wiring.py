@@ -348,3 +348,68 @@ class TestProjectRuntimeFlags:
         assert "label=nested" in flags
         assert "--runtime" not in flags
         _krun_launch_args_stub.assert_not_called()
+
+
+class TestChainKrunDnsRewrite:
+    """`_chain_krun_dns_rewrite` retargets shield's bind-mounted resolv.conf
+    from ``127.0.0.1`` (dnsmasq, unreachable from inside the krun guest)
+    to ``169.254.1.1`` (pasta forwarder, both reachable via TSI and
+    permitted by shield's nft policy)."""
+
+    def test_rewrites_existing_shield_resolv_conf(self, tmp_path) -> None:
+        from terok.lib.orchestration.task_runners.container import _chain_krun_dns_rewrite
+
+        shield_dir = tmp_path / "shield"
+        shield_dir.mkdir()
+        resolv = shield_dir / "resolv.conf"
+        resolv.write_text("nameserver 127.0.0.1\noptions ndots:0\n")
+
+        chained = _chain_krun_dns_rewrite(None, tmp_path)
+        chained.pre_start()
+
+        assert resolv.read_text() == "nameserver 169.254.1.1\noptions ndots:0\n"
+
+    def test_no_op_when_shield_did_not_write_file(self, tmp_path) -> None:
+        """Shield bypass / non-dnsmasq tier → no file → no error, no write."""
+        from terok.lib.orchestration.task_runners.container import _chain_krun_dns_rewrite
+
+        chained = _chain_krun_dns_rewrite(None, tmp_path)
+        chained.pre_start()  # no raise
+        assert not (tmp_path / "shield" / "resolv.conf").exists()
+
+    def test_runs_caller_pre_start_first(self, tmp_path) -> None:
+        """An existing ``pre_start`` callback is fired before the rewrite,
+        not silently dropped."""
+        from terok.lib.integrations.sandbox import LifecycleHooks
+        from terok.lib.orchestration.task_runners.container import _chain_krun_dns_rewrite
+
+        events: list[str] = []
+        shield_dir = tmp_path / "shield"
+        shield_dir.mkdir()
+        (shield_dir / "resolv.conf").write_text("nameserver 127.0.0.1\n")
+
+        def _prior() -> None:
+            events.append("prior")
+
+        chained = _chain_krun_dns_rewrite(LifecycleHooks(pre_start=_prior), tmp_path)
+        chained.pre_start()
+
+        assert events == ["prior"]
+        assert "169.254.1.1" in (shield_dir / "resolv.conf").read_text()
+
+    def test_preserves_other_hook_slots(self, tmp_path) -> None:
+        """``post_start`` / ``post_ready`` / ``post_stop`` pass through
+        untouched — only ``pre_start`` is the chain point."""
+        from terok.lib.integrations.sandbox import LifecycleHooks
+        from terok.lib.orchestration.task_runners.container import _chain_krun_dns_rewrite
+
+        post_start = lambda: None  # noqa: E731 — identity matters, not contents
+        post_ready = lambda: None  # noqa: E731
+        post_stop = lambda: None  # noqa: E731
+        chained = _chain_krun_dns_rewrite(
+            LifecycleHooks(post_start=post_start, post_ready=post_ready, post_stop=post_stop),
+            tmp_path,
+        )
+        assert chained.post_start is post_start
+        assert chained.post_ready is post_ready
+        assert chained.post_stop is post_stop

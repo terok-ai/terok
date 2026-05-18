@@ -11,6 +11,7 @@ and ``_project_runtime_flags`` assemble the podman invocation.
 
 from __future__ import annotations
 
+import dataclasses
 import shlex
 from typing import TYPE_CHECKING
 
@@ -182,6 +183,8 @@ def _run_container(
     merged_args = (
         annotations + list(extra_args or ()) + _project_runtime_flags(project, cname=cname)
     )
+    if project.runtime == "krun":
+        hooks = _chain_krun_dns_rewrite(hooks, task_dir)
     try:
         _agent_runner(project).launch_prepared(
             env=env,
@@ -269,6 +272,46 @@ def _project_runtime_flags(project: ProjectConfig, *, cname: str) -> list[str]:
         ]
         flags += krun_launch_args(cfg=make_sandbox_config())
     return flags
+
+
+def _chain_krun_dns_rewrite(hooks: LifecycleHooks | None, task_dir: Path) -> LifecycleHooks:
+    """WORKAROUND(krun-shield-dns): point shield's bind-mounted resolv.conf
+    at pasta's forwarder instead of the in-netns dnsmasq.
+
+    Shield writes ``nameserver 127.0.0.1`` at ``<task>/shield/resolv.conf``
+    and bind-mounts it over ``/etc/resolv.conf`` so the in-netns dnsmasq
+    can intercept DNS for clearance + audit.  Under krun the guest's
+    ``127.0.0.1`` is the microVM's own loopback (TSI doesn't redirect
+    127.0.0.0/8), so queries land nowhere and name resolution dies.
+
+    Rewrite the file to ``nameserver 169.254.1.1`` — pasta's link-local
+    forwarder, the same address shield's nft already permits ``:53`` to.
+    TSI surfaces the guest's connect to a host-side socket inside the
+    netns, pasta answers, the guest resolves.  Cost: dnsmasq sits idle,
+    so the clearance flow no longer fires on hostnames (IP-based
+    clearance still works — egress filtering on TCP/UDP is unaffected
+    because TSI surfaces traffic where shield's nft hooks live).
+
+    Fires from ``LifecycleHooks.pre_start``, which runs after shield's
+    own ``pre_start`` wrote the file and before podman exec — the only
+    window where the file is guaranteed to exist and the container has
+    not yet read it.
+
+    Proper fix: shield-side krun awareness (have shield write the right
+    address itself, conditional on the target runtime).  Remove this
+    helper when shield grows that.
+    """
+    shield_resolv = task_dir / "shield" / "resolv.conf"
+    prior = hooks.pre_start if hooks else None
+
+    def _patch() -> None:
+        if prior is not None:
+            prior()
+        if shield_resolv.is_file():
+            shield_resolv.write_text("nameserver 169.254.1.1\noptions ndots:0\n")
+
+    base = hooks or LifecycleHooks()
+    return dataclasses.replace(base, pre_start=_patch)
 
 
 def _validate_krun_compatibility(project: ProjectConfig) -> None:
