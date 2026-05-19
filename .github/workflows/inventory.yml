@@ -24,6 +24,6 @@ permissions:
 jobs:
   publish:
     if: github.repository == 'terok-ai/terok' && github.ref == 'refs/heads/master'
-    uses: terok-ai/mkdocs-terok/.github/workflows/publish-inventory.yml@v0.5.7a4
+    uses: terok-ai/mkdocs-terok/.github/workflows/publish-inventory.yml@v0.6.1a2
     secrets:
       INVENTORY_WRITE_TOKEN: ${{ secrets.INVENTORY_WRITE_TOKEN }}
