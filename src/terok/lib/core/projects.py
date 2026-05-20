@@ -393,6 +393,18 @@ def _find_project_root(project_id: str) -> Path:
     raise SystemExit(f"Project '{project_id}' not found in {user_root} or {sys_root}")
 
 
+def require_project_exists(project_id: str) -> None:
+    """Raise [`SystemExit`][SystemExit] unless *project_id* names a known project.
+
+    Cheap stat-based check — no YAML parse, no pydantic validation.  Use
+    this in CLI entry points that want to fail before any user-visible
+    side effect (interactive prompt, status print, image build offer).
+    The downstream [`load_project`][terok.lib.core.projects.load_project]
+    call still catches malformed YAML.
+    """
+    _find_project_root(project_id)
+
+
 # ---------- Project listing ----------
 
 

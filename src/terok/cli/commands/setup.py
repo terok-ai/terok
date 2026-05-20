@@ -41,7 +41,7 @@ from ...lib.api import (
     provision_ssh_key,
     summarize_ssh_init,
 )
-from ...lib.core.projects import load_project
+from ...lib.core.projects import load_project, require_project_exists
 from ...lib.domain.project import make_git_gate
 
 # ── CLI wiring ─────────────────────────────────────────────────────────
@@ -348,6 +348,8 @@ def cmd_project_init(project_id: str) -> None:
     blocking SSH, corporate proxy, offline laptop) while the container's
     network path still works.
     """
+    require_project_exists(project_id)
+
     print("==> Initializing SSH...")
     summarize_ssh_init(provision_ssh_key(project_id))
     maybe_pause_for_ssh_key_registration(project_id)

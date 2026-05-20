@@ -613,6 +613,7 @@ expose = [
     "list_presets",
     "derive_project",
     "effective_ssh_key_name",
+    "require_project_exists",
     "resolve_ssh_host_dir",
     "set_project_image_agents",
     "validate_project_id",

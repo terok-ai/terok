@@ -17,6 +17,7 @@ from ...lib.api import (
     LogViewOptions,
     build_images,
     project_image_exists,
+    require_project_exists,
     task_archive_list,
     task_archive_logs,
     task_delete,
@@ -572,6 +573,8 @@ def _ensure_project_image(project_id: str) -> None:
     TTY → interactive ``Build now? [Y/n]`` prompt, then ``build_images()``
     inline.  Non-TTY → exit with a hint so scripts stay deterministic.
     """
+    require_project_exists(project_id)
+
     if project_image_exists(project_id):
         return
 
@@ -702,6 +705,7 @@ def _dispatch_task_sub(args: argparse.Namespace) -> bool:
         return True
 
     pid = args.project_id
+    require_project_exists(pid)
     tid = resolve_task_id(pid, args.task_id) if hasattr(args, "task_id") else ""
     if args.task_cmd == "list":
         task_list(

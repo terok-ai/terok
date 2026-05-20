@@ -25,7 +25,10 @@ def _bypass_setup_verdict_gate():
     of that gate; the gate's own behaviour is pinned by
     ``test_cli_task_verdict_gate.py``.
     """
-    with patch("terok.cli.commands.task._setup_verdict_or_exit"):
+    with (
+        patch("terok.cli.commands.task._setup_verdict_or_exit"),
+        patch("terok.cli.commands.task.require_project_exists"),
+    ):
         yield
 
 
