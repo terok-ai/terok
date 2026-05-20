@@ -24,7 +24,7 @@ from terok.lib.integrations.executor import AUTH_PROVIDERS
 from ...lib.api import authenticate
 from ...lib.core.config import is_oauth_enabled_for
 from ...lib.core.images import require_agent_installed
-from ...lib.core.projects import load_project
+from ...lib.core.projects import load_project, require_project_exists
 from ._completers import complete_project_ids as _complete_project_ids, set_completer
 
 
@@ -100,6 +100,9 @@ def _run_one(provider: str, project_id: str | None) -> None:
 
 def _run_interactive(project_id: str | None) -> None:
     """Interactively pick one or more providers and authenticate each in turn."""
+    if project_id is not None:
+        require_project_exists(project_id)
+
     provider_names = list(AUTH_PROVIDERS)
     print("Authenticate agents — pick one or more (comma-separated):")
     for i, name in enumerate(provider_names, 1):

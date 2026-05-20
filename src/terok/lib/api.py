@@ -48,6 +48,7 @@ from .core.projects import (  # noqa: F401 — re-exported public API
     ProjectConfig,
     discover_projects,
     load_project,
+    require_project_exists,
     set_project_image_agents,
 )
 
@@ -273,6 +274,7 @@ __all__ = [
     "BrokenProject",
     "discover_projects",
     "load_project",
+    "require_project_exists",
     "set_project_image_agents",
     # Image management
     "generate_dockerfiles",

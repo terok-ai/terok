@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import argparse
 
-from ...lib.api import cleanup_images, list_images
+from ...lib.api import cleanup_images, list_images, require_project_exists
 from . import _storage_view
 from ._completers import complete_project_ids as _complete_project_ids, set_completer
 
@@ -212,6 +212,8 @@ def _cmd_usage(*, project_id: str | None, json_output: bool) -> None:
 
 def _cmd_list(project_id: str | None) -> None:
     """List terok-managed images with sizes."""
+    if project_id is not None:
+        require_project_exists(project_id)
     images = list_images(project_id)
     if not images:
         scope = f" for project '{project_id}'" if project_id else ""

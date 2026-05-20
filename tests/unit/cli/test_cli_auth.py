@@ -180,6 +180,7 @@ def test_run_interactive_runs_each_selected_provider() -> None:
     """Selected providers are authenticated in order, sharing the same project scope."""
     with (
         patch("sys.stdin", new=StringIO("claude, codex\n")),
+        patch("terok.cli.commands.auth.require_project_exists"),
         patch("terok.cli.commands.auth._run_one") as mock_run,
     ):
         _run_interactive(project_id="myproj")

@@ -21,7 +21,11 @@ def _bypass_setup_verdict_gate():
     gate; they run in a stamp-free tmp env where the real gate would
     always raise exit 3 before dispatch ever happens.
     """
-    with unittest.mock.patch("terok.cli.commands.task._setup_verdict_or_exit"):
+    with (
+        unittest.mock.patch("terok.cli.commands.task._setup_verdict_or_exit"),
+        unittest.mock.patch("terok.cli.commands.task.require_project_exists"),
+        unittest.mock.patch("terok.cli.commands.setup.require_project_exists"),
+    ):
         yield
 
 
