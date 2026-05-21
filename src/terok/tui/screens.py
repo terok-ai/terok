@@ -86,6 +86,16 @@ def _modal_binding(key: str, action: str, description: str) -> Any:
     return Binding(key, action, description, show=False)
 
 
+_LOCALHOST = "127.0.0.1"
+"""Loopback bind address for TCP-mode listener strings rendered in the vault pane.
+
+Defined locally per the project's no-magic-literals convention; the same
+literal lives in [`terok.lib.orchestration.task_runners.toad`][terok.lib.orchestration.task_runners.toad]
+and [`terok.tui.serve`][terok.tui.serve], neither of which is a shared
+constants module to import from.
+"""
+
+
 # ---------------------------------------------------------------------------
 # Shared CSS for full-page detail screens
 # ---------------------------------------------------------------------------
@@ -2235,9 +2245,9 @@ def render_vault_status(status: VaultStatus | None) -> Text:
         broker_port = get_token_broker_port()
         signer_port = get_ssh_signer_port()
         if broker_port is not None:
-            lines.append(Text(f"TCP broker:  127.0.0.1:{broker_port}"))
+            lines.append(Text(f"TCP broker:  {_LOCALHOST}:{broker_port}"))
         if signer_port is not None:
-            lines.append(Text(f"TCP signer:  127.0.0.1:{signer_port}"))
+            lines.append(Text(f"TCP signer:  {_LOCALHOST}:{signer_port}"))
         socket_suffix = "  (fast-path probe only)"
 
     lines.append(Text(f"Socket:      {status.socket_path}{socket_suffix}"))
