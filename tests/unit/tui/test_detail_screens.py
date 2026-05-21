@@ -1483,6 +1483,7 @@ def make_vault_status(
     *,
     mode: str = "daemon",
     running: bool = True,
+    transport: str | None = None,
     routes_configured: int = 3,
     credentials_stored: tuple[str, ...] = ("claude", "gh"),
     ssh_keys_stored: int = 0,
@@ -1496,10 +1497,16 @@ def make_vault_status(
     truthiness doesn't accidentally trip the locked branch or the
     plaintext-warning branch in
     [`render_vault_status`][terok.tui.screens.render_vault_status].
+
+    ``transport`` defaults to ``None`` so existing tests get the
+    ``(not configured)`` rendering instead of leaking a ``Mock`` repr.
+    Tests that exercise the TCP / socket port surfacing pass
+    ``transport="tcp"`` / ``"socket"`` explicitly.
     """
     status = mock.Mock()
     status.mode = mode
     status.running = running
+    status.transport = transport
     status.socket_path = MOCK_VAULT_SOCKET
     status.db_path = MOCK_VAULT_DB
     status.routes_path = MOCK_VAULT_ROUTES
@@ -1672,6 +1679,87 @@ class TestRenderVaultStatus:
         text_str = str(screens.render_vault_status(status))
         assert "WARNING" not in text_str
         assert "plaintext" not in text_str
+
+    def test_render_vault_status_renames_mode_to_activation(self) -> None:
+        """The legacy ``Mode:`` label is gone — lifecycle now reads as ``Activation:``.
+
+        Guards the rename so a future regression that re-introduces the
+        old label gets caught here.  The two TUI / CLI views are kept in
+        lockstep (executor#356), so a one-sided revert would leave the
+        operator looking at two different vocabularies.
+        """
+        screens, _ = import_screens()
+        status = make_vault_status(mode="systemd", transport=None)
+        text_str = str(screens.render_vault_status(status))
+        assert "Activation:  systemd" in text_str
+        assert "Mode:        " not in text_str
+
+    def test_render_vault_status_tcp_surfaces_ports_and_annotates_socket(self) -> None:
+        """TCP mode surfaces ``TCP broker:`` / ``TCP signer:`` and tags ``Socket:``.
+
+        Mirrors the executor CLI behaviour from terok-ai/terok-executor#356:
+        the daemon still binds ``vault.sock`` as a local fast-path probe
+        target but no client traffic touches it, so surfacing the TCP
+        listeners and annotating the lingering Unix line is what keeps
+        operator-readable.
+        """
+        screens, _ = import_screens()
+        status = make_vault_status(mode="systemd", transport="tcp")
+        with (
+            mock.patch(
+                "terok.lib.integrations.sandbox.get_token_broker_port",
+                return_value=18701,
+            ),
+            mock.patch(
+                "terok.lib.integrations.sandbox.get_ssh_signer_port",
+                return_value=18702,
+            ),
+        ):
+            text_str = str(screens.render_vault_status(status))
+        assert "Transport:   tcp" in text_str
+        assert "TCP broker:  127.0.0.1:18701" in text_str
+        assert "TCP signer:  127.0.0.1:18702" in text_str
+        assert "(fast-path probe only)" in text_str
+
+    def test_render_vault_status_socket_surfaces_signer_socket(self, tmp_path) -> None:
+        """Socket mode surfaces the SSH signer socket alongside the broker socket.
+
+        Both bind-mounted endpoints (broker + signer) appear in the
+        rendered block so the TUI matches what containers actually see
+        per the executor env wiring.  TCP-only embellishments must stay
+        absent.
+        """
+        from terok_sandbox import SandboxConfig
+
+        cfg = SandboxConfig(
+            state_dir=tmp_path / "state",
+            runtime_dir=tmp_path / "run",
+            vault_dir=tmp_path / "vault",
+            services_mode="socket",
+        )
+        screens, _ = import_screens()
+        status = make_vault_status(mode="systemd", transport="socket")
+        with mock.patch("terok.lib.api.make_sandbox_config", return_value=cfg):
+            text_str = str(screens.render_vault_status(status))
+        assert "Transport:   socket" in text_str
+        assert f"SSH signer:  {cfg.ssh_signer_socket_path}" in text_str
+        # TCP-only embellishments stay out of the socket-mode render.
+        assert "TCP broker:" not in text_str
+        assert "TCP signer:" not in text_str
+        assert "(fast-path probe only)" not in text_str
+
+    def test_render_vault_status_unknown_transport_falls_back(self) -> None:
+        """``status.transport is None`` (or unexpected) renders ``(not configured)``.
+
+        Also guards the allow-list against any future widening that
+        might leak a raw ``Mock`` / repr into operator-facing output.
+        """
+        screens, _ = import_screens()
+        status = make_vault_status(mode="none", running=False, transport=None)
+        text_str = str(screens.render_vault_status(status))
+        assert "Transport:   (not configured)" in text_str
+        assert "TCP broker:" not in text_str
+        assert "SSH signer:" not in text_str
 
 
 class TestVaultUnlockModal:

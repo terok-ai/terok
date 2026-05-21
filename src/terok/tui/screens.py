@@ -2197,21 +2197,67 @@ def render_vault_status(status: VaultStatus | None) -> Text:
     else:
         running_s = Text("stopped", style=err)
 
+    # Allow-list the transport so an unset attribute (test ``Mock``s)
+    # or a future value can't leak a raw repr into operator-facing
+    # output.  Mirrors the executor CLI in ``vault_commands._handle_status``
+    # so the TUI and shell views stay in lockstep.
+    transport_raw = getattr(status, "transport", None)
+    transport = transport_raw if transport_raw in ("tcp", "socket") else None
+
     locked_label = (
         Text("yes — no tier resolved", style=err) if status.locked else Text("no", style=ok)
     )
+
+    # Two orthogonal axes, two lines: ``Activation:`` (lifecycle —
+    # systemd / daemon / none) vs ``Transport:`` (wire — tcp / socket).
+    # The legacy single ``Mode:`` overloaded both onto one label and
+    # operators consistently read it as transport.
     lines: list[Text] = [
-        Text.assemble("Mode:        ", mode_s),
+        Text.assemble("Activation:  ", mode_s),
+        Text(f"Transport:   {transport or '(not configured)'}"),
         Text.assemble("Status:      ", running_s),
-        Text(f"Socket:      {status.socket_path}"),
-        Text(f"DB:          {status.db_path}"),
-        Text(f"Routes:      {status.routes_path} ({status.routes_configured} configured)"),
-        Text(f"SSH keys:    {status.ssh_keys_stored}"),
-        # ``Locked:`` is the operator-facing yes/no; ``Passphrase:`` adds
-        # WHICH tier resolved it when unlocked.  Mirror the executor CLI
-        # (``vault status``) so the TUI and shell views agree at a glance.
-        Text.assemble("Locked:      ", locked_label),
     ]
+
+    # TCP mode: surface the actual listeners that container traffic
+    # rides.  The daemon still binds ``vault.sock`` as a local
+    # fast-path probe target, but no client traffic touches it —
+    # annotate so the headline ``Socket:`` line doesn't imply
+    # otherwise.  Socket mode: surface the SSH signer socket
+    # alongside the broker socket so both bind-mounted endpoints
+    # are visible at a glance.
+    socket_suffix = ""
+    if transport == "tcp":
+        from terok.lib.integrations.sandbox import (
+            get_ssh_signer_port,
+            get_token_broker_port,
+        )
+
+        broker_port = get_token_broker_port()
+        signer_port = get_ssh_signer_port()
+        if broker_port is not None:
+            lines.append(Text(f"TCP broker:  127.0.0.1:{broker_port}"))
+        if signer_port is not None:
+            lines.append(Text(f"TCP signer:  127.0.0.1:{signer_port}"))
+        socket_suffix = "  (fast-path probe only)"
+
+    lines.append(Text(f"Socket:      {status.socket_path}{socket_suffix}"))
+
+    if transport == "socket":
+        from terok.lib.api import make_sandbox_config
+
+        lines.append(Text(f"SSH signer:  {make_sandbox_config().ssh_signer_socket_path}"))
+
+    lines.extend(
+        [
+            Text(f"DB:          {status.db_path}"),
+            Text(f"Routes:      {status.routes_path} ({status.routes_configured} configured)"),
+            Text(f"SSH keys:    {status.ssh_keys_stored}"),
+            # ``Locked:`` is the operator-facing yes/no; ``Passphrase:`` adds
+            # WHICH tier resolved it when unlocked.  Mirror the executor CLI
+            # (``vault status``) so the TUI and shell views agree at a glance.
+            Text.assemble("Locked:      ", locked_label),
+        ]
+    )
 
     if not status.locked and status.passphrase_source is not None:
         lines.append(Text(f"Passphrase:  resolved via {status.passphrase_source}"))
