@@ -3620,7 +3620,7 @@ tomli-w = ">=1.0"
 type = "git"
 url = "https://github.com/sliwowitz/terok-executor.git"
 reference = "feat/launch-prepared-annotations-kwarg"
-resolved_reference = "e54f41f977a32aa6eb22cc12d32163de46696580"
+resolved_reference = "3e977f3efd2bec5c22846da2e1482ac38e60dda5"
 
 [[package]]
 name = "terok-sandbox"
@@ -3649,7 +3649,7 @@ terok_shield = {url = "https://github.com/terok-ai/terok-shield/releases/downloa
 type = "git"
 url = "https://github.com/sliwowitz/terok-sandbox.git"
 reference = "refactor/annotations-repurpose-and-rename"
-resolved_reference = "c86bec289d4b9a6a6571c5e24dd102820502a945"
+resolved_reference = "4ccf3fd9238ad7880d45612d9a7dff4355cee6c2"
 
 [[package]]
 name = "terok-shield"
