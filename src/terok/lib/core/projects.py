@@ -1,4 +1,5 @@
 # SPDX-FileCopyrightText: 2025 Jiri Vyskocil
+# SPDX-FileCopyrightText: 2026 Jiri Vyskocil
 # SPDX-License-Identifier: Apache-2.0
 
 """Project discovery, loading, and preset management."""
@@ -246,12 +247,10 @@ def _build_project_config(
         default_login=raw.default_login or get_global_default_login(),
         agent_config=agent_cfg,
         shutdown_timeout=raw.run.shutdown_timeout,
-        memory_limit=raw.run.memory,
-        cpu_limit=raw.run.cpus,
+        memory=raw.run.memory,
+        cpus=raw.run.cpus,
         nested_containers=raw.run.nested_containers,
         runtime=raw.run.runtime,
-        krun_cpus=raw.run.krun_cpus,
-        krun_ram_mib=raw.run.krun_ram_mib,
         timezone=raw.run.timezone,
         task_name_categories=raw.tasks.name_categories,
         shield_drop_on_task_run=shield_drop,

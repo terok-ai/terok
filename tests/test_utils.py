@@ -1,4 +1,5 @@
 # SPDX-FileCopyrightText: 2025 Jiri Vyskocil
+# SPDX-FileCopyrightText: 2026 Jiri Vyskocil
 # SPDX-License-Identifier: Apache-2.0
 
 import json
@@ -153,12 +154,13 @@ def captured_runspec(agent_runner_mock: unittest.mock.Mock) -> Any:
         command=tuple(kwargs["command"]),
         task_dir=kwargs["task_dir"],
         gpu_enabled=kwargs.get("gpu", False),
-        memory_limit=kwargs.get("memory"),
-        cpu_limit=kwargs.get("cpus"),
+        memory=kwargs.get("memory"),
+        cpus=kwargs.get("cpus"),
         extra_args=tuple(kwargs.get("extra_args") or ()),
         unrestricted=kwargs.get("unrestricted", True),
         sealed=kwargs.get("sealed", False),
         hostname=kwargs.get("hostname"),
+        annotations=kwargs.get("annotations") or {},
     )
 
 

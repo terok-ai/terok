@@ -56,10 +56,10 @@ class ProjectConfig(BaseModel):
     default_login: str | None = None
     agent_config: dict[str, Any] = Field(default_factory=dict)
     shutdown_timeout: int = 10
-    memory_limit: str | None = None
-    """Podman ``--memory`` limit from ``run.memory`` in project.yml."""
-    cpu_limit: str | None = None
-    """Podman ``--cpus`` limit from ``run.cpus`` in project.yml."""
+    memory: str | None = None
+    """Podman ``--memory`` value from ``run.memory`` in project.yml."""
+    cpus: str | None = None
+    """Podman ``--cpus`` value from ``run.cpus`` in project.yml."""
     nested_containers: bool = False
     """Project runs podman/docker inside its container (see ``run.nested_containers``)."""
     runtime: Literal["crun", "krun"] | None = None
@@ -71,11 +71,12 @@ class ProjectConfig(BaseModel):
     isolation; gated on the global ``experimental: true`` flag at
     runtime selection time so a typo never silently boots the
     experimental backend.
+
+    Resource sizing under krun reuses the standard ``memory`` / ``cpus``
+    knobs: podman translates ``--memory`` / ``--cpus`` into the OCI
+    spec krun reads to size the microVM.  Fractional ``cpus`` round up
+    to whole vCPUs there.
     """
-    krun_cpus: int | None = Field(default=None, ge=1)
-    """vCPU count for the krun microVM (``run.krun_cpus``); must be ≥ 1."""
-    krun_ram_mib: int | None = Field(default=None, ge=1)
-    """Guest RAM in MiB for the krun microVM (``run.krun_ram_mib``); must be ≥ 1."""
     timezone: str | None = None
     """IANA timezone for task containers (from ``run.timezone``).
 

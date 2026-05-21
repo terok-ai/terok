@@ -232,8 +232,8 @@ def _stub_port_reservation():
 
 
 class TestProjectRuntimeFlags:
-    """`_project_runtime_flags` emits --runtime + krun annotations + port-forward,
-    and splices in executor's [`krun_launch_args`][terok_executor.krun.krun_launch_args]."""
+    """`_project_runtime_flags` emits --runtime + sshd port-forward and
+    splices in executor's [`krun_launch_args`][terok_executor.krun.krun_launch_args]."""
 
     def test_no_runtime_no_flags(self) -> None:
         from terok.lib.orchestration.task_runners.container import _project_runtime_flags
@@ -293,26 +293,21 @@ class TestProjectRuntimeFlags:
         _project_runtime_flags(_project(), cname="terok-cli-demoproj-task-a")
         _krun_launch_args_stub.assert_not_called()
 
-    def test_krun_emits_cpu_and_ram_when_set(
+    def test_krun_emits_no_oci_krun_annotations(
         self, _experimental_enabled, _krun_launch_args_stub, _stub_port_reservation
     ) -> None:
+        """``run.memory`` / ``run.cpus`` already translate through podman to
+        krun's microVM sizing — terok no longer emits separate
+        ``run.oci.krun.*`` annotations.  Asserted here so a future
+        regression that wires them back in fails fast."""
         from terok.lib.orchestration.task_runners.container import _project_runtime_flags
 
         flags = _project_runtime_flags(
-            _project(runtime="krun", krun_cpus=4, krun_ram_mib=8192),
+            _project(runtime="krun", memory="4g", cpus="2"),
             cname="terok-cli-demoproj-task-a",
         )
-        annotations = [flags[i + 1] for i, t in enumerate(flags) if t == "--annotation"]
-        assert "run.oci.krun.cpus=4" in annotations
-        assert "run.oci.krun.ram_mib=8192" in annotations
-
-    def test_krun_skips_cpu_ram_when_unset(
-        self, _experimental_enabled, _krun_launch_args_stub, _stub_port_reservation
-    ) -> None:
-        from terok.lib.orchestration.task_runners.container import _project_runtime_flags
-
-        flags = _project_runtime_flags(_project(runtime="krun"), cname="terok-cli-demoproj-task-a")
         joined = " ".join(flags)
+        assert "run.oci.krun" not in joined
         assert "krun.cpus" not in joined
         assert "krun.ram_mib" not in joined
 
