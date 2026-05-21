@@ -52,7 +52,7 @@ run:
 
 Project-level settings override the global default.  Without `experimental: true` set globally, any krun selection fails fast at startup with a pointer at the opt-in — a typo in `project.yml` can't silently switch isolation backends.
 
-Sizing reuses the standard `run.memory` / `run.cpus` knobs; podman writes them into the OCI spec the runtime reads, so there is no krun-specific knob.
+Sizing reuses the standard `run.memory` / `run.cpus` knobs; podman writes them into the OCI spec the runtime reads, so there is no krun-specific knob.  The limits are enforced via cgroups, so `btop` / `nproc` / `/proc/meminfo` inside the container still report host values — check `/sys/fs/cgroup/{cpu,memory}.max` to verify.
 
 ## Switching runtime via env var
 
