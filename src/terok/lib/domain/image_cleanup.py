@@ -117,11 +117,12 @@ def list_images(project_id: str | None = None) -> list[ImageInfo]:
     """
     images: list[ImageInfo] = []
     for image in PodmanRuntime().images():
-        if not _is_terok_image(image.repository, image.tag):
+        repo = image.repository.removeprefix("localhost/")
+        if not _is_terok_image(repo, image.tag):
             continue
         if project_id is not None:
             # Filter: L2 images must match the project; L0/L1 always shown
-            if _is_terok_l2_image(image.repository, image.tag) and image.repository != project_id:
+            if _is_terok_l2_image(repo, image.tag) and repo != project_id:
                 continue
         images.append(ImageInfo.from_image(image))
     return images

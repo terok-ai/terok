@@ -108,7 +108,6 @@ class TestListImages:
         ],
         ids=["all-terok-images", "filtered-by-project", "dev-tag"],
     )
-    # removed — mock_runtime fixture handles it
     def test_list_images(
         self,
         mock_runtime: unittest.mock.Mock,
@@ -119,6 +118,39 @@ class TestListImages:
         """Runtime enumeration is filtered to terok images (optionally by project)."""
         mock_runtime.images.return_value = [
             _mock_image(ref=ref, repository=repo, tag=tag) for ref, repo, tag in images_spec
+        ]
+        images = list_images(project_id)
+        assert {image.full_name for image in images} == expected_names
+
+    @pytest.mark.parametrize(
+        ("project_id", "expected_names"),
+        [
+            (
+                None,
+                {
+                    "localhost/terok-l0:ubuntu-24.04",
+                    "localhost/proj-a:l2-cli",
+                    "localhost/proj-b:l2-cli",
+                },
+            ),
+            (
+                "proj-a",
+                {"localhost/terok-l0:ubuntu-24.04", "localhost/proj-a:l2-cli"},
+            ),
+        ],
+        ids=["unfiltered", "filtered-by-project"],
+    )
+    def test_list_images_handles_localhost_prefix(
+        self,
+        mock_runtime: unittest.mock.Mock,
+        project_id: str | None,
+        expected_names: set[str],
+    ) -> None:
+        """Podman's ``localhost/`` prefix on the repo must not hide terok images."""
+        mock_runtime.images.return_value = [
+            _mock_image(ref="sha256:l0", repository="localhost/terok-l0", tag="ubuntu-24.04"),
+            _mock_image(ref="sha256:aa", repository="localhost/proj-a", tag="l2-cli"),
+            _mock_image(ref="sha256:bb", repository="localhost/proj-b", tag="l2-cli"),
         ]
         images = list_images(project_id)
         assert {image.full_name for image in images} == expected_names
