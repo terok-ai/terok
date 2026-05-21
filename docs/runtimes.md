@@ -22,7 +22,7 @@ terok supports two OCI runtimes:
 |---|---|---|
 | `crun-krun` | Adds libkrun and points podman's `--runtime krun` at the right binary | `dnf install crun-krun` (or `rpm-ostree install` on Silverblue, then reboot) |
 
-User must be in the `kvm` group to read `/dev/kvm`.  Verify with `ls -l /dev/kvm` and `groups`.
+Check `ls -l /dev/kvm` — if it's world-rw (`crw-rw-rw-`, the Fedora default) you're done; if it's `crw-rw---- root:kvm` (Debian/Ubuntu default), add your user to the owning group.
 
 ## Enabling krun
 
@@ -71,13 +71,12 @@ For one-off testing without editing any file:
 TEROK_RUNTIME=krun terok task start <project>
 ```
 
-Accepted values: `crun` (default), `krun`, `null` (in-memory stub for CI).
+Accepted values: `crun`, `krun`, `null` (in-memory stub for tests).
+Unset means "fall through to project/global config".
 
 ## krun runner behaviour
 
-- The container's PID 1 runs as `root`.
-- `sudo` is not available inside the guest.
-- `run.nested_containers: true` is rejected at launch.
+The container's PID 1 runs as `root`, and `run.nested_containers: true` is rejected at launch.
 
 ## Login
 
