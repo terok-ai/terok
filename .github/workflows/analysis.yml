@@ -61,7 +61,7 @@ jobs:
           path: |
             reports/coverage.xml
             reports/coverage.json
-          retention-days: 1
+          retention-days: 14
 
       - name: Save PR metadata
         if: github.event_name == 'pull_request'
