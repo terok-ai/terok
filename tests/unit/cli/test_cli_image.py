@@ -42,33 +42,101 @@ def test_cmd_list_outputs_expected(
     assert_output_contains(capsys.readouterr().out, expected_lines)
 
 
-@pytest.mark.parametrize(
-    ("result", "expected_lines"),
-    [
-        (CleanupResult(removed=[], failed=[], dry_run=False), ["No orphaned terok images found"]),
-        (
-            CleanupResult(removed=["old-proj:l2-cli"], failed=[], dry_run=True),
-            ["Would remove", "1 image(s) would be removed"],
-        ),
-        (
-            CleanupResult(
-                removed=["old-proj:l2-cli"],
-                failed=["in-use-proj:l2-cli"],
-                dry_run=False,
-            ),
-            ["Removed", "Failed", "1 failed"],
-        ),
-    ],
-    ids=["nothing-to-clean", "dry-run", "with-failures"],
-)
-def test_cmd_cleanup_outputs_expected(
-    result: CleanupResult,
-    expected_lines: list[str],
+_ORPHAN = ImageInfo("old-proj", "l2-cli", "sha256:abc", "1GB", "5 days ago")
+
+
+def test_cmd_cleanup_nothing_to_clean(capsys: pytest.CaptureFixture[str]) -> None:
+    """Empty orphan list short-circuits before any prompt."""
+    with patch("terok.cli.commands.image.find_orphaned_images", return_value=[]):
+        _cmd_cleanup(dry_run=False, assume_yes=False)
+    assert "No orphaned terok images found" in capsys.readouterr().out
+
+
+def test_cmd_cleanup_dry_run_lists_without_prompting(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    with patch("terok.cli.commands.image.cleanup_images", return_value=result):
-        _cmd_cleanup(dry_run=result.dry_run)
-    assert_output_contains(capsys.readouterr().out, expected_lines)
+    """``--dry-run`` lists the orphans and never invokes the runtime."""
+    with (
+        patch("terok.cli.commands.image.find_orphaned_images", return_value=[_ORPHAN]),
+        patch("terok.cli.commands.image.remove_images") as mock_remove,
+        patch("builtins.input") as mock_input,
+    ):
+        _cmd_cleanup(dry_run=True, assume_yes=False)
+    out = capsys.readouterr().out
+    assert "old-proj:l2-cli" in out
+    assert "1 image(s) would be removed" in out
+    mock_remove.assert_not_called()
+    mock_input.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    ("user_input", "should_remove"),
+    [("y", True), ("yes", True), ("YES", True), ("", False), ("n", False), ("no", False)],
+    ids=["y", "yes", "uppercase-yes", "blank", "n", "no"],
+)
+def test_cmd_cleanup_prompts_before_removing(
+    user_input: str,
+    should_remove: bool,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Default mode asks ``[y/N]`` and only removes on an affirmative answer."""
+    result = CleanupResult(removed=["old-proj:l2-cli"], failed=[], dry_run=False)
+    with (
+        patch("terok.cli.commands.image.find_orphaned_images", return_value=[_ORPHAN]),
+        patch("terok.cli.commands.image.remove_images", return_value=result) as mock_remove,
+        patch("builtins.input", return_value=user_input),
+    ):
+        _cmd_cleanup(dry_run=False, assume_yes=False)
+    out = capsys.readouterr().out
+    assert "old-proj:l2-cli" in out
+    if should_remove:
+        mock_remove.assert_called_once()
+        assert "Removed: old-proj:l2-cli" in out
+    else:
+        mock_remove.assert_not_called()
+        assert "Cancelled" in out
+
+
+def test_cmd_cleanup_yes_flag_skips_prompt(capsys: pytest.CaptureFixture[str]) -> None:
+    """``--yes`` removes without asking."""
+    result = CleanupResult(removed=["old-proj:l2-cli"], failed=[], dry_run=False)
+    with (
+        patch("terok.cli.commands.image.find_orphaned_images", return_value=[_ORPHAN]),
+        patch("terok.cli.commands.image.remove_images", return_value=result),
+        patch("builtins.input") as mock_input,
+    ):
+        _cmd_cleanup(dry_run=False, assume_yes=True)
+    assert "Removed: old-proj:l2-cli" in capsys.readouterr().out
+    mock_input.assert_not_called()
+
+
+def test_cmd_cleanup_reports_failures(capsys: pytest.CaptureFixture[str]) -> None:
+    """Failed removals are surfaced in the summary."""
+    result = CleanupResult(
+        removed=["old-proj:l2-cli"],
+        failed=["in-use-proj:l2-cli"],
+        dry_run=False,
+    )
+    with (
+        patch("terok.cli.commands.image.find_orphaned_images", return_value=[_ORPHAN]),
+        patch("terok.cli.commands.image.remove_images", return_value=result),
+    ):
+        _cmd_cleanup(dry_run=False, assume_yes=True)
+    out = capsys.readouterr().out
+    assert "Failed: in-use-proj:l2-cli" in out
+    assert "1 failed" in out
+
+
+def test_cmd_cleanup_ctrl_c_at_prompt_cancels(capsys: pytest.CaptureFixture[str]) -> None:
+    """Ctrl-C / EOF at the prompt is treated as 'no'."""
+    with (
+        patch("terok.cli.commands.image.find_orphaned_images", return_value=[_ORPHAN]),
+        patch("terok.cli.commands.image.remove_images") as mock_remove,
+        patch("builtins.input", side_effect=KeyboardInterrupt),
+    ):
+        _cmd_cleanup(dry_run=False, assume_yes=False)
+    assert "Cancelled" in capsys.readouterr().out
+    mock_remove.assert_not_called()
 
 
 class TestImageDispatch:
@@ -109,16 +177,16 @@ class TestImageDispatch:
             assert dispatch(args) is True
         mock.assert_called_once_with(None)
 
-    def test_cleanup_forwards_dry_run_flag(self) -> None:
-        """``image cleanup --dry-run`` forwards the flag."""
+    def test_cleanup_forwards_flags(self) -> None:
+        """``image cleanup --dry-run --yes`` forwards both flags."""
         import argparse
 
         from terok.cli.commands.image import dispatch
 
-        args = argparse.Namespace(cmd="image", image_cmd="cleanup", dry_run=True)
+        args = argparse.Namespace(cmd="image", image_cmd="cleanup", dry_run=True, assume_yes=True)
         with patch("terok.cli.commands.image._cmd_cleanup") as mock:
             assert dispatch(args) is True
-        mock.assert_called_once_with(dry_run=True)
+        mock.assert_called_once_with(dry_run=True, assume_yes=True)
 
     def test_usage_forwards_project_and_json_flags(self) -> None:
         """``image usage --project X --json`` routes to the usage helper."""

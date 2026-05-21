@@ -14,6 +14,7 @@ from unittest.mock import patch
 
 from terok.lib.domain.image_cleanup import ImageInfo
 from terok.lib.domain.storage import (
+    ORPHAN_PROJECT_ID,
     ProjectSummary,
     StorageOverview,
     _is_global_image,
@@ -99,6 +100,15 @@ class TestImageClassification:
         img = ImageInfo("myproject", "l2-cli", "sha256:jkl", "3GB", "1d ago")
         assert not _is_global_image(img)
 
+    def test_localhost_prefixed_l0_is_global(self):
+        """Podman's ``localhost/`` registry prefix must not disqualify a base image."""
+        img = ImageInfo("localhost/terok-l0", "fedora-43", "sha256:m", "1GB", "1d")
+        assert _is_global_image(img)
+
+    def test_localhost_prefixed_l1_is_global(self):
+        img = ImageInfo("localhost/terok-l1-cli", "fedora-43", "sha256:n", "2GB", "1d")
+        assert _is_global_image(img)
+
 
 # ---------------------------------------------------------------------------
 # StorageOverview properties
@@ -157,6 +167,63 @@ class TestGetStorageOverview:
     def test_empty_system(self, _mounts, _imgs, _projects, _tasks, _shared):
         overview = get_storage_overview()
         assert overview.grand_total == 0
+
+    @patch("terok.lib.domain.storage.get_shared_mounts_storage", return_value=[])
+    @patch("terok.lib.domain.storage.get_tasks_storage", return_value=[])
+    @patch("terok.lib.domain.storage.list_projects")
+    @patch("terok.lib.domain.storage.list_images")
+    @patch("terok.lib.domain.storage.sandbox_live_mounts_dir", return_value=MOCK_BASE / "mounts")
+    def test_localhost_prefix_attributes_to_project(
+        self, _mounts, mock_images, mock_projects, _tasks, _shared
+    ):
+        """L2 images with podman's ``localhost/`` prefix roll up to the bare project id."""
+        mock_images.return_value = [
+            ImageInfo("localhost/myproject", "l2-cli", "id", "3GB", "1d ago"),
+        ]
+        mock_projects.return_value = [_fake_project("myproject")]
+        overview = get_storage_overview()
+        assert len(overview.projects) == 1
+        assert overview.projects[0].project_id == "myproject"
+        assert overview.projects[0].image_bytes == 3_000_000_000
+
+    @patch("terok.lib.domain.storage.get_shared_mounts_storage", return_value=[])
+    @patch("terok.lib.domain.storage.get_tasks_storage", return_value=[])
+    @patch("terok.lib.domain.storage.list_projects")
+    @patch("terok.lib.domain.storage.list_images")
+    @patch("terok.lib.domain.storage.sandbox_live_mounts_dir", return_value=MOCK_BASE / "mounts")
+    def test_orphan_l2_image_surfaces_in_overview(
+        self, _mounts, mock_images, mock_projects, _tasks, _shared
+    ):
+        """L2 images whose project is gone roll up under an "(orphans)" pseudo-project."""
+        mock_images.return_value = [
+            ImageInfo("localhost/myproject", "l2-cli", "id1", "1GB", "1d ago"),
+            ImageInfo("localhost/old-renamed", "l2-cli", "id2", "2GB", "5d ago"),
+        ]
+        mock_projects.return_value = [_fake_project("myproject")]
+        overview = get_storage_overview()
+        project_ids = [p.project_id for p in overview.projects]
+        assert ORPHAN_PROJECT_ID in project_ids
+        orphan = next(p for p in overview.projects if p.project_id == ORPHAN_PROJECT_ID)
+        assert orphan.image_bytes == 2_000_000_000
+        assert orphan.task_count == 0
+        # Orphan bytes contribute to the grand total.
+        assert overview.grand_total == 1_000_000_000 + 2_000_000_000
+
+    @patch("terok.lib.domain.storage.get_shared_mounts_storage", return_value=[])
+    @patch("terok.lib.domain.storage.get_tasks_storage", return_value=[])
+    @patch("terok.lib.domain.storage.list_projects")
+    @patch("terok.lib.domain.storage.list_images")
+    @patch("terok.lib.domain.storage.sandbox_live_mounts_dir", return_value=MOCK_BASE / "mounts")
+    def test_no_orphan_row_when_everything_matches(
+        self, _mounts, mock_images, mock_projects, _tasks, _shared
+    ):
+        """The orphan row appears only when there's something to put in it."""
+        mock_images.return_value = [
+            ImageInfo("localhost/myproject", "l2-cli", "id1", "1GB", "1d ago"),
+        ]
+        mock_projects.return_value = [_fake_project("myproject")]
+        overview = get_storage_overview()
+        assert all(p.project_id != ORPHAN_PROJECT_ID for p in overview.projects)
 
 
 # ---------------------------------------------------------------------------
