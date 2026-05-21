@@ -293,12 +293,13 @@ class TestProjectRuntimeFlags:
         _project_runtime_flags(_project(), cname="terok-cli-demoproj-task-a")
         _krun_launch_args_stub.assert_not_called()
 
-    def test_krun_emits_no_oci_krun_annotations(
+    def test_krun_runtime_flags_dont_carry_annotations(
         self, _experimental_enabled, _krun_launch_args_stub, _stub_port_reservation
     ) -> None:
-        """Regression guard: terok must not emit ``run.oci.krun.*``
-        annotations — sizing goes through the standard ``run.memory`` /
-        ``run.cpus`` → podman ``--memory`` / ``--cpus`` path."""
+        """``_project_runtime_flags`` returns *podman flags* only.  Annotations
+        (dossier, krun.cpus) flow through the typed ``annotations=`` kwarg
+        in ``_run_container``, not through this flag list.  Asserted here so
+        the two channels don't quietly merge."""
         from terok.lib.orchestration.task_runners.container import _project_runtime_flags
 
         flags = _project_runtime_flags(
@@ -306,9 +307,9 @@ class TestProjectRuntimeFlags:
             cname="terok-cli-demoproj-task-a",
         )
         joined = " ".join(flags)
-        assert "run.oci.krun" not in joined
+        assert "--annotation" not in joined
         assert "krun.cpus" not in joined
-        assert "krun.ram_mib" not in joined
+        assert "dossier.meta_path" not in joined
 
     def test_krun_plus_nested_rejected(self, _experimental_enabled) -> None:
         from terok.lib.orchestration.task_runners.container import _project_runtime_flags

@@ -13,6 +13,7 @@ and ``_project_runtime_flags`` assemble the podman invocation.
 from __future__ import annotations
 
 import dataclasses
+import math
 import shlex
 from typing import TYPE_CHECKING
 
@@ -181,6 +182,17 @@ def _run_container(
     merged_args = list(extra_args or ()) + _project_runtime_flags(project, cname=cname)
     if project.runtime == "krun":
         hooks = _chain_krun_dns_rewrite(hooks, task_dir)
+        # ``--cpus`` is only a cgroup CFS quota — crun-krun does not
+        # read it to size the microVM and defaults to host CPU
+        # affinity instead (so ``nproc`` reports all host cores even
+        # when ``run.cpus`` is set lower).  Forward ``run.cpus`` via
+        # the explicit ``krun.cpus`` annotation crun-krun documents,
+        # rounding up to a whole vCPU and capped at 16 (krun's
+        # documented max).  Memory has an OCI fallback in crun-krun
+        # so no analogous annotation is needed for ``run.memory``.
+        if project.cpus is not None:
+            vcpus = max(1, min(16, math.ceil(float(project.cpus))))
+            annotations["krun.cpus"] = str(vcpus)
     try:
         _agent_runner(project).launch_prepared(
             env=env,
@@ -238,9 +250,11 @@ def _project_runtime_flags(project: ProjectConfig, *, cname: str) -> list[str]:
     krun-incompatible combinations before emitting any flag so the
     operator sees a clear error rather than a podman launch failure.
 
-    Sizing reuses the standard ``run.memory`` / ``run.cpus``; podman
-    writes them into the OCI spec the runtime reads, so there's no
-    separate krun knob.
+    Sizing under krun is asymmetric: ``run.memory`` rides on podman's
+    ``--memory`` (crun-krun reads the OCI memory limit as a fallback),
+    but ``run.cpus`` does **not** size the VM — it only sets the
+    cgroup CFS quota.  The vCPU annotation is emitted in
+    ``_run_container`` where the typed ``annotations=`` channel lives.
     """
     del cname  # signature kept for caller stability; no longer read here
     flags: list[str] = []

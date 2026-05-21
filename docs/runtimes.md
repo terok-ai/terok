@@ -54,7 +54,14 @@ Project-level settings override the global default.  Without `experimental: true
 
 ## Resource limits
 
-`run.memory` and `run.cpus` apply to both runtimes — podman writes them into the OCI spec and the runtime enforces them, so there is no krun-specific knob.  Under **crun** the limits are cgroup quotas: enforced by the scheduler / OOM killer, but `btop` / `nproc` / `/proc/meminfo` inside the container still report host values (check `/sys/fs/cgroup/{cpu,memory}.max` to verify).  Under **krun** the guest kernel only sees the allocated vCPUs and RAM, so those tools report the real container view.
+`run.memory` and `run.cpus` apply to both runtimes.
+
+Under **crun** they ride on podman's `--memory` / `--cpus` flags and become cgroup quotas: the scheduler and OOM killer enforce them, but `btop` / `nproc` / `/proc/meminfo` inside the container still report host values (check `/sys/fs/cgroup/{cpu,memory}.max` to verify).
+
+Under **krun** the asymmetry surfaces:
+
+- `run.memory` works through podman's `--memory` because [crun-krun](https://github.com/containers/crun/blob/main/krun.1.md) reads the OCI memory limit as a fallback when sizing the microVM, so `free` reports the right number.
+- `run.cpus` does *not* size the VM by itself — `--cpus` only sets the cgroup CFS quota, which throttles the VM host-side but doesn't change its vCPU count.  terok additionally emits the `krun.cpus` OCI annotation (the documented knob crun-krun reads, rounded up from `run.cpus` and capped at 16), so the guest sees the matching vCPU count.
 
 ## Switching runtime via env var
 
