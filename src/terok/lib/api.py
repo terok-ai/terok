@@ -80,6 +80,7 @@ from .domain.image_cleanup import (  # noqa: F401 — re-exported public API
     cleanup_images,
     find_orphaned_images,
     list_images,
+    remove_images,
 )
 
 # Cross-project lockdown.
@@ -282,6 +283,7 @@ __all__ = [
     "list_images",
     "find_orphaned_images",
     "cleanup_images",
+    "remove_images",
     "installed_agents",
     "installed_agents_for_project",
     # Project lifecycle

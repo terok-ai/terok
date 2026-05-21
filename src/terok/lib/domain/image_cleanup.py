@@ -19,6 +19,8 @@ from ..core.projects import list_projects
 # without having to chase a module-level singleton.
 
 if TYPE_CHECKING:
+    from collections.abc import Iterable
+
     from terok.lib.integrations.sandbox import Image
 
 
@@ -38,6 +40,17 @@ class ImageInfo:
         if self.repository == "<none>" and self.tag == "<none>":
             return f"<none> ({self.image_id[:12]})"
         return f"{self.repository}:{self.tag}"
+
+    @property
+    def project_key(self) -> str:
+        """Normalised repository, stripped of podman's ``localhost/`` prefix.
+
+        Podman labels every locally-built image with a ``localhost/`` registry
+        prefix.  terok's classification (global vs L2) and project lookups key
+        off bare project ids, so callers compare against this property rather
+        than the raw [`repository`][terok.lib.domain.image_cleanup.ImageInfo.repository] string.
+        """
+        return self.repository.removeprefix("localhost/")
 
     @classmethod
     def from_image(cls, image: Image) -> ImageInfo:
@@ -104,11 +117,12 @@ def list_images(project_id: str | None = None) -> list[ImageInfo]:
     """
     images: list[ImageInfo] = []
     for image in PodmanRuntime().images():
-        if not _is_terok_image(image.repository, image.tag):
+        repo = image.repository.removeprefix("localhost/")
+        if not _is_terok_image(repo, image.tag):
             continue
         if project_id is not None:
             # Filter: L2 images must match the project; L0/L1 always shown
-            if _is_terok_l2_image(image.repository, image.tag) and image.repository != project_id:
+            if _is_terok_l2_image(repo, image.tag) and repo != project_id:
                 continue
         images.append(ImageInfo.from_image(image))
     return images
@@ -134,7 +148,7 @@ def find_orphaned_images() -> list[ImageInfo]:
             img
             for img in all_images
             if _is_terok_l2_image(img.repository, img.tag)
-            and img.repository not in known_ids
+            and img.project_key not in known_ids
             and _is_terok_built_image(img.image_id)
         ]
 
@@ -174,20 +188,23 @@ def _is_terok_built_image(image_id: str) -> bool:
     return any("terok-l0" in line or "terok-l1" in line for line in image.history())
 
 
-def cleanup_images(dry_run: bool = False) -> CleanupResult:
-    """Remove orphaned terok images.
+def remove_images(images: Iterable[ImageInfo], *, dry_run: bool = False) -> CleanupResult:
+    """Remove a pre-computed set of images (or just report under *dry_run*).
+
+    Split out from [`cleanup_images`][terok.lib.domain.image_cleanup.cleanup_images]
+    so the CLI can present the orphan list, prompt for confirmation, and only
+    then act — without paying the discovery cost twice.
 
     Args:
-        dry_run: If True, only report what would be removed without removing.
+        images: The images to remove.  Iterated once.
+        dry_run: If True, only report names without invoking the runtime.
 
     Returns:
         CleanupResult with lists of removed and failed image display names.
     """
-    orphaned = find_orphaned_images()
     removed: list[str] = []
     failed: list[str] = []
-
-    for img in orphaned:
+    for img in images:
         if dry_run:
             removed.append(img.full_name)
             continue
@@ -201,5 +218,20 @@ def cleanup_images(dry_run: bool = False) -> CleanupResult:
 
             log_warning(f"Image cleanup failed for {img.full_name}: {exc}")
             failed.append(img.full_name)
-
     return CleanupResult(removed=removed, failed=failed, dry_run=dry_run)
+
+
+def cleanup_images(dry_run: bool = False) -> CleanupResult:
+    """Find and remove orphaned terok images in one shot.
+
+    Thin convenience over [`find_orphaned_images`][terok.lib.domain.image_cleanup.find_orphaned_images]
+    + [`remove_images`][terok.lib.domain.image_cleanup.remove_images] for callers that
+    don't need to inspect the list first.
+
+    Args:
+        dry_run: If True, only report what would be removed without removing.
+
+    Returns:
+        CleanupResult with lists of removed and failed image display names.
+    """
+    return remove_images(find_orphaned_images(), dry_run=dry_run)

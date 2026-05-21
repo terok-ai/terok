@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import argparse
 
-from ...lib.api import cleanup_images, list_images, require_project_exists
+from ...lib.api import find_orphaned_images, list_images, remove_images, require_project_exists
 from . import _storage_view
 from ._completers import complete_project_ids as _complete_project_ids, set_completer
 
@@ -85,6 +85,13 @@ def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) ->
         action="store_true",
         help="Show what would be removed without removing",
     )
+    p_cleanup.add_argument(
+        "-y",
+        "--yes",
+        action="store_true",
+        dest="assume_yes",
+        help="Skip the confirmation prompt and remove immediately.",
+    )
 
     # image usage — disk usage summary (was top-level `storage`)
     p_usage = image_sub.add_parser(
@@ -126,7 +133,10 @@ def dispatch(args: argparse.Namespace) -> bool:
         case "list":
             _cmd_list(getattr(args, "project_id", None))
         case "cleanup":
-            _cmd_cleanup(dry_run=getattr(args, "dry_run", False))
+            _cmd_cleanup(
+                dry_run=getattr(args, "dry_run", False),
+                assume_yes=getattr(args, "assume_yes", False),
+            )
         case "usage":
             _cmd_usage(
                 project_id=getattr(args, "project", None),
@@ -236,28 +246,40 @@ def _cmd_list(project_id: str | None) -> None:
     print(f"\n{len(images)} image(s)")
 
 
-def _cmd_cleanup(dry_run: bool) -> None:
-    """Remove orphaned terok images."""
-    result = cleanup_images(dry_run=dry_run)
+def _cmd_cleanup(*, dry_run: bool, assume_yes: bool) -> None:
+    """List orphaned terok images and ask before removing them.
 
-    if not result.removed and not result.failed:
+    ``--dry-run`` lists only and never prompts.  ``--yes`` (``-y``) skips the
+    prompt for non-interactive use.  Default: list, then confirm.
+    """
+    orphaned = find_orphaned_images()
+    if not orphaned:
         print("No orphaned terok images found.")
         return
 
-    label = "Would remove" if dry_run else "Removed"
-    for name in result.removed:
-        print(f"  {label}: {name}")
-
-    if result.failed:
-        for name in result.failed:
-            print(f"  Failed: {name}")
+    for img in orphaned:
+        print(f"  {img.full_name}")
 
     if dry_run:
-        print(f"\n{len(result.removed)} image(s) would be removed.")
-    else:
-        removed_count = len(result.removed)
-        failed_count = len(result.failed)
-        msg = f"\n{removed_count} image(s) removed."
-        if failed_count:
-            msg += f" {failed_count} failed (may be in use)."
-        print(msg)
+        print(f"\n{len(orphaned)} image(s) would be removed.")
+        return
+
+    if not assume_yes:
+        try:
+            answer = input(f"\nRemove {len(orphaned)} image(s)? [y/N] ").strip().lower()
+        except (EOFError, KeyboardInterrupt):
+            answer = ""
+        if answer not in ("y", "yes"):
+            print("Cancelled.")
+            return
+
+    result = remove_images(orphaned)
+    for name in result.removed:
+        print(f"  Removed: {name}")
+    for name in result.failed:
+        print(f"  Failed: {name}")
+
+    msg = f"\n{len(result.removed)} image(s) removed."
+    if result.failed:
+        msg += f" {len(result.failed)} failed (may be in use)."
+    print(msg)

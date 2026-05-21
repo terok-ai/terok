@@ -86,12 +86,20 @@ def format_bytes(n: int) -> str:
 
 _GLOBAL_PREFIXES = ("terok-l0", "terok-l1-cli")
 
+ORPHAN_PROJECT_ID = "(orphans)"
+"""Synthetic project id for the overview row that collects L2 images whose
+project no longer exists in the config.
+
+Parentheses are forbidden in real project ids (validated against
+``[a-z0-9][a-z0-9_-]*`` in ``project_model``), so this value can never
+collide with a configured project."""
+
 
 def _is_global_image(img: ImageInfo) -> bool:
     """L0/L1 base images and dangling images belong to the global section."""
     if img.repository == "<none>":
         return True
-    return img.repository.startswith(_GLOBAL_PREFIXES)
+    return img.project_key.startswith(_GLOBAL_PREFIXES)
 
 
 def _image_project_id(img: ImageInfo) -> str | None:
@@ -99,7 +107,7 @@ def _image_project_id(img: ImageInfo) -> str | None:
     if _is_global_image(img):
         return None
     if img.tag in ("l2-cli", "l2-dev"):
-        return img.repository
+        return img.project_key
     return None
 
 
@@ -220,6 +228,20 @@ def get_storage_overview() -> StorageOverview:
                 image_bytes=project_image_bytes.get(proj.id, 0),
                 workspace_bytes=sum(t.workspace_bytes for t in tasks),
                 task_count=len(tasks),
+            )
+        )
+
+    # Surface L2 images whose project is no longer configured so they roll up
+    # into the grand total instead of vanishing from the overview.
+    known_ids = {p.id for p in projects_conf}
+    orphan_bytes = sum(b for pid, b in project_image_bytes.items() if pid not in known_ids)
+    if orphan_bytes:
+        summaries.append(
+            ProjectSummary(
+                project_id=ORPHAN_PROJECT_ID,
+                image_bytes=orphan_bytes,
+                workspace_bytes=0,
+                task_count=0,
             )
         )
 

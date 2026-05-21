@@ -746,11 +746,11 @@ expose = [
 from = ["terok.lib.orchestration.image"]
 
 [[interfaces]]
-expose = ["list_images", "find_orphaned_images", "cleanup_images", "ImageInfo", "CleanupResult"]
+expose = ["list_images", "find_orphaned_images", "cleanup_images", "remove_images", "ImageInfo", "CleanupResult"]
 from = ["terok.lib.domain.image_cleanup"]
 
 [[interfaces]]
-expose = ["StorageOverview", "ProjectDetail", "ProjectSummary", "get_storage_overview", "get_project_storage_detail", "format_bytes", "parse_image_size"]
+expose = ["StorageOverview", "ProjectDetail", "ProjectSummary", "get_storage_overview", "get_project_storage_detail", "format_bytes", "parse_image_size", "ORPHAN_PROJECT_ID"]
 from = ["terok.lib.domain.storage"]
 
 [[interfaces]]
