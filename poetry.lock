@@ -3603,9 +3603,8 @@ description = "Single-agent task runner for hardened Podman containers"
 optional = false
 python-versions = ">=3.12,<3.15"
 groups = ["main"]
-files = [
-    {file = "terok_executor-0.0.149a17-py3-none-any.whl", hash = "sha256:d32018590ba9541de6b6d0532e5a2858ea24270a32bd38d086512facbb7ea2d1"},
-]
+files = []
+develop = false
 
 [package.dependencies]
 agent-client-protocol = ">=0.10"
@@ -3614,12 +3613,14 @@ prompt-toolkit = ">=3.0"
 pydantic = ">=2.9"
 rich = ">=13.0"
 "ruamel.yaml" = ">=0.18"
-terok_sandbox = {url = "https://github.com/terok-ai/terok-sandbox/releases/download/v0.0.124a13/terok_sandbox-0.0.124a13-py3-none-any.whl"}
+terok-sandbox = {git = "https://github.com/sliwowitz/terok-sandbox.git", rev = "feat/shield-runtime-thread"}
 tomli-w = ">=1.0"
 
 [package.source]
-type = "url"
-url = "https://github.com/terok-ai/terok-executor/releases/download/v0.0.149a17/terok_executor-0.0.149a17-py3-none-any.whl"
+type = "git"
+url = "https://github.com/sliwowitz/terok-executor.git"
+reference = "feat/krun-launch-docstring"
+resolved_reference = "d42dc73869daf5e3b0bab3549f9b64b42adfb336"
 
 [[package]]
 name = "terok-sandbox"
@@ -3628,9 +3629,8 @@ description = "Hardened Podman container runner with gate server and shield inte
 optional = false
 python-versions = ">=3.12,<4.0"
 groups = ["main"]
-files = [
-    {file = "terok_sandbox-0.0.124a13-py3-none-any.whl", hash = "sha256:0a2cecf6accd55964249eba25ed290b7f74554db403475317059c256983fc7fb"},
-]
+files = []
+develop = false
 
 [package.dependencies]
 aiohttp = ">=3.9"
@@ -3643,11 +3643,13 @@ pydantic = ">=2.9"
 "ruamel.yaml" = ">=0.18"
 sqlcipher3 = ">=0.6.2"
 terok_clearance = {url = "https://github.com/terok-ai/terok-clearance/releases/download/v0.6.14a4/terok_clearance-0.6.14a4-py3-none-any.whl"}
-terok_shield = {url = "https://github.com/terok-ai/terok-shield/releases/download/v0.6.42a4/terok_shield-0.6.42a4-py3-none-any.whl"}
+terok-shield = {git = "https://github.com/sliwowitz/terok-shield.git", rev = "feat/krun-dnsmasq-bind"}
 
 [package.source]
-type = "url"
-url = "https://github.com/terok-ai/terok-sandbox/releases/download/v0.0.124a13/terok_sandbox-0.0.124a13-py3-none-any.whl"
+type = "git"
+url = "https://github.com/sliwowitz/terok-sandbox.git"
+reference = "feat/shield-runtime-thread"
+resolved_reference = "679f41c97d100effb314f14fc06cc83be00552db"
 
 [[package]]
 name = "terok-shield"
@@ -3656,17 +3658,18 @@ description = "nftables-based egress firewalling for Podman containers"
 optional = false
 python-versions = ">=3.12,<4.0"
 groups = ["main"]
-files = [
-    {file = "terok_shield-0.6.42a4-py3-none-any.whl", hash = "sha256:4d9751f814785ac202944a10239dadbde352e2e814e9509b56d5393a06870a08"},
-]
+files = []
+develop = false
 
 [package.dependencies]
 pydantic = ">=2.0"
 PyYAML = ">=6.0"
 
 [package.source]
-type = "url"
-url = "https://github.com/terok-ai/terok-shield/releases/download/v0.6.42a4/terok_shield-0.6.42a4-py3-none-any.whl"
+type = "git"
+url = "https://github.com/sliwowitz/terok-shield.git"
+reference = "feat/krun-dnsmasq-bind"
+resolved_reference = "7b654ee41c8da839f73819898ae5a46ff6bc00d3"
 
 [[package]]
 name = "textual"
@@ -4546,4 +4549,4 @@ propcache = ">=0.2.1"
 [metadata]
 lock-version = "2.1"
 python-versions = ">=3.12,<3.15"
-content-hash = "ce96e89e20923ecec51e0560b7ecaeae063769a353f5c0db45a2edeb7f03730d"
+content-hash = "912c23d0a3d6e43dd30bac6198c5365c0849479158fb7f74afe1a4919d498e5c"

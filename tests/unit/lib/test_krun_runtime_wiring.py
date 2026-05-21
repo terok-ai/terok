@@ -135,24 +135,14 @@ class TestKrunCompatibilityGuard:
     """`_validate_krun_compatibility` rejects nested-container combos
     and refuses krun selection without the experimental flag."""
 
-    def test_rejects_nested_containers(self) -> None:
+    def test_rejects_nested_containers(self, _experimental_enabled) -> None:
         project = _krun_project(nested_containers=True)
-        with (
-            patch(
-                "terok.lib.orchestration.task_runners.container.is_experimental",
-                return_value=True,
-            ),
-            pytest.raises(SystemExit, match="incompatible.*nested_containers"),
-        ):
+        with pytest.raises(SystemExit, match="incompatible.*nested_containers"):
             _validate_krun_compatibility(project)
 
-    def test_accepts_krun_without_nested(self) -> None:
+    def test_accepts_krun_without_nested(self, _experimental_enabled) -> None:
         project = _krun_project()
-        with patch(
-            "terok.lib.orchestration.task_runners.container.is_experimental",
-            return_value=True,
-        ):
-            _validate_krun_compatibility(project)  # no raise
+        _validate_krun_compatibility(project)  # no raise
 
     def test_rejects_krun_without_experimental_flag(self) -> None:
         """run.runtime: krun is gated on `experimental: true`.
@@ -172,18 +162,48 @@ class TestKrunCompatibilityGuard:
         ):
             _validate_krun_compatibility(project)
 
+    def test_rejects_krun_under_socket_services_mode(self) -> None:
+        """run.runtime: krun + services.mode: socket fail-fast with a fix hint.
+
+        The microVM's kernel can't see the host's unix sockets (no
+        shared mount namespace), so token-broker / ssh-signer bridges
+        silently fail to establish.  Refusing at launch with a clear
+        pointer to ``services.mode: tcp`` beats a baffling timeout
+        deeper in the bring-up.
+        """
+        project = _krun_project()
+        with (
+            patch(
+                "terok.lib.orchestration.task_runners.container.is_experimental",
+                return_value=True,
+            ),
+            patch(
+                "terok.lib.orchestration.task_runners.container.get_services_mode",
+                return_value="socket",
+            ),
+            pytest.raises(SystemExit, match="incompatible.*services.mode: socket"),
+        ):
+            _validate_krun_compatibility(project)
+
 
 @pytest.fixture()
 def _experimental_enabled():
-    """Patch ``is_experimental`` true for tests that exercise the krun path.
+    """Patch the krun guards open for tests that exercise the krun path.
 
-    The compatibility guard refuses krun selection unless the
-    experimental flag is set; these tests verify the happy-path
-    *after* the gate, so the gate is patched out.
+    ``_validate_krun_compatibility`` refuses krun without the
+    experimental flag AND under ``services.mode: socket`` (the new
+    default); these tests verify the happy-path *after* the gate, so
+    both guards are patched out.
     """
-    with patch(
-        "terok.lib.orchestration.task_runners.container.is_experimental",
-        return_value=True,
+    with (
+        patch(
+            "terok.lib.orchestration.task_runners.container.is_experimental",
+            return_value=True,
+        ),
+        patch(
+            "terok.lib.orchestration.task_runners.container.get_services_mode",
+            return_value="tcp",
+        ),
     ):
         yield
 
@@ -240,14 +260,18 @@ class TestProjectRuntimeFlags:
 
         assert _project_runtime_flags(_project(), cname="terok-cli-demoproj-task-a") == []
 
-    def test_krun_emits_runtime_flag(
+    def test_krun_does_not_emit_runtime_flag(
         self, _experimental_enabled, _krun_launch_args_stub, _stub_port_reservation
     ) -> None:
+        """``--runtime krun`` flows through ``RunSpec.runtime`` (a typed
+        channel sandbox already turns into both podman's flag and shield's
+        dnsmasq-bind selection), not through this flag list.  Emitting it
+        here too would land ``--runtime`` twice on the podman invocation.
+        """
         from terok.lib.orchestration.task_runners.container import _project_runtime_flags
 
         flags = _project_runtime_flags(_project(runtime="krun"), cname="terok-cli-demoproj-task-a")
-        assert "--runtime" in flags
-        assert flags[flags.index("--runtime") + 1] == "krun"
+        assert "--runtime" not in flags
 
     def test_krun_emits_loopback_pinned_port_forward(
         self, _experimental_enabled, _krun_launch_args_stub, _stub_port_reservation
@@ -345,66 +369,15 @@ class TestProjectRuntimeFlags:
         _krun_launch_args_stub.assert_not_called()
 
 
-class TestChainKrunDnsRewrite:
-    """`_chain_krun_dns_rewrite` retargets shield's bind-mounted resolv.conf
-    from ``127.0.0.1`` (dnsmasq, unreachable from inside the krun guest)
-    to ``169.254.1.1`` (pasta forwarder, both reachable via TSI and
-    permitted by shield's nft policy)."""
+class TestKrunDnsTopologyDelegated:
+    """The krun DNS topology now lives in terok-shield itself: shield picks
+    the dnsmasq bind from a runtime hint that flows through
+    ``RunSpec.runtime``.  No post-pre_start workaround anywhere in terok.
+    """
 
-    def test_rewrites_existing_shield_resolv_conf(self, tmp_path) -> None:
-        from terok.lib.orchestration.task_runners.container import _chain_krun_dns_rewrite
+    def test_no_chain_krun_dns_rewrite_helper(self) -> None:
+        """The old ``_chain_krun_dns_rewrite`` workaround is gone — shield
+        owns its own resolv.conf address now."""
+        from terok.lib.orchestration.task_runners import container
 
-        shield_dir = tmp_path / "shield"
-        shield_dir.mkdir()
-        resolv = shield_dir / "resolv.conf"
-        resolv.write_text("nameserver 127.0.0.1\noptions ndots:0\n")
-
-        chained = _chain_krun_dns_rewrite(None, tmp_path)
-        chained.pre_start()
-
-        assert resolv.read_text() == "nameserver 169.254.1.1\noptions ndots:0\n"
-
-    def test_no_op_when_shield_did_not_write_file(self, tmp_path) -> None:
-        """Shield bypass / non-dnsmasq tier → no file → no error, no write."""
-        from terok.lib.orchestration.task_runners.container import _chain_krun_dns_rewrite
-
-        chained = _chain_krun_dns_rewrite(None, tmp_path)
-        chained.pre_start()  # no raise
-        assert not (tmp_path / "shield" / "resolv.conf").exists()
-
-    def test_runs_caller_pre_start_first(self, tmp_path) -> None:
-        """An existing ``pre_start`` callback is fired before the rewrite,
-        not silently dropped."""
-        from terok.lib.integrations.sandbox import LifecycleHooks
-        from terok.lib.orchestration.task_runners.container import _chain_krun_dns_rewrite
-
-        events: list[str] = []
-        shield_dir = tmp_path / "shield"
-        shield_dir.mkdir()
-        (shield_dir / "resolv.conf").write_text("nameserver 127.0.0.1\n")
-
-        def _prior() -> None:
-            events.append("prior")
-
-        chained = _chain_krun_dns_rewrite(LifecycleHooks(pre_start=_prior), tmp_path)
-        chained.pre_start()
-
-        assert events == ["prior"]
-        assert "169.254.1.1" in (shield_dir / "resolv.conf").read_text()
-
-    def test_preserves_other_hook_slots(self, tmp_path) -> None:
-        """``post_start`` / ``post_ready`` / ``post_stop`` pass through
-        untouched — only ``pre_start`` is the chain point."""
-        from terok.lib.integrations.sandbox import LifecycleHooks
-        from terok.lib.orchestration.task_runners.container import _chain_krun_dns_rewrite
-
-        post_start = lambda: None  # noqa: E731 — identity matters, not contents
-        post_ready = lambda: None  # noqa: E731
-        post_stop = lambda: None  # noqa: E731
-        chained = _chain_krun_dns_rewrite(
-            LifecycleHooks(post_start=post_start, post_ready=post_ready, post_stop=post_stop),
-            tmp_path,
-        )
-        assert chained.post_start is post_start
-        assert chained.post_ready is post_ready
-        assert chained.post_stop is post_stop
+        assert not hasattr(container, "_chain_krun_dns_rewrite")

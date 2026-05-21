@@ -11,12 +11,11 @@ and ``_project_runtime_flags`` assemble the podman invocation.
 
 from __future__ import annotations
 
-import dataclasses
 import math
 import shlex
 from typing import TYPE_CHECKING
 
-from terok.lib.core.config import is_experimental
+from terok.lib.core.config import get_services_mode, is_experimental
 from terok.lib.integrations.executor import (
     AgentRunner,
     BuildError,
@@ -180,7 +179,6 @@ def _run_container(
     annotations = {"dossier.meta_path": str(task_dossier_path)}
     merged_args = list(extra_args or ()) + _project_runtime_flags(project, cname=cname)
     if project.runtime == "krun":
-        hooks = _chain_krun_dns_rewrite(hooks, task_dir)
         # ``--cpus`` is only a cgroup CFS quota — crun-krun does not
         # read it to size the microVM and defaults to host CPU
         # affinity instead (so ``nproc`` reports all host cores even
@@ -207,6 +205,7 @@ def _run_container(
             sealed=project.is_sealed,
             hooks=hooks,
             extra_args=merged_args,
+            runtime=project.runtime,
             hostname=cname,
             annotations=annotations,
         )
@@ -261,7 +260,6 @@ def _project_runtime_flags(project: ProjectConfig, *, cname: str) -> list[str]:
         flags += ["--security-opt", "label=nested", "--device", "/dev/fuse"]
     if project.runtime == "krun":
         _validate_krun_compatibility(project)
-        flags += ["--runtime", "krun"]
         # Reserve a free loopback TCP port and forward it to the guest's
         # sshd.  ``reserve_port`` binds-then-releases, so there's a
         # small race window before podman picks the port back up — same
@@ -283,46 +281,6 @@ def _project_runtime_flags(project: ProjectConfig, *, cname: str) -> list[str]:
     return flags
 
 
-def _chain_krun_dns_rewrite(hooks: LifecycleHooks | None, task_dir: Path) -> LifecycleHooks:
-    """WORKAROUND(krun-shield-dns): point shield's bind-mounted resolv.conf
-    at pasta's forwarder instead of the in-netns dnsmasq.
-
-    Shield writes ``nameserver 127.0.0.1`` at ``<task>/shield/resolv.conf``
-    and bind-mounts it over ``/etc/resolv.conf`` so the in-netns dnsmasq
-    can intercept DNS for clearance + audit.  Under krun the guest's
-    ``127.0.0.1`` is the microVM's own loopback (TSI doesn't redirect
-    127.0.0.0/8), so queries land nowhere and name resolution dies.
-
-    Rewrite the file to ``nameserver 169.254.1.1`` — pasta's link-local
-    forwarder, the same address shield's nft already permits ``:53`` to.
-    TSI surfaces the guest's connect to a host-side socket inside the
-    netns, pasta answers, the guest resolves.  Cost: dnsmasq sits idle,
-    so the clearance flow no longer fires on hostnames (IP-based
-    clearance still works — egress filtering on TCP/UDP is unaffected
-    because TSI surfaces traffic where shield's nft hooks live).
-
-    Fires from ``LifecycleHooks.pre_start``, which runs after shield's
-    own ``pre_start`` wrote the file and before podman exec — the only
-    window where the file is guaranteed to exist and the container has
-    not yet read it.
-
-    Proper fix: shield-side krun awareness (have shield write the right
-    address itself, conditional on the target runtime).  Remove this
-    helper when shield grows that.
-    """
-    shield_resolv = task_dir / "shield" / "resolv.conf"
-    prior = hooks.pre_start if hooks else None
-
-    def _patch() -> None:
-        if prior is not None:
-            prior()
-        if shield_resolv.is_file():
-            shield_resolv.write_text("nameserver 169.254.1.1\noptions ndots:0\n")
-
-    base = hooks or LifecycleHooks()
-    return dataclasses.replace(base, pre_start=_patch)
-
-
 def _validate_krun_compatibility(project: ProjectConfig) -> None:
     """Reject combinations that can't be honoured under krun.
 
@@ -336,6 +294,10 @@ def _validate_krun_compatibility(project: ProjectConfig) -> None:
     - ``experimental``: required for krun selection by any path.
     - ``nested_containers``: krun guests can't host nested podman/docker
       with our current image; ask the operator to drop one of the two.
+    - ``services.mode``: krun needs ``tcp``.  socket mode relies on
+      host-side unix sockets that the microVM's kernel can't see (no
+      shared mount namespace), so token-broker and ssh-signer bridges
+      silently fail to establish.
     """
     if not is_experimental():
         raise SystemExit(
@@ -349,6 +311,16 @@ def _validate_krun_compatibility(project: ProjectConfig) -> None:
             "run.runtime: krun is incompatible with run.nested_containers: true — "
             "the krun guest's hardened sshd doesn't host a nested-container stack.  "
             "Pick one or move the nested workload to a crun task."
+        )
+
+    if get_services_mode() == "socket":
+        raise SystemExit(
+            "run.runtime: krun is incompatible with services.mode: socket — "
+            "the microVM's kernel doesn't see the host's unix sockets, so the "
+            "token-broker and ssh-signer bridges can't establish.  Set "
+            "``services.mode: tcp`` in your config.yml (and re-run "
+            "``terok setup`` so the host services bind to TCP) before "
+            "launching krun tasks."
         )
 
 

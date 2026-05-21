@@ -628,10 +628,6 @@ class TestRunContainer:
                 "terok.lib.orchestration.task_runners.container._project_runtime_flags",
                 return_value=[],  # bypass krun port-reservation etc.
             ),
-            patch(
-                "terok.lib.orchestration.task_runners.container._chain_krun_dns_rewrite",
-                side_effect=lambda hooks, _: hooks,
-            ),
         ):
             _run_container(
                 task_id="t1",
@@ -660,10 +656,6 @@ class TestRunContainer:
             patch(
                 "terok.lib.orchestration.task_runners.container._project_runtime_flags",
                 return_value=[],
-            ),
-            patch(
-                "terok.lib.orchestration.task_runners.container._chain_krun_dns_rewrite",
-                side_effect=lambda hooks, _: hooks,
             ),
         ):
             _run_container(

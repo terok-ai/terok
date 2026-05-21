@@ -434,7 +434,6 @@ class RawGlobalConfig(ExecutorConfigView):
     logs: RawLogsSection = Field(default_factory=RawLogsSection)
     tasks: RawTasksGlobalSection = Field(default_factory=RawTasksGlobalSection)
     git: RawGlobalGitSection = Field(default_factory=RawGlobalGitSection)
-    experimental: bool = False
     default_agent: str | None = None
     default_login: str | None = None
     agent: dict[str, Any] = Field(default_factory=dict)
