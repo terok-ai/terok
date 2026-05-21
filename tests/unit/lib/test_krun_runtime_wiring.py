@@ -296,10 +296,9 @@ class TestProjectRuntimeFlags:
     def test_krun_emits_no_oci_krun_annotations(
         self, _experimental_enabled, _krun_launch_args_stub, _stub_port_reservation
     ) -> None:
-        """``run.memory`` / ``run.cpus`` already translate through podman to
-        krun's microVM sizing — terok no longer emits separate
-        ``run.oci.krun.*`` annotations.  Asserted here so a future
-        regression that wires them back in fails fast."""
+        """Regression guard: terok must not emit ``run.oci.krun.*``
+        annotations — sizing goes through the standard ``run.memory`` /
+        ``run.cpus`` → podman ``--memory`` / ``--cpus`` path."""
         from terok.lib.orchestration.task_runners.container import _project_runtime_flags
 
         flags = _project_runtime_flags(

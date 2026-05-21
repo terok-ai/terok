@@ -238,10 +238,9 @@ def _project_runtime_flags(project: ProjectConfig, *, cname: str) -> list[str]:
     krun-incompatible combinations before emitting any flag so the
     operator sees a clear error rather than a podman launch failure.
 
-    Resource sizing under krun reuses the standard ``run.memory`` /
-    ``run.cpus`` knobs — podman translates ``--memory`` / ``--cpus``
-    through to the OCI spec krun reads to size the microVM, so no
-    separate annotation pathway is needed.
+    Sizing reuses the standard ``run.memory`` / ``run.cpus``; podman
+    writes them into the OCI spec the runtime reads, so there's no
+    separate krun knob.
     """
     del cname  # signature kept for caller stability; no longer read here
     flags: list[str] = []

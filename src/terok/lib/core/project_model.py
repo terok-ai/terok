@@ -72,10 +72,9 @@ class ProjectConfig(BaseModel):
     runtime selection time so a typo never silently boots the
     experimental backend.
 
-    Resource sizing under krun reuses the standard ``memory`` / ``cpus``
-    knobs: podman translates ``--memory`` / ``--cpus`` into the OCI
-    spec krun reads to size the microVM.  Fractional ``cpus`` round up
-    to whole vCPUs there.
+    Sizing reuses the standard ``memory`` / ``cpus`` knobs — podman
+    writes them into the OCI spec and the runtime reads them there;
+    no krun-specific knob.
     """
     timezone: str | None = None
     """IANA timezone for task containers (from ``run.timezone``).

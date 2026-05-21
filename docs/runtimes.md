@@ -52,7 +52,7 @@ run:
 
 Project-level settings override the global default.  Without `experimental: true` set globally, any krun selection fails fast at startup with a pointer at the opt-in — a typo in `project.yml` can't silently switch isolation backends.
 
-Resource sizing under krun reuses the standard `run.memory` / `run.cpus` knobs — podman translates `--memory` / `--cpus` through to the OCI spec krun reads to size the microVM.  Fractional `cpus` round up to whole vCPUs there, so `cpus: 0.5` is accepted but semantically becomes one vCPU.
+Sizing reuses the standard `run.memory` / `run.cpus` knobs; podman writes them into the OCI spec the runtime reads, so there is no krun-specific knob.
 
 ## Switching runtime via env var
 
