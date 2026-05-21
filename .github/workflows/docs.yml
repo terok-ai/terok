@@ -131,7 +131,7 @@ jobs:
         uses: dawidd6/action-download-artifact@b6e2e70617bc3265edd6dab6c906732b2f1ae151 # v21
         with:
           workflow: analysis.yml
-          workflow_conclusion: success
+          workflow_conclusion: completed
           commit: ${{ github.event.pull_request.head.sha || github.sha }}
           name: coverage
           path: reports
