@@ -38,6 +38,24 @@ SYSTEMD_SERVICE = "terok-gate@.service"
 VERSION_STAMP = f"# terok-gate-version: {_UNIT_VERSION}"
 
 
+@pytest.fixture(autouse=True)
+def _force_systemctl_resolved(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Pin ``_SYSTEMCTL_PATH`` so ``_systemctl.{run,query}`` reaches ``subprocess.run``.
+
+    ``terok_sandbox._util._systemctl`` resolves ``systemctl`` once at import
+    via ``shutil.which`` and short-circuits when the binary is absent.  On
+    hosts without ``systemctl`` on PATH (nix-wrapped Python, minimal CI
+    containers) every helper bails out before ``subprocess.run`` is ever
+    called, defeating the per-test ``mock.patch("subprocess.run", …)``.
+    Pinning the resolved path to a sentinel forces the call through, so
+    the existing mocks behave the same on every host.
+    """
+    monkeypatch.setattr(
+        "terok_sandbox._util._systemctl._SYSTEMCTL_PATH",
+        "/usr/bin/systemctl",
+    )
+
+
 def make_status(
     mode: str = "none",
     *,
