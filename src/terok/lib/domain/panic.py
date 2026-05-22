@@ -23,7 +23,7 @@ shields + stopped services already cut access.
 from __future__ import annotations
 
 import logging
-from concurrent.futures import Future, ThreadPoolExecutor, as_completed
+from concurrent.futures import Future, ThreadPoolExecutor, as_completed, wait
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
@@ -43,6 +43,7 @@ from ..orchestration.tasks import (
 logger = logging.getLogger(__name__)
 
 _LOCK_FILENAME = "panic.lock"
+_PHASE2_TIMEOUT_S = 15
 
 # (project_id, task_id, mode, cname, task_dir)
 type _Target = tuple[str, str, str, str, Path]
@@ -302,19 +303,26 @@ def _stop_containers(targets: list[_Target]) -> tuple[list[str], list[tuple[str,
     stopped: list[str] = []
     errors: list[tuple[str, str]] = []
 
-    with ThreadPoolExecutor(max_workers=max(len(targets), 4)) as pool:
+    pool = ThreadPoolExecutor(max_workers=max(len(targets), 4))
+    try:
         futs = {pool.submit(_kill_container, runtime, t[3]): t[3] for t in targets}
-        for fut in as_completed(futs):
+        done, not_done = wait(futs, timeout=_PHASE2_TIMEOUT_S)
+        for fut in done:
             cname = futs[fut]
-            try:
-                err = fut.result(timeout=30)
-            except Exception as exc:
-                errors.append((cname, str(exc)))
-                continue
+            err = fut.result()
             if err is None:
                 stopped.append(cname)
             else:
                 errors.append((cname, err))
+        # Any worker still running past the panic budget is treated as a
+        # timeout error.  ``shutdown(wait=False)`` below lets the caller
+        # return immediately; the threads exit on their own once the
+        # subprocess timeout in ``.stop()`` trips.
+        for fut in not_done:
+            fut.cancel()
+            errors.append((futs[fut], f"timed out after {_PHASE2_TIMEOUT_S}s"))
+    finally:
+        pool.shutdown(wait=False)
 
     return stopped, errors
 
