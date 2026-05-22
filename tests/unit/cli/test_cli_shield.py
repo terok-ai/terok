@@ -303,7 +303,7 @@ def test_dispatch_runtime_error_prints_message(
         ),
     ],
 )
-@patch("terok.lib.integrations.sandbox.run_setup")
+@patch("terok.lib.api.shield.shield_run_setup")
 def test_install_hooks_dispatch(
     mock_install: MagicMock,
     kwargs: dict[str, bool],

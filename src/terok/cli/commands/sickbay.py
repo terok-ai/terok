@@ -25,24 +25,26 @@ import sys
 from contextlib import suppress
 from pathlib import Path
 
-from terok.lib.integrations.clearance import (
-    HUB_UNIT_NAME as _CLEARANCE_HUB_UNIT_NAME,
-    NOTIFIER_UNIT_NAME as _CLEARANCE_NOTIFIER_UNIT_NAME,
-    check_units_outdated as _clearance_check_units_outdated,
+from terok.lib.api.clearance import (
+    CLEARANCE_HUB_UNIT_NAME as _CLEARANCE_HUB_UNIT_NAME,
+    CLEARANCE_NOTIFIER_UNIT_NAME as _CLEARANCE_NOTIFIER_UNIT_NAME,
+    check_clearance_units_outdated as _clearance_check_units_outdated,
     read_installed_notifier_unit_version as _clearance_notifier_unit_version,
     read_installed_unit_version as _clearance_hub_unit_version,
 )
-from terok.lib.integrations.sandbox import (
+from terok.lib.api.gate import get_server_status
+from terok.lib.api.setup import (
     SERVICES_TCP_OPTOUT_YAML,
     check_environment,
     check_units_outdated,
-    get_server_status,
-    get_vault_status,
     is_systemd_available,
-    is_vault_socket_active,
-    is_vault_systemd_available,
     resolve_container_state_dir,
     systemd_creds_has_tpm2,
+)
+from terok.lib.api.vault import (
+    get_vault_status,
+    is_vault_socket_active,
+    is_vault_systemd_available,
 )
 
 from ...lib.core import runtime as _rt
@@ -534,7 +536,7 @@ def _check_selinux_policy() -> _CheckResult:
     ``terok setup`` share one source of truth; this function only
     translates the structured result into sickbay's output shape.
     """
-    from terok.lib.integrations.sandbox import (
+    from terok.lib.api.setup import (
         SelinuxStatus,
         check_selinux_status,
         selinux_install_command,
@@ -588,7 +590,7 @@ def _check_vault_migration() -> _CheckResult:
     """Check for leftover pre-vault credentials directory."""
     label = "Vault migration"
     try:
-        from terok.lib.integrations.sandbox import namespace_state_dir
+        from terok.lib.api.setup import namespace_state_dir
 
         old_dir = namespace_state_dir("credentials")
         new_dir = namespace_state_dir("vault")
@@ -628,14 +630,14 @@ def _check_recovery_acknowledged() -> _CheckResult:
     """
     label = "Recovery key acknowledged"
     try:
-        from terok.lib.integrations.sandbox import recovery_status
+        from terok.lib.api.shield import recovery_status
 
         status = recovery_status()
     except Exception as exc:  # noqa: BLE001 — best-effort probe, never block sickbay
         return ("warn", label, f"check failed — {exc}")
     if status.acknowledged:
         return ("ok", label, "recovery key acknowledged")
-    from terok.lib.integrations.sandbox import bold
+    from terok.lib.api import bold
 
     reveal = bold("terok vault passphrase reveal")
     ack = bold("terok vault passphrase acknowledge")
@@ -667,7 +669,7 @@ def _check_default_agents() -> _CheckResult:
     """
     label = "Default agents"
     try:
-        from terok.lib.integrations.executor import get_global_image_agents
+        from terok.lib.api.agents import get_global_image_agents
 
         current = get_global_image_agents()
     except Exception as exc:  # noqa: BLE001 — probe is best-effort; never crash sickbay

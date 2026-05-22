@@ -96,7 +96,7 @@ def dispatch(args: argparse.Namespace) -> bool:
 
 def _print_roster(*, show_all: bool) -> None:
     """Print the installed roster — agents only by default, agents + tools when *show_all*."""
-    from terok.lib.integrations.executor import get_roster
+    from terok.lib.api.agents import get_roster
 
     roster = get_roster()
     names = roster.all_names if show_all else roster.agent_names
@@ -125,7 +125,7 @@ def _print_roster(*, show_all: bool) -> None:
 
 def _set_global_default(*, selection: str | None) -> None:
     """Validate *selection* and write it to the global ``image.agents`` field."""
-    from terok.lib.integrations.executor import (
+    from terok.lib.api.agents import (
         prompt_agents_selection,
         set_global_image_agents,
         validate_agent_selection,

@@ -1245,7 +1245,7 @@ class TestDefaultAgentsAction:
         _, app_class = import_app()
         instance = mock.MagicMock()
         instance.notify = mock.Mock()
-        with mock.patch("terok.lib.integrations.executor.set_global_image_agents") as write_mock:
+        with mock.patch("terok.lib.api.agents.set_global_image_agents") as write_mock:
             write_mock.return_value = MOCK_CONFIG_ROOT / "config.yml"
             run(app_class._on_default_agents_result(instance, "claude,vibe"))
         write_mock.assert_called_once_with("claude,vibe")
@@ -1257,7 +1257,7 @@ class TestDefaultAgentsAction:
         _, app_class = import_app()
         instance = mock.MagicMock()
         instance.notify = mock.Mock()
-        with mock.patch("terok.lib.integrations.executor.set_global_image_agents") as write_mock:
+        with mock.patch("terok.lib.api.agents.set_global_image_agents") as write_mock:
             run(app_class._on_default_agents_result(instance, None))
         write_mock.assert_not_called()
         instance.notify.assert_not_called()
@@ -1598,7 +1598,7 @@ class TestRenderVaultStatus:
         """Systemd socket active but service idle shows standby."""
         screens, _ = import_screens()
         status = make_vault_status(mode="systemd", running=False)
-        with mock.patch("terok.lib.integrations.sandbox.is_vault_socket_active", return_value=True):
+        with mock.patch("terok.lib.api.vault.is_vault_socket_active", return_value=True):
             result = screens.render_vault_status(status)
         text_str = str(result)
         assert "standby" in text_str
@@ -1610,9 +1610,7 @@ class TestRenderVaultStatus:
         """Systemd socket inactive shows stopped with help text."""
         screens, _ = import_screens()
         status = make_vault_status(mode="systemd", running=False)
-        with mock.patch(
-            "terok.lib.integrations.sandbox.is_vault_socket_active", return_value=False
-        ):
+        with mock.patch("terok.lib.api.vault.is_vault_socket_active", return_value=False):
             result = screens.render_vault_status(status)
         text_str = str(result)
         assert "stopped" in text_str
@@ -1707,11 +1705,11 @@ class TestRenderVaultStatus:
         status = make_vault_status(mode="systemd", transport="tcp")
         with (
             mock.patch(
-                "terok.lib.integrations.sandbox.get_token_broker_port",
+                "terok.lib.api.setup.get_token_broker_port",
                 return_value=18701,
             ),
             mock.patch(
-                "terok.lib.integrations.sandbox.get_ssh_signer_port",
+                "terok.lib.api.setup.get_ssh_signer_port",
                 return_value=18702,
             ),
         ):
@@ -1910,7 +1908,7 @@ class TestVaultScreenRefresh:
         detail = mock.Mock()
         screen.query_one = mock.Mock(return_value=detail)
         new_status = make_vault_status(running=True)
-        with mock.patch("terok.lib.integrations.sandbox.get_vault_status", return_value=new_status):
+        with mock.patch("terok.lib.api.vault.get_vault_status", return_value=new_status):
             screen._refresh_status()
         assert screen._status is new_status
         detail.update.assert_called_once()
@@ -1921,9 +1919,7 @@ class TestVaultScreenRefresh:
         screen = screens.VaultScreen(make_vault_status())
         detail = mock.Mock()
         screen.query_one = mock.Mock(return_value=detail)
-        with mock.patch(
-            "terok.lib.integrations.sandbox.get_vault_status", side_effect=RuntimeError
-        ):
+        with mock.patch("terok.lib.api.vault.get_vault_status", side_effect=RuntimeError):
             screen._refresh_status()
         assert screen._status is None
 
@@ -2075,20 +2071,39 @@ class TestVaultRevealAction:
         cfg.resolve_passphrase_with_source.return_value = (passphrase, source)
         return cfg
 
+    @staticmethod
+    def _reveal_stubs(
+        *,
+        cfg: object,
+        no_pass: type[Exception] = Exception,
+        wrong_pass: type[Exception] = Exception,
+        is_recovery_acknowledged: object = None,
+    ) -> dict[str, mock.Mock]:
+        """Stubs for the three api sub-modules ``_action_vault_reveal`` imports from.
+
+        The action imports ``SandboxConfig`` from ``terok.lib.api``,
+        ``is_recovery_acknowledged`` from ``terok.lib.api.shield``, and
+        the two passphrase errors from ``terok.lib.api.vault`` — each
+        gets its own ``sys.modules`` stub so the function-local imports
+        resolve to the test mocks.
+        """
+        ack = is_recovery_acknowledged or mock.Mock(return_value=False)
+        return {
+            "terok.lib.api": mock.Mock(SandboxConfig=lambda: cfg),
+            "terok.lib.api.shield": mock.Mock(is_recovery_acknowledged=ack),
+            "terok.lib.api.vault": mock.Mock(
+                NoPassphraseError=no_pass,
+                WrongPassphraseError=wrong_pass,
+            ),
+        }
+
     def test_locked_vault_notifies_and_skips_modal(self) -> None:
         """No resolvable passphrase → notify, no modal."""
         mixin = self._get_mixin()
         instance = mock.Mock(spec=mixin)
         instance.notify = mock.Mock()
         instance.push_screen = mock.AsyncMock()
-        stubs = {
-            "terok.lib.integrations.sandbox": mock.Mock(
-                SandboxConfig=lambda: self._make_cfg(passphrase=None),
-                NoPassphraseError=Exception,
-                WrongPassphraseError=Exception,
-                is_recovery_acknowledged=mock.Mock(return_value=False),
-            ),
-        }
+        stubs = self._reveal_stubs(cfg=self._make_cfg(passphrase=None))
         with mock.patch.dict(sys.modules, stubs):
             run(mixin._action_vault_reveal(instance))
         instance.notify.assert_called_once()
@@ -2108,14 +2123,7 @@ class TestVaultRevealAction:
 
         cfg = mock.Mock()
         cfg.resolve_passphrase_with_source.side_effect = _Wrong("wrong key")
-        stubs = {
-            "terok.lib.integrations.sandbox": mock.Mock(
-                SandboxConfig=lambda: cfg,
-                NoPassphraseError=_Wrong,
-                WrongPassphraseError=_Wrong,
-                is_recovery_acknowledged=mock.Mock(return_value=False),
-            ),
-        }
+        stubs = self._reveal_stubs(cfg=cfg, no_pass=_Wrong, wrong_pass=_Wrong)
         with mock.patch.dict(sys.modules, stubs):
             run(mixin._action_vault_reveal(instance))
         instance.notify.assert_called_once()
@@ -2128,14 +2136,7 @@ class TestVaultRevealAction:
         instance = mock.Mock(spec=mixin)
         instance.notify = mock.Mock()
         instance.push_screen = mock.AsyncMock()
-        stubs = {
-            "terok.lib.integrations.sandbox": mock.Mock(
-                SandboxConfig=lambda: self._make_cfg(),
-                NoPassphraseError=Exception,
-                WrongPassphraseError=Exception,
-                is_recovery_acknowledged=mock.Mock(return_value=False),
-            ),
-        }
+        stubs = self._reveal_stubs(cfg=self._make_cfg())
         with mock.patch.dict(sys.modules, stubs):
             run(mixin._action_vault_reveal(instance))
         instance.push_screen.assert_awaited_once()
@@ -2153,14 +2154,10 @@ class TestVaultRevealAction:
         instance.notify = mock.Mock()
         instance.push_screen = mock.AsyncMock()
         instance._refresh_vault_status = mock.AsyncMock()
-        stubs = {
-            "terok.lib.integrations.sandbox": mock.Mock(
-                SandboxConfig=lambda: self._make_cfg(),
-                NoPassphraseError=Exception,
-                WrongPassphraseError=Exception,
-                is_recovery_acknowledged=mock.Mock(return_value=True),
-            ),
-        }
+        stubs = self._reveal_stubs(
+            cfg=self._make_cfg(),
+            is_recovery_acknowledged=mock.Mock(return_value=True),
+        )
         with mock.patch.dict(sys.modules, stubs):
             run(mixin._action_vault_reveal(instance))
         modal_arg = instance.push_screen.call_args[0][0]
@@ -2184,10 +2181,8 @@ class TestVaultRevealResult:
         instance._refresh_vault_status = mock.AsyncMock()
         ack_recovery = mock.Mock(return_value=True)
         stubs = {
-            "terok.lib.integrations.sandbox": mock.Mock(
-                SandboxConfig=lambda: mock.Mock(),
-                acknowledge_recovery=ack_recovery,
-            ),
+            "terok.lib.api": mock.Mock(SandboxConfig=lambda: mock.Mock()),
+            "terok.lib.api.shield": mock.Mock(acknowledge_recovery=ack_recovery),
         }
         with mock.patch.dict(sys.modules, stubs):
             run(mixin._on_vault_reveal_result(instance, True))
@@ -2202,10 +2197,8 @@ class TestVaultRevealResult:
         instance._refresh_vault_status = mock.AsyncMock()
         ack_recovery = mock.Mock(return_value=True)
         stubs = {
-            "terok.lib.integrations.sandbox": mock.Mock(
-                SandboxConfig=lambda: mock.Mock(),
-                acknowledge_recovery=ack_recovery,
-            ),
+            "terok.lib.api": mock.Mock(SandboxConfig=lambda: mock.Mock()),
+            "terok.lib.api.shield": mock.Mock(acknowledge_recovery=ack_recovery),
         }
         with mock.patch.dict(sys.modules, stubs):
             run(mixin._on_vault_reveal_result(instance, False))
@@ -2220,10 +2213,8 @@ class TestVaultRevealResult:
         instance._refresh_vault_status = mock.AsyncMock()
         ack_recovery = mock.Mock(return_value=True)
         stubs = {
-            "terok.lib.integrations.sandbox": mock.Mock(
-                SandboxConfig=lambda: mock.Mock(),
-                acknowledge_recovery=ack_recovery,
-            ),
+            "terok.lib.api": mock.Mock(SandboxConfig=lambda: mock.Mock()),
+            "terok.lib.api.shield": mock.Mock(acknowledge_recovery=ack_recovery),
         }
         with mock.patch.dict(sys.modules, stubs):
             run(mixin._on_vault_reveal_result(instance, None))
@@ -2247,10 +2238,8 @@ class TestVaultAcknowledgeAction:
         instance._refresh_vault_status = mock.AsyncMock()
         ack_recovery = mock.Mock(return_value=True)
         stubs = {
-            "terok.lib.integrations.sandbox": mock.Mock(
-                SandboxConfig=lambda: mock.Mock(),
-                acknowledge_recovery=ack_recovery,
-            ),
+            "terok.lib.api": mock.Mock(SandboxConfig=lambda: mock.Mock()),
+            "terok.lib.api.shield": mock.Mock(acknowledge_recovery=ack_recovery),
         }
         with mock.patch.dict(sys.modules, stubs):
             run(mixin._action_vault_acknowledge(instance))
@@ -2267,10 +2256,8 @@ class TestVaultAcknowledgeAction:
         instance._refresh_vault_status = mock.AsyncMock()
         ack_recovery = mock.Mock(return_value=False)
         stubs = {
-            "terok.lib.integrations.sandbox": mock.Mock(
-                SandboxConfig=lambda: mock.Mock(),
-                acknowledge_recovery=ack_recovery,
-            ),
+            "terok.lib.api": mock.Mock(SandboxConfig=lambda: mock.Mock()),
+            "terok.lib.api.shield": mock.Mock(acknowledge_recovery=ack_recovery),
         }
         with mock.patch.dict(sys.modules, stubs):
             run(mixin._action_vault_acknowledge(instance))

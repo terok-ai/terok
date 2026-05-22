@@ -38,7 +38,7 @@ import time
 from pathlib import Path
 from typing import TYPE_CHECKING, NoReturn
 
-from terok.lib.integrations.executor import acp_socket_is_live
+from terok.lib.api.agents import acp_socket_is_live
 
 from ...lib.api import list_projects
 from ...lib.core.config import is_experimental
@@ -48,7 +48,7 @@ from ...lib.util.subprocess_env import child_process_env
 from ._completers import add_project_id, add_task_id
 
 if TYPE_CHECKING:
-    from terok.lib.integrations.executor import ACPEndpointStatus
+    from terok.lib.api.agents import ACPEndpointStatus
 
     from ...lib.domain.project import Project
 

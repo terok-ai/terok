@@ -52,7 +52,7 @@ class TestUninstallSandboxStack:
     """Sandbox aggregator owns the full teardown — bridge + clearance + gate + vault + shield."""
 
     def test_happy_path_delegates_to_aggregator(self, capsys: pytest.CaptureFixture[str]) -> None:
-        with patch("terok.lib.integrations.sandbox.sandbox_uninstall") as aggregator:
+        with patch("terok.lib.api.setup.sandbox_uninstall") as aggregator:
             assert _uninstall_sandbox_stack(root=False) is True
         aggregator.assert_called_once_with(root=False)
         out = capsys.readouterr().out
@@ -61,7 +61,7 @@ class TestUninstallSandboxStack:
 
     def test_aggregator_failure_reports_fail(self, capsys: pytest.CaptureFixture[str]) -> None:
         with patch(
-            "terok.lib.integrations.sandbox.sandbox_uninstall",
+            "terok.lib.api.setup.sandbox_uninstall",
             side_effect=SystemExit("aggregator reported one or more failed phases"),
         ):
             assert _uninstall_sandbox_stack(root=False) is False
@@ -70,7 +70,7 @@ class TestUninstallSandboxStack:
         assert "aggregator reported one or more failed phases" in out
 
     def test_root_flag_threaded_to_aggregator(self) -> None:
-        with patch("terok.lib.integrations.sandbox.sandbox_uninstall") as aggregator:
+        with patch("terok.lib.api.setup.sandbox_uninstall") as aggregator:
             _uninstall_sandbox_stack(root=True)
         aggregator.assert_called_once_with(root=True)
 
@@ -84,7 +84,7 @@ class TestPurgeCredentialDb:
 
         fake_cfg = MagicMock(spec=SandboxConfig)
         fake_cfg.db_path = tmp_path / "nothing.db"  # does not exist
-        with patch("terok.lib.integrations.sandbox.SandboxConfig", return_value=fake_cfg):
+        with patch("terok.lib.api.SandboxConfig", return_value=fake_cfg):
             assert _purge_credential_db() is True
         assert "already absent" in capsys.readouterr().out
 
@@ -95,7 +95,7 @@ class TestPurgeCredentialDb:
         db.write_text("secrets")
         fake_cfg = MagicMock(spec=SandboxConfig)
         fake_cfg.db_path = db
-        with patch("terok.lib.integrations.sandbox.SandboxConfig", return_value=fake_cfg):
+        with patch("terok.lib.api.SandboxConfig", return_value=fake_cfg):
             assert _purge_credential_db() is True
         assert not db.exists()
 

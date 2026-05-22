@@ -46,6 +46,14 @@ path = "terok.cli"
 layer = "presentation"
 depends_on = [
     "terok.lib.api",
+    "terok.lib.api.agents",
+    "terok.lib.api.clearance",
+    "terok.lib.api.gate",
+    "terok.lib.api.project",
+    "terok.lib.api.setup",
+    "terok.lib.api.shield",
+    "terok.lib.api.task",
+    "terok.lib.api.vault",
     "terok.lib.orchestration.agent_config",
     "terok.lib.domain.panic",
     "terok.lib.orchestration.container_doctor",
@@ -67,14 +75,22 @@ depends_on = [
 # TUI frontend
 #
 # The TUI talks to the library only through the [`terok.lib.api`][terok.lib.api]
-# front door, plus pure utilities (``util.*``) and the version helpers.
-# New TUI features that need internal modules should extend ``api`` first;
-# extending this allowlist is a design smell.
+# front door (and its focused sub-modules), plus pure utilities (``util.*``)
+# and the version helpers.  New TUI features that need internal modules
+# should extend ``api`` first; extending this allowlist is a design smell.
 [[modules]]
 path = "terok.tui"
 layer = "presentation"
 depends_on = [
     "terok.lib.api",
+    "terok.lib.api.agents",
+    "terok.lib.api.clearance",
+    "terok.lib.api.gate",
+    "terok.lib.api.project",
+    "terok.lib.api.setup",
+    "terok.lib.api.shield",
+    "terok.lib.api.task",
+    "terok.lib.api.vault",
     "terok.lib.core.version",
     "terok.lib.util.ansi",
     "terok.lib.util.emoji",
@@ -126,32 +142,103 @@ depends_on = [
 # value types they manipulate, the presentation tables, and a snapshot
 # ``Config`` so consumers never need to reach into internal modules.
 # Extending this is a design decision; it should not grow opportunistically.
+#
+# The package is split into focused sub-modules (``terok.lib.api.vault`` /
+# ``gate`` / ``shield`` / ``agents`` / ``clearance`` / ``setup`` /
+# ``task`` / ``project``).  Each sub-module is registered separately so
+# tach tracks its dependency edges; the root ``terok.lib.api`` keeps the
+# cross-cutting ``Config`` snapshot and the shared sandbox types/ANSI
+# helpers that don't fit into a single sub-module.
 [[modules]]
 path = "terok.lib.api"
 layer = "domain"
 depends_on = [
+    "terok.lib.api.agents",
+    "terok.lib.api.clearance",
+    "terok.lib.api.gate",
+    "terok.lib.api.project",
+    "terok.lib.api.setup",
+    "terok.lib.api.shield",
+    "terok.lib.api.task",
+    "terok.lib.api.vault",
+    "terok.lib.core.config",
+    "terok.lib.core.paths",
+    "terok.lib.integrations.sandbox",
+]
+
+[[modules]]
+path = "terok.lib.api.vault"
+layer = "domain"
+depends_on = [
+    "terok.lib.domain.vault",
+    "terok.lib.integrations.sandbox",
+]
+
+[[modules]]
+path = "terok.lib.api.gate"
+layer = "domain"
+depends_on = [
+    "terok.lib.domain.project",
+    "terok.lib.integrations.sandbox",
+]
+
+[[modules]]
+path = "terok.lib.api.shield"
+layer = "domain"
+depends_on = [
+    "terok.lib.integrations.sandbox",
+    "terok.lib.integrations.shield",
+]
+
+[[modules]]
+path = "terok.lib.api.agents"
+layer = "domain"
+depends_on = [
+    "terok.lib.core.images",
     "terok.lib.domain.auth",
+    "terok.lib.integrations.executor",
+    "terok.lib.orchestration.agent_config",
+    "terok.lib.orchestration.image",
+]
+
+[[modules]]
+path = "terok.lib.api.clearance"
+layer = "domain"
+depends_on = [
+    "terok.lib.integrations.clearance",
+]
+
+[[modules]]
+path = "terok.lib.api.setup"
+layer = "domain"
+depends_on = [
+    "terok.lib.integrations.sandbox",
+]
+
+[[modules]]
+path = "terok.lib.api.task"
+layer = "domain"
+depends_on = [
+    "terok.lib.core.task_display",
+    "terok.lib.core.task_state",
+    "terok.lib.domain.task",
+    "terok.lib.domain.task_logs",
+    "terok.lib.orchestration.autopilot",
+    "terok.lib.orchestration.task_runners",
+    "terok.lib.orchestration.tasks",
+]
+
+[[modules]]
+path = "terok.lib.api.project"
+layer = "domain"
+depends_on = [
+    "terok.lib.core.projects",
     "terok.lib.domain.image_cleanup",
     "terok.lib.domain.panic",
     "terok.lib.domain.project",
     "terok.lib.domain.project_state",
     "terok.lib.domain.ssh",
-    "terok.lib.domain.task",
-    "terok.lib.domain.task_logs",
-    "terok.lib.domain.vault",
     "terok.lib.domain.wizards.new_project",
-    "terok.lib.orchestration.agent_config",
-    "terok.lib.orchestration.autopilot",
-    "terok.lib.orchestration.image",
-    "terok.lib.orchestration.task_runners",
-    "terok.lib.orchestration.tasks",
-    "terok.lib.core.config",
-    "terok.lib.core.images",
-    "terok.lib.core.paths",
-    "terok.lib.core.projects",
-    "terok.lib.core.runtime",
-    "terok.lib.core.task_display",
-    "terok.lib.core.task_state",
 ]
 
 # Vault access primitive (shared open/close handshake)
@@ -568,9 +655,9 @@ utility = true
 # ── INTEGRATIONS LAYER ────────────────────────────────────────────
 #
 # Thin re-export adapters that own every import from a sibling wheel
-# (terok-executor, terok-sandbox, terok-clearance).  Outside these
-# modules, importing the sibling wheels is a contract violation —
-# see ``.importlinter``'s ``*-boundary`` contracts.
+# (terok-executor, terok-sandbox, terok-clearance, terok-shield).
+# Outside these modules, importing the sibling wheels is a contract
+# violation — see ``.importlinter``'s ``*-boundary`` contracts.
 
 [[modules]]
 path = "terok.lib.integrations.executor"
@@ -584,6 +671,11 @@ depends_on = []
 
 [[modules]]
 path = "terok.lib.integrations.clearance"
+layer = "integrations"
+depends_on = []
+
+[[modules]]
+path = "terok.lib.integrations.shield"
 layer = "integrations"
 depends_on = []
 

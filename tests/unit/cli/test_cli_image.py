@@ -247,18 +247,16 @@ class TestCmdBuild:
         # accidental "use the raw input string" regression sneak past.
         with (
             patch(
-                "terok.lib.integrations.executor.get_global_image_base_image",
+                "terok.lib.api.agents.get_global_image_base_image",
                 return_value="fedora:43",
             ),
             patch("terok.lib.core.config.get_global_image_agents", return_value="all"),
             patch(
-                "terok.lib.integrations.executor.parse_agent_selection",
+                "terok.lib.api.agents.parse_agent_selection",
                 return_value=sentinel.RESOLVED_AGENTS,
             ) as mock_parse,
-            patch(
-                "terok.lib.integrations.executor.build_base_images", return_value=fake_images
-            ) as mock_build,
-            patch("terok.lib.integrations.executor.build_sidecar_image"),
+            patch("terok.lib.api.agents.build_base_images", return_value=fake_images) as mock_build,
+            patch("terok.lib.api.agents.build_sidecar_image"),
         ):
             _cmd_build(
                 project_id=None,
@@ -287,18 +285,16 @@ class TestCmdBuild:
         fake_images = MagicMock(l0="terok-l0:test", l1="terok-l1-cli:test")
         with (
             patch(
-                "terok.lib.integrations.executor.get_global_image_base_image",
+                "terok.lib.api.agents.get_global_image_base_image",
                 return_value="fedora:43",  # would normally be picked
             ),
             patch("terok.lib.core.config.get_global_image_agents", return_value="all"),
             patch(
-                "terok.lib.integrations.executor.parse_agent_selection",
+                "terok.lib.api.agents.parse_agent_selection",
                 return_value=sentinel.RESOLVED_AGENTS,
             ) as mock_parse,
-            patch(
-                "terok.lib.integrations.executor.build_base_images", return_value=fake_images
-            ) as mock_build,
-            patch("terok.lib.integrations.executor.build_sidecar_image"),
+            patch("terok.lib.api.agents.build_base_images", return_value=fake_images) as mock_build,
+            patch("terok.lib.api.agents.build_sidecar_image"),
         ):
             _cmd_build(
                 project_id=None,
@@ -327,14 +323,14 @@ class TestCmdBuild:
         fake_images = MagicMock(l0="L0", l1="L1")
         with (
             patch(
-                "terok.lib.integrations.executor.get_global_image_base_image",
+                "terok.lib.api.agents.get_global_image_base_image",
                 return_value="ubuntu:24.04",
             ),
             patch("terok.lib.core.config.get_global_image_agents", return_value="all"),
-            patch("terok.lib.integrations.executor.parse_agent_selection", side_effect=lambda v: v),
-            patch("terok.lib.integrations.executor.build_base_images", return_value=fake_images),
+            patch("terok.lib.api.agents.parse_agent_selection", side_effect=lambda v: v),
+            patch("terok.lib.api.agents.build_base_images", return_value=fake_images),
             patch(
-                "terok.lib.integrations.executor.build_sidecar_image",
+                "terok.lib.api.agents.build_sidecar_image",
                 return_value="terok-l1-sidecar:ubuntu-24.04",
             ) as mock_sidecar,
         ):
@@ -366,12 +362,10 @@ class TestCmdBuild:
         with (
             patch("terok.lib.core.projects.load_project", return_value=fake_project),
             patch(
-                "terok.lib.integrations.executor.parse_agent_selection",
+                "terok.lib.api.agents.parse_agent_selection",
                 return_value=sentinel.RESOLVED_AGENTS,
             ) as mock_parse,
-            patch(
-                "terok.lib.integrations.executor.build_base_images", return_value=fake_images
-            ) as mock_build,
+            patch("terok.lib.api.agents.build_base_images", return_value=fake_images) as mock_build,
         ):
             _cmd_build(
                 project_id="myproj",
@@ -398,13 +392,13 @@ class TestCmdBuild:
 
         with (
             patch(
-                "terok.lib.integrations.executor.get_global_image_base_image",
+                "terok.lib.api.agents.get_global_image_base_image",
                 return_value="ubuntu:24.04",
             ),
             patch("terok.lib.core.config.get_global_image_agents", return_value="all"),
-            patch("terok.lib.integrations.executor.parse_agent_selection", side_effect=lambda v: v),
+            patch("terok.lib.api.agents.parse_agent_selection", side_effect=lambda v: v),
             patch(
-                "terok.lib.integrations.executor.build_base_images",
+                "terok.lib.api.agents.build_base_images",
                 side_effect=BuildError("podman missing"),
             ),
         ):

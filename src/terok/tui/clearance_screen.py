@@ -27,7 +27,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
-    from terok.lib.integrations.clearance import Notification
+    from terok.lib.api.clearance import Notification
 
 from rich.style import Style
 from rich.text import Text
@@ -225,7 +225,7 @@ class ClearanceScreen(screen.Screen[None]):
         """Connect to the clearance hub and start the event subscriber."""
         log = self.query_one(_ID_EVENT_LOG, RichLog)
         try:
-            from terok.lib.integrations.clearance import CallbackNotifier, EventSubscriber
+            from terok.lib.api.clearance import CallbackNotifier, EventSubscriber
 
             self._notifier = CallbackNotifier(
                 on_notify=self._on_notify,

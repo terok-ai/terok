@@ -92,7 +92,7 @@ def test_sync_gate_failure_raises_systemexit() -> None:
         mock.patch("terok.lib.api.load_project"),
         mock.patch("terok.lib.api.make_git_gate", return_value=fake_gate),
         # _print_sync_gate_ssh_help short-circuits when the upstream is not SSH.
-        mock.patch("terok.lib.integrations.sandbox.is_ssh_url", return_value=False),
+        mock.patch("terok.lib.api.setup.is_ssh_url", return_value=False),
     ):
         with pytest.raises(SystemExit, match="Gate sync failed"):
             worker_actions.sync_gate("proj")
@@ -105,7 +105,7 @@ def test_gate_install_uses_manager() -> None:
     """``gate_install`` builds a config and installs the manager's units."""
     with (
         mock.patch("terok.lib.api.make_sandbox_config", return_value="CFG"),
-        mock.patch("terok.lib.integrations.sandbox.GateServerManager") as m_mgr,
+        mock.patch("terok.lib.api.gate.GateServerManager") as m_mgr,
     ):
         worker_actions.gate_install()
     m_mgr.assert_called_once_with("CFG")
@@ -114,17 +114,17 @@ def test_gate_install_uses_manager() -> None:
 
 def test_gate_start_and_stop_delegate_to_daemon_controls() -> None:
     """``gate_start`` / ``gate_stop`` call the sandbox daemon controls."""
-    with mock.patch("terok.lib.integrations.sandbox.start_daemon") as m_start:
+    with mock.patch("terok.lib.api.gate.start_daemon") as m_start:
         worker_actions.gate_start()
     m_start.assert_called_once_with()
-    with mock.patch("terok.lib.integrations.sandbox.stop_daemon") as m_stop:
+    with mock.patch("terok.lib.api.gate.stop_daemon") as m_stop:
         worker_actions.gate_stop()
     m_stop.assert_called_once_with()
 
 
 def test_shield_setup_passes_root_flag() -> None:
     """``shield_setup`` forwards the root-scope flag verbatim."""
-    with mock.patch("terok.lib.integrations.sandbox.setup_hooks_direct") as m:
+    with mock.patch("terok.lib.api.setup.setup_hooks_direct") as m:
         worker_actions.shield_setup(True)
         worker_actions.shield_setup(False)
     assert m.call_args_list == [mock.call(root=True), mock.call(root=False)]
@@ -141,7 +141,7 @@ def test_vault_lock_unlinks_session_file_and_stops(tmp_path: Path) -> None:
     cfg.vault_passphrase_file = passphrase_file
     with (
         mock.patch("terok.lib.api.make_sandbox_config", return_value=cfg),
-        mock.patch("terok.lib.integrations.sandbox.stop_vault") as m_stop,
+        mock.patch("terok.lib.api.vault.stop_vault") as m_stop,
     ):
         worker_actions.vault_lock()
     assert not passphrase_file.exists()
@@ -154,7 +154,7 @@ def test_vault_lock_tolerates_missing_session_file(tmp_path: Path) -> None:
     cfg.vault_passphrase_file = tmp_path / "never-created.passphrase"
     with (
         mock.patch("terok.lib.api.make_sandbox_config", return_value=cfg),
-        mock.patch("terok.lib.integrations.sandbox.stop_vault") as m_stop,
+        mock.patch("terok.lib.api.vault.stop_vault") as m_stop,
     ):
         worker_actions.vault_lock()
     m_stop.assert_called_once_with()
@@ -165,7 +165,7 @@ def test_vault_seal_calls_handle_with_key_auto() -> None:
     cfg = mock.Mock()
     with (
         mock.patch("terok.lib.api.make_sandbox_config", return_value=cfg),
-        mock.patch("terok.lib.integrations.sandbox.handle_vault_seal") as m_seal,
+        mock.patch("terok.lib.api.vault.handle_vault_seal") as m_seal,
     ):
         worker_actions.vault_seal()
     m_seal.assert_called_once_with(cfg=cfg, key="auto")
@@ -176,7 +176,7 @@ def test_vault_to_keyring_calls_handle_with_cfg() -> None:
     cfg = mock.Mock()
     with (
         mock.patch("terok.lib.api.make_sandbox_config", return_value=cfg),
-        mock.patch("terok.lib.integrations.sandbox.handle_vault_to_keyring") as m_to_keyring,
+        mock.patch("terok.lib.api.vault.handle_vault_to_keyring") as m_to_keyring,
     ):
         worker_actions.vault_to_keyring()
     m_to_keyring.assert_called_once_with(cfg=cfg)
@@ -191,7 +191,7 @@ def test_selinux_install_policy_runs_sudo_bash() -> None:
 
     with (
         mock.patch(
-            "terok.lib.integrations.sandbox.selinux_install_script",
+            "terok.lib.api.setup.selinux_install_script",
             return_value=Path("/bundled/install_policy.sh"),
         ),
         mock.patch("shutil.which", side_effect=_which),
@@ -231,7 +231,7 @@ def test_selinux_switch_to_tcp_writes_services_mode(tmp_path) -> None:
     user_config = tmp_path / "config.yml"
     with (
         mock.patch("terok.lib.core.config.global_config_path", return_value=user_config),
-        mock.patch("terok.lib.integrations.sandbox.yaml_update_section") as m_update,
+        mock.patch("terok.lib.api.setup.yaml_update_section") as m_update,
     ):
         worker_actions.selinux_switch_to_tcp()
     m_update.assert_called_once_with(user_config, "services", {"mode": "tcp"})
@@ -271,7 +271,7 @@ def test_gate_uninstall_uses_manager() -> None:
     """``gate_uninstall`` removes the gate server's systemd units."""
     with (
         mock.patch("terok.lib.api.make_sandbox_config", return_value="CFG"),
-        mock.patch("terok.lib.integrations.sandbox.GateServerManager") as m_mgr,
+        mock.patch("terok.lib.api.gate.GateServerManager") as m_mgr,
     ):
         worker_actions.gate_uninstall()
     m_mgr.assert_called_once_with("CFG")
@@ -283,8 +283,8 @@ def test_vault_install_generates_routes_then_installs_units() -> None:
     cfg = mock.Mock()
     with (
         mock.patch("terok.lib.api.make_sandbox_config", return_value=cfg),
-        mock.patch("terok.lib.integrations.executor.ensure_vault_routes") as m_routes,
-        mock.patch("terok.lib.integrations.sandbox.VaultManager") as m_mgr,
+        mock.patch("terok.lib.api.agents.ensure_vault_routes") as m_routes,
+        mock.patch("terok.lib.api.vault.VaultManager") as m_mgr,
     ):
         worker_actions.vault_install()
     m_routes.assert_called_once_with(cfg=cfg)
@@ -296,7 +296,7 @@ def test_vault_uninstall_uses_manager() -> None:
     """``vault_uninstall`` removes the vault's systemd units."""
     with (
         mock.patch("terok.lib.api.make_sandbox_config", return_value="CFG"),
-        mock.patch("terok.lib.integrations.sandbox.VaultManager") as m_mgr,
+        mock.patch("terok.lib.api.vault.VaultManager") as m_mgr,
     ):
         worker_actions.vault_uninstall()
     m_mgr.assert_called_once_with("CFG")
@@ -308,8 +308,8 @@ def test_vault_start_generates_routes_then_starts_daemon() -> None:
     cfg = mock.Mock()
     with (
         mock.patch("terok.lib.api.make_sandbox_config", return_value=cfg),
-        mock.patch("terok.lib.integrations.executor.ensure_vault_routes") as m_routes,
-        mock.patch("terok.lib.integrations.sandbox.start_vault") as m_start,
+        mock.patch("terok.lib.api.agents.ensure_vault_routes") as m_routes,
+        mock.patch("terok.lib.api.vault.start_vault") as m_start,
     ):
         worker_actions.vault_start()
     m_routes.assert_called_once_with(cfg=cfg)
@@ -318,7 +318,7 @@ def test_vault_start_generates_routes_then_starts_daemon() -> None:
 
 def test_vault_stop_delegates_to_sandbox() -> None:
     """``vault_stop`` stops the vault daemon."""
-    with mock.patch("terok.lib.integrations.sandbox.stop_vault") as m_stop:
+    with mock.patch("terok.lib.api.vault.stop_vault") as m_stop:
         worker_actions.vault_stop()
     m_stop.assert_called_once_with()
 
@@ -332,7 +332,7 @@ def test_sync_gate_ssh_help_non_ssh_upstream_is_silent(
     """A non-SSH upstream gets no hint — the helper returns early."""
     with (
         mock.patch("terok.lib.api.load_project", return_value=mock.Mock()),
-        mock.patch("terok.lib.integrations.sandbox.is_ssh_url", return_value=False),
+        mock.patch("terok.lib.api.setup.is_ssh_url", return_value=False),
     ):
         worker_actions._print_sync_gate_ssh_help("proj")
     assert capsys.readouterr().out == ""
@@ -353,7 +353,7 @@ def test_sync_gate_ssh_help_ssh_with_key_prints_pubkey(
     """An SSH upstream with a vault key prints the public line to register."""
     with (
         mock.patch("terok.lib.api.load_project", return_value=mock.Mock()),
-        mock.patch("terok.lib.integrations.sandbox.is_ssh_url", return_value=True),
+        mock.patch("terok.lib.api.setup.is_ssh_url", return_value=True),
         mock.patch(
             "terok.tui.worker_actions._lookup_vault_pub_line",
             return_value="ssh-ed25519 AAAA tk-main:proj",
@@ -371,7 +371,7 @@ def test_sync_gate_ssh_help_ssh_without_key_points_at_ssh_init(
     """An SSH upstream with no vault key points the operator at ``ssh-init``."""
     with (
         mock.patch("terok.lib.api.load_project", return_value=mock.Mock()),
-        mock.patch("terok.lib.integrations.sandbox.is_ssh_url", return_value=True),
+        mock.patch("terok.lib.api.setup.is_ssh_url", return_value=True),
         mock.patch("terok.tui.worker_actions._lookup_vault_pub_line", return_value=None),
     ):
         worker_actions._print_sync_gate_ssh_help("proj")
@@ -385,7 +385,7 @@ def test_sync_gate_systemexit_from_sync_is_reraised_with_context() -> None:
     with (
         mock.patch("terok.lib.api.load_project"),
         mock.patch("terok.lib.api.make_git_gate", return_value=fake_gate),
-        mock.patch("terok.lib.integrations.sandbox.is_ssh_url", return_value=False),
+        mock.patch("terok.lib.api.setup.is_ssh_url", return_value=False),
     ):
         with pytest.raises(SystemExit, match="Gate sync failed: auth denied"):
             worker_actions.sync_gate("proj")

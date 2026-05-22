@@ -25,7 +25,7 @@ import inspect
 from collections.abc import Callable, Sequence
 from typing import Any
 
-from terok.lib.integrations.sandbox import CommandDef, CommandTree
+from terok.lib.api import CommandDef, CommandTree
 
 _CFG_PARAM = "cfg"
 

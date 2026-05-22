@@ -31,8 +31,8 @@ import argparse
 import shutil
 import sys
 
-from terok.lib.integrations.executor import AUTH_PROVIDERS
-from terok.lib.integrations.sandbox import bold, red, stage_line, yellow
+from terok.lib.api import bold, red, stage_line, yellow
+from terok.lib.api.agents import AUTH_PROVIDERS
 
 from ...lib.api import (
     build_images,
@@ -144,7 +144,7 @@ def cmd_setup(
     front for a known fleet.  ``family`` overrides package-family
     detection for that build.
     """
-    from terok.lib.integrations.executor import ensure_sandbox_ready
+    from terok.lib.api.agents import ensure_sandbox_ready
 
     print(bold("\nSetting up terok host services\n"))
 
@@ -204,7 +204,7 @@ def _run_image_build(*, base: str, family: str | None) -> bool:
     ``SystemExit`` from deeper code paths (e.g. a missing Dockerfile
     resource) is also absorbed for the same reason.
     """
-    from terok.lib.integrations.executor import BuildError, build_base_images
+    from terok.lib.api.agents import BuildError, build_base_images
 
     with stage_line("Base images (L0/L1)") as s:
         try:

@@ -29,7 +29,7 @@ from textual.containers import Horizontal, Vertical
 from textual.screen import ModalScreen
 from textual.widgets import Button, Label, Static
 
-from terok.lib.integrations.sandbox import SetupVerdict, needs_setup
+from terok.lib.api.setup import SetupVerdict, needs_setup
 
 
 class SetupOutcome(enum.Enum):

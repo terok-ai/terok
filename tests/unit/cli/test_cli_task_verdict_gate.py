@@ -39,7 +39,7 @@ def test_setup_needed_verdicts_all_exit_three(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
     """FIRST_RUN / STALE_AFTER_UPDATE / STAMP_CORRUPT all collapse to exit 3 with a fix hint."""
-    with patch("terok.lib.integrations.sandbox.needs_setup", return_value=verdict):
+    with patch("terok.lib.api.setup.needs_setup", return_value=verdict):
         with pytest.raises(SystemExit) as excinfo:
             _setup_verdict_or_exit()
     assert excinfo.value.code == 3
@@ -55,7 +55,7 @@ def test_downgrade_exits_four_with_named_packages(
     """STALE_AFTER_DOWNGRADE refuses with exit 4, names the offending packages."""
     with (
         patch(
-            "terok.lib.integrations.sandbox.needs_setup",
+            "terok.lib.api.setup.needs_setup",
             return_value=SetupVerdict.STALE_AFTER_DOWNGRADE,
         ),
         patch(
@@ -79,7 +79,7 @@ def test_downgrade_falls_back_to_generic_when_diff_unavailable(
     """When the stamp can't be re-read for diffing, surface a generic refusal — never crash."""
     with (
         patch(
-            "terok.lib.integrations.sandbox.needs_setup",
+            "terok.lib.api.setup.needs_setup",
             return_value=SetupVerdict.STALE_AFTER_DOWNGRADE,
         ),
         patch("terok.cli.commands.task._name_downgraded_packages", return_value=[]),
@@ -92,7 +92,7 @@ def test_downgrade_falls_back_to_generic_when_diff_unavailable(
 
 def test_ok_verdict_returns_silently() -> None:
     """OK is the happy path — no print, no exit, control flows back to the task runner."""
-    with patch("terok.lib.integrations.sandbox.needs_setup", return_value=SetupVerdict.OK):
+    with patch("terok.lib.api.setup.needs_setup", return_value=SetupVerdict.OK):
         assert _setup_verdict_or_exit() is None
 
 

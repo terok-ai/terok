@@ -350,7 +350,7 @@ def _cmd_gate_path(project_id: str) -> None:
 
 def _cmd_gate_sync(args: argparse.Namespace) -> None:
     """Sync the host-side git gate for a project."""
-    from terok.lib.integrations.sandbox import GateAuthNotConfigured
+    from terok.lib.api.gate import GateAuthNotConfigured
 
     project = load_project(args.project_id)
     if not project.gate_enabled:
@@ -396,7 +396,7 @@ def _cmd_presets(project_id: str) -> None:
 
 def _cmd_agents_set(project_id: str, selection: str | None) -> None:
     """Validate *selection* and write it to the project's ``image.agents``."""
-    from terok.lib.integrations.executor import (
+    from terok.lib.api.agents import (
         prompt_agents_selection,
         validate_agent_selection,
     )

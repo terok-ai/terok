@@ -28,7 +28,7 @@ from textual import screen
 from textual.app import ComposeResult
 from textual.widgets import RichLog, Static
 
-from terok.lib.integrations.executor import AgentRunner
+from terok.lib.api.agents import AgentRunner
 
 from .screens import _modal_binding
 

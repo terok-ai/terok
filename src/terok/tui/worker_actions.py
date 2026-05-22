@@ -83,7 +83,7 @@ def auth(provider: str, project_id: str | None) -> None:
 def _lookup_vault_pub_line(scope: str) -> str | None:
     """Return *scope*'s most-recent public key line, or ``None`` if unassigned."""
     from terok.lib.api import vault_db
-    from terok.lib.integrations.sandbox import public_line_of
+    from terok.lib.api.setup import public_line_of
 
     with vault_db() as db:
         records = db.load_ssh_keys_for_scope(scope)
@@ -99,7 +99,7 @@ def _print_sync_gate_ssh_help(project_id: str) -> None:
     and any ``SystemExit`` is left to propagate rather than swallowed.
     """
     from terok.lib.api import load_project
-    from terok.lib.integrations.sandbox import is_ssh_url
+    from terok.lib.api.setup import is_ssh_url
 
     try:
         project = load_project(project_id)
@@ -147,7 +147,7 @@ def sync_gate(project_id: str) -> None:
 def gate_install() -> None:
     """Install the gate server's systemd socket units."""
     from terok.lib.api import make_sandbox_config
-    from terok.lib.integrations.sandbox import GateServerManager
+    from terok.lib.api.gate import GateServerManager
 
     GateServerManager(make_sandbox_config()).install_systemd_units()
 
@@ -155,21 +155,21 @@ def gate_install() -> None:
 def gate_uninstall() -> None:
     """Uninstall the gate server's systemd units."""
     from terok.lib.api import make_sandbox_config
-    from terok.lib.integrations.sandbox import GateServerManager
+    from terok.lib.api.gate import GateServerManager
 
     GateServerManager(make_sandbox_config()).uninstall_systemd_units()
 
 
 def gate_start() -> None:
     """Start the gate server daemon."""
-    from terok.lib.integrations.sandbox import start_daemon
+    from terok.lib.api.gate import start_daemon
 
     start_daemon()
 
 
 def gate_stop() -> None:
     """Stop the gate server daemon."""
-    from terok.lib.integrations.sandbox import stop_daemon
+    from terok.lib.api.gate import stop_daemon
 
     stop_daemon()
 
@@ -179,7 +179,7 @@ def gate_stop() -> None:
 
 def shield_setup(root: bool) -> None:
     """Install shield git hooks — *root* selects the root-scoped install."""
-    from terok.lib.integrations.sandbox import setup_hooks_direct
+    from terok.lib.api.setup import setup_hooks_direct
 
     setup_hooks_direct(root=root)
 
@@ -190,8 +190,8 @@ def shield_setup(root: bool) -> None:
 def vault_install() -> None:
     """Generate vault routes and install its systemd socket units."""
     from terok.lib.api import make_sandbox_config
-    from terok.lib.integrations.executor import ensure_vault_routes
-    from terok.lib.integrations.sandbox import VaultManager
+    from terok.lib.api.agents import ensure_vault_routes
+    from terok.lib.api.vault import VaultManager
 
     cfg = make_sandbox_config()
     ensure_vault_routes(cfg=cfg)
@@ -201,7 +201,7 @@ def vault_install() -> None:
 def vault_uninstall() -> None:
     """Uninstall the vault's systemd units."""
     from terok.lib.api import make_sandbox_config
-    from terok.lib.integrations.sandbox import VaultManager
+    from terok.lib.api.vault import VaultManager
 
     VaultManager(make_sandbox_config()).uninstall_systemd_units()
 
@@ -209,8 +209,8 @@ def vault_uninstall() -> None:
 def vault_start() -> None:
     """Generate vault routes and start the vault daemon."""
     from terok.lib.api import make_sandbox_config
-    from terok.lib.integrations.executor import ensure_vault_routes
-    from terok.lib.integrations.sandbox import start_vault
+    from terok.lib.api.agents import ensure_vault_routes
+    from terok.lib.api.vault import start_vault
 
     ensure_vault_routes(cfg=make_sandbox_config())
     start_vault(cfg=make_sandbox_config())
@@ -218,7 +218,7 @@ def vault_start() -> None:
 
 def vault_stop() -> None:
     """Stop the vault daemon."""
-    from terok.lib.integrations.sandbox import stop_vault
+    from terok.lib.api.vault import stop_vault
 
     stop_vault()
 
@@ -226,7 +226,7 @@ def vault_stop() -> None:
 def vault_lock() -> None:
     """Clear the session-tier passphrase file and stop the vault daemon."""
     from terok.lib.api import make_sandbox_config
-    from terok.lib.integrations.sandbox import stop_vault
+    from terok.lib.api.vault import stop_vault
 
     make_sandbox_config().vault_passphrase_file.unlink(missing_ok=True)
     stop_vault()
@@ -235,7 +235,7 @@ def vault_lock() -> None:
 def vault_seal() -> None:
     """Seal the resolved passphrase into a systemd-creds credential (``--key=auto``)."""
     from terok.lib.api import make_sandbox_config
-    from terok.lib.integrations.sandbox import handle_vault_seal
+    from terok.lib.api.vault import handle_vault_seal
 
     handle_vault_seal(cfg=make_sandbox_config(), key="auto")
 
@@ -243,7 +243,7 @@ def vault_seal() -> None:
 def vault_to_keyring() -> None:
     """Move the resolved passphrase from its current tier into the OS keyring."""
     from terok.lib.api import make_sandbox_config
-    from terok.lib.integrations.sandbox import handle_vault_to_keyring
+    from terok.lib.api.vault import handle_vault_to_keyring
 
     handle_vault_to_keyring(cfg=make_sandbox_config())
 
@@ -265,7 +265,7 @@ def selinux_install_policy() -> None:
     import shutil
     import subprocess  # noqa: S404 — running sudo to load a bundled SELinux policy is the whole point of this verb  # nosec B404
 
-    from terok.lib.integrations.sandbox import selinux_install_script
+    from terok.lib.api.setup import selinux_install_script
 
     sudo = shutil.which("sudo")
     bash = shutil.which("bash")
@@ -291,8 +291,8 @@ def selinux_switch_to_tcp() -> None:
     The new value takes effect on the next setup run — which the
     caller launches immediately after this returns.
     """
+    from terok.lib.api.setup import yaml_update_section
     from terok.lib.core.config import global_config_path
-    from terok.lib.integrations.sandbox import yaml_update_section
 
     user_config = global_config_path()
     user_config.parent.mkdir(parents=True, exist_ok=True)

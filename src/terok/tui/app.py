@@ -47,7 +47,7 @@ def _vault_migration_warning() -> str | None:
     crash on startup because of a diagnostic check).
     """
     try:
-        from terok.lib.integrations.sandbox import namespace_state_dir
+        from terok.lib.api.setup import namespace_state_dir
 
         if namespace_state_dir("credentials").is_dir():
             return (
@@ -70,20 +70,19 @@ if _HAS_TEXTUAL:
     from textual.widgets import Footer, Header
     from textual.worker import Worker, WorkerState
 
-    from terok.lib.integrations.sandbox import (
+    from terok.lib.api import SandboxConfig
+    from terok.lib.api.gate import GateServerStatus, GateStalenessInfo, get_server_status
+    from terok.lib.api.setup import (
         EnvironmentCheck,
-        GateServerStatus,
-        GateStalenessInfo,
-        SandboxConfig,
         SetupVerdict,
-        VaultStatus,
         check_environment as _shield_check_environment,
-        get_server_status,
-        get_vault_status,
         needs_setup,
-        recovery_status,
-        state as _shield_state,
     )
+    from terok.lib.api.shield import (
+        recovery_status,
+        shield_state as _shield_state,
+    )
+    from terok.lib.api.vault import VaultStatus, get_vault_status
 
     from ..lib.api import (
         BrokenProject,
@@ -559,7 +558,7 @@ if _HAS_TEXTUAL:
             so the user can pick Install / Switch-to-TCP from a modal
             instead of having to drop to a shell.
             """
-            from terok.lib.integrations.sandbox import EXIT_MANUAL_STEP_NEEDED
+            from terok.lib.api.setup import EXIT_MANUAL_STEP_NEEDED
 
             entry = self.dispatch_console_command(["terok", "setup"], title="Running terok setup")
             await self.push_screen(WorkerLogScreen(entry))
@@ -1608,7 +1607,7 @@ if _HAS_TEXTUAL:
             ``~/.config/terok/config.yml``.  Cancel dismisses without
             touching the file.
             """
-            from terok.lib.integrations.executor import get_global_image_agents
+            from terok.lib.api.agents import get_global_image_agents
 
             from .agents_screen import AgentsSelectScreen
 
@@ -1625,7 +1624,7 @@ if _HAS_TEXTUAL:
             """Write the chosen selection to the global config; ``None`` = no change."""
             if result is None:
                 return
-            from terok.lib.integrations.executor import set_global_image_agents
+            from terok.lib.api.agents import set_global_image_agents
 
             path = set_global_image_agents(result)
             self.notify(

@@ -10,7 +10,7 @@ import json
 import sys
 from typing import Any
 
-from terok.lib.integrations.executor import PROVIDER_NAMES as _PROVIDER_NAMES
+from terok.lib.api.agents import PROVIDER_NAMES as _PROVIDER_NAMES
 
 from ...lib.api import (
     HeadlessRunRequest,
@@ -426,13 +426,8 @@ def _setup_verdict_or_exit() -> None:
     invocation — one ``Path.is_file``, one JSON decode, a handful
     of ``importlib.metadata.version`` lookups.
     """
-    from terok.lib.integrations.sandbox import (
-        SetupVerdict,
-        installed_versions,
-        needs_setup,
-        read_stamp,
-        stamp_path,
-    )
+    from terok.lib.api.setup import SetupVerdict, needs_setup
+    from terok.lib.api.shield import installed_versions, read_stamp, stamp_path
 
     verdict = needs_setup()
     if verdict is SetupVerdict.OK:

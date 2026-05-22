@@ -15,7 +15,7 @@ if TYPE_CHECKING:
     from textual.app import App
     from textual.timer import Timer
 
-    from terok.lib.integrations.sandbox import GateStalenessInfo
+    from terok.lib.api.gate import GateStalenessInfo
 
     from ..lib.api import TaskMeta
 
@@ -135,7 +135,7 @@ class PollingMixin(_MixinBase):
 
     def _poll_gate_server(self) -> None:
         """Check gate server status in a background worker."""
-        from terok.lib.integrations.sandbox import get_server_status
+        from terok.lib.api.gate import get_server_status
 
         self.run_worker(
             get_server_status,

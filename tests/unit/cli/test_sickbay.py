@@ -504,9 +504,7 @@ class TestCheckSelinuxPolicy:
     @staticmethod
     def _run(result: SelinuxCheckResult) -> tuple[str, str, str]:
         """Execute ``_check_selinux_policy`` with ``check_selinux_status`` mocked."""
-        with unittest.mock.patch(
-            "terok.lib.integrations.sandbox.check_selinux_status", return_value=result
-        ):
+        with unittest.mock.patch("terok.lib.api.setup.check_selinux_status", return_value=result):
             return _check_selinux_policy()
 
     def test_not_needed_in_tcp_mode(self) -> None:
@@ -575,9 +573,7 @@ class TestCheckVaultMigration:
         def fake_ns(name: str) -> Path:
             return tmp_path / name  # neither exists
 
-        with unittest.mock.patch(
-            "terok.lib.integrations.sandbox.namespace_state_dir", side_effect=fake_ns
-        ):
+        with unittest.mock.patch("terok.lib.api.setup.namespace_state_dir", side_effect=fake_ns):
             sev, label, detail = _check_vault_migration()
         assert sev == "ok"
         assert label == "Vault migration"
@@ -592,9 +588,7 @@ class TestCheckVaultMigration:
         def fake_ns(name: str) -> Path:
             return legacy if name == "credentials" else vault
 
-        with unittest.mock.patch(
-            "terok.lib.integrations.sandbox.namespace_state_dir", side_effect=fake_ns
-        ):
+        with unittest.mock.patch("terok.lib.api.setup.namespace_state_dir", side_effect=fake_ns):
             sev, _, detail = _check_vault_migration()
         assert sev == "warn"
         assert str(legacy) in detail
@@ -610,9 +604,7 @@ class TestCheckVaultMigration:
         def fake_ns(name: str) -> Path:
             return legacy if name == "credentials" else vault
 
-        with unittest.mock.patch(
-            "terok.lib.integrations.sandbox.namespace_state_dir", side_effect=fake_ns
-        ):
+        with unittest.mock.patch("terok.lib.api.setup.namespace_state_dir", side_effect=fake_ns):
             sev, _, detail = _check_vault_migration()
         assert sev == "info"
         assert "still present" in detail
@@ -621,7 +613,7 @@ class TestCheckVaultMigration:
     def test_warn_when_probe_raises(self) -> None:
         """An exception inside the probe is surfaced as a warn result."""
         with unittest.mock.patch(
-            "terok.lib.integrations.sandbox.namespace_state_dir",
+            "terok.lib.api.setup.namespace_state_dir",
             side_effect=RuntimeError("boom"),
         ):
             sev, label, detail = _check_vault_migration()
@@ -925,7 +917,7 @@ class TestCheckDefaultAgents:
     def test_warn_when_unset(self) -> None:
         """No global default → warn with a pointer at the new setter."""
         with unittest.mock.patch(
-            "terok.lib.integrations.executor.get_global_image_agents",
+            "terok.lib.api.agents.get_global_image_agents",
             return_value=None,
         ):
             sev, label, detail = _check_default_agents()
@@ -936,7 +928,7 @@ class TestCheckDefaultAgents:
     def test_ok_when_set(self) -> None:
         """Any non-empty value → ok with the configured selection echoed back."""
         with unittest.mock.patch(
-            "terok.lib.integrations.executor.get_global_image_agents",
+            "terok.lib.api.agents.get_global_image_agents",
             return_value="all,-vibe",
         ):
             sev, label, detail = _check_default_agents()
@@ -947,7 +939,7 @@ class TestCheckDefaultAgents:
     def test_warn_when_probe_raises(self) -> None:
         """A failing probe is surfaced as a warn — never crashes sickbay."""
         with unittest.mock.patch(
-            "terok.lib.integrations.executor.get_global_image_agents",
+            "terok.lib.api.agents.get_global_image_agents",
             side_effect=RuntimeError("boom"),
         ):
             sev, label, detail = _check_default_agents()
@@ -977,7 +969,7 @@ class TestCheckRecoveryAcknowledged:
     def test_ok_when_marker_present(self) -> None:
         """Acknowledged → ``ok`` with a brief detail."""
         with unittest.mock.patch(
-            "terok.lib.integrations.sandbox.recovery_status",
+            "terok.lib.api.shield.recovery_status",
             return_value=self._status(acknowledged=True, source="keyring"),
         ):
             sev, label, detail = _check_recovery_acknowledged()
@@ -988,7 +980,7 @@ class TestCheckRecoveryAcknowledged:
     def test_warn_when_marker_missing_durable_tier(self) -> None:
         """Unacked + durable tier → ``warn`` naming both remediation verbs."""
         with unittest.mock.patch(
-            "terok.lib.integrations.sandbox.recovery_status",
+            "terok.lib.api.shield.recovery_status",
             return_value=self._status(acknowledged=False, source="keyring"),
         ):
             sev, label, detail = _check_recovery_acknowledged()
@@ -1003,7 +995,7 @@ class TestCheckRecoveryAcknowledged:
     def test_error_when_marker_missing_session_only(self) -> None:
         """Unacked + session-file source → ``error`` with the reboot-loss wording."""
         with unittest.mock.patch(
-            "terok.lib.integrations.sandbox.recovery_status",
+            "terok.lib.api.shield.recovery_status",
             return_value=self._status(acknowledged=False, source="session-file"),
         ):
             sev, label, detail = _check_recovery_acknowledged()
@@ -1020,7 +1012,7 @@ class TestCheckRecoveryAcknowledged:
     def test_warn_when_probe_raises(self) -> None:
         """A failing probe degrades to a warn — never crashes sickbay."""
         with unittest.mock.patch(
-            "terok.lib.integrations.sandbox.recovery_status",
+            "terok.lib.api.shield.recovery_status",
             side_effect=RuntimeError("boom"),
         ):
             sev, label, detail = _check_recovery_acknowledged()

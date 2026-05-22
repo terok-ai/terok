@@ -425,7 +425,7 @@ class ProjectActionsMixin(_MixinBase):
             return
         pid = self.current_project_id
 
-        from terok.lib.integrations.executor import get_provider, resolve_instructions
+        from terok.lib.api.agents import get_provider, resolve_instructions
 
         from ..lib.api import resolve_agent_config
         from .text_screens import TextViewScreen
@@ -451,7 +451,7 @@ class ProjectActionsMixin(_MixinBase):
 
     async def _action_show_default_instructions(self) -> None:
         """Display the bundled default instructions (read-only)."""
-        from terok.lib.integrations.executor import bundled_default_instructions
+        from terok.lib.api.agents import bundled_default_instructions
 
         from .text_screens import TextViewScreen
 
@@ -585,7 +585,7 @@ class ProjectActionsMixin(_MixinBase):
         # global config should be swallowed.  The wizard already
         # succeeded; a probe failure must not look like a failed run.
         try:
-            from terok.lib.integrations.executor import get_global_image_agents
+            from terok.lib.api.agents import get_global_image_agents
 
             if get_global_image_agents():
                 return
@@ -819,12 +819,9 @@ class ProjectActionsMixin(_MixinBase):
         without a resolvable passphrase, and the unlock modal is the
         right next step.
         """
-        from terok.lib.integrations.sandbox import (
-            NoPassphraseError,
-            SandboxConfig,
-            WrongPassphraseError,
-            is_recovery_acknowledged,
-        )
+        from terok.lib.api import SandboxConfig
+        from terok.lib.api.shield import is_recovery_acknowledged
+        from terok.lib.api.vault import NoPassphraseError, WrongPassphraseError
 
         from .screens import VaultRevealModal
 
@@ -866,10 +863,8 @@ class ProjectActionsMixin(_MixinBase):
         """
         if outcome is not True:
             return
-        from terok.lib.integrations.sandbox import (
-            SandboxConfig,
-            acknowledge_recovery,
-        )
+        from terok.lib.api import SandboxConfig
+        from terok.lib.api.shield import acknowledge_recovery
 
         if acknowledge_recovery(SandboxConfig()):
             self.notify(
@@ -895,10 +890,8 @@ class ProjectActionsMixin(_MixinBase):
         path that returns False from
         [`acknowledge_recovery`][terok_sandbox.acknowledge_recovery]).
         """
-        from terok.lib.integrations.sandbox import (
-            SandboxConfig,
-            acknowledge_recovery,
-        )
+        from terok.lib.api import SandboxConfig
+        from terok.lib.api.shield import acknowledge_recovery
 
         cfg = SandboxConfig()
         if acknowledge_recovery(cfg):

@@ -13,7 +13,7 @@ argcomplete integration, and top-level dispatch loop.
 import argparse
 import sys
 
-from terok.lib.integrations.sandbox import NoPassphraseError as _NoPassphraseError
+from terok.lib.api.vault import NoPassphraseError as _NoPassphraseError
 
 from ..lib.core.config import set_experimental
 from ..lib.core.version import format_version_string, get_version_info
@@ -253,8 +253,8 @@ def _build_wired_tree() -> CommandTree:
       same [`CommandDef`][terok_sandbox.commands.CommandDef] instances
       living under ``sandbox`` so terok's cfg wrap propagates uniformly.
     """
-    from terok.lib.integrations.clearance import COMMANDS as CLEARANCE_COMMANDS
-    from terok.lib.integrations.executor import COMMANDS as EXECUTOR_COMMANDS
+    from terok.lib.api.agents import EXECUTOR_COMMANDS
+    from terok.lib.api.clearance import CLEARANCE_COMMANDS
 
     from ..lib.core.config import make_sandbox_config
 

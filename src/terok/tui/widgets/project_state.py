@@ -11,7 +11,8 @@ from rich.style import Style
 from rich.text import Text
 from textual.widgets import Static
 
-from terok.lib.integrations.sandbox import EnvironmentCheck, GateServerStatus, GateStalenessInfo
+from terok.lib.api.gate import GateServerStatus, GateStalenessInfo
+from terok.lib.api.setup import EnvironmentCheck
 
 from ...lib.api import (
     GPU_DISPLAY,

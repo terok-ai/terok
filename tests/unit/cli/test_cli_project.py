@@ -509,11 +509,11 @@ def test_agents_set_writes_after_validation(capsys: pytest.CaptureFixture[str]) 
     target = Path("/tmp/terok-testing/p1/project.yml")
     with (
         patch(
-            "terok.lib.integrations.executor.get_roster",
+            "terok.lib.api.agents.get_roster",
             return_value=_fake_roster_for_agents(),
         ),
         patch(
-            "terok.lib.integrations.executor.parse_agent_selection",
+            "terok.lib.api.agents.parse_agent_selection",
             side_effect=lambda raw: raw,
         ),
         patch(
@@ -537,9 +537,9 @@ def test_agents_set_rejects_unknown_agent(capsys: pytest.CaptureFixture[str]) ->
         ValueError("Unknown roster entries: foo")
     )
     with (
-        patch("terok.lib.integrations.executor.get_roster", return_value=roster),
+        patch("terok.lib.api.agents.get_roster", return_value=roster),
         patch(
-            "terok.lib.integrations.executor.parse_agent_selection",
+            "terok.lib.api.agents.parse_agent_selection",
             side_effect=lambda raw: raw,
         ),
         patch("terok.cli.commands.project.set_project_image_agents") as write_mock,
@@ -558,11 +558,11 @@ def test_agents_set_prompts_when_no_selection(monkeypatch: pytest.MonkeyPatch) -
     monkeypatch.setattr("builtins.input", lambda _prompt="": "")
     with (
         patch(
-            "terok.lib.integrations.executor.get_roster",
+            "terok.lib.api.agents.get_roster",
             return_value=_fake_roster_for_agents(),
         ),
         patch(
-            "terok.lib.integrations.executor.parse_agent_selection",
+            "terok.lib.api.agents.parse_agent_selection",
             side_effect=lambda raw: raw,
         ),
         patch(

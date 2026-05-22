@@ -11,8 +11,8 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-from terok.lib.integrations.executor import parse_md_agent
-from terok.lib.integrations.sandbox import down as shield_down, up as shield_up
+from terok.lib.api.agents import parse_md_agent
+from terok.lib.api.shield import shield_down, shield_up
 
 from ..lib.api import (
     HeadlessRunRequest,
@@ -325,7 +325,7 @@ class TaskActionsMixin(_MixinBase):
         if agent == "bash":
             cmd = base_cmd
         else:
-            from terok.lib.integrations.executor import AGENT_PROVIDERS
+            from terok.lib.api.agents import AGENT_PROVIDERS
 
             provider = AGENT_PROVIDERS.get(agent)
             if not provider:
@@ -480,7 +480,7 @@ class TaskActionsMixin(_MixinBase):
         agent_name, selected_subagents = result
 
         # Only pass sub-agents if the agent supports them
-        from terok.lib.integrations.executor import AGENT_PROVIDERS
+        from terok.lib.api.agents import AGENT_PROVIDERS
 
         provider = AGENT_PROVIDERS.get(agent_name)
         agents = selected_subagents if provider and provider.supports_agents_json else None

@@ -117,22 +117,16 @@ def test_shield_screen_fetch_status_recovers_from_env_and_status_failures() -> N
     ``_fetch_status`` is a ``@staticmethod`` reachable without a mounted
     screen instance.
     """
-    import sys
+    raising_env = MagicMock(side_effect=RuntimeError("probe failed"))
+    raising_status = MagicMock(side_effect=RuntimeError("status failed"))
 
-    # Strip any cached version so the patched terok_sandbox stub takes
-    # effect at the import inside `_fetch_status`.
-    sandbox_mod = sys.modules.get("terok.lib.integrations.sandbox")
-    raising = MagicMock()
-    raising.check_environment.side_effect = RuntimeError("probe failed")
-    raising.status.side_effect = RuntimeError("status failed")
-
-    # ``_fetch_status`` does a local ``from terok.lib.integrations.sandbox
-    # import …`` so we patch attributes on the live module rather than
-    # the import path.
-    assert sandbox_mod is not None
+    # ``_fetch_status`` does function-local ``from terok.lib.api.setup
+    # import check_environment`` / ``from terok.lib.api.shield import
+    # shield_status`` so we patch attributes on the live api sub-modules
+    # the function will look up against.
     with (
-        patch.object(sandbox_mod, "check_environment", raising.check_environment),
-        patch.object(sandbox_mod, "status", raising.status),
+        patch("terok.lib.api.setup.check_environment", raising_env),
+        patch("terok.lib.api.shield.shield_status", raising_status),
     ):
         screens_mod, _widgets_mod = import_screens()
         env, info = screens_mod.ShieldScreen._fetch_status()

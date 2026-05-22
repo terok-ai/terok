@@ -163,7 +163,7 @@ def _cmd_build(
     from the project's config (CLI overrides still win for any of the three).
     Without it, falls back to the user's global ``image.*`` defaults.
     """
-    from terok.lib.integrations.executor import (
+    from terok.lib.api.agents import (
         DEFAULT_BASE_IMAGE,
         BuildError,
         build_base_images,
