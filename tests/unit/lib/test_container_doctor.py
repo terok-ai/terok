@@ -171,9 +171,9 @@ class TestRunContainerDoctor:
     def test_returns_warn_for_never_started(
         self, mock_meta_dir: MagicMock, mock_load: MagicMock, tmp_path: Path
     ) -> None:
-        (tmp_path / "42.yml").write_text("name: test\n")
+        (tmp_path / "42_meta.yml").write_text("name: test\n")
         mock_meta_dir.return_value = tmp_path
-        mock_load.return_value = ({}, tmp_path / "42.yml")
+        mock_load.return_value = ({}, tmp_path / "42_meta.yml")
         results = run_container_doctor("proj", "42")
         assert results[0][0] == "warn"
         assert "never started" in results[0][2]
@@ -187,9 +187,9 @@ class TestRunContainerDoctor:
         tmp_path: Path,
         mock_runtime,
     ) -> None:
-        (tmp_path / "42.yml").write_text("mode: cli\nname: test\n")
+        (tmp_path / "42_meta.yml").write_text("mode: cli\nname: test\n")
         mock_meta_dir.return_value = tmp_path
-        mock_load.return_value = ({"mode": "cli"}, tmp_path / "42.yml")
+        mock_load.return_value = ({"mode": "cli"}, tmp_path / "42_meta.yml")
         mock_runtime.container.return_value.state = "exited"
         results = run_container_doctor("proj", "42")
         assert results[0][0] == "info"
@@ -225,9 +225,9 @@ class TestRunContainerDoctor:
         mock_runtime,
     ) -> None:
         # Arrange: task metadata exists and container is running
-        (tmp_path / "42.yml").write_text("mode: cli\n")
+        (tmp_path / "42_meta.yml").write_text("mode: cli\n")
         mock_meta_dir.return_value = tmp_path
-        mock_load_meta.return_value = ({"mode": "cli"}, tmp_path / "42.yml")
+        mock_load_meta.return_value = ({"mode": "cli"}, tmp_path / "42_meta.yml")
         mock_runtime.container.return_value.state = "running"
         mock_sandbox_cfg.return_value = MagicMock()
         mock_broker_port.return_value = 8080
@@ -290,9 +290,9 @@ class TestRunContainerDoctor:
         mock_runtime,
     ) -> None:
         # Arrange
-        (tmp_path / "42.yml").write_text("mode: cli\n")
+        (tmp_path / "42_meta.yml").write_text("mode: cli\n")
         mock_meta_dir.return_value = tmp_path
-        mock_load_meta.return_value = ({"mode": "cli"}, tmp_path / "42.yml")
+        mock_load_meta.return_value = ({"mode": "cli"}, tmp_path / "42_meta.yml")
         mock_runtime.container.return_value.state = "running"
         mock_sandbox_cfg.return_value = MagicMock()
         mock_broker_port.return_value = 8080
@@ -365,9 +365,9 @@ class TestRunContainerDoctor:
         mock_runtime,
     ) -> None:
         # Arrange
-        (tmp_path / "42.yml").write_text("mode: cli\n")
+        (tmp_path / "42_meta.yml").write_text("mode: cli\n")
         mock_meta_dir.return_value = tmp_path
-        mock_load_meta.return_value = ({"mode": "cli"}, tmp_path / "42.yml")
+        mock_load_meta.return_value = ({"mode": "cli"}, tmp_path / "42_meta.yml")
         mock_runtime.container.return_value.state = "running"
         mock_sandbox_cfg.return_value = MagicMock()
         mock_broker_port.return_value = 8080
@@ -481,7 +481,7 @@ class TestStreamingGrouping:
         )
         from terok.lib.util.check_reporter import CheckReporter
 
-        (tmp_path / "42.yml").write_text("mode: cli\n")
+        (tmp_path / "42_meta.yml").write_text("mode: cli\n")
 
         net_a = DoctorCheck(
             category="network",
@@ -525,7 +525,7 @@ class TestStreamingGrouping:
             ),
             patch(
                 "terok.lib.orchestration.container_doctor.load_task_meta",
-                return_value=({"mode": "cli"}, tmp_path / "42.yml"),
+                return_value=({"mode": "cli"}, tmp_path / "42_meta.yml"),
             ),
             patch(
                 "terok.lib.orchestration.container_doctor.make_sandbox_config",
@@ -577,7 +577,7 @@ class TestStreamingGrouping:
             run_container_doctor,
         )
 
-        (tmp_path / "42.yml").write_text("mode: cli\n")
+        (tmp_path / "42_meta.yml").write_text("mode: cli\n")
 
         only_check = DoctorCheck(
             category="shield",
@@ -605,7 +605,7 @@ class TestStreamingGrouping:
             ),
             patch(
                 "terok.lib.orchestration.container_doctor.load_task_meta",
-                return_value=({"mode": "cli"}, tmp_path / "42.yml"),
+                return_value=({"mode": "cli"}, tmp_path / "42_meta.yml"),
             ),
             patch(
                 "terok.lib.orchestration.container_doctor.make_sandbox_config",

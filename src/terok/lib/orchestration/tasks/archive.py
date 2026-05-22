@@ -10,8 +10,7 @@ import json
 from dataclasses import dataclass
 from pathlib import Path
 
-from ...util.yaml import load as _yaml_load
-from .meta import _to_plain, tasks_archive_dir
+from .meta import tasks_archive_dir
 
 
 @dataclass
@@ -27,26 +26,14 @@ class ArchivedTask:
 
 
 def _load_archived_task_meta(entry: Path) -> dict | None:
-    """Load an archived task's snapshot — JSON or legacy YAML — or ``None`` on miss.
-
-    Older archives wrote ``task.yml``; new ones write ``task.json``.  Both
-    are tolerated indefinitely on the read path because archives are
-    immutable once written and there's no operator action that would
-    rewrite them.
-    """
+    """Load an archived task's ``task.json`` snapshot, or ``None`` on miss/error."""
     json_path = entry / "task.json"
-    if json_path.is_file():
-        try:
-            text = json_path.read_text(encoding="utf-8")
-            return json.loads(text) if text.strip() else {}
-        except (OSError, ValueError):
-            return None
-    yml_path = entry / "task.yml"
-    if not yml_path.is_file():
+    if not json_path.is_file():
         return None
     try:
-        return _to_plain(_yaml_load(yml_path.read_text(encoding="utf-8")) or {})
-    except Exception:
+        text = json_path.read_text(encoding="utf-8")
+        return json.loads(text) if text.strip() else {}
+    except (OSError, ValueError):
         return None
 
 

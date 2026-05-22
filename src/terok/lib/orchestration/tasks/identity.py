@@ -6,14 +6,12 @@
 Task IDs are Crockford-base32 with a structural signature: a 16-letter
 non-hex head + a digit + three full-alphabet chars.  The shape makes a
 terok task ID unmistakable from a podman container ID or git SHA at a
-glance.  Pre-0.8.0 hex IDs are still accepted (with a deprecation
-warning) on the read path.
+glance.
 """
 
 import re
 import secrets
 import string
-import warnings
 
 from .meta import iter_task_ids, task_exists, tasks_meta_dir
 
@@ -44,12 +42,6 @@ Crockford chars rather than 5.
 
 _TASK_ID_PREFIX_RE = re.compile(r"[ghjkmnp-tv-z](?:[0-9][0-9a-hjkmnp-tv-z]{0,3})?")
 """Prefix-match regex for a current-format task ID (1 to `_TASK_ID_LEN` chars)."""
-
-_LEGACY_HEX_TASK_ID_PREFIX_RE = re.compile(r"[0-9a-f]{1,8}")
-"""Prefix-match regex for pre-0.8.0 hex task IDs.  Deprecated in 0.8.0; removal in 0.9.0."""
-
-_LEGACY_HEX_TASK_ID_FULL_RE = re.compile(r"[0-9a-f]{8}")
-"""Full-form validator for pre-0.8.0 hex task IDs.  Deprecated; removal in 0.9.0."""
 
 _TASK_ID_AMBIGUOUS_LETTERS = "ilo"
 """Crockford's visually ambiguous letters: ``I``/``L`` → ``1`` and ``O`` → ``0``.
@@ -83,10 +75,8 @@ def normalize_task_id_input(raw: str) -> str:
 
 
 def is_task_id(text: str) -> bool:
-    """Return True if *text* is a well-formed task ID (current or legacy)."""
-    return bool(
-        _TASK_ID_CROCKFORD_4_5_RE.fullmatch(text) or _LEGACY_HEX_TASK_ID_FULL_RE.fullmatch(text)
-    )
+    """Return True if *text* is a well-formed task ID."""
+    return bool(_TASK_ID_CROCKFORD_4_5_RE.fullmatch(text))
 
 
 def _gen_task_id() -> str:
@@ -107,23 +97,8 @@ def _generate_unique_id(existing: set[str]) -> str:
 
 
 def _validate_task_id_prefix(prefix: str) -> None:
-    """Validate *prefix* and warn on the deprecated legacy-hex format.
-
-    Raises ``SystemExit`` if *prefix* matches neither the current
-    Crockford-4.5 format nor the legacy pre-0.8.0 hex format.  Dispatch
-    is unambiguous: Crockford IDs always start with ``[g-z]`` minus
-    ``i l o u``, which is disjoint from hex.
-    """
+    """Raise ``SystemExit`` if *prefix* isn't a valid Crockford-4.5 task-ID prefix."""
     if _TASK_ID_PREFIX_RE.fullmatch(prefix):
-        return
-    if _LEGACY_HEX_TASK_ID_PREFIX_RE.fullmatch(prefix):
-        warnings.warn(
-            f"Task ID {prefix!r} uses the pre-0.8.0 hex format; "
-            "support will be removed in 0.9.0 — recreate the task to "
-            "adopt the current format.",
-            DeprecationWarning,
-            stacklevel=3,
-        )
         return
     raise SystemExit(
         f"Invalid task ID prefix {prefix!r}; "

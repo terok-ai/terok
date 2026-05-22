@@ -205,7 +205,7 @@ class TestCheckTaskHook:
             mock_hook.assert_called_once()
 
     def test_bad_metadata_returns_warn(self, task_meta_dir: Path) -> None:
-        bad_path = task_meta_dir / "g1abc.yml"
+        bad_path = task_meta_dir / "g1abc_meta.yml"
         bad_path.write_bytes(b"\x80\x81\x82")  # invalid UTF-8
         project = unittest.mock.MagicMock()
         with unittest.mock.patch(
@@ -219,7 +219,7 @@ class TestCheckTaskHook:
 
 class TestReconcilePostStop:
     def test_success(self, tmp_path: Path) -> None:
-        meta_path = tmp_path / "g1abc.yml"
+        meta_path = tmp_path / "g1abc_meta.yml"
         meta_path.write_text(yaml_dump({"mode": "cli"}))
         project = unittest.mock.MagicMock()
         project.hook_post_stop = "echo done"
@@ -231,7 +231,7 @@ class TestReconcilePostStop:
             assert result[0] == "ok"
 
     def test_failure(self, tmp_path: Path) -> None:
-        meta_path = tmp_path / "g1abc.yml"
+        meta_path = tmp_path / "g1abc_meta.yml"
         meta_path.write_text(yaml_dump({"mode": "cli"}))
         project = unittest.mock.MagicMock()
         project.hook_post_stop = "exit 1"
@@ -652,7 +652,7 @@ class TestCheckTaskShieldAnnotation:
         """Bad metadata → skipped silently (_check_task_hook owns the warn)."""
         from terok.cli.commands.sickbay import _check_task_shield_annotation
 
-        (tmp_path / "g1abc.yml").write_bytes(b"\x80\x81")  # invalid UTF-8
+        (tmp_path / "g1abc_meta.yml").write_bytes(b"\x80\x81")  # invalid UTF-8
         project = self._project(tmp_path)
         with unittest.mock.patch(
             "terok.cli.commands.sickbay.tasks_meta_dir", return_value=tmp_path

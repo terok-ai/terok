@@ -2220,8 +2220,8 @@ def render_vault_status(status: VaultStatus | None) -> Text:
 
     # Two orthogonal axes, two lines: ``Activation:`` (lifecycle —
     # systemd / daemon / none) vs ``Transport:`` (wire — tcp / socket).
-    # The legacy single ``Mode:`` overloaded both onto one label and
-    # operators consistently read it as transport.
+    # Splitting them keeps operators from confusing lifecycle state
+    # with the transport their containers actually ride.
     lines: list[Text] = [
         Text.assemble("Activation:  ", mode_s),
         Text(f"Transport:   {transport or '(not configured)'}"),

@@ -315,7 +315,7 @@ def _remove_workspace(workspace: Path, warnings: list[str]) -> None:
 
 
 def _remove_meta_files(paths: tuple[Path, ...], warnings: list[str]) -> None:
-    """Unlink the on-disk meta-file pair plus any legacy single-file remnants.
+    """Unlink the on-disk meta-file pair.
 
     Each path is unlinked independently so a failure on one (e.g. a
     permission error) still lets the rest be cleaned up.
@@ -366,11 +366,6 @@ def _task_delete(project: ProjectConfig, task_id: str) -> TaskDeleteResult:
     meta_dir = tasks_meta_dir(project.id)
     dossier_file = dossier_path(meta_dir, task_id)
     meta_file = meta_path(meta_dir, task_id)
-    # Pre-self-describing layout (`<id>.json` / `<id>.yml`) — clean too,
-    # in case the task was created before the rename and never since
-    # touched (no read = no migration).
-    legacy_json = meta_dir / f"{task_id}.json"
-    legacy_yml = meta_dir / f"{task_id}.yml"
     _log_debug(
         f"task_delete: workspace={workspace} dossier_file={dossier_file} meta_file={meta_file}"
     )
@@ -406,7 +401,7 @@ def _task_delete(project: ProjectConfig, task_id: str) -> TaskDeleteResult:
         )
 
     _remove_workspace(workspace, warnings)
-    _remove_meta_files((dossier_file, meta_file, legacy_json, legacy_yml), warnings)
+    _remove_meta_files((dossier_file, meta_file), warnings)
     _release_task_web_port(project.id, task_id, containers_removed, warnings)
 
     _log_debug("task_delete: finished")
