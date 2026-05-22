@@ -1319,11 +1319,9 @@ if _HAS_TEXTUAL:
                 if panic_result.total_running > 0:
                     await self.push_screen(
                         ConfirmDestructiveScreen(
-                            "Resource access has been cut.\n\n"
-                            "Also stop all containers?\n"
-                            "(This may be slow on some platforms.)",
-                            title="Stop Containers?",
-                            confirm_label="Stop",
+                            "Resource access has been cut.\n\nAlso kill all containers?",
+                            title="Kill Containers?",
+                            confirm_label="Kill",
                         ),
                         self._on_panic_stop_confirmed,
                     )
@@ -1336,11 +1334,11 @@ if _HAS_TEXTUAL:
                 stopped, errors = stop_result
                 if errors:
                     self.notify(
-                        f"Stopped {len(stopped)} container(s), {len(errors)} failed",
+                        f"Killed {len(stopped)} container(s), {len(errors)} failed",
                         severity="error",
                     )
                 else:
-                    self.notify(f"Stopped {len(stopped)} container(s)")
+                    self.notify(f"Killed {len(stopped)} container(s)")
                 await self.refresh_tasks()
                 return
 

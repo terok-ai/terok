@@ -3,9 +3,9 @@
 
 """Emergency panic command — cut all resource access immediately.
 
-Raises shields on every running container, stops the vault
-and gate server.  Optionally stops the containers themselves (which
-can be slow on some platforms).  All actions are reversible.
+Raises shields on every running container, stops the vault and gate
+server.  Optionally also SIGKILLs the containers themselves; they are
+not removed.  All actions are reversible.
 
 Exit codes:
 - 0: all operations succeeded
@@ -35,7 +35,7 @@ def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) ->
     p.add_argument(
         "--stop",
         action="store_true",
-        help="Also stop all containers (skip confirmation prompt)",
+        help="Also kill all containers (skip confirmation prompt)",
     )
     p.add_argument(
         "--clear",
@@ -80,11 +80,11 @@ def _cmd_panic(*, stop: bool) -> None:
     if not stop and result.total_running > 0:
         print()
         try:
-            answer = input("Also stop all containers? [y/N] ").strip().lower()
+            answer = input("Also kill all containers? [y/N] ").strip().lower()
         except (EOFError, KeyboardInterrupt):
             answer = ""
         if answer in ("y", "yes"):
-            print("Stopping containers...", file=sys.stderr)
+            print("Killing containers...", file=sys.stderr)
             _stop_remaining(result)
 
     if result.has_errors:
@@ -92,15 +92,15 @@ def _cmd_panic(*, stop: bool) -> None:
 
 
 def _stop_remaining(result: PanicResult) -> None:
-    """Stop containers that were left running after Phase 1."""
+    """Kill containers that were left running after Phase 1."""
     from ...lib.domain.panic import panic_stop_containers
 
     stopped, errors = panic_stop_containers()
     if not stopped and not errors:
-        print("No running containers to stop.")
+        print("No running containers to kill.")
         return
     result.containers_stopped = stopped
     result.container_stop_errors = errors
-    print(f"Stopped {len(stopped)} container(s)")
+    print(f"Killed {len(stopped)} container(s)")
     for cname, err in errors:
         print(f"  FAILED {cname}: {err}")

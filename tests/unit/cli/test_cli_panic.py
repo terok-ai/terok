@@ -119,7 +119,7 @@ class TestStopRemaining:
         result = PanicResult()
         _stop_remaining(result)
         assert result.containers_stopped == ["c1", "c2"]
-        assert "Stopped 2" in capsys.readouterr().out
+        assert "Killed 2" in capsys.readouterr().out
 
     @patch("terok.lib.domain.panic.panic_stop_containers", return_value=([], [("c1", "fail")]))
     def test_reports_errors(self, _s, capsys):

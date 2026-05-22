@@ -5,8 +5,8 @@
 
 Two-phase sequence: Phase 1 raises shields, locks the vault session
 tier + stops its daemon, and stops the gate server — all in parallel,
-all reversible.  Phase 2 optionally stops the containers themselves
-(slow on some platforms, so user-prompted).
+all reversible.  Phase 2 optionally SIGKILLs the containers themselves
+(``podman stop --time 0``) — they are *not* removed.
 
 The vault step deletes the session-unlock tmpfs file in addition to
 stopping the daemon so the next socket activation can't auto-resume
@@ -35,7 +35,6 @@ from ..core.config import get_shield_bypass_firewall_no_protection
 from ..core.paths import core_state_dir
 from ..core.projects import list_projects
 from ..orchestration.tasks import (
-    CONTAINER_MODES,
     container_name,
     get_all_task_states,
     get_tasks,
@@ -84,8 +83,8 @@ def execute_panic(
     """Execute the full panic sequence.
 
     Discovers every running container, then raises shields, stops vault
-    and gate — all in parallel.  If *stop_containers*, also stops the
-    containers afterwards.
+    and gate — all in parallel.  If *stop_containers*, also kills the
+    containers afterwards (SIGKILL; they are not removed).
     """
     result = PanicResult()
     targets = _discover_targets()
@@ -95,7 +94,7 @@ def execute_panic(
     _phase1_lockdown(result, targets)
     _write_panic_lock()
 
-    # Phase 2: optional container stop
+    # Phase 2: optional container kill
     if stop_containers and targets:
         result.containers_stopped, result.container_stop_errors = _stop_containers(targets)
 
@@ -103,7 +102,7 @@ def execute_panic(
 
 
 def panic_stop_containers() -> tuple[list[str], list[tuple[str, str]]]:
-    """Discover and stop all running containers (Phase 2 standalone)."""
+    """Discover and SIGKILL all running containers (Phase 2 standalone)."""
     return _stop_containers(_discover_targets())
 
 
@@ -127,7 +126,7 @@ def format_panic_report(result: PanicResult) -> str:
     ]
 
     if result.containers_stopped:
-        lines.append(f"Containers stopped: {len(result.containers_stopped)}")
+        lines.append(f"Containers killed: {len(result.containers_stopped)}")
 
     if result.has_errors:
         lines += ["", "Errors:", *_format_errors(result)]
@@ -206,7 +205,7 @@ def _format_errors(result: PanicResult) -> list[str]:
         lines.append(f"  vault: {result.vault_error}")
     if result.gate_error:
         lines.append(f"  gate: {result.gate_error}")
-    lines += [f"  stop {cname}: {err}" for cname, err in result.container_stop_errors]
+    lines += [f"  kill {cname}: {err}" for cname, err in result.container_stop_errors]
     return lines
 
 
@@ -285,22 +284,48 @@ def _stop_gate() -> tuple[bool, str | None]:
 
 
 def _stop_containers(targets: list[_Target]) -> tuple[list[str], list[tuple[str, str]]]:
-    """Stop all container modes for each target.
+    """SIGKILL each discovered container in parallel; do not remove them.
+
+    Uses ``podman stop --time 0`` rather than a graceful stop: panic
+    targets runaway containers, so the default 10 s SIGTERM window
+    would just hand a misbehaving process more time to misbehave.
 
     Panic crosses projects (possibly under different runtimes); plain
-    ``PodmanRuntime`` is correct here because ``force_remove`` is a
-    podman-level teardown that works identically regardless of which
+    ``PodmanRuntime`` is correct here because the kill is a
+    podman-level operation that works identically regardless of which
     OCI runtime booted any individual container.
     """
-    runtime = PodmanRuntime()
-    names = [container_name(pid, m, tid) for pid, tid, _, _, _ in targets for m in CONTAINER_MODES]
-    if not names:
+    if not targets:
         return [], []
+
+    runtime = PodmanRuntime()
+    stopped: list[str] = []
+    errors: list[tuple[str, str]] = []
+
+    with ThreadPoolExecutor(max_workers=max(len(targets), 4)) as pool:
+        futs = {pool.submit(_kill_container, runtime, t[3]): t[3] for t in targets}
+        for fut in as_completed(futs):
+            cname = futs[fut]
+            try:
+                err = fut.result(timeout=30)
+            except Exception as exc:
+                errors.append((cname, str(exc)))
+                continue
+            if err is None:
+                stopped.append(cname)
+            else:
+                errors.append((cname, err))
+
+    return stopped, errors
+
+
+def _kill_container(runtime: PodmanRuntime, cname: str) -> str | None:
+    """SIGKILL one container without removing it (``podman stop --time 0``)."""
     try:
-        runtime.force_remove([runtime.container(n) for n in names])
-        return names, []
+        runtime.container(cname).stop(timeout=0)
+        return None
     except Exception as exc:
-        return [], [(n, str(exc)) for n in names]
+        return str(exc)
 
 
 def _write_panic_lock() -> None:
