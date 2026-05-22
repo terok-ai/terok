@@ -6,9 +6,8 @@
 Three invocation shapes to verify:
 
 - ``terok auth``                           → interactive menu (no provider).
-- ``terok auth <p>``                       → host-wide auth (no project_id).
-- ``terok auth <p> <id>``                  → legacy positional project.
-- ``terok auth <p> --project <id>``        → named project flag.
+- ``terok auth <p>``                       → host-wide auth.
+- ``terok auth <p> --project <id>``        → project-scoped auth.
 """
 
 from __future__ import annotations
@@ -38,20 +37,10 @@ def _make_parser() -> argparse.ArgumentParser:
 # ── argparse registration ──────────────────────────────────────────────
 
 
-def test_auth_parses_positional_provider_and_project() -> None:
-    """``auth claude myproj`` keeps parsing via the legacy two-positional form."""
-    args = _make_parser().parse_args(["auth", "claude", "myproj"])
-    assert args.cmd == "auth"
-    assert args.provider == "claude"
-    assert args.project_id == "myproj"
-    assert args.project_flag is None
-
-
 def test_auth_parses_provider_only() -> None:
-    """``auth claude`` (no project) sets project_id to None — host-wide shape."""
+    """``auth claude`` (no project) — host-wide shape."""
     args = _make_parser().parse_args(["auth", "claude"])
     assert args.provider == "claude"
-    assert args.project_id is None
     assert args.project_flag is None
 
 
@@ -59,16 +48,14 @@ def test_auth_parses_no_arguments() -> None:
     """``auth`` on its own leaves provider None — interactive shape."""
     args = _make_parser().parse_args(["auth"])
     assert args.provider is None
-    assert args.project_id is None
     assert args.project_flag is None
 
 
 def test_auth_parses_project_flag() -> None:
-    """``auth claude --project p`` populates project_flag; positional stays None."""
+    """``auth claude --project p`` populates project_flag."""
     args = _make_parser().parse_args(["auth", "claude", "--project", "p"])
     assert args.provider == "claude"
     assert args.project_flag == "p"
-    assert args.project_id is None
 
 
 def test_auth_rejects_unknown_provider() -> None:
@@ -88,7 +75,7 @@ def test_dispatch_ignores_other_commands() -> None:
 
 def test_dispatch_host_wide_skips_project_loading() -> None:
     """``auth <provider>`` never touches ``load_project`` / ``require_agent_installed``."""
-    args = argparse.Namespace(cmd="auth", provider="claude", project_id=None, project_flag=None)
+    args = argparse.Namespace(cmd="auth", provider="claude", project_flag=None)
     with (
         patch("terok.cli.commands.auth.load_project") as mock_load,
         patch("terok.cli.commands.auth.require_agent_installed") as mock_check,
@@ -101,10 +88,10 @@ def test_dispatch_host_wide_skips_project_loading() -> None:
     mock_auth.assert_called_once_with("claude", None)
 
 
-def test_dispatch_project_positional_runs_install_check() -> None:
-    """Legacy ``auth <p> <id>`` loads the project and verifies the agent."""
+def test_dispatch_project_flag_runs_install_check() -> None:
+    """``auth <p> --project <id>`` loads the project and verifies the agent."""
     fake_project = SimpleNamespace(id="p1")
-    args = argparse.Namespace(cmd="auth", provider="claude", project_id="p1", project_flag=None)
+    args = argparse.Namespace(cmd="auth", provider="claude", project_flag="p1")
     with (
         patch("terok.cli.commands.auth.load_project", return_value=fake_project),
         patch("terok.cli.commands.auth.require_agent_installed") as mock_check,
@@ -116,26 +103,9 @@ def test_dispatch_project_positional_runs_install_check() -> None:
     mock_auth.assert_called_once_with("claude", "p1")
 
 
-def test_dispatch_project_flag_wins_over_positional() -> None:
-    """``--project`` wins when both the flag and the legacy positional are set."""
-    fake_project = SimpleNamespace(id="flagged")
-    args = argparse.Namespace(
-        cmd="auth", provider="claude", project_id="positional", project_flag="flagged"
-    )
-    with (
-        patch("terok.cli.commands.auth.load_project", return_value=fake_project) as mock_load,
-        patch("terok.cli.commands.auth.require_agent_installed"),
-        patch("terok.cli.commands.auth.authenticate") as mock_auth,
-    ):
-        dispatch(args)
-
-    mock_load.assert_called_once_with("flagged")
-    mock_auth.assert_called_once_with("claude", "flagged")
-
-
 def test_dispatch_no_provider_runs_interactive() -> None:
     """``auth`` with no provider routes into the chained interactive flow."""
-    args = argparse.Namespace(cmd="auth", provider=None, project_id=None, project_flag=None)
+    args = argparse.Namespace(cmd="auth", provider=None, project_flag=None)
     with patch("terok.cli.commands.auth._run_interactive") as mock_inter:
         dispatch(args)
     mock_inter.assert_called_once_with(None)

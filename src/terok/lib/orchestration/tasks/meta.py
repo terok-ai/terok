@@ -19,8 +19,7 @@ comments and round-trip ergonomics cheap.
 The split is reconciled at the I/O boundary: ``read_task_meta``
 returns one merged dict in internal-storage shape (``project_id``,
 ``task_id``, …), ``write_task_meta`` splits a single dict back to
-both files atomically.  Pre-self-describing names (``<id>.json`` /
-``<id>.yml``) are migrated to the new layout in place on first read.
+both files atomically.
 """
 
 import json
@@ -104,23 +103,6 @@ def meta_path(meta_dir: Path, task_id: str) -> Path:
     return meta_dir / f"{task_id}{_META_SUFFIX}"
 
 
-def _migrate_legacy_filenames(meta_dir: Path, task_id: str) -> None:
-    """Rename pre-self-describing meta files in place — one-shot, idempotent.
-
-    Earlier iterations stored the dossier and meta as ``<task_id>.json``
-    and ``<task_id>.yml``; the new names spell out their audience.
-    Rename eagerly so every other read/write/iter helper deals with the
-    canonical layout exclusively.  Idempotent: a second call is a no-op.
-    """
-    pairs = (
-        (meta_dir / f"{task_id}.json", dossier_path(meta_dir, task_id)),
-        (meta_dir / f"{task_id}.yml", meta_path(meta_dir, task_id)),
-    )
-    for old, new in pairs:
-        if old.is_file() and not new.is_file():
-            old.rename(new)
-
-
 def read_task_meta(meta_dir: Path, task_id: str) -> dict | None:
     """Compose the orchestrator's logical task-meta dict from the on-disk pair.
 
@@ -128,24 +110,14 @@ def read_task_meta(meta_dir: Path, task_id: str) -> dict | None:
     JSON's wire keys back to internal storage names, and returns the
     union.  Either file may be absent.  Returns ``None`` only when
     neither file is on disk.
-
-    A pre-self-describing layout (``<task_id>.json`` / ``<task_id>.yml``)
-    is migrated to the new names in place before the read so callers
-    never see the legacy paths.
     """
-    _migrate_legacy_filenames(meta_dir, task_id)
     json_path = dossier_path(meta_dir, task_id)
     yml_path = meta_path(meta_dir, task_id)
 
     if not (json_path.is_file() or yml_path.is_file()):
         return None
 
-    merged = _merge_dossier_into(_read_yml_meta(yml_path), _read_json_meta(json_path))
-    if _backfill_project_id(merged, meta_dir):
-        # Normalise on disk so the backfilled project_id persists.
-        write_task_meta(dossier_path(meta_dir, task_id), merged)
-
-    return merged
+    return _merge_dossier_into(_read_yml_meta(yml_path), _read_json_meta(json_path))
 
 
 def _read_json_meta(json_path: Path) -> dict:
@@ -178,36 +150,17 @@ def _merge_dossier_into(yml_data: dict, dossier_data: dict) -> dict:
     return merged
 
 
-def _backfill_project_id(merged: dict, meta_dir: Path) -> bool:
-    """Backfill ``project_id`` from the meta-dir path for legacy records.
-
-    Records that predate the field landing in TaskMeta carry no
-    ``project_id``; without it a task-rename lands a half-populated
-    dossier (no ``project``) on the wire.  Path layout is
-    ``<state>/projects/<project_id>/tasks``.  Returns ``True`` when a
-    value was filled in, so the caller knows the record needs
-    re-normalising on disk.
-    """
-    if merged.get("project_id"):
-        return False
-    if meta_dir.parent.parent.name != "projects":
-        return False
-    merged["project_id"] = meta_dir.parent.name
-    return True
-
-
 def write_task_meta(dossier_handle: Path, meta: dict) -> None:
     """Atomic split-write: ``_dossier.json`` + ``_meta.yml`` in one atomic step each.
 
     *dossier_handle* is a dossier-file handle — what
     [`dossier_path`][terok.lib.orchestration.tasks.dossier_path] returns
     and what [`load_task_meta`][terok.lib.orchestration.tasks.load_task_meta]
-    hands back.  Pre-self-describing handles (``<id>.json``) are accepted
-    too and canonicalized on write.  The companion bookkeeping path is
-    derived by swapping the suffix.  Atomic-rename writes (``.tmp`` +
-    ``os.replace``) on each file mean a partial write under EINTR /
-    power loss can leave one stale and the other fresh, but never a
-    half-written file — readers always get a parseable shape.
+    hands back.  The companion bookkeeping path is derived by swapping
+    the suffix.  Atomic-rename writes (``.tmp`` + ``os.replace``) on each
+    file mean a partial write under EINTR / power loss can leave one
+    stale and the other fresh, but never a half-written file — readers
+    always get a parseable shape.
     """
     meta_dir, task_id = _dossier_handle_to_dir_and_id(dossier_handle)
     meta_dir.mkdir(parents=True, exist_ok=True)
@@ -229,17 +182,13 @@ def write_task_meta(dossier_handle: Path, meta: dict) -> None:
 def _dossier_handle_to_dir_and_id(path: Path) -> tuple[Path, str]:
     """Decompose a dossier-file handle into ``(meta_dir, task_id)``.
 
-    Accepts both the canonical ``<task_id>_dossier.json`` and the
-    pre-self-describing ``<task_id>.json`` so callers caching a handle
-    across the migration boundary keep working.  Raises on anything
-    else — silently inferring a task_id from a foreign filename would
-    let bugs pass undetected.
+    Accepts the canonical ``<task_id>_dossier.json`` shape and raises
+    on anything else — silently inferring a task_id from a foreign
+    filename would let bugs pass undetected.
     """
     name = path.name
     if name.endswith(_DOSSIER_SUFFIX):
         return path.parent, name[: -len(_DOSSIER_SUFFIX)]
-    if name.endswith(".json"):
-        return path.parent, name[: -len(".json")]
     raise ValueError(f"not a dossier-file handle: {path}")
 
 
@@ -266,14 +215,7 @@ def _to_plain(obj: Any) -> Any:
 
 
 def iter_task_ids(meta_dir: Path) -> Iterator[str]:
-    """Yield every task ID with at least one meta file in *meta_dir*.
-
-    Recognises both the canonical layout (``<id>_dossier.json`` /
-    ``<id>_meta.yml``) and the pre-self-describing layout
-    (``<id>.json`` / ``<id>.yml``) — the latter is migrated lazily on
-    the next ``read_task_meta`` call, so transient mixed states are
-    yielded under their canonical task ID without double-counting.
-    """
+    """Yield every task ID with at least one meta file in *meta_dir*."""
     if not meta_dir.is_dir():
         return
     seen: set[str] = set()
@@ -288,26 +230,16 @@ def iter_task_ids(meta_dir: Path) -> Iterator[str]:
 
 def _task_id_from_filename(name: str) -> str:
     """Strip the meta-file suffix to recover the task ID, ``""`` if unrecognised."""
-    for suffix in (_DOSSIER_SUFFIX, _META_SUFFIX, ".json", ".yml"):
+    for suffix in (_DOSSIER_SUFFIX, _META_SUFFIX):
         if name.endswith(suffix):
             return name[: -len(suffix)]
     return ""
 
 
 def task_exists(project_id: str, task_id: str) -> bool:
-    """Return ``True`` if any task-meta file exists for ``(project_id, task_id)``.
-
-    Considers both the canonical (``<task_id>_dossier.json`` /
-    ``<task_id>_meta.yml``) and legacy (``<task_id>.json`` /
-    ``<task_id>.yml``) on-disk layouts.
-    """
+    """Return ``True`` if any task-meta file exists for ``(project_id, task_id)``."""
     meta_dir = tasks_meta_dir(project_id)
-    return (
-        dossier_path(meta_dir, task_id).is_file()
-        or meta_path(meta_dir, task_id).is_file()
-        or (meta_dir / f"{task_id}.json").is_file()
-        or (meta_dir / f"{task_id}.yml").is_file()
-    )
+    return dossier_path(meta_dir, task_id).is_file() or meta_path(meta_dir, task_id).is_file()
 
 
 def tasks_meta_dir(project_id: str) -> Path:

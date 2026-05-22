@@ -142,46 +142,6 @@ class TestTask:
             assert not meta_path.exists()
             assert not workspace.exists()
 
-    def test_read_task_meta_backfills_legacy_project_id(self) -> None:
-        """A pre-``project_id``-field record gets the field populated from the meta-dir path.
-
-        Tasks created before ``project_id`` joined ``TaskMeta`` had only
-        ``task_id`` on disk; without backfill, the next ``write_task_meta``
-        would land an empty wire dossier (no ``project`` key) and the
-        clearance UI would render a half-identity until some unrelated
-        write happened to repopulate the field.  The backfill leans on
-        the meta-dir path layout (``…/projects/<project_id>/tasks/``)
-        rather than threading ``project_id`` through every reader.
-        """
-        from terok.lib.util.yaml import dump as yaml_dump
-
-        project_id = "proj_backfill"
-        with project_env(
-            f"project:\n  id: {project_id}\n",
-            project_id=project_id,
-        ) as ctx:
-            meta_dir = ctx.state_dir / "projects" / project_id / "tasks"
-            meta_dir.mkdir(parents=True, exist_ok=True)
-            tid = "x9y1z"
-            # Seed a legacy single-YAML record (pre-self-describing,
-            # pre-project_id-field).  Mimics what an upgrading operator
-            # has on disk.
-            (meta_dir / f"{tid}.yml").write_text(
-                yaml_dump({"task_id": tid, "name": "diligent-octopus", "mode": "cli"})
-            )
-
-            meta = read_task_meta(meta_dir, tid)
-
-            assert meta is not None
-            assert meta["project_id"] == project_id
-            # The on-disk dossier now carries the wire shape.
-            dossier = json.loads((meta_dir / f"{tid}_dossier.json").read_text(encoding="utf-8"))
-            assert dossier == {
-                "project": project_id,
-                "task": tid,
-                "name": "diligent-octopus",
-            }
-
     def test_task_new_records_created_at(self) -> None:
         """task_new writes an ISO 8601 created_at timestamp that round-trips via get_tasks.
 
@@ -1894,30 +1854,7 @@ class TestTaskDeleteWarnings:
 
 
 class TestArchiveMetaLoading:
-    """_load_archived_task_meta tolerates legacy task.yml and corrupt snapshots."""
-
-    def test_reads_legacy_yaml_snapshot(self, tmp_path: Path) -> None:
-        """An archive entry with only task.yml (no task.json) still loads."""
-        from terok.lib.orchestration.tasks.archive import _load_archived_task_meta
-
-        entry = tmp_path / "20260101T000000Z_g1v2h_old"
-        entry.mkdir()
-        (entry / "task.yml").write_text("task_id: g1v2h\nname: old-task\nmode: cli\n")
-        assert _load_archived_task_meta(entry) == {
-            "task_id": "g1v2h",
-            "name": "old-task",
-            "mode": "cli",
-        }
-
-    def test_json_takes_precedence_over_yaml(self, tmp_path: Path) -> None:
-        """When both task.json and task.yml exist, the JSON snapshot wins."""
-        from terok.lib.orchestration.tasks.archive import _load_archived_task_meta
-
-        entry = tmp_path / "entry"
-        entry.mkdir()
-        (entry / "task.json").write_text('{"task_id": "json"}')
-        (entry / "task.yml").write_text("task_id: yaml\n")
-        assert _load_archived_task_meta(entry) == {"task_id": "json"}
+    """_load_archived_task_meta reads task.json and tolerates corrupt snapshots."""
 
     def test_corrupt_json_returns_none(self, tmp_path: Path) -> None:
         """A malformed task.json yields None rather than raising."""
@@ -2048,18 +1985,13 @@ class TestDossierHandle:
             "k3v8h",
         )
 
-    def test_legacy_json_handle(self, tmp_path: Path) -> None:
-        """A pre-self-describing <id>.json handle still decomposes."""
-        from terok.lib.orchestration.tasks.meta import _dossier_handle_to_dir_and_id
-
-        assert _dossier_handle_to_dir_and_id(tmp_path / "k3v8h.json") == (tmp_path, "k3v8h")
-
-    def test_foreign_filename_raises(self, tmp_path: Path) -> None:
+    @pytest.mark.parametrize("name", ["k3v8h_meta.yml", "k3v8h.json", "random.txt"])
+    def test_foreign_filename_raises(self, tmp_path: Path, name: str) -> None:
         """A non-dossier filename raises rather than silently inferring a task ID."""
         from terok.lib.orchestration.tasks.meta import _dossier_handle_to_dir_and_id
 
         with pytest.raises(ValueError, match="not a dossier-file handle"):
-            _dossier_handle_to_dir_and_id(tmp_path / "k3v8h_meta.yml")
+            _dossier_handle_to_dir_and_id(tmp_path / name)
 
 
 class TestMetaMutations:

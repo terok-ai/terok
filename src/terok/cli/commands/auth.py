@@ -54,15 +54,6 @@ def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) ->
     )
     set_completer(
         p_auth.add_argument(
-            "project_id",
-            nargs="?",
-            default=None,
-            help="(Legacy positional — prefer --project.)",
-        ),
-        _complete_project_ids,
-    )
-    set_completer(
-        p_auth.add_argument(
             "--project",
             dest="project_flag",
             default=None,
@@ -76,8 +67,7 @@ def dispatch(args: argparse.Namespace) -> bool:
     """Handle ``terok auth``.  Returns True if handled."""
     if args.cmd != "auth":
         return False
-    # --project wins over the legacy positional if both happen to be given.
-    project_id = args.project_flag or args.project_id
+    project_id = args.project_flag
     if args.provider is None:
         _run_interactive(project_id)
     else:

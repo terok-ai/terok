@@ -200,45 +200,6 @@ class TestResolveTaskId:
                 resolve_task_id("test-proj", ID_A + "x")
 
 
-# ---------- Legacy hex compatibility ----------
-
-
-class TestLegacyHexCompat:
-    """Legacy pre-0.8.0 hex task IDs remain readable with a deprecation warning."""
-
-    LEGACY = "abcd1234"
-
-    def _write_meta(self, project_id: str, task_id: str) -> None:
-        """Write a minimal task metadata file."""
-        meta = {"task_id": task_id, "name": "legacy", "mode": None, "workspace": "/tmp/ws"}
-        write_task_meta(dossier_path(tasks_meta_dir(project_id), task_id), meta)
-
-    def test_legacy_hex_resolves_with_deprecation(self) -> None:
-        """A legacy 8-char hex task on disk should still resolve, with a DeprecationWarning."""
-        with project_env(MINIMAL_PROJECT) as _ctx:
-            self._write_meta("test-proj", self.LEGACY)
-            with pytest.warns(DeprecationWarning, match="pre-0.8.0 hex format"):
-                assert resolve_task_id("test-proj", self.LEGACY) == self.LEGACY
-
-    def test_legacy_hex_prefix_resolves_with_deprecation(self) -> None:
-        """Legacy hex prefix resolution should also work and warn."""
-        with project_env(MINIMAL_PROJECT) as _ctx:
-            self._write_meta("test-proj", self.LEGACY)
-            with pytest.warns(DeprecationWarning):
-                assert resolve_task_id("test-proj", "abcd") == self.LEGACY
-
-    def test_current_format_does_not_warn(self) -> None:
-        """Resolving a current-format ID must not emit a deprecation warning."""
-        import warnings
-
-        with project_env(MINIMAL_PROJECT) as _ctx:
-            meta = {"task_id": ID_A, "name": "n", "mode": None, "workspace": "/tmp/ws"}
-            write_task_meta(dossier_path(tasks_meta_dir("test-proj"), ID_A), meta)
-            with warnings.catch_warnings():
-                warnings.simplefilter("error", DeprecationWarning)
-                assert resolve_task_id("test-proj", ID_A) == ID_A
-
-
 # ---------- container_name ----------
 
 
