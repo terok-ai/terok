@@ -1,34 +1,20 @@
 # SPDX-FileCopyrightText: 2025 Jiri Vyskocil
+# SPDX-FileCopyrightText: 2026 Jiri Vyskocil
 # SPDX-License-Identifier: Apache-2.0
 
-"""Filesystem helpers for directory creation and writability checks."""
+"""Archive directory and filename helpers unique to terok.
+
+Generic ``ensure_dir`` / ``ensure_dir_writable`` live in
+[`terok_util.fs`][terok_util.fs]; this module composes them with
+terok's own timestamp + collision-avoidance conventions for archived
+projects and tasks.
+"""
 
 import os
 from datetime import UTC, datetime
 from pathlib import Path
 
-
-def ensure_dir(path: Path) -> None:
-    """Create a directory (and parents) if it doesn't exist."""
-    path.mkdir(parents=True, exist_ok=True)
-
-
-def ensure_dir_writable(path: Path, label: str) -> None:
-    """Create *path* if needed and verify it is writable, or exit with an error."""
-    try:
-        path.mkdir(parents=True, exist_ok=True)
-    except Exception as e:
-        raise SystemExit(f"{label} directory is not writable: {path} ({e})")
-    if not path.is_dir():
-        raise SystemExit(f"{label} path is not a directory: {path}")
-    if not os.access(path, os.W_OK | os.X_OK):
-        uid = os.getuid()
-        gid = os.getgid()
-        raise SystemExit(
-            f"{label} directory is not writable: {path}\n"
-            f"Fix permissions for the user running terok (uid={uid}, gid={gid}). "
-            f"Example: sudo chown -R {uid}:{gid} {path}"
-        )
+from terok_util import ensure_dir
 
 
 def archive_timestamp() -> str:

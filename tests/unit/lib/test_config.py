@@ -1,4 +1,5 @@
 # SPDX-FileCopyrightText: 2025 Jiri Vyskocil
+# SPDX-FileCopyrightText: 2026 Jiri Vyskocil
 # SPDX-License-Identifier: Apache-2.0
 
 """Tests for core config helpers."""
@@ -206,9 +207,9 @@ def test_core_state_dir_via_env(monkeypatch: pytest.MonkeyPatch, tmp_path: Path)
 
 def test_core_state_dir_via_config(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     """``core_state_dir()`` honors ``paths.root`` from config as namespace root."""
-    from terok_sandbox import paths as sandbox_paths
+    from terok_util import paths as util_paths
 
-    sandbox_paths._config_section_cache.clear()
+    util_paths._reset_config_caches_for_tests()
     target = tmp_path / "custom-root"
     monkeypatch.delenv("TEROK_STATE_DIR", raising=False)
     monkeypatch.delenv("TEROK_ROOT", raising=False)
@@ -219,7 +220,7 @@ def test_core_state_dir_via_config(monkeypatch: pytest.MonkeyPatch, tmp_path: Pa
     try:
         assert _paths.core_state_dir() == (target / "core").resolve()
     finally:
-        sandbox_paths._config_section_cache.clear()
+        util_paths._reset_config_caches_for_tests()
 
 
 def test_build_dir_via_config(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:

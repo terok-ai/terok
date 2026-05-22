@@ -1,4 +1,5 @@
 # SPDX-FileCopyrightText: 2025 Jiri Vyskocil
+# SPDX-FileCopyrightText: 2026 Jiri Vyskocil
 # SPDX-License-Identifier: Apache-2.0
 
 """Global configuration, directory helpers, and preset/image path resolution."""
@@ -15,7 +16,9 @@ from pydantic import ValidationError
 from terok.lib.integrations.sandbox import ServicesMode
 
 if TYPE_CHECKING:
-    from terok.lib.integrations.sandbox import ConfigStack, SandboxConfig
+    from terok_util import ConfigStack
+
+    from terok.lib.integrations.sandbox import SandboxConfig
 
 from ..util.yaml import YAMLError, load as _yaml_load
 from .paths import config_root as _config_root_base
@@ -117,7 +120,8 @@ def _build_config_stack() -> "ConfigStack":
     Loads each layer independently; unreadable or malformed files are
     skipped with a stderr warning so the remaining layers still apply.
     """
-    from terok.lib.integrations.sandbox import ConfigScope, ConfigStack
+    from terok_util import ConfigStack
+    from terok_util.config_stack import ConfigScope
 
     from ..util.logging_utils import warn_user
 
@@ -235,7 +239,7 @@ def sandbox_live_dir() -> Path:
     - Global config ``paths.sandbox_live_dir``.
     - Namespace root + ``sandbox-live/``.
     """
-    from terok.lib.integrations.sandbox import namespace_state_dir
+    from terok_util import namespace_state_dir
 
     return _resolve_path(
         "TEROK_SANDBOX_LIVE_DIR",
@@ -333,7 +337,7 @@ def archive_dir() -> Path:
     The ``<project>/`` subdirectory is bundled into the project tar and
     removed on project deletion — freeing the name for reuse.
     """
-    from terok.lib.integrations.sandbox import namespace_state_dir
+    from terok_util import namespace_state_dir
 
     return namespace_state_dir("archive").resolve()
 
@@ -349,7 +353,7 @@ def vault_dir() -> Path:
     """
     import warnings
 
-    from terok.lib.integrations.sandbox import namespace_state_dir
+    from terok_util import namespace_state_dir
 
     env = "TEROK_VAULT_DIR"
     if not os.environ.get(env) and os.environ.get("TEROK_CREDENTIALS_DIR"):

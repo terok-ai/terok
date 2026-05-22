@@ -6,8 +6,13 @@
 Re-export catalog for the host-side bootstrap pieces (and the sickbay
 diagnostic surface that lives on top of them).  Source:
 [`terok.lib.integrations.sandbox`][terok.lib.integrations.sandbox] —
-terok-sandbox owns the bootstrap logic; terok presents it.
+terok-sandbox owns the bootstrap logic; terok presents it.  The
+``namespace_state_dir`` path resolver flows from
+[`terok_util`][terok_util] — the foundation library — not through the
+sandbox adapter.
 """
+
+from terok_util import namespace_state_dir  # noqa: F401 — re-exported public API
 
 from terok.lib.integrations.sandbox import (  # noqa: F401 — re-exported public API
     EXIT_MANUAL_STEP_NEEDED,
@@ -22,7 +27,6 @@ from terok.lib.integrations.sandbox import (  # noqa: F401 — re-exported publi
     get_token_broker_port,
     is_ssh_url,
     is_systemd_available,
-    namespace_state_dir,
     needs_setup,
     public_line_of,
     resolve_container_state_dir,

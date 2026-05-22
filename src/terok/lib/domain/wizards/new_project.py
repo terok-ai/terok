@@ -31,11 +31,12 @@ from importlib.resources.abc import Traversable
 from pathlib import Path
 from typing import Literal
 
+from terok_util import ensure_dir_writable
+
 from terok.ui_utils.editor import open_in_editor
 
 from ...core.config import user_projects_dir
 from ...core.project_model import validate_project_id
-from ...util.fs import ensure_dir_writable
 from ...util.template_utils import render_resource_template
 
 # ── Vocabulary ────────────────────────────────────────────────────────

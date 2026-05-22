@@ -1,4 +1,5 @@
 # SPDX-FileCopyrightText: 2025 Jiri Vyskocil
+# SPDX-FileCopyrightText: 2026 Jiri Vyskocil
 # SPDX-License-Identifier: Apache-2.0
 
 """Resolves where terok stores config, state, vault, and runtime data on this host.
@@ -69,12 +70,13 @@ def config_root() -> Path:
 def state_root() -> Path:
     """Namespace state root shared by every terok ecosystem package.
 
-    Single source of truth — delegates to [`terok_sandbox.paths.namespace_state_dir`][terok_sandbox.paths.namespace_state_dir],
-    which resolves ``TEROK_ROOT`` → ``config.yml`` ``paths.root`` (via the
+    Single source of truth — delegates to
+    [`namespace_state_dir`][terok_util.paths.namespace_state_dir], which
+    resolves ``TEROK_ROOT`` → ``config.yml`` ``paths.root`` (via the
     layered config stack) → platform default (``/var/lib/terok`` or
     ``${XDG_DATA_HOME:-~/.local/share}/terok``).
     """
-    from terok.lib.integrations.sandbox import namespace_state_dir
+    from terok_util import namespace_state_dir
 
     return namespace_state_dir("").resolve()
 
@@ -198,7 +200,8 @@ def runtime_dir() -> Path:
     For short-lived sockets / pid files / FIFOs — things we'd put in
     ``$XDG_RUNTIME_DIR`` when it's available.
 
-    Delegates to [`terok_sandbox.paths.namespace_runtime_dir`][terok_sandbox.paths.namespace_runtime_dir],
+    Delegates to
+    [`namespace_runtime_dir`][terok_util.paths.namespace_runtime_dir],
     which resolves ``$XDG_RUNTIME_DIR/terok`` → ``$XDG_STATE_HOME/terok``
     → ``~/.local/state/terok``.  The chain deliberately avoids ``/tmp``
     so we don't land on a predictable-temp-path footprint (bandit B108).
@@ -208,7 +211,7 @@ def runtime_dir() -> Path:
     transient state), while this function sits under the shared terok
     namespace root for ecosystem packages to co-locate.
     """
-    from terok.lib.integrations.sandbox import namespace_runtime_dir
+    from terok_util import namespace_runtime_dir
 
     return namespace_runtime_dir()
 

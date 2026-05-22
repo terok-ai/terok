@@ -3669,6 +3669,26 @@ type = "url"
 url = "https://github.com/terok-ai/terok-shield/releases/download/v0.6.42a5/terok_shield-0.6.42a5-py3-none-any.whl"
 
 [[package]]
+name = "terok-util"
+version = "0.0.0"
+description = "Shared utility library for the terok-* sibling packages"
+optional = false
+python-versions = ">=3.12,<4.0"
+groups = ["main"]
+files = []
+develop = false
+
+[package.dependencies]
+platformdirs = ">=4.9.6"
+"ruamel.yaml" = ">=0.18"
+
+[package.source]
+type = "git"
+url = "https://github.com/terok-ai/terok-util.git"
+reference = "refs/pull/1/head"
+resolved_reference = "0250710f55925e83b6176af6c2b31d8cc794a79c"
+
+[[package]]
 name = "textual"
 version = "8.2.5"
 description = "Modern Text User Interface framework"
@@ -4546,4 +4566,4 @@ propcache = ">=0.2.1"
 [metadata]
 lock-version = "2.1"
 python-versions = ">=3.12,<3.15"
-content-hash = "16138fb602e316c64099c8cd979501b94154b0d4468ed7e703fc84a4c2cb9883"
+content-hash = "a0a0157f356d578284cb978f320fd7f6ced0755c54d7fc66ab7ad867e6f4df16"

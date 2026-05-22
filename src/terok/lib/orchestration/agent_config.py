@@ -13,8 +13,10 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
+from terok_util import ConfigStack
+from terok_util.config_stack import ConfigScope
+
 from terok.lib.core.config import bundled_presets_dir, get_global_agent_config, user_presets_dir
-from terok.lib.integrations.sandbox import ConfigScope, ConfigStack
 
 
 def _preset_scope_label(preset_path: Path) -> str:

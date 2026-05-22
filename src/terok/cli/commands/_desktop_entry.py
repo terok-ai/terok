@@ -52,7 +52,7 @@ from importlib import resources as importlib_resources
 from importlib.resources.abc import Traversable
 from pathlib import Path
 
-from ...lib.util.template_utils import render_resource_template
+from terok_util import render_template
 
 _log = logging.getLogger(__name__)
 
@@ -367,7 +367,8 @@ def _render_desktop_file(bin_str: str) -> str:
         }
     else:
         variables = {"EXEC": bin_str, "TRY_EXEC": bin_str, "TERMINAL": "true"}
-    return render_resource_template(_resource_dir().joinpath(_TEMPLATE_NAME), variables)
+    with importlib_resources.as_file(_resource_dir().joinpath(_TEMPLATE_NAME)) as template_path:
+        return render_template(template_path, variables)
 
 
 # ── Manual cache refresh (fallback backend only) ──────────────────────

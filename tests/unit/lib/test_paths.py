@@ -158,9 +158,9 @@ class TestStateRoot:
 
     def test_paths_root_from_config(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
         """config.yml ``paths.root`` is honored when TEROK_ROOT is unset."""
-        from terok_sandbox import paths as sandbox_paths
+        from terok_util import paths as util_paths
 
-        sandbox_paths._config_section_cache.clear()
+        util_paths._reset_config_caches_for_tests()
         monkeypatch.delenv("TEROK_ROOT", raising=False)
         custom_root = tmp_path / "custom-root"
         cfg = tmp_path / "config.yml"
@@ -169,7 +169,7 @@ class TestStateRoot:
         try:
             assert paths.state_root() == custom_root.resolve()
         finally:
-            sandbox_paths._config_section_cache.clear()
+            util_paths._reset_config_caches_for_tests()
 
 
 class TestCoreStateDir:

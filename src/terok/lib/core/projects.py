@@ -1,4 +1,5 @@
 # SPDX-FileCopyrightText: 2025 Jiri Vyskocil
+# SPDX-FileCopyrightText: 2026 Jiri Vyskocil
 # SPDX-License-Identifier: Apache-2.0
 
 """Project discovery, loading, and preset management."""
@@ -13,8 +14,10 @@ from pathlib import Path
 from typing import Any
 
 from pydantic import ValidationError
+from terok_util import ConfigStack
+from terok_util.config_stack import ConfigScope
 
-from terok.lib.integrations.sandbox import ConfigScope, ConfigStack, gate_use_personal_ssh_default
+from terok.lib.integrations.sandbox import gate_use_personal_ssh_default
 
 from ..util.yaml import YAMLError, dump as _yaml_dump, load as _yaml_load
 from .config import (

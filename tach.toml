@@ -595,7 +595,7 @@ utility = true
 # ·· util ··  Pure internal helpers
 #
 
-# Filesystem helpers (mkdir, writable check)
+# Archive directory and filename helpers (timestamp + collision-free names)
 [[modules]]
 path = "terok.lib.util.fs"
 layer = "core"
@@ -1024,7 +1024,7 @@ expose = ["render_emoji", "set_emoji_enabled", "is_emoji_enabled", "EmojiInfo"]
 from = ["terok.lib.util.emoji"]
 
 [[interfaces]]
-expose = ["ensure_dir", "ensure_dir_writable", "archive_timestamp", "unique_archive_path", "create_archive_dir", "create_archive_file"]
+expose = ["archive_timestamp", "unique_archive_path", "create_archive_dir", "create_archive_file"]
 from = ["terok.lib.util.fs"]
 
 [[interfaces]]

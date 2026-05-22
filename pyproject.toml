@@ -31,6 +31,7 @@ dependencies = [
     "terok-sandbox @ https://github.com/terok-ai/terok-sandbox/releases/download/v0.0.124a15/terok_sandbox-0.0.124a15-py3-none-any.whl",
     "terok-shield @ https://github.com/terok-ai/terok-shield/releases/download/v0.6.42a5/terok_shield-0.6.42a5-py3-none-any.whl",
     "terok-clearance @ https://github.com/terok-ai/terok-clearance/releases/download/v0.6.14a4/terok_clearance-0.6.14a4-py3-none-any.whl",
+    "terok-util @ git+https://github.com/terok-ai/terok-util.git@refs/pull/1/head",
 ]
 
 [project.urls]

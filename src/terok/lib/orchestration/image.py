@@ -1,4 +1,5 @@
 # SPDX-FileCopyrightText: 2025 Jiri Vyskocil
+# SPDX-FileCopyrightText: 2026 Jiri Vyskocil
 # SPDX-License-Identifier: Apache-2.0
 
 """Dockerfile generation, image building, and build-context hashing.
@@ -18,6 +19,8 @@ from importlib.resources.abc import Traversable
 from pathlib import Path
 from typing import Any
 
+from terok_util import ensure_dir
+
 from terok.lib.integrations.executor import (
     BuildError,
     build_base_images,
@@ -34,7 +37,6 @@ from ..core.config import build_dir
 from ..core.images import project_cli_image, project_dev_image
 from ..core.project_model import ProjectConfig
 from ..core.projects import load_project
-from ..util.fs import ensure_dir
 from ..util.template_utils import render_resource_template
 
 # ---------- helpers ----------

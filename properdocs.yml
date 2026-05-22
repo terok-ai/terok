@@ -48,6 +48,7 @@ plugins:
             - https://raw.githubusercontent.com/terok-ai/docs-inventories/master/terok-sandbox/objects.inv
             - https://raw.githubusercontent.com/terok-ai/docs-inventories/master/terok-shield/objects.inv
             - https://raw.githubusercontent.com/terok-ai/docs-inventories/master/terok-clearance/objects.inv
+            - https://raw.githubusercontent.com/terok-ai/docs-inventories/master/terok-util/objects.inv
           options:
             docstring_style: google
             show_source: true

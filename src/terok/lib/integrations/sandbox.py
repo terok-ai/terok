@@ -12,6 +12,12 @@ Every symbol comes from the wheel's top-level public API.  Shield's
 high-level wrappers (``make_shield``, ``up``, ``down``, ``quarantine``,
 ``status``) flow through here as sandbox's own re-exports; shield's
 command registry has its own adapter, ``terok.lib.integrations.shield``.
+
+Foundation-layer symbols (``ConfigStack`` / ``ConfigScope`` /
+``deep_merge``, ``namespace_state_dir`` / ``namespace_runtime_dir``)
+do **not** flow through here — the adapter is the conduit for sibling
+**wheels**, while [`terok_util`][terok_util] is a foundation library
+imported directly by every layer that needs it.
 """
 
 from terok_sandbox import (  # noqa: F401 — re-exported public API
@@ -26,8 +32,6 @@ from terok_sandbox import (  # noqa: F401 — re-exported public API
     CheckVerdict,
     CommandDef,
     CommandTree,
-    ConfigScope,
-    ConfigStack,
     ContainerRuntime,
     CredentialDB,
     DoctorCheck,
@@ -93,8 +97,6 @@ from terok_sandbox import (  # noqa: F401 — re-exported public API
     is_vault_socket_active,
     is_vault_systemd_available,
     make_shield,
-    namespace_runtime_dir,
-    namespace_state_dir,
     needs_setup,
     podman_port_resolver,
     public_line_of,
@@ -132,8 +134,6 @@ __all__ = [
     "CheckVerdict",
     "CommandDef",
     "CommandTree",
-    "ConfigScope",
-    "ConfigStack",
     "ContainerRuntime",
     "CredentialDB",
     "DEFAULT_GUEST_SSHD_PORT",
@@ -206,8 +206,6 @@ __all__ = [
     "is_vault_socket_active",
     "is_vault_systemd_available",
     "make_shield",
-    "namespace_runtime_dir",
-    "namespace_state_dir",
     "needs_setup",
     "podman_port_resolver",
     "public_line_of",
