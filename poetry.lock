@@ -3686,7 +3686,7 @@ platformdirs = ">=4.9.6"
 type = "git"
 url = "https://github.com/terok-ai/terok-util.git"
 reference = "refs/pull/1/head"
-resolved_reference = "0250710f55925e83b6176af6c2b31d8cc794a79c"
+resolved_reference = "1b03be6ff7447d73919b634332c6521e490a908f"
 
 [[package]]
 name = "textual"
