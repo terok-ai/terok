@@ -435,7 +435,7 @@ def terok_env(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> TerokIntegrati
     # (helpers.py), so we also mirror it into the pytest process so the
     # in-process ``write_stamp()`` call below targets the same path.
     monkeypatch.setenv("TEROK_ROOT", str(tmp_path))
-    from terok_sandbox import write_stamp
+    from terok_sandbox.setup_stamp import write_stamp
 
     write_stamp()
     return env

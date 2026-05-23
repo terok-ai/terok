@@ -90,7 +90,7 @@ def _build_runner_env(
 
     project = load_project(project_id)
 
-    from terok_executor import mounts_dir
+    from terok_executor.paths import mounts_dir
 
     mounts_base = mounts_dir()
     mounts_base.mkdir(parents=True, exist_ok=True)
