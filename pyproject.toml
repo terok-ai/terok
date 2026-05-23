@@ -27,11 +27,11 @@ dependencies = [
     "unique-namer>=1.3",
     "textual-serve>=1.1.0",
     "jinja2>=3.1",
-    "terok-executor @ https://github.com/terok-ai/terok-executor/releases/download/v0.0.149a19/terok_executor-0.0.149a19-py3-none-any.whl",
-    "terok-sandbox @ https://github.com/terok-ai/terok-sandbox/releases/download/v0.0.124a15/terok_sandbox-0.0.124a15-py3-none-any.whl",
-    "terok-shield @ https://github.com/terok-ai/terok-shield/releases/download/v0.6.42a5/terok_shield-0.6.42a5-py3-none-any.whl",
-    "terok-clearance @ https://github.com/terok-ai/terok-clearance/releases/download/v0.6.14a4/terok_clearance-0.6.14a4-py3-none-any.whl",
-    "terok-util @ https://github.com/terok-ai/terok-util/releases/download/v0.0.1/terok_util-0.0.1-py3-none-any.whl",
+    "terok-executor @ git+https://github.com/terok-ai/terok-executor.git@refs/pull/364/head",
+    "terok-sandbox @ git+https://github.com/terok-ai/terok-sandbox.git@refs/pull/352/head",
+    "terok-shield @ https://github.com/terok-ai/terok-shield/releases/download/v0.6.42a6/terok_shield-0.6.42a6-py3-none-any.whl",
+    "terok-clearance @ https://github.com/terok-ai/terok-clearance/releases/download/v0.6.14a5/terok_clearance-0.6.14a5-py3-none-any.whl",
+    "terok-util @ https://github.com/terok-ai/terok-util/releases/download/v0.0.2a1/terok_util-0.0.2a1-py3-none-any.whl",
 ]
 
 [project.urls]
