@@ -1,5 +1,4 @@
 # SPDX-FileCopyrightText: 2025 Jiri Vyskocil
-# SPDX-FileCopyrightText: 2026 Jiri Vyskocil
 # SPDX-License-Identifier: Apache-2.0
 
 """Resolves where terok stores config, state, vault, and runtime data on this host.
