@@ -7,7 +7,8 @@ Re-export catalog for the egress-firewall layer.  Sources:
 [`terok.lib.integrations.sandbox`][terok.lib.integrations.sandbox] for
 the high-level shield wrappers terok-sandbox owns
 (``make_shield``/``up``/``down``/``status``/``run_setup`` /
-``recovery_status`` and friends), and
+[`RecoveryStatus`][terok_sandbox.RecoveryStatus] for the recovery-key
+warning surface), and
 [`terok.lib.integrations.shield`][terok.lib.integrations.shield] for
 the lower-level CLI registry (``COMMANDS``, ``ArgDef``, ``CommandDef``,
 ``ExecError``) that terok's ``terok shield`` bridge wires into its own
@@ -19,13 +20,11 @@ collide with sandbox's ``CommandDef`` (which already flows through
 """
 
 from terok.lib.integrations.sandbox import (  # noqa: F401 — re-exported public API
-    acknowledge_recovery,
+    RecoveryStatus,
     down as shield_down,
     installed_versions,
-    is_recovery_acknowledged,
     make_shield,
     read_stamp,
-    recovery_status,
     run_setup as shield_run_setup,
     stamp_path,
     state as shield_state,
@@ -44,16 +43,14 @@ from terok.lib.integrations.shield import (  # noqa: F401 — re-exported public
 __all__ = [
     "ArgDef",
     "ExecError",
+    "RecoveryStatus",
     "SHIELD_COMMANDS",
     "ShieldCommandDef",
-    "acknowledge_recovery",
     "shield_needs_container",
     "shield_standalone_only",
     "installed_versions",
-    "is_recovery_acknowledged",
     "make_shield",
     "read_stamp",
-    "recovery_status",
     "shield_down",
     "shield_run_setup",
     "shield_state",

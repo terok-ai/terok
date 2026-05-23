@@ -19,12 +19,10 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from terok.lib.integrations.sandbox import (
+    GateServerManager,
     SandboxConfig,
+    TokenStore,
     VolumeSpec,
-    create_token,
-    ensure_server_reachable,
-    get_gate_base_path,
-    get_gate_server_port,
 )
 
 from ..core.config import (
@@ -98,7 +96,7 @@ def _resolve_gate_port(cfg: SandboxConfig, *, use_socket: bool) -> int:
     """
     if use_socket:
         return _CONTAINER_GATE_PORT
-    host_port = get_gate_server_port(cfg)
+    host_port = GateServerManager(cfg).server_port
     if host_port is None:
         raise SystemExit(
             "Gate server port not configured — required in TCP mode. "
@@ -128,8 +126,8 @@ def _gatekeeping_repo_env(
             f"Expected at: {gate_repo}\n"
             f"Run 'terok project gate-sync {project.id}' to create/update the local mirror."
         )
-    ensure_server_reachable(cfg)
-    token = create_token(project.id, task_id, cfg)
+    GateServerManager(cfg).ensure_reachable()
+    token = TokenStore(cfg).create(project.id, task_id)
     gate_url = _gate_url(gate_repo, gate_base, gate_port, token, use_socket=use_socket)
     env: dict[str, str] = {"CODE_REPO": gate_url}
     if project.default_branch:
@@ -159,7 +157,7 @@ def _online_repo_env(
     gate_repo = project.gate_path
     if project.gate_enabled and gate_repo.exists():
         try:
-            ensure_server_reachable(cfg)
+            GateServerManager(cfg).ensure_reachable()
         except SystemExit:
             from ..util.logging_utils import warn_user
 
@@ -169,7 +167,7 @@ def _online_repo_env(
                 "This is safe — online mode does not require the gate.",
             )
         else:
-            token = create_token(project.id, task_id, cfg)
+            token = TokenStore(cfg).create(project.id, task_id)
             gate_url = _gate_url(gate_repo, gate_base, gate_port, token, use_socket=use_socket)
             env["CLONE_FROM"] = gate_url
             # Surface the gate as a named "gate" remote alongside origin
@@ -196,7 +194,7 @@ def _security_mode_env_and_volumes(
     """Return env vars and volumes for the project's security mode."""
     volumes: list[str] = []
     gate_repo = project.gate_path
-    gate_base = get_gate_base_path(cfg)
+    gate_base = GateServerManager(cfg).gate_base_path
     gate_port = _resolve_gate_port(cfg, use_socket=use_socket)
 
     if project.security_class == "gatekeeping":
@@ -297,10 +295,10 @@ def ensure_vault() -> None:
     if get_vault_bypass():
         return
 
-    from terok.lib.integrations.sandbox import VaultUnreachableError, ensure_vault_reachable
+    from terok.lib.integrations.sandbox import VaultManager, VaultUnreachableError
 
     try:
-        ensure_vault_reachable(make_sandbox_config())
+        VaultManager(make_sandbox_config()).ensure_reachable()
     except VaultUnreachableError as exc:
         raise SystemExit(
             f"{exc}\n\n"

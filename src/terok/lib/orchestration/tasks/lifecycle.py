@@ -269,10 +269,10 @@ class TaskDeleteResult:
 
 def _revoke_task_token(project_id: str, task_id: str, warnings: list[str]) -> None:
     """Revoke the task's gate token; record a warning on failure."""
-    from terok.lib.integrations.sandbox import revoke_token_for_task
+    from terok.lib.integrations.sandbox import TokenStore
 
     try:
-        revoke_token_for_task(project_id, task_id)
+        TokenStore().revoke_for_task(project_id, task_id)
     except Exception as exc:
         _log_debug(f"task_delete: token revoke failed: {exc}")
         warnings.append(f"Token revoke failed: {exc}")

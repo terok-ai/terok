@@ -263,11 +263,11 @@ def _stop_vault() -> tuple[bool, str | None]:
     ``terok-sandbox vault lock --forget`` afterwards if they want
     a destructive lockout.
     """
-    from terok.lib.integrations.sandbox import SandboxConfig, stop_vault
+    from terok.lib.integrations.sandbox import SandboxConfig, VaultManager
 
     try:
         SandboxConfig().vault_passphrase_file.unlink(missing_ok=True)
-        stop_vault()
+        VaultManager().stop_daemon()
         return True, None
     except Exception as exc:
         return False, str(exc)
@@ -275,10 +275,10 @@ def _stop_vault() -> tuple[bool, str | None]:
 
 def _stop_gate() -> tuple[bool, str | None]:
     """Stop the gate server daemon."""
-    from terok.lib.integrations.sandbox import stop_daemon
+    from terok.lib.integrations.sandbox import GateServerManager
 
     try:
-        stop_daemon()
+        GateServerManager().stop_daemon()
         return True, None
     except Exception as exc:
         return False, str(exc)

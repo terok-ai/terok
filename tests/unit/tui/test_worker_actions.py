@@ -114,10 +114,10 @@ def test_gate_install_uses_manager() -> None:
 
 def test_gate_start_and_stop_delegate_to_daemon_controls() -> None:
     """``gate_start`` / ``gate_stop`` call the sandbox daemon controls."""
-    with mock.patch("terok.lib.api.gate.start_daemon") as m_start:
+    with mock.patch("terok.lib.api.gate.GateServerManager.start_daemon") as m_start:
         worker_actions.gate_start()
     m_start.assert_called_once_with()
-    with mock.patch("terok.lib.api.gate.stop_daemon") as m_stop:
+    with mock.patch("terok.lib.api.gate.GateServerManager.stop_daemon") as m_stop:
         worker_actions.gate_stop()
     m_stop.assert_called_once_with()
 
@@ -141,7 +141,7 @@ def test_vault_lock_unlinks_session_file_and_stops(tmp_path: Path) -> None:
     cfg.vault_passphrase_file = passphrase_file
     with (
         mock.patch("terok.lib.api.make_sandbox_config", return_value=cfg),
-        mock.patch("terok.lib.api.vault.stop_vault") as m_stop,
+        mock.patch("terok.lib.api.vault.VaultManager.stop_daemon") as m_stop,
     ):
         worker_actions.vault_lock()
     assert not passphrase_file.exists()
@@ -154,7 +154,7 @@ def test_vault_lock_tolerates_missing_session_file(tmp_path: Path) -> None:
     cfg.vault_passphrase_file = tmp_path / "never-created.passphrase"
     with (
         mock.patch("terok.lib.api.make_sandbox_config", return_value=cfg),
-        mock.patch("terok.lib.api.vault.stop_vault") as m_stop,
+        mock.patch("terok.lib.api.vault.VaultManager.stop_daemon") as m_stop,
     ):
         worker_actions.vault_lock()
     m_stop.assert_called_once_with()
@@ -309,16 +309,16 @@ def test_vault_start_generates_routes_then_starts_daemon() -> None:
     with (
         mock.patch("terok.lib.api.make_sandbox_config", return_value=cfg),
         mock.patch("terok.lib.api.agents.ensure_vault_routes") as m_routes,
-        mock.patch("terok.lib.api.vault.start_vault") as m_start,
+        mock.patch("terok.lib.api.vault.VaultManager.start_daemon") as m_start,
     ):
         worker_actions.vault_start()
     m_routes.assert_called_once_with(cfg=cfg)
-    m_start.assert_called_once_with(cfg=cfg)
+    m_start.assert_called_once_with()
 
 
 def test_vault_stop_delegates_to_sandbox() -> None:
     """``vault_stop`` stops the vault daemon."""
-    with mock.patch("terok.lib.api.vault.stop_vault") as m_stop:
+    with mock.patch("terok.lib.api.vault.VaultManager.stop_daemon") as m_stop:
         worker_actions.vault_stop()
     m_stop.assert_called_once_with()
 

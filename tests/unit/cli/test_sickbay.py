@@ -267,7 +267,9 @@ class TestCheckVault:
             mode="systemd", running=True, credentials_stored=("claude",), transport="tcp"
         )
         with (
-            unittest.mock.patch("terok.cli.commands.sickbay.get_vault_status", return_value=status),
+            unittest.mock.patch(
+                "terok.cli.commands.sickbay.VaultManager.get_status", return_value=status
+            ),
             unittest.mock.patch("terok.cli.commands.sickbay.get_services_mode", return_value="tcp"),
         ):
             sev, _, detail = _check_vault()
@@ -281,7 +283,9 @@ class TestCheckVault:
             mode="systemd", running=True, credentials_stored=("claude",), transport="tcp"
         )
         with (
-            unittest.mock.patch("terok.cli.commands.sickbay.get_vault_status", return_value=status),
+            unittest.mock.patch(
+                "terok.cli.commands.sickbay.VaultManager.get_status", return_value=status
+            ),
             unittest.mock.patch(
                 "terok.cli.commands.sickbay.get_services_mode", return_value="socket"
             ),
@@ -294,9 +298,11 @@ class TestCheckVault:
         """Socket active but service idle → ok with standby message."""
         status = self._make_status(mode="systemd", running=False)
         with (
-            unittest.mock.patch("terok.cli.commands.sickbay.get_vault_status", return_value=status),
             unittest.mock.patch(
-                "terok.cli.commands.sickbay.is_vault_socket_active", return_value=True
+                "terok.cli.commands.sickbay.VaultManager.get_status", return_value=status
+            ),
+            unittest.mock.patch(
+                "terok.cli.commands.sickbay.VaultManager.is_socket_active", return_value=True
             ),
         ):
             sev, _, detail = _check_vault()
@@ -307,9 +313,11 @@ class TestCheckVault:
         """Socket installed but inactive → error."""
         status = self._make_status(mode="systemd", running=False)
         with (
-            unittest.mock.patch("terok.cli.commands.sickbay.get_vault_status", return_value=status),
             unittest.mock.patch(
-                "terok.cli.commands.sickbay.is_vault_socket_active", return_value=False
+                "terok.cli.commands.sickbay.VaultManager.get_status", return_value=status
+            ),
+            unittest.mock.patch(
+                "terok.cli.commands.sickbay.VaultManager.is_socket_active", return_value=False
             ),
         ):
             sev, _, detail = _check_vault()
@@ -320,9 +328,11 @@ class TestCheckVault:
         """No proxy, systemd available → warn with install hint."""
         status = self._make_status(mode="none", running=False)
         with (
-            unittest.mock.patch("terok.cli.commands.sickbay.get_vault_status", return_value=status),
             unittest.mock.patch(
-                "terok.cli.commands.sickbay.is_vault_systemd_available", return_value=True
+                "terok.cli.commands.sickbay.VaultManager.get_status", return_value=status
+            ),
+            unittest.mock.patch(
+                "terok.cli.commands.sickbay.VaultManager.is_systemd_available", return_value=True
             ),
         ):
             sev, _, detail = _check_vault()
@@ -333,9 +343,11 @@ class TestCheckVault:
         """No proxy, no systemd → warn with start hint."""
         status = self._make_status(mode="none", running=False)
         with (
-            unittest.mock.patch("terok.cli.commands.sickbay.get_vault_status", return_value=status),
             unittest.mock.patch(
-                "terok.cli.commands.sickbay.is_vault_systemd_available", return_value=False
+                "terok.cli.commands.sickbay.VaultManager.get_status", return_value=status
+            ),
+            unittest.mock.patch(
+                "terok.cli.commands.sickbay.VaultManager.is_systemd_available", return_value=False
             ),
         ):
             sev, _, detail = _check_vault()
@@ -345,7 +357,7 @@ class TestCheckVault:
     def test_exception_returns_warn(self) -> None:
         """Exception during status check → warn."""
         with unittest.mock.patch(
-            "terok.cli.commands.sickbay.get_vault_status",
+            "terok.cli.commands.sickbay.VaultManager.get_status",
             side_effect=RuntimeError("oops"),
         ):
             sev, _, detail = _check_vault()
@@ -362,10 +374,11 @@ class TestCheckGateServerTransport:
         with (
             unittest.mock.patch("terok.cli.commands.sickbay.make_sandbox_config"),
             unittest.mock.patch(
-                "terok.cli.commands.sickbay.get_server_status", return_value=status
+                "terok.cli.commands.sickbay.GateServerManager.get_status", return_value=status
             ),
             unittest.mock.patch(
-                "terok.cli.commands.sickbay.check_units_outdated", return_value=None
+                "terok.cli.commands.sickbay.GateServerManager.check_units_outdated",
+                return_value=None,
             ),
             unittest.mock.patch("terok.cli.commands.sickbay.get_services_mode", return_value="tcp"),
         ):
@@ -379,10 +392,11 @@ class TestCheckGateServerTransport:
         with (
             unittest.mock.patch("terok.cli.commands.sickbay.make_sandbox_config"),
             unittest.mock.patch(
-                "terok.cli.commands.sickbay.get_server_status", return_value=status
+                "terok.cli.commands.sickbay.GateServerManager.get_status", return_value=status
             ),
             unittest.mock.patch(
-                "terok.cli.commands.sickbay.check_units_outdated", return_value=None
+                "terok.cli.commands.sickbay.GateServerManager.check_units_outdated",
+                return_value=None,
             ),
             unittest.mock.patch(
                 "terok.cli.commands.sickbay.get_services_mode", return_value="socket"
@@ -407,11 +421,14 @@ class TestCheckGateServerNotRunning:
         stack = contextlib.ExitStack()
         stack.enter_context(unittest.mock.patch("terok.cli.commands.sickbay.make_sandbox_config"))
         stack.enter_context(
-            unittest.mock.patch("terok.cli.commands.sickbay.get_server_status", return_value=status)
+            unittest.mock.patch(
+                "terok.cli.commands.sickbay.GateServerManager.get_status", return_value=status
+            )
         )
         stack.enter_context(
             unittest.mock.patch(
-                "terok.cli.commands.sickbay.check_units_outdated", return_value=None
+                "terok.cli.commands.sickbay.GateServerManager.check_units_outdated",
+                return_value=None,
             )
         )
         stack.enter_context(
@@ -422,7 +439,7 @@ class TestCheckGateServerNotRunning:
         stack.enter_context(unittest.mock.patch("shutil.which", return_value=git_path))
         stack.enter_context(
             unittest.mock.patch(
-                "terok.cli.commands.sickbay.is_systemd_available",
+                "terok.cli.commands.sickbay.GateServerManager.is_systemd_available",
                 return_value=systemd_available,
             )
         )
@@ -969,7 +986,7 @@ class TestCheckRecoveryAcknowledged:
     def test_ok_when_marker_present(self) -> None:
         """Acknowledged → ``ok`` with a brief detail."""
         with unittest.mock.patch(
-            "terok.lib.api.shield.recovery_status",
+            "terok.lib.api.shield.RecoveryStatus.load",
             return_value=self._status(acknowledged=True, source="keyring"),
         ):
             sev, label, detail = _check_recovery_acknowledged()
@@ -980,7 +997,7 @@ class TestCheckRecoveryAcknowledged:
     def test_warn_when_marker_missing_durable_tier(self) -> None:
         """Unacked + durable tier → ``warn`` naming both remediation verbs."""
         with unittest.mock.patch(
-            "terok.lib.api.shield.recovery_status",
+            "terok.lib.api.shield.RecoveryStatus.load",
             return_value=self._status(acknowledged=False, source="keyring"),
         ):
             sev, label, detail = _check_recovery_acknowledged()
@@ -995,7 +1012,7 @@ class TestCheckRecoveryAcknowledged:
     def test_error_when_marker_missing_session_only(self) -> None:
         """Unacked + session-file source → ``error`` with the reboot-loss wording."""
         with unittest.mock.patch(
-            "terok.lib.api.shield.recovery_status",
+            "terok.lib.api.shield.RecoveryStatus.load",
             return_value=self._status(acknowledged=False, source="session-file"),
         ):
             sev, label, detail = _check_recovery_acknowledged()
@@ -1012,7 +1029,7 @@ class TestCheckRecoveryAcknowledged:
     def test_warn_when_probe_raises(self) -> None:
         """A failing probe degrades to a warn — never crashes sickbay."""
         with unittest.mock.patch(
-            "terok.lib.api.shield.recovery_status",
+            "terok.lib.api.shield.RecoveryStatus.load",
             side_effect=RuntimeError("boom"),
         ):
             sev, label, detail = _check_recovery_acknowledged()

@@ -6,7 +6,7 @@
 from __future__ import annotations
 
 from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock, PropertyMock, patch
 
 import pytest
 from terok_sandbox import ExecResult
@@ -202,8 +202,16 @@ class TestRunContainerDoctor:
     @patch("terok.lib.orchestration.container_doctor.get_roster")
     @patch("terok.lib.orchestration.container_doctor._read_desired_shield_state")
     @patch("terok.lib.orchestration.container_doctor.load_project")
-    @patch("terok.lib.orchestration.container_doctor.get_ssh_signer_port")
-    @patch("terok.lib.orchestration.container_doctor.get_token_broker_port")
+    @patch(
+        "terok.lib.orchestration.container_doctor.VaultManager.ssh_signer_port",
+        new_callable=PropertyMock,
+        return_value=None,
+    )
+    @patch(
+        "terok.lib.orchestration.container_doctor.VaultManager.token_broker_port",
+        new_callable=PropertyMock,
+        return_value=None,
+    )
     @patch("terok.lib.orchestration.container_doctor.make_sandbox_config")
     @patch("terok.lib.orchestration.container_doctor.load_task_meta")
     @patch("terok.lib.orchestration.tasks.meta.tasks_meta_dir")
@@ -267,8 +275,16 @@ class TestRunContainerDoctor:
     @patch("terok.lib.orchestration.container_doctor.get_roster")
     @patch("terok.lib.orchestration.container_doctor._read_desired_shield_state")
     @patch("terok.lib.orchestration.container_doctor.load_project")
-    @patch("terok.lib.orchestration.container_doctor.get_ssh_signer_port")
-    @patch("terok.lib.orchestration.container_doctor.get_token_broker_port")
+    @patch(
+        "terok.lib.orchestration.container_doctor.VaultManager.ssh_signer_port",
+        new_callable=PropertyMock,
+        return_value=None,
+    )
+    @patch(
+        "terok.lib.orchestration.container_doctor.VaultManager.token_broker_port",
+        new_callable=PropertyMock,
+        return_value=None,
+    )
     @patch("terok.lib.orchestration.container_doctor.make_sandbox_config")
     @patch("terok.lib.orchestration.container_doctor.load_task_meta")
     @patch("terok.lib.orchestration.tasks.meta.tasks_meta_dir")
@@ -342,8 +358,16 @@ class TestRunContainerDoctor:
     @patch("terok.lib.orchestration.container_doctor.get_roster")
     @patch("terok.lib.orchestration.container_doctor._read_desired_shield_state")
     @patch("terok.lib.orchestration.container_doctor.load_project")
-    @patch("terok.lib.orchestration.container_doctor.get_ssh_signer_port")
-    @patch("terok.lib.orchestration.container_doctor.get_token_broker_port")
+    @patch(
+        "terok.lib.orchestration.container_doctor.VaultManager.ssh_signer_port",
+        new_callable=PropertyMock,
+        return_value=None,
+    )
+    @patch(
+        "terok.lib.orchestration.container_doctor.VaultManager.token_broker_port",
+        new_callable=PropertyMock,
+        return_value=None,
+    )
     @patch("terok.lib.orchestration.container_doctor.make_sandbox_config")
     @patch("terok.lib.orchestration.container_doctor.load_task_meta")
     @patch("terok.lib.orchestration.tasks.meta.tasks_meta_dir")
@@ -401,8 +425,16 @@ class TestRunContainerDoctor:
         assert results[0] == ("warn", "Future check", "evaluated locally")
         mock_exec.assert_not_called()
 
-    @patch("terok.lib.orchestration.container_doctor.get_ssh_signer_port", return_value=None)
-    @patch("terok.lib.orchestration.container_doctor.get_token_broker_port", return_value=None)
+    @patch(
+        "terok.lib.orchestration.container_doctor.VaultManager.ssh_signer_port",
+        new_callable=PropertyMock,
+        return_value=None,
+    )
+    @patch(
+        "terok.lib.orchestration.container_doctor.VaultManager.token_broker_port",
+        new_callable=PropertyMock,
+        return_value=None,
+    )
     @patch("terok.lib.orchestration.container_doctor.make_sandbox_config")
     def test_collect_all_checks_raises_in_tcp_mode_with_unset_ports(
         self,
@@ -532,11 +564,13 @@ class TestStreamingGrouping:
                 return_value=MagicMock(),
             ),
             patch(
-                "terok.lib.orchestration.container_doctor.get_token_broker_port",
+                "terok.lib.orchestration.container_doctor.VaultManager.token_broker_port",
+                new_callable=PropertyMock,
                 return_value=8080,
             ),
             patch(
-                "terok.lib.orchestration.container_doctor.get_ssh_signer_port",
+                "terok.lib.orchestration.container_doctor.VaultManager.ssh_signer_port",
+                new_callable=PropertyMock,
                 return_value=2222,
             ),
             patch(
@@ -612,11 +646,13 @@ class TestStreamingGrouping:
                 return_value=MagicMock(),
             ),
             patch(
-                "terok.lib.orchestration.container_doctor.get_token_broker_port",
+                "terok.lib.orchestration.container_doctor.VaultManager.token_broker_port",
+                new_callable=PropertyMock,
                 return_value=8080,
             ),
             patch(
-                "terok.lib.orchestration.container_doctor.get_ssh_signer_port",
+                "terok.lib.orchestration.container_doctor.VaultManager.ssh_signer_port",
+                new_callable=PropertyMock,
                 return_value=2222,
             ),
             patch(

@@ -32,20 +32,14 @@ from terok.lib.api.clearance import (
     read_installed_notifier_unit_version as _clearance_notifier_unit_version,
     read_installed_unit_version as _clearance_hub_unit_version,
 )
-from terok.lib.api.gate import get_server_status
+from terok.lib.api.gate import GateServerManager
 from terok.lib.api.setup import (
     SERVICES_TCP_OPTOUT_YAML,
     check_environment,
-    check_units_outdated,
-    is_systemd_available,
     resolve_container_state_dir,
     systemd_creds_has_tpm2,
 )
-from terok.lib.api.vault import (
-    get_vault_status,
-    is_vault_socket_active,
-    is_vault_systemd_available,
-)
+from terok.lib.api.vault import VaultManager
 
 from ...lib.core import runtime as _rt
 from ...lib.core.config import get_services_mode, global_config_path, make_sandbox_config
@@ -115,11 +109,12 @@ def _check_gate_server() -> _CheckResult:
     the contextual messages match the executor preflight's verdicts.
     """
     cfg = make_sandbox_config()
-    status = get_server_status(cfg)
+    gate = GateServerManager(cfg)
+    status = gate.get_status()
     configured = get_services_mode()
     label = "Gate server"
     if status.running:
-        outdated = check_units_outdated(cfg)
+        outdated = gate.check_units_outdated()
         if outdated:
             return ("warn", label, f"{outdated} Run 'terok gate start' to update.")
         detail = f"{status.mode}, {status.transport or 'tcp'}"
@@ -138,7 +133,7 @@ def _check_gate_server() -> _CheckResult:
             label,
             "disabled — git not on PATH (no host-side git push channel)",
         )
-    if not is_systemd_available():
+    if not gate.is_systemd_available():
         return (
             "warn",
             label,
@@ -231,8 +226,9 @@ def _passphrase_tier_label(source: str | None) -> str | None:
 def _check_vault() -> _CheckResult:
     """Check vault status, surfacing the resolved passphrase tier."""
     label = "Vault"
+    vault = VaultManager()
     try:
-        status = get_vault_status()
+        status = vault.get_status()
     except Exception as exc:  # noqa: BLE001
         return ("warn", label, f"check failed — {exc}")
     if status.running:
@@ -252,14 +248,14 @@ def _check_vault() -> _CheckResult:
             )
         return ("ok", label, detail)
     if status.mode == "systemd":
-        if is_vault_socket_active():
+        if vault.is_socket_active():
             return ("ok", label, "systemd, socket active — service starts on first connection")
         return (
             "error",
             label,
             "socket installed but not active — run 'terok vault start'",
         )
-    if is_vault_systemd_available():
+    if vault.is_systemd_available():
         return ("warn", label, "not running — run 'terok vault install'")
     return ("warn", label, "not running — run 'terok vault start'")
 
@@ -630,9 +626,9 @@ def _check_recovery_acknowledged() -> _CheckResult:
     """
     label = "Recovery key acknowledged"
     try:
-        from terok.lib.api.shield import recovery_status
+        from terok.lib.api.shield import RecoveryStatus
 
-        status = recovery_status()
+        status = RecoveryStatus.load()
     except Exception as exc:  # noqa: BLE001 — best-effort probe, never block sickbay
         return ("warn", label, f"check failed — {exc}")
     if status.acknowledged:

@@ -85,7 +85,7 @@ def _maybe_warn_recovery_unconfirmed(color: bool) -> None:
     """One-line nudge after every CLI task launch when no recovery ack is on disk.
 
     Cheap probe: bundled marker+source lookup via
-    [`recovery_status`][terok_sandbox.recovery_status].  Failures
+    [`RecoveryStatus.load`][terok_sandbox.RecoveryStatus.load].  Failures
     (missing wheel symbol on an old sandbox pin, transient I/O) are
     swallowed so the launch-time message never blocks the operator
     from getting their login command.
@@ -95,14 +95,10 @@ def _maybe_warn_recovery_unconfirmed(color: bool) -> None:
     is missing — the passphrase is wiped on the next reboot and the
     vault becomes unrecoverable then.
     """
+    from terok.lib.integrations.sandbox import RecoveryStatus
+
     try:
-        from terok.lib.integrations.sandbox import recovery_status
-    except ImportError:
-        # Older sandbox pin without the wrapper — the warning is
-        # opt-in by adapter exposure; absence is fine.
-        return
-    try:
-        status = recovery_status()
+        status = RecoveryStatus.load()
     except Exception:  # noqa: BLE001 — best-effort hint, never the source of truth
         return
     if status.acknowledged:

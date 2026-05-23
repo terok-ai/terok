@@ -820,7 +820,7 @@ class ProjectActionsMixin(_MixinBase):
         right next step.
         """
         from terok.lib.api import SandboxConfig
-        from terok.lib.api.shield import is_recovery_acknowledged
+        from terok.lib.api.shield import RecoveryStatus
         from terok.lib.api.vault import NoPassphraseError, WrongPassphraseError
 
         from .screens import VaultRevealModal
@@ -843,7 +843,7 @@ class ProjectActionsMixin(_MixinBase):
             )
             return
 
-        already_acked = is_recovery_acknowledged(cfg)
+        already_acked = RecoveryStatus.is_acknowledged(cfg)
         await self.push_screen(
             VaultRevealModal(passphrase, source or "?", already_acked=already_acked),
             self._on_vault_reveal_result,
@@ -864,21 +864,15 @@ class ProjectActionsMixin(_MixinBase):
         if outcome is not True:
             return
         from terok.lib.api import SandboxConfig
-        from terok.lib.api.shield import acknowledge_recovery
+        from terok.lib.api.shield import RecoveryStatus
 
-        if acknowledge_recovery(SandboxConfig()):
-            self.notify(
-                "Recovery key marked as saved.",
-                severity="information",
-                timeout=5,
-            )
-            await self._refresh_vault_status()
-        else:
-            self.notify(
-                "Could not write recovery marker (vault locked?).",
-                severity="warning",
-                timeout=8,
-            )
+        RecoveryStatus.acknowledge(SandboxConfig())
+        self.notify(
+            "Recovery key marked as saved.",
+            severity="information",
+            timeout=5,
+        )
+        await self._refresh_vault_status()
 
     async def _action_vault_acknowledge(self) -> None:
         """Silent ack — mark the current passphrase as saved without re-displaying.
@@ -886,24 +880,17 @@ class ProjectActionsMixin(_MixinBase):
         Counterpart to
         [`_action_vault_reveal`][terok.tui.project_actions.ProjectActionsMixin._action_vault_reveal]
         for the operator who already has the value stashed and just
-        wants to clear the pill.  No-op on a locked vault (the only
-        path that returns False from
-        [`acknowledge_recovery`][terok_sandbox.acknowledge_recovery]).
+        wants to clear the pill.  The marker is independent of the
+        vault-lock state — acknowledging a locked vault still writes
+        the sidecar.
         """
         from terok.lib.api import SandboxConfig
-        from terok.lib.api.shield import acknowledge_recovery
+        from terok.lib.api.shield import RecoveryStatus
 
-        cfg = SandboxConfig()
-        if acknowledge_recovery(cfg):
-            self.notify(
-                "Recovery key marked as saved.",
-                severity="information",
-                timeout=5,
-            )
-            await self._refresh_vault_status()
-        else:
-            self.notify(
-                "Vault is locked — unlock first before acknowledging.",
-                severity="warning",
-                timeout=8,
-            )
+        RecoveryStatus.acknowledge(SandboxConfig())
+        self.notify(
+            "Recovery key marked as saved.",
+            severity="information",
+            timeout=5,
+        )
+        await self._refresh_vault_status()

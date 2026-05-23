@@ -162,16 +162,16 @@ def gate_uninstall() -> None:
 
 def gate_start() -> None:
     """Start the gate server daemon."""
-    from terok.lib.api.gate import start_daemon
+    from terok.lib.api.gate import GateServerManager
 
-    start_daemon()
+    GateServerManager().start_daemon()
 
 
 def gate_stop() -> None:
     """Stop the gate server daemon."""
-    from terok.lib.api.gate import stop_daemon
+    from terok.lib.api.gate import GateServerManager
 
-    stop_daemon()
+    GateServerManager().stop_daemon()
 
 
 # ── Shield ────────────────────────────────────────────────────────────
@@ -210,26 +210,28 @@ def vault_start() -> None:
     """Generate vault routes and start the vault daemon."""
     from terok.lib.api import make_sandbox_config
     from terok.lib.api.agents import ensure_vault_routes
-    from terok.lib.api.vault import start_vault
+    from terok.lib.api.vault import VaultManager
 
-    ensure_vault_routes(cfg=make_sandbox_config())
-    start_vault(cfg=make_sandbox_config())
+    cfg = make_sandbox_config()
+    ensure_vault_routes(cfg=cfg)
+    VaultManager(cfg).start_daemon()
 
 
 def vault_stop() -> None:
     """Stop the vault daemon."""
-    from terok.lib.api.vault import stop_vault
+    from terok.lib.api.vault import VaultManager
 
-    stop_vault()
+    VaultManager().stop_daemon()
 
 
 def vault_lock() -> None:
     """Clear the session-tier passphrase file and stop the vault daemon."""
     from terok.lib.api import make_sandbox_config
-    from terok.lib.api.vault import stop_vault
+    from terok.lib.api.vault import VaultManager
 
-    make_sandbox_config().vault_passphrase_file.unlink(missing_ok=True)
-    stop_vault()
+    cfg = make_sandbox_config()
+    cfg.vault_passphrase_file.unlink(missing_ok=True)
+    VaultManager(cfg).stop_daemon()
 
 
 def vault_seal() -> None:

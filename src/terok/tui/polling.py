@@ -135,10 +135,10 @@ class PollingMixin(_MixinBase):
 
     def _poll_gate_server(self) -> None:
         """Check gate server status in a background worker."""
-        from terok.lib.api.gate import get_server_status
+        from terok.lib.api.gate import GateServerManager
 
         self.run_worker(
-            get_server_status,
+            lambda: GateServerManager().get_status(),
             name="gate-server-poll",
             group="gate-server-poll",
             exclusive=True,
