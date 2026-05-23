@@ -43,10 +43,10 @@ except ImportError:  # pragma: no cover - optional dep
 
 
 def _commandtree_dispatch(args: argparse.Namespace) -> bool:
-    """Dispatch verbs wired by [`CommandTree.wire`][terok_sandbox.commands.CommandTree.wire].
+    """Dispatch verbs wired by [`CommandTree.wire`][terok_util.cli_types.CommandTree.wire].
 
-    Each leaf parser sets ``_cmd`` to its [`CommandDef`][terok_sandbox.commands.CommandDef];
-    we hand off to [`CommandTree.dispatch`][terok_sandbox.commands.CommandTree.dispatch]
+    Each leaf parser sets ``_cmd`` to its [`CommandDef`][terok_util.cli_types.CommandDef];
+    we hand off to [`CommandTree.dispatch`][terok_util.cli_types.CommandTree.dispatch]
     which extracts kwargs from *args* and calls the (possibly cfg-wrapped)
     handler.  Returns ``True`` if a wired command was matched.
     """
@@ -239,7 +239,7 @@ def main(prog: str = "terok") -> None:
 def _build_wired_tree() -> CommandTree:
     """Compose terok's sibling-wired command tree.
 
-    Pulls executor's full [`CommandTree`][terok_sandbox.commands.CommandTree]
+    Pulls executor's full [`CommandTree`][terok_util.cli_types.CommandTree]
     (already containing executor's overlays + sandbox spliced under
     ``sandbox``), applies terok's
     [`SandboxConfig`][terok_sandbox.SandboxConfig] injection at every
@@ -250,7 +250,7 @@ def _build_wired_tree() -> CommandTree:
     - ``terok sandbox <verb>``       — shortcut for the sandbox subtree
       (same children as ``terok executor sandbox``).
     - ``terok {vault,gate,ssh} <verb>`` — shortcuts that reference the
-      same [`CommandDef`][terok_sandbox.commands.CommandDef] instances
+      same [`CommandDef`][terok_util.cli_types.CommandDef] instances
       living under ``sandbox`` so terok's cfg wrap propagates uniformly.
     """
     from terok.lib.api.agents import EXECUTOR_COMMANDS

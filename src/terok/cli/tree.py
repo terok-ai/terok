@@ -3,7 +3,7 @@
 
 """Terok-side composition of the unified command tree.
 
-Consumes the [`CommandTree`][terok_sandbox.commands.CommandTree]
+Consumes the [`CommandTree`][terok_util.cli_types.CommandTree]
 exposed by terok-executor (which already has executor's vault
 overlays applied + sandbox tree spliced under the ``sandbox`` node),
 applies terok-specific overlays (terok's
@@ -13,7 +13,7 @@ local ``serve`` verb, and exposes the result both as deep paths and
 as top-level shortcuts — identity-preserving so any terok wrap reaches
 every entry point.
 
-The wiring API is [`CommandTree`][terok_sandbox.commands.CommandTree]
+The wiring API is [`CommandTree`][terok_util.cli_types.CommandTree]
 from terok-sandbox; this module only contains the *composition*
 specific to terok.
 """
@@ -46,11 +46,11 @@ def inject_cfg_factory(
     aren't gratuitously wrapped.
 
     Identity is preserved for every untouched node so a shortcut that
-    references the same modified subtree via [`find_at`][terok_sandbox.commands.CommandTree.find_at]
+    references the same modified subtree via [`find_at`][terok_util.cli_types.CommandTree.find_at]
     sees the same wrap; both ``terok vault start`` (shortcut) and
     ``terok executor sandbox vault start`` (deep path) share the same
     wrapped handler when they reference the same
-    [`CommandDef`][terok_sandbox.commands.CommandDef] instance.
+    [`CommandDef`][terok_util.cli_types.CommandDef] instance.
     """
     overrides: dict[tuple[str, ...], Callable[..., Any]] = {}
     for path, cmd in tree.walk():

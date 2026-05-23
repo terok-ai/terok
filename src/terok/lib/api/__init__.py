@@ -23,8 +23,8 @@ This module owns the cross-cutting bits: the
 [`Config`][terok.lib.api.Config] snapshot, the runtime peek
 [`get_container_state`][terok.lib.api.get_container_state], a small
 number of shared sandbox types (``SandboxConfig`` and the CLI
-[`CommandDef`][terok_sandbox.commands.CommandDef] /
-[`CommandTree`][terok_sandbox.commands.CommandTree]), and the ANSI helpers
+[`CommandDef`][terok_util.cli_types.CommandDef] /
+[`CommandTree`][terok_util.cli_types.CommandTree]), and the ANSI helpers
 ``bold``/``red``/``yellow``/``stage_line``.
 
 For backward compatibility every sub-module's exports are also bound on
