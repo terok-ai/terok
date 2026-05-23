@@ -22,10 +22,16 @@ from terok_shield import (  # noqa: F401 — re-exported public API
     CommandDef,
     ExecError,
 )
+from terok_shield.commands import (  # noqa: F401 — re-exported public API
+    needs_container,
+    standalone_only,
+)
 
 __all__ = [
     "ArgDef",
     "COMMANDS",
     "CommandDef",
     "ExecError",
+    "needs_container",
+    "standalone_only",
 ]

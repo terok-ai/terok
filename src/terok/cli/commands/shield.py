@@ -21,6 +21,8 @@ from terok.lib.api.shield import (
     ExecError,
     ShieldCommandDef as CommandDef,
     make_shield,
+    shield_needs_container,
+    shield_standalone_only,
 )
 
 from ...lib.core.config import make_sandbox_config
@@ -107,7 +109,7 @@ def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) ->
     sub = p.add_subparsers(dest="shield_cmd", required=True)
 
     for cmd in COMMANDS:
-        if cmd.standalone_only:
+        if shield_standalone_only(cmd):
             continue
 
         sp = sub.add_parser(cmd.name, help=cmd.help)
@@ -119,7 +121,7 @@ def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) ->
         # either way so tab-complete works in both forms.
         from ._completers import add_project_id, add_task_id
 
-        if cmd.needs_container:
+        if shield_needs_container(cmd):
             add_project_id(sp, help="Project ID")
             add_task_id(sp, help="Task ID")
         elif any(a.name == "container" for a in cmd.args):
@@ -163,7 +165,7 @@ def dispatch(args: argparse.Namespace) -> bool:
         shield_run_setup(root=args.root, user=args.user)
         return True
 
-    cmd_lookup = {cmd.name: cmd for cmd in COMMANDS if not cmd.standalone_only}
+    cmd_lookup = {cmd.name: cmd for cmd in COMMANDS if not shield_standalone_only(cmd)}
     cmd_def = cmd_lookup.get(cmd_name)
     if cmd_def is None or cmd_def.handler is None:
         return False
@@ -183,7 +185,7 @@ def dispatch(args: argparse.Namespace) -> bool:
             cname, task_dir = _resolve_task(project_id, task_id)
             shield = make_shield(task_dir, cfg=make_sandbox_config())
             kwargs = _extract_handler_kwargs(args, cmd_def)
-            if cmd_def.needs_container:
+            if shield_needs_container(cmd_def):
                 cmd_def.handler(shield, cname, **kwargs)
                 _persist_desired_state(cmd_name, task_dir, kwargs)
             else:

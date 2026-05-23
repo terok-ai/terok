@@ -297,14 +297,12 @@ def _build_wired_tree() -> CommandTree:
     # via the duck-typed wire layer.  Wrap as a ``dbus`` group at
     # terok's top level — same UX as the old hand-rolled dbus.py,
     # implemented as a CommandTree composition instead.
+    # Post-W2.5 clearance uses terok-util's ``CommandDef`` natively, so
+    # the children-types match without a bridge.
     dbus_node = CommandDef(
         name="dbus",
         help="D-Bus tools (notifications, clearance)",
-        # Clearance defines its own CommandDef (different nominal type,
-        # same structural shape).  The wire layer reads via duck-typing,
-        # so the runtime path works; mypy's nominal check doesn't see
-        # the structural match.
-        children=CLEARANCE_COMMANDS,  # type: ignore[arg-type]
+        children=CLEARANCE_COMMANDS,
     )
 
     return CommandTree(

@@ -37,6 +37,8 @@ from terok.lib.integrations.shield import (  # noqa: F401 — re-exported public
     ArgDef,
     CommandDef as ShieldCommandDef,
     ExecError,
+    needs_container as shield_needs_container,
+    standalone_only as shield_standalone_only,
 )
 
 __all__ = [
@@ -45,6 +47,8 @@ __all__ = [
     "SHIELD_COMMANDS",
     "ShieldCommandDef",
     "acknowledge_recovery",
+    "shield_needs_container",
+    "shield_standalone_only",
     "installed_versions",
     "is_recovery_acknowledged",
     "make_shield",

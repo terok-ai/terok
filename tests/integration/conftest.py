@@ -348,12 +348,10 @@ def _isolate_port_registry(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> N
 @pytest.fixture
 def terok_env(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> TerokIntegrationEnv:
     """Return an isolated terok config/state environment for a test."""
-    import terok_sandbox.paths as _sandbox_paths
     from terok_util import paths as _util_paths
 
     import terok.lib.core.config as _config
 
-    _sandbox_paths._config_section_cache.clear()
     _util_paths._reset_config_caches_for_tests()
     _config._validated_config_cache = None
     _config._raw_config_cache = None
