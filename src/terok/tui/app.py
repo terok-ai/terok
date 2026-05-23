@@ -560,7 +560,7 @@ if _HAS_TEXTUAL:
 
             Exit code 5 — every install phase succeeded but the SELinux
             policy is still missing on a socket-mode host — routes through
-            [`_offer_selinux_fix`][terok.tui.app.TerokApp._offer_selinux_fix]
+            [`_offer_selinux_fix`][terok.tui.app.TerokTUI._offer_selinux_fix]
             so the user can pick Install / Switch-to-TCP from a modal
             instead of having to drop to a shell.
             """
