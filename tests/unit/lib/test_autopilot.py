@@ -761,9 +761,13 @@ class TestTaskFollowupHeadless:
                     "terok.lib.orchestration.task_runners.headless._print_run_summary"
                 ),
                 # ``inject_prompt`` is terok-executor code; it lazily imports
-                # ``Sandbox`` from terok_sandbox directly, so the patch targets
-                # the wheel, not terok's integration adapter.
-                unittest.mock.patch("terok_sandbox.Sandbox") as mock_sandbox_cls,
+                # ``Sandbox`` from its own ``integrations.sandbox`` adapter,
+                # so the patch targets the rebind site rather than the
+                # ``terok_sandbox`` wheel (where the symbol still lives but
+                # isn't the binding the consumer reads at call time).
+                unittest.mock.patch(
+                    "terok_executor.integrations.sandbox.Sandbox"
+                ) as mock_sandbox_cls,
             ):
                 buffer = StringIO()
                 with redirect_stdout(buffer):

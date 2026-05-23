@@ -215,7 +215,7 @@ def test_per_container_identity_forms() -> None:
         patch(
             "terok.lib.orchestration.tasks.lookup_container_by_pt",
         ) as lookup_mock,
-        patch("terok_sandbox.PodmanRuntime", return_value=fake_runtime),
+        patch("terok_executor.integrations.sandbox.PodmanRuntime", return_value=fake_runtime),
     ):
         lookup_mock.return_value = "resolved-container-name"
         stop_cmd.handler(name="myproj/mytask")

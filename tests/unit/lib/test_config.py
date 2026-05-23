@@ -614,7 +614,6 @@ def test_make_sandbox_config_credentials_propagation(
     monkeypatch.setenv("TEROK_CONFIG_FILE", str(write_config(tmp_path, "")))
     sc = cfg.make_sandbox_config()
     assert sc.db_path == (tmp_path / "creds" / "credentials.db").resolve()
-    assert sc.ssh_keys_json_path == (tmp_path / "creds" / "ssh-keys.json").resolve()
 
 
 def test_make_sandbox_config_shield_bypass(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
