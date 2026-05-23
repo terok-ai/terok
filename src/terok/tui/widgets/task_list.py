@@ -11,7 +11,7 @@ from textual.widgets import ListItem, ListView, Static
 
 from ...lib.api import STATUS_DISPLAY, TaskMeta, mode_info
 from ...lib.util.emoji import render_emoji
-from ...lib.util.text_wrap import wrap_with_hanging_indent
+from ...ui_utils.terminal import wrap_with_hanging_indent
 
 
 class TaskListItem(ListItem):

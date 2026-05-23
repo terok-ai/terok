@@ -628,6 +628,33 @@ def task_status(project_id: str, task_id: str) -> None:
             print(f"  Work message:    {ws.message}")
 
 
+def wait_for_container_exit(
+    container_name: str,
+    project_id: str,
+    task_id: str,
+    timeout: int = 7200,
+) -> tuple[int | None, str | None]:
+    """Wait for *container_name* to exit and record its code in task metadata.
+
+    Returns ``(exit_code, error_message)``.  On a successful wait
+    *error_message* is ``None`` and the real exit code is persisted
+    — including a legitimate exit code of 124, which is no longer
+    conflated with the watcher's own timeout.  On timeout *exit_code*
+    is ``None`` and the error message describes it.
+    """
+    from .meta import update_task_exit_code
+
+    try:
+        exit_code = AgentRunner().wait_for_exit(container_name, timeout=float(timeout))
+    except TimeoutError:
+        return None, "Watcher timed out"
+    except Exception as e:
+        return None, str(e)
+
+    update_task_exit_code(project_id, task_id, exit_code)
+    return exit_code, None
+
+
 __all__ = [
     "TaskDeleteResult",
     "capture_task_logs",
@@ -638,4 +665,5 @@ __all__ = [
     "task_rename",
     "task_status",
     "task_stop",
+    "wait_for_container_exit",
 ]

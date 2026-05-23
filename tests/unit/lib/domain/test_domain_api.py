@@ -115,11 +115,11 @@ class TestRegisterSshKey:
     """register_ssh_key assigns a key_id to a scope via the vault DB."""
 
     def test_assigns_key_to_scope(self) -> None:
-        from terok.lib import api
+        from terok.lib.domain.ssh import register_ssh_key
 
         db = MagicMock()
         with _patch_vault_db(db, module="ssh"):
-            api.register_ssh_key("myproj", 42)
+            register_ssh_key("myproj", 42)
         db.assign_ssh_key.assert_called_once_with("myproj", 42)
 
 

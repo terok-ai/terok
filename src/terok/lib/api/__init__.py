@@ -32,15 +32,17 @@ this package (so existing ``from terok.lib.api import foo`` lines keep
 working) — see ``__all__`` at the bottom.
 
 Pure utilities (``util.emoji``, ``util.yaml``, ``util.ansi``,
-``util.text_wrap``, ``util.net``) and ``core.version`` stay importable
-directly — they are genuinely cross-cutting and have no domain coupling
-worth funnelling.
+``util.net``, ``ui_utils.terminal``) and ``core.version`` stay
+importable directly — they are genuinely cross-cutting and have no
+domain coupling worth funnelling.
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
+
+from terok_util import CommandDef, CommandTree  # noqa: F401 — re-exported public API
 
 # ── Sub-module re-exports (back-compat for `from terok.lib.api import X`) ───
 from terok.lib.api.agents import (  # noqa: F401 — re-exported public API
@@ -110,18 +112,14 @@ from terok.lib.api.project import (  # noqa: F401 — re-exported public API
     find_projects_sharing_gate,
     format_panic_report,
     get_project,
-    get_project_state,
-    is_task_image_old,
     list_images,
     list_projects,
     load_project,
-    make_ssh_manager,
     maybe_pause_for_ssh_key_registration,
     panic_stop_containers,
     project_image_exists,
     project_needs_key_registration,
     provision_ssh_key,
-    register_ssh_key,
     remove_images,
     render_project_yaml,
     require_project_exists,
@@ -131,7 +129,6 @@ from terok.lib.api.project import (  # noqa: F401 — re-exported public API
     write_project_yaml,
 )
 from terok.lib.api.setup import (  # noqa: F401 — re-exported public API
-    EXIT_MANUAL_STEP_NEEDED,
     SERVICES_TCP_OPTOUT_YAML,
     EnvironmentCheck,
     SelinuxStatus,
@@ -169,19 +166,15 @@ from terok.lib.api.shield import (  # noqa: F401 — re-exported public API
 from terok.lib.api.task import (  # noqa: F401 — re-exported public API
     CONTAINER_MODES,
     GPU_DISPLAY,
-    ISOLATION_DISPLAY,
-    MODE_DISPLAY,
     SECURITY_CLASS_DISPLAY,
     STATUS_DISPLAY,
     HeadlessRunRequest,
     LogViewOptions,
     ModeInfo,
-    ProjectBadge,
     StatusInfo,
     Task,
     TaskDeleteResult,
     TaskMeta,
-    TaskState,
     agent_config_dir,
     container_name,
     effective_status,
@@ -230,8 +223,6 @@ from terok.lib.core.config import (  # noqa: F401 — re-exported public API
     set_experimental,
 )
 from terok.lib.integrations.sandbox import (  # noqa: F401 — re-exported public API
-    CommandDef,
-    CommandTree,
     PodmanRuntime,
     SandboxConfig,
     bold,
@@ -389,18 +380,14 @@ __all__ = [
     "find_projects_sharing_gate",
     "format_panic_report",
     "get_project",
-    "get_project_state",
-    "is_task_image_old",
     "list_images",
     "list_projects",
     "load_project",
-    "make_ssh_manager",
     "maybe_pause_for_ssh_key_registration",
     "panic_stop_containers",
     "project_image_exists",
     "project_needs_key_registration",
     "provision_ssh_key",
-    "register_ssh_key",
     "remove_images",
     "render_project_yaml",
     "require_project_exists",
@@ -409,7 +396,6 @@ __all__ = [
     "validate_answer",
     "write_project_yaml",
     # Setup
-    "EXIT_MANUAL_STEP_NEEDED",
     "EnvironmentCheck",
     "SERVICES_TCP_OPTOUT_YAML",
     "SelinuxStatus",
@@ -446,18 +432,14 @@ __all__ = [
     "CONTAINER_MODES",
     "GPU_DISPLAY",
     "HeadlessRunRequest",
-    "ISOLATION_DISPLAY",
     "LogViewOptions",
-    "MODE_DISPLAY",
     "ModeInfo",
-    "ProjectBadge",
     "SECURITY_CLASS_DISPLAY",
     "STATUS_DISPLAY",
     "StatusInfo",
     "Task",
     "TaskDeleteResult",
     "TaskMeta",
-    "TaskState",
     "agent_config_dir",
     "container_name",
     "effective_status",

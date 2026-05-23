@@ -87,15 +87,15 @@ if _HAS_TEXTUAL:
     from ..lib.api import (
         BrokenProject,
         Config,
+        Project,
         ProjectConfig,
+        Task,
         container_name,
         discover_projects,
         execute_panic,
         format_panic_report,
         get_config,
-        get_project_state,
         get_tasks,
-        is_task_image_old,
         load_project,
         make_git_gate,
         panic_stop_containers,
@@ -107,6 +107,13 @@ if _HAS_TEXTUAL:
         get_version_info as _get_version_info,
         short_version as _short_version,
     )
+
+    # Exit code 5 is the ``terok setup`` partial-success signal — every
+    # install phase succeeded but a manual step (currently: SELinux
+    # policy install on socket-mode hosts) is still required.  The
+    # value is owned by the sandbox setup CLI; the TUI mirrors it here
+    # so the post-run dispatch can branch into ``_offer_selinux_fix``.
+    _EXIT_MANUAL_STEP_NEEDED = 5
 
     @dataclass(frozen=True)
     class ProjectStateResult:
@@ -551,21 +558,18 @@ if _HAS_TEXTUAL:
             not stop the first-run flow from chaining into the wizard
             once setup actually finishes.
 
-            Exit code 5 (``EXIT_MANUAL_STEP_NEEDED`` — every install
-            phase succeeded but the SELinux policy is still missing on
-            a socket-mode host) routes through
+            Exit code 5 — every install phase succeeded but the SELinux
+            policy is still missing on a socket-mode host — routes through
             [`_offer_selinux_fix`][terok.tui.app.TerokApp._offer_selinux_fix]
             so the user can pick Install / Switch-to-TCP from a modal
             instead of having to drop to a shell.
             """
-            from terok.lib.api.setup import EXIT_MANUAL_STEP_NEEDED
-
             entry = self.dispatch_console_command(["terok", "setup"], title="Running terok setup")
             await self.push_screen(WorkerLogScreen(entry))
             await entry.wait()
             if entry.ok:
                 return True
-            if entry.exit_code == EXIT_MANUAL_STEP_NEEDED:
+            if entry.exit_code == _EXIT_MANUAL_STEP_NEEDED:
                 return await self._offer_selinux_fix()
             self.notify(
                 "terok setup reported errors.  Re-run from the command palette "
@@ -964,11 +968,7 @@ if _HAS_TEXTUAL:
                     info = gate.last_commit()
                     return dict(info) if info is not None else None
 
-                state = get_project_state(
-                    project_id,
-                    gate_commit_provider=_gate_commit_provider,
-                    project=project,
-                )
+                state = Project(project).state(gate_commit_provider=_gate_commit_provider)
                 staleness = None
                 if state.get("gate") and project.upstream_url:
                     try:
@@ -1017,7 +1017,7 @@ if _HAS_TEXTUAL:
             self, project_id: str, task: TaskMeta
         ) -> tuple[str, str, bool | None]:
             """Check whether a task's container image is outdated (runs in thread)."""
-            image_old = is_task_image_old(project_id, task)
+            image_old = Task(load_project(project_id), task).image_is_old()
             return project_id, task.task_id, image_old
 
         def _query_shield_state(self, project_id: str, task: TaskMeta) -> None:

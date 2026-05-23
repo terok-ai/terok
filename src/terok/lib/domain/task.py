@@ -156,6 +156,19 @@ class Task:
         """Get git diff from the task's workspace."""
         return get_workspace_git_diff(self._config.id, self.id, against=against)
 
+    def image_is_old(self) -> bool | None:
+        """Return whether the task's container image is outdated.
+
+        Compares the running container's image build-context hash against
+        the project's current expected hash.  Returns ``None`` when the
+        comparison is indeterminate (image deleted, container not
+        running, or mode is not ``cli``) so callers can distinguish
+        "definitely current" from "can't tell".
+        """
+        from .project_state import is_task_image_old
+
+        return is_task_image_old(self._config.id, self._meta)
+
     def __repr__(self) -> str:
         """Return a developer-friendly string representation."""
         return f"Task(id={self.id!r}, name={self.name!r}, mode={self.mode!r})"

@@ -8,8 +8,6 @@ Re-export catalog for everything task-shaped.  Sources:
 metadata/lifecycle/queries,
 [`terok.lib.orchestration.task_runners`][terok.lib.orchestration.task_runners]
 for mode-specific entry points,
-[`terok.lib.orchestration.autopilot`][terok.lib.orchestration.autopilot]
-for container-exit wait,
 [`terok.lib.core.task_state`][terok.lib.core.task_state] and
 [`terok.lib.core.task_display`][terok.lib.core.task_display] for the
 value object + presentation tables, plus
@@ -20,18 +18,14 @@ streaming.
 
 from terok.lib.core.task_display import (  # noqa: F401 — re-exported public API
     GPU_DISPLAY,
-    ISOLATION_DISPLAY,
-    MODE_DISPLAY,
     SECURITY_CLASS_DISPLAY,
     STATUS_DISPLAY,
     ModeInfo,
-    ProjectBadge,
     StatusInfo,
     mode_info,
 )
 from terok.lib.core.task_state import (  # noqa: F401 — re-exported public API
     CONTAINER_MODES,
-    TaskState,
     container_name,
     effective_status,
     has_gpu,
@@ -40,9 +34,6 @@ from terok.lib.domain.task import Task  # noqa: F401 — re-exported public API
 from terok.lib.domain.task_logs import (  # noqa: F401 — re-exported public API
     LogViewOptions,
     task_logs,
-)
-from terok.lib.orchestration.autopilot import (  # noqa: F401 — re-exported public API
-    wait_for_container_exit,
 )
 from terok.lib.orchestration.task_runners import (  # noqa: F401 — re-exported public API
     HeadlessRunRequest,
@@ -74,24 +65,21 @@ from terok.lib.orchestration.tasks import (  # noqa: F401 — re-exported public
     task_status,
     task_stop,
     validate_task_name,
+    wait_for_container_exit,
 )
 
 __all__ = [
     "CONTAINER_MODES",
     "GPU_DISPLAY",
     "HeadlessRunRequest",
-    "ISOLATION_DISPLAY",
     "LogViewOptions",
-    "MODE_DISPLAY",
     "ModeInfo",
-    "ProjectBadge",
     "SECURITY_CLASS_DISPLAY",
     "STATUS_DISPLAY",
     "StatusInfo",
     "Task",
     "TaskDeleteResult",
     "TaskMeta",
-    "TaskState",
     "agent_config_dir",
     "container_name",
     "effective_status",

@@ -53,6 +53,7 @@ from .lifecycle import (  # noqa: F401 — re-exported public API
     task_rename,
     task_status,
     task_stop,
+    wait_for_container_exit,
 )
 from .meta import (  # noqa: F401 — re-exported public API
     CONTAINER_TEROK_CONFIG,
@@ -129,5 +130,6 @@ __all__ = [
     "tasks_meta_dir",
     "update_task_exit_code",
     "validate_task_name",
+    "wait_for_container_exit",
     "write_task_meta",
 ]

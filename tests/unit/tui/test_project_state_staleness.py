@@ -27,10 +27,11 @@ def test_staleness_checked_for_online_and_gatekeeping(security_class: str) -> No
         compare_vs_upstream=mock.Mock(return_value=staleness),
         last_commit=mock.Mock(return_value="abc123"),
     )
+    project_aggregate = mock.Mock(state=mock.Mock(return_value=state))
 
     with (
         mock.patch.object(app, "load_project", return_value=project),
-        mock.patch.object(app, "get_project_state", return_value=state),
+        mock.patch.object(app, "Project", return_value=project_aggregate),
         mock.patch.object(app, "make_git_gate", return_value=mock_gate),
     ):
         result = app.TerokTUI._load_project_state(mock.Mock(), "proj1")
