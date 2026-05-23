@@ -1702,7 +1702,10 @@ if _HAS_TEXTUAL:
             vault_status = getattr(self, "_last_vault_status", None)
             if vault_status is None or vault_status.locked:
                 return
-            rstatus = RecoveryStatus.load()
+            try:
+                rstatus = RecoveryStatus.load()
+            except Exception:  # noqa: BLE001 — best-effort hint, never block startup
+                return
             if rstatus.acknowledged:
                 return
             if rstatus.urgent:
@@ -1771,8 +1774,11 @@ if _HAS_TEXTUAL:
             # on the session-unlock tmpfs file AND the marker is
             # missing, the operator is one reboot away from losing the
             # vault — escalate the pill text accordingly.
-            rstatus = RecoveryStatus.load()
-            if not rstatus.acknowledged:
+            try:
+                rstatus = RecoveryStatus.load()
+            except Exception:  # noqa: BLE001 — best-effort hint, never block the pill
+                rstatus = None
+            if rstatus is not None and not rstatus.acknowledged:
                 if rstatus.urgent:
                     suffix += " — recovery key UNSAVED, vault dies on reboot"
                 else:
