@@ -151,7 +151,7 @@ def _render_l2(project: ProjectConfig) -> str:
         # ``StrictUndefined`` upgrades silent ``{{TYPO}}`` to a hard
         # error; ``autoescape=False`` because Dockerfile syntax is not
         # HTML and any escaping would corrupt ``RUN`` commands.
-        env = jinja2.Environment(  # noqa: S701 — see comment above
+        env = jinja2.Environment(  # nosec B701 — see comment above  # noqa: S701
             loader=jinja2.FileSystemLoader(str(template_path.parent)),
             keep_trailing_newline=True,
             undefined=jinja2.StrictUndefined,

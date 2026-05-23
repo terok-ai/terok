@@ -561,7 +561,7 @@ def render_project_yaml(values: dict) -> str:
         # corrupted by HTML escaping.  The wizard's template uses
         # ``{% if %}`` blocks and the ``| indent`` filter — Jinja2
         # control flow, not just ``{{VAR}}`` substitution.
-        env = jinja2.Environment(  # noqa: S701 — see comment above
+        env = jinja2.Environment(  # nosec B701 — see comment above  # noqa: S701
             loader=jinja2.FileSystemLoader(str(template_path.parent)),
             keep_trailing_newline=True,
             undefined=jinja2.StrictUndefined,
