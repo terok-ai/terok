@@ -367,6 +367,16 @@ def _render_desktop_file(bin_str: str) -> str:
         }
     else:
         variables = {"EXEC": bin_str, "TRY_EXEC": bin_str, "TERMINAL": "true"}
+    # The fallback install path skips ``desktop-file-install`` validation,
+    # so refuse any value with a C0/DEL/C1 character before substitution —
+    # a stray control byte in ``Exec=`` / ``TryExec=`` corrupts the
+    # launcher's key syntax and the unvalidated path lands as-is.  In
+    # practice the values come from ``shutil.which`` results (path
+    # strings), but the cost of the guard is zero compared to debugging
+    # a silently-broken launcher.
+    for key, value in variables.items():
+        if any(ord(ch) < 0x20 or 0x7F <= ord(ch) <= 0x9F for ch in value):
+            raise ValueError(f"{key} contains a control character: {value!r}")
     with importlib_resources.as_file(_resource_dir().joinpath(_TEMPLATE_NAME)) as template_path:
         # ``StrictUndefined`` upgrades silent ``{{TYPO}}`` to a hard error;
         # ``autoescape=False`` because ``.desktop`` syntax is not HTML and

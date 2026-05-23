@@ -14,8 +14,7 @@ legacy call shape so existing call sites stay untouched.
 [`sanitize_tty`][terok_util.security.sanitize_tty] before handing
 them off to the sandbox logger so a bad config file or remote-supplied
 string can't smuggle ANSI escape sequences into the operator's
-terminal (CWE-150).  The file log keeps the original bytes — the
-forensic record matters more than rendering aesthetics there.
+terminal (CWE-150).
 """
 
 from __future__ import annotations
