@@ -217,7 +217,7 @@ class TestSandboxRunShieldIntegration:
             patch("os.geteuid", return_value=1000),
             patch("subprocess.run", side_effect=capture_run),
             patch(
-                "terok_sandbox.shield.make_shield",
+                "terok_sandbox.integrations.shield.make_shield",
                 return_value=Shield(
                     ShieldConfig(
                         state_dir=shield_env.state_dir,
@@ -268,7 +268,7 @@ class TestSandboxRunShieldIntegration:
         with (
             patch("os.geteuid", return_value=1000),
             patch("subprocess.run", side_effect=capture_run),
-            patch("terok_sandbox.shield.pre_start", return_value=[]),
+            patch("terok_sandbox.integrations.shield.pre_start", return_value=[]),
         ):
             sandbox = Sandbox()
             sandbox.run(spec)
@@ -306,7 +306,7 @@ class TestSandboxRunShieldIntegration:
             ),
             # Shield must NOT be called at all when bypass is active
             patch(
-                "terok_sandbox.shield.pre_start",
+                "terok_sandbox.integrations.shield.pre_start",
                 side_effect=AssertionError("shield must not be called"),
             ),
         ):
