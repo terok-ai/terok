@@ -5,13 +5,26 @@
 
 from importlib import resources
 from importlib.resources.abc import Traversable
+from pathlib import Path
 
 import jinja2
 import pytest
 import yaml
 
 from terok.lib.domain.wizards.new_project import BASE_IMAGES, BASES, SECURITY_CLASSES
-from terok.lib.util.template_utils import render_template
+
+
+def _render_template(path: Path, variables: dict) -> str:
+    """Inline Jinja2 render with the standard terok defaults."""
+    # autoescape off because outputs are YAML/Dockerfile/.desktop, never HTML.
+    env = jinja2.Environment(  # noqa: S701 — see comment above
+        loader=jinja2.FileSystemLoader(str(path.parent)),
+        keep_trailing_newline=True,
+        undefined=jinja2.StrictUndefined,
+        autoescape=False,
+    )
+    return env.get_template(path.name).render(**variables)
+
 
 TEMPLATE_DIR: Traversable = resources.files("terok") / "resources" / "templates" / "projects"
 TEMPLATE_NAME = "project.yml.template"
@@ -43,7 +56,7 @@ def _full_variables(*, security_class: str, base: str, **overrides: str) -> dict
 def _render(security_class: str, base: str, **overrides: str) -> str:
     traversable = TEMPLATE_DIR / TEMPLATE_NAME
     with resources.as_file(traversable) as path:
-        return render_template(
+        return _render_template(
             path, _full_variables(security_class=security_class, base=base, **overrides)
         )
 
@@ -114,4 +127,4 @@ class TestProjectTemplate:
         variables = _full_variables(security_class="online", base="ubuntu")
         del variables["PROJECT_ID"]
         with resources.as_file(traversable) as path, pytest.raises(jinja2.UndefinedError):
-            render_template(path, variables)
+            _render_template(path, variables)

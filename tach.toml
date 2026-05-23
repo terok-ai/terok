@@ -357,7 +357,6 @@ depends_on = [
     "terok.lib.core.config",
     "terok.ui_utils.editor",
     "terok.lib.util.fs",
-    "terok.lib.util.template_utils",
 ]
 
 # ── ORCHESTRATION LAYER ───────────────────────────────────────────
@@ -598,13 +597,6 @@ utility = true
 # Archive directory and filename helpers (timestamp + collision-free names)
 [[modules]]
 path = "terok.lib.util.fs"
-layer = "core"
-depends_on = []
-utility = true
-
-# Simple {{VAR}} template rendering
-[[modules]]
-path = "terok.lib.util.template_utils"
 layer = "core"
 depends_on = []
 utility = true

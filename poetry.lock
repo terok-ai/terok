@@ -3670,23 +3670,22 @@ url = "https://github.com/terok-ai/terok-shield/releases/download/v0.6.42a5/tero
 
 [[package]]
 name = "terok-util"
-version = "0.0.0"
+version = "0.0.1"
 description = "Shared utility library for the terok-* sibling packages"
 optional = false
 python-versions = ">=3.12,<4.0"
 groups = ["main"]
-files = []
-develop = false
+files = [
+    {file = "terok_util-0.0.1-py3-none-any.whl", hash = "sha256:f64d38807a3a4280c006f79de093da914e9dbb6fa9310cac1e0a436a7c8d431b"},
+]
 
 [package.dependencies]
 platformdirs = ">=4.9.6"
 "ruamel.yaml" = ">=0.18"
 
 [package.source]
-type = "git"
-url = "https://github.com/terok-ai/terok-util.git"
-reference = "refs/pull/1/head"
-resolved_reference = "1b03be6ff7447d73919b634332c6521e490a908f"
+type = "url"
+url = "https://github.com/terok-ai/terok-util/releases/download/v0.0.1/terok_util-0.0.1-py3-none-any.whl"
 
 [[package]]
 name = "textual"
@@ -4566,4 +4565,4 @@ propcache = ">=0.2.1"
 [metadata]
 lock-version = "2.1"
 python-versions = ">=3.12,<3.15"
-content-hash = "a0a0157f356d578284cb978f320fd7f6ced0755c54d7fc66ab7ad867e6f4df16"
+content-hash = "0be966ff35d9ea94eed6c6d33b46a257dac08cf564b64cf9636d766e469b8e4d"

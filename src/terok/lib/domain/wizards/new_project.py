@@ -31,13 +31,13 @@ from importlib.resources.abc import Traversable
 from pathlib import Path
 from typing import Literal
 
+import jinja2
 from terok_util import ensure_dir_writable
 
 from terok.ui_utils.editor import open_in_editor
 
 from ...core.config import user_projects_dir
 from ...core.project_model import validate_project_id
-from ...util.template_utils import render_resource_template
 
 # ── Vocabulary ────────────────────────────────────────────────────────
 
@@ -542,22 +542,32 @@ def generate_config(values: dict) -> Path:
 
 def render_project_yaml(values: dict) -> str:
     """Render ``project.yml`` without writing it — used by the TUI review screen."""
-    return render_resource_template(
-        _TEMPLATE_DIR / _TEMPLATE_NAME,
-        {
-            "PROJECT_ID": values["project_id"],
-            "UPSTREAM_URL": values["upstream_url"],
-            "DEFAULT_BRANCH": values["default_branch"],
-            "USER_SNIPPET": values["user_snippet"],
-            "SECURITY_CLASS": values["security_class"],
-            "BASE": values["base"],
-            "BASE_IMAGE": BASE_IMAGES[values["base"]],
-            # Empty string suppresses the ``agents:`` line via the
-            # template's ``{% if AGENTS %}`` gate — the project then
-            # inherits the global default written by ``terok agents set``.
-            "AGENTS": values.get("agents", ""),
-        },
-    )
+    variables = {
+        "PROJECT_ID": values["project_id"],
+        "UPSTREAM_URL": values["upstream_url"],
+        "DEFAULT_BRANCH": values["default_branch"],
+        "USER_SNIPPET": values["user_snippet"],
+        "SECURITY_CLASS": values["security_class"],
+        "BASE": values["base"],
+        "BASE_IMAGE": BASE_IMAGES[values["base"]],
+        # Empty string suppresses the ``agents:`` line via the
+        # template's ``{% if AGENTS %}`` gate — the project then
+        # inherits the global default written by ``terok agents set``.
+        "AGENTS": values.get("agents", ""),
+    }
+    with resources.as_file(_TEMPLATE_DIR / _TEMPLATE_NAME) as template_path:
+        # ``StrictUndefined`` upgrades silent ``{{TYPO}}`` to a hard
+        # error; ``autoescape=False`` because YAML output would be
+        # corrupted by HTML escaping.  The wizard's template uses
+        # ``{% if %}`` blocks and the ``| indent`` filter — Jinja2
+        # control flow, not just ``{{VAR}}`` substitution.
+        env = jinja2.Environment(  # noqa: S701 — see comment above
+            loader=jinja2.FileSystemLoader(str(template_path.parent)),
+            keep_trailing_newline=True,
+            undefined=jinja2.StrictUndefined,
+            autoescape=False,
+        )
+        return env.get_template(template_path.name).render(**variables)
 
 
 def write_project_yaml(project_id: str, rendered: str, *, overwrite: bool = False) -> Path:

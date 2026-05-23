@@ -52,7 +52,7 @@ from importlib import resources as importlib_resources
 from importlib.resources.abc import Traversable
 from pathlib import Path
 
-from terok_util import render_template
+import jinja2
 
 _log = logging.getLogger(__name__)
 
@@ -368,7 +368,16 @@ def _render_desktop_file(bin_str: str) -> str:
     else:
         variables = {"EXEC": bin_str, "TRY_EXEC": bin_str, "TERMINAL": "true"}
     with importlib_resources.as_file(_resource_dir().joinpath(_TEMPLATE_NAME)) as template_path:
-        return render_template(template_path, variables)
+        # ``StrictUndefined`` upgrades silent ``{{TYPO}}`` to a hard error;
+        # ``autoescape=False`` because ``.desktop`` syntax is not HTML and
+        # any escaping would corrupt ``Exec=`` quoting.
+        env = jinja2.Environment(  # noqa: S701 — see comment above
+            loader=jinja2.FileSystemLoader(str(template_path.parent)),
+            keep_trailing_newline=True,
+            undefined=jinja2.StrictUndefined,
+            autoescape=False,
+        )
+        return env.get_template(template_path.name).render(**variables)
 
 
 # ── Manual cache refresh (fallback backend only) ──────────────────────

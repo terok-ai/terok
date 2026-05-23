@@ -19,6 +19,7 @@ from importlib.resources.abc import Traversable
 from pathlib import Path
 from typing import Any
 
+import jinja2
 from terok_util import ensure_dir
 
 from terok.lib.integrations.executor import (
@@ -37,7 +38,6 @@ from ..core.config import build_dir
 from ..core.images import project_cli_image, project_dev_image
 from ..core.project_model import ProjectConfig
 from ..core.projects import load_project
-from ..util.template_utils import render_resource_template
 
 # ---------- helpers ----------
 
@@ -147,7 +147,17 @@ def _render_l2(project: ProjectConfig) -> str:
     template = (
         resources.files("terok") / "resources" / "templates" / "l2.project.Dockerfile.template"
     )
-    return render_resource_template(template, variables)
+    with resources.as_file(template) as template_path:
+        # ``StrictUndefined`` upgrades silent ``{{TYPO}}`` to a hard
+        # error; ``autoescape=False`` because Dockerfile syntax is not
+        # HTML and any escaping would corrupt ``RUN`` commands.
+        env = jinja2.Environment(  # noqa: S701 — see comment above
+            loader=jinja2.FileSystemLoader(str(template_path.parent)),
+            keep_trailing_newline=True,
+            undefined=jinja2.StrictUndefined,
+            autoescape=False,
+        )
+        return env.get_template(template_path.name).render(**variables)
 
 
 def render_all_dockerfiles(project: ProjectConfig, *, family: str | None = None) -> dict[str, str]:
