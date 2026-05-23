@@ -5,7 +5,7 @@
 
 from __future__ import annotations
 
-from unittest.mock import patch
+from unittest.mock import PropertyMock, patch
 
 import pytest
 
@@ -51,15 +51,20 @@ def resolve_security_env(
         mock_git_config(),
         project_env(yaml_text, project_id=project_id, with_gate=with_gate) as ctx,
         patch(
-            "terok.lib.orchestration.environment.ensure_server_reachable",
+            "terok.lib.orchestration.environment.GateServerManager.ensure_reachable",
             side_effect=ensure_side_effect,
         ),
-        patch("terok.lib.orchestration.environment.get_gate_server_port", return_value=GATE_PORT),
         patch(
-            "terok.lib.orchestration.environment.get_gate_base_path",
+            "terok.lib.orchestration.environment.GateServerManager.server_port",
+            new_callable=PropertyMock,
+            return_value=GATE_PORT,
+        ),
+        patch(
+            "terok.lib.orchestration.environment.GateServerManager.gate_base_path",
+            new_callable=PropertyMock,
             return_value=ctx.base / "sandbox-state" / "gate",
         ),
-        patch("terok.lib.orchestration.environment.create_token", return_value=token),
+        patch("terok.lib.orchestration.environment.TokenStore.create", return_value=token),
     ):
         from unittest.mock import MagicMock
 
@@ -183,10 +188,17 @@ def test_tcp_mode_without_gate_port_raises() -> None:
     with (
         mock_git_config(),
         project_env(_GATEKEEPING_YAML, project_id="gk-proj", with_gate=True),
-        patch("terok.lib.orchestration.environment.ensure_server_reachable"),
-        patch("terok.lib.orchestration.environment.get_gate_server_port", return_value=None),
-        patch("terok.lib.orchestration.environment.get_gate_base_path"),
-        patch("terok.lib.orchestration.environment.create_token", return_value="t" * 32),
+        patch("terok.lib.orchestration.environment.GateServerManager.ensure_reachable"),
+        patch(
+            "terok.lib.orchestration.environment.GateServerManager.server_port",
+            new_callable=PropertyMock,
+            return_value=None,
+        ),
+        patch(
+            "terok.lib.orchestration.environment.GateServerManager.gate_base_path",
+            new_callable=PropertyMock,
+        ),
+        patch("terok.lib.orchestration.environment.TokenStore.create", return_value="t" * 32),
     ):
         project = load_project("gk-proj")
         with pytest.raises(SystemExit, match="Gate server port"):

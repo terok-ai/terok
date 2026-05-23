@@ -7,7 +7,7 @@
 prints one line after the SSH login hint when no recovery-ack marker
 is on disk.  Coverage here protects against silent regressions on
 the three states (acked / unacked-durable / unacked-session-only)
-plus probe failure and adapter-too-old.
+plus probe failure.
 """
 
 from __future__ import annotations
@@ -31,15 +31,18 @@ def _status(*, acknowledged: bool, source: str | None):
 
 
 class TestMaybeWarnRecoveryUnconfirmed:
-    """Branches: acked / unacked-durable / unacked-session / probe-raises / no-symbol."""
+    """Branches: acked / unacked-durable / unacked-session / probe-raises."""
 
     def test_acknowledged_prints_nothing(
         self, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
     ) -> None:
         """Marker present → silent.  No noise on the happy path."""
+        from terok.lib.integrations.sandbox import RecoveryStatus
+
         monkeypatch.setattr(
-            "terok.lib.integrations.sandbox.recovery_status",
-            lambda: _status(acknowledged=True, source="systemd-creds"),
+            RecoveryStatus,
+            "load",
+            classmethod(lambda cls, cfg=None: _status(acknowledged=True, source="systemd-creds")),
         )
         _maybe_warn_recovery_unconfirmed(color=False)
         assert capsys.readouterr().out == ""
@@ -48,9 +51,12 @@ class TestMaybeWarnRecoveryUnconfirmed:
         self, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
     ) -> None:
         """Marker missing + non-session source → yellow ``warn`` footer."""
+        from terok.lib.integrations.sandbox import RecoveryStatus
+
         monkeypatch.setattr(
-            "terok.lib.integrations.sandbox.recovery_status",
-            lambda: _status(acknowledged=False, source="keyring"),
+            RecoveryStatus,
+            "load",
+            classmethod(lambda cls, cfg=None: _status(acknowledged=False, source="keyring")),
         )
         _maybe_warn_recovery_unconfirmed(color=False)
         out = capsys.readouterr().out
@@ -69,9 +75,12 @@ class TestMaybeWarnRecoveryUnconfirmed:
         The text must call out "session-unlock", "reboot", and
         "UNRECOVERABLE" so the operator understands the asymmetry.
         """
+        from terok.lib.integrations.sandbox import RecoveryStatus
+
         monkeypatch.setattr(
-            "terok.lib.integrations.sandbox.recovery_status",
-            lambda: _status(acknowledged=False, source="session-file"),
+            RecoveryStatus,
+            "load",
+            classmethod(lambda cls, cfg=None: _status(acknowledged=False, source="session-file")),
         )
         _maybe_warn_recovery_unconfirmed(color=False)
         out = capsys.readouterr().out
@@ -85,28 +94,11 @@ class TestMaybeWarnRecoveryUnconfirmed:
         self, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
     ) -> None:
         """A best-effort probe must never block the operator's login hint."""
+        from terok.lib.integrations.sandbox import RecoveryStatus
 
-        def _boom() -> object:
+        def _boom(cls, cfg=None):
             raise RuntimeError("vault chain broke")
 
-        monkeypatch.setattr("terok.lib.integrations.sandbox.recovery_status", _boom)
+        monkeypatch.setattr(RecoveryStatus, "load", classmethod(_boom))
         _maybe_warn_recovery_unconfirmed(color=False)
-        assert capsys.readouterr().out == ""
-
-    def test_sandbox_without_symbol_is_silent(
-        self, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
-    ) -> None:
-        """An older sandbox pin without the wrapper degrades to no-op, no crash."""
-        import terok.lib.integrations.sandbox as adapter
-
-        original = getattr(adapter, "recovery_status", None)
-        monkeypatch.delattr(
-            "terok.lib.integrations.sandbox.recovery_status",
-            raising=False,
-        )
-        try:
-            _maybe_warn_recovery_unconfirmed(color=False)
-        finally:
-            if original is not None:
-                adapter.recovery_status = original
         assert capsys.readouterr().out == ""

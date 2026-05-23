@@ -3599,13 +3599,13 @@ url = "https://github.com/terok-ai/terok-clearance/releases/download/v0.6.14a5/t
 
 [[package]]
 name = "terok-executor"
-version = "0.0.149a20"
+version = "0.0.149a21"
 description = "Single-agent task runner for hardened Podman containers"
 optional = false
 python-versions = ">=3.12,<3.15"
 groups = ["main"]
 files = [
-    {file = "terok_executor-0.0.149a20-py3-none-any.whl", hash = "sha256:5fd12445e743b876e213766d032646ebbe10358933f12b5cced7c7b44f65c10b"},
+    {file = "terok_executor-0.0.149a21-py3-none-any.whl", hash = "sha256:3fe6f7f092499e4672549042f5df2df02e821a61a86c2f093faf21398bf5ddb6"},
 ]
 
 [package.dependencies]
@@ -3615,23 +3615,23 @@ prompt-toolkit = ">=3.0"
 pydantic = ">=2.9"
 rich = ">=13.0"
 "ruamel.yaml" = ">=0.18"
-terok_sandbox = {url = "https://github.com/terok-ai/terok-sandbox/releases/download/v0.0.124a17/terok_sandbox-0.0.124a17-py3-none-any.whl"}
+terok_sandbox = {url = "https://github.com/terok-ai/terok-sandbox/releases/download/v0.0.124a18/terok_sandbox-0.0.124a18-py3-none-any.whl"}
 terok_util = {url = "https://github.com/terok-ai/terok-util/releases/download/v0.0.2a1/terok_util-0.0.2a1-py3-none-any.whl"}
 tomli-w = ">=1.0"
 
 [package.source]
 type = "url"
-url = "https://github.com/terok-ai/terok-executor/releases/download/v0.0.149a20/terok_executor-0.0.149a20-py3-none-any.whl"
+url = "https://github.com/terok-ai/terok-executor/releases/download/v0.0.149a21/terok_executor-0.0.149a21-py3-none-any.whl"
 
 [[package]]
 name = "terok-sandbox"
-version = "0.0.124a17"
+version = "0.0.124a18"
 description = "Hardened Podman container runner with gate server and shield integration"
 optional = false
 python-versions = ">=3.12,<4.0"
 groups = ["main"]
 files = [
-    {file = "terok_sandbox-0.0.124a17-py3-none-any.whl", hash = "sha256:13d24e412d1df8dda675d732c104e984ba03519dff55bd327503b18886fa4b07"},
+    {file = "terok_sandbox-0.0.124a18-py3-none-any.whl", hash = "sha256:0666fc14607816e67df0aa122576d52d8dd194672b4dcd025447225aeeb28545"},
 ]
 
 [package.dependencies]
@@ -3646,22 +3646,22 @@ pydantic = ">=2.9"
 "ruamel.yaml" = ">=0.18"
 sqlcipher3 = ">=0.6.2"
 terok_clearance = {url = "https://github.com/terok-ai/terok-clearance/releases/download/v0.6.14a5/terok_clearance-0.6.14a5-py3-none-any.whl"}
-terok_shield = {url = "https://github.com/terok-ai/terok-shield/releases/download/v0.6.42a6/terok_shield-0.6.42a6-py3-none-any.whl"}
+terok_shield = {url = "https://github.com/terok-ai/terok-shield/releases/download/v0.6.42a7/terok_shield-0.6.42a7-py3-none-any.whl"}
 terok_util = {url = "https://github.com/terok-ai/terok-util/releases/download/v0.0.2a1/terok_util-0.0.2a1-py3-none-any.whl"}
 
 [package.source]
 type = "url"
-url = "https://github.com/terok-ai/terok-sandbox/releases/download/v0.0.124a17/terok_sandbox-0.0.124a17-py3-none-any.whl"
+url = "https://github.com/terok-ai/terok-sandbox/releases/download/v0.0.124a18/terok_sandbox-0.0.124a18-py3-none-any.whl"
 
 [[package]]
 name = "terok-shield"
-version = "0.6.42a6"
+version = "0.6.42a7"
 description = "nftables-based egress firewalling for Podman containers"
 optional = false
 python-versions = ">=3.12,<4.0"
 groups = ["main"]
 files = [
-    {file = "terok_shield-0.6.42a6-py3-none-any.whl", hash = "sha256:007de64c00368186e93dae97d696c0c7c122f100754ed95a7d2a9761d2f4a502"},
+    {file = "terok_shield-0.6.42a7-py3-none-any.whl", hash = "sha256:812ce581acb559f8455dc558c40e94a118a820b8932b06bb67982a6b8a6d5cae"},
 ]
 
 [package.dependencies]
@@ -3671,7 +3671,7 @@ terok_util = {url = "https://github.com/terok-ai/terok-util/releases/download/v0
 
 [package.source]
 type = "url"
-url = "https://github.com/terok-ai/terok-shield/releases/download/v0.6.42a6/terok_shield-0.6.42a6-py3-none-any.whl"
+url = "https://github.com/terok-ai/terok-shield/releases/download/v0.6.42a7/terok_shield-0.6.42a7-py3-none-any.whl"
 
 [[package]]
 name = "terok-util"
@@ -4570,4 +4570,4 @@ propcache = ">=0.2.1"
 [metadata]
 lock-version = "2.1"
 python-versions = ">=3.12,<3.15"
-content-hash = "fb7ea036715dfa79c404d340f285d8f4b6d78070dfe0abbefb8f79a9fa552534"
+content-hash = "376fc4c1763a89778a9d76eb6a15acf631fe7d01377c97724255fd2e5cb6fb46"

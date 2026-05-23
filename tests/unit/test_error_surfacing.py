@@ -10,7 +10,7 @@ project_state, image_cleanup, ports, and environment warning paths.
 from __future__ import annotations
 
 from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock, PropertyMock, patch
 
 import pytest
 
@@ -435,11 +435,12 @@ class TestEnvironmentWarnings:
 
         with (
             patch(
-                "terok.lib.orchestration.environment.get_gate_base_path",
+                "terok.lib.orchestration.environment.GateServerManager.gate_base_path",
+                new_callable=PropertyMock,
                 return_value=Path("/fake/gate"),
             ),
             patch(
-                "terok.lib.orchestration.environment.ensure_server_reachable",
+                "terok.lib.orchestration.environment.GateServerManager.ensure_reachable",
                 side_effect=SystemExit("unreachable"),
             ),
         ):

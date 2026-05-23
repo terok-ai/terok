@@ -1321,7 +1321,9 @@ class TestRenderGateServerStatus:
     def test_render_gate_server_status_running(self) -> None:
         screens, _ = import_screens()
         status = make_gate_server_status()
-        with mock.patch.object(screens, "check_units_outdated", return_value=None):
+        with mock.patch.object(
+            screens.GateServerManager, "check_units_outdated", return_value=None
+        ):
             result = screens.render_gate_server_status(status)
         text_str = str(result)
         assert "running" in text_str
@@ -1331,7 +1333,9 @@ class TestRenderGateServerStatus:
     def test_render_gate_server_status_stopped(self) -> None:
         screens, _ = import_screens()
         status = make_gate_server_status(mode="none", running=False)
-        with mock.patch.object(screens, "check_units_outdated", return_value=None):
+        with mock.patch.object(
+            screens.GateServerManager, "check_units_outdated", return_value=None
+        ):
             result = screens.render_gate_server_status(status)
         text_str = str(result)
         assert "stopped" in text_str
@@ -1341,7 +1345,9 @@ class TestRenderGateServerStatus:
         screens, _ = import_screens()
         status = make_gate_server_status()
         with mock.patch.object(
-            screens, "check_units_outdated", return_value="Units outdated (v1 vs v3)"
+            screens.GateServerManager,
+            "check_units_outdated",
+            return_value="Units outdated (v1 vs v3)",
         ):
             result = screens.render_gate_server_status(status)
         text_str = str(result)
@@ -1598,7 +1604,7 @@ class TestRenderVaultStatus:
         """Systemd socket active but service idle shows standby."""
         screens, _ = import_screens()
         status = make_vault_status(mode="systemd", running=False)
-        with mock.patch("terok.lib.api.vault.is_vault_socket_active", return_value=True):
+        with mock.patch("terok.lib.api.vault.VaultManager.is_socket_active", return_value=True):
             result = screens.render_vault_status(status)
         text_str = str(result)
         assert "standby" in text_str
@@ -1610,7 +1616,7 @@ class TestRenderVaultStatus:
         """Systemd socket inactive shows stopped with help text."""
         screens, _ = import_screens()
         status = make_vault_status(mode="systemd", running=False)
-        with mock.patch("terok.lib.api.vault.is_vault_socket_active", return_value=False):
+        with mock.patch("terok.lib.api.vault.VaultManager.is_socket_active", return_value=False):
             result = screens.render_vault_status(status)
         text_str = str(result)
         assert "stopped" in text_str
@@ -1705,11 +1711,13 @@ class TestRenderVaultStatus:
         status = make_vault_status(mode="systemd", transport="tcp")
         with (
             mock.patch(
-                "terok.lib.api.setup.get_token_broker_port",
+                "terok.lib.api.setup.VaultManager.token_broker_port",
+                new_callable=mock.PropertyMock,
                 return_value=18701,
             ),
             mock.patch(
-                "terok.lib.api.setup.get_ssh_signer_port",
+                "terok.lib.api.setup.VaultManager.ssh_signer_port",
+                new_callable=mock.PropertyMock,
                 return_value=18702,
             ),
         ):
@@ -1908,7 +1916,7 @@ class TestVaultScreenRefresh:
         detail = mock.Mock()
         screen.query_one = mock.Mock(return_value=detail)
         new_status = make_vault_status(running=True)
-        with mock.patch("terok.lib.api.vault.get_vault_status", return_value=new_status):
+        with mock.patch("terok.lib.api.vault.VaultManager.get_status", return_value=new_status):
             screen._refresh_status()
         assert screen._status is new_status
         detail.update.assert_called_once()
@@ -1919,7 +1927,7 @@ class TestVaultScreenRefresh:
         screen = screens.VaultScreen(make_vault_status())
         detail = mock.Mock()
         screen.query_one = mock.Mock(return_value=detail)
-        with mock.patch("terok.lib.api.vault.get_vault_status", side_effect=RuntimeError):
+        with mock.patch("terok.lib.api.vault.VaultManager.get_status", side_effect=RuntimeError):
             screen._refresh_status()
         assert screen._status is None
 
@@ -2082,15 +2090,17 @@ class TestVaultRevealAction:
         """Stubs for the three api sub-modules ``_action_vault_reveal`` imports from.
 
         The action imports ``SandboxConfig`` from ``terok.lib.api``,
-        ``is_recovery_acknowledged`` from ``terok.lib.api.shield``, and
-        the two passphrase errors from ``terok.lib.api.vault`` — each
-        gets its own ``sys.modules`` stub so the function-local imports
-        resolve to the test mocks.
+        [`RecoveryStatus`][terok_sandbox.RecoveryStatus] from
+        ``terok.lib.api.shield`` (and reads its
+        ``is_acknowledged`` classmethod), and the two passphrase
+        errors from ``terok.lib.api.vault`` — each gets its own
+        ``sys.modules`` stub so the function-local imports resolve to
+        the test mocks.
         """
         ack = is_recovery_acknowledged or mock.Mock(return_value=False)
         return {
             "terok.lib.api": mock.Mock(SandboxConfig=lambda: cfg),
-            "terok.lib.api.shield": mock.Mock(is_recovery_acknowledged=ack),
+            "terok.lib.api.shield": mock.Mock(RecoveryStatus=mock.Mock(is_acknowledged=ack)),
             "terok.lib.api.vault": mock.Mock(
                 NoPassphraseError=no_pass,
                 WrongPassphraseError=wrong_pass,
@@ -2182,7 +2192,7 @@ class TestVaultRevealResult:
         ack_recovery = mock.Mock(return_value=True)
         stubs = {
             "terok.lib.api": mock.Mock(SandboxConfig=lambda: mock.Mock()),
-            "terok.lib.api.shield": mock.Mock(acknowledge_recovery=ack_recovery),
+            "terok.lib.api.shield": mock.Mock(RecoveryStatus=mock.Mock(acknowledge=ack_recovery)),
         }
         with mock.patch.dict(sys.modules, stubs):
             run(mixin._on_vault_reveal_result(instance, True))
@@ -2198,7 +2208,7 @@ class TestVaultRevealResult:
         ack_recovery = mock.Mock(return_value=True)
         stubs = {
             "terok.lib.api": mock.Mock(SandboxConfig=lambda: mock.Mock()),
-            "terok.lib.api.shield": mock.Mock(acknowledge_recovery=ack_recovery),
+            "terok.lib.api.shield": mock.Mock(RecoveryStatus=mock.Mock(acknowledge=ack_recovery)),
         }
         with mock.patch.dict(sys.modules, stubs):
             run(mixin._on_vault_reveal_result(instance, False))
@@ -2214,7 +2224,7 @@ class TestVaultRevealResult:
         ack_recovery = mock.Mock(return_value=True)
         stubs = {
             "terok.lib.api": mock.Mock(SandboxConfig=lambda: mock.Mock()),
-            "terok.lib.api.shield": mock.Mock(acknowledge_recovery=ack_recovery),
+            "terok.lib.api.shield": mock.Mock(RecoveryStatus=mock.Mock(acknowledge=ack_recovery)),
         }
         with mock.patch.dict(sys.modules, stubs):
             run(mixin._on_vault_reveal_result(instance, None))
@@ -2239,7 +2249,7 @@ class TestVaultAcknowledgeAction:
         ack_recovery = mock.Mock(return_value=True)
         stubs = {
             "terok.lib.api": mock.Mock(SandboxConfig=lambda: mock.Mock()),
-            "terok.lib.api.shield": mock.Mock(acknowledge_recovery=ack_recovery),
+            "terok.lib.api.shield": mock.Mock(RecoveryStatus=mock.Mock(acknowledge=ack_recovery)),
         }
         with mock.patch.dict(sys.modules, stubs):
             run(mixin._action_vault_acknowledge(instance))
@@ -2247,24 +2257,6 @@ class TestVaultAcknowledgeAction:
         instance.notify.assert_called_once()
         assert "marked as saved" in instance.notify.call_args[0][0]
         instance._refresh_vault_status.assert_awaited_once()
-
-    def test_acknowledge_locked_notifies_warning(self) -> None:
-        """Locked vault → wrapper returns False, surface warning, no refresh."""
-        mixin = self._get_mixin()
-        instance = mock.Mock(spec=mixin)
-        instance.notify = mock.Mock()
-        instance._refresh_vault_status = mock.AsyncMock()
-        ack_recovery = mock.Mock(return_value=False)
-        stubs = {
-            "terok.lib.api": mock.Mock(SandboxConfig=lambda: mock.Mock()),
-            "terok.lib.api.shield": mock.Mock(acknowledge_recovery=ack_recovery),
-        }
-        with mock.patch.dict(sys.modules, stubs):
-            run(mixin._action_vault_acknowledge(instance))
-        ack_recovery.assert_called_once()
-        instance.notify.assert_called_once()
-        assert instance.notify.call_args.kwargs["severity"] == "warning"
-        instance._refresh_vault_status.assert_not_awaited()
 
 
 class TestMaybeWarnRecoveryUnconfirmed:
@@ -2291,8 +2283,8 @@ class TestMaybeWarnRecoveryUnconfirmed:
         if hasattr(instance, "_recovery_warning_shown"):
             del instance._recovery_warning_shown
         with mock.patch.object(
-            app_mod,
-            "recovery_status",
+            app_mod.RecoveryStatus,
+            "load",
             return_value=self._fake_status(acknowledged=False, source="keyring"),
         ):
             app_class._maybe_warn_recovery_unconfirmed(instance)
@@ -2310,8 +2302,8 @@ class TestMaybeWarnRecoveryUnconfirmed:
         if hasattr(instance, "_recovery_warning_shown"):
             del instance._recovery_warning_shown
         with mock.patch.object(
-            app_mod,
-            "recovery_status",
+            app_mod.RecoveryStatus,
+            "load",
             return_value=self._fake_status(acknowledged=False, source="session-file"),
         ):
             app_class._maybe_warn_recovery_unconfirmed(instance)
@@ -2330,8 +2322,8 @@ class TestMaybeWarnRecoveryUnconfirmed:
         if hasattr(instance, "_recovery_warning_shown"):
             del instance._recovery_warning_shown
         with mock.patch.object(
-            app_mod,
-            "recovery_status",
+            app_mod.RecoveryStatus,
+            "load",
             return_value=self._fake_status(acknowledged=True, source="keyring"),
         ):
             app_class._maybe_warn_recovery_unconfirmed(instance)
@@ -2346,8 +2338,8 @@ class TestMaybeWarnRecoveryUnconfirmed:
         if hasattr(instance, "_recovery_warning_shown"):
             del instance._recovery_warning_shown
         with mock.patch.object(
-            app_mod,
-            "recovery_status",
+            app_mod.RecoveryStatus,
+            "load",
             return_value=self._fake_status(acknowledged=False, source=None),
         ):
             app_class._maybe_warn_recovery_unconfirmed(instance)
@@ -2362,8 +2354,8 @@ class TestMaybeWarnRecoveryUnconfirmed:
         if hasattr(instance, "_recovery_warning_shown"):
             del instance._recovery_warning_shown
         with mock.patch.object(
-            app_mod,
-            "recovery_status",
+            app_mod.RecoveryStatus,
+            "load",
             return_value=self._fake_status(acknowledged=False, source="keyring"),
         ):
             app_class._maybe_warn_recovery_unconfirmed(instance)
@@ -2379,8 +2371,8 @@ class TestMaybeWarnRecoveryUnconfirmed:
         if hasattr(instance, "_recovery_warning_shown"):
             del instance._recovery_warning_shown
         with mock.patch.object(
-            app_mod,
-            "recovery_status",
+            app_mod.RecoveryStatus,
+            "load",
             return_value=self._fake_status(acknowledged=False, source="keyring"),
         ):
             app_class._maybe_warn_recovery_unconfirmed(instance)
@@ -2519,8 +2511,8 @@ class TestVaultStatusPill:
         """Resolved tier surfaces in the pill text (recovery key already acked)."""
         app_mod, app_class = import_app()
         monkeypatch.setattr(
-            app_mod,
-            "recovery_status",
+            app_mod.RecoveryStatus,
+            "load",
             lambda: self._fake_status(acknowledged=True, source="keyring"),
         )
         instance = mock.Mock(spec=app_class)
@@ -2534,8 +2526,8 @@ class TestVaultStatusPill:
         """Missing recovery-ack marker on a durable tier → ``UNCONFIRMED`` suffix."""
         app_mod, app_class = import_app()
         monkeypatch.setattr(
-            app_mod,
-            "recovery_status",
+            app_mod.RecoveryStatus,
+            "load",
             lambda: self._fake_status(acknowledged=False, source="systemd-creds"),
         )
         instance = mock.Mock(spec=app_class)
@@ -2553,8 +2545,8 @@ class TestVaultStatusPill:
         """Missing marker + session-file source → louder pill text."""
         app_mod, app_class = import_app()
         monkeypatch.setattr(
-            app_mod,
-            "recovery_status",
+            app_mod.RecoveryStatus,
+            "load",
             lambda: self._fake_status(acknowledged=False, source="session-file"),
         )
         instance = mock.Mock(spec=app_class)
@@ -2626,7 +2618,7 @@ class TestRefreshVaultStatus:
         app_mod, app_class = import_app()
         instance = self._make_instance(app_class)
         status = make_vault_status(locked=False, passphrase_source="keyring")
-        with mock.patch.object(app_mod, "get_vault_status", return_value=status):
+        with mock.patch.object(app_mod.VaultManager, "get_status", return_value=status):
             run(app_class._refresh_vault_status(instance))
         assert instance._last_vault_status is status
         instance._render_status_pill.assert_called_once_with(status)
@@ -2636,7 +2628,9 @@ class TestRefreshVaultStatus:
         """``get_vault_status`` raising still updates the pill (with ``None``)."""
         app_mod, app_class = import_app()
         instance = self._make_instance(app_class)
-        with mock.patch.object(app_mod, "get_vault_status", side_effect=RuntimeError("nope")):
+        with mock.patch.object(
+            app_mod.VaultManager, "get_status", side_effect=RuntimeError("nope")
+        ):
             run(app_class._refresh_vault_status(instance, push_modal_if_locked=True))
         assert instance._last_vault_status is None
         instance._render_status_pill.assert_called_once_with(None)
@@ -2647,7 +2641,7 @@ class TestRefreshVaultStatus:
         app_mod, app_class = import_app()
         instance = self._make_instance(app_class)
         status = make_vault_status(locked=True, passphrase_source=None)
-        with mock.patch.object(app_mod, "get_vault_status", return_value=status):
+        with mock.patch.object(app_mod.VaultManager, "get_status", return_value=status):
             run(app_class._refresh_vault_status(instance, push_modal_if_locked=True))
         instance.push_screen.assert_awaited_once()
         modal_arg = instance.push_screen.call_args[0][0]
@@ -2660,7 +2654,7 @@ class TestRefreshVaultStatus:
         app_mod, app_class = import_app()
         instance = self._make_instance(app_class)
         status = make_vault_status(locked=True, passphrase_source=None)
-        with mock.patch.object(app_mod, "get_vault_status", return_value=status):
+        with mock.patch.object(app_mod.VaultManager, "get_status", return_value=status):
             run(app_class._refresh_vault_status(instance, push_modal_if_locked=False))
         instance.push_screen.assert_not_called()
 

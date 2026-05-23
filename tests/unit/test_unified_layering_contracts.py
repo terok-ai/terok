@@ -508,7 +508,7 @@ def test_check_vault_surfaces_passphrase_tier() -> None:
     )
 
     with (
-        patch.object(sickbay, "get_vault_status", return_value=fake_status),
+        patch.object(sickbay.VaultManager, "get_status", return_value=fake_status),
         patch.object(sickbay, "get_services_mode", return_value="socket"),
         patch.object(sickbay, "systemd_creds_has_tpm2", return_value=False),
     ):

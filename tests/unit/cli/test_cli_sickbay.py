@@ -148,16 +148,24 @@ def test_cmd_sickbay_reports_health(
     ]
     with (
         patch("terok.cli.commands.sickbay._GLOBAL_CHECKS", patched_checks),
-        patch("terok.cli.commands.sickbay.get_server_status", return_value=status),
-        patch("terok.cli.commands.sickbay.check_units_outdated", return_value=outdated),
-        patch("terok.cli.commands.sickbay.is_systemd_available", return_value=systemd_available),
+        patch("terok.cli.commands.sickbay.GateServerManager.get_status", return_value=status),
+        patch(
+            "terok.cli.commands.sickbay.GateServerManager.check_units_outdated",
+            return_value=outdated,
+        ),
+        patch(
+            "terok.cli.commands.sickbay.GateServerManager.is_systemd_available",
+            return_value=systemd_available,
+        ),
         # ``_check_gate_server`` now branches on git availability before
         # systemd; pin to "present" so the parametrised cases above
         # exercise the systemd / not-running branches as intended.
         patch("terok.cli.commands.sickbay.shutil.which", return_value="/usr/bin/git"),
         patch("terok.cli.commands.sickbay.check_environment", return_value=mock_ec),
-        patch("terok.cli.commands.sickbay.get_vault_status", return_value=_make_vault_status()),
-        patch("terok.cli.commands.sickbay.is_vault_systemd_available", return_value=False),
+        patch(
+            "terok.cli.commands.sickbay.VaultManager.get_status", return_value=_make_vault_status()
+        ),
+        patch("terok.cli.commands.sickbay.VaultManager.is_systemd_available", return_value=False),
         patch("terok.cli.commands.sickbay.get_services_mode", return_value="tcp"),
         patch("terok.cli.commands.sickbay.make_sandbox_config", mock_cfg),
     ):
@@ -323,19 +331,19 @@ def test_check_vault_states(
     """_check_vault maps vault states to the correct severity and message."""
     with (
         patch(
-            "terok.cli.commands.sickbay.get_vault_status",
+            "terok.cli.commands.sickbay.VaultManager.get_status",
             return_value=_make_vault_status(running=running, mode=mode),
             side_effect=side_effect,
         ),
         patch(
-            "terok.cli.commands.sickbay.is_vault_systemd_available",
+            "terok.cli.commands.sickbay.VaultManager.is_systemd_available",
             return_value=systemd_avail,
         ),
         # systemd-idle branch consults is_vault_socket_active(); pin it to
         # False so the test doesn't read host state (the only parametrised
         # case that reaches this branch is ``socket-inactive``).
         patch(
-            "terok.cli.commands.sickbay.is_vault_socket_active",
+            "terok.cli.commands.sickbay.VaultManager.is_socket_active",
             return_value=False,
         ),
         # Pin services.mode to match the fixture's default ``transport=tcp``

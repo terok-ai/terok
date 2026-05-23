@@ -17,10 +17,6 @@ from terok.lib.integrations.sandbox import (  # noqa: F401 — re-exported publi
     GateServerManager,
     GateServerStatus,
     GateStalenessInfo,
-    get_gate_base_path,
-    get_server_status,
-    start_daemon,
-    stop_daemon,
 )
 
 __all__ = [
@@ -28,9 +24,5 @@ __all__ = [
     "GateServerManager",
     "GateServerStatus",
     "GateStalenessInfo",
-    "get_gate_base_path",
-    "get_server_status",
     "make_git_gate",
-    "start_daemon",
-    "stop_daemon",
 ]

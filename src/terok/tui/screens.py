@@ -65,12 +65,8 @@ else:
 from rich.style import Style
 from rich.text import Text
 
-from terok.lib.api.gate import GateServerStatus, GateStalenessInfo, get_gate_base_path
-from terok.lib.api.setup import (
-    EnvironmentCheck,
-    check_units_outdated,
-    is_systemd_available,
-)
+from terok.lib.api.gate import GateServerManager, GateServerStatus, GateStalenessInfo
+from terok.lib.api.setup import EnvironmentCheck, VaultManager
 from terok.lib.api.vault import VaultStatus
 
 from ..lib.api import ProjectConfig, sanitize_task_name, validate_task_name
@@ -164,14 +160,15 @@ def render_gate_server_status(status: GateServerStatus | None) -> Text:
         Text("running", style=ok_style) if status.running else Text("stopped", style=err_style)
     )
 
+    gate = GateServerManager()
     lines = [
         Text.assemble("Mode:      ", mode_s),
         Text.assemble("Status:    ", running_s),
         Text(f"Port:      {status.port}"),
-        Text(f"Base path: {get_gate_base_path()}"),
+        Text(f"Base path: {gate.gate_base_path}"),
     ]
 
-    outdated = check_units_outdated()
+    outdated = gate.check_units_outdated()
     if outdated:
         lines.append(Text(""))
         lines.append(Text(outdated, style=warn_style))
@@ -245,7 +242,7 @@ class GateServerScreen(screen.Screen[str | None]):
         """Render gate server status and focus the action list."""
         self._render_status()
         actions = self.query_one("#actions-list", OptionList)
-        if not is_systemd_available():
+        if not GateServerManager().is_systemd_available():
             _disable_options(actions, self._SYSTEMD_OPTIONS)
         actions.focus()
 
@@ -256,10 +253,10 @@ class GateServerScreen(screen.Screen[str | None]):
 
     def _refresh_status(self) -> None:
         """Re-fetch status and update the display."""
-        from terok.lib.api.gate import get_server_status
+        from terok.lib.api.gate import GateServerManager
 
         try:
-            self._status = get_server_status()
+            self._status = GateServerManager().get_status()
         except Exception as exc:
             from ..lib.util.logging_utils import _log_debug
 
@@ -2193,9 +2190,7 @@ def render_vault_status(status: VaultStatus | None) -> Text:
     if status.running:
         running_s = Text("running", style=ok)
     elif status.mode == "systemd":
-        from terok.lib.api.vault import is_vault_socket_active
-
-        if is_vault_socket_active():
+        if VaultManager().is_socket_active():
             running_s = Text("standby (starts on first connection)", style=warn)
             standby = True
         else:
@@ -2233,13 +2228,9 @@ def render_vault_status(status: VaultStatus | None) -> Text:
     # are visible at a glance.
     socket_suffix = ""
     if transport == "tcp":
-        from terok.lib.api.setup import (
-            get_ssh_signer_port,
-            get_token_broker_port,
-        )
-
-        broker_port = get_token_broker_port()
-        signer_port = get_ssh_signer_port()
+        vault = VaultManager()
+        broker_port = vault.token_broker_port
+        signer_port = vault.ssh_signer_port
         if broker_port is not None:
             lines.append(Text(f"TCP broker:  {_LOCALHOST}:{broker_port}"))
         if signer_port is not None:
@@ -2589,7 +2580,7 @@ class VaultScreen(screen.Screen[str | None]):
         """Render vault status and focus the action list."""
         self._render_status()
         actions = self.query_one("#actions-list", OptionList)
-        if not is_systemd_available():
+        if not VaultManager().is_systemd_available():
             _disable_options(actions, self._SYSTEMD_OPTIONS)
         actions.focus()
 
@@ -2600,10 +2591,10 @@ class VaultScreen(screen.Screen[str | None]):
 
     def _refresh_status(self) -> None:
         """Re-fetch status and update the display."""
-        from terok.lib.api.vault import get_vault_status
+        from terok.lib.api.vault import VaultManager
 
         try:
-            self._status = get_vault_status()
+            self._status = VaultManager().get_status()
         except Exception as exc:
             from ..lib.util.logging_utils import log_warning
 

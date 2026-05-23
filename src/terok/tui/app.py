@@ -71,7 +71,7 @@ if _HAS_TEXTUAL:
     from textual.worker import Worker, WorkerState
 
     from terok.lib.api import SandboxConfig
-    from terok.lib.api.gate import GateServerStatus, GateStalenessInfo, get_server_status
+    from terok.lib.api.gate import GateServerManager, GateServerStatus, GateStalenessInfo
     from terok.lib.api.setup import (
         EnvironmentCheck,
         SetupVerdict,
@@ -79,10 +79,10 @@ if _HAS_TEXTUAL:
         needs_setup,
     )
     from terok.lib.api.shield import (
-        recovery_status,
+        RecoveryStatus,
         shield_state as _shield_state,
     )
-    from terok.lib.api.vault import VaultStatus, get_vault_status
+    from terok.lib.api.vault import VaultManager, VaultStatus
 
     from ..lib.api import (
         BrokenProject,
@@ -444,7 +444,7 @@ if _HAS_TEXTUAL:
 
             # Startup gate server health check
             self.run_worker(
-                get_server_status,
+                lambda: GateServerManager().get_status(),
                 name="gate-health-check",
                 group="gate-health",
                 thread=True,
@@ -976,7 +976,7 @@ if _HAS_TEXTUAL:
                     except Exception:
                         staleness = None
                 try:
-                    gate_status = get_server_status()
+                    gate_status = GateServerManager().get_status()
                 except Exception:
                     gate_status = None
                 try:
@@ -1665,7 +1665,7 @@ if _HAS_TEXTUAL:
         async def action_show_vault(self) -> None:
             """Open the vault management screen."""
             try:
-                self._last_vault_status = get_vault_status()
+                self._last_vault_status = VaultManager().get_status()
             except Exception:
                 self._last_vault_status = None
             await self.push_screen(
@@ -1702,7 +1702,12 @@ if _HAS_TEXTUAL:
             vault_status = getattr(self, "_last_vault_status", None)
             if vault_status is None or vault_status.locked:
                 return
-            rstatus = recovery_status()
+            # Best-effort hint — must never block TUI startup, so swallow any
+            # resolver/marker failure and degrade silently.
+            try:
+                rstatus = RecoveryStatus.load()
+            except Exception:  # noqa: BLE001
+                return
             if rstatus.acknowledged:
                 return
             if rstatus.urgent:
@@ -1730,7 +1735,7 @@ if _HAS_TEXTUAL:
         async def _refresh_vault_status(self, *, push_modal_if_locked: bool = False) -> None:
             """Read fresh ``VaultStatus``, update the pill, optionally push the unlock modal."""
             try:
-                self._last_vault_status = get_vault_status()
+                self._last_vault_status = VaultManager().get_status()
             except Exception:
                 self._last_vault_status = None
 
@@ -1771,8 +1776,13 @@ if _HAS_TEXTUAL:
             # on the session-unlock tmpfs file AND the marker is
             # missing, the operator is one reboot away from losing the
             # vault — escalate the pill text accordingly.
-            rstatus = recovery_status()
-            if not rstatus.acknowledged:
+            # Best-effort hint — must never block the pill refresh, so swallow
+            # any resolver/marker failure and degrade to "no annotation".
+            try:
+                rstatus = RecoveryStatus.load()
+            except Exception:  # noqa: BLE001
+                rstatus = None
+            if rstatus is not None and not rstatus.acknowledged:
                 if rstatus.urgent:
                     suffix += " — recovery key UNSAVED, vault dies on reboot"
                 else:

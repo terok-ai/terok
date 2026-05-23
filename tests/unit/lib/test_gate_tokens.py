@@ -13,11 +13,7 @@ from contextlib import contextmanager
 from pathlib import Path
 
 import pytest
-from terok_sandbox import (
-    SandboxConfig,
-    create_token,
-    revoke_token_for_task,
-)
+from terok_sandbox import SandboxConfig
 from terok_sandbox.gate.tokens import TokenStore
 
 from tests.testfs import FAKE_TEROK_STATE_DIR, MISSING_TOKENS_PATH, NONEXISTENT_TOKENS_PATH
@@ -87,7 +83,7 @@ class TestCreateToken:
 
     def test_returns_prefixed_token(self) -> None:
         with patched_token_file() as token_path:
-            token = create_token("proj-a", "1")
+            token = TokenStore().create("proj-a", "1")
             assert token_path.exists()
         assert token.startswith("terok-g-")
         assert len(token) == 40
@@ -95,14 +91,14 @@ class TestCreateToken:
 
     def test_persists_to_file(self) -> None:
         with patched_token_file() as token_path:
-            token = create_token("proj-a", "1")
+            token = TokenStore().create("proj-a", "1")
             data = read_token_json(token_path)
         assert data[token] == {"scope": "proj-a", "task": "1"}
 
     def test_multiple_tokens_coexist(self) -> None:
         with patched_token_file() as token_path:
-            first = create_token("proj-a", "1")
-            second = create_token("proj-b", "2")
+            first = TokenStore().create("proj-a", "1")
+            second = TokenStore().create("proj-b", "2")
             data = read_token_json(token_path)
         assert first != second
         assert first in data
@@ -114,21 +110,21 @@ class TestRevokeToken:
 
     def test_revoke_removes_entry(self) -> None:
         with patched_token_file() as token_path:
-            token = create_token("proj-a", "1")
-            revoke_token_for_task("proj-a", "1")
+            token = TokenStore().create("proj-a", "1")
+            TokenStore().revoke_for_task("proj-a", "1")
             data = read_token_json(token_path)
         assert token not in data
 
     def test_revoke_nonexistent_is_noop(self) -> None:
         with patched_token_file() as token_path:
-            create_token("proj-a", "1")
-            revoke_token_for_task("proj-a", "99")
+            TokenStore().create("proj-a", "1")
+            TokenStore().revoke_for_task("proj-a", "99")
             data = read_token_json(token_path)
         assert len(data) == 1
 
     def test_revoke_on_missing_file_is_noop(self) -> None:
         with patched_token_file(state_dir=MISSING_TOKENS_PATH.parent):
-            revoke_token_for_task("proj-a", "1")
+            TokenStore().revoke_for_task("proj-a", "1")
 
 
 class TestAtomicWrite:

@@ -15,17 +15,7 @@ from contextlib import contextmanager
 from pathlib import Path
 
 import pytest
-from terok_sandbox import (
-    GateServerStatus,
-    SandboxConfig,
-    check_units_outdated,
-    ensure_server_reachable,
-    get_server_status,
-    is_daemon_running,
-    is_systemd_available,
-    start_daemon,
-    stop_daemon,
-)
+from terok_sandbox import GateServerStatus, SandboxConfig
 from terok_sandbox.gate.lifecycle import _UNIT_VERSION, GateServerManager
 
 from tests.testfs import FAKE_GATE_DIR, NONEXISTENT_DIR
@@ -189,12 +179,12 @@ class TestSystemdDetection:
         real exit code means systemd is still *present* (degraded,
         starting, maintenance, …)."""
         mock_run.return_value = make_run_result(returncode=returncode)
-        assert is_systemd_available() is expected
+        assert GateServerManager().is_systemd_available() is expected
 
     @unittest.mock.patch("subprocess.run", side_effect=FileNotFoundError)
     def test_systemd_not_available_when_missing(self, _mock: unittest.mock.Mock) -> None:
         """A missing ``systemctl`` binary is the only "absent" signal that matters."""
-        assert not is_systemd_available()
+        assert not GateServerManager().is_systemd_available()
 
 
 class TestSocketInstalled:
@@ -282,7 +272,7 @@ class TestDaemon:
         mock_run.return_value = make_run_result(returncode=0)
         with tempfile.TemporaryDirectory() as td:
             with patched_daemon_paths(Path(td)):
-                start_daemon(port=9999)
+                GateServerManager().start_daemon(port=9999)
 
         mock_run.assert_called_once()
         cmd = mock_run.call_args[0][0]
@@ -299,12 +289,12 @@ class TestDaemon:
         with tempfile.TemporaryDirectory() as td:
             with patched_daemon_paths(Path(td)):
                 with pytest.raises(subprocess.CalledProcessError):
-                    start_daemon(port=9999)
+                    GateServerManager().start_daemon(port=9999)
 
     def test_stop_daemon_no_pidfile(self) -> None:
         cfg = _test_config(state_dir=MISSING_PATH, runtime_dir=MISSING_PATH)
         with patched_config(cfg):
-            stop_daemon()
+            GateServerManager().stop_daemon()
 
     @pytest.mark.parametrize(
         ("managed", "should_kill"),
@@ -325,7 +315,7 @@ class TestDaemon:
                 ),
                 unittest.mock.patch("os.kill") as mock_kill,
             ):
-                stop_daemon()
+                GateServerManager().stop_daemon()
             assert mock_kill.called is should_kill
             if should_kill:
                 mock_kill.assert_called_once_with(99999, unittest.mock.ANY)
@@ -338,7 +328,7 @@ class TestIsDaemonRunning:
     def test_no_pidfile(self) -> None:
         cfg = _test_config(state_dir=MISSING_PATH, runtime_dir=MISSING_PATH)
         with patched_config(cfg):
-            assert not is_daemon_running()
+            assert not GateServerManager().is_daemon_running()
 
     @pytest.mark.parametrize(
         ("pid", "managed", "kill_side_effect", "expected"),
@@ -372,7 +362,7 @@ class TestIsDaemonRunning:
             with contextlib.ExitStack() as stack:
                 for patcher in patches:
                     stack.enter_context(patcher)
-                assert is_daemon_running() is expected
+                assert GateServerManager().is_daemon_running() is expected
 
 
 class TestIsManagedServer:
@@ -496,7 +486,7 @@ class TestGetServerStatus:
                 return_value=cfg,
             ),
         ):
-            assert get_server_status() == expected
+            assert GateServerManager().get_status() == expected
 
 
 class TestEnsureServerReachable:
@@ -546,10 +536,10 @@ class TestEnsureServerReachable:
             ),
         ):
             if error_match is None:
-                ensure_server_reachable()
+                GateServerManager().ensure_reachable()
             else:
                 with pytest.raises(SystemExit, match=error_match):
-                    ensure_server_reachable()
+                    GateServerManager().ensure_reachable()
 
 
 class TestInstalledUnitVersion:
@@ -607,7 +597,7 @@ class TestCheckUnitsOutdated:
                 return_value=version,
             ),
         ):
-            result = check_units_outdated()
+            result = GateServerManager().check_units_outdated()
         if expected is None:
             assert result is None
         else:

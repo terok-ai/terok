@@ -22,21 +22,22 @@ class TestEnsureVault:
         """Does nothing when bypass_no_secret_protection is set."""
         with (
             patch(f"{_CFG}.get_vault_bypass", return_value=True),
-            patch("terok.lib.integrations.sandbox.ensure_vault_reachable") as mock_reach,
+            patch("terok.lib.integrations.sandbox.VaultManager.ensure_reachable") as mock_reach,
         ):
             ensure_vault()
         mock_reach.assert_not_called()
 
     def test_calls_ensure_vault_reachable(self) -> None:
-        """Delegates to sandbox ensure_vault_reachable with correct config."""
+        """Delegates to ``VaultManager.ensure_reachable`` with correct config."""
         mock_cfg = MagicMock()
         with (
             patch(f"{_CFG}.get_vault_bypass", return_value=False),
             patch(f"{_ENV}.make_sandbox_config", return_value=mock_cfg),
-            patch("terok.lib.integrations.sandbox.ensure_vault_reachable") as mock_reach,
+            patch("terok.lib.integrations.sandbox.VaultManager") as mock_mgr_cls,
         ):
             ensure_vault()
-        mock_reach.assert_called_once_with(mock_cfg)
+        mock_mgr_cls.assert_called_once_with(mock_cfg)
+        mock_mgr_cls.return_value.ensure_reachable.assert_called_once_with()
 
     def test_propagates_system_exit(self) -> None:
         """SystemExit from ensure_vault_reachable propagates to caller."""
@@ -44,7 +45,7 @@ class TestEnsureVault:
             patch(f"{_CFG}.get_vault_bypass", return_value=False),
             patch(f"{_ENV}.make_sandbox_config"),
             patch(
-                "terok.lib.integrations.sandbox.ensure_vault_reachable",
+                "terok.lib.integrations.sandbox.VaultManager.ensure_reachable",
                 side_effect=SystemExit("vault down"),
             ),
         ):
