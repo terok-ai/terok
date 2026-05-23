@@ -14,7 +14,7 @@ from textual.widgets import Static
 from ...lib.api import STATUS_DISPLAY, TaskMeta, get_config, mode_info
 from ...lib.util.emoji import render_emoji
 from ...lib.util.net import url_host
-from ...lib.util.text_wrap import wrap_with_hanging_indent
+from ...ui_utils.terminal import wrap_with_hanging_indent
 
 
 def _get_css_variables(widget: Static) -> dict[str, str]:

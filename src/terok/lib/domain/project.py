@@ -81,7 +81,6 @@ from ..orchestration.agent_config import resolve_agent_config
 from ..orchestration.image import build_images, generate_dockerfiles, image_exists
 from ..orchestration.task_runners import HeadlessRunRequest, task_run_headless
 from ..orchestration.tasks import (
-    TaskMeta,
     container_name,
     get_all_task_states,
     get_task_meta,
@@ -90,14 +89,16 @@ from ..orchestration.tasks import (
     task_new,
 )
 from ..util.fs import archive_timestamp, create_archive_file
-from .project_state import get_project_state, is_task_image_old
 from .task import Task
 from .vault import vault_db
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
+
     from terok.lib.integrations.executor import AgentProvider
 
     from ..core.project_model import PresetInfo
+    from .storage import ProjectDetail
 
 _logger = logging.getLogger(__name__)
 
@@ -775,17 +776,25 @@ class Project:
             full_rebuild=full,
         )
 
-    def get_state(self) -> dict:
-        """Return the project's infrastructure state."""
-        return get_project_state(self._config.id, project=self._config)
+    def state(self, *, gate_commit_provider: Callable[[str], dict | None] | None = None) -> dict:
+        """Return the project's infrastructure state snapshot.
 
-    def is_task_image_old(self, task: TaskMeta) -> bool:
-        """Check whether the task's container image is outdated.
-
-        The underlying helper can return ``None`` when the comparison is
-        indeterminate (e.g. image deleted) — we treat that as "not stale".
+        *gate_commit_provider* is an optional callable that, given a
+        project id, returns the last gate commit dict (or ``None``).
+        Used by the TUI to inject the live gate manager's ``last_commit``
+        lookup without reaching for it from inside the helper.
         """
-        return bool(is_task_image_old(self._config.id, task))
+        from .project_state import get_project_state
+
+        return get_project_state(
+            self._config.id, gate_commit_provider=gate_commit_provider, project=self._config
+        )
+
+    def storage_detail(self) -> ProjectDetail:
+        """Return a detailed view of this project's on-disk footprint."""
+        from .storage import get_project_storage_detail
+
+        return get_project_storage_detail(self._config.id)
 
     # --- Security setup ---
 

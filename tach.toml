@@ -96,8 +96,8 @@ depends_on = [
     "terok.lib.util.emoji",
     "terok.lib.util.logging_utils",
     "terok.lib.util.net",
-    "terok.lib.util.text_wrap",
     "terok.lib.util.yaml",
+    "terok.ui_utils.terminal",
 ]
 
 # ── DOMAIN LAYER ──────────────────────────────────────────────────
@@ -223,7 +223,6 @@ depends_on = [
     "terok.lib.core.task_state",
     "terok.lib.domain.task",
     "terok.lib.domain.task_logs",
-    "terok.lib.orchestration.autopilot",
     "terok.lib.orchestration.task_runners",
     "terok.lib.orchestration.tasks",
 ]
@@ -266,6 +265,7 @@ depends_on = [
     "terok.lib.orchestration.agent_config",
     "terok.lib.orchestration.image",
     "terok.lib.domain.project_state",
+    "terok.lib.domain.storage",
     "terok.lib.domain.vault",
     "terok.lib.orchestration.task_runners",
     "terok.lib.orchestration.tasks",
@@ -282,17 +282,12 @@ depends_on = [
 path = "terok.lib.domain.task"
 layer = "domain"
 depends_on = [
+    "terok.lib.domain.project_state",
     "terok.lib.domain.task_logs",
     "terok.lib.orchestration.task_runners",
     "terok.lib.orchestration.tasks",
     "terok.lib.core.project_model",
 ]
-
-# Autopilot container lifecycle (wait, logs)
-[[modules]]
-path = "terok.lib.orchestration.autopilot"
-layer = "orchestration"
-depends_on = ["terok.lib.orchestration.tasks"]
 
 # Task log viewing and streaming
 [[modules]]
@@ -524,19 +519,12 @@ path = "terok.lib.core.yaml_schema"
 layer = "core"
 depends_on = []
 
-# Git authorship mode helpers
-[[modules]]
-path = "terok.lib.core.git_authorship"
-layer = "core"
-depends_on = []
-
 # Project discovery, loading, and preset management
 [[modules]]
 path = "terok.lib.core.projects"
 layer = "core"
 depends_on = [
     "terok.lib.core.config",
-    "terok.lib.core.git_authorship",
     "terok.lib.core.project_model",
     "terok.lib.core.yaml_schema",
     "terok.lib.util.yaml",
@@ -632,13 +620,6 @@ utility = true
 # Host-side subprocess safety guards
 [[modules]]
 path = "terok.lib.util.host_cmd"
-layer = "core"
-depends_on = []
-utility = true
-
-# Hanging-indent text wrapping (TUI label rendering)
-[[modules]]
-path = "terok.lib.util.text_wrap"
 layer = "core"
 depends_on = []
 utility = true
@@ -799,6 +780,7 @@ expose = [
     "iter_task_ids",
     "task_exists",
     "lookup_container_by_pt",
+    "wait_for_container_exit",
 ]
 from = ["terok.lib.orchestration.tasks"]
 
@@ -840,10 +822,6 @@ from = ["terok.lib.domain.storage"]
 [[interfaces]]
 expose = ["PanicResult", "execute_panic", "panic_stop_containers", "is_panicked", "clear_panic_lock", "format_panic_report"]
 from = ["terok.lib.domain.panic"]
-
-[[interfaces]]
-expose = ["get_project_state", "is_task_image_old"]
-from = ["terok.lib.domain.project_state"]
 
 # Core module interfaces
 
@@ -935,10 +913,6 @@ expose = ["auto_detect_formatter", "ClaudeStreamJsonFormatter", "PlainTextFormat
 from = ["terok.lib.domain.log_format"]
 
 [[interfaces]]
-expose = ["wait_for_container_exit", "follow_container_logs_cmd"]
-from = ["terok.lib.orchestration.autopilot"]
-
-[[interfaces]]
 expose = [
     "AGENTS_QUESTION",
     "QUESTIONS",
@@ -1018,10 +992,6 @@ from = ["terok.lib.util.emoji"]
 [[interfaces]]
 expose = ["archive_timestamp", "unique_archive_path", "create_archive_dir", "create_archive_file"]
 from = ["terok.lib.util.fs"]
-
-[[interfaces]]
-expose = ["wrap_with_hanging_indent"]
-from = ["terok.lib.util.text_wrap"]
 
 [[interfaces]]
 expose = ["assign_web_port", "release_web_port"]

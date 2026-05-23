@@ -11,7 +11,7 @@ cell-aware accounting that keeps wide-character prefixes from confusing
 
 import pytest
 
-from terok.lib.util.text_wrap import wrap_with_hanging_indent
+from terok.ui_utils.terminal import wrap_with_hanging_indent
 
 # Width 13 (cells): "tk-001 " (7) + "🤖" (2) + " " (1) + "✅" (2) + " " (1).
 EMOJI_PREFIX = "tk-001 \U0001f916 ✅ "

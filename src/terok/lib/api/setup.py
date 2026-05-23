@@ -15,7 +15,6 @@ sandbox adapter.
 from terok_util import namespace_state_dir  # noqa: F401 — re-exported public API
 
 from terok.lib.integrations.sandbox import (  # noqa: F401 — re-exported public API
-    EXIT_MANUAL_STEP_NEEDED,
     SERVICES_TCP_OPTOUT_YAML,
     EnvironmentCheck,
     GateServerManager,
@@ -37,7 +36,6 @@ from terok.lib.integrations.sandbox import (  # noqa: F401 — re-exported publi
 )
 
 __all__ = [
-    "EXIT_MANUAL_STEP_NEEDED",
     "EnvironmentCheck",
     "GateServerManager",
     "SERVICES_TCP_OPTOUT_YAML",

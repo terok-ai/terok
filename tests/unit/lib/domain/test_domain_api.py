@@ -115,11 +115,11 @@ class TestRegisterSshKey:
     """register_ssh_key assigns a key_id to a scope via the vault DB."""
 
     def test_assigns_key_to_scope(self) -> None:
-        from terok.lib import api
+        from terok.lib.domain.ssh import register_ssh_key
 
         db = MagicMock()
         with _patch_vault_db(db, module="ssh"):
-            api.register_ssh_key("myproj", 42)
+            register_ssh_key("myproj", 42)
         db.assign_ssh_key.assert_called_once_with("myproj", 42)
 
 
@@ -544,3 +544,121 @@ class TestResolveHostAuthImage:
         ):
             image = auth._resolve_host_auth_image("claude")
         assert image == "terok-l1-cli:fedora-43"
+
+
+# ---------------------------------------------------------------------------
+# Project / Task aggregate methods (W4.C OO refactor)
+# ---------------------------------------------------------------------------
+
+
+class TestProjectState:
+    """Project.state() delegates to get_project_state with the cached config."""
+
+    def test_delegates_with_loaded_config(self) -> None:
+        from terok.lib.domain.project import Project
+
+        cfg = MagicMock(id="myproj")
+        with patch(
+            "terok.lib.domain.project_state.get_project_state",
+            return_value={"gate": True},
+        ) as fn:
+            result = Project(cfg).state()
+        fn.assert_called_once_with("myproj", gate_commit_provider=None, project=cfg)
+        assert result == {"gate": True}
+
+    def test_threads_gate_commit_provider(self) -> None:
+        from terok.lib.domain.project import Project
+
+        cfg = MagicMock(id="myproj")
+        provider = MagicMock()
+        with patch(
+            "terok.lib.domain.project_state.get_project_state",
+            return_value={"gate": True},
+        ) as fn:
+            Project(cfg).state(gate_commit_provider=provider)
+        fn.assert_called_once_with("myproj", gate_commit_provider=provider, project=cfg)
+
+
+class TestProjectStorageDetail:
+    """Project.storage_detail() delegates to get_project_storage_detail."""
+
+    def test_delegates_with_project_id(self) -> None:
+        from terok.lib.domain.project import Project
+
+        cfg = MagicMock(id="myproj")
+        sentinel = MagicMock()
+        with patch(
+            "terok.lib.domain.storage.get_project_storage_detail",
+            return_value=sentinel,
+        ) as fn:
+            result = Project(cfg).storage_detail()
+        fn.assert_called_once_with("myproj")
+        assert result is sentinel
+
+
+class TestTaskImageIsOld:
+    """Task.image_is_old() preserves the tri-state (True/False/None) from the helper."""
+
+    @pytest.mark.parametrize("value", [True, False, None])
+    def test_passes_through_helper_result(self, value: bool | None) -> None:
+        from terok.lib.domain.task import Task
+
+        cfg = MagicMock(id="myproj")
+        meta = MagicMock()
+        with patch(
+            "terok.lib.domain.project_state.is_task_image_old",
+            return_value=value,
+        ) as fn:
+            assert Task(cfg, meta).image_is_old() is value
+        fn.assert_called_once_with("myproj", meta)
+
+
+# ---------------------------------------------------------------------------
+# wait_for_container_exit (moved from orchestration.autopilot → tasks.lifecycle)
+# ---------------------------------------------------------------------------
+
+
+class TestWaitForContainerExit:
+    """wait_for_container_exit owns AgentRunner.wait_for_exit + meta persistence."""
+
+    def test_happy_path_persists_exit_code(self) -> None:
+        from terok.lib.orchestration.tasks import lifecycle
+
+        runner = MagicMock()
+        runner.wait_for_exit.return_value = 0
+        with (
+            patch.object(lifecycle, "AgentRunner", return_value=runner),
+            patch("terok.lib.orchestration.tasks.meta.update_task_exit_code") as updater,
+        ):
+            code, err = lifecycle.wait_for_container_exit("ctr", "proj", "tk-001", timeout=42)
+        runner.wait_for_exit.assert_called_once_with("ctr", timeout=42.0)
+        updater.assert_called_once_with("proj", "tk-001", 0)
+        assert (code, err) == (0, None)
+
+    def test_timeout_returns_watcher_timed_out(self) -> None:
+        from terok.lib.orchestration.tasks import lifecycle
+
+        runner = MagicMock()
+        runner.wait_for_exit.side_effect = TimeoutError("slow")
+        with (
+            patch.object(lifecycle, "AgentRunner", return_value=runner),
+            patch("terok.lib.orchestration.tasks.meta.update_task_exit_code") as updater,
+        ):
+            code, err = lifecycle.wait_for_container_exit("ctr", "proj", "tk-001")
+        updater.assert_not_called()
+        assert code is None
+        assert err == "Watcher timed out"
+
+    def test_generic_exception_returns_message(self) -> None:
+        from terok.lib.orchestration.tasks import lifecycle
+
+        runner = MagicMock()
+        runner.wait_for_exit.side_effect = RuntimeError("podman is dead")
+        with (
+            patch.object(lifecycle, "AgentRunner", return_value=runner),
+            patch("terok.lib.orchestration.tasks.meta.update_task_exit_code") as updater,
+        ):
+            code, err = lifecycle.wait_for_container_exit("ctr", "proj", "tk-001")
+        updater.assert_not_called()
+        assert code is None
+        assert err == "podman is dead"

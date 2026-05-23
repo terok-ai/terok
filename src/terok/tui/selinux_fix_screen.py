@@ -3,9 +3,9 @@
 
 """Modal that offers the two SELinux-policy fixes after a setup exit 5.
 
-[`terok_sandbox._handle_sandbox_setup`][terok_sandbox.commands._handle_sandbox_setup]
-exits with code 5 when all install phases succeed but the host's
-SELinux policy is missing — see [terok-ai/terok-sandbox#298](https://github.com/terok-ai/terok-sandbox/pull/298).
+The sandbox ``setup`` CLI handler exits with code 5 when all install
+phases succeed but the host's SELinux policy is missing — see
+[terok-ai/terok-sandbox#298](https://github.com/terok-ai/terok-sandbox/pull/298).
 The TUI catches that exit code and pushes this screen.
 
 Two paths forward:

@@ -48,18 +48,12 @@ from terok.lib.domain.project import (  # noqa: F401 — re-exported public API
     find_projects_sharing_gate,
     get_project,
     list_projects,
-    make_ssh_manager,
     project_image_exists,
-)
-from terok.lib.domain.project_state import (  # noqa: F401 — re-exported public API
-    get_project_state,
-    is_task_image_old,
 )
 from terok.lib.domain.ssh import (  # noqa: F401 — re-exported public API
     maybe_pause_for_ssh_key_registration,
     project_needs_key_registration,
     provision_ssh_key,
-    register_ssh_key,
     summarize_ssh_init,
 )
 from terok.lib.domain.wizards.new_project import (  # noqa: F401 — re-exported public API
@@ -88,18 +82,14 @@ __all__ = [
     "find_projects_sharing_gate",
     "format_panic_report",
     "get_project",
-    "get_project_state",
-    "is_task_image_old",
     "list_images",
     "list_projects",
     "load_project",
-    "make_ssh_manager",
     "maybe_pause_for_ssh_key_registration",
     "panic_stop_containers",
     "project_image_exists",
     "project_needs_key_registration",
     "provision_ssh_key",
-    "register_ssh_key",
     "remove_images",
     "render_project_yaml",
     "require_project_exists",

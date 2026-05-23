@@ -181,8 +181,6 @@ def task_run_headless(request: HeadlessRunRequest) -> str:
     """
     from terok.lib.integrations.executor import (
         CLIOverrides,
-        apply_provider_config,
-        build_headless_command,
         get_provider,
     )
 
@@ -210,8 +208,7 @@ def task_run_headless(request: HeadlessRunRequest) -> str:
     # Apply provider-aware config resolution with best-effort feature mapping.
     # CLI flags override config values; unsupported features produce warnings
     # or prompt augmentation.
-    pcfg = apply_provider_config(
-        resolved,
+    pcfg = resolved.apply_config(
         effective,
         CLIOverrides(
             model=request.model,
@@ -269,8 +266,7 @@ def task_run_headless(request: HeadlessRunRequest) -> str:
     volumes.append(VolumeSpec(agent_config_dir, CONTAINER_TEROK_CONFIG, sharing=Sharing.PRIVATE))
 
     # Build headless command via provider registry
-    headless_cmd = build_headless_command(
-        resolved,
+    headless_cmd = resolved.build_headless_command(
         timeout=pcfg.timeout,
         model=pcfg.model,
         max_turns=pcfg.max_turns,
