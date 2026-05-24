@@ -719,8 +719,11 @@ class Project:
         from terok.lib.integrations.sandbox import Sandbox
 
         # One DB read + one Sandbox + per-image label cache for the
-        # whole listing.  Auth is global today — same set for every task.
-        authed = set(list_authenticated_agents())
+        # whole listing.  Scope-aware: a project with
+        # ``credentials.scope: project`` reads its own vault row, not
+        # the host-wide bucket — otherwise its tasks would be reported
+        # READY on host-wide creds the container will never see.
+        authed = set(list_authenticated_agents(scope=self._config.credential_set))
         sandbox = Sandbox(config=make_sandbox_config())
         label_cache: dict[str, set[str]] = {}
         out: list[ACPEndpoint] = []

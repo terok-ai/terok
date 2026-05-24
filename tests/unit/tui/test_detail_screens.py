@@ -1083,7 +1083,7 @@ class TestAuthFlow:
         instance.push_screen_wait.return_value = "api_key"
         with self._roster("claude", self._provider(oauth=True, api_key=True), oauth_enabled=True):
             run(mixin._run_auth_flow_body(instance, "claude", None))
-        instance._auth_via_api_key.assert_awaited_once_with("claude")
+        instance._auth_via_api_key.assert_awaited_once_with("claude", project_id=None)
         instance._auth_via_oauth.assert_not_awaited()
 
     def test_both_modes_cancel_dispatches_nothing(self) -> None:
@@ -1113,7 +1113,7 @@ class TestAuthFlow:
         with self._roster("blablador", info, oauth_enabled=True):
             run(mixin._run_auth_flow_body(instance, "blablador", None))
         instance.push_screen_wait.assert_not_awaited()
-        instance._auth_via_api_key.assert_awaited_once_with("blablador")
+        instance._auth_via_api_key.assert_awaited_once_with("blablador", project_id=None)
 
     def test_oauth_gated_off_falls_back_to_api_key(self) -> None:
         """A dual-mode provider with the OAuth gate closed uses API key, no prompt."""
@@ -1122,7 +1122,7 @@ class TestAuthFlow:
         with self._roster("claude", self._provider(oauth=True, api_key=True), oauth_enabled=False):
             run(mixin._run_auth_flow_body(instance, "claude", None))
         instance.push_screen_wait.assert_not_awaited()
-        instance._auth_via_api_key.assert_awaited_once_with("claude")
+        instance._auth_via_api_key.assert_awaited_once_with("claude", project_id=None)
 
     def test_oauth_only_but_gated_off_errors(self) -> None:
         """OAuth-only provider with the gate closed has no usable mode — it errors."""
@@ -1143,8 +1143,8 @@ class TestAuthFlow:
         instance.notify = mock.Mock()
         instance.push_screen_wait = mock.AsyncMock(return_value="sk-test-key")
         with mock.patch("terok.lib.api.store_api_key") as store:
-            run(mixin._auth_via_api_key(instance, "claude"))
-        store.assert_called_once_with("claude", "sk-test-key")
+            run(mixin._auth_via_api_key(instance, "claude", project_id=None))
+        store.assert_called_once_with("claude", "sk-test-key", credential_set="default")
         instance.notify.assert_called_once()
 
     def test_api_key_empty_is_noop(self) -> None:
@@ -1154,7 +1154,7 @@ class TestAuthFlow:
         instance.notify = mock.Mock()
         instance.push_screen_wait = mock.AsyncMock(return_value=None)
         with mock.patch("terok.lib.api.store_api_key") as store:
-            run(mixin._auth_via_api_key(instance, "claude"))
+            run(mixin._auth_via_api_key(instance, "claude", project_id=None))
         store.assert_not_called()
 
     def test_api_key_store_failure_notifies_error(self) -> None:
@@ -1164,7 +1164,7 @@ class TestAuthFlow:
         instance.notify = mock.Mock()
         instance.push_screen_wait = mock.AsyncMock(return_value="sk")
         with mock.patch("terok.lib.api.store_api_key", side_effect=RuntimeError("vault locked")):
-            run(mixin._auth_via_api_key(instance, "claude"))
+            run(mixin._auth_via_api_key(instance, "claude", project_id=None))
         assert instance.notify.call_args.kwargs.get("severity") == "error"
 
     # ---- _auth_via_oauth ----
@@ -1209,11 +1209,15 @@ class TestAuthFlow:
             mock.patch("terok.lib.core.images.project_cli_image", return_value="proj:img") as pci,
             mock.patch("terok.lib.api.find_host_auth_image") as find_host,
             mock.patch("terok.lib.api.Authenticator", return_value=authenticator),
-            mock.patch("terok.lib.core.config.sandbox_live_mounts_dir", return_value=MOCK_BASE),
+            mock.patch(
+                "terok.lib.api.resolve_credential_routing", return_value=(MOCK_BASE, "myproj")
+            ),
         ):
             run(mixin._auth_via_oauth(instance, "claude", project_id="myproj"))
         pci.assert_called_once_with("myproj")
         find_host.assert_not_called()
+        # Per-project credential set reaches prepare_oauth.
+        assert authenticator.prepare_oauth.call_args.kwargs["credential_set"] == "myproj"
         instance._launch_oauth_container.assert_awaited_once_with(session)
 
     # ---- _capture_auth_session ----
@@ -1266,7 +1270,7 @@ class TestActionSelection:
         action_globals = app_class._start_cli_task_background.__globals__
 
         fake_project = mock.Mock()
-        fake_project.default_login = None
+        fake_project.default_shell = None
         fake_load_project = mock.Mock(return_value=fake_project)
 
         with mock.patch.dict(

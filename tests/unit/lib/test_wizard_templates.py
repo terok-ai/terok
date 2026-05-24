@@ -50,6 +50,7 @@ def _full_variables(*, security_class: str, base: str, **overrides: str) -> dict
         "BASE": base,
         "BASE_IMAGE": BASE_IMAGES[base],
         "AGENTS": overrides.get("agents", "all"),
+        "CREDENTIALS_SCOPE": overrides.get("credentials_scope", "shared"),
     }
 
 

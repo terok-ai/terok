@@ -122,11 +122,16 @@ class ProjectSummary:
     image_bytes: int
     workspace_bytes: int
     task_count: int
+    credential_mounts_bytes: int = 0
+    """Bytes occupied by per-project agent-config mounts (``_claude-config``
+    etc.) when [`credentials_scope`][terok.lib.core.project_model.ProjectConfig.credentials_scope]
+    is ``"project"``.  Zero for shared-credential projects — their bytes
+    already roll up into [`StorageOverview.shared_mounts`][terok.lib.domain.storage.StorageOverview.shared_mounts]."""
 
     @property
     def total_bytes(self) -> int:
-        """Sum of images and workspaces (overlays excluded in overview mode)."""
-        return self.image_bytes + self.workspace_bytes
+        """Sum of images, workspaces, and per-project credential mounts."""
+        return self.image_bytes + self.workspace_bytes + self.credential_mounts_bytes
 
 
 @dataclass(frozen=True)
@@ -171,6 +176,10 @@ class ProjectDetail:
     images: list[ImageInfo]
     tasks: list[TaskStorageInfo]
     overlays: dict[str, int]
+    credential_mounts_bytes: int = 0
+    """Bytes occupied by per-project agent-config mounts when
+    ``credentials_scope == "project"``; zero otherwise (the shared-tree
+    bytes appear once in [`StorageOverview.shared_mounts`][terok.lib.domain.storage.StorageOverview.shared_mounts])."""
 
     @property
     def images_bytes(self) -> int:
@@ -190,7 +199,12 @@ class ProjectDetail:
     @property
     def total_bytes(self) -> int:
         """Everything for this project."""
-        return self.images_bytes + self.workspace_bytes + self.overlay_bytes
+        return (
+            self.images_bytes
+            + self.workspace_bytes
+            + self.overlay_bytes
+            + self.credential_mounts_bytes
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -220,12 +234,22 @@ def get_storage_overview() -> StorageOverview:
     summaries = []
     for proj in projects_conf:
         tasks = TaskStorageInfo.measure_all(proj.tasks_root)
+        # Per-project credential mounts are billed to the project they
+        # belong to.  Shared-credential projects (``credentials_scope ==
+        # "shared"``) leave their bytes in ``shared_mounts`` to avoid
+        # double-counting the single global tree across every project.
+        cred_mounts_bytes = 0
+        if proj.credentials_scope == "project" and proj.project_mounts_dir.is_dir():
+            cred_mounts_bytes = sum(
+                m.bytes for m in SharedMountStorageInfo.measure_all(proj.project_mounts_dir)
+            )
         summaries.append(
             ProjectSummary(
                 project_id=proj.id,
                 image_bytes=project_image_bytes.get(proj.id, 0),
                 workspace_bytes=sum(t.workspace_bytes for t in tasks),
                 task_count=len(tasks),
+                credential_mounts_bytes=cred_mounts_bytes,
             )
         )
 
@@ -268,9 +292,19 @@ def get_project_storage_detail(project_id: str) -> ProjectDetail:
         runtime.container_rw_sizes(project_id) if hasattr(runtime, "container_rw_sizes") else {}
     )
 
+    # Per-project credential mounts (only present when scope=project).
+    # Keep the calculation in lockstep with ``get_storage_overview`` so the
+    # two views can't disagree on the same project's bytes.
+    cred_mounts_bytes = 0
+    if project.credentials_scope == "project" and project.project_mounts_dir.is_dir():
+        cred_mounts_bytes = sum(
+            m.bytes for m in SharedMountStorageInfo.measure_all(project.project_mounts_dir)
+        )
+
     return ProjectDetail(
         project_id=project_id,
         images=project_images,
         tasks=tasks,
         overlays=overlays,
+        credential_mounts_bytes=cred_mounts_bytes,
     )

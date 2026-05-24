@@ -203,3 +203,23 @@ def test_tcp_mode_without_gate_port_raises() -> None:
         project = load_project("gk-proj")
         with pytest.raises(SystemExit, match="Gate server port"):
             _security_mode_env_and_volumes(project, "1", MagicMock(), use_socket=False)
+
+
+def test_project_mounts_dir_shared_returns_global() -> None:
+    """``credentials.scope: shared`` (default) returns the host-wide mount tree."""
+    from terok.lib.core.config import sandbox_live_mounts_dir
+    from terok.lib.orchestration.environment import project_mounts_dir
+
+    with mock_git_config(), project_env(_ONLINE_YAML, project_id="online-proj"):
+        project = load_project("online-proj")
+        assert project_mounts_dir(project) == sandbox_live_mounts_dir()
+
+
+def test_project_mounts_dir_project_returns_per_project_subtree() -> None:
+    """``credentials.scope: project`` returns ``project.root / "mounts"``."""
+    from terok.lib.orchestration.environment import project_mounts_dir
+
+    yaml_text = _ONLINE_YAML + "credentials:\n  scope: project\n"
+    with mock_git_config(), project_env(yaml_text, project_id="online-proj"):
+        project = load_project("online-proj")
+        assert project_mounts_dir(project) == project.root / "mounts"

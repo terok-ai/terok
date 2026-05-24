@@ -53,8 +53,14 @@ class ProjectConfig(BaseModel):
     auto_sync_enabled: bool = False
     auto_sync_branches: list[str] = Field(default_factory=list)
     default_agent: str | None = None
-    default_login: str | None = None
+    default_shell: str | None = None
     agent_config: dict[str, Any] = Field(default_factory=dict)
+    credentials_scope: Literal["shared", "project"] = "shared"
+    """Credentials isolation: ``shared`` reuses the host-wide bucket;
+    ``project`` carves out a private set under ``<root>/mounts`` and
+    reads/writes the vault DB under set ``<id>`` instead of
+    ``"default"``.  Computed via ``credential_set`` and
+    ``project_mounts_dir`` on this class."""
     shutdown_timeout: int = 10
     memory: str | None = None
     """Podman ``--memory`` value from ``run.memory`` in project.yml."""
@@ -119,6 +125,33 @@ class ProjectConfig(BaseModel):
         """Directory for preset config files for this project."""
         return self.root / "presets"
 
+    # Plain ``@property`` (not ``@computed_field``) so model_dump() does NOT
+    # serialise these derived values back into project.yml — round-tripping
+    # them would fail validation under ``extra="forbid"``.
+    @property
+    def credential_set(self) -> str:
+        """Vault DB namespace for this project's stored credentials.
+
+        ``"default"`` for shared-credential projects (the host-wide bucket
+        every project sees by default).  When ``credentials_scope`` is
+        ``"project"``, the project's id is used as the set name so its
+        logins live in their own row keyed by ``(project.id, provider)``
+        and never collide with another project's tokens.
+        """
+        return self.id if self.credentials_scope == "project" else "default"
+
+    @property
+    def project_mounts_dir(self) -> Path:
+        """Per-project agent-config mount tree (``_claude-config/`` etc.).
+
+        Only consulted when ``credentials_scope`` is ``"project"``.  The
+        shared case is resolved separately via
+        [`sandbox_live_mounts_dir`][terok.lib.core.config.sandbox_live_mounts_dir]
+        — keeping the global path off the value object avoids a domain →
+        config import cycle.
+        """
+        return self.root / "mounts"
+
 
 @dataclass
 class PresetInfo:
@@ -131,22 +164,36 @@ class PresetInfo:
 
 _PROJECT_ID_RE = re.compile(r"[a-z0-9][a-z0-9_-]*")
 
+#: Reserved IDs that would collide with vault namespace conventions.
+#: ``"default"`` is the shared credential bucket every project starts on;
+#: a project literally named ``default`` with ``credentials_scope: project``
+#: would silently overwrite the host-wide row.
+_RESERVED_PROJECT_IDS: frozenset[str] = frozenset({"default"})
+
 
 def is_valid_project_id(project_id: str) -> bool:
     """Return whether *project_id* matches the ``[a-z0-9][a-z0-9_-]*`` contract."""
-    return bool(project_id) and _PROJECT_ID_RE.fullmatch(project_id) is not None
+    if not project_id or _PROJECT_ID_RE.fullmatch(project_id) is None:
+        return False
+    return project_id not in _RESERVED_PROJECT_IDS
 
 
 def validate_project_id(project_id: str) -> None:
     """Ensure a project ID is safe for use as a directory and OCI image name.
 
     Raises SystemExit if the ID is empty, contains uppercase letters, path
-    separators or traversal sequences, or uses characters outside
-    ``[a-z0-9_-]``.
+    separators or traversal sequences, uses characters outside
+    ``[a-z0-9_-]``, or collides with a reserved name (currently only
+    ``"default"`` — the shared vault credential bucket).
     """
-    if not is_valid_project_id(project_id):
+    if not project_id or _PROJECT_ID_RE.fullmatch(project_id) is None:
         raise SystemExit(
             f"Invalid project ID '{project_id}': "
             "must start with a lowercase letter or digit, followed by lowercase letters, "
             "digits, hyphens, or underscores"
+        )
+    if project_id in _RESERVED_PROJECT_IDS:
+        raise SystemExit(
+            f"Project ID '{project_id}' is reserved (it collides with the shared "
+            "credential bucket).  Pick a different name."
         )

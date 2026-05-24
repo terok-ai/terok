@@ -316,6 +316,24 @@ QUESTIONS: tuple[Question, ...] = (
         ),
         default_visible=True,
     ),
+    Question(
+        key="credentials_scope",
+        kind="choice",
+        prompt="Authentication credentials for this project",
+        help=(
+            "Shared (default) reuses the host-wide credential bucket every "
+            "project sees — no separate authentication needed.  Project "
+            "creates an isolated set: agent logins, OAuth tokens, and shared "
+            "config files live under this project's own state directory and "
+            "have to be authenticated from scratch via "
+            "``terok auth --project <id>``."
+        ),
+        choices=(
+            Choice("shared", "Use shared host-wide credentials (recommended)"),
+            Choice("project", "Create an isolated set for this project"),
+        ),
+        required=True,
+    ),
 )
 
 
@@ -613,6 +631,10 @@ def render_project_yaml(values: dict) -> str:
         # template's ``{% if AGENTS %}`` gate — the project then
         # inherits the global default written by ``terok agents set``.
         "AGENTS": values.get("agents", ""),
+        # Default ``"shared"`` is omitted from the rendered YAML by the
+        # template — it matches the runtime default, so writing it back
+        # would just add noise to every freshly-created project file.
+        "CREDENTIALS_SCOPE": values.get("credentials_scope", "shared"),
     }
     with resources.as_file(_TEMPLATE_DIR / _TEMPLATE_NAME) as template_path:
         # ``StrictUndefined`` upgrades silent ``{{TYPO}}`` to a hard

@@ -33,6 +33,7 @@ def project_yaml(
     shield_on_task_restart: str | None = None,
     timezone: str | None = None,
     ssh_use_personal: bool | None = None,
+    credentials_scope: str | None = None,
 ) -> str:
     """Build project YAML for tests with optional sections."""
     lines = ["project:", f"  id: {project_id}"]
@@ -52,6 +53,8 @@ def project_yaml(
         lines += ["run:", f"  timezone: {timezone}"]
     if ssh_use_personal is not None:
         lines += ["ssh:", f"  use_personal: {str(ssh_use_personal).lower()}"]
+    if credentials_scope is not None:
+        lines += ["credentials:", f"  scope: {credentials_scope}"]
     return "\n".join(lines) + "\n"
 
 
@@ -74,6 +77,21 @@ class TestProject:
             )
             assert project.staging_root == (build_dir() / project_id).resolve()
             assert project.git_authorship == "agent-human"
+            # Default credentials.scope: shared bucket, no per-project carve-out.
+            assert project.credentials_scope == "shared"
+            assert project.credential_set == "default"
+
+    def test_load_project_with_per_project_credentials(self) -> None:
+        """``credentials.scope: project`` flips credential_set + project_mounts_dir."""
+        project_id = "proj-creds"
+        with project_env(
+            project_yaml(project_id, credentials_scope="project"),
+            project_id=project_id,
+        ):
+            project = load_project(project_id)
+            assert project.credentials_scope == "project"
+            assert project.credential_set == project_id
+            assert project.project_mounts_dir == project.root / "mounts"
 
     @pytest.mark.parametrize(
         ("project_id", "yaml_text", "config_text", "expected"),

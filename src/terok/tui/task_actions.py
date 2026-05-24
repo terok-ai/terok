@@ -257,11 +257,11 @@ class TaskActionsMixin(_MixinBase):
         # gives the launch screen its default login agent without delaying
         # the push.  The slow ``installed_agents`` lookup (podman inspect)
         # is offloaded to a worker so the screen surfaces immediately.
-        default_login = "bash"
+        default_shell = "bash"
         project = None
         try:
             project = load_project(pid)
-            default_login = project.default_login or "bash"
+            default_shell = project.default_shell or "bash"
         except (SystemExit, Exception) as exc:
             self._log_debug(
                 f"_start_cli_task_background: project lookup failed for {pid!r}; "
@@ -273,7 +273,7 @@ class TaskActionsMixin(_MixinBase):
             project_id=pid,
             task_id=task_id,
             task_name=name,
-            default_login=default_login,
+            default_shell=default_shell,
             installed=None,  # None = still loading; populated by the worker
             console_entry=console_entry,
         )

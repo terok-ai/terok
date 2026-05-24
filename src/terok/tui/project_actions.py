@@ -331,20 +331,23 @@ class ProjectActionsMixin(_MixinBase):
             return
 
         if mode == "api_key":
-            await self._auth_via_api_key(provider)
+            await self._auth_via_api_key(provider, project_id=project_id)
         else:
             await self._auth_via_oauth(provider, project_id=project_id)
 
-    async def _auth_via_api_key(self, provider: str) -> None:
+    async def _auth_via_api_key(self, provider: str, *, project_id: str | None) -> None:
         """Collect an API key via a Textual modal and store it in the vault."""
-        from ..lib.api import store_api_key
+        from ..lib.api import resolve_credential_routing, store_api_key
         from .screens import ApiKeyEntryScreen
 
         key = await self.push_screen_wait(ApiKeyEntryScreen(provider))
         if not key:
             return
+        # Per-project projects store under their own vault set; shared/host-wide
+        # land in "default".  Same routing the CLI uses (see domain.auth).
+        _mounts_dir, credential_set = resolve_credential_routing(project_id)
         try:
-            store_api_key(provider, key)
+            store_api_key(provider, key, credential_set=credential_set)
         except Exception as exc:  # noqa: BLE001 — surface every storage failure
             self.notify(
                 f"Failed to store API key for {provider}: {exc}",
@@ -356,11 +359,10 @@ class ProjectActionsMixin(_MixinBase):
 
     async def _auth_via_oauth(self, provider: str, *, project_id: str | None) -> None:
         """Prepare an OAuth auth container session and hand it to the launcher."""
-        from ..lib.api import Authenticator, find_host_auth_image
+        from ..lib.api import Authenticator, find_host_auth_image, resolve_credential_routing
         from ..lib.core.config import (
             is_claude_oauth_exposed,
             is_codex_oauth_exposed,
-            sandbox_live_mounts_dir,
         )
         from ..lib.core.images import project_cli_image
 
@@ -380,6 +382,10 @@ class ProjectActionsMixin(_MixinBase):
         expose = (provider == "claude" and is_claude_oauth_exposed()) or (
             provider == "codex" and is_codex_oauth_exposed()
         )
+        # Per-project projects capture into their own mount tree + vault set;
+        # shared/host-wide use the global tree + "default" (same routing the
+        # CLI uses, see domain.auth.resolve_credential_routing).
+        mounts_dir, credential_set = resolve_credential_routing(project_id)
         # ``prepare_oauth`` raises ``SystemExit`` only for an unknown or
         # non-OAuth provider — both already excluded by ``_run_auth_flow``
         # before we get here, so no defensive catch is needed.  An
@@ -387,9 +393,10 @@ class ProjectActionsMixin(_MixinBase):
         # of tearing down the app.
         session = Authenticator(provider).prepare_oauth(
             project_id,
-            mounts_dir=sandbox_live_mounts_dir(),
+            mounts_dir=mounts_dir,
             image=image,
             expose_token=expose,
+            credential_set=credential_set,
         )
         await self._launch_oauth_container(session)
 

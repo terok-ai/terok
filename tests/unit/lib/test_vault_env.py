@@ -128,16 +128,12 @@ class TestLeakedCredentialsScan:
         with (
             caplog.at_level(logging.WARNING, logger="terok.lib.orchestration.environment"),
             patch(
-                "terok.lib.orchestration.environment.sandbox_live_mounts_dir",
-                return_value=Path("/tmp/terok-testing/mounts"),
-            ),
-            patch(
                 "terok.lib.integrations.executor.scan_leaked_credentials",
                 return_value=[("claude", Path("/tmp/terok-testing/m/.credentials.json"))],
             ),
             patch("terok.lib.core.config.is_claude_oauth_exposed", return_value=False),
         ):
-            _warn_leaked_credentials()
+            _warn_leaked_credentials(Path("/tmp/terok-testing/mounts"))
 
         warnings = [r for r in caplog.records if r.levelno == logging.WARNING]
         assert any("claude" in r.message for r in warnings)
@@ -153,10 +149,6 @@ class TestLeakedCredentialsScan:
         with (
             caplog.at_level(logging.WARNING, logger="terok.lib.orchestration.environment"),
             patch(
-                "terok.lib.orchestration.environment.sandbox_live_mounts_dir",
-                return_value=Path("/tmp/terok-testing/mounts"),
-            ),
-            patch(
                 "terok.lib.integrations.executor.scan_leaked_credentials",
                 return_value=[
                     ("claude", Path("/tmp/terok-testing/m/.credentials.json")),
@@ -166,7 +158,7 @@ class TestLeakedCredentialsScan:
             patch("terok.lib.core.config.is_claude_oauth_exposed", return_value=True),
             patch("terok.lib.core.config.is_codex_oauth_exposed", return_value=False),
         ):
-            _warn_leaked_credentials()
+            _warn_leaked_credentials(Path("/tmp/terok-testing/mounts"))
 
         # Exposed-token warning printed to stderr
         err = capsys.readouterr().err
@@ -185,10 +177,6 @@ class TestLeakedCredentialsScan:
         with (
             caplog.at_level(logging.WARNING, logger="terok.lib.orchestration.environment"),
             patch(
-                "terok.lib.orchestration.environment.sandbox_live_mounts_dir",
-                return_value=Path("/tmp/terok-testing/mounts"),
-            ),
-            patch(
                 "terok.lib.integrations.executor.scan_leaked_credentials",
                 return_value=[
                     ("codex", Path("/tmp/terok-testing/m/_codex-config/auth.json")),
@@ -198,7 +186,7 @@ class TestLeakedCredentialsScan:
             patch("terok.lib.core.config.is_claude_oauth_exposed", return_value=False),
             patch("terok.lib.core.config.is_codex_oauth_exposed", return_value=True),
         ):
-            _warn_leaked_credentials()
+            _warn_leaked_credentials(Path("/tmp/terok-testing/mounts"))
 
         err = capsys.readouterr().err
         assert "Codex" in err and "EXPOSED" in err

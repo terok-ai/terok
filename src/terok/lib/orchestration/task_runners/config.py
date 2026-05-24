@@ -19,8 +19,8 @@ from terok.lib.integrations.executor import (
     resolve_instructions,
 )
 
-from ...core.config import sandbox_live_mounts_dir
 from ..agent_config import resolve_agent_config
+from ..environment import project_mounts_dir
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -94,7 +94,7 @@ def _prepare_agent_config(
             provider=resolved.name,
             instructions=instr_text,
             default_agent=project.default_agent,
-            mounts_base=sandbox_live_mounts_dir(),
+            mounts_base=project_mounts_dir(project),
         )
     )
 

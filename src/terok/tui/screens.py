@@ -1510,7 +1510,7 @@ class TaskLaunchScreen(screen.ModalScreen["tuple[str, str, str, str, str, str | 
         project_id: str,
         task_id: str,
         task_name: str | None = "",
-        default_login: str = "bash",
+        default_shell: str = "bash",
         installed: frozenset[str] | None = None,
         console_entry: "ConsoleLogEntry | None" = None,
     ) -> None:
@@ -1530,7 +1530,7 @@ class TaskLaunchScreen(screen.ModalScreen["tuple[str, str, str, str, str, str | 
         self._project_id = project_id
         self._task_id = task_id
         self._task_name = task_name or task_id
-        self._default_login = default_login
+        self._default_shell = default_shell
         self._installed = installed
         # ConsoleLogEntry for the background container start.  The start
         # stays backgrounded; "Show log" is the only thing that foregrounds
@@ -1557,7 +1557,7 @@ class TaskLaunchScreen(screen.ModalScreen["tuple[str, str, str, str, str, str | 
             loading = self._installed is None
             choices = self._build_agent_choices()
             valid_values = {v for _, v in choices}
-            login_value = self._default_login if self._default_login in valid_values else "bash"
+            login_value = self._default_shell if self._default_shell in valid_values else "bash"
             yield Select(
                 choices,
                 value=login_value,
@@ -1595,7 +1595,7 @@ class TaskLaunchScreen(screen.ModalScreen["tuple[str, str, str, str, str, str | 
         """Populate the agent dropdown once the background lookup finishes.
 
         Replaces the placeholder ``bash``-only choice list with the real
-        set of installed agents, restores the configured *default_login*
+        set of installed agents, restores the configured *default_shell*
         if it's now selectable, and enables the dropdown.  Safe to call
         before ``compose`` has run \u2014 in that case it just updates state
         and the dropdown renders enabled on first mount.
@@ -1611,7 +1611,7 @@ class TaskLaunchScreen(screen.ModalScreen["tuple[str, str, str, str, str, str | 
         # still available, else fall back to ``bash`` (always in choices) so
         # the dropdown is never left blank.
         valid_values = {v for _, v in choices}
-        select.value = self._default_login if self._default_login in valid_values else "bash"
+        select.value = self._default_shell if self._default_shell in valid_values else "bash"
         select.prompt = "Select an agent"
         select.disabled = False
 

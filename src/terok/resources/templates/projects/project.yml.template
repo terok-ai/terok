@@ -50,3 +50,8 @@ gatekeeping:
     enabled: true
     interval_minutes: 5
 {%- endif %}
+{%- if CREDENTIALS_SCOPE == "project" %}
+
+credentials:
+  scope: project
+{%- endif %}

@@ -25,9 +25,9 @@ from terok.lib.integrations.executor import (
 from terok.lib.integrations.sandbox import Sharing, VolumeSpec
 
 from ...core import runtime as _rt
-from ...core.config import sandbox_live_mounts_dir
 from ...core.images import project_cli_image, require_agent_installed
 from ...core.projects import load_project
+from ...orchestration.environment import project_mounts_dir
 from ...util.ansi import (
     blue as _blue,
     green as _green,
@@ -245,7 +245,7 @@ def task_run_headless(request: HeadlessRunRequest) -> str:
             provider=resolved.name,
             instructions=instr_text,
             default_agent=project.default_agent,
-            mounts_base=sandbox_live_mounts_dir(),
+            mounts_base=project_mounts_dir(project),
         )
     )
 

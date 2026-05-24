@@ -129,19 +129,19 @@ class TestTaskLaunchScreen:
             project_id="p",
             task_id="1",
             task_name="fix-bug",
-            default_login="claude",
+            default_shell="claude",
         )
         assert screen._container_name == "terok-p-cli-1"
         assert screen._project_id == "p"
         assert screen._task_id == "1"
         assert screen._task_name == "fix-bug"
-        assert screen._default_login == "claude"
+        assert screen._default_shell == "claude"
         assert not screen._container_ready
 
     def test_construction_default_bash(self) -> None:
         screens, _ = import_screens()
         screen = screens.TaskLaunchScreen(container_name="c", project_id="p", task_id="1")
-        assert screen._default_login == "bash"
+        assert screen._default_shell == "bash"
         assert screen._task_name == "1"  # falls back to task_id
 
     def test_dismiss_returns_none(self) -> None:
@@ -433,7 +433,7 @@ class TestTaskLaunchScreenLazyAgents:
             container_name="c",
             project_id="p",
             task_id="1",
-            default_login=target,
+            default_shell=target,
             installed=None,
         )
         mock_select = mock.Mock()
@@ -452,13 +452,13 @@ class TestTaskLaunchScreenLazyAgents:
         assert mock_select.disabled is False
 
     def test_set_installed_falls_back_to_bash_when_default_unavailable(self) -> None:
-        """If the configured default_login isn't installed, the dropdown still picks bash."""
+        """If the configured default_shell isn't installed, the dropdown still picks bash."""
         screens, _ = import_screens()
         screen = screens.TaskLaunchScreen(
             container_name="c",
             project_id="p",
             task_id="1",
-            default_login="not-installed-agent",
+            default_shell="not-installed-agent",
             installed=None,
         )
         mock_select = mock.Mock()
@@ -549,42 +549,42 @@ class TestLaunchCmdShape:
 
 
 # ---------------------------------------------------------------------------
-# Config: default_login
+# Config: default_shell
 # ---------------------------------------------------------------------------
 
 
 class TestDefaultLoginConfig:
-    """Tests for the default_login config field."""
+    """Tests for the default_shell config field."""
 
-    def test_project_model_has_default_login(self) -> None:
+    def test_project_model_has_default_shell(self) -> None:
         from terok.lib.core.project_model import ProjectConfig
 
         fields = ProjectConfig.model_fields
-        assert "default_login" in fields
+        assert "default_shell" in fields
 
-    def test_project_yaml_schema_has_default_login(self) -> None:
+    def test_project_yaml_schema_has_default_shell(self) -> None:
         from terok.lib.core.yaml_schema import RawProjectYaml
 
         fields = RawProjectYaml.model_fields
-        assert "default_login" in fields
+        assert "default_shell" in fields
 
-    def test_global_config_schema_has_default_login(self) -> None:
+    def test_global_config_schema_has_default_shell(self) -> None:
         from terok.lib.core.yaml_schema import RawGlobalConfig
 
         fields = RawGlobalConfig.model_fields
-        assert "default_login" in fields
+        assert "default_shell" in fields
 
-    def test_project_yaml_default_login_defaults_none(self) -> None:
+    def test_project_yaml_default_shell_defaults_none(self) -> None:
         from terok.lib.core.yaml_schema import RawProjectYaml
 
         raw = RawProjectYaml()
-        assert raw.default_login is None
+        assert raw.default_shell is None
 
-    def test_global_config_default_login_defaults_none(self) -> None:
+    def test_global_config_default_shell_defaults_none(self) -> None:
         from terok.lib.core.yaml_schema import RawGlobalConfig
 
         raw = RawGlobalConfig()
-        assert raw.default_login is None
+        assert raw.default_shell is None
 
 
 # ---------------------------------------------------------------------------
@@ -623,7 +623,7 @@ class TestBackgroundLaunchCompletion:
         instance.dispatch_console_action = _dispatch
 
         fake_project = mock.Mock()
-        fake_project.default_login = None
+        fake_project.default_shell = None
         action_globals = getattr(app_class, start_method).__globals__
         with mock.patch.dict(
             action_globals,
@@ -1129,7 +1129,7 @@ class TestStartCliTaskBackgroundPassesName:
         instance.run_worker = mock.Mock()
 
         fake_project = mock.Mock()
-        fake_project.default_login = "claude"
+        fake_project.default_shell = "claude"
         action_globals = app_class._start_cli_task_background.__globals__
 
         with mock.patch.dict(
@@ -1148,7 +1148,7 @@ class TestStartCliTaskBackgroundPassesName:
         assert launch_screen._task_name == "deploy-hotfix"
         assert launch_screen._task_id == "7"
         assert launch_screen._project_id == "proj1"
-        assert launch_screen._default_login == "claude"
+        assert launch_screen._default_shell == "claude"
         # Launch screen is pushed in the "loading" state so the prompt
         # TextArea is typeable immediately — the agent dropdown fills in
         # when the worker resolves _fill_installed_agents.
@@ -1202,7 +1202,7 @@ class TestStartCliTaskBackgroundLoadFailure:
         instance.push_screen.assert_awaited_once()
         launch_screen = instance.push_screen.call_args[0][0]
         assert launch_screen._installed == frozenset()
-        assert launch_screen._default_login == "bash"
+        assert launch_screen._default_shell == "bash"
 
 
 # ---------------------------------------------------------------------------

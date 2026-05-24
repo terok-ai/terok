@@ -16,11 +16,45 @@ The image-resolution logic lives in the module-private
 from __future__ import annotations
 
 from collections.abc import Callable
+from pathlib import Path
 
 from terok.lib.integrations.executor import Authenticator
 
 from ..core.images import project_cli_image
 from ..orchestration.image import image_exists
+
+
+def resolve_credential_routing(project_id: str | None) -> tuple[Path, str]:
+    """Resolve ``(mounts_dir, credential_set)`` for an auth flow.
+
+    The single source of truth for credential routing, shared by the CLI
+    [`authenticate`][terok.lib.domain.auth.authenticate] flow and the
+    TUI's native auth path so the two can't drift.
+
+    Host-wide auth (``project_id is None``) and ``shared``-scope projects
+    land in the host-wide mount tree + the ``"default"`` vault set.  A
+    ``project``-scoped project gets its private subtree + a vault set
+    keyed by the project id.
+
+    Side effect: for a ``project``-scoped project the per-project mount
+    tree is created (mode ``0o700``) if absent — the OAuth post-capture
+    writer needs it to exist, and other users on the host must not be
+    able to enumerate the project's credential file paths.  The ``chmod``
+    is explicit because ``mkdir(mode=…)`` only applies on creation.
+    """
+    from ..core.config import sandbox_live_mounts_dir
+    from ..core.projects import load_project
+    from ..orchestration.environment import project_mounts_dir
+
+    if project_id is None:
+        return sandbox_live_mounts_dir(), "default"
+
+    project = load_project(project_id)
+    mounts_dir = project_mounts_dir(project)
+    if project.credentials_scope == "project":
+        mounts_dir.mkdir(parents=True, exist_ok=True, mode=0o700)
+        mounts_dir.chmod(0o700)
+    return mounts_dir, project.credential_set
 
 
 def authenticate(provider: str, project_id: str | None = None) -> None:
@@ -35,15 +69,20 @@ def authenticate(provider: str, project_id: str | None = None) -> None:
     Image resolution is **deferred**: the executor only invokes the
     resolver after the user has chosen the OAuth path from the
     OAuth-vs-API-key prompt, so picking API key never triggers an L1
-    build.  Vault storage is provider-scoped in both modes, so switching
-    from a per-project auth to a host-wide one later (or vice versa)
-    does not duplicate or overwrite credentials.
+    build.
+
+    Credential routing follows the named project's
+    [`credentials_scope`][terok.lib.core.project_model.ProjectConfig.credentials_scope]:
+    ``"shared"`` (default) writes to the host-wide bucket every project
+    sees, ``"project"`` carves out a private set under the project's id
+    and stores the agent-config files under the project's own mount
+    tree.  When *project_id* is ``None``, both default to the host-wide
+    bucket — no project context exists to override them.
     """
     from ..core.config import (
         is_claude_oauth_exposed,
         is_codex_oauth_exposed,
         is_oauth_enabled_for,
-        sandbox_live_mounts_dir,
     )
 
     expose = (provider == "claude" and is_claude_oauth_exposed()) or (
@@ -56,6 +95,8 @@ def authenticate(provider: str, project_id: str | None = None) -> None:
     else:
         image = project_cli_image(project_id)
 
+    mounts_dir, credential_set = resolve_credential_routing(project_id)
+
     # The roster declares which auth modes a provider supports; terok's
     # config can disable the OAuth path (experimental flag + per-provider
     # ``allow_oauth``).  The listing screen already filters on this; pass
@@ -63,10 +104,11 @@ def authenticate(provider: str, project_id: str | None = None) -> None:
     # prompt agrees.
     Authenticator(provider).run(
         project_id,
-        mounts_dir=sandbox_live_mounts_dir(),
+        mounts_dir=mounts_dir,
         image=image,
         expose_token=expose,
         oauth_enabled=is_oauth_enabled_for(provider),
+        credential_set=credential_set,
     )
 
 
@@ -192,4 +234,4 @@ def _resolve_host_auth_image(provider: str) -> str:
     return ImageBuilder(base).ensure_default_l1(agents)
 
 
-__all__ = ["authenticate", "find_host_auth_image"]
+__all__ = ["authenticate", "find_host_auth_image", "resolve_credential_routing"]

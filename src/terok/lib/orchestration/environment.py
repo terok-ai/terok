@@ -52,6 +52,21 @@ bridge forwards to the mounted host ``gate-server.sock``, so the CODE_REPO /
 CLONE_FROM URL the container sees is ``http://localhost:9418/<repo>``.
 """
 
+
+def project_mounts_dir(project: ProjectConfig) -> Path:
+    """Return the effective agent-config mount tree for *project*.
+
+    ``credentials_scope == "project"`` carves out a private subtree under
+    the project's root; the default ``"shared"`` returns the host-wide
+    [`sandbox_live_mounts_dir`][terok.lib.core.config.sandbox_live_mounts_dir]
+    every project sees.  Pure orchestration helper so the value object
+    stays free of the global config dependency.
+    """
+    if project.credentials_scope == "project":
+        return project.project_mounts_dir
+    return sandbox_live_mounts_dir()
+
+
 _SPEC_CONSUMED_SEC_ENV_KEYS = frozenset({"CODE_REPO", "CLONE_FROM", "GIT_BRANCH"})
 """``sec_env`` keys already routed via ``ContainerEnvSpec`` (see
 [`build_task_env_and_volumes`][terok.lib.orchestration.environment.build_task_env_and_volumes]
@@ -371,13 +386,17 @@ def _vault_patch_provider_sets(
     return enabled, disabled
 
 
-def _warn_leaked_credentials() -> None:
+def _warn_leaked_credentials(mounts_dir: Path) -> None:
     """Warn about real credential files in shared mounts.
 
     When an OAuth token is intentionally exposed (for Claude subscription
     features or direct Codex control), the
     provider-specific leak warning is suppressed and replaced by a loud,
     explicit banner so the user can't miss that a real token is mounted.
+
+    *mounts_dir* is the project's effective agent-config mount tree —
+    shared or project-scoped per
+    [`Project.mounts_dir`][terok.lib.domain.project.Project.mounts_dir].
     """
     import sys
 
@@ -386,7 +405,7 @@ def _warn_leaked_credentials() -> None:
     from ..core.config import is_claude_oauth_exposed, is_codex_oauth_exposed
     from ..util.ansi import bold, supports_color, yellow
 
-    leaked = scan_leaked_credentials(sandbox_live_mounts_dir())
+    leaked = scan_leaked_credentials(mounts_dir)
     color = supports_color()
 
     def _banner(provider_label: str, file_desc: str) -> None:
@@ -489,6 +508,7 @@ class TaskEnvironment:
         project = self.project
         task_id = self.task_id
         sealed = project.is_sealed
+        mounts_dir = project_mounts_dir(project)
 
         task_dir = project.tasks_root / str(task_id)
         task_dir.mkdir(parents=True, exist_ok=True)
@@ -554,11 +574,12 @@ class TaskEnvironment:
                 human_name=project.human_name or "Nobody",
                 human_email=project.human_email or "nobody@localhost",
                 credential_scope=project.id,
+                credential_set=project.credential_set,
                 vault_transport=vault_transport,
                 vault_required=not vault_bypass,
                 unrestricted=False,  # task_runners resolves per-provider config
                 shared_dir=None if sealed else project.shared_dir,
-                envs_dir=sandbox_live_mounts_dir(),
+                envs_dir=mounts_dir,
                 timezone=project.timezone,
                 enabled_vault_patch_providers=enabled_patch_providers,
                 disabled_vault_patch_providers=disabled_patch_providers,
@@ -592,7 +613,7 @@ class TaskEnvironment:
         # Claude OAuth env override + leaked-cred scan with exposed-token filtering
         if not vault_bypass:
             _apply_claude_oauth_overrides(env)
-            _warn_leaked_credentials()
+            _warn_leaked_credentials(mounts_dir)
 
         return env, volumes
 

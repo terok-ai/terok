@@ -52,6 +52,7 @@ def wizard_values(
     default_branch: str = "main",
     agents: str | None = None,
     user_snippet: str = "",
+    credentials_scope: str = "shared",
 ) -> dict[str, object]:
     """Build a wizard value dict with sensible defaults."""
     values: dict[str, object] = {
@@ -61,6 +62,7 @@ def wizard_values(
         "upstream_url": upstream_url,
         "default_branch": default_branch,
         "user_snippet": user_snippet,
+        "credentials_scope": credentials_scope,
     }
     if agents is not None:
         values["agents"] = agents
@@ -93,13 +95,13 @@ def test_validate_project_id(project_id: str, valid: bool) -> None:
     ("inputs", "expected"),
     [
         pytest.param(
-            # sec, base, pid, upstream, branch, snippet-y/N, override-agents-y/N
-            ["1", "1", "myproj", "https://example.com/r.git", "main", "n", "n"],
+            # sec, base, pid, upstream, branch, snippet-y/N, creds-scope, override-agents-y/N
+            ["1", "1", "myproj", "https://example.com/r.git", "main", "n", "1", "n"],
             wizard_values(project_id="myproj", upstream_url="https://example.com/r.git"),
             id="collect-all-values-no-override",
         ),
         pytest.param(
-            ["2", "1", "gkproj", "git@host:r.git", "", "n", "n"],
+            ["2", "1", "gkproj", "git@host:r.git", "", "n", "1", "n"],
             wizard_values(
                 security_class="gatekeeping",
                 project_id="gkproj",
@@ -109,7 +111,7 @@ def test_validate_project_id(project_id: str, valid: bool) -> None:
             id="gatekeeping-selection",
         ),
         pytest.param(
-            ["1", "2", "proj", "https://example.com/r.git", "", "n", "n"],
+            ["1", "2", "proj", "https://example.com/r.git", "", "n", "1", "n"],
             wizard_values(
                 base="nvidia",
                 project_id="proj",
@@ -119,7 +121,7 @@ def test_validate_project_id(project_id: str, valid: bool) -> None:
             id="empty-default-branch",
         ),
         pytest.param(
-            # ... snippet=n, override-agents=y, then a comma-list selection
+            # ... snippet=n, creds-scope=project, override-agents=y, then a comma-list selection
             [
                 "1",
                 "2",
@@ -127,6 +129,7 @@ def test_validate_project_id(project_id: str, valid: bool) -> None:
                 "https://example.com/r.git",
                 "dev",
                 "n",
+                "2",
                 "y",
                 "claude,vibe",
             ],
@@ -136,16 +139,17 @@ def test_validate_project_id(project_id: str, valid: bool) -> None:
                 upstream_url="https://example.com/r.git",
                 default_branch="dev",
                 agents="claude,vibe",
+                credentials_scope="project",
             ),
             id="opt-in-agents-override",
         ),
         pytest.param(
-            ["1", "1", "!!!", "good-id", "https://example.com/r.git", "main", "n", "n"],
+            ["1", "1", "!!!", "good-id", "https://example.com/r.git", "main", "n", "1", "n"],
             wizard_values(project_id="good-id", upstream_url="https://example.com/r.git"),
             id="retry-invalid-project-id",
         ),
         pytest.param(
-            ["1", "1", "proj", "", "main", "n", "n"],
+            ["1", "1", "proj", "", "main", "n", "1", "n"],
             wizard_values(project_id="proj", upstream_url=""),
             id="empty-upstream-url-accepted",
         ),
@@ -185,7 +189,7 @@ def test_collect_wizard_inputs_lowercases_project_id() -> None:
     with (
         patch(
             "builtins.input",
-            side_effect=["1", "1", "MyProject", "https://example.com/r.git", "main", "", "n"],
+            side_effect=["1", "1", "MyProject", "https://example.com/r.git", "main", "", "1", "n"],
         ),
         patch("builtins.print") as mock_print,
     ):

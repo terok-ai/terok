@@ -12,6 +12,7 @@ time.
 
 from __future__ import annotations
 
+from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -218,6 +219,13 @@ class TestAuthenticate:
         """``authenticate(provider, project_id)`` reuses the project's L2 image."""
         from terok.lib import api
 
+        # Shared-default project: scope-aware routing returns the same
+        # mounts_dir / credential_set the host-wide path would, so the
+        # legacy assertions still hold.
+        fake_project = MagicMock(
+            credentials_scope="shared",
+            credential_set="default",
+        )
         # sandbox_live_mounts_dir and the expose-token predicates are
         # lazy-imported inside the function body, so patching happens
         # at their definition modules rather than on the auth module.
@@ -228,6 +236,7 @@ class TestAuthenticate:
             patch("terok.lib.core.config.sandbox_live_mounts_dir", return_value="/mnt"),
             patch("terok.lib.core.config.is_claude_oauth_exposed", return_value=False),
             patch("terok.lib.core.config.is_codex_oauth_exposed", return_value=False),
+            patch("terok.lib.core.projects.load_project", return_value=fake_project),
             patch("terok.lib.domain.auth.Authenticator.run") as mock_auth,
         ):
             api.authenticate("claude", project_id="p1")
@@ -238,6 +247,40 @@ class TestAuthenticate:
         assert mock_auth.call_args.args[0] == "p1"
         assert mock_auth.call_args.kwargs["image"] == "terok-p1:latest"
         assert mock_auth.call_args.kwargs["expose_token"] is False
+        assert mock_auth.call_args.kwargs["credential_set"] == "default"
+        # Shared-scope routes the host-wide mount tree.  The helper imports
+        # sandbox_live_mounts_dir into the orchestration namespace, so we
+        # compare against the helper's own resolution rather than the patched
+        # core.config attribute — the route is what we're locking down.
+        from terok.lib.orchestration.environment import project_mounts_dir
+
+        assert mock_auth.call_args.kwargs["mounts_dir"] == project_mounts_dir(fake_project)
+
+    def test_project_scoped_with_per_project_creds_uses_project_set(self, tmp_path: Path) -> None:
+        """``credentials_scope: project`` routes to the project's vault row and mount tree."""
+        from terok.lib import api
+
+        project_root = tmp_path / "proj-root"
+        project_root.mkdir()
+        fake_project = MagicMock(
+            credentials_scope="project",
+            credential_set="p1",
+            project_mounts_dir=project_root / "mounts",
+        )
+        with (
+            patch("terok.lib.domain.auth.project_cli_image", return_value="terok-p1:latest"),
+            patch("terok.lib.core.config.is_claude_oauth_exposed", return_value=False),
+            patch("terok.lib.core.config.is_codex_oauth_exposed", return_value=False),
+            patch("terok.lib.core.projects.load_project", return_value=fake_project),
+            patch("terok.lib.domain.auth.Authenticator.run") as mock_auth,
+        ):
+            api.authenticate("claude", project_id="p1")
+
+        assert mock_auth.call_args.kwargs["mounts_dir"] == project_root / "mounts"
+        assert mock_auth.call_args.kwargs["credential_set"] == "p1"
+        # The per-project mounts dir is created on demand so podman doesn't
+        # have to materialise it under the container's user namespace.
+        assert (project_root / "mounts").is_dir()
 
     def test_host_wide_passes_lazy_resolver_as_image(self) -> None:
         """``authenticate(provider)`` passes a callable so the L1 build defers

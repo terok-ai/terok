@@ -281,6 +281,30 @@ class RawShieldProjectSection(BaseModel):
     )
 
 
+class RawCredentialsSection(BaseModel):
+    """The ``credentials:`` section of project.yml.
+
+    Controls whether the project shares the host-wide credential bucket
+    (the default — Claude, Codex, gh, etc. logins are reused across every
+    project) or carves out its own isolated set.  Opting in is destructive
+    for first-run UX: the project starts with no stored credentials and
+    has to be authenticated from scratch via ``terok auth --project``.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    scope: Literal["shared", "project"] = Field(
+        default="shared",
+        description=(
+            "``shared`` (default) reuses the host-wide credential bucket and "
+            "the global agent-config mount tree.  ``project`` carves out a "
+            "private set under the project's own state directory — agent "
+            "logins, OAuth tokens, and shared config files live separately "
+            "from every other project and must be re-authenticated."
+        ),
+    )
+
+
 # ---------------------------------------------------------------------------
 # Top-level project YAML
 # ---------------------------------------------------------------------------
@@ -300,10 +324,11 @@ class RawProjectYaml(BaseModel):
     run: RawRunSection = Field(default_factory=RawRunSection)
     shield: RawShieldProjectSection = Field(default_factory=RawShieldProjectSection)
     image: RawImageSection = Field(default_factory=RawImageSection)
+    credentials: RawCredentialsSection = Field(default_factory=RawCredentialsSection)
     default_agent: str | None = Field(
         default=None, description="Default agent provider (e.g. ``claude``, ``codex``)"
     )
-    default_login: str | None = None
+    default_shell: str | None = None
     shared_dir: bool | str | None = Field(
         default=None,
         description="Shared directory for multi-agent IPC (``true`` = auto-create under tasks root, or absolute path)",
@@ -324,6 +349,7 @@ class RawProjectYaml(BaseModel):
             "run",
             "shield",
             "image",
+            "credentials",
             "agent",
         }
     )
@@ -435,7 +461,7 @@ class RawGlobalConfig(ExecutorConfigView):
     tasks: RawTasksGlobalSection = Field(default_factory=RawTasksGlobalSection)
     git: RawGlobalGitSection = Field(default_factory=RawGlobalGitSection)
     default_agent: str | None = None
-    default_login: str | None = None
+    default_shell: str | None = None
     agent: dict[str, Any] = Field(default_factory=dict)
 
     _SECTION_KEYS: ClassVar[frozenset[str]] = frozenset(

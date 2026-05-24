@@ -7,11 +7,15 @@ Three invocation shapes, in increasing specificity:
 
 - ``terok auth``                         — interactive chained menu.
 - ``terok auth <provider>``              — host-wide auth for one provider.
-- ``terok auth <provider> --project ID`` — project-scoped escape hatch.
+- ``terok auth <provider> --project ID`` — project-scoped auth.
 
-Credentials land in the vault provider-scoped regardless of shape, so
-switching between host-wide and project-scoped runs does not duplicate
-or overwrite stored tokens.
+Where credentials land depends on the named project's
+[`credentials_scope`][terok.lib.core.project_model.ProjectConfig.credentials_scope]:
+``"shared"`` (default) writes to the host-wide bucket every project
+sees, ``"project"`` carves out a private vault row and agent-config
+mount tree keyed by the project id.  Host-wide ``terok auth`` (no
+``--project``) always writes to the shared bucket — there's no project
+context to override it.
 """
 
 from __future__ import annotations
@@ -41,7 +45,11 @@ def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) ->
             "or more providers in sequence.  ``terok auth <provider>`` "
             "authenticates host-wide — credentials are shared across every "
             "project that uses the same agent.  Pass ``--project <id>`` to "
-            "scope the auth container to a specific project's image."
+            "scope the auth to a specific project: the project's image is "
+            "reused, and if the project opted into per-project credentials "
+            "(``credentials.scope: project`` in project.yml) the captured "
+            "token lands in that project's private vault row instead of the "
+            "shared bucket."
         ),
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
@@ -57,7 +65,7 @@ def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) ->
             "--project",
             dest="project_flag",
             default=None,
-            help="Scope auth to a specific project's image (vault stays provider-scoped)",
+            help="Scope auth to a project (image + project.yml credentials.scope)",
         ),
         _complete_project_ids,
     )

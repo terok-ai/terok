@@ -75,6 +75,7 @@ from terok.lib.api.agents import (  # noqa: F401 — re-exported public API
     parse_md_agent,
     prepare_oauth_session,
     resolve_agent_config,
+    resolve_credential_routing,
     resolve_instructions,
     store_api_key,
 )
@@ -342,6 +343,7 @@ __all__ = [
     "parse_md_agent",
     "prepare_oauth_session",
     "resolve_agent_config",
+    "resolve_credential_routing",
     "resolve_instructions",
     "store_api_key",
     # Clearance

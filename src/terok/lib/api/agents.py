@@ -24,6 +24,7 @@ from terok.lib.core.images import (  # noqa: F401 — re-exported public API
 from terok.lib.domain.auth import (  # noqa: F401 — re-exported public API
     authenticate,
     find_host_auth_image,
+    resolve_credential_routing,
 )
 from terok.lib.integrations.executor import (  # noqa: F401 — re-exported public API
     AGENT_PROVIDERS,
@@ -89,6 +90,7 @@ __all__ = [
     "parse_md_agent",
     "prepare_oauth_session",
     "resolve_agent_config",
+    "resolve_credential_routing",
     "resolve_instructions",
     "store_api_key",
 ]
