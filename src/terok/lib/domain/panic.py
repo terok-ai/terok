@@ -238,11 +238,11 @@ def _discover_targets() -> list[_Target]:
 
 def _raise_shield(target: _Target) -> tuple[str, str | None]:
     """Block all traffic for one container (total blackout)."""
-    from terok.lib.integrations.sandbox import quarantine as shield_quarantine
+    from terok.lib.integrations.sandbox import ShieldManager
 
     _, _, _, cname, task_dir = target
     try:
-        shield_quarantine(cname, task_dir)
+        ShieldManager(task_dir).quarantine(cname)
         return cname, None
     except Exception as exc:
         return cname, str(exc)

@@ -22,7 +22,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from urllib.parse import ParseResult, urlparse, urlunparse
 
-from terok.lib.integrations.executor import agent_doctor_checks, get_roster
+from terok.lib.integrations.executor import AgentRoster
 from terok.lib.integrations.sandbox import (
     CheckVerdict,
     ContainerRuntime,
@@ -303,9 +303,11 @@ def _collect_all_checks(
     pinned via ``config.yml`` or auto-allocated by sandbox's port
     registry).  In socket mode they are *supposed* to be ``None`` — no
     TCP listener exists, comms go over Unix sockets — and every
-    downstream assembler ([`sandbox_doctor_checks`][terok_sandbox.doctor.sandbox_doctor_checks],
-    [`agent_doctor_checks`][terok_executor.doctor.agent_doctor_checks],
-    and the local [`_terok_doctor_checks`][terok.lib.orchestration.container_doctor._terok_doctor_checks])
+    downstream assembler
+    ([`sandbox_doctor_checks`][terok_sandbox.doctor.sandbox_doctor_checks],
+    [`AgentRoster.doctor_checks`][terok_executor.AgentRoster.doctor_checks],
+    and the local
+    [`_terok_doctor_checks`][terok.lib.orchestration.container_doctor._terok_doctor_checks])
     already special-cases ``None`` to drop the TCP-only probes.  So the
     "must be set" gate fires only in TCP mode.
     """
@@ -332,7 +334,7 @@ def _collect_all_checks(
             desired_shield_state=desired_shield,
         )
     )
-    checks.extend(agent_doctor_checks(get_roster(), token_broker_port=token_broker_port))
+    checks.extend(AgentRoster.shared().doctor_checks(token_broker_port=token_broker_port))
     checks.extend(
         _terok_doctor_checks(project_id, cfg.gate_port, token_broker_port, ssh_signer_port)
     )

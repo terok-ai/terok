@@ -172,7 +172,7 @@ def _slugify_project_id(raw: str) -> str:
 # importable without paying the roster load up front and lets the choice
 # list reflect whatever wheel is installed at runtime.
 
-#: Literal selector accepted by [`terok_executor.parse_agent_selection`][terok_executor.parse_agent_selection]
+#: Literal selector accepted by [`AgentRoster.parse_selection`][terok_executor.AgentRoster.parse_selection]
 #: meaning "every installable roster entry, plus any added later".  Distinct
 #: from a comma-list that happens to enumerate all current agents — that
 #: list freezes the snapshot, ``"all"`` does not.  (The name avoids
@@ -188,9 +188,9 @@ def _load_agent_choices() -> tuple[tuple[str, str], ...]:
     the TUI's master checkbox and the CLI's prompt default, not in this
     list.  Including it here would force every callsite to filter it out.
     """
-    from terok.lib.integrations.executor import get_roster
+    from terok.lib.integrations.executor import AgentRoster
 
-    roster = get_roster()
+    roster = AgentRoster.shared()
     return tuple(
         (name, roster.providers[name].label if name in roster.providers else name)
         for name in roster.agent_names
@@ -202,17 +202,18 @@ def _validate_agents(value: str) -> str | None:
 
     Defers to the executor's canonical grammar so the wizard speaks the
     same dialect as ``terok image build --agents …``:
-    [`parse_agent_selection`][terok_executor.parse_agent_selection] folds the
-    raw string into ``"all"`` or a token tuple, and
+    [`AgentRoster.parse_selection`][terok_executor.AgentRoster.parse_selection]
+    folds the raw string into ``"all"`` or a token tuple, and
     [`AgentRoster.resolve_selection`][terok_executor.AgentRoster.resolve_selection]
     raises ``ValueError`` with a "Unknown roster entries: …" message when
     a token doesn't match the installed roster.  Excludes (``"-vibe"``)
     and the combined form (``"all,-vibe"``) come for free.
     """
-    from terok.lib.integrations.executor import get_roster, parse_agent_selection
+    from terok.lib.integrations.executor import AgentRoster
 
     try:
-        get_roster().resolve_selection(parse_agent_selection(value))
+        roster = AgentRoster.shared()
+        roster.resolve_selection(roster.parse_selection(value))
     except ValueError as exc:
         return str(exc)
     return None
@@ -653,10 +654,10 @@ def _maybe_print_global_agents_hint(values: dict) -> None:
     if values.get("agents"):
         return
     try:
-        from terok.lib.integrations.executor import get_global_image_agents
+        from terok.lib.integrations.executor import ExecutorConfigView
     except ImportError:  # pragma: no cover — executor adapter is always present in shipped builds
         return
-    if get_global_image_agents():
+    if ExecutorConfigView.image_agents():
         return
     print(
         "\nTip: no default agents are configured.  "

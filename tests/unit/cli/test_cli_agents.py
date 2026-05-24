@@ -45,13 +45,40 @@ def _fake_roster(
     def _resolve(_selection: object) -> tuple[str, ...]:
         return agent_names
 
-    return SimpleNamespace(
+    def _parse(raw: str) -> str:
+        return raw or "all"
+
+    def _prompt() -> str:
+        try:
+            raw = input("[all]: ").strip()
+        except EOFError as exc:
+            raise SystemExit("non-interactive") from exc
+        return raw or "all"
+
+    roster = SimpleNamespace(
         agent_names=agent_names,
         all_names=all_names,
         providers=providers,
         auth_providers=auth_providers,
         resolve_selection=_resolve,
+        parse_selection=staticmethod(_parse),
+        prompt_selection=_prompt,
     )
+
+    def _validate(raw: str) -> None:
+        # Look up resolve_selection through the namespace so tests that
+        # rebind ``roster.resolve_selection = lambda …: raise …`` exercise
+        # the failure path the production ``validate_selection`` mirrors.
+        try:
+            roster.resolve_selection(_parse(raw))
+        except ValueError as exc:
+            import sys
+
+            print(f"Invalid agent selection: {exc}", file=sys.stderr)
+            raise SystemExit(2) from exc
+
+    roster.validate_selection = _validate
+    return roster
 
 
 # ── dispatcher routing ────────────────────────────────────────────────
@@ -76,7 +103,7 @@ def test_dispatch_bare_agents_prints_group_help(capsys: pytest.CaptureFixture[st
 
 def test_list_prints_agents_only_by_default(capsys: pytest.CaptureFixture[str]) -> None:
     """Default invocation prints only agent rows, not tool entries."""
-    with patch("terok.lib.api.agents.get_roster", return_value=_fake_roster()):
+    with patch("terok.lib.integrations.executor.AgentRoster.shared", return_value=_fake_roster()):
         assert agents.dispatch(_ns_list()) is True
     out = capsys.readouterr().out
     assert "claude" in out
@@ -86,7 +113,7 @@ def test_list_prints_agents_only_by_default(capsys: pytest.CaptureFixture[str]) 
 
 def test_list_includes_tool_entries_with_all_flag(capsys: pytest.CaptureFixture[str]) -> None:
     """``--all`` widens the listing to include tool / sidecar entries."""
-    with patch("terok.lib.api.agents.get_roster", return_value=_fake_roster()):
+    with patch("terok.lib.integrations.executor.AgentRoster.shared", return_value=_fake_roster()):
         agents.dispatch(_ns_list(all_flag=True))
     out = capsys.readouterr().out
     assert "claude" in out
@@ -95,7 +122,7 @@ def test_list_includes_tool_entries_with_all_flag(capsys: pytest.CaptureFixture[
 
 def test_list_renders_label_alongside_name(capsys: pytest.CaptureFixture[str]) -> None:
     """The output table carries each agent's human-readable label."""
-    with patch("terok.lib.api.agents.get_roster", return_value=_fake_roster()):
+    with patch("terok.lib.integrations.executor.AgentRoster.shared", return_value=_fake_roster()):
         agents.dispatch(_ns_list())
     out = capsys.readouterr().out
     assert "Anthropic Claude" in out
@@ -105,7 +132,7 @@ def test_list_renders_label_alongside_name(capsys: pytest.CaptureFixture[str]) -
 def test_list_handles_empty_roster(capsys: pytest.CaptureFixture[str]) -> None:
     """An empty roster prints an explanatory line on stderr instead of an empty table."""
     empty = _fake_roster(agent_names=(), all_names=())
-    with patch("terok.lib.api.agents.get_roster", return_value=empty):
+    with patch("terok.lib.integrations.executor.AgentRoster.shared", return_value=empty):
         assert agents.dispatch(_ns_list()) is True
     err = capsys.readouterr().err
     assert "No agents registered" in err
@@ -116,7 +143,7 @@ def test_list_falls_back_to_auth_provider_label(capsys: pytest.CaptureFixture[st
     roster = _fake_roster(agent_names=("kisski",), all_names=("kisski",), labels={})
     roster.providers = {}
     roster.auth_providers = {"kisski": SimpleNamespace(label="KISSKI AcademicCloud")}
-    with patch("terok.lib.api.agents.get_roster", return_value=roster):
+    with patch("terok.lib.integrations.executor.AgentRoster.shared", return_value=roster):
         agents.dispatch(_ns_list())
     assert "KISSKI AcademicCloud" in capsys.readouterr().out
 
@@ -126,7 +153,7 @@ def test_list_falls_back_to_name_when_no_label(capsys: pytest.CaptureFixture[str
     roster = _fake_roster(agent_names=("nolabel",), all_names=("nolabel",), labels={})
     roster.providers = {}
     roster.auth_providers = {}
-    with patch("terok.lib.api.agents.get_roster", return_value=roster):
+    with patch("terok.lib.integrations.executor.AgentRoster.shared", return_value=roster):
         agents.dispatch(_ns_list())
     assert "nolabel" in capsys.readouterr().out
 
@@ -140,13 +167,13 @@ def test_set_writes_selection_after_validation(
     """A valid selection passes through validation and lands in config.yml."""
     target = tmp_path / "config.yml"
     with (
-        patch("terok.lib.api.agents.get_roster", return_value=_fake_roster()),
+        patch("terok.lib.integrations.executor.AgentRoster.shared", return_value=_fake_roster()),
         patch(
-            "terok.lib.api.agents.parse_agent_selection",
+            "terok.lib.integrations.executor.AgentRoster.parse_selection",
             side_effect=lambda raw: raw,
         ),
         patch(
-            "terok.lib.api.agents.set_global_image_agents",
+            "terok.lib.integrations.executor.ExecutorConfigView.set_image_agents",
             side_effect=lambda raw: target,
         ) as write_mock,
     ):
@@ -164,12 +191,12 @@ def test_set_rejects_unknown_agent(capsys: pytest.CaptureFixture[str]) -> None:
         ValueError("Unknown roster entries: foo"),
     )
     with (
-        patch("terok.lib.api.agents.get_roster", return_value=roster),
+        patch("terok.lib.integrations.executor.AgentRoster.shared", return_value=roster),
         patch(
-            "terok.lib.api.agents.parse_agent_selection",
+            "terok.lib.integrations.executor.AgentRoster.parse_selection",
             side_effect=lambda raw: raw,
         ),
-        patch("terok.lib.api.agents.set_global_image_agents") as write_mock,
+        patch("terok.lib.integrations.executor.ExecutorConfigView.set_image_agents") as write_mock,
         pytest.raises(SystemExit) as excinfo,
     ):
         agents.dispatch(_ns_set("foo"))
@@ -183,13 +210,13 @@ def test_set_prompts_when_no_argument(tmp_path: Path, monkeypatch: pytest.Monkey
     monkeypatch.setattr("builtins.input", lambda _prompt="": "")
     target = tmp_path / "config.yml"
     with (
-        patch("terok.lib.api.agents.get_roster", return_value=_fake_roster()),
+        patch("terok.lib.integrations.executor.AgentRoster.shared", return_value=_fake_roster()),
         patch(
-            "terok.lib.api.agents.parse_agent_selection",
+            "terok.lib.integrations.executor.AgentRoster.parse_selection",
             side_effect=lambda raw: raw,
         ),
         patch(
-            "terok.lib.api.agents.set_global_image_agents",
+            "terok.lib.integrations.executor.ExecutorConfigView.set_image_agents",
             side_effect=lambda raw: target,
         ) as write_mock,
     ):

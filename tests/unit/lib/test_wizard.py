@@ -588,9 +588,9 @@ class TestAgentsQuestion:
         assert value == "all"
 
     def test_comma_list_of_known_agents_accepted(self) -> None:
-        from terok.lib.integrations.executor import get_roster
+        from terok.lib.integrations.executor import AgentRoster
 
-        first, second = get_roster().agent_names[:2]
+        first, second = AgentRoster.shared().agent_names[:2]
         raw = f"{first},{second}"
         value, err = validate_answer(_q("agents"), raw)
         assert err is None
@@ -598,9 +598,9 @@ class TestAgentsQuestion:
 
     def test_exclude_syntax_accepted(self) -> None:
         """``all,-name`` is the executor's canonical exclude form — must flow through."""
-        from terok.lib.integrations.executor import get_roster
+        from terok.lib.integrations.executor import AgentRoster
 
-        omit = get_roster().agent_names[0]
+        omit = AgentRoster.shared().agent_names[0]
         value, err = validate_answer(_q("agents"), f"all,-{omit}")
         assert err is None
         assert value == f"all,-{omit}"
@@ -661,9 +661,9 @@ class TestPromptAgentOverride:
 
     def test_returns_comma_list(self) -> None:
         """Opt-in followed by a comma list returns that list verbatim."""
-        from terok.lib.integrations.executor import get_roster
+        from terok.lib.integrations.executor import AgentRoster
 
-        names = get_roster().agent_names
+        names = AgentRoster.shared().agent_names
         if len(names) < 2:
             pytest.skip("Need at least 2 agents in roster")
         raw = f"{names[0]},{names[1]}"
@@ -686,7 +686,7 @@ class TestGlobalAgentsHint:
         from terok.lib.domain.wizards.new_project import _maybe_print_global_agents_hint
 
         with patch(
-            "terok.lib.integrations.executor.get_global_image_agents",
+            "terok.lib.integrations.executor.ExecutorConfigView.image_agents",
             return_value=None,
         ):
             _maybe_print_global_agents_hint({})
@@ -698,7 +698,7 @@ class TestGlobalAgentsHint:
         from terok.lib.domain.wizards.new_project import _maybe_print_global_agents_hint
 
         with patch(
-            "terok.lib.integrations.executor.get_global_image_agents",
+            "terok.lib.integrations.executor.ExecutorConfigView.image_agents",
             return_value=None,
         ):
             _maybe_print_global_agents_hint({"agents": "claude"})
@@ -709,7 +709,7 @@ class TestGlobalAgentsHint:
         from terok.lib.domain.wizards.new_project import _maybe_print_global_agents_hint
 
         with patch(
-            "terok.lib.integrations.executor.get_global_image_agents",
+            "terok.lib.integrations.executor.ExecutorConfigView.image_agents",
             return_value="all",
         ):
             _maybe_print_global_agents_hint({})

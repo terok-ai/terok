@@ -78,10 +78,7 @@ if _HAS_TEXTUAL:
         check_environment as _shield_check_environment,
         needs_setup,
     )
-    from terok.lib.api.shield import (
-        RecoveryStatus,
-        shield_state as _shield_state,
-    )
+    from terok.lib.api.shield import RecoveryStatus, ShieldManager
     from terok.lib.api.vault import VaultManager, VaultStatus
 
     from ..lib.api import (
@@ -1042,12 +1039,12 @@ if _HAS_TEXTUAL:
                 mode = task.mode or "cli"
                 cname = container_name(project_id, mode, task.task_id)
                 task_dir = project.tasks_root / str(task.task_id)
-                st = _shield_state(cname, task_dir)
-                # ``shield_state`` is annotated ``Any`` to keep the
-                # integrations layer out of the importlinter-protected
-                # terok_shield namespace; the runtime value is a
-                # ShieldState enum whose ``.name`` is the display string.
-                return project_id, task.task_id, st.name  # type: ignore[attr-defined]
+                st = ShieldManager(task_dir).state(cname)
+                # ``ShieldManager.state`` returns an Any-annotated
+                # ShieldState (importlinter keeps terok_shield out of
+                # this layer); the runtime value is an enum whose
+                # ``.name`` is the display string.
+                return project_id, task.task_id, st.name
             except Exception:
                 return project_id, task.task_id, None
 
@@ -1611,11 +1608,11 @@ if _HAS_TEXTUAL:
             ``~/.config/terok/config.yml``.  Cancel dismisses without
             touching the file.
             """
-            from terok.lib.api.agents import get_global_image_agents
+            from terok.lib.integrations.executor import ExecutorConfigView
 
             from .agents_screen import AgentsSelectScreen
 
-            current = get_global_image_agents()
+            current = ExecutorConfigView.image_agents()
             await self.push_screen(
                 AgentsSelectScreen(
                     initial=current or "",
@@ -1628,9 +1625,9 @@ if _HAS_TEXTUAL:
             """Write the chosen selection to the global config; ``None`` = no change."""
             if result is None:
                 return
-            from terok.lib.api.agents import set_global_image_agents
+            from terok.lib.api.agents import ExecutorConfigView
 
-            path = set_global_image_agents(result)
+            path = ExecutorConfigView.set_image_agents(result)
             self.notify(
                 f"Wrote image.agents = {result!r} to {path}",
                 severity="information",

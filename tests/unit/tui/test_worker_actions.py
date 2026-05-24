@@ -126,11 +126,14 @@ def test_gate_start_and_stop_delegate_to_daemon_controls() -> None:
 
 
 def test_shield_setup_passes_root_flag() -> None:
-    """``shield_setup`` forwards the root-scope flag verbatim."""
-    with mock.patch("terok.lib.api.setup.setup_hooks_direct") as m:
+    """``shield_setup`` flips ``root`` and ``user`` to mutually exclusive scopes."""
+    with mock.patch("terok.lib.integrations.sandbox.ShieldHooks.install") as m:
         worker_actions.shield_setup(True)
         worker_actions.shield_setup(False)
-    assert m.call_args_list == [mock.call(root=True), mock.call(root=False)]
+    assert m.call_args_list == [
+        mock.call(root=True, user=False),
+        mock.call(root=False, user=True),
+    ]
 
 
 # ── Vault ─────────────────────────────────────────────────────────────
@@ -286,11 +289,11 @@ def test_vault_install_generates_routes_then_installs_units() -> None:
     cfg = mock.Mock()
     with (
         mock.patch("terok.lib.api.make_sandbox_config", return_value=cfg),
-        mock.patch("terok.lib.api.agents.ensure_vault_routes") as m_routes,
+        mock.patch("terok.lib.integrations.executor.AgentRoster.shared") as m_shared,
         mock.patch("terok.lib.api.vault.VaultManager") as m_mgr,
     ):
         worker_actions.vault_install()
-    m_routes.assert_called_once_with(cfg=cfg)
+    m_shared.return_value.ensure_vault_routes.assert_called_once_with(cfg=cfg)
     m_mgr.assert_called_once_with(cfg)
     m_mgr.return_value.install_systemd_units.assert_called_once_with()
 
@@ -311,11 +314,11 @@ def test_vault_start_generates_routes_then_starts_daemon() -> None:
     cfg = mock.Mock()
     with (
         mock.patch("terok.lib.api.make_sandbox_config", return_value=cfg),
-        mock.patch("terok.lib.api.agents.ensure_vault_routes") as m_routes,
+        mock.patch("terok.lib.integrations.executor.AgentRoster.shared") as m_shared,
         mock.patch("terok.lib.api.vault.VaultManager.start_daemon") as m_start,
     ):
         worker_actions.vault_start()
-    m_routes.assert_called_once_with(cfg=cfg)
+    m_shared.return_value.ensure_vault_routes.assert_called_once_with(cfg=cfg)
     m_start.assert_called_once_with()
 
 

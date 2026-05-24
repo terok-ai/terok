@@ -19,7 +19,7 @@ from terok.lib.core.config import get_services_mode, is_experimental
 from terok.lib.integrations.executor import (
     AgentRunner,
     BuildError,
-    krun_launch_args,
+    KrunHost,
 )
 from terok.lib.integrations.sandbox import (
     DEFAULT_GUEST_SSHD_PORT,
@@ -273,7 +273,7 @@ def _project_runtime_flags(project: ProjectConfig, *, cname: str) -> list[str]:
             "-p",
             f"{DEFAULT_SSH_HOST}:{host_port}:{DEFAULT_GUEST_SSHD_PORT}",
         ]
-        flags += krun_launch_args(cfg=make_sandbox_config())
+        flags += KrunHost(cfg=make_sandbox_config()).launch_args()
     return flags
 
 

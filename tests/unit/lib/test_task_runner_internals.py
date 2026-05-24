@@ -133,10 +133,10 @@ class TestApplyShieldPolicy:
                 "terok.lib.orchestration.task_runners.shield.get_shield_bypass_firewall_no_protection",
                 return_value=False,
             ),
-            patch("terok.lib.orchestration.task_runners.shield._shield_down_impl") as mock_down,
+            patch("terok.lib.orchestration.task_runners.shield.ShieldManager") as mock_down,
         ):
             _apply_shield_policy(project, "ctr", tmp_path, is_restart=False)
-        mock_down.assert_called_once_with("ctr", tmp_path)
+        mock_down.return_value.down.assert_called_once_with("ctr")
         assert (tmp_path / "shield_desired_state").read_text().strip() == "down"
 
     def test_skips_when_bypass_active(self) -> None:
@@ -161,10 +161,10 @@ class TestApplyShieldPolicy:
                 "terok.lib.orchestration.task_runners.shield.get_shield_bypass_firewall_no_protection",
                 return_value=False,
             ),
-            patch("terok.lib.orchestration.task_runners.shield._shield_down_impl") as mock_down,
+            patch("terok.lib.orchestration.task_runners.shield.ShieldManager") as mock_down,
         ):
             _apply_shield_policy(project, "ctr", tmp_path, is_restart=True)
-        mock_down.assert_called_once_with("ctr", tmp_path, allow_all=False)
+        mock_down.return_value.down.assert_called_once_with("ctr", allow_all=False)
 
     def test_restart_retain_restores_disengaged(self, tmp_path: Path) -> None:
         """Restart with retain policy restores a saved 'disengaged' state."""
@@ -177,10 +177,10 @@ class TestApplyShieldPolicy:
                 "terok.lib.orchestration.task_runners.shield.get_shield_bypass_firewall_no_protection",
                 return_value=False,
             ),
-            patch("terok.lib.orchestration.task_runners.shield._shield_down_impl") as mock_down,
+            patch("terok.lib.orchestration.task_runners.shield.ShieldManager") as mock_down,
         ):
             _apply_shield_policy(project, "ctr", tmp_path, is_restart=True)
-        mock_down.assert_called_once_with("ctr", tmp_path, allow_all=True)
+        mock_down.return_value.down.assert_called_once_with("ctr", allow_all=True)
 
     def test_restart_retain_noop_when_up(self, tmp_path: Path) -> None:
         """Restart with retain + saved 'up' does nothing (hook already applied UP)."""
@@ -193,10 +193,10 @@ class TestApplyShieldPolicy:
                 "terok.lib.orchestration.task_runners.shield.get_shield_bypass_firewall_no_protection",
                 return_value=False,
             ),
-            patch("terok.lib.orchestration.task_runners.shield._shield_down_impl") as mock_down,
+            patch("terok.lib.orchestration.task_runners.shield.ShieldManager") as mock_down,
         ):
             _apply_shield_policy(project, "ctr", tmp_path, is_restart=True)
-        mock_down.assert_not_called()
+        mock_down.return_value.down.assert_not_called()
 
     def test_restart_up_policy_noop(self, tmp_path: Path) -> None:
         """Restart with 'up' policy never calls shield_down."""
@@ -209,10 +209,10 @@ class TestApplyShieldPolicy:
                 "terok.lib.orchestration.task_runners.shield.get_shield_bypass_firewall_no_protection",
                 return_value=False,
             ),
-            patch("terok.lib.orchestration.task_runners.shield._shield_down_impl") as mock_down,
+            patch("terok.lib.orchestration.task_runners.shield.ShieldManager") as mock_down,
         ):
             _apply_shield_policy(project, "ctr", tmp_path, is_restart=True)
-        mock_down.assert_not_called()
+        mock_down.return_value.down.assert_not_called()
 
     def test_warns_on_failure(self) -> None:
         """Emits a warning when shield_down raises during fresh creation."""
@@ -225,7 +225,7 @@ class TestApplyShieldPolicy:
                 return_value=False,
             ),
             patch(
-                "terok.lib.orchestration.task_runners.shield._shield_down_impl",
+                "terok.lib.orchestration.task_runners.shield.ShieldManager",
                 side_effect=RuntimeError("nft missing"),
             ),
             pytest.warns(match="shield drop"),
@@ -242,10 +242,10 @@ class TestApplyShieldPolicy:
                 "terok.lib.orchestration.task_runners.shield.get_shield_bypass_firewall_no_protection",
                 return_value=False,
             ),
-            patch("terok.lib.orchestration.task_runners.shield._shield_down_impl") as mock_down,
+            patch("terok.lib.orchestration.task_runners.shield.ShieldManager") as mock_down,
         ):
             _apply_shield_policy(project, "ctr", tmp_path, is_restart=True)
-        mock_down.assert_not_called()
+        mock_down.return_value.down.assert_not_called()
 
     def test_restart_retain_warns_on_restore_failure(self, tmp_path: Path) -> None:
         """Restart with retain emits a warning when shield restore fails."""
@@ -259,7 +259,7 @@ class TestApplyShieldPolicy:
                 return_value=False,
             ),
             patch(
-                "terok.lib.orchestration.task_runners.shield._shield_down_impl",
+                "terok.lib.orchestration.task_runners.shield.ShieldManager",
                 side_effect=RuntimeError("nft not found"),
             ),
             pytest.warns(match="shield restore"),
@@ -313,7 +313,7 @@ class TestApplyAuthProtectDenies:
         roster = MagicMock()
         roster.vault_routes = routes
         return (
-            patch("terok.lib.integrations.executor.get_roster", return_value=roster),
+            patch("terok.lib.integrations.executor.AgentRoster.shared", return_value=roster),
             patch(
                 "terok.lib.core.config.exposed_credential_providers",
                 return_value=exposed,
@@ -323,7 +323,8 @@ class TestApplyAuthProtectDenies:
                 return_value=allow_entries,
             ),
             patch(
-                "terok.lib.integrations.sandbox.make_shield", return_value=shield_obj or MagicMock()
+                "terok.lib.orchestration.task_runners.shield.ShieldManager",
+                return_value=MagicMock(shield=shield_obj or MagicMock()),
             ),
         )
 

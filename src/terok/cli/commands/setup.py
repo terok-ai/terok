@@ -202,11 +202,11 @@ def _run_image_build(*, base: str, family: str | None) -> bool:
     ``SystemExit`` from deeper code paths (e.g. a missing Dockerfile
     resource) is also absorbed for the same reason.
     """
-    from terok.lib.api.agents import BuildError, build_base_images
+    from terok.lib.api.agents import BuildError, ImageBuilder
 
     with stage_line("Base images (L0/L1)") as s:
         try:
-            build_base_images(base_image=base, family=family)
+            ImageBuilder(base, family=family).build_base()
         except BuildError as exc:
             s.fail(str(exc))
             return False

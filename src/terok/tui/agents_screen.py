@@ -118,9 +118,9 @@ class AgentsSelectScreen(ModalScreen[str | None]):
 
     def compose(self) -> ComposeResult:
         """Render the master + per-agent checkboxes and footer buttons."""
-        from terok.lib.api.agents import get_roster
+        from terok.lib.api.agents import AgentRoster
 
-        roster = get_roster()
+        roster = AgentRoster.shared()
         providers = roster.providers
         self._choices = tuple(
             (name, providers[name].label if name in providers else name)
@@ -166,12 +166,12 @@ class AgentsSelectScreen(ModalScreen[str | None]):
         wrote (``"claude,vibe"`` round-trips as-is, even if claude
         depends on opencode at build time).
         """
-        from terok.lib.api.agents import parse_agent_selection
+        from terok.lib.api.agents import AgentRoster
 
         all_slugs: set[str] = set(roster.agent_names)  # type: ignore[attr-defined]
         if not self._initial:
             return all_slugs, True
-        selection = parse_agent_selection(self._initial)
+        selection = AgentRoster.parse_selection(self._initial)
         if selection == _MASTER_ALL:
             return all_slugs, True
         includes = {t for t in selection if not t.startswith("-")}

@@ -489,7 +489,7 @@ def test_presets_populated_prints_each(capsys: pytest.CaptureFixture[str]) -> No
 
 def _fake_roster_for_agents() -> SimpleNamespace:
     """Roster stand-in: every selection resolves cleanly."""
-    return SimpleNamespace(
+    roster = SimpleNamespace(
         agent_names=("claude", "vibe"),
         providers={
             "claude": SimpleNamespace(label="Claude"),
@@ -497,7 +497,23 @@ def _fake_roster_for_agents() -> SimpleNamespace:
         },
         auth_providers={},
         resolve_selection=lambda _sel: ("claude", "vibe"),
+        parse_selection=staticmethod(lambda raw: raw or "all"),
+        prompt_selection=lambda: input("[all]: ").strip() or "all",
     )
+
+    def _validate(raw: str) -> None:
+        # Late-bind so tests that override ``resolve_selection`` after
+        # construction still hit their fake.
+        try:
+            roster.resolve_selection(roster.parse_selection(raw))
+        except ValueError as exc:
+            import sys
+
+            print(f"Invalid agent selection: {exc}", file=sys.stderr)
+            raise SystemExit(2) from exc
+
+    roster.validate_selection = _validate
+    return roster
 
 
 def test_agents_set_writes_after_validation(capsys: pytest.CaptureFixture[str]) -> None:
@@ -509,11 +525,11 @@ def test_agents_set_writes_after_validation(capsys: pytest.CaptureFixture[str]) 
     target = Path("/tmp/terok-testing/p1/project.yml")
     with (
         patch(
-            "terok.lib.api.agents.get_roster",
+            "terok.lib.integrations.executor.AgentRoster.shared",
             return_value=_fake_roster_for_agents(),
         ),
         patch(
-            "terok.lib.api.agents.parse_agent_selection",
+            "terok.lib.integrations.executor.AgentRoster.parse_selection",
             side_effect=lambda raw: raw,
         ),
         patch(
@@ -537,9 +553,9 @@ def test_agents_set_rejects_unknown_agent(capsys: pytest.CaptureFixture[str]) ->
         ValueError("Unknown roster entries: foo")
     )
     with (
-        patch("terok.lib.api.agents.get_roster", return_value=roster),
+        patch("terok.lib.integrations.executor.AgentRoster.shared", return_value=roster),
         patch(
-            "terok.lib.api.agents.parse_agent_selection",
+            "terok.lib.integrations.executor.AgentRoster.parse_selection",
             side_effect=lambda raw: raw,
         ),
         patch("terok.cli.commands.project.set_project_image_agents") as write_mock,
@@ -558,11 +574,11 @@ def test_agents_set_prompts_when_no_selection(monkeypatch: pytest.MonkeyPatch) -
     monkeypatch.setattr("builtins.input", lambda _prompt="": "")
     with (
         patch(
-            "terok.lib.api.agents.get_roster",
+            "terok.lib.integrations.executor.AgentRoster.shared",
             return_value=_fake_roster_for_agents(),
         ),
         patch(
-            "terok.lib.api.agents.parse_agent_selection",
+            "terok.lib.integrations.executor.AgentRoster.parse_selection",
             side_effect=lambda raw: raw,
         ),
         patch(

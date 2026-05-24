@@ -13,7 +13,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
-from terok.lib.integrations.sandbox import down as _shield_down_impl
+from terok.lib.integrations.sandbox import ShieldManager
 
 from ...core.config import SHIELD_SECURITY_HINT, get_shield_bypass_firewall_no_protection
 
@@ -46,7 +46,7 @@ def _restore_shield_state(cname: str, task_dir: Path) -> None:
     if desired not in {"down", "disengaged"}:
         return
     try:
-        _shield_down_impl(cname, task_dir, allow_all=(desired == "disengaged"))
+        ShieldManager(task_dir).down(cname, allow_all=(desired == "disengaged"))
     except Exception as exc:
         import warnings
 
@@ -56,7 +56,7 @@ def _restore_shield_state(cname: str, task_dir: Path) -> None:
 def _drop_shield_on_creation(cname: str, task_dir: Path) -> None:
     """Drop the shield after fresh container creation and persist the state."""
     try:
-        _shield_down_impl(cname, task_dir)
+        ShieldManager(task_dir).down(cname)
         _write_desired_shield_state(task_dir, "down")
         audit_path = task_dir / "shield" / "audit.jsonl"
         print(f"Shield is down. Audit log: {audit_path}")
@@ -105,10 +105,10 @@ def _auth_protect_hosts() -> dict[str, frozenset[str]]:
     story for those providers.  See the field declaration on
     [`VaultRoute`][terok_executor.roster.types.VaultRoute] for the rationale.
     """
-    from terok.lib.integrations.executor import get_roster
+    from terok.lib.integrations.executor import AgentRoster
 
     out: dict[str, frozenset[str]] = {}
-    for name, route in get_roster().vault_routes.items():
+    for name, route in AgentRoster.shared().vault_routes.items():
         if getattr(route, "shared_domain", False):
             continue
         if hosts := _collect_route_hosts(route):
@@ -148,13 +148,11 @@ def _apply_auth_protect_denies(cname: str, task_dir: Path) -> None:
     already present in the active allow profiles (the developer has
     explicitly opted that endpoint back in).
     """
-    from terok.lib.integrations.sandbox import make_shield
-
     from ...core.config import exposed_credential_providers
 
     exposed = exposed_credential_providers()
     try:
-        shield_obj = make_shield(task_dir)
+        shield_obj = ShieldManager(task_dir).shield
     except Exception as exc:  # noqa: BLE001
         import warnings
 

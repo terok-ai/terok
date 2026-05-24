@@ -93,11 +93,14 @@ class TestResolveRuntime:
         with (
             patch("terok.lib.core.runtime._global_runtime_default", return_value="krun"),
             patch("terok.lib.core.runtime.is_experimental", return_value=True),
-            patch("terok.lib.core.runtime.make_krun_runtime", return_value=fake_runtime) as factory,
+            patch(
+                "terok.lib.core.runtime.KrunHost",
+                return_value=MagicMock(runtime=MagicMock(return_value=fake_runtime)),
+            ) as host_cls,
         ):
             rt = resolve_runtime(_project())  # project.runtime is None
         assert rt is fake_runtime
-        factory.assert_called_once()
+        host_cls.assert_called_once()
 
     def test_krun_requires_experimental_flag(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Without ``experimental: true``, krun selection is refused loudly."""
@@ -109,20 +112,24 @@ class TestResolveRuntime:
     def test_krun_with_experimental_delegates_to_executor_factory(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """Experimental on + runtime=krun calls executor's `make_krun_runtime`.
+        """Experimental on + runtime=krun routes through ``KrunHost(cfg).runtime()``.
 
         terok no longer owns the host-key materialisation — it just
-        flips the runtime selector and lets executor do the rest.
+        flips the runtime selector and lets executor's
+        [`KrunHost`][terok_executor.KrunHost] do the rest.
         """
         monkeypatch.setenv("TEROK_RUNTIME", "krun")
         fake_runtime = MagicMock(spec=KrunRuntime)
         with (
             patch("terok.lib.core.runtime.is_experimental", return_value=True),
-            patch("terok.lib.core.runtime.make_krun_runtime", return_value=fake_runtime) as factory,
+            patch(
+                "terok.lib.core.runtime.KrunHost",
+                return_value=MagicMock(runtime=MagicMock(return_value=fake_runtime)),
+            ) as host_cls,
         ):
             rt = resolve_runtime(None)
         assert rt is fake_runtime
-        factory.assert_called_once()  # cfg= injected from make_sandbox_config()
+        host_cls.assert_called_once()  # cfg= injected from make_sandbox_config()
 
     def test_unknown_value_is_loud(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """An unknown ``TEROK_RUNTIME`` value raises SystemExit (no silent fallback)."""
@@ -213,19 +220,19 @@ _LAUNCH_ARGS_STUB = ["__stub_launch_args__"]
 
 @pytest.fixture()
 def _krun_launch_args_stub():
-    """Patch `krun_launch_args` to return a sentinel list.
+    """Patch ``KrunHost(...).launch_args()`` to return a sentinel list.
 
     Terok's job is to splice executor's helper output into its flag
     stream — the helper's contents (host-pubkey mount, sshd-trigger
-    env var, ``--user root``) are pinned in
-    [`tests.unit.test_krun.TestKrunLaunchArgs`][terok_executor.tests]
-    on the executor side.
+    env var, ``--user root``) are pinned on the executor side.
     """
+    fake_host = MagicMock()
+    fake_host.launch_args = MagicMock(return_value=list(_LAUNCH_ARGS_STUB))
     with patch(
-        "terok.lib.orchestration.task_runners.container.krun_launch_args",
-        return_value=list(_LAUNCH_ARGS_STUB),
-    ) as m:
-        yield m
+        "terok.lib.orchestration.task_runners.container.KrunHost",
+        return_value=fake_host,
+    ):
+        yield fake_host.launch_args
 
 
 @pytest.fixture()

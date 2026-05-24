@@ -17,9 +17,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 
-from terok.lib.integrations.executor import (
-    authenticate as _authenticate_raw,  # noqa: F401 — module attribute for tests to patch
-)
+from terok.lib.integrations.executor import Authenticator
 
 from ..core.images import project_cli_image
 from ..orchestration.image import image_exists
@@ -63,9 +61,8 @@ def authenticate(provider: str, project_id: str | None = None) -> None:
     # ``allow_oauth``).  The listing screen already filters on this; pass
     # the same gate into the executor's auth flow so the per-provider
     # prompt agrees.
-    _authenticate_raw(
+    Authenticator(provider).run(
         project_id,
-        provider,
         mounts_dir=sandbox_live_mounts_dir(),
         image=image,
         expose_token=expose,
@@ -100,11 +97,8 @@ def _resolve_host_auth_image(provider: str) -> str:
     from terok.lib.integrations.executor import (
         AUTH_PROVIDERS,
         DEFAULT_BASE_IMAGE,
-        build_base_images,
-        ensure_default_l1,
-        get_global_image_base_image,
-        image_agents,
-        l1_image_tag,
+        ExecutorConfigView,
+        ImageBuilder,
     )
 
     from ..core.config import get_global_image_agents
@@ -112,14 +106,15 @@ def _resolve_host_auth_image(provider: str) -> str:
     info = AUTH_PROVIDERS.get(provider)
     needs_container = info is not None and info.supports_oauth
 
-    base = get_global_image_base_image() or DEFAULT_BASE_IMAGE
+    base = ExecutorConfigView.image_base_image() or DEFAULT_BASE_IMAGE
     agents = get_global_image_agents()
-    default_alias = l1_image_tag(base)
-    per_agent = l1_image_tag(base, agents=(provider,))
+    builder = ImageBuilder(base)
+    default_alias = builder.l1_tag()
+    per_agent = builder.l1_tag((provider,))
 
     # Default alias is reserved for the user's configured set; trust it
     # iff it actually contains the requested provider.
-    if image_exists(default_alias) and provider in image_agents(default_alias):
+    if image_exists(default_alias) and provider in ImageBuilder.image_agents(default_alias):
         return default_alias
     if image_exists(per_agent):
         return per_agent
@@ -161,10 +156,10 @@ def _resolve_host_auth_image(provider: str) -> str:
     if answer in ("n", "no"):
         raise SystemExit(hint)
     if answer == "1":
-        build_base_images(base, agents=(provider,))
+        ImageBuilder(base).build_base(agents=(provider,))
         return per_agent
     # Anything else (including empty input) → recommended path.
-    return ensure_default_l1(base, agents=agents)
+    return ImageBuilder(base).ensure_default_l1(agents)
 
 
 __all__ = ["authenticate"]

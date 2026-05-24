@@ -395,12 +395,10 @@ def _cmd_presets(project_id: str) -> None:
 
 def _cmd_agents_set(project_id: str, selection: str | None) -> None:
     """Validate *selection* and write it to the project's ``image.agents``."""
-    from terok.lib.api.agents import (
-        prompt_agents_selection,
-        validate_agent_selection,
-    )
+    from terok.lib.api.agents import AgentRoster
 
-    raw = selection if selection is not None else prompt_agents_selection()
-    validate_agent_selection(raw)
+    roster = AgentRoster.shared()
+    raw = selection if selection is not None else roster.prompt_selection()
+    roster.validate_selection(raw)
     path = set_project_image_agents(project_id, raw)
     print(f"Wrote image.agents = {raw!r} to {path}")

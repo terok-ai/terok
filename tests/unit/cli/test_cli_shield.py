@@ -158,8 +158,8 @@ def test_dispatch_returns_false_for_non_shield_commands() -> None:
     assert not dispatch(argparse.Namespace(cmd="project"))
 
 
-@patch("terok.cli.commands.shield.make_shield")
-def test_dispatch_status_without_task(mock_make: MagicMock) -> None:
+@patch("terok.cli.commands.shield.ShieldManager")
+def test_dispatch_status_without_task(mock_mgr_cls: MagicMock) -> None:
     """Bare ``shield status`` shows the runtime/available shield status."""
     mock_shield = MagicMock()
     mock_shield.status.return_value = {
@@ -167,7 +167,7 @@ def test_dispatch_status_without_task(mock_make: MagicMock) -> None:
         "profiles": ["dev-standard"],
         "audit_enabled": True,
     }
-    mock_make.return_value = mock_shield
+    mock_mgr_cls.return_value.shield = mock_shield
 
     with patch("sys.stdout", new_callable=StringIO) as out:
         assert dispatch(argparse.Namespace(cmd="shield", shield_cmd="status"))
@@ -197,9 +197,9 @@ def test_dispatch_partial_task_selector_exits() -> None:
     ],
 )
 @patch("terok.cli.commands.shield._resolve_task", return_value=("proj-cli-1", MOCK_TASK_DIR_1))
-@patch("terok.cli.commands.shield.make_shield")
+@patch("terok.cli.commands.shield.ShieldManager")
 def test_dispatch_task_scoped_commands(
-    mock_make: MagicMock,
+    mock_mgr_cls: MagicMock,
     _resolve: MagicMock,
     shield_cmd: str,
     shield_method: str,
@@ -209,7 +209,7 @@ def test_dispatch_task_scoped_commands(
     """Task-scoped shield commands resolve the task and delegate to the shield object."""
     mock_shield = MagicMock()
     getattr(mock_shield, shield_method).return_value = shield_result
-    mock_make.return_value = mock_shield
+    mock_mgr_cls.return_value.shield = mock_shield
 
     args = argparse.Namespace(cmd="shield", shield_cmd=shield_cmd, project_id="proj", task_id="1")
     with patch("sys.stdout", new_callable=StringIO) as out:
@@ -219,12 +219,12 @@ def test_dispatch_task_scoped_commands(
     assert expected_text in out.getvalue()
 
 
-@patch("terok.cli.commands.shield.make_shield")
-def test_dispatch_preview_all_without_down_prints_error(mock_make: MagicMock) -> None:
+@patch("terok.cli.commands.shield.ShieldManager")
+def test_dispatch_preview_all_without_down_prints_error(mock_mgr_cls: MagicMock) -> None:
     """``preview --all`` without ``--down`` fails with a clean CLI error."""
     mock_shield = MagicMock()
     mock_shield.preview.side_effect = ValueError("--all requires --down")
-    mock_make.return_value = mock_shield
+    mock_mgr_cls.return_value.shield = mock_shield
 
     args = argparse.Namespace(cmd="shield", shield_cmd="preview", down=False, allow_all=True)
     with (
@@ -238,15 +238,15 @@ def test_dispatch_preview_all_without_down_prints_error(mock_make: MagicMock) ->
 
 
 @patch("terok.cli.commands.shield._resolve_task", return_value=("proj-cli-1", MOCK_TASK_DIR_1))
-@patch("terok.cli.commands.shield.make_shield")
+@patch("terok.cli.commands.shield.ShieldManager")
 def test_dispatch_exec_error_surfaces_details(
-    mock_make: MagicMock,
+    mock_mgr_cls: MagicMock,
     _resolve: MagicMock,
 ) -> None:
     """NFT execution errors surface the actual error details."""
     mock_shield = MagicMock()
     mock_shield.state.side_effect = ExecError(["nft", "list"], 1, "no such process")
-    mock_make.return_value = mock_shield
+    mock_mgr_cls.return_value.shield = mock_shield
 
     args = argparse.Namespace(cmd="shield", shield_cmd="status", project_id="proj", task_id="1")
     with (
@@ -261,15 +261,15 @@ def test_dispatch_exec_error_surfaces_details(
 
 
 @patch("terok.cli.commands.shield._resolve_task", return_value=("proj-cli-1", MOCK_TASK_DIR_1))
-@patch("terok.cli.commands.shield.make_shield")
+@patch("terok.cli.commands.shield.ShieldManager")
 def test_dispatch_runtime_error_prints_message(
-    mock_make: MagicMock,
+    mock_mgr_cls: MagicMock,
     _resolve: MagicMock,
 ) -> None:
     """Runtime errors from shield commands are surfaced cleanly."""
     mock_shield = MagicMock()
     mock_shield.allow.side_effect = RuntimeError("No IPs allowed for proj-cli-1")
-    mock_make.return_value = mock_shield
+    mock_mgr_cls.return_value.shield = mock_shield
 
     args = argparse.Namespace(
         cmd="shield",
@@ -303,7 +303,7 @@ def test_dispatch_runtime_error_prints_message(
         ),
     ],
 )
-@patch("terok.lib.api.shield.shield_run_setup")
+@patch("terok.lib.integrations.sandbox.ShieldHooks.install")
 def test_install_hooks_dispatch(
     mock_install: MagicMock,
     kwargs: dict[str, bool],
@@ -326,16 +326,16 @@ def test_install_hooks_requires_scope_flag() -> None:
 
 @patch("terok_shield.simple_clearance.run_simple_clearance")
 @patch("terok.cli.commands.shield._resolve_task", return_value=("proj-cli-1", MOCK_TASK_DIR_1))
-@patch("terok.cli.commands.shield.make_shield")
+@patch("terok.cli.commands.shield.ShieldManager")
 def test_dispatch_simple_clearance(
-    mock_make: MagicMock,
+    mock_mgr_cls: MagicMock,
     _resolve: MagicMock,
     mock_run: MagicMock,
 ) -> None:
     """``shield simple-clearance`` dispatches to the terminal fallback handler."""
     mock_shield = MagicMock()
     mock_shield.config.state_dir = MOCK_TASK_DIR_1 / "shield"
-    mock_make.return_value = mock_shield
+    mock_mgr_cls.return_value.shield = mock_shield
 
     args = argparse.Namespace(
         cmd="shield", shield_cmd="simple-clearance", project_id="proj", task_id="1"
@@ -346,16 +346,16 @@ def test_dispatch_simple_clearance(
 
 @patch("terok_shield.watch.run_watch")
 @patch("terok.cli.commands.shield._resolve_task", return_value=("proj-cli-1", MOCK_TASK_DIR_1))
-@patch("terok.cli.commands.shield.make_shield")
+@patch("terok.cli.commands.shield.ShieldManager")
 def test_dispatch_watch(
-    mock_make: MagicMock,
+    mock_mgr_cls: MagicMock,
     _resolve: MagicMock,
     mock_run: MagicMock,
 ) -> None:
     """``shield watch`` dispatches to the watch handler."""
     mock_shield = MagicMock()
     mock_shield.config.state_dir = MOCK_TASK_DIR_1 / "shield"
-    mock_make.return_value = mock_shield
+    mock_mgr_cls.return_value.shield = mock_shield
 
     args = argparse.Namespace(cmd="shield", shield_cmd="watch", project_id="proj", task_id="1")
     assert dispatch(args)
@@ -417,14 +417,14 @@ class TestPersistDesiredState:
         _persist_desired_state("up", bad_dir, {})
 
     @patch("terok.cli.commands.shield._resolve_task")
-    @patch("terok.cli.commands.shield.make_shield")
+    @patch("terok.cli.commands.shield.ShieldManager")
     def test_dispatch_up_persists_state(
-        self, mock_make: MagicMock, mock_resolve: MagicMock, tmp_path: Path
+        self, mock_mgr_cls: MagicMock, mock_resolve: MagicMock, tmp_path: Path
     ) -> None:
         """Full dispatch of ``shield up`` persists the desired state."""
         mock_resolve.return_value = ("proj-cli-1", tmp_path)
         mock_shield = MagicMock()
-        mock_make.return_value = mock_shield
+        mock_mgr_cls.return_value.shield = mock_shield
 
         args = argparse.Namespace(cmd="shield", shield_cmd="up", project_id="proj", task_id="1")
         assert dispatch(args)
@@ -432,14 +432,14 @@ class TestPersistDesiredState:
         assert (tmp_path / "shield_desired_state").read_text().strip() == "up"
 
     @patch("terok.cli.commands.shield._resolve_task")
-    @patch("terok.cli.commands.shield.make_shield")
+    @patch("terok.cli.commands.shield.ShieldManager")
     def test_dispatch_down_persists_state(
-        self, mock_make: MagicMock, mock_resolve: MagicMock, tmp_path: Path
+        self, mock_mgr_cls: MagicMock, mock_resolve: MagicMock, tmp_path: Path
     ) -> None:
         """Full dispatch of ``shield down`` persists the desired state."""
         mock_resolve.return_value = ("proj-cli-1", tmp_path)
         mock_shield = MagicMock()
-        mock_make.return_value = mock_shield
+        mock_mgr_cls.return_value.shield = mock_shield
 
         args = argparse.Namespace(
             cmd="shield", shield_cmd="down", project_id="proj", task_id="1", allow_all=False

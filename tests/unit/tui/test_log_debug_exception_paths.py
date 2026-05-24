@@ -111,22 +111,23 @@ def test_render_shield_status_handles_missing_version_metadata() -> None:
 
 
 def test_shield_screen_fetch_status_recovers_from_env_and_status_failures() -> None:
-    """Both ``shield_check_environment`` and ``shield_status`` raising
+    """Both ``shield_check_environment`` and ``ShieldManager.status`` raising
     should result in ``(None, None)`` rather than an exception.  Covers
-    screens.py:1891-1894 *and* 1897-1900 in one shot, since
-    ``_fetch_status`` is a ``@staticmethod`` reachable without a mounted
-    screen instance.
+    the env-probe + status-load except blocks in ``ShieldScreen._fetch_status``,
+    which is a ``@staticmethod`` reachable without a mounted screen instance.
     """
     raising_env = MagicMock(side_effect=RuntimeError("probe failed"))
-    raising_status = MagicMock(side_effect=RuntimeError("status failed"))
 
     # ``_fetch_status`` does function-local ``from terok.lib.api.setup
     # import check_environment`` / ``from terok.lib.api.shield import
-    # shield_status`` so we patch attributes on the live api sub-modules
+    # ShieldManager`` so we patch attributes on the live api sub-modules
     # the function will look up against.
     with (
         patch("terok.lib.api.setup.check_environment", raising_env),
-        patch("terok.lib.api.shield.shield_status", raising_status),
+        patch(
+            "terok.lib.integrations.sandbox.ShieldManager.status",
+            side_effect=RuntimeError("status failed"),
+        ),
     ):
         screens_mod, _widgets_mod = import_screens()
         env, info = screens_mod.ShieldScreen._fetch_status()

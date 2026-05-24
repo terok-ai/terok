@@ -21,7 +21,7 @@ from terok.lib.api.shield import (
     ArgDef,
     ExecError,
     ShieldCommandDef as CommandDef,
-    make_shield,
+    ShieldManager,
     shield_needs_container,
     shield_standalone_only,
 )
@@ -161,9 +161,9 @@ def dispatch(args: argparse.Namespace) -> bool:
                 "  terok shield install-hooks --root   # /etc/containers/oci/hooks.d\n"
                 "  terok shield install-hooks --user   # ~/.local/share/containers/oci/hooks.d"
             )
-        # Module-attribute access so the test ``@patch("...shield_run_setup")``
+        # Module-attribute access so the test ``@patch("...ShieldHooks.install")``
         # intercepts the call.
-        _shield_api.shield_run_setup(root=args.root, user=args.user)
+        _shield_api.ShieldHooks.install(root=args.root, user=args.user)
         return True
 
     cmd_lookup = {cmd.name: cmd for cmd in COMMANDS if not shield_standalone_only(cmd)}
@@ -184,7 +184,7 @@ def dispatch(args: argparse.Namespace) -> bool:
         if project_id is not None and task_id is not None:
             task_id = resolve_task_id(project_id, task_id)
             cname, task_dir = _resolve_task(project_id, task_id)
-            shield = make_shield(task_dir, cfg=make_sandbox_config())
+            shield = ShieldManager(task_dir, make_sandbox_config()).shield
             kwargs = _extract_handler_kwargs(args, cmd_def)
             if shield_needs_container(cmd_def):
                 cmd_def.handler(shield, cname, **kwargs)
@@ -197,7 +197,7 @@ def dispatch(args: argparse.Namespace) -> bool:
             import tempfile
 
             with tempfile.TemporaryDirectory() as tmp:
-                shield = make_shield(Path(tmp), cfg=make_sandbox_config())
+                shield = ShieldManager(Path(tmp), make_sandbox_config()).shield
                 kwargs = _extract_handler_kwargs(args, cmd_def)
                 cmd_def.handler(shield, **kwargs)
     except ExecError as exc:
