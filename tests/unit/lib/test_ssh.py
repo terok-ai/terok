@@ -11,29 +11,34 @@ from tests.test_utils import patch_vault_db
 
 
 def _patch_vault_db(db):
-    """Patch the SSH module's ``vault_db`` alias to yield *db*."""
-    return patch_vault_db(db, module="ssh")
+    """Patch the Project module's ``vault_db`` alias to yield *db*."""
+    return patch_vault_db(db, module="project")
+
+
+def _make_project(project_id: str) -> object:
+    """Build a minimal ``Project`` whose only requirement is ``self._config.id``."""
+    from terok.lib.domain.project import Project
+
+    config = MagicMock()
+    config.id = project_id
+    return Project(config)
 
 
 class TestRegisterSshKey:
-    """Tests for ``register_ssh_key`` in the SSH workflow module."""
+    """Tests for ``Project.register_ssh_key``."""
 
     def test_assigns_key_to_scope(self) -> None:
         """register_ssh_key delegates to ``CredentialDB.assign_ssh_key``."""
-        from terok.lib.domain.ssh import register_ssh_key
-
         db = MagicMock()
         with _patch_vault_db(db):
-            register_ssh_key("myproj", 7)
+            _make_project("myproj").register_ssh_key(7)
         db.assign_ssh_key.assert_called_once_with("myproj", 7)
 
     def test_propagates_errors_from_db(self) -> None:
         """Errors from the DB layer propagate (no silent swallowing)."""
         import pytest
 
-        from terok.lib.domain.ssh import register_ssh_key
-
         db = MagicMock()
         db.assign_ssh_key.side_effect = RuntimeError("disk full")
         with _patch_vault_db(db), pytest.raises(RuntimeError, match="disk full"):
-            register_ssh_key("proj", 1)
+            _make_project("proj").register_ssh_key(1)

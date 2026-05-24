@@ -111,24 +111,28 @@ class TestShareSshKeyAssignments:
         db.assign_ssh_key.assert_not_called()
 
 
+def _project_with_id(project_id: str, **extra: object) -> object:
+    """Build a minimal ``Project`` exposing just ``self._config.id`` (+overrides)."""
+    from terok.lib.domain.project import Project
+
+    config = MagicMock(id=project_id, **extra)
+    return Project(config)
+
+
 class TestRegisterSshKey:
-    """register_ssh_key assigns a key_id to a scope via the vault DB."""
+    """Project.register_ssh_key assigns a key_id to its scope via the vault DB."""
 
     def test_assigns_key_to_scope(self) -> None:
-        from terok.lib.domain.ssh import register_ssh_key
-
         db = MagicMock()
-        with _patch_vault_db(db, module="ssh"):
-            register_ssh_key("myproj", 42)
+        with _patch_vault_db(db, module="project"):
+            _project_with_id("myproj").register_ssh_key(42)
         db.assign_ssh_key.assert_called_once_with("myproj", 42)
 
 
 class TestProvisionSshKey:
-    """provision_ssh_key mints via SSHManager and binds the fresh key_id."""
+    """Project.provision_ssh_key mints via SSHManager and binds the fresh key_id."""
 
     def test_mints_and_binds(self) -> None:
-        from terok.lib import api
-
         init_result = {
             "key_id": 7,
             "key_type": "ed25519",
@@ -143,11 +147,10 @@ class TestProvisionSshKey:
 
         db = MagicMock()
         with (
-            patch("terok.lib.domain.ssh.load_project", return_value=MagicMock(id="myproj")),
             patch("terok.lib.domain.project.make_ssh_manager", return_value=ssh_manager),
-            _patch_vault_db(db, module="ssh"),
+            _patch_vault_db(db, module="project"),
         ):
-            result = api.provision_ssh_key("myproj", key_type="ed25519", force=True)
+            result = _project_with_id("myproj").provision_ssh_key(key_type="ed25519", force=True)
 
         ssh_manager.init.assert_called_once_with(key_type="ed25519", comment=None, force=True)
         db.assign_ssh_key.assert_called_once_with("myproj", 7)
@@ -178,44 +181,28 @@ class TestSummarizeSshInit:
 
 
 class TestMaybePauseForSshKeyRegistration:
-    """maybe_pause_for_ssh_key_registration only pauses for SSH upstreams."""
+    """Project.pause_for_ssh_key_registration_if_needed only pauses for SSH upstreams."""
 
     def test_pauses_for_git_at_upstream(self, capsys: pytest.CaptureFixture[str]) -> None:
-        from terok.lib import api
-
-        project = MagicMock(upstream_url="git@example.com:org/repo.git")
-        with (
-            patch("terok.lib.domain.ssh.load_project", return_value=project),
-            patch("builtins.input", return_value=""),
-        ):
-            api.maybe_pause_for_ssh_key_registration("myproj")
+        project = _project_with_id("myproj", upstream_url="git@example.com:org/repo.git")
+        with patch("builtins.input", return_value=""):
+            project.pause_for_ssh_key_registration_if_needed()
         assert "ACTION REQUIRED" in capsys.readouterr().out
 
     def test_pauses_for_ssh_scheme_upstream(self, capsys: pytest.CaptureFixture[str]) -> None:
-        from terok.lib import api
-
-        project = MagicMock(upstream_url="ssh://git@example.com/org/repo.git")
-        with (
-            patch("terok.lib.domain.ssh.load_project", return_value=project),
-            patch("builtins.input", return_value=""),
-        ):
-            api.maybe_pause_for_ssh_key_registration("myproj")
+        project = _project_with_id("myproj", upstream_url="ssh://git@example.com/org/repo.git")
+        with patch("builtins.input", return_value=""):
+            project.pause_for_ssh_key_registration_if_needed()
         assert "ACTION REQUIRED" in capsys.readouterr().out
 
     def test_noop_for_https_upstream(self, capsys: pytest.CaptureFixture[str]) -> None:
-        from terok.lib import api
-
-        project = MagicMock(upstream_url="https://github.com/org/repo.git")
-        with patch("terok.lib.domain.ssh.load_project", return_value=project):
-            api.maybe_pause_for_ssh_key_registration("myproj")
+        project = _project_with_id("myproj", upstream_url="https://github.com/org/repo.git")
+        project.pause_for_ssh_key_registration_if_needed()
         assert "ACTION REQUIRED" not in capsys.readouterr().out
 
     def test_noop_for_empty_upstream(self, capsys: pytest.CaptureFixture[str]) -> None:
-        from terok.lib import api
-
-        project = MagicMock(upstream_url=None)
-        with patch("terok.lib.domain.ssh.load_project", return_value=project):
-            api.maybe_pause_for_ssh_key_registration("myproj")
+        project = _project_with_id("myproj", upstream_url=None)
+        project.pause_for_ssh_key_registration_if_needed()
         assert "ACTION REQUIRED" not in capsys.readouterr().out
 
 

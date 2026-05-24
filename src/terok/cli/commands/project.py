@@ -14,7 +14,7 @@ from ...lib.api import (
     derive_project,
     find_projects_sharing_gate,
     generate_dockerfiles,
-    provision_ssh_key,
+    get_project,
     set_project_image_agents,
     summarize_ssh_init,
 )
@@ -319,8 +319,7 @@ def _cmd_project_delete(project_id: str, *, force: bool = False) -> None:
 
 def _cmd_ssh_init(args: argparse.Namespace) -> None:
     """Provision a vault-managed SSH keypair for the project."""
-    result = provision_ssh_key(
-        args.project_id,
+    result = get_project(args.project_id).provision_ssh_key(
         key_type=getattr(args, "key_type", "ed25519"),
         comment=getattr(args, "comment", None),
         force=getattr(args, "force", False),

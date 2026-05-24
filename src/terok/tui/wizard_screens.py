@@ -53,7 +53,6 @@ from textual.widgets import (
 from ..lib.api import (
     QUESTIONS,
     Question,
-    project_needs_key_registration,
     validate_answer,
     write_project_yaml,
 )
@@ -835,22 +834,22 @@ class InitProgressScreen(ModalScreen[InitOutcome]):
 
         from ..lib.api import (
             generate_dockerfiles,
-            load_project,
-            provision_ssh_key,
+            get_project,
             summarize_ssh_init,
         )
 
+        project = get_project(self._project_id)
         log = self.query_one("#wizard-init-log", RichLog)
         self._ssh_continue = asyncio.Event()
 
         try:
             # Step 1: SSH
             self._mark("ssh", "running")
-            result = await asyncio.to_thread(provision_ssh_key, self._project_id)
+            result = await asyncio.to_thread(project.provision_ssh_key)
             self._mark("ssh", "done", f"key id {result['key_id']}")
             log.write(f"[green]✓[/] SSH key minted: {result['comment']}")
 
-            if project_needs_key_registration(self._project_id):
+            if project.needs_ssh_key_registration:
                 # ``overflow="fold"`` is load-bearing: Static's default
                 # word-wrap can't break a base64 blob (no spaces), so
                 # long keys silently truncate at the right edge of the
@@ -893,11 +892,11 @@ class InitProgressScreen(ModalScreen[InitOutcome]):
                 await asyncio.to_thread(generate_dockerfiles, self._project_id)
             self._mark("generate", "done")
 
-            # Project is loaded once upfront — we need it for the
-            # gate_enabled gate (step 4) *and* for ``ssh_use_personal``
-            # to decide whether subprocess env needs the askpass wiring.
-            project = load_project(self._project_id)
-            subprocess_env = await self._askpass_subprocess_env(project)
+            # ``ProjectConfig`` is what the askpass + gate-enabled checks
+            # read fields off — pull it once from the rich ``Project`` we
+            # already hold so both branches stay aligned on the same
+            # snapshot.
+            subprocess_env = await self._askpass_subprocess_env(project.config)
 
             # Step 3: Build.  ``build_images`` shells out to ``podman
             # build``; dispatched as a captured ConsoleLog action so the
@@ -917,7 +916,7 @@ class InitProgressScreen(ModalScreen[InitOutcome]):
 
             # Step 4: Gate sync — ``git clone --mirror`` and friends get
             # the same captured-child treatment as the build.
-            if not project.gate_enabled:
+            if not project.config.gate_enabled:
                 self._mark("gate", "skipped", "gate.enabled: false")
                 log.write("[dim]Gate disabled in project.yml — skipping gate-sync.[/]")
             else:

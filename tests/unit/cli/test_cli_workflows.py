@@ -32,19 +32,30 @@ def _bypass_setup_verdict_gate():
 def _patch_init_steps[T](func: Callable[..., T]) -> Callable[..., T]:
     """Apply project-init step mocks to a test method.
 
-    Mock args are injected as: mock_provision, mock_summarize, mock_pause, mock_gen,
-    mock_build, mock_gate_cls, mock_load.
+    Iterative-wrap order: the first ``patch(...)`` call becomes the
+    innermost decorator and passes the first mock arg.  Test signature
+    therefore reads: ``(self, mock_summarize, mock_gen, mock_build,
+    mock_get_project)``.
     """
-    func = unittest.mock.patch("terok.cli.commands.setup.provision_ssh_key")(func)
     func = unittest.mock.patch("terok.cli.commands.setup.summarize_ssh_init")(func)
-    func = unittest.mock.patch("terok.cli.commands.setup.maybe_pause_for_ssh_key_registration")(
-        func
-    )
     func = unittest.mock.patch("terok.cli.commands.setup.generate_dockerfiles")(func)
     func = unittest.mock.patch("terok.cli.commands.setup.build_images")(func)
-    func = unittest.mock.patch("terok.cli.commands.setup.make_git_gate")(func)
-    func = unittest.mock.patch("terok.cli.commands.setup.load_project")(func)
+    func = unittest.mock.patch("terok.cli.commands.setup.get_project")(func)
     return func
+
+
+def _make_init_project_mock(
+    *, gate_enabled: bool = True, sync_result: dict | None = None
+) -> unittest.mock.Mock:
+    """Build a Project mock that the new ``cmd_project_init`` exercises."""
+    project = unittest.mock.Mock()
+    project.config.gate_enabled = gate_enabled
+    project.provision_ssh_key.return_value = _FAKE_SSH_INIT_RESULT
+    project.gate.sync.return_value = sync_result or {
+        "success": True,
+        "path": str(FAKE_GATE_DIR),
+    }
+    return project
 
 
 def run_main(argv: list[str]) -> None:
@@ -70,49 +81,47 @@ class TestProjectInit:
     @_patch_init_steps
     def test_cmd_project_init_calls_four_steps(
         self,
-        mock_provision,
         mock_summarize,
-        mock_pause,
         mock_gen,
         mock_build,
-        mock_gate_cls,
-        mock_load,
+        mock_get_project,
     ) -> None:
-        mock_gate_cls.return_value.sync.return_value = {"success": True, "path": str(FAKE_GATE_DIR)}
-        mock_provision.return_value = _FAKE_SSH_INIT_RESULT
+        project = _make_init_project_mock()
+        mock_get_project.return_value = project
 
         from terok.cli.commands.setup import cmd_project_init
 
         cmd_project_init("myproj")
 
-        mock_provision.assert_called_once_with("myproj")
+        project.provision_ssh_key.assert_called_once_with()
         mock_summarize.assert_called_once_with(_FAKE_SSH_INIT_RESULT)
-        mock_pause.assert_called_once_with("myproj")
+        project.pause_for_ssh_key_registration_if_needed.assert_called_once_with()
         mock_gen.assert_called_once_with("myproj")
         mock_build.assert_called_once_with("myproj")
-        mock_gate_cls.return_value.sync.assert_called_once()
+        project.gate.sync.assert_called_once()
 
     @_patch_init_steps
     def test_cmd_project_init_calls_in_order(
         self,
-        mock_provision,
         mock_summarize,
-        mock_pause,
         mock_gen,
         mock_build,
-        mock_gate_cls,
-        mock_load,
+        mock_get_project,
     ) -> None:
+        project = _make_init_project_mock()
+        mock_get_project.return_value = project
         call_order: list[str] = []
-        mock_provision.side_effect = lambda *a, **kw: (
+        project.provision_ssh_key.side_effect = lambda *a, **kw: (
             call_order.append("ssh"),
             _FAKE_SSH_INIT_RESULT,
         )[-1]
         mock_summarize.side_effect = lambda *a, **kw: call_order.append("summarize")
-        mock_pause.side_effect = lambda *a, **kw: call_order.append("pause")
+        project.pause_for_ssh_key_registration_if_needed.side_effect = (
+            lambda *a, **kw: call_order.append("pause")
+        )
         mock_gen.side_effect = lambda *a, **kw: call_order.append("generate")
         mock_build.side_effect = lambda *a, **kw: call_order.append("build")
-        mock_gate_cls.return_value.sync.side_effect = lambda **kw: (
+        project.gate.sync.side_effect = lambda **kw: (
             call_order.append("gate"),
             {"success": True, "path": str(FAKE_GATE_DIR)},
         )[-1]
@@ -126,19 +135,15 @@ class TestProjectInit:
     @_patch_init_steps
     def test_cmd_project_init_gate_failure_raises(
         self,
-        mock_provision,
         mock_summarize,
-        mock_pause,
         mock_gen,
         mock_build,
-        mock_gate_cls,
-        mock_load,
+        mock_get_project,
     ) -> None:
-        mock_provision.return_value = _FAKE_SSH_INIT_RESULT
-        mock_gate_cls.return_value.sync.return_value = {
-            "success": False,
-            "errors": ["no upstream_url"],
-        }
+        project = _make_init_project_mock(
+            sync_result={"success": False, "errors": ["no upstream_url"]}
+        )
+        mock_get_project.return_value = project
 
         from terok.cli.commands.setup import cmd_project_init
 
@@ -151,37 +156,35 @@ class TestProjectInit:
     @_patch_init_steps
     def test_cmd_project_init_skips_gate_sync_when_disabled(
         self,
-        mock_provision,
         mock_summarize,
-        mock_pause,
         mock_gen,
         mock_build,
-        mock_gate_cls,
-        mock_load,
+        mock_get_project,
     ) -> None:
         """``gate.enabled: false`` short-circuits after build — no sync attempted."""
-        mock_provision.return_value = _FAKE_SSH_INIT_RESULT
-        mock_load.return_value = unittest.mock.Mock(gate_enabled=False)
+        project = _make_init_project_mock(gate_enabled=False)
+        mock_get_project.return_value = project
 
         from terok.cli.commands.setup import cmd_project_init
 
         cmd_project_init("noproj")
 
         mock_build.assert_called_once_with("noproj")
-        mock_gate_cls.assert_not_called()
-        mock_gate_cls.return_value.sync.assert_not_called()
+        project.gate.sync.assert_not_called()
 
 
 class TestCliSshInit:
     """Tests for the ``project ssh-init`` CLI command."""
 
     @unittest.mock.patch("terok.cli.commands.project.summarize_ssh_init")
-    @unittest.mock.patch("terok.cli.commands.project.provision_ssh_key")
-    def test_ssh_init_delegates_to_facade(self, mock_provision, mock_summarize) -> None:
-        """dispatch → provision_ssh_key(project_id, **defaults) → summarize_ssh_init(result)."""
+    @unittest.mock.patch("terok.cli.commands.project.get_project")
+    def test_ssh_init_delegates_to_project(self, mock_get_project, mock_summarize) -> None:
+        """dispatch → get_project(id).provision_ssh_key(**defaults) → summarize(result)."""
         import argparse
 
-        mock_provision.return_value = _FAKE_SSH_INIT_RESULT
+        project = unittest.mock.Mock()
+        project.provision_ssh_key.return_value = _FAKE_SSH_INIT_RESULT
+        mock_get_project.return_value = project
 
         from terok.cli.commands.project import dispatch
 
@@ -194,8 +197,9 @@ class TestCliSshInit:
             force=False,
         )
         assert dispatch(args) is True
-        mock_provision.assert_called_once_with(
-            "proj", key_type="ed25519", comment=None, force=False
+        mock_get_project.assert_called_once_with("proj")
+        project.provision_ssh_key.assert_called_once_with(
+            key_type="ed25519", comment=None, force=False
         )
         mock_summarize.assert_called_once_with(_FAKE_SSH_INIT_RESULT)
 
@@ -203,50 +207,45 @@ class TestCliSshInit:
 class TestSshPause:
     """Tests for the SSH key registration pause helper."""
 
-    @unittest.mock.patch("terok.lib.domain.ssh.load_project")
     @unittest.mock.patch("builtins.input", return_value="")
-    def test_pauses_for_ssh_upstream(self, mock_input, mock_load) -> None:
-        from terok.lib.api import maybe_pause_for_ssh_key_registration
+    def test_pauses_for_ssh_upstream(self, mock_input) -> None:
+        from terok.lib.domain.project import Project
 
         for upstream in ("git@github.com:org/repo.git", "ssh://github.com/org/repo.git"):
             mock_input.reset_mock()
-            mock_load.return_value = unittest.mock.Mock(upstream_url=upstream)
-            maybe_pause_for_ssh_key_registration("sshproj")
+            config = unittest.mock.Mock(upstream_url=upstream)
+            Project(config).pause_for_ssh_key_registration_if_needed()
             mock_input.assert_called_once_with("Press Enter once the key is registered... ")
 
-    @unittest.mock.patch("terok.lib.domain.ssh.load_project")
     @unittest.mock.patch("builtins.input", return_value="")
-    def test_no_pause_for_https_upstream(self, mock_input, mock_load) -> None:
-        from terok.lib.api import maybe_pause_for_ssh_key_registration
+    def test_no_pause_for_https_upstream(self, mock_input) -> None:
+        from terok.lib.domain.project import Project
 
-        mock_load.return_value = unittest.mock.Mock(upstream_url="https://github.com/org/repo.git")
-        maybe_pause_for_ssh_key_registration("httpsproj")
+        config = unittest.mock.Mock(upstream_url="https://github.com/org/repo.git")
+        Project(config).pause_for_ssh_key_registration_if_needed()
         mock_input.assert_not_called()
 
     @_patch_init_steps
     def test_project_init_continues_after_pause(
         self,
-        mock_provision,
         mock_summarize,
-        mock_pause,
         mock_gen,
         mock_build,
-        mock_gate_cls,
-        mock_load,
+        mock_get_project,
     ) -> None:
-        mock_gate_cls.return_value.sync.return_value = {"success": True, "path": str(FAKE_GATE_DIR)}
-        mock_provision.return_value = _FAKE_SSH_INIT_RESULT
+        project = _make_init_project_mock()
+        mock_get_project.return_value = project
 
         from terok.cli.commands.setup import cmd_project_init
 
         cmd_project_init("sshproj")
 
-        mock_provision.assert_called_once_with("sshproj")
+        project.provision_ssh_key.assert_called_once_with()
         mock_summarize.assert_called_once_with(_FAKE_SSH_INIT_RESULT)
-        mock_pause.assert_called_once_with("sshproj")
+        project.pause_for_ssh_key_registration_if_needed.assert_called_once_with()
         mock_gen.assert_called_once_with("sshproj")
         mock_build.assert_called_once_with("sshproj")
-        mock_gate_cls.return_value.sync.assert_called_once()
+        project.gate.sync.assert_called_once()
 
 
 class TestTaskRunInteractive:

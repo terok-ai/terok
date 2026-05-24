@@ -51,9 +51,6 @@ from terok.lib.domain.project import (  # noqa: F401 — re-exported public API
     project_image_exists,
 )
 from terok.lib.domain.ssh import (  # noqa: F401 — re-exported public API
-    maybe_pause_for_ssh_key_registration,
-    project_needs_key_registration,
-    provision_ssh_key,
     summarize_ssh_init,
 )
 from terok.lib.domain.wizards.new_project import (  # noqa: F401 — re-exported public API
@@ -85,11 +82,8 @@ __all__ = [
     "list_images",
     "list_projects",
     "load_project",
-    "maybe_pause_for_ssh_key_registration",
     "panic_stop_containers",
     "project_image_exists",
-    "project_needs_key_registration",
-    "provision_ssh_key",
     "remove_images",
     "render_project_yaml",
     "require_project_exists",
