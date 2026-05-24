@@ -15,6 +15,7 @@ import argparse
 import sys
 from pathlib import Path
 
+from terok.lib.api import shield as _shield_api
 from terok.lib.api.shield import (
     SHIELD_COMMANDS as COMMANDS,
     ArgDef,
@@ -160,9 +161,9 @@ def dispatch(args: argparse.Namespace) -> bool:
                 "  terok shield install-hooks --root   # /etc/containers/oci/hooks.d\n"
                 "  terok shield install-hooks --user   # ~/.local/share/containers/oci/hooks.d"
             )
-        from terok.lib.api.shield import shield_run_setup
-
-        shield_run_setup(root=args.root, user=args.user)
+        # Module-attribute access so the test ``@patch("...shield_run_setup")``
+        # intercepts the call.
+        _shield_api.shield_run_setup(root=args.root, user=args.user)
         return True
 
     cmd_lookup = {cmd.name: cmd for cmd in COMMANDS if not shield_standalone_only(cmd)}

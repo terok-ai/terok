@@ -8,7 +8,11 @@ elsewhere in terok import from this module rather than from
 ``terok_clearance`` directly — see the package docstring in
 [`terok.lib.integrations`][terok.lib.integrations] for the rationale.
 
-Every symbol comes from the wheel's top-level public API.
+Every symbol comes from the wheel's top-level public API.  The
+``HubService`` / ``NotifierService`` class pair replaces the previous
+loose installer/uninstaller/version-probe free functions (W5.E);
+``outdated_summary`` is the combined drift query that aggregates
+both services' state for ``terok sickbay``.
 """
 
 from terok_clearance import (  # noqa: F401 — re-exported public API
@@ -17,10 +21,10 @@ from terok_clearance import (  # noqa: F401 — re-exported public API
     NOTIFIER_UNIT_NAME,
     CallbackNotifier,
     EventSubscriber,
+    HubService,
     Notification,
-    check_units_outdated,
-    read_installed_notifier_unit_version,
-    read_installed_unit_version,
+    NotifierService,
+    outdated_summary,
 )
 
 __all__ = [
@@ -28,9 +32,9 @@ __all__ = [
     "CallbackNotifier",
     "EventSubscriber",
     "HUB_UNIT_NAME",
+    "HubService",
     "NOTIFIER_UNIT_NAME",
     "Notification",
-    "check_units_outdated",
-    "read_installed_notifier_unit_version",
-    "read_installed_unit_version",
+    "NotifierService",
+    "outdated_summary",
 ]

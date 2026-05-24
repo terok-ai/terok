@@ -28,6 +28,8 @@ from terok.lib.integrations.executor import (
     detect_family,
     l0_image_tag,
     parse_agent_selection,
+    render_l0,
+    render_l1,
     stage_scripts,
     stage_tmux_config,
     stage_toad_agents,
@@ -169,8 +171,6 @@ def render_all_dockerfiles(project: ProjectConfig, *, family: str | None = None)
     omitted it is detected from ``project.base_image`` (with
     ``project.family`` as override).
     """
-    from terok.lib.integrations.executor import render_l0, render_l1
-
     fam = family or detect_family(project.base_image, override=project.family)
     return {
         "L0.Dockerfile": render_l0(project.base_image, family=fam),

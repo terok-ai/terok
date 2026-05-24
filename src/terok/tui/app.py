@@ -1043,7 +1043,11 @@ if _HAS_TEXTUAL:
                 cname = container_name(project_id, mode, task.task_id)
                 task_dir = project.tasks_root / str(task.task_id)
                 st = _shield_state(cname, task_dir)
-                return project_id, task.task_id, st.name
+                # ``shield_state`` is annotated ``Any`` to keep the
+                # integrations layer out of the importlinter-protected
+                # terok_shield namespace; the runtime value is a
+                # ShieldState enum whose ``.name`` is the display string.
+                return project_id, task.task_id, st.name  # type: ignore[attr-defined]
             except Exception:
                 return project_id, task.task_id, None
 

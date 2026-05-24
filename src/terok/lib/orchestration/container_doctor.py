@@ -24,8 +24,8 @@ from terok.lib.integrations.sandbox import (
     ContainerRuntime,
     DoctorCheck,
     ExecResult,
+    ShieldManager,
     VaultManager,
-    make_shield,
     sandbox_doctor_checks,
 )
 
@@ -273,7 +273,7 @@ def _check_shield_state(task_dir: Path, cname: str) -> _CheckResult:
         return ("ok", _SHIELD_STATE_LABEL, "no desired state — not managed")
 
     try:
-        shield = make_shield(task_dir)
+        shield = ShieldManager(task_dir).shield
         actual_status = shield.status()
         actual = "up" if actual_status.get("active", False) else "down"
     except Exception as exc:  # noqa: BLE001

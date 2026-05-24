@@ -18,7 +18,7 @@ from __future__ import annotations
 from collections.abc import Callable
 
 from terok.lib.integrations.executor import (
-    authenticate as _authenticate_raw,
+    authenticate as _authenticate_raw,  # noqa: F401 — module attribute for tests to patch
 )
 
 from ..core.images import project_cli_image

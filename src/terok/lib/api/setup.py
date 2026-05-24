@@ -20,6 +20,7 @@ from terok.lib.integrations.sandbox import (  # noqa: F401 — re-exported publi
     GateServerManager,
     SelinuxStatus,
     SetupVerdict,
+    ShieldHooks,
     VaultManager,
     check_environment,
     check_selinux_status,
@@ -30,10 +31,19 @@ from terok.lib.integrations.sandbox import (  # noqa: F401 — re-exported publi
     sandbox_uninstall,
     selinux_install_command,
     selinux_install_script,
-    setup_hooks_direct,
     systemd_creds_has_tpm2,
     yaml_update_section,
 )
+
+
+def setup_hooks_direct(*, root: bool = False) -> None:
+    """Install global shield OCI hooks — shim around ``ShieldHooks.install``.
+
+    Kept as a thin pass-through so terok's TUI/CLI installer paths keep
+    one named call site as the surface evolves.
+    """
+    ShieldHooks.install(root=root, user=not root)
+
 
 __all__ = [
     "EnvironmentCheck",
@@ -41,6 +51,7 @@ __all__ = [
     "SERVICES_TCP_OPTOUT_YAML",
     "SelinuxStatus",
     "SetupVerdict",
+    "ShieldHooks",
     "VaultManager",
     "check_environment",
     "check_selinux_status",

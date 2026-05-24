@@ -12,7 +12,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from terok.lib.api.agents import parse_md_agent
-from terok.lib.api.shield import shield_down, shield_up
+from terok.lib.api.shield import shield_down, shield_up  # noqa: F401 — TUI handlers
 
 from ..lib.api import (
     HeadlessRunRequest,
