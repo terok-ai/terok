@@ -659,7 +659,6 @@ depends_on = []
 expose = [
     "ProjectConfig",
     "PresetInfo",
-    "effective_ssh_key_name",
     "is_valid_project_id",
     "validate_project_id",
 ]
@@ -677,9 +676,7 @@ expose = [
     "load_preset",
     "list_presets",
     "derive_project",
-    "effective_ssh_key_name",
     "require_project_exists",
-    "resolve_ssh_host_dir",
     "set_project_image_agents",
     "validate_project_id",
 ]
@@ -828,7 +825,6 @@ from = ["terok.lib.domain.panic"]
 [[interfaces]]
 expose = [
     "projects_dir",
-    "state_dir",
     "gate_repos_dir",
     "sandbox_live_dir",
     "sandbox_live_mounts_dir",
@@ -846,7 +842,6 @@ expose = [
     "get_global_default_agent",
     "get_global_default_login",
     "get_global_image_agents",
-    "get_global_image_base_image",
     "global_config_path",
     "global_config_search_paths",
     "load_global_config",
@@ -950,13 +945,7 @@ expose = [
 from = ["terok.lib.domain.project"]
 
 [[interfaces]]
-expose = [
-    "maybe_pause_for_ssh_key_registration",
-    "project_needs_key_registration",
-    "provision_ssh_key",
-    "register_ssh_key",
-    "summarize_ssh_init",
-]
+expose = ["summarize_ssh_init"]
 from = ["terok.lib.domain.ssh"]
 
 [[interfaces]]
