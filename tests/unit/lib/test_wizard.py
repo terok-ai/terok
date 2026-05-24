@@ -83,6 +83,7 @@ def wizard_values(
         pytest.param("my@project", False, id="special-chars"),
         pytest.param("-myproject", False, id="starts-with-hyphen"),
         pytest.param("_myproject", False, id="starts-with-underscore"),
+        pytest.param("default", False, id="reserved-default"),
     ],
 )
 def test_validate_project_id(project_id: str, valid: bool) -> None:

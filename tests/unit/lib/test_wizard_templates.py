@@ -112,6 +112,22 @@ class TestProjectTemplate:
         rendered = _render("online", "ubuntu", user_snippet="RUN apt-get update")
         assert "RUN apt-get update" in rendered
 
+    def test_template_renders_shared_credentials_scope(self) -> None:
+        """``credentials_scope='shared'`` must NOT emit a ``credentials:`` block.
+
+        Shared is the runtime default; writing ``credentials.scope: shared``
+        to every freshly-generated project.yml would just add noise.
+        """
+        rendered = _render("online", "ubuntu", credentials_scope="shared")
+        parsed = yaml.safe_load(rendered)
+        assert "credentials" not in parsed
+
+    def test_template_renders_project_credentials_scope(self) -> None:
+        """``credentials_scope='project'`` emits ``credentials: { scope: project }``."""
+        rendered = _render("online", "ubuntu", credentials_scope="project")
+        parsed = yaml.safe_load(rendered)
+        assert parsed["credentials"] == {"scope": "project"}
+
     def test_multi_line_user_snippet_keeps_block_scalar_valid(self) -> None:
         """Lines 2+ of USER_SNIPPET must inherit the block scalar's indent."""
         snippet = "RUN apt-get update\nRUN apt-get install -y curl\nRUN echo done"

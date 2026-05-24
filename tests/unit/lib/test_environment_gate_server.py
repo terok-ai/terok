@@ -223,3 +223,49 @@ def test_project_mounts_dir_project_returns_per_project_subtree() -> None:
     with mock_git_config(), project_env(yaml_text, project_id="online-proj"):
         project = load_project("online-proj")
         assert project_mounts_dir(project) == project.root / "mounts"
+
+
+def test_check_project_credentials_present_shared_is_noop() -> None:
+    """Shared-scope projects skip the check — host-wide bucket may be empty by design."""
+    from terok.lib.orchestration.environment import _check_project_credentials_present
+
+    with mock_git_config(), project_env(_ONLINE_YAML, project_id="online-proj"):
+        project = load_project("online-proj")
+        # Even with an empty vault, shared-scope projects must not raise —
+        # the agent prompts for login on first turn (existing behaviour).
+        # The DB lookup is also short-circuited (no point asking).
+        with patch(
+            "terok.lib.integrations.executor.list_authenticated_agents", return_value=[]
+        ) as mock_list:
+            _check_project_credentials_present(project)  # must not raise
+        mock_list.assert_not_called()
+
+
+def test_check_project_credentials_present_empty_bucket_raises() -> None:
+    """Project-scope project with empty vault row fails fast with auth hint."""
+    from terok.lib.orchestration.environment import _check_project_credentials_present
+
+    yaml_text = _ONLINE_YAML + "credentials:\n  scope: project\n"
+    with mock_git_config(), project_env(yaml_text, project_id="online-proj"):
+        project = load_project("online-proj")
+        with (
+            patch("terok.lib.integrations.executor.list_authenticated_agents", return_value=[]),
+            pytest.raises(SystemExit, match="terok auth"),
+        ):
+            _check_project_credentials_present(project)
+
+
+def test_check_project_credentials_present_populated_bucket_passes() -> None:
+    """Project-scope project with a credential in its set passes silently."""
+    from terok.lib.orchestration.environment import _check_project_credentials_present
+
+    yaml_text = _ONLINE_YAML + "credentials:\n  scope: project\n"
+    with mock_git_config(), project_env(yaml_text, project_id="online-proj"):
+        project = load_project("online-proj")
+        with patch(
+            "terok.lib.integrations.executor.list_authenticated_agents",
+            return_value=["claude"],
+        ) as mock_list:
+            _check_project_credentials_present(project)  # must not raise
+        # The scope passed in is the project's credential_set, not "default".
+        mock_list.assert_called_once_with(scope="online-proj")

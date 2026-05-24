@@ -67,6 +67,35 @@ def project_mounts_dir(project: ProjectConfig) -> Path:
     return sandbox_live_mounts_dir()
 
 
+def _check_project_credentials_present(project: ProjectConfig) -> None:
+    """Fail fast when a project-scope project has an empty vault row.
+
+    The shared-scope flow tolerates a missing credential — the agent
+    prompts for login on first turn and the user might prefer that.  But
+    a project that opted into ``credentials_scope: project`` has just
+    explicitly *isolated* its bucket: silent fallback would defeat the
+    isolation, and an empty bucket is almost always a user oversight
+    (they edited project.yml but forgot ``terok auth --project <id>``).
+    Surface it before the container starts so the error message names
+    the recovery command instead of bubbling up from inside the agent.
+    """
+    if project.credentials_scope != "project":
+        return
+
+    from terok.lib.integrations.executor import list_authenticated_agents
+
+    if list_authenticated_agents(scope=project.credential_set):
+        return
+
+    agent = project.default_agent or "claude"
+    raise SystemExit(
+        f"Project '{project.id}' is configured for per-project credentials "
+        f"(credentials.scope: project) but its vault bucket is empty.\n"
+        f"Authenticate before launching tasks:\n\n"
+        f"  terok auth {agent} --project {project.id}\n"
+    )
+
+
 _SPEC_CONSUMED_SEC_ENV_KEYS = frozenset({"CODE_REPO", "CLONE_FROM", "GIT_BRANCH"})
 """``sec_env`` keys already routed via ``ContainerEnvSpec`` (see
 [`build_task_env_and_volumes`][terok.lib.orchestration.environment.build_task_env_and_volumes]
@@ -551,6 +580,7 @@ class TaskEnvironment:
         vault_bypass = get_vault_bypass()
         if not vault_bypass:
             ensure_vault()
+            _check_project_credentials_present(project)
         vault_transport = get_vault_transport()
 
         roster = AgentRoster.shared()

@@ -125,20 +125,24 @@ class TestLeakedCredentialsScan:
         """Leaked credential files produce log warnings."""
         from terok.lib.orchestration.environment import _warn_leaked_credentials
 
+        mounts = Path("/tmp/terok-testing/mounts")
         with (
             caplog.at_level(logging.WARNING, logger="terok.lib.orchestration.environment"),
             patch(
                 "terok.lib.integrations.executor.scan_leaked_credentials",
                 return_value=[("claude", Path("/tmp/terok-testing/m/.credentials.json"))],
-            ),
+            ) as mock_scan,
             patch("terok.lib.core.config.is_claude_oauth_exposed", return_value=False),
         ):
-            _warn_leaked_credentials(Path("/tmp/terok-testing/mounts"))
+            _warn_leaked_credentials(mounts)
 
         warnings = [r for r in caplog.records if r.levelno == logging.WARNING]
         assert any("claude" in r.message for r in warnings)
         # Full path must not leak at WARNING — only at DEBUG
         assert not any(".credentials.json" in r.message for r in warnings)
+        # The mounts dir is forwarded verbatim — no implicit fallback to the
+        # global path.  Pins the route from materialize() through to the scan.
+        mock_scan.assert_called_once_with(mounts)
 
     def test_exposed_token_suppresses_claude_warning(
         self, capsys: pytest.CaptureFixture[str], caplog: pytest.LogCaptureFixture
