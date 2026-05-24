@@ -978,7 +978,7 @@ expose = ["container_git_diff"]
 from = ["terok.lib.orchestration.container_exec"]
 
 [[interfaces]]
-expose = ["run_container_doctor"]
+expose = ["ContainerDoctor", "run_container_doctor"]
 from = ["terok.lib.orchestration.container_doctor"]
 
 [[interfaces]]

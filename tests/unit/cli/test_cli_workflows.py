@@ -116,8 +116,8 @@ class TestProjectInit:
             _FAKE_SSH_INIT_RESULT,
         )[-1]
         mock_summarize.side_effect = lambda *a, **kw: call_order.append("summarize")
-        project.pause_for_ssh_key_registration_if_needed.side_effect = (
-            lambda *a, **kw: call_order.append("pause")
+        project.pause_for_ssh_key_registration_if_needed.side_effect = lambda *a, **kw: (
+            call_order.append("pause")
         )
         mock_gen.side_effect = lambda *a, **kw: call_order.append("generate")
         mock_build.side_effect = lambda *a, **kw: call_order.append("build")

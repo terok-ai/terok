@@ -31,6 +31,7 @@ See Also:
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 from ..orchestration.task_runners import (
@@ -98,6 +99,16 @@ class Task:
         return self._meta.status
 
     @property
+    def container_state(self) -> str | None:
+        """Live container state — ``running`` / ``exited`` / … or ``None``.
+
+        Hydrated when the task is loaded; reflects what ``podman
+        inspect`` reported at construction time.  Refresh by reloading
+        the parent ``Project`` view.
+        """
+        return self._meta.container_state
+
+    @property
     def meta(self) -> TaskMeta:
         """Return the underlying metadata value object."""
         return self._meta
@@ -156,6 +167,43 @@ class Task:
         """Get git diff from the task's workspace."""
         return get_workspace_git_diff(self._config.id, self.id, against=against)
 
+    def show_status(self) -> None:
+        """Print live task status with container state diagnostics.
+
+        CLI-flavoured: writes to stdout.  Domain callers that want a
+        structured snapshot should read :attr:`meta` directly.
+        """
+        from ..orchestration.tasks import task_status
+
+        task_status(self._config.id, self.id)
+
+    def wait_for_exit(self, *, timeout: int = 7200) -> tuple[int | None, str | None]:
+        """Wait for this task's container to exit; record exit code in metadata.
+
+        Returns ``(exit_code, error_message)``.  See
+        [`wait_for_container_exit`][terok.lib.orchestration.tasks.lifecycle.wait_for_container_exit]
+        for the underlying timeout semantics.
+        """
+        from ..core.task_state import container_name
+        from ..orchestration.tasks import wait_for_container_exit
+
+        if not self._meta.mode:
+            raise RuntimeError(f"Task {self.id} has no mode — never started")
+        cname = container_name(self._config.id, self._meta.mode, self.id)
+        return wait_for_container_exit(cname, self._config.id, self.id, timeout=timeout)
+
+    def capture_logs(self) -> Path | None:
+        """Capture this task's container logs to disk; return the log path.
+
+        Returns ``None`` if the task has no mode (never started) or the
+        executor reports a capture failure.
+        """
+        from ..orchestration.tasks import capture_task_logs
+
+        if not self._meta.mode:
+            return None
+        return capture_task_logs(self._config, self.id, self._meta.mode)
+
     def image_is_old(self) -> bool | None:
         """Return whether the task's container image is outdated.
 
@@ -168,6 +216,30 @@ class Task:
         from .project_state import is_task_image_old
 
         return is_task_image_old(self._config.id, self._meta)
+
+    # --- Diagnostics ---
+
+    def doctor(
+        self,
+        *,
+        fix: bool = False,
+        reporter: object | None = None,
+        label_prefix: str = "",
+    ) -> list[tuple[str, str, str]]:
+        """Run every layered in-container health check against this task.
+
+        Convenience wrapper around
+        [`ContainerDoctor.run`][terok.lib.orchestration.container_doctor.ContainerDoctor.run]
+        — see that method for the full streaming / fix / label-prefix
+        semantics.
+        """
+        from ..orchestration.container_doctor import ContainerDoctor
+
+        return ContainerDoctor(self._config.id, self.id).run(
+            fix=fix,
+            reporter=reporter,  # type: ignore[arg-type]
+            label_prefix=label_prefix,
+        )
 
     def __repr__(self) -> str:
         """Return a developer-friendly string representation."""

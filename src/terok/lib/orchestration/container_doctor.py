@@ -3,10 +3,13 @@
 
 """In-container health checks via the layered doctor protocol.
 
-Collects checks from ``terok_sandbox.doctor`` (network, shield),
-``terok_executor.doctor`` (bridges, credentials, env), and adds terok-level
-checks (git identity, remote URL).  Executes probes inside running
-containers via ``podman exec`` and optionally applies fixes.
+Entry point: [`ContainerDoctor`][terok.lib.orchestration.container_doctor.ContainerDoctor].
+``ContainerDoctor(project_id, task_id).run(...)`` collects checks from
+``terok_sandbox.doctor`` (network, shield),
+``terok_executor.doctor`` (bridges, credentials, env), and adds
+terok-level checks (git identity, remote URL).  It executes probes
+inside the running container via ``podman exec`` (under crun) or SSH
+(under krun), and optionally applies fixes.
 
 All checks run from the host — the container cannot tamper with the
 diagnostic process.
@@ -15,6 +18,7 @@ diagnostic process.
 from __future__ import annotations
 
 import subprocess
+from dataclasses import dataclass
 from pathlib import Path
 from urllib.parse import ParseResult, urlparse, urlunparse
 
@@ -421,6 +425,83 @@ def _dispatch_host_side(check: DoctorCheck, task_dir: Path, cname: str) -> _Chec
     return (verdict.severity, check.label, verdict.detail)
 
 
+@dataclass(frozen=True)
+class ContainerDoctor:
+    """Layered in-container health-check orchestrator for one task.
+
+    Construct with ``ContainerDoctor(project_id, task_id)`` and call
+    :meth:`run` to execute every probe in sandbox / agent / terok
+    layers against the running container.
+
+    The instance carries the ``(project_id, task_id)`` pair that names
+    the target task; runtime resolution happens inside :meth:`run` so
+    the cheap construction is free of subprocess work.
+    """
+
+    project_id: str
+    """Project the task belongs to."""
+
+    task_id: str
+    """Task identifier whose container is probed."""
+
+    def run(
+        self,
+        *,
+        fix: bool = False,
+        reporter: CheckReporter | None = None,
+        label_prefix: str = "",
+    ) -> list[_CheckResult]:
+        """Run every layered health check against this task's container.
+
+        Probes are executed via ``podman exec`` under crun and over the
+        passt-forwarded SSH transport under krun — whichever booted the
+        container.  Optional fixes run only for checks whose verdict
+        reports ``fixable=True``.
+
+        When *reporter* is supplied, progress streams line-by-line and
+        noisy categories (``Credential file (...)``, ``Phantom token
+        (...)``, …) coalesce into a single heading.  The returned list
+        is empty in that case so the caller doesn't re-print.
+
+        *label_prefix* is prepended to every emitted label — used by
+        the sickbay command to tag multi-task runs with ``"Task
+        pid/tid: "``.
+        """
+        cname, task_dir, early = _resolve_running_container(self.project_id, self.task_id)
+        if early:
+            if reporter is not None:
+                for status, label, detail in early:
+                    reporter.emit(status, label, detail)
+                return []
+            return early
+
+        # Resolve the runtime once per doctor run so every probe / fix
+        # reaches the container through the same backend that booted it
+        # (under krun: SSH over a passt-forwarded TCP port; under crun:
+        # podman exec).
+        runtime = _rt.resolve_runtime(load_project(self.project_id))
+        checks = list(_collect_all_checks(self.project_id, task_dir))
+
+        if reporter is None:
+            # Legacy path: collect-and-return.  No streaming, no grouping.
+            results: list[_CheckResult] = []
+            for check in checks:
+                results.extend(_execute_check(runtime, check, cname, task_dir, fix=fix))
+            return results
+
+        # Streaming path with grouping.
+        _stream_checks(
+            runtime,
+            checks,
+            cname,
+            task_dir,
+            fix=fix,
+            reporter=reporter,
+            label_prefix=label_prefix,
+        )
+        return []
+
+
 def run_container_doctor(
     project_id: str,
     task_id: str,
@@ -429,47 +510,10 @@ def run_container_doctor(
     reporter: CheckReporter | None = None,
     label_prefix: str = "",
 ) -> list[_CheckResult]:
-    """Run all layered in-container health checks for a specific task.
-
-    Collects checks from sandbox, agent, and terok layers, executes probes
-    via ``podman exec``, evaluates results, and optionally applies fixes.
-
-    When *reporter* is supplied, progress streams line-by-line through it
-    and noisy categories (``Credential file (...)``, ``Phantom token
-    (...)``, …) coalesce into a single group heading.  The returned list
-    is also populated for backwards-compatible callers that want the
-    aggregate; it is empty when *reporter* handled the streaming so the
-    caller doesn't re-print.
-
-    *label_prefix* is prepended to every emitted label — used by the
-    sickbay command to tag multi-task runs with ``"Task pid/tid: "``.
-    """
-    cname, task_dir, early = _resolve_running_container(project_id, task_id)
-    if early:
-        if reporter is not None:
-            for status, label, detail in early:
-                reporter.emit(status, label, detail)
-            return []
-        return early
-
-    # Resolve the runtime once per doctor run so every probe / fix
-    # reaches the container through the same backend that booted it
-    # (under krun: SSH over a passt-forwarded TCP port; under crun: podman exec).
-    runtime = _rt.resolve_runtime(load_project(project_id))
-    checks = list(_collect_all_checks(project_id, task_dir))
-
-    if reporter is None:
-        # Legacy path: collect-and-return.  No streaming, no grouping.
-        results: list[_CheckResult] = []
-        for check in checks:
-            results.extend(_execute_check(runtime, check, cname, task_dir, fix=fix))
-        return results
-
-    # Streaming path with grouping.
-    _stream_checks(
-        runtime, checks, cname, task_dir, fix=fix, reporter=reporter, label_prefix=label_prefix
+    """Shim around :meth:`ContainerDoctor.run` for back-compat callers."""
+    return ContainerDoctor(project_id, task_id).run(
+        fix=fix, reporter=reporter, label_prefix=label_prefix
     )
-    return []
 
 
 def _execute_check(

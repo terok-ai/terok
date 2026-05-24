@@ -45,7 +45,7 @@ from ...lib.core import runtime as _rt
 from ...lib.core.config import get_services_mode, global_config_path, make_sandbox_config
 from ...lib.core.project_model import ProjectConfig, is_valid_project_id
 from ...lib.core.projects import list_projects, load_project
-from ...lib.orchestration.container_doctor import run_container_doctor
+from ...lib.orchestration.container_doctor import ContainerDoctor
 from ...lib.orchestration.hooks import run_hook
 from ...lib.orchestration.tasks import (
     container_name,
@@ -489,14 +489,12 @@ def _stream_containers(
     """Stream in-container diagnostics through *reporter*, one task at a time.
 
     The per-task running-state check is handled inside
-    ``run_container_doctor`` — it emits an informational line for
-    non-running containers, so we simply forward all tasks and let the
-    orchestrator decide.
+    [`ContainerDoctor.run`][terok.lib.orchestration.container_doctor.ContainerDoctor.run]
+    — it emits an informational line for non-running containers, so we
+    simply forward all tasks and let the orchestrator decide.
     """
     if project_id and task_id:
-        run_container_doctor(
-            project_id,
-            task_id,
+        ContainerDoctor(project_id, task_id).run(
             fix=fix,
             reporter=reporter,
             label_prefix=f"Task {project_id}/{task_id}: ",
@@ -514,9 +512,7 @@ def _stream_containers(
         if not meta_dir.is_dir():
             continue
         for tid in iter_task_ids(meta_dir):
-            run_container_doctor(
-                pid,
-                tid,
+            ContainerDoctor(pid, tid).run(
                 fix=fix,
                 reporter=reporter,
                 label_prefix=f"Task {pid}/{tid}: ",

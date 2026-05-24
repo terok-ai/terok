@@ -5,6 +5,8 @@
 functions that hydrate it from disk and live container state.
 """
 
+from __future__ import annotations
+
 from dataclasses import dataclass
 
 from ...core.project_model import is_valid_project_id
@@ -95,6 +97,18 @@ class TaskMeta(TaskState):
     def status(self) -> str:
         """Compute effective status from live container state + metadata."""
         return effective_status(self)
+
+    @classmethod
+    def load(cls, project_id: str, task_id: str) -> TaskMeta:
+        """Load a TaskMeta from disk, with live container state hydrated.
+
+        Raises ``SystemExit`` if the task metadata file is not found.
+        Equivalent to the free-fn
+        [`get_task_meta`][terok.lib.orchestration.tasks.query.get_task_meta],
+        kept as the canonical entry point so callers reach the class
+        through its own factory.
+        """
+        return get_task_meta(project_id, task_id)
 
 
 def _is_initialized(meta: dict) -> bool:

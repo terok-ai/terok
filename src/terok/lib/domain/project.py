@@ -680,6 +680,11 @@ class Project:
         meta = get_task_meta(self._config.id, task_id)
         return Task(self._config, meta)
 
+    @property
+    def tasks(self) -> list[Task]:
+        """All tasks in this project — convenience for unfiltered iteration."""
+        return self.list_tasks()
+
     def list_tasks(self, *, status: str | None = None, mode: str | None = None) -> list[Task]:
         """Return all tasks, optionally filtered by status or mode."""
         metas = get_tasks(self._config.id)
