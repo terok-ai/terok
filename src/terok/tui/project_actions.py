@@ -585,9 +585,9 @@ class ProjectActionsMixin(_MixinBase):
         # global config should be swallowed.  The wizard already
         # succeeded; a probe failure must not look like a failed run.
         try:
-            from terok.lib.api.agents import get_global_image_agents
+            from terok.lib.integrations.executor import ExecutorConfigView
 
-            if get_global_image_agents():
+            if ExecutorConfigView.image_agents():
                 return
         except Exception:  # noqa: BLE001 — advisory probe, must not surface
             return

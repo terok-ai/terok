@@ -42,9 +42,9 @@ def _agent_slugs() -> list[str]:
     Skips the caller when the roster is empty (sandboxed CI without
     bundled agents), so every ``slugs[0]`` indexing below stays safe.
     """
-    from terok.lib.integrations.executor import get_roster
+    from terok.lib.integrations.executor import AgentRoster
 
-    slugs = list(get_roster().agent_names)
+    slugs = list(AgentRoster.shared().agent_names)
     if not slugs:
         pytest.skip("Empty agent roster — needs at least one installed agent")
     return slugs

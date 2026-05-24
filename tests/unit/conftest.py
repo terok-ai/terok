@@ -113,7 +113,7 @@ def _mock_infrastructure() -> Iterator[None]:
             "terok.lib.orchestration.task_runners.container._agent_runner",
         ),
         patch(
-            "terok.lib.orchestration.task_runners.shield._shield_down_impl",
+            "terok.lib.integrations.sandbox.ShieldManager.down",
         ),
         patch(
             "terok.lib.core.config.get_vault_bypass",

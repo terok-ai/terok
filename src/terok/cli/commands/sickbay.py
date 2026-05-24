@@ -661,9 +661,9 @@ def _check_default_agents() -> _CheckResult:
     """
     label = "Default agents"
     try:
-        from terok.lib.api.agents import get_global_image_agents
+        from terok.lib.integrations.executor import ExecutorConfigView
 
-        current = get_global_image_agents()
+        current = ExecutorConfigView.image_agents()
     except Exception as exc:  # noqa: BLE001 — probe is best-effort; never crash sickbay
         return ("warn", label, f"check failed — {exc}")
 

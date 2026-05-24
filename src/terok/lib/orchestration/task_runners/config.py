@@ -53,10 +53,10 @@ def _apply_unrestricted_env(env: dict[str, str]) -> None:
     it is launched (CLI wrapper or ACP).  Setting them at the container
     level provides a single, unified permission mechanism.
     """
-    from terok.lib.integrations.executor import collect_all_auto_approve_env
+    from terok.lib.integrations.executor import AgentRoster
 
     env["TEROK_UNRESTRICTED"] = "1"
-    env.update(collect_all_auto_approve_env())
+    env.update(AgentRoster.shared().collect_all_auto_approve_env())
 
 
 def _prepare_agent_config(

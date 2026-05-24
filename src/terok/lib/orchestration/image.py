@@ -29,17 +29,10 @@ import jinja2
 from terok_util import ensure_dir
 
 from terok.lib.integrations.executor import (
+    AgentRoster,
     BuildError,
-    build_base_images,
+    ImageBuilder,
     build_project_image,
-    detect_family,
-    l0_image_tag,
-    parse_agent_selection,
-    render_l0,
-    render_l1,
-    stage_scripts,
-    stage_tmux_config,
-    stage_toad_agents,
 )
 
 from ..core.config import build_dir
@@ -82,15 +75,15 @@ class ProjectImage:
     @cached_property
     def family(self) -> str:
         """Resolved package family (``"deb"``/``"rpm"``) for the base image."""
-        return detect_family(self.project.base_image, override=self.project.family)
+        return ImageBuilder.detect_family(self.project.base_image, self.project.family)
 
     @cached_property
     def rendered(self) -> dict[str, str]:
         """Rendered Dockerfile contents keyed by filename."""
         return {
-            "L0.Dockerfile": render_l0(self.project.base_image, family=self.family),
-            "L1.cli.Dockerfile": render_l1(
-                l0_image_tag(self.project.base_image), family=self.family
+            "L0.Dockerfile": ImageBuilder(self.project.base_image, family=self.family).render_l0(),
+            "L1.cli.Dockerfile": ImageBuilder.render_l1(
+                ImageBuilder(self.project.base_image).l0_tag, family=self.family
             ),
             "L2.Dockerfile": self._render_l2(),
         }
@@ -142,9 +135,9 @@ class ProjectImage:
 
         # Stage auxiliary resources from terok-executor into build context.
         for staging_step, label in (
-            (lambda d: stage_scripts(d / "scripts"), "build scripts"),
-            (lambda d: stage_toad_agents(d / "toad-agents"), "toad agent definitions"),
-            (lambda d: stage_tmux_config(d / "tmux"), "tmux config"),
+            (lambda d: ImageBuilder.stage_scripts(d / "scripts"), "build scripts"),
+            (lambda d: ImageBuilder.stage_toad_agents(d / "toad-agents"), "toad agent definitions"),
+            (lambda d: ImageBuilder.stage_tmux_config(d / "tmux"), "tmux config"),
         ):
             try:
                 staging_step(out_dir)
@@ -187,7 +180,7 @@ class ProjectImage:
     ) -> None:
         """Build the L0/L1/L2 image stack for this project.
 
-        L0+L1 builds are delegated to ``terok_executor.build_base_images()``.
+        L0+L1 builds are delegated to ``ImageBuilder.build_base()``.
         L2 (project customisation) is built locally on top of L1; with
         ``include_dev=True`` an additional L2-dev image is built on L0.
 
@@ -200,13 +193,15 @@ class ProjectImage:
                 ``image.agents`` config).
         """
         rebuilt_base = refresh_agents or full_rebuild
-        agents_arg = parse_agent_selection(agents if agents is not None else self.project.agents)
+        agents_arg = AgentRoster.parse_selection(
+            agents if agents is not None else self.project.agents
+        )
 
         # Delegate L0+L1 to terok-executor (uses its own temp dir for build context).
         try:
-            base_images = build_base_images(
-                self.project.base_image,
-                family=self.project.family,
+            base_images = ImageBuilder(
+                self.project.base_image, family=self.project.family
+            ).build_base(
                 agents=agents_arg,
                 rebuild=refresh_agents,
                 full_rebuild=full_rebuild,

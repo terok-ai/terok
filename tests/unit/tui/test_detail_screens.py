@@ -1245,7 +1245,9 @@ class TestDefaultAgentsAction:
         _, app_class = import_app()
         instance = mock.MagicMock()
         instance.notify = mock.Mock()
-        with mock.patch("terok.lib.api.agents.set_global_image_agents") as write_mock:
+        with mock.patch(
+            "terok.lib.integrations.executor.ExecutorConfigView.set_image_agents"
+        ) as write_mock:
             write_mock.return_value = MOCK_CONFIG_ROOT / "config.yml"
             run(app_class._on_default_agents_result(instance, "claude,vibe"))
         write_mock.assert_called_once_with("claude,vibe")
@@ -1257,7 +1259,9 @@ class TestDefaultAgentsAction:
         _, app_class = import_app()
         instance = mock.MagicMock()
         instance.notify = mock.Mock()
-        with mock.patch("terok.lib.api.agents.set_global_image_agents") as write_mock:
+        with mock.patch(
+            "terok.lib.integrations.executor.ExecutorConfigView.set_image_agents"
+        ) as write_mock:
             run(app_class._on_default_agents_result(instance, None))
         write_mock.assert_not_called()
         instance.notify.assert_not_called()

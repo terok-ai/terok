@@ -197,9 +197,9 @@ class TestRunContainerDoctor:
 
     @patch("terok.lib.orchestration.container_doctor._exec_in_container")
     @patch("terok.lib.orchestration.container_doctor._terok_doctor_checks")
-    @patch("terok.lib.orchestration.container_doctor.agent_doctor_checks")
+    @patch("terok.lib.orchestration.container_doctor.AgentRoster.doctor_checks")
     @patch("terok.lib.orchestration.container_doctor.sandbox_doctor_checks")
-    @patch("terok.lib.orchestration.container_doctor.get_roster")
+    @patch("terok.lib.orchestration.container_doctor.AgentRoster.shared")
     @patch("terok.lib.orchestration.container_doctor._read_desired_shield_state")
     @patch("terok.lib.orchestration.container_doctor.load_project")
     @patch(
@@ -270,9 +270,9 @@ class TestRunContainerDoctor:
 
     @patch("terok.lib.orchestration.container_doctor._exec_in_container")
     @patch("terok.lib.orchestration.container_doctor._terok_doctor_checks")
-    @patch("terok.lib.orchestration.container_doctor.agent_doctor_checks")
+    @patch("terok.lib.orchestration.container_doctor.AgentRoster.doctor_checks")
     @patch("terok.lib.orchestration.container_doctor.sandbox_doctor_checks")
-    @patch("terok.lib.orchestration.container_doctor.get_roster")
+    @patch("terok.lib.orchestration.container_doctor.AgentRoster.shared")
     @patch("terok.lib.orchestration.container_doctor._read_desired_shield_state")
     @patch("terok.lib.orchestration.container_doctor.load_project")
     @patch(
@@ -353,9 +353,9 @@ class TestRunContainerDoctor:
 
     @patch("terok.lib.orchestration.container_doctor._exec_in_container")
     @patch("terok.lib.orchestration.container_doctor._terok_doctor_checks")
-    @patch("terok.lib.orchestration.container_doctor.agent_doctor_checks")
+    @patch("terok.lib.orchestration.container_doctor.AgentRoster.doctor_checks")
     @patch("terok.lib.orchestration.container_doctor.sandbox_doctor_checks")
-    @patch("terok.lib.orchestration.container_doctor.get_roster")
+    @patch("terok.lib.orchestration.container_doctor.AgentRoster.shared")
     @patch("terok.lib.orchestration.container_doctor._read_desired_shield_state")
     @patch("terok.lib.orchestration.container_doctor.load_project")
     @patch(
@@ -544,7 +544,7 @@ class TestStreamingGrouping:
                 return_value=[net_a, shield_check],
             ),
             patch(
-                "terok.lib.orchestration.container_doctor.agent_doctor_checks",
+                "terok.lib.orchestration.container_doctor.AgentRoster.doctor_checks",
                 return_value=[],
             ),
             patch(
@@ -626,7 +626,7 @@ class TestStreamingGrouping:
                 return_value=[only_check],
             ),
             patch(
-                "terok.lib.orchestration.container_doctor.agent_doctor_checks",
+                "terok.lib.orchestration.container_doctor.AgentRoster.doctor_checks",
                 return_value=[],
             ),
             patch(

@@ -934,7 +934,7 @@ class TestCheckDefaultAgents:
     def test_warn_when_unset(self) -> None:
         """No global default → warn with a pointer at the new setter."""
         with unittest.mock.patch(
-            "terok.lib.api.agents.get_global_image_agents",
+            "terok.lib.integrations.executor.ExecutorConfigView.image_agents",
             return_value=None,
         ):
             sev, label, detail = _check_default_agents()
@@ -945,7 +945,7 @@ class TestCheckDefaultAgents:
     def test_ok_when_set(self) -> None:
         """Any non-empty value → ok with the configured selection echoed back."""
         with unittest.mock.patch(
-            "terok.lib.api.agents.get_global_image_agents",
+            "terok.lib.integrations.executor.ExecutorConfigView.image_agents",
             return_value="all,-vibe",
         ):
             sev, label, detail = _check_default_agents()
@@ -956,7 +956,7 @@ class TestCheckDefaultAgents:
     def test_warn_when_probe_raises(self) -> None:
         """A failing probe is surfaced as a warn — never crashes sickbay."""
         with unittest.mock.patch(
-            "terok.lib.api.agents.get_global_image_agents",
+            "terok.lib.integrations.executor.ExecutorConfigView.image_agents",
             side_effect=RuntimeError("boom"),
         ):
             sev, label, detail = _check_default_agents()

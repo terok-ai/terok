@@ -1978,10 +1978,15 @@ class ShieldScreen(screen.Screen[str | None]):
 
     def _load_shield_info(self) -> None:
         """Fetch shield config (mode, audit, profiles) for display."""
-        from terok.lib.api.shield import shield_status
+        import tempfile
+        from pathlib import Path
+
+        from terok.lib.api.shield import ShieldManager
 
         try:
-            self._shield_info = shield_status()
+            # ``status`` is config-only; the throwaway task_dir is never written to.
+            with tempfile.TemporaryDirectory() as tmp:
+                self._shield_info = ShieldManager(Path(tmp)).status()
         except Exception as exc:
             from ..lib.util.logging_utils import _log_debug
 
@@ -2022,8 +2027,11 @@ class ShieldScreen(screen.Screen[str | None]):
     @staticmethod
     def _fetch_status() -> tuple[EnvironmentCheck | None, dict | None]:
         """Load environment check and shield config in a thread."""
+        import tempfile
+        from pathlib import Path
+
         from terok.lib.api.setup import check_environment as shield_check_environment
-        from terok.lib.api.shield import shield_status
+        from terok.lib.api.shield import ShieldManager
 
         env: EnvironmentCheck | None = None
         info: dict | None = None
@@ -2034,7 +2042,9 @@ class ShieldScreen(screen.Screen[str | None]):
 
             _log_debug(f"shield_check_environment failed in background fetch: {exc}")
         try:
-            info = shield_status()
+            # ``status`` is config-only; the throwaway task_dir is never written to.
+            with tempfile.TemporaryDirectory() as tmp:
+                info = ShieldManager(Path(tmp)).status()
         except Exception as exc:
             from terok.lib.util.logging_utils import _log_debug
 

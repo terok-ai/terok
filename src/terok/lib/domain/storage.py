@@ -24,8 +24,6 @@ from dataclasses import dataclass
 from terok.lib.integrations.executor import (
     SharedMountStorageInfo,
     TaskStorageInfo,
-    get_shared_mounts_storage,
-    get_tasks_storage,
 )
 
 from ..core.config import sandbox_live_mounts_dir
@@ -209,7 +207,7 @@ def get_storage_overview() -> StorageOverview:
     all_images = list_images()
     global_images = [img for img in all_images if _is_global_image(img)]
 
-    shared_mounts = get_shared_mounts_storage(sandbox_live_mounts_dir())
+    shared_mounts = SharedMountStorageInfo.measure_all(sandbox_live_mounts_dir())
 
     # Per-project: sum image sizes + workspace sizes
     projects_conf = list_projects()
@@ -221,7 +219,7 @@ def get_storage_overview() -> StorageOverview:
 
     summaries = []
     for proj in projects_conf:
-        tasks = get_tasks_storage(proj.tasks_root)
+        tasks = TaskStorageInfo.measure_all(proj.tasks_root)
         summaries.append(
             ProjectSummary(
                 project_id=proj.id,
@@ -263,7 +261,7 @@ def get_project_storage_detail(project_id: str) -> ProjectDetail:
 
     project = load_project(project_id)
     project_images = [img for img in list_images(project_id) if not _is_global_image(img)]
-    tasks = get_tasks_storage(project.tasks_root)
+    tasks = TaskStorageInfo.measure_all(project.tasks_root)
     runtime = _rt.resolve_runtime(project)
     # ``container_rw_sizes`` is podman-specific; not every backend exposes it.
     overlays = (

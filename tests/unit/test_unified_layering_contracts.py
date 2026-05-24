@@ -407,7 +407,7 @@ def test_sickbay_collects_checks_in_socket_mode(tmp_path: Path) -> None:
 
     with (
         patch.object(container_doctor, "make_sandbox_config", return_value=socket_cfg),
-        patch.object(container_doctor, "get_roster", return_value=MagicMock()),
+        patch.object(container_doctor, "AgentRoster", return_value=MagicMock()),
         patch.object(container_doctor, "load_project") as load_proj,
     ):
         load_proj.return_value = MagicMock(

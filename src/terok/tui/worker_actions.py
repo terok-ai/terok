@@ -179,9 +179,9 @@ def gate_stop() -> None:
 
 def shield_setup(root: bool) -> None:
     """Install shield git hooks — *root* selects the root-scoped install."""
-    from terok.lib.api.setup import setup_hooks_direct
+    from terok.lib.api.setup import ShieldHooks
 
-    setup_hooks_direct(root=root)
+    ShieldHooks.install(root=root, user=not root)
 
 
 # ── Vault ─────────────────────────────────────────────────────────────
@@ -190,11 +190,11 @@ def shield_setup(root: bool) -> None:
 def vault_install() -> None:
     """Generate vault routes and install its systemd socket units."""
     from terok.lib.api import make_sandbox_config
-    from terok.lib.api.agents import ensure_vault_routes
+    from terok.lib.api.agents import AgentRoster
     from terok.lib.api.vault import VaultManager
 
     cfg = make_sandbox_config()
-    ensure_vault_routes(cfg=cfg)
+    AgentRoster.shared().ensure_vault_routes(cfg=cfg)
     VaultManager(cfg).install_systemd_units()
 
 
@@ -209,11 +209,11 @@ def vault_uninstall() -> None:
 def vault_start() -> None:
     """Generate vault routes and start the vault daemon."""
     from terok.lib.api import make_sandbox_config
-    from terok.lib.api.agents import ensure_vault_routes
+    from terok.lib.api.agents import AgentRoster
     from terok.lib.api.vault import VaultManager
 
     cfg = make_sandbox_config()
-    ensure_vault_routes(cfg=cfg)
+    AgentRoster.shared().ensure_vault_routes(cfg=cfg)
     VaultManager(cfg).start_daemon()
 
 

@@ -40,7 +40,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Literal
 
 from terok.lib.core.config import is_experimental, make_sandbox_config
-from terok.lib.integrations.executor import make_krun_runtime
+from terok.lib.integrations.executor import KrunHost
 from terok.lib.integrations.sandbox import (
     ContainerRuntime,
     NullRuntime,
@@ -85,7 +85,7 @@ def resolve_runtime(project: ProjectConfig | None = None) -> ContainerRuntime:
                 "`experimental: true` in your config.yml, or pass "
                 "`--experimental` on the command line."
             )
-        return make_krun_runtime(cfg=make_sandbox_config())
+        return KrunHost(cfg=make_sandbox_config()).runtime()
     raise SystemExit(f"TEROK_RUNTIME={backend!r}: expected 'crun', 'krun', or 'null'")
 
 

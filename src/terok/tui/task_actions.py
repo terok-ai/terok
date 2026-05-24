@@ -12,7 +12,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from terok.lib.api.agents import parse_md_agent
-from terok.lib.api.shield import shield_down, shield_up  # noqa: F401 — TUI handlers
+from terok.lib.api.shield import ShieldManager
 
 from ..lib.api import (
     HeadlessRunRequest,
@@ -74,6 +74,16 @@ def _save_initial_prompt(project_id: str, task_id: str, prompt: str | None) -> N
 def _login_title(project_id: str, task_id: str, task_name: str) -> str:
     """Build a unified terminal/tmux title for task login sessions."""
     return f"{project_id}:{task_id}:{task_name}"
+
+
+def _shield_up(cname: str, task_dir: Path) -> None:
+    """Bring this task's shield up — ``ShieldManager(task_dir).up(cname)``."""
+    ShieldManager(task_dir).up(cname)
+
+
+def _shield_down(cname: str, task_dir: Path, *, allow_all: bool = False) -> None:
+    """Drop this task's shield — ``ShieldManager(task_dir).down(cname, allow_all=…)``."""
+    ShieldManager(task_dir).down(cname, allow_all=allow_all)
 
 
 class TaskActionsMixin(_MixinBase):
@@ -827,7 +837,7 @@ class TaskActionsMixin(_MixinBase):
         """Bring the shield down for the current task (no egress filtering)."""
         if self._notify_shield_bypassed():
             return
-        self._action_shield_toggle("down", shield_down)
+        self._action_shield_toggle("down", _shield_down)
 
     def _notify_shield_bypassed(self) -> bool:
         """Warn the user and return ``True`` if the shield bypass is active."""
@@ -843,13 +853,13 @@ class TaskActionsMixin(_MixinBase):
         """Raise the shield (deny-all) for the current task."""
         if self._notify_shield_bypassed():
             return
-        self._action_shield_toggle("up", shield_up)
+        self._action_shield_toggle("up", _shield_up)
 
     def _action_shield_disengaged(self) -> None:
         """Drop the shield with allow_all (also permit private-range traffic)."""
         if self._notify_shield_bypassed():
             return
-        self._action_shield_toggle("down", lambda c, d: shield_down(c, d, allow_all=True))
+        self._action_shield_toggle("down", lambda c, d: _shield_down(c, d, allow_all=True))
 
     async def _action_shield_interactive(self) -> None:
         """Open the native shield clearance screen for live verdict handling.
@@ -894,7 +904,7 @@ class TaskActionsMixin(_MixinBase):
         """Drop the shield from the main screen."""
         if self._notify_shield_bypassed():
             return
-        self._action_shield_toggle("down", shield_down)
+        self._action_shield_toggle("down", _shield_down)
 
     def action_shield_disengaged_from_main(self) -> None:
         """Drop the shield with allow_all (+ private ranges) for the current task."""
@@ -904,7 +914,7 @@ class TaskActionsMixin(_MixinBase):
         """Raise the shield from the main screen."""
         if self._notify_shield_bypassed():
             return
-        self._action_shield_toggle("up", shield_up)
+        self._action_shield_toggle("up", _shield_up)
 
     async def action_shield_interactive_from_main(self) -> None:
         """Start shield interactive mode from the main screen."""

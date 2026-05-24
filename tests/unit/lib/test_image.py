@@ -74,7 +74,7 @@ def build_commands(
     with (
         patch("subprocess.run", side_effect=mock_run),
         patch(
-            "terok.lib.orchestration.image.build_base_images",
+            "terok_executor.container.build.build_base_images",
             return_value=_mock_base_images(),
         ),
         image_exists_patch,
@@ -423,13 +423,13 @@ class TestPackageFamily:
                 render_all_dockerfiles(project)
 
     def test_build_images_forwards_family_to_executor(self) -> None:
-        """build_images passes project.family through to build_base_images."""
+        """``build_images`` passes ``project.family`` through to the L0/L1 build."""
         with image_project_with("proj_rocky", base_image="rockylinux:9", family="rpm"):
             with (
                 patch("subprocess.run", return_value=Mock(returncode=0)),
                 patch("terok.lib.orchestration.image._image_exists", return_value=True),
                 patch(
-                    "terok.lib.orchestration.image.build_base_images",
+                    "terok_executor.container.build.build_base_images",
                     return_value=_mock_base_images("rockylinux:9"),
                 ) as mock_build,
                 mock_git_config(),
@@ -440,13 +440,13 @@ class TestPackageFamily:
             assert mock_build.call_args.kwargs["family"] == "rpm"
 
     def test_build_images_forwards_none_family_when_unset(self) -> None:
-        """An absent project.family flows through as ``None`` (auto-detect)."""
+        """An absent ``project.family`` flows through as ``None`` (auto-detect)."""
         with image_project_with("proj_ubuntu", base_image="ubuntu:24.04"):
             with (
                 patch("subprocess.run", return_value=Mock(returncode=0)),
                 patch("terok.lib.orchestration.image._image_exists", return_value=True),
                 patch(
-                    "terok.lib.orchestration.image.build_base_images",
+                    "terok_executor.container.build.build_base_images",
                     return_value=_mock_base_images(),
                 ) as mock_build,
                 mock_git_config(),

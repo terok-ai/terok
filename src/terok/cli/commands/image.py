@@ -165,11 +165,10 @@ def _cmd_build(
     """
     from terok.lib.api.agents import (
         DEFAULT_BASE_IMAGE,
+        AgentRoster,
         BuildError,
-        build_base_images,
-        build_sidecar_image,
-        get_global_image_base_image,
-        parse_agent_selection,
+        ExecutorConfigView,
+        ImageBuilder,
     )
 
     from ...lib.core.config import get_global_image_agents
@@ -181,14 +180,13 @@ def _cmd_build(
         if project is not None:
             resolved_base = base or project.base_image or DEFAULT_BASE_IMAGE
             resolved_family = family or project.family
-            resolved_agents = parse_agent_selection(agents or ",".join(project.agents))
+            resolved_agents = AgentRoster.parse_selection(agents or ",".join(project.agents))
         else:
-            resolved_base = base or get_global_image_base_image() or DEFAULT_BASE_IMAGE
+            resolved_base = base or ExecutorConfigView.image_base_image() or DEFAULT_BASE_IMAGE
             resolved_family = family
-            resolved_agents = parse_agent_selection(agents or get_global_image_agents())
-        images = build_base_images(
-            base_image=resolved_base,
-            family=resolved_family,
+            resolved_agents = AgentRoster.parse_selection(agents or get_global_image_agents())
+        builder = ImageBuilder(resolved_base, family=resolved_family)
+        images = builder.build_base(
             agents=resolved_agents,
             rebuild=rebuild,
             full_rebuild=full_rebuild,
@@ -201,9 +199,7 @@ def _cmd_build(
 
     if sidecar:
         try:
-            sidecar_tag = build_sidecar_image(
-                base_image=resolved_base,
-                family=resolved_family,
+            sidecar_tag = builder.build_sidecar(
                 rebuild=rebuild,
                 full_rebuild=full_rebuild,
             )

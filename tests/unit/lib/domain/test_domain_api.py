@@ -228,7 +228,7 @@ class TestAuthenticate:
             patch("terok.lib.core.config.sandbox_live_mounts_dir", return_value="/mnt"),
             patch("terok.lib.core.config.is_claude_oauth_exposed", return_value=False),
             patch("terok.lib.core.config.is_codex_oauth_exposed", return_value=False),
-            patch("terok.lib.domain.auth._authenticate_raw") as mock_auth,
+            patch("terok.lib.domain.auth.Authenticator.run") as mock_auth,
         ):
             api.authenticate("claude", project_id="p1")
 
@@ -252,7 +252,7 @@ class TestAuthenticate:
             patch("terok.lib.core.config.sandbox_live_mounts_dir", return_value="/mnt"),
             patch("terok.lib.core.config.is_claude_oauth_exposed", return_value=False),
             patch("terok.lib.core.config.is_codex_oauth_exposed", return_value=False),
-            patch("terok.lib.domain.auth._authenticate_raw") as mock_auth,
+            patch("terok.lib.domain.auth.Authenticator.run") as mock_auth,
         ):
             api.authenticate("claude")
 
@@ -280,7 +280,7 @@ class TestAuthenticate:
             patch("terok.lib.core.config.sandbox_live_mounts_dir", return_value="/mnt"),
             patch("terok.lib.core.config.is_claude_oauth_exposed", return_value=False),
             patch("terok.lib.core.config.is_codex_oauth_exposed", return_value=True),
-            patch("terok.lib.domain.auth._authenticate_raw") as mock_auth,
+            patch("terok.lib.domain.auth.Authenticator.run") as mock_auth,
         ):
             api.authenticate("codex")
 
@@ -298,7 +298,7 @@ class TestAuthenticate:
             patch("terok.lib.core.config.sandbox_live_mounts_dir", return_value="/mnt"),
             patch("terok.lib.core.config.is_claude_oauth_exposed", return_value=False),
             patch("terok.lib.core.config.is_codex_oauth_exposed", return_value=True),
-            patch("terok.lib.domain.auth._authenticate_raw") as mock_auth,
+            patch("terok.lib.domain.auth.Authenticator.run") as mock_auth,
         ):
             api.authenticate("claude")
 
@@ -318,7 +318,7 @@ class TestAuthenticate:
             patch("terok.lib.core.config.is_claude_oauth_exposed", return_value=False),
             patch("terok.lib.core.config.is_codex_oauth_exposed", return_value=False),
             patch("terok.lib.core.config.is_oauth_enabled_for", return_value=False) as mock_gate,
-            patch("terok.lib.domain.auth._authenticate_raw") as mock_auth,
+            patch("terok.lib.domain.auth.Authenticator.run") as mock_auth,
         ):
             api.authenticate("codex")
 
@@ -338,7 +338,7 @@ class TestAuthenticate:
             patch("terok.lib.core.config.is_claude_oauth_exposed", return_value=False),
             patch("terok.lib.core.config.is_codex_oauth_exposed", return_value=False),
             patch("terok.lib.core.config.is_oauth_enabled_for", return_value=True),
-            patch("terok.lib.domain.auth._authenticate_raw") as mock_auth,
+            patch("terok.lib.domain.auth.Authenticator.run") as mock_auth,
         ):
             api.authenticate("claude")
 
@@ -357,12 +357,12 @@ class TestResolveHostAuthImage:
 
         with (
             patch(
-                "terok.lib.integrations.executor.get_global_image_base_image",
+                "terok.lib.integrations.executor.ExecutorConfigView.image_base_image",
                 return_value="ubuntu:24.04",
             ),
             patch("terok.lib.domain.auth.image_exists", side_effect=exists),
             patch(
-                "terok.lib.integrations.executor.image_agents",
+                "terok.lib.integrations.executor.ImageBuilder.image_agents",
                 return_value={"claude", "codex", "gh"},
             ),
         ):
@@ -384,11 +384,13 @@ class TestResolveHostAuthImage:
 
         with (
             patch(
-                "terok.lib.integrations.executor.get_global_image_base_image",
+                "terok.lib.integrations.executor.ExecutorConfigView.image_base_image",
                 return_value="ubuntu:24.04",
             ),
             patch("terok.lib.domain.auth.image_exists", side_effect=exists),
-            patch("terok.lib.integrations.executor.image_agents", return_value={"claude"}),
+            patch(
+                "terok.lib.integrations.executor.ImageBuilder.image_agents", return_value={"claude"}
+            ),
         ):
             image = auth._resolve_host_auth_image("codex")
         assert image == "terok-l1-cli:ubuntu-24.04-codex"
@@ -401,11 +403,11 @@ class TestResolveHostAuthImage:
 
         with (
             patch(
-                "terok.lib.integrations.executor.get_global_image_base_image",
+                "terok.lib.integrations.executor.ExecutorConfigView.image_base_image",
                 return_value="ubuntu:24.04",
             ),
             patch("terok.lib.domain.auth.image_exists", side_effect=exists),
-            patch("terok.lib.integrations.executor.image_agents", return_value=set()),
+            patch("terok.lib.integrations.executor.ImageBuilder.image_agents", return_value=set()),
         ):
             image = auth._resolve_host_auth_image("claude")
         assert image == "terok-l1-cli:ubuntu-24.04-claude"
@@ -416,7 +418,7 @@ class TestResolveHostAuthImage:
 
         with (
             patch("terok.lib.domain.auth.image_exists", return_value=False),
-            patch("terok.lib.integrations.executor.image_agents", return_value=set()),
+            patch("terok.lib.integrations.executor.ImageBuilder.image_agents", return_value=set()),
         ):
             # sonar is api-key-only — no prompt, no build, just a tag.
             image = auth._resolve_host_auth_image("sonar")
@@ -428,7 +430,7 @@ class TestResolveHostAuthImage:
 
         with (
             patch("terok.lib.domain.auth.image_exists", return_value=False),
-            patch("terok.lib.integrations.executor.image_agents", return_value=set()),
+            patch("terok.lib.integrations.executor.ImageBuilder.image_agents", return_value=set()),
             patch("sys.stdin.isatty", return_value=False),
             patch("sys.stdout.isatty", return_value=False),
             pytest.raises(SystemExit) as exc,
@@ -442,20 +444,20 @@ class TestResolveHostAuthImage:
 
         with (
             patch("terok.lib.domain.auth.image_exists", return_value=False),
-            patch("terok.lib.integrations.executor.image_agents", return_value=set()),
+            patch("terok.lib.integrations.executor.ImageBuilder.image_agents", return_value=set()),
             patch("sys.stdin.isatty", return_value=True),
             patch("sys.stdout.isatty", return_value=True),
             patch("terok.lib.core.config.get_global_image_agents", return_value="all"),
             patch(
-                "terok.lib.integrations.executor.get_global_image_base_image",
+                "terok.lib.integrations.executor.ExecutorConfigView.image_base_image",
                 return_value="ubuntu:24.04",
             ),
             patch("builtins.input", return_value=""),  # empty → default Y
             patch(
-                "terok.lib.integrations.executor.ensure_default_l1",
+                "terok.lib.integrations.executor.ImageBuilder.ensure_default_l1",
                 return_value="terok-l1-cli:ubuntu-24.04",
             ) as mock_ensure,
-            patch("terok.lib.integrations.executor.build_base_images") as mock_per_agent,
+            patch("terok_executor.container.build.build_base_images") as mock_per_agent,
         ):
             tag = auth._resolve_host_auth_image("claude")
         assert tag == "terok-l1-cli:ubuntu-24.04"
@@ -468,17 +470,17 @@ class TestResolveHostAuthImage:
 
         with (
             patch("terok.lib.domain.auth.image_exists", return_value=False),
-            patch("terok.lib.integrations.executor.image_agents", return_value=set()),
+            patch("terok.lib.integrations.executor.ImageBuilder.image_agents", return_value=set()),
             patch("sys.stdin.isatty", return_value=True),
             patch("sys.stdout.isatty", return_value=True),
             patch("terok.lib.core.config.get_global_image_agents", return_value="all"),
             patch(
-                "terok.lib.integrations.executor.get_global_image_base_image",
+                "terok.lib.integrations.executor.ExecutorConfigView.image_base_image",
                 return_value="ubuntu:24.04",
             ),
             patch("builtins.input", return_value="1"),
-            patch("terok.lib.integrations.executor.ensure_default_l1") as mock_ensure,
-            patch("terok.lib.integrations.executor.build_base_images") as mock_per_agent,
+            patch("terok.lib.integrations.executor.ImageBuilder.ensure_default_l1") as mock_ensure,
+            patch("terok_executor.container.build.build_base_images") as mock_per_agent,
         ):
             tag = auth._resolve_host_auth_image("codex")
         assert tag == "terok-l1-cli:ubuntu-24.04-codex"
@@ -496,12 +498,12 @@ class TestResolveHostAuthImage:
 
         with (
             patch("terok.lib.domain.auth.image_exists", return_value=False),
-            patch("terok.lib.integrations.executor.image_agents", return_value=set()),
+            patch("terok.lib.integrations.executor.ImageBuilder.image_agents", return_value=set()),
             patch("sys.stdin.isatty", return_value=True),
             patch("sys.stdout.isatty", return_value=True),
             patch("terok.lib.core.config.get_global_image_agents", return_value="all"),
             patch(
-                "terok.lib.integrations.executor.get_global_image_base_image",
+                "terok.lib.integrations.executor.ExecutorConfigView.image_base_image",
                 return_value="ubuntu:24.04",
             ),
             patch("builtins.input", return_value="n"),
@@ -520,11 +522,11 @@ class TestResolveHostAuthImage:
         with (
             patch("terok.lib.domain.auth.image_exists", side_effect=exists),
             patch(
-                "terok.lib.integrations.executor.image_agents",
+                "terok.lib.integrations.executor.ImageBuilder.image_agents",
                 return_value={"claude", "codex", "gh"},
             ),
             patch(
-                "terok.lib.integrations.executor.get_global_image_base_image",
+                "terok.lib.integrations.executor.ExecutorConfigView.image_base_image",
                 return_value="fedora:43",
             ),
             patch("terok.lib.core.config.get_global_image_agents", return_value="all"),

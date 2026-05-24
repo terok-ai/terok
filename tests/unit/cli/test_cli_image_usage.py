@@ -117,7 +117,7 @@ class TestOverviewOutput:
 
     @patch("terok.lib.domain.storage.sandbox_live_mounts_dir")
     @patch("terok.lib.domain.storage.list_projects", return_value=[])
-    @patch("terok.lib.domain.storage.get_shared_mounts_storage", return_value=[])
+    @patch("terok.lib.domain.storage.SharedMountStorageInfo.measure_all", return_value=[])
     @patch("terok.lib.domain.storage.list_images")
     @patch("terok.cli.commands._storage_view.supports_color", return_value=False)
     def test_prints_without_error(self, _color, mock_imgs, _shared, _projs, _mdir, capsys):
@@ -130,7 +130,7 @@ class TestOverviewOutput:
 
     @patch("terok.lib.domain.storage.sandbox_live_mounts_dir")
     @patch("terok.lib.domain.storage.list_projects", return_value=[])
-    @patch("terok.lib.domain.storage.get_shared_mounts_storage", return_value=[])
+    @patch("terok.lib.domain.storage.SharedMountStorageInfo.measure_all", return_value=[])
     @patch("terok.lib.domain.storage.list_images", return_value=[])
     @patch("terok.cli.commands._storage_view.supports_color", return_value=False)
     def test_empty_system(self, _color, _imgs, _shared, _projs, _mdir, capsys):
@@ -140,7 +140,7 @@ class TestOverviewOutput:
 
     @patch("terok.lib.domain.storage.sandbox_live_mounts_dir")
     @patch("terok.lib.domain.storage.list_projects", return_value=[])
-    @patch("terok.lib.domain.storage.get_shared_mounts_storage", return_value=[])
+    @patch("terok.lib.domain.storage.SharedMountStorageInfo.measure_all", return_value=[])
     @patch("terok.lib.domain.storage.list_images")
     def test_json_output(self, mock_imgs, _shared, _projs, _mdir, capsys):
         mock_imgs.return_value = [ImageInfo("terok-l0", "bkwm", "id1", "1GB", "2d ago")]
@@ -160,7 +160,7 @@ class TestDetailOutput:
     """``cmd_detail`` prints per-task breakdown for one project."""
 
     @patch("terok_sandbox.PodmanRuntime.container_rw_sizes", return_value={})
-    @patch("terok.lib.domain.storage.get_tasks_storage", return_value=[])
+    @patch("terok.lib.domain.storage.TaskStorageInfo.measure_all", return_value=[])
     @patch("terok.lib.domain.storage.list_images")
     @patch("terok.lib.core.projects.load_project")
     @patch("terok.cli.commands._storage_view.supports_color", return_value=False)
@@ -180,7 +180,7 @@ class TestDetailOutput:
         assert "Project total" in output
 
     @patch("terok_sandbox.PodmanRuntime.container_rw_sizes", return_value={})
-    @patch("terok.lib.domain.storage.get_tasks_storage", return_value=[])
+    @patch("terok.lib.domain.storage.TaskStorageInfo.measure_all", return_value=[])
     @patch("terok.lib.domain.storage.list_images")
     @patch("terok.lib.core.projects.load_project")
     def test_json_output(self, mock_load, mock_imgs, _tasks, _ov, capsys):

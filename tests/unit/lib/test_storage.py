@@ -146,8 +146,8 @@ _MOCK_IMAGES = [
 class TestGetStorageOverview:
     """Overview wires together image listing, mount queries, and project enumeration."""
 
-    @patch("terok.lib.domain.storage.get_shared_mounts_storage", return_value=[])
-    @patch("terok.lib.domain.storage.get_tasks_storage", return_value=[])
+    @patch("terok.lib.domain.storage.SharedMountStorageInfo.measure_all", return_value=[])
+    @patch("terok.lib.domain.storage.TaskStorageInfo.measure_all", return_value=[])
     @patch("terok.lib.domain.storage.list_projects")
     @patch("terok.lib.domain.storage.list_images", return_value=_MOCK_IMAGES)
     @patch("terok.lib.domain.storage.sandbox_live_mounts_dir", return_value=MOCK_BASE / "mounts")
@@ -159,8 +159,8 @@ class TestGetStorageOverview:
         assert len(overview.projects) == 1
         assert overview.projects[0].project_id == "myproject"
 
-    @patch("terok.lib.domain.storage.get_shared_mounts_storage", return_value=[])
-    @patch("terok.lib.domain.storage.get_tasks_storage", return_value=[])
+    @patch("terok.lib.domain.storage.SharedMountStorageInfo.measure_all", return_value=[])
+    @patch("terok.lib.domain.storage.TaskStorageInfo.measure_all", return_value=[])
     @patch("terok.lib.domain.storage.list_projects", return_value=[])
     @patch("terok.lib.domain.storage.list_images", return_value=[])
     @patch("terok.lib.domain.storage.sandbox_live_mounts_dir", return_value=MOCK_BASE / "mounts")
@@ -168,8 +168,8 @@ class TestGetStorageOverview:
         overview = get_storage_overview()
         assert overview.grand_total == 0
 
-    @patch("terok.lib.domain.storage.get_shared_mounts_storage", return_value=[])
-    @patch("terok.lib.domain.storage.get_tasks_storage", return_value=[])
+    @patch("terok.lib.domain.storage.SharedMountStorageInfo.measure_all", return_value=[])
+    @patch("terok.lib.domain.storage.TaskStorageInfo.measure_all", return_value=[])
     @patch("terok.lib.domain.storage.list_projects")
     @patch("terok.lib.domain.storage.list_images")
     @patch("terok.lib.domain.storage.sandbox_live_mounts_dir", return_value=MOCK_BASE / "mounts")
@@ -186,8 +186,8 @@ class TestGetStorageOverview:
         assert overview.projects[0].project_id == "myproject"
         assert overview.projects[0].image_bytes == 3_000_000_000
 
-    @patch("terok.lib.domain.storage.get_shared_mounts_storage", return_value=[])
-    @patch("terok.lib.domain.storage.get_tasks_storage", return_value=[])
+    @patch("terok.lib.domain.storage.SharedMountStorageInfo.measure_all", return_value=[])
+    @patch("terok.lib.domain.storage.TaskStorageInfo.measure_all", return_value=[])
     @patch("terok.lib.domain.storage.list_projects")
     @patch("terok.lib.domain.storage.list_images")
     @patch("terok.lib.domain.storage.sandbox_live_mounts_dir", return_value=MOCK_BASE / "mounts")
@@ -209,8 +209,8 @@ class TestGetStorageOverview:
         # Orphan bytes contribute to the grand total.
         assert overview.grand_total == 1_000_000_000 + 2_000_000_000
 
-    @patch("terok.lib.domain.storage.get_shared_mounts_storage", return_value=[])
-    @patch("terok.lib.domain.storage.get_tasks_storage", return_value=[])
+    @patch("terok.lib.domain.storage.SharedMountStorageInfo.measure_all", return_value=[])
+    @patch("terok.lib.domain.storage.TaskStorageInfo.measure_all", return_value=[])
     @patch("terok.lib.domain.storage.list_projects")
     @patch("terok.lib.domain.storage.list_images")
     @patch("terok.lib.domain.storage.sandbox_live_mounts_dir", return_value=MOCK_BASE / "mounts")
@@ -234,7 +234,7 @@ class TestGetStorageOverview:
 class TestGetProjectStorageDetail:
     """Detail mode queries per-task sizes and overlay data."""
 
-    @patch("terok.lib.domain.storage.get_tasks_storage", return_value=[])
+    @patch("terok.lib.domain.storage.TaskStorageInfo.measure_all", return_value=[])
     @patch("terok.lib.domain.storage.list_images", return_value=[])
     @patch("terok.lib.core.projects.load_project")
     def test_returns_project_detail(self, mock_load, _imgs, _tasks, mock_runtime):

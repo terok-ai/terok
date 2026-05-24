@@ -522,9 +522,9 @@ class TaskEnvironment:
         )
 
         from terok.lib.integrations.executor import (
+            AgentRoster,
             ContainerEnvSpec,
             assemble_container_env,
-            get_roster,
         )
 
         # Vault: bypass → no vault at all; otherwise ensure it's up before assembly
@@ -533,7 +533,7 @@ class TaskEnvironment:
             ensure_vault()
         vault_transport = get_vault_transport()
 
-        roster = get_roster()
+        roster = AgentRoster.shared()
         enabled_patch_providers, disabled_patch_providers = _vault_patch_provider_sets(
             roster, vault_bypass=vault_bypass
         )
