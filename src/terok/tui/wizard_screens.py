@@ -468,7 +468,8 @@ class InitProgressScreen(ModalScreen[InitOutcome]):
     """Run ``cmd_project_init``'s four steps as a background worker.
 
     Dismisses with one of the [`InitOutcome`][terok.tui.wizard_screens.InitOutcome] values.  The SSH-key
-    registration pause in [`maybe_pause_for_ssh_key_registration`][terok.cli.commands.setup.maybe_pause_for_ssh_key_registration]
+    registration pause in
+    [`Project.pause_for_ssh_key_registration_if_needed`][terok.lib.domain.project.Project.pause_for_ssh_key_registration_if_needed]
     is replaced by a mid-wizard continue button that gates the next
     step — no blocking ``input()`` in a Textual worker.
     """

@@ -3,7 +3,7 @@
 
 """Auth flow — host-wide or project-scoped credential acquisition.
 
-The terok-side wrapper around [`terok_executor.authenticate`][terok_executor.authenticate].
+The terok-side wrapper around [`Authenticator`][terok_executor.Authenticator].
 Resolves which image to use (deferred for the host-wide path so picking
 API key never triggers an L1 build), applies the OAuth-vs-API-key gates
 from the user's config, and prompts the user when an L1 image needs

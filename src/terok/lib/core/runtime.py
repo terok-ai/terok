@@ -27,7 +27,7 @@ silently boot the experimental backend.
 
 All krun host-side provisioning (vault-backed ``%host`` keypair, tmpfs
 materialisation, transport wiring) is delegated to
-[`make_krun_runtime`][terok_executor.make_krun_runtime] in
+[`KrunHost`][terok_executor.KrunHost] in
 terok-executor; terok flips the selector, executor does the rest.
 
 For unit tests, mock this module's ``resolve_runtime`` directly rather
