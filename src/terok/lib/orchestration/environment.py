@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import logging
 import os
+from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -451,121 +452,153 @@ def _seed_workspace_cache(repo_dir: Path, project_id: str, code_repo: str | None
 # ---------- Main builder ----------
 
 
-def build_task_env_and_volumes(
-    project: ProjectConfig, task_id: str
-) -> tuple[dict, list[VolumeSpec]]:
-    """Compose environment and volume mounts for a task container.
+@dataclass(frozen=True)
+class TaskEnvironment:
+    """Per-task container env + volume builder.
 
-    Delegates shared config mounts, base env vars, workspace volume, git
-    identity, and OpenCode provider env to
-    [`terok_executor.assemble_container_env`][terok_executor.assemble_container_env], then layers terok-specific
-    concerns: ``PROJECT_ID``, gate server URLs, and the full vault
-    (OAuth, socket transport, SSH agent).
+    Holds the ``(project, task_id)`` pair the env composition needs.
+    [`materialize`][terok.lib.orchestration.environment.TaskEnvironment.materialize]
+    walks the full pipeline — gate-URL resolution, workspace cache
+    seeding, git-identity resolution, executor-shared assembly,
+    terok-specific env overlays — and returns ``(env, volumes)`` ready
+    for ``RunSpec`` construction.
 
-    In **sealed** isolation mode (``project.is_sealed``), volumes are
+    In **sealed** isolation mode (``project.is_sealed``) volumes are
     injected via ``podman cp`` instead of bind mounts — the sandbox
     handles this transparently when ``RunSpec.sealed`` is set.  The
     workspace is still created and cache-seeded on the host so the
     container benefits from fast startup in both modes.
     """
-    sealed = project.is_sealed
 
-    task_dir = project.tasks_root / str(task_id)
-    task_dir.mkdir(parents=True, exist_ok=True)
-    repo_dir = task_dir / WORKSPACE_DANGEROUS_DIRNAME
-    repo_dir.mkdir(exist_ok=True)
+    project: ProjectConfig
+    """Resolved project configuration the task belongs to."""
 
-    from ..core.config import get_services_mode, get_vault_bypass, get_vault_transport
+    task_id: str
+    """Identifier of the task whose container is being assembled."""
 
-    cfg = make_sandbox_config()
-    use_socket = get_services_mode() == "socket"
+    def materialize(self) -> tuple[dict, list[VolumeSpec]]:
+        """Compose env + volumes for the task container.
 
-    # Pre-resolve gate server URLs → CODE_REPO / CLONE_FROM / GIT_BRANCH
-    sec_env, _sec_volumes = _security_mode_env_and_volumes(
-        project, task_id, cfg, use_socket=use_socket
-    )
+        Delegates shared config mounts, base env vars, workspace volume,
+        git identity, and OpenCode provider env to
+        [`terok_executor.assemble_container_env`][terok_executor.assemble_container_env],
+        then layers terok-specific concerns: ``PROJECT_ID``, gate
+        server URLs, and the full vault (OAuth, socket transport, SSH
+        agent).
+        """
+        project = self.project
+        task_id = self.task_id
+        sealed = project.is_sealed
 
-    # Seed workspace from clone cache (fast-start optimisation).
-    # Only for new tasks (marker present, no .git yet).  The in-container
-    # init script then does fetch+reset instead of a full git clone.
-    # In sealed mode the seeded dir is podman-cp'd into the container.
-    _seed_workspace_cache(repo_dir, project.id, sec_env.get("CODE_REPO"))
+        task_dir = project.tasks_root / str(task_id)
+        task_dir.mkdir(parents=True, exist_ok=True)
+        repo_dir = task_dir / WORKSPACE_DANGEROUS_DIRNAME
+        repo_dir.mkdir(exist_ok=True)
 
-    # Pre-resolve git identity using terok's authorship logic so the
-    # container has correct GIT_AUTHOR_*/GIT_COMMITTER_* from launch.
-    identity = resolve_git_identity(
-        agent_name="AI Agent",
-        agent_email="ai-agent@localhost",
-        human_name=project.human_name or "Nobody",
-        human_email=project.human_email or "nobody@localhost",
-        authorship=project.git_authorship,
-    )
+        from ..core.config import get_services_mode, get_vault_bypass, get_vault_transport
 
-    from terok.lib.integrations.executor import ContainerEnvSpec, assemble_container_env, get_roster
+        cfg = make_sandbox_config()
+        use_socket = get_services_mode() == "socket"
 
-    # Vault: bypass → no vault at all; otherwise ensure it's up before assembly
-    vault_bypass = get_vault_bypass()
-    if not vault_bypass:
-        ensure_vault()
-    vault_transport = get_vault_transport()
+        # Pre-resolve gate server URLs → CODE_REPO / CLONE_FROM / GIT_BRANCH
+        sec_env, _sec_volumes = _security_mode_env_and_volumes(
+            project, task_id, cfg, use_socket=use_socket
+        )
 
-    roster = get_roster()
-    enabled_patch_providers, disabled_patch_providers = _vault_patch_provider_sets(
-        roster, vault_bypass=vault_bypass
-    )
+        # Seed workspace from clone cache (fast-start optimisation).
+        # Only for new tasks (marker present, no .git yet).  The in-container
+        # init script then does fetch+reset instead of a full git clone.
+        # In sealed mode the seeded dir is podman-cp'd into the container.
+        _seed_workspace_cache(repo_dir, project.id, sec_env.get("CODE_REPO"))
 
-    result = assemble_container_env(
-        ContainerEnvSpec(
-            task_id=task_id,
-            provider_name=project.default_agent or "claude",
-            workspace_host_path=repo_dir,
-            code_repo=sec_env.get("CODE_REPO"),
-            clone_from=sec_env.get("CLONE_FROM"),
-            branch=sec_env.get("GIT_BRANCH"),
-            git_author_name=identity["GIT_AUTHOR_NAME"],
-            git_author_email=identity["GIT_AUTHOR_EMAIL"],
-            git_committer_name=identity["GIT_COMMITTER_NAME"],
-            git_committer_email=identity["GIT_COMMITTER_EMAIL"],
-            authorship=project.git_authorship,
+        # Pre-resolve git identity using terok's authorship logic so the
+        # container has correct GIT_AUTHOR_*/GIT_COMMITTER_* from launch.
+        identity = resolve_git_identity(
+            agent_name="AI Agent",
+            agent_email="ai-agent@localhost",
             human_name=project.human_name or "Nobody",
             human_email=project.human_email or "nobody@localhost",
-            credential_scope=project.id,
-            vault_transport=vault_transport,
-            vault_required=not vault_bypass,
-            unrestricted=False,  # task_runners resolves per-provider config
-            shared_dir=None if sealed else project.shared_dir,
-            envs_dir=sandbox_live_mounts_dir(),
-            timezone=project.timezone,
-            enabled_vault_patch_providers=enabled_patch_providers,
-            disabled_vault_patch_providers=disabled_patch_providers,
-            expose_credential_providers=exposed_credential_providers(),
-        ),
-        roster,
-        # bypass → skip proxy entirely (no tokens, no check)
-        caller_manages_vault=vault_bypass,
-    )
+            authorship=project.git_authorship,
+        )
 
-    env = dict(result.env)
-    volumes: list[VolumeSpec] = list(result.volumes)
+        from terok.lib.integrations.executor import (
+            ContainerEnvSpec,
+            assemble_container_env,
+            get_roster,
+        )
 
-    # terok-specific env vars not covered by the shared assembly
-    env["PROJECT_ID"] = project.id
-    env["GIT_RESET_MODE"] = os.environ.get("TEROK_GIT_RESET_MODE", "none")
-    # Forward every sec_env key the spec didn't already consume.  Inverted
-    # from a closed allowlist after a leak: each new gate env var added
-    # in _security_mode_env_and_volumes had to be redundantly listed here
-    # too, and forgetting silently dropped the value (#902).
-    env.update({k: v for k, v in sec_env.items() if k not in _SPEC_CONSUMED_SEC_ENV_KEYS})
+        # Vault: bypass → no vault at all; otherwise ensure it's up before assembly
+        vault_bypass = get_vault_bypass()
+        if not vault_bypass:
+            ensure_vault()
+        vault_transport = get_vault_transport()
 
-    # Socket mode: mount host runtime dir so socat bridges can reach sockets
-    if use_socket:
-        from terok.lib.integrations.sandbox import Sharing
+        roster = get_roster()
+        enabled_patch_providers, disabled_patch_providers = _vault_patch_provider_sets(
+            roster, vault_bypass=vault_bypass
+        )
 
-        volumes.append(VolumeSpec(cfg.runtime_dir, _CONTAINER_RUNTIME_DIR, sharing=Sharing.SHARED))
+        result = assemble_container_env(
+            ContainerEnvSpec(
+                task_id=task_id,
+                provider_name=project.default_agent or "claude",
+                workspace_host_path=repo_dir,
+                code_repo=sec_env.get("CODE_REPO"),
+                clone_from=sec_env.get("CLONE_FROM"),
+                branch=sec_env.get("GIT_BRANCH"),
+                git_author_name=identity["GIT_AUTHOR_NAME"],
+                git_author_email=identity["GIT_AUTHOR_EMAIL"],
+                git_committer_name=identity["GIT_COMMITTER_NAME"],
+                git_committer_email=identity["GIT_COMMITTER_EMAIL"],
+                authorship=project.git_authorship,
+                human_name=project.human_name or "Nobody",
+                human_email=project.human_email or "nobody@localhost",
+                credential_scope=project.id,
+                vault_transport=vault_transport,
+                vault_required=not vault_bypass,
+                unrestricted=False,  # task_runners resolves per-provider config
+                shared_dir=None if sealed else project.shared_dir,
+                envs_dir=sandbox_live_mounts_dir(),
+                timezone=project.timezone,
+                enabled_vault_patch_providers=enabled_patch_providers,
+                disabled_vault_patch_providers=disabled_patch_providers,
+                expose_credential_providers=exposed_credential_providers(),
+            ),
+            roster,
+            # bypass → skip proxy entirely (no tokens, no check)
+            caller_manages_vault=vault_bypass,
+        )
 
-    # Claude OAuth env override + leaked-cred scan with exposed-token filtering
-    if not vault_bypass:
-        _apply_claude_oauth_overrides(env)
-        _warn_leaked_credentials()
+        env = dict(result.env)
+        volumes: list[VolumeSpec] = list(result.volumes)
 
-    return env, volumes
+        # terok-specific env vars not covered by the shared assembly
+        env["PROJECT_ID"] = project.id
+        env["GIT_RESET_MODE"] = os.environ.get("TEROK_GIT_RESET_MODE", "none")
+        # Forward every sec_env key the spec didn't already consume.  Inverted
+        # from a closed allowlist after a leak: each new gate env var added
+        # in _security_mode_env_and_volumes had to be redundantly listed here
+        # too, and forgetting silently dropped the value (#902).
+        env.update({k: v for k, v in sec_env.items() if k not in _SPEC_CONSUMED_SEC_ENV_KEYS})
+
+        # Socket mode: mount host runtime dir so socat bridges can reach sockets
+        if use_socket:
+            from terok.lib.integrations.sandbox import Sharing
+
+            volumes.append(
+                VolumeSpec(cfg.runtime_dir, _CONTAINER_RUNTIME_DIR, sharing=Sharing.SHARED)
+            )
+
+        # Claude OAuth env override + leaked-cred scan with exposed-token filtering
+        if not vault_bypass:
+            _apply_claude_oauth_overrides(env)
+            _warn_leaked_credentials()
+
+        return env, volumes
+
+
+def build_task_env_and_volumes(
+    project: ProjectConfig, task_id: str
+) -> tuple[dict, list[VolumeSpec]]:
+    """Shim around [`TaskEnvironment.materialize`][terok.lib.orchestration.environment.TaskEnvironment.materialize]."""
+    return TaskEnvironment(project, task_id).materialize()

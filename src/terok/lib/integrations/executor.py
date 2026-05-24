@@ -22,6 +22,10 @@ fns are gone.
 # don't have to chase every executor API rename.
 from collections.abc import Callable  # noqa: E402
 from pathlib import Path  # noqa: E402
+from typing import TYPE_CHECKING  # noqa: E402
+
+if TYPE_CHECKING:
+    from terok_executor.integrations.sandbox import DoctorCheck, KrunRuntime, SandboxConfig
 
 from terok_executor import (  # noqa: F401 — re-exported public API
     AGENT_COMMANDS,
@@ -43,36 +47,26 @@ from terok_executor import (  # noqa: F401 — re-exported public API
     ContainerEnvSpec,
     ExecutorConfigView,
     ImageBuilder,
+    KrunHost,
     KrunHostKeypair,
     RawImageSection,
     SharedMountStorageInfo,
     TaskStorageInfo,
     acp_socket_is_live,
-    agent_doctor_checks,
     assemble_container_env,
     build_project_image,
     bundled_default_instructions,
-    collect_all_auto_approve_env,
     ensure_krun_host_keypair,
     ensure_sandbox_ready,
-    ensure_vault_routes,
     get_provider,
-    get_roster,
-    get_shared_mounts_storage,
-    get_tasks_storage,
     inject_prompt,
-    krun_launch_args,
     list_authenticated_agents,
-    make_krun_runtime,
-    parse_agent_selection,
     parse_md_agent,
     prepare_agent_config_dir,
-    prompt_agents_selection,
     resolve_instructions,
     resolve_provider_value,
     scan_leaked_credentials,
     seed_workspace_from_clone_cache,
-    validate_agent_selection,
 )
 from terok_executor.container.build import ImageSet  # noqa: E402 — return type for shims
 
@@ -176,10 +170,8 @@ def render_l1(
     agents: str | tuple[str, ...] = "all",
     cache_bust: str = "0",
 ) -> str:
-    """Shim around ``ImageBuilder.render_l1``."""
-    return ImageBuilder("placeholder", family=family).render_l1(
-        l0_image, agents=agents, cache_bust=cache_bust
-    )
+    """Shim around ``ImageBuilder.render_l1`` (now a staticmethod)."""
+    return ImageBuilder.render_l1(l0_image, family=family, agents=agents, cache_bust=cache_bust)
 
 
 def stage_scripts(dest: Path) -> None:
@@ -212,6 +204,66 @@ def set_global_image_agents(selection: str) -> Path:
     return ExecutorConfigView.set_image_agents(selection)
 
 
+# ── Shims wrapping the post-W5.A.2 roster/krun class API ─────
+
+
+def get_roster() -> AgentRoster:
+    """Shim around ``AgentRoster.shared`` (post-W5.A.2)."""
+    return AgentRoster.shared()
+
+
+def parse_agent_selection(raw: str) -> str | tuple[str, ...]:
+    """Shim around ``AgentRoster.parse_selection`` (post-W5.A.2)."""
+    return AgentRoster.parse_selection(raw)
+
+
+def validate_agent_selection(raw: str) -> None:
+    """Shim around ``AgentRoster.validate_selection`` (post-W5.A.2)."""
+    AgentRoster.shared().validate_selection(raw)
+
+
+def prompt_agents_selection() -> str:
+    """Shim around ``AgentRoster.prompt_selection`` (post-W5.A.2)."""
+    return AgentRoster.shared().prompt_selection()
+
+
+def ensure_vault_routes(cfg: "SandboxConfig | None" = None) -> Path:
+    """Shim around ``AgentRoster.ensure_vault_routes`` (post-W5.A.2)."""
+    return AgentRoster.shared().ensure_vault_routes(cfg=cfg)
+
+
+def agent_doctor_checks(
+    roster: AgentRoster, *, token_broker_port: int | None = None
+) -> list["DoctorCheck"]:
+    """Shim around ``AgentRoster.doctor_checks`` (post-W5.A.2)."""
+    return roster.doctor_checks(token_broker_port=token_broker_port)
+
+
+def collect_all_auto_approve_env() -> dict[str, str]:
+    """Shim around ``AgentRoster.collect_all_auto_approve_env`` (post-W5.A.2)."""
+    return AgentRoster.shared().collect_all_auto_approve_env()
+
+
+def get_tasks_storage(tasks_root: Path) -> list[TaskStorageInfo]:
+    """Shim around ``TaskStorageInfo.measure_all`` (post-W5.A.2)."""
+    return TaskStorageInfo.measure_all(tasks_root)
+
+
+def get_shared_mounts_storage(mounts_base: Path | None = None) -> list[SharedMountStorageInfo]:
+    """Shim around ``SharedMountStorageInfo.measure_all`` (post-W5.A.2)."""
+    return SharedMountStorageInfo.measure_all(mounts_base)
+
+
+def make_krun_runtime(*, cfg: "SandboxConfig | None" = None) -> "KrunRuntime":
+    """Shim around ``KrunHost(cfg=cfg).runtime()`` (post-W5.A.2)."""
+    return KrunHost(cfg=cfg).runtime()
+
+
+def krun_launch_args(*, cfg: "SandboxConfig | None" = None) -> list[str]:
+    """Shim around ``KrunHost(cfg=cfg).launch_args()`` (post-W5.A.2)."""
+    return KrunHost(cfg=cfg).launch_args()
+
+
 __all__ = [
     "ACPEndpointStatus",
     "AGENT_COMMANDS",
@@ -230,6 +282,7 @@ __all__ = [
     "DEFAULT_BASE_IMAGE",
     "ExecutorConfigView",
     "ImageBuilder",
+    "KrunHost",
     "PROVIDER_NAMES",
     "RawImageSection",
     "SharedMountStorageInfo",

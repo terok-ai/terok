@@ -44,12 +44,15 @@ def test_build_variants_pass_the_right_flags() -> None:
 
 def test_init_ssh_provisions_and_summarizes() -> None:
     """``init_ssh`` provisions a key then renders its summary."""
+    project = mock.Mock()
+    project.provision_ssh_key.return_value = "RESULT"
     with (
-        mock.patch("terok.lib.api.provision_ssh_key", return_value="RESULT") as m_prov,
+        mock.patch("terok.lib.api.get_project", return_value=project) as m_get,
         mock.patch("terok.lib.api.summarize_ssh_init") as m_sum,
     ):
         worker_actions.init_ssh("proj")
-    m_prov.assert_called_once_with("proj")
+    m_get.assert_called_once_with("proj")
+    project.provision_ssh_key.assert_called_once_with()
     m_sum.assert_called_once_with("RESULT")
 
 

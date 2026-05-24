@@ -96,6 +96,7 @@ if TYPE_CHECKING:
     from collections.abc import Callable
 
     from terok.lib.integrations.executor import AgentProvider
+    from terok.lib.integrations.sandbox import SSHInitResult
 
     from ..core.project_model import PresetInfo
     from .storage import ProjectDetail
@@ -679,6 +680,11 @@ class Project:
         meta = get_task_meta(self._config.id, task_id)
         return Task(self._config, meta)
 
+    @property
+    def tasks(self) -> list[Task]:
+        """All tasks in this project — convenience for unfiltered iteration."""
+        return self.list_tasks()
+
     def list_tasks(self, *, status: str | None = None, mode: str | None = None) -> list[Task]:
         """Return all tasks, optionally filtered by status or mode."""
         metas = get_tasks(self._config.id)
@@ -811,6 +817,56 @@ class Project:
         if self._ssh is None:
             self._ssh = make_ssh_manager(self._config)
         return self._ssh
+
+    # --- SSH key provisioning ---
+
+    def provision_ssh_key(
+        self,
+        *,
+        key_type: str = "ed25519",
+        comment: str | None = None,
+        force: bool = False,
+    ) -> SSHInitResult:
+        """Mint a vault-backed keypair and bind it to this project's scope.
+
+        Opens a fresh
+        [`SSHManager`][terok_sandbox.SSHManager] via the context-manager
+        form so the credential DB closes after init, then assigns the
+        new ``key_id`` to the project scope.  Rendering the result is
+        the caller's job — see
+        [`summarize_ssh_init`][terok.lib.domain.ssh.summarize_ssh_init].
+        """
+        with make_ssh_manager(self._config) as ssh:
+            result = ssh.init(key_type=key_type, comment=comment, force=force)
+        self.register_ssh_key(result["key_id"])
+        return result
+
+    def register_ssh_key(self, key_id: int) -> None:
+        """Bind an already-minted *key_id* to this project (idempotent)."""
+        with vault_db() as db:
+            db.assign_ssh_key(self._config.id, key_id)
+
+    @property
+    def needs_ssh_key_registration(self) -> bool:
+        """Return True when the upstream is SSH-scheme so a deploy key must be added.
+
+        Shared predicate used by the CLI pause helper and the TUI
+        wizard's mid-flow "continue" gate — keeps the rule (SSH URLs
+        need registration, HTTPS and no-upstream projects don't) in
+        one place.
+        """
+        from terok.lib.integrations.sandbox import is_ssh_url
+
+        return bool(self._config.upstream_url) and is_ssh_url(self._config.upstream_url)
+
+    def pause_for_ssh_key_registration_if_needed(self) -> None:
+        """Pause so the user can register the deploy key — only for SSH upstreams."""
+        if self.needs_ssh_key_registration:
+            print("\n" + "=" * 60)
+            print("ACTION REQUIRED: Add the public key shown above as a")
+            print("deploy key (or to your SSH keys) on the git remote.")
+            print("=" * 60)
+            input("Press Enter once the key is registered... ")
 
     # --- Agent config ---
 

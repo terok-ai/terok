@@ -37,12 +37,10 @@ from terok.lib.api.agents import AUTH_PROVIDERS
 from ...lib.api import (
     build_images,
     generate_dockerfiles,
-    maybe_pause_for_ssh_key_registration,
-    provision_ssh_key,
+    get_project,
     summarize_ssh_init,
 )
-from ...lib.core.projects import load_project, require_project_exists
-from ...lib.domain.project import make_git_gate
+from ...lib.core.projects import require_project_exists
 
 # ── CLI wiring ─────────────────────────────────────────────────────────
 
@@ -350,9 +348,10 @@ def cmd_project_init(project_id: str) -> None:
     """
     require_project_exists(project_id)
 
+    project = get_project(project_id)
     print("==> Initializing SSH...")
-    summarize_ssh_init(provision_ssh_key(project_id))
-    maybe_pause_for_ssh_key_registration(project_id)
+    summarize_ssh_init(project.provision_ssh_key())
+    project.pause_for_ssh_key_registration_if_needed()
 
     print("==> Generating Dockerfiles...")
     generate_dockerfiles(project_id)
@@ -360,13 +359,12 @@ def cmd_project_init(project_id: str) -> None:
     print("==> Building images...")
     build_images(project_id)
 
-    project = load_project(project_id)
-    if not project.gate_enabled:
+    if not project.config.gate_enabled:
         print("==> Gate disabled by project.yml — skipping gate-sync.")
         return
 
     print("==> Syncing git gate...")
-    res = make_git_gate(project).sync()
+    res = project.gate.sync()
     if not res["success"]:
         raise SystemExit(
             f"Gate sync failed: {', '.join(res['errors'])}\n\n"

@@ -55,9 +55,9 @@ def build_full(project_id: str) -> None:
 
 def init_ssh(project_id: str) -> None:
     """Mint a vault-backed SSH keypair for *project_id* and print its summary."""
-    from terok.lib.api import provision_ssh_key, summarize_ssh_init
+    from terok.lib.api import get_project, summarize_ssh_init
 
-    summarize_ssh_init(provision_ssh_key(project_id))
+    summarize_ssh_init(get_project(project_id).provision_ssh_key())
 
 
 # Full project setup ("Full setup" project-screen action) is *not* a

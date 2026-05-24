@@ -495,7 +495,9 @@ async def _drive_run_init(*, gate_enabled: bool) -> AsyncMock:
     from terok.tui.wizard_screens import InitOutcome, InitProgressScreen
 
     project = MagicMock()
-    project.gate_enabled = gate_enabled
+    project.config.gate_enabled = gate_enabled
+    project.needs_ssh_key_registration = False
+    project.provision_ssh_key.return_value = _SSH_RESULT
 
     class _Host(App):
         def on_mount(self) -> None:
@@ -503,11 +505,9 @@ async def _drive_run_init(*, gate_enabled: bool) -> AsyncMock:
 
     step_mock = AsyncMock()
     with (
-        patch("terok.lib.api.provision_ssh_key", return_value=_SSH_RESULT),
+        patch("terok.lib.api.get_project", return_value=project),
         patch("terok.lib.api.summarize_ssh_init"),
         patch("terok.lib.api.generate_dockerfiles"),
-        patch("terok.lib.api.load_project", return_value=project),
-        patch("terok.tui.wizard_screens.project_needs_key_registration", return_value=False),
         patch.object(
             InitProgressScreen, "_askpass_subprocess_env", new=AsyncMock(return_value=None)
         ),
@@ -570,12 +570,14 @@ async def test_ssh_panel_shows_fingerprint_alongside_pubkey() -> None:
         "comment": "terok@demo",
         "public_line": "ssh-ed25519 AAAAFAKE terok@demo",
     }
+    project = MagicMock()
+    project.needs_ssh_key_registration = True
+    project.provision_ssh_key.return_value = minted
     app = _WizardHost(InitProgressScreen("demo", "project:\n  id: demo\n"))
     with (
         patch.object(InitProgressScreen, "_existing_project_yaml_path", return_value=None),
         patch("terok.tui.wizard_screens.write_project_yaml"),
-        patch("terok.tui.wizard_screens.project_needs_key_registration", return_value=True),
-        patch("terok.lib.api.provision_ssh_key", return_value=minted),
+        patch("terok.lib.api.get_project", return_value=project),
         patch("terok.lib.api.summarize_ssh_init"),
     ):
         async with app.run_test() as pilot:
@@ -632,12 +634,14 @@ async def test_init_screen_esc_cancels_mid_run() -> None:
         "comment": "terok@cancel",
         "public_line": "ssh-ed25519 AAAAFAKE terok@cancel",
     }
+    project = MagicMock()
+    project.needs_ssh_key_registration = True
+    project.provision_ssh_key.return_value = minted
     app = _WizardHost(InitProgressScreen("demo", "project:\n  id: demo\n"))
     with (
         patch.object(InitProgressScreen, "_existing_project_yaml_path", return_value=None),
         patch("terok.tui.wizard_screens.write_project_yaml"),
-        patch("terok.tui.wizard_screens.project_needs_key_registration", return_value=True),
-        patch("terok.lib.api.provision_ssh_key", return_value=minted),
+        patch("terok.lib.api.get_project", return_value=project),
         patch("terok.lib.api.summarize_ssh_init"),
     ):
         async with app.run_test() as pilot:
