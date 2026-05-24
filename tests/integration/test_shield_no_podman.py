@@ -212,21 +212,24 @@ class TestSandboxRunShieldIntegration:
             unrestricted=False,
         )
 
+        fake_shield = Shield(
+            ShieldConfig(
+                state_dir=shield_env.state_dir,
+                mode=ShieldMode.HOOK,
+                default_profiles=("dev-standard",),
+                loopback_ports=(GATE_PORT,),
+            ),
+            runner=MockRunner(),
+        )
+        # ``ShieldManager.shield`` is a ``cached_property``; replace with a
+        # plain class attribute so every instance returns the fake.
         with (
             patch("terok_sandbox.paths.state_root", return_value=shield_env.state_dir),
             patch("os.geteuid", return_value=1000),
             patch("subprocess.run", side_effect=capture_run),
             patch(
-                "terok_sandbox.integrations.shield.make_shield",
-                return_value=Shield(
-                    ShieldConfig(
-                        state_dir=shield_env.state_dir,
-                        mode=ShieldMode.HOOK,
-                        default_profiles=("dev-standard",),
-                        loopback_ports=(GATE_PORT,),
-                    ),
-                    runner=MockRunner(),
-                ),
+                "terok_sandbox.integrations.shield.ShieldManager.shield",
+                new=fake_shield,
             ),
             patch("terok_shield.hooks.mode.has_global_hooks", return_value=True),
         ):
@@ -268,7 +271,7 @@ class TestSandboxRunShieldIntegration:
         with (
             patch("os.geteuid", return_value=1000),
             patch("subprocess.run", side_effect=capture_run),
-            patch("terok_sandbox.integrations.shield.pre_start", return_value=[]),
+            patch("terok_sandbox.integrations.shield.ShieldManager.pre_start", return_value=[]),
         ):
             sandbox = Sandbox()
             sandbox.run(spec)
@@ -306,7 +309,7 @@ class TestSandboxRunShieldIntegration:
             ),
             # Shield must NOT be called at all when bypass is active
             patch(
-                "terok_sandbox.integrations.shield.pre_start",
+                "terok_sandbox.integrations.shield.ShieldManager.pre_start",
                 side_effect=AssertionError("shield must not be called"),
             ),
         ):
