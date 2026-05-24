@@ -125,14 +125,15 @@ def test_render_l0_routes_through_image_builder() -> None:
 
 
 def test_render_l1_routes_through_image_builder() -> None:
-    """``render_l1`` calls ``ImageBuilder.render_l1`` with l0, agents, cache_bust."""
-    with mock.patch("terok.lib.integrations.executor.ImageBuilder") as cls:
-        cls.return_value.render_l1.return_value = "L1 Dockerfile"
+    """``render_l1`` calls the staticmethod ``ImageBuilder.render_l1`` with family + l0."""
+    with mock.patch(
+        "terok.lib.integrations.executor.ImageBuilder.render_l1", return_value="L1 Dockerfile"
+    ) as fn:
         result = integ_executor.render_l1(
             "l0:tag", family="rpm", agents=("claude",), cache_bust="9"
         )
     assert result == "L1 Dockerfile"
-    cls.return_value.render_l1.assert_called_once_with("l0:tag", agents=("claude",), cache_bust="9")
+    fn.assert_called_once_with("l0:tag", family="rpm", agents=("claude",), cache_bust="9")
 
 
 def test_stage_scripts_routes_to_static_method(tmp_path: Path) -> None:
