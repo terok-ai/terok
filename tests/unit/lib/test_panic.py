@@ -18,8 +18,8 @@ from terok.lib.domain.panic import (
 from tests.testfs import FAKE_PROJECT_TASKS_ROOT
 
 _SHIELD = "terok.lib.domain.panic._raise_shield"
+_SUPERVISORS = "terok.lib.domain.panic._kill_supervisors"
 _VAULT = "terok.lib.domain.panic._stop_vault"
-_GATE = "terok.lib.domain.panic._stop_gate"
 _BYPASS = "terok.lib.domain.panic.get_shield_bypass_firewall_no_protection"
 _DISCOVER = "terok.lib.domain.panic._discover_targets"
 _LOCK = "terok.lib.domain.panic._write_panic_lock"
@@ -109,16 +109,21 @@ class TestDiscovery:
         assert _discover_targets() == []
 
 
+@patch(_SUPERVISORS, return_value=[])
 class TestExecutePanic:
-    """Tests for execute_panic."""
+    """Tests for execute_panic.
+
+    Class-level stub of ``_kill_supervisors`` keeps the suite isolated from
+    supervisor lookup/kill internals — the two supervisor-specific tests
+    override the patch return value via their own decorator.
+    """
 
     @patch(_LOCK)
     @patch(_BYPASS, return_value=False)
     @patch(_DISCOVER)
     @patch(_SHIELD)
     @patch(_VAULT, return_value=(True, None))
-    @patch(_GATE, return_value=(True, None))
-    def test_success(self, _g, _p, mock_shield, mock_discover, _b, _l):
+    def test_success(self, _p, mock_shield, mock_discover, _b, _l, _s):
         """All operations succeed."""
         t = _target()
         mock_discover.return_value = [t]
@@ -127,7 +132,7 @@ class TestExecutePanic:
         r = execute_panic()
 
         assert r.shields_raised == [t[3]]
-        assert r.vault_stopped and r.gate_stopped
+        assert r.vault_stopped
         assert not r.has_errors
 
     @patch(_LOCK)
@@ -135,8 +140,7 @@ class TestExecutePanic:
     @patch(_DISCOVER, return_value=[_target()])
     @patch(_SHIELD)
     @patch(_VAULT, return_value=(True, None))
-    @patch(_GATE, return_value=(True, None))
-    def test_shield_bypass(self, _g, _p, mock_shield, _d, _b, _l):
+    def test_shield_bypass(self, _p, mock_shield, _d, _b, _l, _s):
         """Shield ops skipped when bypass active."""
         r = execute_panic()
         assert r.shield_bypassed and r.shields_raised == []
@@ -147,8 +151,7 @@ class TestExecutePanic:
     @patch(_DISCOVER)
     @patch(_SHIELD)
     @patch(_VAULT, return_value=(True, None))
-    @patch(_GATE, return_value=(False, "not running"))
-    def test_partial_failure(self, _g, _p, mock_shield, mock_discover, _b, _l):
+    def test_partial_failure(self, _p, mock_shield, mock_discover, _b, _l, _s):
         """Some ops fail, others still succeed."""
         t1, t2 = _target(task_id="1"), _target(task_id="2")
         mock_discover.return_value = [t1, t2]
@@ -166,8 +169,7 @@ class TestExecutePanic:
     @patch(_DISCOVER)
     @patch(_SHIELD)
     @patch(_VAULT, return_value=(True, None))
-    @patch(_GATE, return_value=(True, None))
-    def test_phase2_stop(self, _g, _p, mock_shield, mock_discover, _b, _l, _s):
+    def test_phase2_stop(self, _v, mock_shield, mock_discover, _b, _l, _stop, _s):
         """Phase 2 container stop works when requested."""
         t = _target()
         mock_discover.return_value = [t]
@@ -181,8 +183,7 @@ class TestExecutePanic:
     @patch(_BYPASS, return_value=False)
     @patch(_DISCOVER, return_value=[])
     @patch(_VAULT, return_value=(True, None))
-    @patch(_GATE, return_value=(True, None))
-    def test_phase2_skipped_when_no_targets(self, _g, _p, _d, _b, _l, mock_stop):
+    def test_phase2_skipped_when_no_targets(self, _p, _d, _b, _l, mock_stop, _s):
         """Phase 2 skipped when no running containers."""
         r = execute_panic(stop_containers=True)
         mock_stop.assert_not_called()
@@ -190,11 +191,34 @@ class TestExecutePanic:
 
     @patch(_LOCK)
     @patch(_BYPASS, return_value=False)
+    @patch(_DISCOVER, return_value=[_target()])
+    @patch(_SHIELD, return_value=("proj1-cli-1", None))
+    @patch(_VAULT, return_value=(True, None))
+    def test_supervisors_killed_recorded(self, _v, _shield, _d, _b, _l, mock_supervisors):
+        """Phase 1 records each supervisor killed in the result."""
+        mock_supervisors.return_value = [("abc123", None), ("def456", None)]
+        r = execute_panic()
+        assert r.supervisors_killed == ["abc123", "def456"]
+        assert r.supervisor_errors == []
+
+    @patch(_LOCK)
+    @patch(_BYPASS, return_value=False)
+    @patch(_DISCOVER, return_value=[_target()])
+    @patch(_SHIELD, return_value=("proj1-cli-1", None))
+    @patch(_VAULT, return_value=(True, None))
+    def test_supervisor_kill_partial_failure(self, _v, _shield, _d, _b, _l, mock_supervisors):
+        """A failing supervisor kill is recorded without aborting the panic."""
+        mock_supervisors.return_value = [("abc123", "SIGKILL failed: EPERM")]
+        r = execute_panic()
+        assert r.supervisor_errors == [("abc123", "SIGKILL failed: EPERM")]
+        assert r.has_errors
+
+    @patch(_LOCK)
+    @patch(_BYPASS, return_value=False)
     @patch(_DISCOVER)
     @patch(_SHIELD, side_effect=Exception("thread crashed"))
     @patch(_VAULT, return_value=(True, None))
-    @patch(_GATE, return_value=(True, None))
-    def test_shield_future_exception(self, _g, _p, _shield, mock_discover, _b, _l):
+    def test_shield_future_exception(self, _p, _shield, mock_discover, _b, _l, _s):
         """Shield future raising an exception is captured as error."""
         t = _target()
         mock_discover.return_value = [t]
@@ -308,36 +332,31 @@ class TestRaiseShield:
 
 
 class TestStopVault:
-    """Tests for _stop_vault — the panic "lock + stop" step."""
+    """Tests for _stop_vault — the panic "wipe the session-unlock tier" step.
 
-    @patch("terok.lib.integrations.sandbox.VaultManager.stop_daemon")
-    @patch("terok.lib.integrations.sandbox.SandboxConfig")
-    def test_success(self, mock_cfg: MagicMock, mock_stop: MagicMock) -> None:
-        """Vault stop succeeds."""
+    Vault is no longer a host daemon — supervisors stop with the
+    containers panic kills.  The host's only job is to wipe the
+    session-unlock tmpfs file so a follow-up restart can't auto-resume
+    from the same passphrase the operator just panic'd over.
+    """
+
+    def test_success_when_file_missing(self, tmp_path) -> None:
+        """No session file → still succeeds; missing_ok=True covers the cold-start path."""
         from terok.lib.domain.panic import _stop_vault
 
-        mock_cfg.return_value.vault_passphrase_file = MagicMock()
-        ok, err = _stop_vault()
+        missing = tmp_path / "never-created.passphrase"
+        fake_cfg = MagicMock()
+        fake_cfg.vault_passphrase_file = missing
+        with patch("terok.lib.integrations.sandbox.SandboxConfig", return_value=fake_cfg):
+            ok, err = _stop_vault()
         assert ok and err is None
 
-    @patch("terok.lib.integrations.sandbox.SandboxConfig")
-    @patch(
-        "terok.lib.integrations.sandbox.VaultManager.stop_daemon", side_effect=Exception("no vault")
-    )
-    def test_failure(self, _stop: MagicMock, mock_cfg: MagicMock) -> None:
-        """Vault stop failure returns error."""
-        from terok.lib.domain.panic import _stop_vault
-
-        mock_cfg.return_value.vault_passphrase_file = MagicMock()
-        ok, err = _stop_vault()
-        assert not ok and "no vault" in err
-
     def test_removes_session_unlock_file(self, tmp_path) -> None:
-        """Panic unlinks the tmpfs session-unlock file before stopping the daemon.
+        """Panic unlinks the tmpfs session-unlock file.
 
-        Without this, the daemon auto-resumes from the session tier on
-        next socket activation — a stopped-but-unlocked vault defeats
-        the point of pressing PANIC.
+        Without this, the next supervisor to come up auto-resumes from
+        the session tier — a stopped-container plus an intact session
+        passphrase defeats the point of pressing PANIC.
         """
         from terok.lib.domain.panic import _stop_vault
 
@@ -345,50 +364,22 @@ class TestStopVault:
         passphrase_file.write_text("not-a-real-passphrase\n", encoding="utf-8")
         fake_cfg = MagicMock()
         fake_cfg.vault_passphrase_file = passphrase_file
-        with (
-            patch("terok.lib.integrations.sandbox.SandboxConfig", return_value=fake_cfg),
-            patch("terok.lib.integrations.sandbox.VaultManager.stop_daemon"),
-        ):
+        with patch("terok.lib.integrations.sandbox.SandboxConfig", return_value=fake_cfg):
             ok, err = _stop_vault()
         assert ok and err is None
         assert not passphrase_file.exists()
 
-    def test_missing_session_file_is_not_an_error(self, tmp_path) -> None:
-        """No session file → still succeeds; missing_ok=True covers the cold-start path."""
+    def test_failure_returns_error(self) -> None:
+        """Any exception during unlink → returns the error."""
         from terok.lib.domain.panic import _stop_vault
 
-        missing = tmp_path / "never-created.passphrase"
+        bad_path = MagicMock()
+        bad_path.unlink.side_effect = OSError("permission denied")
         fake_cfg = MagicMock()
-        fake_cfg.vault_passphrase_file = missing
-        with (
-            patch("terok.lib.integrations.sandbox.SandboxConfig", return_value=fake_cfg),
-            patch("terok.lib.integrations.sandbox.VaultManager.stop_daemon"),
-        ):
+        fake_cfg.vault_passphrase_file = bad_path
+        with patch("terok.lib.integrations.sandbox.SandboxConfig", return_value=fake_cfg):
             ok, err = _stop_vault()
-        assert ok and err is None
-
-
-class TestStopGate:
-    """Tests for _stop_gate."""
-
-    @patch("terok.lib.integrations.sandbox.GateServerManager.stop_daemon")
-    def test_success(self, mock_stop):
-        """Gate stop succeeds."""
-        from terok.lib.domain.panic import _stop_gate
-
-        ok, err = _stop_gate()
-        assert ok and err is None
-
-    @patch(
-        "terok.lib.integrations.sandbox.GateServerManager.stop_daemon",
-        side_effect=Exception("no gate"),
-    )
-    def test_failure(self, _):
-        """Gate stop failure returns error."""
-        from terok.lib.domain.panic import _stop_gate
-
-        ok, err = _stop_gate()
-        assert not ok and "no gate" in err
+        assert not ok and "permission denied" in err
 
 
 class TestPanicLock:
@@ -419,14 +410,14 @@ class TestFormatReport:
 
     def test_clean(self):
         """No errors."""
-        r = PanicResult(
-            shields_raised=["c1"], vault_stopped=True, gate_stopped=True, total_running=1
-        )
+        r = PanicResult(shields_raised=["c1"], vault_stopped=True, total_running=1)
         report = format_panic_report(r)
         assert "FAILED" not in report
-        # Label reflects the lock-then-stop semantics introduced for panic so
-        # the operator can tell that the session tier is gone too.
-        assert "locked" in report
+        # The label states exactly what panic did: wipe the session-unlock
+        # tmpfs tier.  Persistent tiers (keyring, systemd-creds) stay,
+        # and the running supervisors die with their containers — so
+        # claiming the vault is "locked" would overclaim.
+        assert "session tier wiped" in report
 
     def test_errors(self):
         """Failures shown."""
@@ -436,32 +427,24 @@ class TestFormatReport:
 
     def test_bypass(self):
         """Bypass flagged."""
-        r = PanicResult(shield_bypassed=True, vault_stopped=True, gate_stopped=True)
+        r = PanicResult(shield_bypassed=True, vault_stopped=True)
         assert "BYPASSED" in format_panic_report(r)
 
     def test_container_stop_errors(self):
         """Container stop errors appear in report."""
         r = PanicResult(
             vault_stopped=True,
-            gate_stopped=True,
             container_stop_errors=[("c1", "timeout")],
             total_running=1,
         )
         report = format_panic_report(r)
         assert "kill c1: timeout" in report
 
-    def test_gate_error_in_report(self):
-        """Gate error appears in error section."""
-        r = PanicResult(vault_stopped=True, gate_error="port in use", total_running=0)
-        report = format_panic_report(r)
-        assert "gate: port in use" in report
-
     def test_containers_stopped_count(self):
         """Stopped container count shown."""
         r = PanicResult(
             shields_raised=["c1"],
             vault_stopped=True,
-            gate_stopped=True,
             containers_stopped=["c1", "c2"],
             total_running=2,
         )

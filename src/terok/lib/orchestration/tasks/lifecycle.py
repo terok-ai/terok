@@ -267,17 +267,6 @@ class TaskDeleteResult:
     warnings: list[str]
 
 
-def _revoke_task_token(project_id: str, task_id: str, warnings: list[str]) -> None:
-    """Revoke the task's gate token; record a warning on failure."""
-    from terok.lib.integrations.sandbox import TokenStore
-
-    try:
-        TokenStore().revoke_for_task(project_id, task_id)
-    except Exception as exc:
-        _log_debug(f"task_delete: token revoke failed: {exc}")
-        warnings.append(f"Token revoke failed: {exc}")
-
-
 def _remove_task_containers(project_id: str, task_id: str, warnings: list[str]) -> bool:
     """Force-remove every mode's container for the task.
 
@@ -382,11 +371,23 @@ def _task_delete(project: ProjectConfig, task_id: str) -> TaskDeleteResult:
         _log_debug("task_delete: archiving task")
         _archive_task(project, task_id, meta)
 
-    _log_debug("task_delete: revoking gate token")
-    _revoke_task_token(project.id, task_id, warnings)
-
+    # The gate token is no longer persisted in a host-side store — it lives
+    # only in the per-container supervisor's sidecar and dies with the
+    # supervisor when the container is removed.  *Successful* removal below
+    # is therefore what invalidates the token.
     _log_debug("task_delete: removing task containers")
     containers_removed = _remove_task_containers(project.id, task_id, warnings)
+    if not containers_removed:
+        # Removal failed, so the supervisor — and the in-memory gate token it
+        # holds — may still be live even as the rest of the delete proceeds.
+        # There is no host-side store to revoke from, so surface it loudly:
+        # the operator must stop the container manually or run `terok panic`
+        # to invalidate the token.
+        warnings.append(
+            "Container removal failed — its supervisor may still be live and "
+            "holding a valid gate token; stop the container manually or run "
+            "`terok panic` to invalidate it."
+        )
 
     if mode:
         from ..hooks import run_hook

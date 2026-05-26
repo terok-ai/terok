@@ -53,8 +53,8 @@ class TestUninstallSandboxStack:
 
     def test_happy_path_delegates_to_aggregator(self, capsys: pytest.CaptureFixture[str]) -> None:
         with patch("terok.lib.api.setup.sandbox_uninstall") as aggregator:
-            assert _uninstall_sandbox_stack(root=False) is True
-        aggregator.assert_called_once_with(root=False)
+            assert _uninstall_sandbox_stack() is True
+        aggregator.assert_called_once_with()
         out = capsys.readouterr().out
         assert "Sandbox stack" in out
         assert "removed" in out
@@ -64,15 +64,10 @@ class TestUninstallSandboxStack:
             "terok.lib.api.setup.sandbox_uninstall",
             side_effect=SystemExit("aggregator reported one or more failed phases"),
         ):
-            assert _uninstall_sandbox_stack(root=False) is False
+            assert _uninstall_sandbox_stack() is False
         out = capsys.readouterr().out
         assert "FAIL" in out
         assert "aggregator reported one or more failed phases" in out
-
-    def test_root_flag_threaded_to_aggregator(self) -> None:
-        with patch("terok.lib.api.setup.sandbox_uninstall") as aggregator:
-            _uninstall_sandbox_stack(root=True)
-        aggregator.assert_called_once_with(root=True)
 
 
 class TestPurgeCredentialDb:
@@ -118,7 +113,7 @@ class TestCmdUninstall:
         ):
             cmd_uninstall()
         desktop.assert_called_once()
-        sandbox.assert_called_once_with(root=False)
+        sandbox.assert_called_once_with()
         purge.assert_not_called()
 
     def test_no_desktop_entry_skips_desktop(self) -> None:
@@ -155,13 +150,3 @@ class TestCmdUninstall:
             with pytest.raises(SystemExit) as exc:
                 cmd_uninstall()
         assert exc.value.code == 1
-
-    def test_root_flag_threaded_to_sandbox_stack(self) -> None:
-        with (
-            patch("terok.cli.commands.uninstall._uninstall_desktop_entry", return_value=True),
-            patch(
-                "terok.cli.commands.uninstall._uninstall_sandbox_stack", return_value=True
-            ) as sandbox,
-        ):
-            cmd_uninstall(root=True)
-        sandbox.assert_called_once_with(root=True)

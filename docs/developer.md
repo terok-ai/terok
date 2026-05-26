@@ -183,59 +183,57 @@ See [git-gate-and-security-modes.md](git-gate-and-security-modes.md) for detaile
 
 ---
 
-## Host-Side Service Activation Patterns
+## Host-Side Service Architecture
 
-terok runs several host-side services that containers reach over TCP
-(Podman cannot securely share Unix sockets into rootless containers).
-These services use **systemd socket activation** so they start on demand
-rather than requiring manual launch, but they follow two distinct
-patterns dictated by their architectures:
+terok's host-side services — the vault token broker, the clearance
+hub + verdict helper, and the git gate — all run inside a single
+**per-container supervisor** process.  There are no long-running
+user-session daemons and no systemd socket-activated services: when no
+containers are active, `pgrep terok` and
+`systemctl --user list-units 'terok-*'` both return empty.
 
-### Inetd-style (`Accept=yes`) — Git Gate
+### Per-container supervisor
 
-The gate handles the git smart-HTTP protocol: each request is
-short-lived, stateless, and independent.  The systemd socket unit
-uses `Accept=yes`, so systemd itself accepts each TCP connection and
-spawns a fresh `terok-gate --inetd` process with the connection on
-stdin.  No persistent daemon, no shared state, no concurrency
-concerns.  "Socket active" genuinely means "serving" — every
-connection is handled immediately.
+Each running container has its own supervisor, spawned by
+terok-sandbox's OCI prestart hook and reaped by the poststop hook, so
+its lifetime is bound to the container's.  The supervisor:
 
-- **Unit:** `terok-gate.socket` (TCP) + `terok-gate@.service` (instantiated per connection)
-- **When it fits:** stateless, short-lived request handlers with no shared state
+* Embeds the **vault token-broker + SSH signer** proxies on
+  per-container endpoints under `$XDG_RUNTIME_DIR/terok/`, scoped by
+  container UUID.
+* Embeds the **clearance hub** varlink server (one per container) so
+  the shield reader emits events to the right operator UI without
+  sharing state across tasks, plus the **verdict helper** that routes
+  allow / deny decisions back to `terok-shield`.
+* Embeds the **git gate**: a threaded `http.server` shim
+  ([`terok_sandbox.gate.server`][terok_sandbox.gate.server]) that
+  serves the git smart-HTTP protocol against the host mirror clones.
+  Each request carries the per-container `TEROK_GATE_TOKEN`, which the
+  shim validates before handing the request to `git http-backend`.
+  This replaces the former `terok-gate.socket` / `terok-gate@.service`
+  inetd-style systemd units — no host daemon, no socket activation.
+* Reads its identity (project / task / dossier and gate path + token)
+  from the sidecar JSON file the orchestrator writes before
+  `podman run` — see
+  [`AgentRunner.launch_prepared`][terok_executor.AgentRunner.launch_prepared].
 
-### Persistent daemon (`Accept=no`) — Vault
+Host setup just installs the OCI hook and the supervisor entrypoint
+(`terok-sandbox supervisor <container-id>`).  Operator UIs (the
+embedded TUI clearance screen and the standalone `terok clearance`
+CLI) multiplex events across every per-container hub socket via
+[`MultiSocketSubscriber`][terok_clearance.MultiSocketSubscriber] —
+sockets appear when supervisors come up and disappear when they exit.
 
-The vault is a long-running aiohttp reverse-proxy that
-holds an open SQLite credential database, a route table, and an SSH
-signer server on a separate port.  It serves multiple concurrent
-containers simultaneously.  The systemd socket unit uses the default
-`Accept=no`: systemd listens on both the Unix socket and the TCP port,
-and on the **first** connection starts the daemon process, handing it the
-inherited file descriptors.  The daemon then stays running and handles
-all subsequent connections itself.
-
-This means there is a brief startup delay (~1–2 s) on the very first
-container request after a host reboot, after which the vault is fully
-warm.  The status display reflects this as **standby** (socket active,
-service not yet started) vs **running** (daemon active, TCP ports bound).
-
-- **Unit:** `terok-vault.socket` (Unix + TCP) + `terok-vault.service`
-- **When it fits:** stateful daemons with shared resources, concurrent connections, or multiple ports
-
-### Why not unify them?
-
-Forcing the vault into `Accept=yes` would spawn a full
-Python/aiohttp process per HTTP request, cause SQLite contention across
-instances, and orphan the SSH signer port.  Forcing the gate into a
-persistent daemon would add unnecessary complexity for a service whose
-entire protocol is "handle one connection, exit".  Each pattern is the
-natural fit for its workload.
+Third-party host tools (IDEs, scripts) that need the gate's repository
+do **not** go through the supervisor at all: they read the mirror
+clone directly over `file://` (`terok project gate-path <id>` prints
+the path).  The in-supervisor HTTP gate exists only to serve confined
+containers, whose egress shield otherwise blocks.
 
 ### Socket vs TCP transport — the `services.mode` switch
 
-A single config key controls the host-side default for every
-sandbox-provided service:
+A single config key controls the transport boundary between the
+host-side supervisor and the container:
 
 ```yaml
 # config.yml
@@ -244,23 +242,27 @@ services:
 ```
 
 Read by [`SandboxConfig.services_mode`][terok_sandbox.config.SandboxConfig.services_mode].
-In `socket` mode each service exposes a Unix socket under
-`$XDG_RUNTIME_DIR/...` via a systemd `*.socket` unit
-(`ListenStream=…`); in `tcp` mode the same service binds a loopback
-TCP port recorded in `terok_sandbox.port_registry` so the orchestrator
-can pass it to the container at create time.  The wire-format is the
-same in both modes — only the listening file descriptor differs
-(`AF_UNIX` vs `AF_INET`).
+In `socket` mode each container-facing service (vault broker, SSH
+signer, git gate) binds a Unix socket under `$XDG_RUNTIME_DIR/terok/`
+keyed by container UUID, reached through a bind-mounted socket fronted
+by an in-container `socat` bridge.  In `tcp` mode those services bind
+loopback TCP ports — allocated via `terok_sandbox.port_registry` and
+recorded in the sidecar JSON — reached over
+`host.containers.internal`.  Either way the in-container client sees a
+uniform endpoint (see the bridge section below); only the host-side
+listening file descriptor differs (`AF_UNIX` vs `AF_INET`).  The
+host-only services (clearance hub, verdict helper) have no container
+consumer and always bind Unix sockets regardless of mode.
 
 Sockets are the preferred mode.  TCP exists for the SELinux case: on
 distros with SELinux enforcing, a host socket bind-mounted into a
 container is unreachable from the container's domain without a custom
 policy that lets the container side `connectto` the host service's
-type.  When you have root, terok's setup installs that policy
-alongside the systemd units and socket mode works transparently;
-without root the policy can't be installed, so the alternative is to
-fall back to TCP, accepting the trade-off that the loopback ports are
-visible to every other local user on the host.
+type.  When you have root, terok's setup installs that policy and
+socket mode works transparently; without root the policy can't be
+installed, so the alternative is to fall back to TCP, accepting the
+trade-off that the loopback ports are visible to every other local
+user on the host.
 
 ### Shield (no socket service)
 
@@ -282,29 +284,36 @@ host-side mode:
   the vault token broker (HTTP-over-TCP).
 - Always exposes `/tmp/terok-vault.sock` for the vault token broker
   (HTTP-over-Unix) — for clients that demand a socket (`gh`, `claude`).
-- For the gate server: in socket mode bridges
-  `http://localhost:9418` to the host gate socket.  In TCP mode the
-  bridge is **skipped** and the in-container client reaches
-  `host.containers.internal:<gate_port>` directly.  See
-  [Gaps](#gaps) below.
+- For the gate server: always exposes `http://localhost:9418` for
+  git.  In socket mode the bridge forwards to the per-container gate
+  socket; in TCP mode it forwards to
+  `host.containers.internal:<gate_port>`.  Either way the agent's
+  `git` only ever sees `localhost:9418`.
 
 ### Connector inventory
 
+Per-container endpoints are keyed on the full podman UUID (`<id>`) so
+multiple supervisors coexist without aliasing.  Identity flows in
+through the sidecar JSON written by the orchestrator before
+`podman run`.
+
 | Service | Host activation | Host endpoint | What it does host-side | Container consumer | Container endpoint | Bridge |
 |---|---|---|---|---|---|---|
-| **Vault token broker** | `terok-vault.socket` (socket) / `terok-vault.service` (tcp); aiohttp app via `_build_app()` in [`terok_sandbox.vault.daemon.token_broker`][terok_sandbox.vault.daemon.token_broker] | `${XDG_RUNTIME_DIR}/.../vault.sock` or `127.0.0.1:<broker_port>` | Reverse-proxies HTTP requests carrying phantom tokens to upstream APIs; substitutes the phantom for the real OAuth / API-key from the encrypted SQLite vault, forwards via TCP egress | Agent HTTP clients (`gh`, `claude`, `curl`) | `http://localhost:${TEROK_VAULT_LOOPBACK_PORT}` and `/tmp/terok-vault.sock` (both exposed) | Bidirectional `socat`: TCP-LISTEN→UNIX-CONNECT (socket mode) and UNIX-LISTEN→TCP-CONNECT (tcp mode) |
-| **Vault SSH signer** | Same `terok-vault` daemon, same switch | `${XDG_RUNTIME_DIR}/.../ssh-agent.sock` or `127.0.0.1:<ssh_signer_port>` | Implements the `ssh-agent` protocol; signs with private keys from the vault DB after validating the per-task phantom token.  The agent never sees the key | `ssh`, `git over ssh` via `$SSH_AUTH_SOCK` | `/tmp/ssh-agent.sock` (always — single endpoint regardless of host mode) | `socat UNIX-LISTEN:/tmp/ssh-agent.sock,fork SYSTEM:ssh-agent-bridge.sh` — `ssh-agent-bridge.sh` is itself the transport-aware bridge |
-| **Gate server (git)** | `terok-gate.socket` (socket) / `terok-gate.service` (tcp); `ThreadingHTTPServer` in [`terok_sandbox.gate.server`][terok_sandbox.gate.server] | `${XDG_RUNTIME_DIR}/.../gate-server.sock` or `127.0.0.1:<gate_port>` | HTTP backend for `git-upload-pack` / `git-receive-pack`; validates `TEROK_GATE_TOKEN`, then shells to the real `git http-backend` against host repos | `git clone/fetch/push` from inside the container | Socket mode: `http://localhost:9418/`. TCP mode: `http://host.containers.internal:<gate_port>/` *(no bridge)* | Socket mode only: `socat TCP-LISTEN:9418 UNIX-CONNECT:$TEROK_GATE_SOCKET`.  See [Gaps](#gaps) |
+| **Vault broker (supervisor)** | OCI prestart hook spawns `terok-sandbox supervisor <id>`; embedded token-broker proxy | Per-container endpoint listed in the sidecar JSON | Reverse-proxies HTTP requests carrying phantom tokens to upstream APIs; substitutes the phantom for the real OAuth / API-key from the encrypted SQLite vault | Agent HTTP clients (`gh`, `claude`, `curl`) | `http://localhost:${TEROK_VAULT_LOOPBACK_PORT}` and `/tmp/terok-vault.sock` (both exposed) | Bidirectional `socat` set up by `ensure-bridges.sh` from sidecar-derived env |
+| **Vault SSH signer (supervisor)** | Same supervisor process, separate socket | Per-container ssh-agent socket | Implements the `ssh-agent` protocol; signs with private keys from the vault DB after validating the per-task phantom token | `ssh`, `git over ssh` via `$SSH_AUTH_SOCK` | `/tmp/ssh-agent.sock` (always — single endpoint regardless of host mode) | `socat UNIX-LISTEN:/tmp/ssh-agent.sock,fork SYSTEM:ssh-agent-bridge.sh` |
+| **Clearance hub (supervisor)** | Same supervisor process; per-container varlink server | `$XDG_RUNTIME_DIR/terok/clearance/<id>.sock` | Receives shield `connection_blocked` events, dispatches them to subscribed operator UIs, accepts allow / deny verdicts back | **None** — host-only | n/a | Host-only Unix socket; multiplexed across containers by [`MultiSocketSubscriber`][terok_clearance.MultiSocketSubscriber] |
+| **Verdict helper (supervisor)** | Same supervisor process; per-container varlink server | `$XDG_RUNTIME_DIR/terok/verdict/<id>.sock` | Receives operator allow / deny decisions and shells to `terok-shield` to update nftables sets for the keyed container | **None** — host-only | n/a | Host-only Unix socket |
+| **Supervisor control** | Reserved — not yet bound | `$XDG_RUNTIME_DIR/terok/control/<id>.sock` | Reserved for future supervisor-control RPCs (drain, reload-routes, etc.) | n/a | n/a | n/a |
+| **Gate server (git)** | Same supervisor process; threaded `http.server` shim in [`terok_sandbox.gate.server`][terok_sandbox.gate.server] | `${XDG_RUNTIME_DIR}/terok/gate-server.sock` (socket) or `127.0.0.1:<gate_port>` (tcp) | HTTP backend for `git-upload-pack` / `git-receive-pack`; validates `TEROK_GATE_TOKEN`, then shells to the real `git http-backend` against the host mirror clones | `git clone/fetch/push` from inside the container | `http://<token>@localhost:9418/<repo>` (both modes) | `socat TCP-LISTEN:9418` → per-container gate socket (socket) or `host.containers.internal:<gate_port>` (tcp) |
 | **ACP host proxy** | Started per-task by the orchestrator; not systemd | `<state_dir>/acp.sock` (always Unix socket, per-task) | Aggregates several in-container ACP agents (`terok-claude-acp`, `terok-codex-acp`, …) behind one endpoint; relays JSON-RPC to the host TUI | The in-container `terok-*-acp` wrappers | Inherited fd or path passed at spawn | Direct mount; single-protocol on both sides |
-| **Shield NFLOG reader → clearance hub** | Spawned per-shielded-container by terok | `${XDG_RUNTIME_DIR}/terok-shield-events.sock` (clearance hub's ingester leg) | Translates kernel `REJECT`s into `connection_blocked` events; clearance hub then notifies via D-Bus and routes operator verdicts back through a shield-exec helper | **None** — host-side end-to-end | n/a | Host-only Unix socket |
-| **Clearance verdict (varlink)** | `terok-clearance-verdict.service` | `${XDG_RUNTIME_DIR}/terok-clearance-verdict.sock` (mode 0600, varlink) | Receives operator allow / deny decisions; calls the shield-exec helper to update nftables sets | **None** — host-only | n/a | Host-only Unix socket |
+| **Shield NFLOG reader → clearance hub** | Spawned per-shielded-container by the shield OCI hook | The container's per-supervisor hub socket above | Translates kernel `REJECT`s into `connection_blocked` events; the supervisor's hub notifies subscribed operator UIs and routes operator verdicts back through the verdict helper | **None** — host-side end-to-end | n/a | Host-only Unix socket |
 | **Workspace bind mount** | Plain `podman -v` at container create | `<task_dir>/workspace/` (host fs) | The task's git checkout | The agent's working dir | `/workspace` | Direct bind mount, no proxy |
 
 ### Is the normalization complete?
 
-Almost.  The container-side convention is "the agent's protocol
-expectation always works regardless of host mode" — but it's enforced
-unevenly across the four bidirectional services:
+Yes.  The container-side convention — "the agent's protocol
+expectation always works regardless of host mode" — now holds for
+every bidirectional service:
 
 - **Vault token broker** — ✅ full bidirectional normalization.
   Container always has both `http://localhost:<port>` and
@@ -312,24 +321,20 @@ unevenly across the four bidirectional services:
 - **Vault SSH signer** — ✅ always `/tmp/ssh-agent.sock`.  The
   ssh-agent protocol is socket-only by convention, so there's no TCP
   in-container endpoint to maintain.
-- **Gate server** — ⚠ *socket-mode-only* bridge.  In socket mode the
-  container sees `http://localhost:9418/`; in TCP mode it has to
-  reach `http://host.containers.internal:<gate_port>/` directly with
-  no bridge.  See [Gaps](#gaps).
+- **Gate server** — ✅ full normalization.  The container always sees
+  `http://localhost:9418/` in both modes; the in-container `socat`
+  bridge forwards to the per-container gate socket (socket mode) or
+  `host.containers.internal:<gate_port>` (tcp mode).
 - **ACP / workspace** — ✅ single-protocol on both sides; no
   transport mismatch to normalize.
 
 ### Gaps
 
-The lone asymmetry is **gate's TCP mode**: the vault has a "host TCP →
-in-container Unix" bridge but gate doesn't have a "host TCP →
-in-container localhost" one.  The orchestrator absorbs the difference
-by rewriting the injected `CODE_REPO` to point at
-`host.containers.internal`, so the agent's `git` still works — but the
-"in-container endpoint is always the same" invariant the vault upholds
-doesn't hold for gate.  Whether to normalize this too is open: gate's
-clients are constrained to git, which is already TCP-fluent, so the
-case for adding a symmetric bridge is weaker than it was for vault.
+None outstanding for the container transport.  The gate's former TCP
+asymmetry — where the agent reached `host.containers.internal`
+directly instead of a uniform `localhost` endpoint — is closed: the
+gate now rides the same in-container `socat` bridge as the vault, so
+`http://localhost:9418/` works in both modes.
 
 ---
 

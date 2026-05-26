@@ -10,11 +10,11 @@ keeps the consumer surface narrow and lets internals refactor freely.
 The package is split into focused sub-modules (catalogs of re-exports
 from the appropriate adapter):
 
-- [`vault`][terok.lib.api.vault] — vault status, daemon lifecycle, ``VaultManager``
+- [`vault`][terok.lib.api.vault] — vault status snapshot, DB context, sealing helpers
 - [`gate`][terok.lib.api.gate] — gate-server lifecycle and status
 - [`shield`][terok.lib.api.shield] — shield wrappers and the shield CLI registry
 - [`agents`][terok.lib.api.agents] — providers, ACP, image build, instructions
-- [`clearance`][terok.lib.api.clearance] — ``Notification`` and the clearance CLI registry
+- [`clearance`][terok.lib.api.clearance] — multi-socket subscriber, notifier, CLI registry
 - [`setup`][terok.lib.api.setup] — first-run setup, env check, sickbay primitives, uninstall
 - [`task`][terok.lib.api.task] — task lifecycle, runners, metadata, display tables
 - [`project`][terok.lib.api.project] — project entities, lifecycle, panic, SSH
@@ -80,25 +80,21 @@ from terok.lib.api.agents import (  # noqa: F401 — re-exported public API
     store_api_key,
 )
 from terok.lib.api.clearance import (  # noqa: F401 — re-exported public API
+    ALL_NOTIFY_CATEGORIES,
     CLEARANCE_COMMANDS,
-    CLEARANCE_HUB_UNIT_NAME,
-    CLEARANCE_NOTIFIER_UNIT_NAME,
+    NOTIFY_BLOCKED,
+    NOTIFY_VERDICT,
     CallbackNotifier,
     EventSubscriber,
-    HubService,
+    MultiSocketSubscriber,
     Notification,
-    NotifierService,
-    check_clearance_units_outdated,
-    clearance_outdated_summary,
-    read_installed_notifier_unit_version,
-    read_installed_unit_version,
+    create_notifier,
 )
 from terok.lib.api.gate import (  # noqa: F401 — re-exported public API
     GateAuthNotConfigured,
-    GateServerManager,
-    GateServerStatus,
     GateStalenessInfo,
     make_git_gate,
+    mint_gate_token,
 )
 from terok.lib.api.project import (  # noqa: F401 — re-exported public API
     AGENTS_QUESTION,
@@ -205,8 +201,7 @@ from terok.lib.api.task import (  # noqa: F401 — re-exported public API
 )
 from terok.lib.api.vault import (  # noqa: F401 — re-exported public API
     NoPassphraseError,
-    VaultManager,
-    VaultStatus,
+    VaultStatusSnapshot,
     WrongPassphraseError,
     handle_vault_seal,
     handle_vault_to_keyring,
@@ -347,24 +342,20 @@ __all__ = [
     "resolve_instructions",
     "store_api_key",
     # Clearance
+    "ALL_NOTIFY_CATEGORIES",
     "CLEARANCE_COMMANDS",
-    "CLEARANCE_HUB_UNIT_NAME",
-    "CLEARANCE_NOTIFIER_UNIT_NAME",
+    "NOTIFY_BLOCKED",
+    "NOTIFY_VERDICT",
     "CallbackNotifier",
     "EventSubscriber",
+    "MultiSocketSubscriber",
     "Notification",
-    "HubService",
-    "NotifierService",
-    "check_clearance_units_outdated",
-    "clearance_outdated_summary",
-    "read_installed_notifier_unit_version",
-    "read_installed_unit_version",
+    "create_notifier",
     # Gate
     "GateAuthNotConfigured",
-    "GateServerManager",
-    "GateServerStatus",
     "GateStalenessInfo",
     "make_git_gate",
+    "mint_gate_token",
     # Project
     "AGENTS_QUESTION",
     "BrokenProject",
@@ -466,8 +457,7 @@ __all__ = [
     "wait_for_container_exit",
     # Vault
     "NoPassphraseError",
-    "VaultManager",
-    "VaultStatus",
+    "VaultStatusSnapshot",
     "WrongPassphraseError",
     "handle_vault_seal",
     "handle_vault_to_keyring",

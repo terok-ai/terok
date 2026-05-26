@@ -135,8 +135,8 @@ def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) ->
     p_gate_path = sub.add_parser(
         "gate-path",
         help=(
-            "Print the absolute path of the project's host-side git gate "
-            "(suitable for use as a git remote URL via ssh://host<path>)"
+            "Print the project's host-side git gate mirror as a file:// URL "
+            "(suitable for IDEs and host-side git tools)"
         ),
     )
     _add_project_arg(p_gate_path)
@@ -328,23 +328,24 @@ def _cmd_ssh_init(args: argparse.Namespace) -> None:
 
 
 def _cmd_gate_path(project_id: str) -> None:
-    """Print the absolute path of the project's host-side git gate.
+    """Print the project's host-side git gate mirror as a ``file://`` URL.
 
-    Plain stdout so callers can paste the path into a git remote URL.
-    Typical flow when terok lives on a different host than the IDE::
+    Plain stdout so callers can paste the URL into an IDE or a host-side
+    git remote.  The gate's bare mirror lives under ``cfg.gate_base_path``;
+    a ``file://`` URL reaches it from any tool running on the same host::
 
         # On the host running terok:
         $ terok project gate-path myproj
-        /home/you/.local/share/terok/core/gate/myproj.git
+        file:///home/you/.local/share/terok/core/gate/myproj.git
 
-        # On your workstation:
-        $ git remote add spark ssh://you@host/home/you/.local/share/terok/core/gate/myproj.git
+        # Then, on the same host:
+        $ git remote add spark file:///home/you/.local/share/terok/core/gate/myproj.git
 
-    The path is computed deterministically from project config — it is
-    printed even if the bare repo doesn't exist yet (run ``gate-sync``
+    The path is computed deterministically from project config — the URL
+    is printed even if the bare repo doesn't exist yet (run ``gate-sync``
     to create it).
     """
-    print(load_project(project_id).gate_path)
+    print(load_project(project_id).gate_path.as_uri())
 
 
 def _cmd_gate_sync(args: argparse.Namespace) -> None:

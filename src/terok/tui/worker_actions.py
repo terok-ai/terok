@@ -131,97 +131,36 @@ def sync_gate(project_id: str) -> None:
     raise SystemExit(f"Gate sync failed: {', '.join(result['errors'])}")
 
 
-# ── Gate server ───────────────────────────────────────────────────────
-
-
-def gate_install() -> None:
-    """Install the gate server's systemd socket units."""
-    from terok.lib.api import make_sandbox_config
-    from terok.lib.api.gate import GateServerManager
-
-    GateServerManager(make_sandbox_config()).install_systemd_units()
-
-
-def gate_uninstall() -> None:
-    """Uninstall the gate server's systemd units."""
-    from terok.lib.api import make_sandbox_config
-    from terok.lib.api.gate import GateServerManager
-
-    GateServerManager(make_sandbox_config()).uninstall_systemd_units()
-
-
-def gate_start() -> None:
-    """Start the gate server daemon."""
-    from terok.lib.api.gate import GateServerManager
-
-    GateServerManager().start_daemon()
-
-
-def gate_stop() -> None:
-    """Stop the gate server daemon."""
-    from terok.lib.api.gate import GateServerManager
-
-    GateServerManager().stop_daemon()
-
-
 # ── Shield ────────────────────────────────────────────────────────────
 
 
-def shield_setup(root: bool) -> None:
-    """Install shield git hooks — *root* selects the root-scoped install."""
+def shield_setup() -> None:
+    """Install shield OCI hooks into the canonical terok-owned dir."""
     from terok.lib.api.setup import ShieldHooks
 
-    ShieldHooks.install(root=root, user=not root)
+    ShieldHooks.install()
 
 
 # ── Vault ─────────────────────────────────────────────────────────────
-
-
-def vault_install() -> None:
-    """Generate vault routes and install its systemd socket units."""
-    from terok.lib.api import make_sandbox_config
-    from terok.lib.api.agents import AgentRoster
-    from terok.lib.api.vault import VaultManager
-
-    cfg = make_sandbox_config()
-    AgentRoster.shared().ensure_vault_routes(cfg=cfg)
-    VaultManager(cfg).install_systemd_units()
-
-
-def vault_uninstall() -> None:
-    """Uninstall the vault's systemd units."""
-    from terok.lib.api import make_sandbox_config
-    from terok.lib.api.vault import VaultManager
-
-    VaultManager(make_sandbox_config()).uninstall_systemd_units()
-
-
-def vault_start() -> None:
-    """Generate vault routes and start the vault daemon."""
-    from terok.lib.api import make_sandbox_config
-    from terok.lib.api.agents import AgentRoster
-    from terok.lib.api.vault import VaultManager
-
-    cfg = make_sandbox_config()
-    AgentRoster.shared().ensure_vault_routes(cfg=cfg)
-    VaultManager(cfg).start_daemon()
-
-
-def vault_stop() -> None:
-    """Stop the vault daemon."""
-    from terok.lib.api.vault import VaultManager
-
-    VaultManager().stop_daemon()
+#
+# Daemon-lifecycle verbs (install / uninstall / start / stop) are gone:
+# every container's supervisor embeds its own vault proxy, so there's
+# no host-side daemon to operate.  What survives is passphrase
+# management — lock the session tier, move it between tiers, seal it
+# into systemd-creds — all DB-side, no IPC.
 
 
 def vault_lock() -> None:
-    """Clear the session-tier passphrase file and stop the vault daemon."""
-    from terok.lib.api import make_sandbox_config
-    from terok.lib.api.vault import VaultManager
+    """Clear the session-tier passphrase file (reversible).
 
-    cfg = make_sandbox_config()
-    cfg.vault_passphrase_file.unlink(missing_ok=True)
-    VaultManager(cfg).stop_daemon()
+    Persistent tiers (keyring, sealed systemd-creds,
+    ``credentials.passphrase``) are intentionally NOT touched — those
+    are setup-time decisions the operator opts out of via the explicit
+    ``terok-sandbox vault lock --forget`` destructive verb.
+    """
+    from terok.lib.api import make_sandbox_config
+
+    make_sandbox_config().vault_passphrase_file.unlink(missing_ok=True)
 
 
 def vault_seal() -> None:

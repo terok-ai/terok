@@ -27,11 +27,11 @@ dependencies = [
     "unique-namer>=1.3",
     "textual-serve>=1.1.0",
     "jinja2>=3.1",
-    "terok-executor @ https://github.com/terok-ai/terok-executor/releases/download/v0.0.149a27/terok_executor-0.0.149a27-py3-none-any.whl",
-    "terok-sandbox @ https://github.com/terok-ai/terok-sandbox/releases/download/v0.0.124a21/terok_sandbox-0.0.124a21-py3-none-any.whl",
-    "terok-shield @ https://github.com/terok-ai/terok-shield/releases/download/v0.6.42a9/terok_shield-0.6.42a9-py3-none-any.whl",
-    "terok-clearance @ https://github.com/terok-ai/terok-clearance/releases/download/v0.6.14a7/terok_clearance-0.6.14a7-py3-none-any.whl",
-    "terok-util @ https://github.com/terok-ai/terok-util/releases/download/v0.0.2a1/terok_util-0.0.2a1-py3-none-any.whl",
+    "terok-executor @ git+https://github.com/sliwowitz/terok-executor.git@feat/per-container-supervisor-v2",
+    "terok-sandbox @ git+https://github.com/sliwowitz/terok-sandbox.git@feat/per-container-supervisor-v2",
+    "terok-shield @ git+https://github.com/sliwowitz/terok-shield.git@feat/per-container-supervisor-v2",
+    "terok-clearance @ git+https://github.com/sliwowitz/terok-clearance.git@feat/per-container-supervisor-v2",
+    "terok-util @ git+https://github.com/sliwowitz/terok-util.git@feat/per-container-supervisor-v2",
 ]
 
 [project.urls]

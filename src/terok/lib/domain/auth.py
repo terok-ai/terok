@@ -182,14 +182,12 @@ def _resolve_host_auth_image(provider: str) -> str:
         ImageBuilder,
     )
 
-    from ..core.config import get_global_image_agents
-
     existing = find_host_auth_image(provider)
     if existing is not None:
         return existing
 
     base = ExecutorConfigView.image_base_image() or DEFAULT_BASE_IMAGE
-    agents = get_global_image_agents()
+    agents = ExecutorConfigView.image_agents() or "all"
     builder = ImageBuilder(base)
     default_alias = builder.l1_tag()
     per_agent = builder.l1_tag((provider,))

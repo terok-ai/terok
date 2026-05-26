@@ -11,7 +11,7 @@ from rich.style import Style
 from rich.text import Text
 from textual.widgets import Static
 
-from terok.lib.api.gate import GateServerStatus, GateStalenessInfo
+from terok.lib.api.gate import GateStalenessInfo
 from terok.lib.api.setup import EnvironmentCheck
 
 from ...lib.api import (
@@ -88,7 +88,6 @@ def render_project_details(
     task_count: int | None = None,
     staleness: GateStalenessInfo | None = None,
     css_variables: dict[str, str] | None = None,
-    gate_server_status: GateServerStatus | None = None,
     shield_env: EnvironmentCheck | None = None,
 ) -> Text:
     """Render project details as a Rich Text object."""
@@ -125,24 +124,18 @@ def render_project_details(
     images_s = _status_text(images_value)
     ssh_s = _status_text("yes" if state.get("ssh") else "no")
 
-    # Gate line: server status overrides repo status when server is down
-    if gate_server_status is not None and not gate_server_status.running:
-        gate_s = Text("gate down", style=Style(color=error_color))
-    else:
-        gate_value = "yes" if state.get("gate") else "no"
-        if (
-            gate_value == "yes"
-            and staleness is not None
-            and not staleness.error
-            and staleness.is_stale
-        ):
-            behind = staleness.commits_behind or 0
-            ahead = staleness.commits_ahead or 0
-            if ahead > 0 and behind == 0:
-                gate_value = "new"
-            else:
-                gate_value = "old"
-        gate_s = _status_text(gate_value)
+    # Gate line: per-project mirror existence + staleness vs upstream.
+    # The gate runs inside each task container's supervisor now — there is
+    # no host gate daemon whose status could override the mirror state.
+    gate_value = "yes" if state.get("gate") else "no"
+    if gate_value == "yes" and staleness is not None and not staleness.error and staleness.is_stale:
+        behind = staleness.commits_behind or 0
+        ahead = staleness.commits_ahead or 0
+        if ahead > 0 and behind == 0:
+            gate_value = "new"
+        else:
+            gate_value = "old"
+    gate_s = _status_text(gate_value)
 
     tasks_line = (
         Text("Tasks:     unknown") if task_count is None else Text(f"Tasks:     {task_count}")
@@ -281,7 +274,6 @@ class ProjectState(Static):
         state: dict | None,
         task_count: int | None = None,
         staleness: GateStalenessInfo | None = None,
-        gate_server_status: GateServerStatus | None = None,
         shield_env: EnvironmentCheck | None = None,
     ) -> None:
         """Display fully loaded project details including infrastructure status."""
@@ -292,7 +284,6 @@ class ProjectState(Static):
                 task_count,
                 staleness,
                 _get_css_variables(self),
-                gate_server_status=gate_server_status,
                 shield_env=shield_env,
             )
         )

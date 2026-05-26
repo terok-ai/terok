@@ -38,7 +38,7 @@ from ...lib.core.config import (
     user_projects_dir as _user_projects_dir,
     vault_dir as _vault_dir,
 )
-from ...lib.core.paths import core_state_dir as _core_state_dir
+from ...lib.core.paths import core_state_dir as _core_state_dir, state_root as _state_root
 from ...lib.core.projects import list_projects
 from ...ui_utils.terminal import (
     gray as _gray,
@@ -57,6 +57,12 @@ def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) ->
 
     # config paths — overview of configuration, template and output paths
     config_sub.add_parser("paths", help="Show configuration, template and output paths")
+
+    # config get-root — print the resolved single state root (paths.root)
+    config_sub.add_parser(
+        "get-root",
+        help="Print the resolved terok state root (one line, no decoration)",
+    )
 
     # config resolved — resolved agent config with provenance
     p_resolved = config_sub.add_parser(
@@ -103,6 +109,8 @@ def dispatch(args: argparse.Namespace) -> bool:
     match args.config_cmd:
         case "paths":
             _print_config()
+        case "get-root":
+            _cmd_get_root()
         case "resolved":
             _cmd_config_resolved(args.project_id, getattr(args, "preset", None))
         case "schema":
@@ -112,6 +120,16 @@ def dispatch(args: argparse.Namespace) -> bool:
         case _:  # pragma: no cover — required=True makes argparse enforce this
             return False
     return True
+
+
+def _cmd_get_root() -> None:
+    """Print the resolved ``paths.root`` (the single terok state root).
+
+    One line, no decoration — meant for scripts that grep for it
+    (``$(terok config get-root)/sandbox/sidecar/...``) without having
+    to parse the human-formatted ``config paths`` output.
+    """
+    print(_state_root())
 
 
 # ── config paths ───────────────────────────────────────────────────────

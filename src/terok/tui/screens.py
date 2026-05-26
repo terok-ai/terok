@@ -65,9 +65,9 @@ else:
 from rich.style import Style
 from rich.text import Text
 
-from terok.lib.api.gate import GateServerManager, GateServerStatus, GateStalenessInfo
-from terok.lib.api.setup import EnvironmentCheck, VaultManager
-from terok.lib.api.vault import VaultStatus
+from terok.lib.api.gate import GateStalenessInfo
+from terok.lib.api.setup import EnvironmentCheck
+from terok.lib.api.vault import VaultStatusSnapshot
 
 from ..lib.api import ProjectConfig, sanitize_task_name, validate_task_name
 from .widgets import TaskMeta, render_project_details, render_project_loading, render_task_details
@@ -78,16 +78,6 @@ def _modal_binding(key: str, action: str, description: str) -> Any:
     if Binding is None:
         return (key, action, description)
     return Binding(key, action, description, show=False)
-
-
-_LOCALHOST = "127.0.0.1"
-"""Loopback bind address for TCP-mode listener strings rendered in the vault pane.
-
-Defined locally per the project's no-magic-literals convention; the same
-literal lives in [`terok.lib.orchestration.task_runners.toad`][terok.lib.orchestration.task_runners.toad]
-and [`terok.tui.serve`][terok.tui.serve], neither of which is a shared
-constants module to import from.
-"""
 
 
 # ---------------------------------------------------------------------------
@@ -119,14 +109,6 @@ _DETAIL_SCREEN_CSS = """
 # ---------------------------------------------------------------------------
 
 
-def _disable_options(actions: OptionList, option_ids: frozenset[str]) -> None:
-    """Disable OptionList entries whose ``id`` is in *option_ids*."""
-    for idx in range(actions.option_count):
-        opt = actions.get_option_at_index(idx)
-        if opt.id in option_ids:
-            actions.disable_option_at_index(idx)
-
-
 def _visible_providers(installed: frozenset[str] | None) -> list[str]:
     """Provider names visible to the user given an *installed* filter.
 
@@ -139,162 +121,6 @@ def _visible_providers(installed: frozenset[str] | None) -> list[str]:
     if not installed:
         return list(AGENT_PROVIDERS)
     return [name for name in AGENT_PROVIDERS if name in installed]
-
-
-# ---------------------------------------------------------------------------
-# Gate Server helpers
-# ---------------------------------------------------------------------------
-
-
-def render_gate_server_status(status: GateServerStatus | None) -> Text:
-    """Render gate server status details as a Rich Text object."""
-    if status is None:
-        return Text("Gate server status unknown.")
-
-    ok_style = Style(color="green")
-    err_style = Style(color="red")
-    warn_style = Style(color="yellow")
-
-    mode_s = Text(status.mode)
-    running_s = (
-        Text("running", style=ok_style) if status.running else Text("stopped", style=err_style)
-    )
-
-    gate = GateServerManager()
-    lines = [
-        Text.assemble("Mode:      ", mode_s),
-        Text.assemble("Status:    ", running_s),
-        Text(f"Port:      {status.port}"),
-        Text(f"Base path: {gate.gate_base_path}"),
-    ]
-
-    outdated = gate.check_units_outdated()
-    if outdated:
-        lines.append(Text(""))
-        lines.append(Text(outdated, style=warn_style))
-
-    if not status.running:
-        lines.append(Text(""))
-        lines.append(
-            Text(
-                "The gate server is not running. Use the actions below to install or start it.",
-                style=Style(dim=True),
-            )
-        )
-
-    return Text("\n").join(lines)
-
-
-# ---------------------------------------------------------------------------
-# Gate Server Screen
-# ---------------------------------------------------------------------------
-
-
-class GateServerScreen(screen.Screen[str | None]):
-    """Full-page screen for managing the gate server."""
-
-    BINDINGS = [
-        _modal_binding("escape", "dismiss", "Back"),
-        _modal_binding("q", "dismiss", "Back"),
-        _modal_binding("i", "gate_install", "Install systemd socket"),
-        _modal_binding("u", "gate_uninstall", "Uninstall systemd units"),
-        _modal_binding("s", "gate_start", "Start daemon"),
-        _modal_binding("p", "gate_stop", "Stop daemon"),
-        _modal_binding("r", "gate_refresh", "Refresh status"),
-    ]
-
-    CSS = (
-        """
-    GateServerScreen {
-        layout: vertical;
-        background: $background;
-    }
-    """
-        + _DETAIL_SCREEN_CSS
-    )
-
-    def __init__(self, status: GateServerStatus | None = None) -> None:
-        """Store gate server status for rendering."""
-        super().__init__()
-        self._status = status
-
-    def compose(self) -> ComposeResult:
-        """Build the detail pane and action list for gate server management."""
-        detail_pane = Static(id="detail-content")
-        detail_pane.border_title = "Git Gate Server"
-        detail_pane.border_subtitle = "Esc to close"
-        yield detail_pane
-
-        yield OptionList(
-            Option("\\[i]nstall systemd socket", id="gate_install"),
-            Option("\\[u]ninstall systemd units", id="gate_uninstall"),
-            None,
-            Option("\\[s]tart daemon", id="gate_start"),
-            Option("sto\\[p] daemon", id="gate_stop"),
-            None,
-            Option("\\[r]efresh status", id="gate_refresh"),
-            id="actions-list",
-        )
-
-    _SYSTEMD_OPTIONS = frozenset({"gate_install", "gate_uninstall"})
-
-    def on_mount(self) -> None:
-        """Render gate server status and focus the action list."""
-        self._render_status()
-        actions = self.query_one("#actions-list", OptionList)
-        if not GateServerManager().is_systemd_available():
-            _disable_options(actions, self._SYSTEMD_OPTIONS)
-        actions.focus()
-
-    def _render_status(self) -> None:
-        """Update the detail pane with current status."""
-        detail_widget = self.query_one("#detail-content", Static)
-        detail_widget.update(render_gate_server_status(self._status))
-
-    def _refresh_status(self) -> None:
-        """Re-fetch status and update the display."""
-        from terok.lib.api.gate import GateServerManager
-
-        try:
-            self._status = GateServerManager().get_status()
-        except Exception as exc:
-            from ..lib.util.logging_utils import _log_debug
-
-            _log_debug(f"Gate server status refresh failed: {exc}")
-            self._status = None
-        self._render_status()
-
-    def on_option_list_option_selected(self, event: OptionList.OptionSelected) -> None:
-        """Handle action selection from the option list."""
-        option_id = event.option_id
-        if option_id == "gate_refresh":
-            self._refresh_status()
-        elif option_id:
-            self.dismiss(option_id)
-
-    async def action_dismiss(self, result: str | None = None) -> None:
-        """Close the screen without selecting an action."""
-        self.dismiss(result)
-
-    def action_gate_install(self) -> None:
-        """Trigger systemd socket installation."""
-        self.dismiss("gate_install")
-
-    def action_gate_uninstall(self) -> None:
-        """Trigger systemd unit uninstallation."""
-        self.dismiss("gate_uninstall")
-
-    def action_gate_start(self) -> None:
-        """Trigger daemon start."""
-        self.dismiss("gate_start")
-
-    def action_gate_stop(self) -> None:
-        """Trigger daemon stop."""
-        self.dismiss("gate_stop")
-
-    def action_gate_refresh(self) -> None:
-        """Refresh the status display."""
-        self._refresh_status()
 
 
 # ---------------------------------------------------------------------------
@@ -2278,106 +2104,36 @@ class ShieldScreen(screen.Screen[str | None]):
         self._start_refresh()
 
 
-class ShieldSetupScreen(screen.ModalScreen[str | None]):
-    """Modal screen for choosing root vs user hook installation."""
-
-    BINDINGS = [
-        _modal_binding("escape", "dismiss", "Cancel"),
-    ]
-
-    CSS = """
-    ShieldSetupScreen {
-        align: center middle;
-    }
-    #setup-dialog {
-        width: 64;
-        height: auto;
-        max-height: 14;
-        border: round $primary;
-        border-title-align: right;
-        border-subtitle-align: left;
-        background: $surface;
-        padding: 1 2;
-    }
-    #setup-buttons {
-        height: auto;
-        align-horizontal: center;
-        margin-top: 1;
-    }
-    #setup-buttons Button {
-        margin: 0 1;
-    }
-    """
-
-    def compose(self) -> ComposeResult:
-        """Build the setup choice dialog with styled buttons."""
-        with Vertical(id="setup-dialog") as dialog:
-            yield Static("Install global OCI hooks for podman < 5.6.0")
-            with Horizontal(id="setup-buttons"):
-                yield Button("User-local  [u]", id="btn-user")
-                yield Button("System-wide [r]", id="btn-root")
-                yield Button("Cancel    [Esc]", id="btn-cancel")
-        dialog.border_title = "Shield Setup"
-        dialog.border_subtitle = "Esc to cancel"
-
-    def on_mount(self) -> None:
-        """Focus the first button on modal open."""
-        self.query_one("#btn-user", Button).focus()
-
-    def on_button_pressed(self, event: Button.Pressed) -> None:
-        """Handle button presses."""
-        if event.button.id == "btn-root":
-            self.dismiss("root")
-        elif event.button.id == "btn-user":
-            self.dismiss("user")
-        elif event.button.id == "btn-cancel":
-            self.dismiss(None)
-
-    def on_key(self, event: events.Key) -> None:
-        """Handle shortcut keys for root/user selection."""
-        if event.character == "r":
-            self.dismiss("root")
-            event.stop()
-        elif event.character == "u":
-            self.dismiss("user")
-            event.stop()
-
-    async def action_dismiss(self, result: str | None = None) -> None:
-        """Cancel without choosing."""
-        self.dismiss(result)
-
-
 # ---------------------------------------------------------------------------
 # Vault helpers
 # ---------------------------------------------------------------------------
 
 
-def _format_credentials_typed(status: VaultStatus) -> str:
+def _format_credentials_typed(status: VaultStatusSnapshot) -> str:
     """Format stored credentials as ``name (type), ...`` for status display.
 
-    Routes through ``maybe_vault_db`` so the four-tier passphrase
-    resolution chain runs and a locked vault degrades to the bare
-    ``status.credentials_stored`` names — the operator still sees
-    *which* credentials exist, just not their type, until the vault
-    is unlocked.  Unexpected failures (schema drift, I/O errors) are
-    intentionally NOT swallowed: a blanket ``except`` here would hide
-    real bugs behind an identical-looking degraded render.
+    The snapshot already collected provider names and types in one DB
+    pass across every credential set — the renderer is a pure
+    formatter that doesn't touch the DB.
     """
-    from ..lib.domain.vault import maybe_vault_db
-
-    with maybe_vault_db() as db:
-        if db is None:
-            return ", ".join(status.credentials_stored)
-        parts = []
-        for name in status.credentials_stored:
-            cred = db.load_credential("default", name)
-            ctype = cred.get("type", "unknown") if cred else "unknown"
-            parts.append(f"{name} ({ctype})")
-    return ", ".join(parts)
+    if not status.credentials_stored:
+        return ""
+    return ", ".join(
+        f"{name} ({status.credential_types.get(name, 'unknown')})"
+        for name in status.credentials_stored
+    )
 
 
-def render_vault_status(status: VaultStatus | None) -> Text:
-    """Render vault status details as a Rich Text object."""
+def render_vault_status(status: VaultStatusSnapshot | None) -> Text:
+    """Render vault status details as a Rich Text object.
+
+    Vault is no longer a host daemon — every container's supervisor
+    embeds its own proxy.  The host view collapses to the DB-side
+    facts the operator can still act on:  locked / unlocked,
+    passphrase tier, count + type of stored credentials, plaintext-on-
+    disk warning.  Per-container proxy health surfaces in the task's
+    own doctor row.
+    """
     if status is None:
         return Text("Vault status unknown.")
 
@@ -2386,86 +2142,38 @@ def render_vault_status(status: VaultStatus | None) -> Text:
     err = Style(color="red")
     dim = Style(dim=True)
 
-    mode_s = Text(status.mode)
-    standby = False
-    if status.running:
-        running_s = Text("running", style=ok)
-    elif status.mode == "systemd":
-        if VaultManager().is_socket_active():
-            running_s = Text("standby (starts on first connection)", style=warn)
-            standby = True
-        else:
-            running_s = Text("stopped", style=err)
-    else:
-        running_s = Text("stopped", style=err)
-
-    # Allow-list the transport so an unset attribute (test ``Mock``s)
-    # or a future value can't leak a raw repr into operator-facing
-    # output.  Mirrors the executor CLI in ``vault_commands._handle_status``
-    # so the TUI and shell views stay in lockstep.
-    transport_raw = getattr(status, "transport", None)
-    transport = transport_raw if transport_raw in ("tcp", "socket") else None
-
     locked_label = (
         Text("yes — no tier resolved", style=err) if status.locked else Text("no", style=ok)
     )
 
-    # Two orthogonal axes, two lines: ``Activation:`` (lifecycle —
-    # systemd / daemon / none) vs ``Transport:`` (wire — tcp / socket).
-    # Splitting them keeps operators from confusing lifecycle state
-    # with the transport their containers actually ride.
     lines: list[Text] = [
-        Text.assemble("Activation:  ", mode_s),
-        Text(f"Transport:   {transport or '(not configured)'}"),
-        Text.assemble("Status:      ", running_s),
+        Text.assemble("Locked:      ", locked_label),
     ]
-
-    # TCP mode: surface the actual listeners that container traffic
-    # rides.  The daemon still binds ``vault.sock`` as a local
-    # fast-path probe target, but no client traffic touches it —
-    # annotate so the headline ``Socket:`` line doesn't imply
-    # otherwise.  Socket mode: surface the SSH signer socket
-    # alongside the broker socket so both bind-mounted endpoints
-    # are visible at a glance.
-    socket_suffix = ""
-    if transport == "tcp":
-        vault = VaultManager()
-        broker_port = vault.token_broker_port
-        signer_port = vault.ssh_signer_port
-        if broker_port is not None:
-            lines.append(Text(f"TCP broker:  {_LOCALHOST}:{broker_port}"))
-        if signer_port is not None:
-            lines.append(Text(f"TCP signer:  {_LOCALHOST}:{signer_port}"))
-        socket_suffix = "  (fast-path probe only)"
-
-    lines.append(Text(f"Socket:      {status.socket_path}{socket_suffix}"))
-
-    if transport == "socket":
-        from terok.lib.api import make_sandbox_config
-
-        lines.append(Text(f"SSH signer:  {make_sandbox_config().ssh_signer_socket_path}"))
-
-    lines.extend(
-        [
-            Text(f"DB:          {status.db_path}"),
-            Text(f"Routes:      {status.routes_path} ({status.routes_configured} configured)"),
-            Text(f"SSH keys:    {status.ssh_keys_stored}"),
-            # ``Locked:`` is the operator-facing yes/no; ``Passphrase:`` adds
-            # WHICH tier resolved it when unlocked.  Mirror the executor CLI
-            # (``vault status``) so the TUI and shell views agree at a glance.
-            Text.assemble("Locked:      ", locked_label),
-        ]
-    )
 
     if not status.locked and status.passphrase_source is not None:
         lines.append(Text(f"Passphrase:  resolved via {status.passphrase_source}"))
 
-    if status.credentials_stored:
+    lines.append(Text(f"DB:          {status.db_path}"))
+
+    if status.db_error is not None:
+        lines.append(Text.assemble("DB error:    ", Text(status.db_error, style=err)))
+
+    # ``None`` means the DB couldn't be read; render explicitly so a
+    # locked vault holding real data isn't mistaken for a fresh empty
+    # install ("SSH keys: 0  /  Credentials: none stored").
+    if status.ssh_keys_stored is None:
+        lines.append(Text.assemble("SSH keys:    ", Text("(unavailable)", style=dim)))
+    else:
+        lines.append(Text(f"SSH keys:    {status.ssh_keys_stored}"))
+
+    if status.credentials_stored is None:
+        lines.append(Text.assemble("Credentials: ", Text("(unavailable)", style=dim)))
+    elif status.credentials_stored:
         lines.append(Text(f"Credentials: {_format_credentials_typed(status)}"))
     else:
         lines.append(Text.assemble("Credentials: ", Text("none stored", style=dim)))
 
-    plaintext_path = getattr(status, "plaintext_passphrase_path", None)
+    plaintext_path = status.plaintext_passphrase_path
     if plaintext_path is not None:
         # The TUI is screenshot- and screen-share-friendly; rendering
         # the full filesystem path of the plaintext-passphrase file
@@ -2476,7 +2184,7 @@ def render_vault_status(status: VaultStatus | None) -> Text:
         # still prints the full path for grep-friendly scripting.
         from pathlib import Path as _Path
 
-        redacted = _Path(str(plaintext_path)).name
+        redacted = _Path(plaintext_path).name
         lines.append(Text(""))
         lines.append(
             Text.assemble(
@@ -2492,13 +2200,13 @@ def render_vault_status(status: VaultStatus | None) -> Text:
             )
         )
 
-    if not status.running and not standby:
+    if status.locked:
         lines.append(Text(""))
         lines.append(
             Text(
-                "The vault injects real API credentials into container requests\n"
-                "without exposing secrets to the container filesystem.\n"
-                "Use the actions below to install or start it.",
+                "The vault stores API credentials encrypted at rest.  Unlock\n"
+                "it so per-container supervisors can resolve credentials on\n"
+                "container start.",
                 style=dim,
             )
         )
@@ -2514,7 +2222,7 @@ def render_vault_status(status: VaultStatus | None) -> Text:
 class VaultUnlockModal(screen.ModalScreen["str | None"]):
     """Passphrase prompt that writes to the session-unlock tmpfs file.
 
-    Triggered when ``VaultStatus.locked`` is True at TUI mount or after
+    Triggered when ``VaultStatusSnapshot.locked`` is True at TUI mount or after
     a manual ``Ctrl+L`` re-probe.  Mirrors the [`AskpassModal`][terok.tui.askpass_service.AskpassModal]
     shape: one masked input, two buttons.  The "Unlock for this
     session" path is the always-safe one — it writes the session-file
@@ -2716,15 +2424,18 @@ class VaultRevealModal(screen.ModalScreen["bool | None"]):
 
 
 class VaultScreen(screen.Screen[str | None]):
-    """Full-page screen for managing the vault."""
+    """Full-page screen for managing the vault store.
+
+    Daemon-lifecycle actions (install / uninstall / start / stop) are
+    gone — the per-container supervisor model has no host-side daemon
+    to operate.  The remaining actions are all DB-side: unlock / lock
+    the session tier, move the passphrase between tiers, reveal /
+    acknowledge the recovery key.
+    """
 
     BINDINGS = [
         _modal_binding("escape", "dismiss", "Back"),
         _modal_binding("q", "dismiss", "Back"),
-        _modal_binding("i", "vault_install", "Install systemd socket"),
-        _modal_binding("u", "vault_uninstall", "Uninstall systemd units"),
-        _modal_binding("s", "vault_start", "Start daemon"),
-        _modal_binding("p", "vault_stop", "Stop daemon"),
         _modal_binding("n", "vault_unlock", "Unlock (session-file tier)"),
         _modal_binding("l", "vault_lock", "Lock (clear session-file)"),
         _modal_binding("e", "vault_seal", "Seal into systemd-creds"),
@@ -2744,7 +2455,7 @@ class VaultScreen(screen.Screen[str | None]):
         + _DETAIL_SCREEN_CSS
     )
 
-    def __init__(self, status: VaultStatus | None = None) -> None:
+    def __init__(self, status: VaultStatusSnapshot | None = None) -> None:
         """Store vault status for rendering."""
         super().__init__()
         self._status = status
@@ -2757,14 +2468,8 @@ class VaultScreen(screen.Screen[str | None]):
         yield detail_pane
 
         yield OptionList(
-            Option("\\[i]nstall systemd socket", id="vault_install"),
-            Option("\\[u]ninstall systemd units", id="vault_uninstall"),
-            None,
-            Option("\\[s]tart daemon", id="vault_start"),
-            Option("sto\\[p] daemon", id="vault_stop"),
-            None,
             Option("u\\[n]lock (write to session-file tier)", id="vault_unlock"),
-            Option("\\[l]ock (clear session-file, stop daemon)", id="vault_lock"),
+            Option("\\[l]ock (clear session-file)", id="vault_lock"),
             Option("s\\[e]al current passphrase into systemd-creds", id="vault_seal"),
             Option("move passphrase to \\[k]eyring", id="vault_to_keyring"),
             None,
@@ -2775,14 +2480,10 @@ class VaultScreen(screen.Screen[str | None]):
             id="actions-list",
         )
 
-    _SYSTEMD_OPTIONS = frozenset({"vault_install", "vault_uninstall"})
-
     def on_mount(self) -> None:
         """Render vault status and focus the action list."""
         self._render_status()
         actions = self.query_one("#actions-list", OptionList)
-        if not VaultManager().is_systemd_available():
-            _disable_options(actions, self._SYSTEMD_OPTIONS)
         actions.focus()
 
     def _render_status(self) -> None:
@@ -2792,10 +2493,8 @@ class VaultScreen(screen.Screen[str | None]):
 
     def _refresh_status(self) -> None:
         """Re-fetch status and update the display."""
-        from terok.lib.api.vault import VaultManager
-
         try:
-            self._status = VaultManager().get_status()
+            self._status = VaultStatusSnapshot.load()
         except Exception as exc:
             from ..lib.util.logging_utils import log_warning
 
@@ -2814,22 +2513,6 @@ class VaultScreen(screen.Screen[str | None]):
     async def action_dismiss(self, result: str | None = None) -> None:
         """Close the screen without selecting an action."""
         self.dismiss(result)
-
-    def action_vault_install(self) -> None:
-        """Trigger systemd socket installation."""
-        self.dismiss("vault_install")
-
-    def action_vault_uninstall(self) -> None:
-        """Trigger systemd unit uninstallation."""
-        self.dismiss("vault_uninstall")
-
-    def action_vault_start(self) -> None:
-        """Trigger daemon start."""
-        self.dismiss("vault_start")
-
-    def action_vault_stop(self) -> None:
-        """Trigger daemon stop."""
-        self.dismiss("vault_stop")
 
     def action_vault_unlock(self) -> None:
         """Trigger the session-file unlock flow."""

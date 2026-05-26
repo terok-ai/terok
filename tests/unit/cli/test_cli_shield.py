@@ -94,18 +94,8 @@ def _stub_resolve_task_id() -> object:
         ),
         pytest.param(
             ["shield", "install-hooks"],
-            {"shield_cmd": "install-hooks", "root": False, "user": False},
+            {"shield_cmd": "install-hooks"},
             id="install-hooks",
-        ),
-        pytest.param(
-            ["shield", "install-hooks", "--root"],
-            {"shield_cmd": "install-hooks", "root": True, "user": False},
-            id="install-hooks-root",
-        ),
-        pytest.param(
-            ["shield", "install-hooks", "--user"],
-            {"shield_cmd": "install-hooks", "root": False, "user": True},
-            id="install-hooks-user",
         ),
         pytest.param(
             ["shield", "watch", "proj", "task1"],
@@ -288,40 +278,11 @@ def test_dispatch_runtime_error_prints_message(
     assert "No IPs allowed" in err.getvalue()
 
 
-@pytest.mark.parametrize(
-    ("kwargs", "expected"),
-    [
-        pytest.param(
-            {"root": True, "user": False},
-            {"root": True, "user": False},
-            id="install-hooks-root",
-        ),
-        pytest.param(
-            {"root": False, "user": True},
-            {"root": False, "user": True},
-            id="install-hooks-user",
-        ),
-    ],
-)
 @patch("terok.lib.integrations.sandbox.ShieldHooks.install")
-def test_install_hooks_dispatch(
-    mock_install: MagicMock,
-    kwargs: dict[str, bool],
-    expected: dict[str, bool],
-) -> None:
-    """The install-hooks subcommand delegates to the facade with the parsed flags."""
-    assert dispatch(argparse.Namespace(cmd="shield", shield_cmd="install-hooks", **kwargs))
-    mock_install.assert_called_once_with(**expected)
-
-
-def test_install_hooks_requires_scope_flag() -> None:
-    """``shield install-hooks`` with neither --root nor --user shows remediation."""
-    args = argparse.Namespace(cmd="shield", shield_cmd="install-hooks", root=False, user=False)
-    with pytest.raises(SystemExit) as exc_info:
-        dispatch(args)
-    message = str(exc_info.value)
-    assert "--root" in message and "--user" in message
-    assert "terok shield install-hooks" in message
+def test_install_hooks_dispatch(mock_install: MagicMock) -> None:
+    """``shield install-hooks`` delegates to ``ShieldHooks.install()``."""
+    assert dispatch(argparse.Namespace(cmd="shield", shield_cmd="install-hooks"))
+    mock_install.assert_called_once_with()
 
 
 @patch("terok_shield.simple_clearance.run_simple_clearance")
@@ -416,10 +377,18 @@ class TestPersistDesiredState:
         # Should not raise — the error is printed to stderr
         _persist_desired_state("up", bad_dir, {})
 
+    @patch(
+        "terok.lib.orchestration.task_runners.resolve_container_uuid",
+        return_value="deadbeefcafe1234",
+    )
     @patch("terok.cli.commands.shield._resolve_task")
     @patch("terok.cli.commands.shield.ShieldManager")
     def test_dispatch_up_persists_state(
-        self, mock_mgr_cls: MagicMock, mock_resolve: MagicMock, tmp_path: Path
+        self,
+        mock_mgr_cls: MagicMock,
+        mock_resolve: MagicMock,
+        _mock_uuid: MagicMock,
+        tmp_path: Path,
     ) -> None:
         """Full dispatch of ``shield up`` persists the desired state."""
         mock_resolve.return_value = ("proj-cli-1", tmp_path)
@@ -431,10 +400,18 @@ class TestPersistDesiredState:
         mock_shield.up.assert_called_once()
         assert (tmp_path / "shield_desired_state").read_text().strip() == "up"
 
+    @patch(
+        "terok.lib.orchestration.task_runners.resolve_container_uuid",
+        return_value="deadbeefcafe1234",
+    )
     @patch("terok.cli.commands.shield._resolve_task")
     @patch("terok.cli.commands.shield.ShieldManager")
     def test_dispatch_down_persists_state(
-        self, mock_mgr_cls: MagicMock, mock_resolve: MagicMock, tmp_path: Path
+        self,
+        mock_mgr_cls: MagicMock,
+        mock_resolve: MagicMock,
+        _mock_uuid: MagicMock,
+        tmp_path: Path,
     ) -> None:
         """Full dispatch of ``shield down`` persists the desired state."""
         mock_resolve.return_value = ("proj-cli-1", tmp_path)

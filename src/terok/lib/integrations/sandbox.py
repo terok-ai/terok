@@ -33,8 +33,6 @@ from terok_sandbox import (  # noqa: F401 — re-exported public API
     EnvironmentCheck,
     ExecResult,
     GateAuthNotConfigured,
-    GateServerManager,
-    GateServerStatus,
     GateStalenessInfo,
     GitGate,
     Image,
@@ -57,10 +55,6 @@ from terok_sandbox import (  # noqa: F401 — re-exported public API
     SSHInitResult,
     SSHManager,
     TcpSSHTransport,
-    TokenStore,
-    VaultManager,
-    VaultStatus,
-    VaultUnreachableError,
     VolumeSpec,
     WrongPassphraseError,
     bold,
@@ -74,6 +68,7 @@ from terok_sandbox import (  # noqa: F401 — re-exported public API
     handle_vault_to_keyring,
     installed_versions,
     is_ssh_url,
+    mint_gate_token,
     needs_setup,
     podman_port_resolver,
     public_line_of,
@@ -91,6 +86,12 @@ from terok_sandbox import (  # noqa: F401 — re-exported public API
     yaml_update_section,
     yellow,
 )
+from terok_sandbox.paths import (  # noqa: F401 — designated reach-into-private-API site
+    plaintext_passphrase_config_path,
+)
+from terok_sandbox.supervisor.install import (  # noqa: F401 — re-exported
+    kill_all_supervisors,
+)
 
 __all__ = [
     "BestEffortLogger",
@@ -103,8 +104,6 @@ __all__ = [
     "EnvironmentCheck",
     "ExecResult",
     "GateAuthNotConfigured",
-    "GateServerManager",
-    "GateServerStatus",
     "GateStalenessInfo",
     "GitGate",
     "Image",
@@ -128,10 +127,6 @@ __all__ = [
     "ShieldHooks",
     "ShieldManager",
     "TcpSSHTransport",
-    "TokenStore",
-    "VaultManager",
-    "VaultStatus",
-    "VaultUnreachableError",
     "VolumeSpec",
     "WrongPassphraseError",
     "bold",
@@ -145,7 +140,10 @@ __all__ = [
     "handle_vault_to_keyring",
     "installed_versions",
     "is_ssh_url",
+    "kill_all_supervisors",
+    "mint_gate_token",
     "needs_setup",
+    "plaintext_passphrase_config_path",
     "podman_port_resolver",
     "public_line_of",
     "read_stamp",

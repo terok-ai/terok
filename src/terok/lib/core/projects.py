@@ -18,6 +18,7 @@ from terok_util.config_stack import ConfigScope
 
 from terok.lib.integrations.sandbox import gate_use_personal_ssh_default
 
+from ..integrations.executor import ExecutorConfigView
 from ..util.yaml import YAMLError, dump as _yaml_dump, load as _yaml_load
 from .config import (
     build_dir,
@@ -26,7 +27,6 @@ from .config import (
     get_global_default_agent,
     get_global_default_shell,
     get_global_hooks,
-    get_global_image_agents,
     get_global_section,
     get_shield_drop_on_task_run,
     get_shield_on_task_restart,
@@ -300,7 +300,7 @@ def _build_project_config(
         hook_post_stop=hook_stop,
         base_image=raw.image.base_image,
         family=raw.image.family,
-        agents=raw.image.agents or get_global_image_agents(),
+        agents=raw.image.agents or (ExecutorConfigView.image_agents() or "all"),
         snippet_inline=raw.image.user_snippet_inline,
         snippet_file=raw.image.user_snippet_file,
         shared_dir=shared_dir,

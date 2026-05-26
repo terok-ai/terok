@@ -34,7 +34,7 @@ from ...util.ansi import (
 )
 from ...util.net import url_host
 from ..agent_config import resolve_agent_config
-from ..environment import build_task_env_and_volumes, ensure_vault
+from ..environment import build_task_env_and_volumes
 from ..hooks import run_hook
 from ..ports import assign_web_port, release_web_port
 from ..tasks import (
@@ -150,7 +150,6 @@ def _resume_toad_container(
             f"Port {saved_port} for {project.id}/{task_id} is no longer available "
             f"(got {actual}).  Re-create the task to use the new port."
         )
-    ensure_vault()
     saved_token = _rehydrate_toad_token(project, task_id, meta, cname)
     color_enabled = _supports_color()
     url = _toad_browser_url(pub_host, saved_port, saved_token)

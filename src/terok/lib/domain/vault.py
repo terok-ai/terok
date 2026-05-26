@@ -10,11 +10,13 @@ from contextlib import ExitStack, contextmanager
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from terok.lib.integrations.sandbox import CredentialDB
+    from terok.lib.integrations.sandbox import CredentialDB, SandboxConfig
 
 
 @contextmanager
-def vault_db(*, prompt_on_tty: bool = False) -> Iterator[CredentialDB]:
+def vault_db(
+    *, prompt_on_tty: bool = False, cfg: SandboxConfig | None = None
+) -> Iterator[CredentialDB]:
     """Open the shared vault ``CredentialDB`` and close it on exit.
 
     Routes through ``SandboxConfig.open_credential_db`` so the four-tier
@@ -24,10 +26,16 @@ def vault_db(*, prompt_on_tty: bool = False) -> Iterator[CredentialDB]:
     clear ``NoPassphraseError`` instead of stalling on stdin; CLI
     front-ends pass ``True`` to unlock the interactive last-resort
     prompt.
+
+    Callers that already hold a ``SandboxConfig`` (typically because
+    they're also reading [`RecoveryStatus`][terok_sandbox.RecoveryStatus]
+    from it) pass it as ``cfg`` so the passphrase tier is resolved once,
+    not twice — guaranteeing a consistent snapshot view.
     """
     from ..core.config import make_sandbox_config
 
-    db = make_sandbox_config().open_credential_db(prompt_on_tty=prompt_on_tty)
+    resolved = cfg if cfg is not None else make_sandbox_config()
+    db = resolved.open_credential_db(prompt_on_tty=prompt_on_tty)
     try:
         yield db
     finally:
@@ -35,7 +43,9 @@ def vault_db(*, prompt_on_tty: bool = False) -> Iterator[CredentialDB]:
 
 
 @contextmanager
-def maybe_vault_db(*, prompt_on_tty: bool = False) -> Iterator[CredentialDB | None]:
+def maybe_vault_db(
+    *, prompt_on_tty: bool = False, cfg: SandboxConfig | None = None
+) -> Iterator[CredentialDB | None]:
     """Open the vault DB, yielding ``None`` if the vault is locked.
 
     Wraps ``vault_db`` for read-only callers that don't need to
@@ -56,7 +66,7 @@ def maybe_vault_db(*, prompt_on_tty: bool = False) -> Iterator[CredentialDB | No
     # guarantee teardown of the inner context.
     with ExitStack() as stack:
         try:
-            db = stack.enter_context(vault_db(prompt_on_tty=prompt_on_tty))
+            db = stack.enter_context(vault_db(prompt_on_tty=prompt_on_tty, cfg=cfg))
         except (NoPassphraseError, WrongPassphraseError):
             yield None
             return

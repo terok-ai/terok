@@ -6,7 +6,7 @@
 from __future__ import annotations
 
 from pathlib import Path
-from unittest.mock import MagicMock, PropertyMock, patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 from terok_sandbox import ExecResult
@@ -83,39 +83,47 @@ class TestGitIdentityCheck:
 
 
 class TestGitRemoteCheck:
-    """Git remote URL verification."""
+    """Git remote URL verification.
+
+    The gate now runs inside the per-container supervisor and the
+    container reaches it via the fixed localhost socat bridge on port
+    9418 in both socket and TCP modes — so the expected gatekeeping
+    origin is always ``http://<token>@localhost:9418/<repo>``.
+    """
 
     def test_ok_for_gate_url(self) -> None:
-        check = _git_remote_check("gatekeeping", 9418)
-        verdict = check.evaluate(0, "http://abc123@host.containers.internal:9418/proj.git\n", "")
+        check = _git_remote_check("gatekeeping")
+        verdict = check.evaluate(0, "http://abc123@localhost:9418/proj.git\n", "")
         assert verdict.severity == "ok"
 
     def test_error_when_gate_bypassed(self) -> None:
-        check = _git_remote_check("gatekeeping", 9418)
+        check = _git_remote_check("gatekeeping")
         verdict = check.evaluate(0, "git@github.com:org/repo.git\n", "")
         assert verdict.severity == "error"
 
+    def test_error_when_host_containers_internal(self) -> None:
+        # The old host-daemon URL shape is now a bypass — the in-container
+        # bridge listens on localhost, not host.containers.internal.
+        check = _git_remote_check("gatekeeping")
+        verdict = check.evaluate(0, "http://abc@host.containers.internal:9418/proj.git\n", "")
+        assert verdict.severity == "error"
+
     def test_ok_for_online_any_url(self) -> None:
-        check = _git_remote_check("online", None)
+        check = _git_remote_check("online")
         verdict = check.evaluate(0, "git@github.com:org/repo.git\n", "")
         assert verdict.severity == "ok"
 
     def test_warn_when_no_remote(self) -> None:
-        check = _git_remote_check("gatekeeping", 9418)
+        check = _git_remote_check("gatekeeping")
         verdict = check.evaluate(1, "", "fatal: no remote")
         assert verdict.severity == "warn"
 
     def test_error_when_port_mismatch(self) -> None:
-        check = _git_remote_check("gatekeeping", 9418)
-        verdict = check.evaluate(0, "http://abc@host.containers.internal:5555/proj.git\n", "")
+        check = _git_remote_check("gatekeeping")
+        verdict = check.evaluate(0, "http://abc@localhost:5555/proj.git\n", "")
         assert verdict.severity == "error"
         assert "5555" in verdict.detail
         assert "re-allocated" in verdict.detail
-
-    def test_ok_when_gate_port_none(self) -> None:
-        check = _git_remote_check("gatekeeping", None)
-        verdict = check.evaluate(0, "http://abc@host.containers.internal:5555/proj.git\n", "")
-        assert verdict.severity == "ok"
 
 
 class TestPortDriftCheck:
@@ -202,16 +210,6 @@ class TestRunContainerDoctor:
     @patch("terok.lib.orchestration.container_doctor.AgentRoster.shared")
     @patch("terok.lib.orchestration.container_doctor._read_desired_shield_state")
     @patch("terok.lib.orchestration.container_doctor.load_project")
-    @patch(
-        "terok.lib.orchestration.container_doctor.VaultManager.ssh_signer_port",
-        new_callable=PropertyMock,
-        return_value=None,
-    )
-    @patch(
-        "terok.lib.orchestration.container_doctor.VaultManager.token_broker_port",
-        new_callable=PropertyMock,
-        return_value=None,
-    )
     @patch("terok.lib.orchestration.container_doctor.make_sandbox_config")
     @patch("terok.lib.orchestration.container_doctor.load_task_meta")
     @patch("terok.lib.orchestration.tasks.meta.tasks_meta_dir")
@@ -220,8 +218,6 @@ class TestRunContainerDoctor:
         mock_meta_dir: MagicMock,
         mock_load_meta: MagicMock,
         mock_sandbox_cfg: MagicMock,
-        mock_broker_port: MagicMock,
-        mock_ssh_port: MagicMock,
         mock_load_project: MagicMock,
         mock_shield_state: MagicMock,
         mock_roster: MagicMock,
@@ -237,9 +233,7 @@ class TestRunContainerDoctor:
         mock_meta_dir.return_value = tmp_path
         mock_load_meta.return_value = ({"mode": "cli"}, tmp_path / "42_meta.yml")
         mock_runtime.container.return_value.state = "running"
-        mock_sandbox_cfg.return_value = MagicMock()
-        mock_broker_port.return_value = 8080
-        mock_ssh_port.return_value = 2222
+        mock_sandbox_cfg.return_value = MagicMock(token_broker_port=8080, ssh_signer_port=2222)
         mock_shield_state.return_value = None
         mock_roster.return_value = MagicMock()
 
@@ -275,16 +269,6 @@ class TestRunContainerDoctor:
     @patch("terok.lib.orchestration.container_doctor.AgentRoster.shared")
     @patch("terok.lib.orchestration.container_doctor._read_desired_shield_state")
     @patch("terok.lib.orchestration.container_doctor.load_project")
-    @patch(
-        "terok.lib.orchestration.container_doctor.VaultManager.ssh_signer_port",
-        new_callable=PropertyMock,
-        return_value=None,
-    )
-    @patch(
-        "terok.lib.orchestration.container_doctor.VaultManager.token_broker_port",
-        new_callable=PropertyMock,
-        return_value=None,
-    )
     @patch("terok.lib.orchestration.container_doctor.make_sandbox_config")
     @patch("terok.lib.orchestration.container_doctor.load_task_meta")
     @patch("terok.lib.orchestration.tasks.meta.tasks_meta_dir")
@@ -293,8 +277,6 @@ class TestRunContainerDoctor:
         mock_meta_dir: MagicMock,
         mock_load_meta: MagicMock,
         mock_sandbox_cfg: MagicMock,
-        mock_broker_port: MagicMock,
-        mock_ssh_port: MagicMock,
         mock_load_project: MagicMock,
         mock_shield_state: MagicMock,
         mock_roster: MagicMock,
@@ -310,9 +292,7 @@ class TestRunContainerDoctor:
         mock_meta_dir.return_value = tmp_path
         mock_load_meta.return_value = ({"mode": "cli"}, tmp_path / "42_meta.yml")
         mock_runtime.container.return_value.state = "running"
-        mock_sandbox_cfg.return_value = MagicMock()
-        mock_broker_port.return_value = 8080
-        mock_ssh_port.return_value = 2222
+        mock_sandbox_cfg.return_value = MagicMock(token_broker_port=8080, ssh_signer_port=2222)
         mock_shield_state.return_value = None
         mock_roster.return_value = MagicMock()
 
@@ -341,8 +321,13 @@ class TestRunContainerDoctor:
             ExecResult(exit_code=0, stdout="", stderr=""),
         ]
 
-        # Act
-        results = run_container_doctor("proj", "42", fix=True)
+        # Act — focus on the probe/fix machinery; the per-container
+        # reachability pair is exercised by its own dedicated tests.
+        with patch(
+            "terok.lib.orchestration.container_doctor._check_per_container_services",
+            return_value=[],
+        ):
+            results = run_container_doctor("proj", "42", fix=True)
 
         # Assert — probe result + fix result
         assert len(results) == 2
@@ -358,16 +343,6 @@ class TestRunContainerDoctor:
     @patch("terok.lib.orchestration.container_doctor.AgentRoster.shared")
     @patch("terok.lib.orchestration.container_doctor._read_desired_shield_state")
     @patch("terok.lib.orchestration.container_doctor.load_project")
-    @patch(
-        "terok.lib.orchestration.container_doctor.VaultManager.ssh_signer_port",
-        new_callable=PropertyMock,
-        return_value=None,
-    )
-    @patch(
-        "terok.lib.orchestration.container_doctor.VaultManager.token_broker_port",
-        new_callable=PropertyMock,
-        return_value=None,
-    )
     @patch("terok.lib.orchestration.container_doctor.make_sandbox_config")
     @patch("terok.lib.orchestration.container_doctor.load_task_meta")
     @patch("terok.lib.orchestration.tasks.meta.tasks_meta_dir")
@@ -376,8 +351,6 @@ class TestRunContainerDoctor:
         mock_meta_dir: MagicMock,
         mock_load_meta: MagicMock,
         mock_sandbox_cfg: MagicMock,
-        mock_broker_port: MagicMock,
-        mock_ssh_port: MagicMock,
         mock_load_project: MagicMock,
         mock_shield_state: MagicMock,
         mock_roster: MagicMock,
@@ -393,9 +366,7 @@ class TestRunContainerDoctor:
         mock_meta_dir.return_value = tmp_path
         mock_load_meta.return_value = ({"mode": "cli"}, tmp_path / "42_meta.yml")
         mock_runtime.container.return_value.state = "running"
-        mock_sandbox_cfg.return_value = MagicMock()
-        mock_broker_port.return_value = 8080
-        mock_ssh_port.return_value = 2222
+        mock_sandbox_cfg.return_value = MagicMock(token_broker_port=8080, ssh_signer_port=2222)
         mock_shield_state.return_value = None
         mock_roster.return_value = MagicMock()
 
@@ -417,30 +388,22 @@ class TestRunContainerDoctor:
         mock_agent_checks.return_value = []
         mock_terok_checks.return_value = []
 
-        # Act
-        results = run_container_doctor("proj", "42")
+        # Act — focus on host-side dispatch; reachability pair stubbed out.
+        with patch(
+            "terok.lib.orchestration.container_doctor._check_per_container_services",
+            return_value=[],
+        ):
+            results = run_container_doctor("proj", "42")
 
         # Assert — the host-side ``evaluate`` ran and its verdict reached us
         assert len(results) == 1
         assert results[0] == ("warn", "Future check", "evaluated locally")
         mock_exec.assert_not_called()
 
-    @patch(
-        "terok.lib.orchestration.container_doctor.VaultManager.ssh_signer_port",
-        new_callable=PropertyMock,
-        return_value=None,
-    )
-    @patch(
-        "terok.lib.orchestration.container_doctor.VaultManager.token_broker_port",
-        new_callable=PropertyMock,
-        return_value=None,
-    )
     @patch("terok.lib.orchestration.container_doctor.make_sandbox_config")
     def test_collect_all_checks_raises_in_tcp_mode_with_unset_ports(
         self,
         mock_sandbox_cfg: MagicMock,
-        _broker_port: MagicMock,
-        _ssh_port: MagicMock,
         tmp_path: Path,
     ) -> None:
         """``_collect_all_checks`` refuses TCP mode without resolved ports.
@@ -453,7 +416,9 @@ class TestRunContainerDoctor:
         """
         from terok.lib.orchestration.container_doctor import _collect_all_checks
 
-        mock_sandbox_cfg.return_value = MagicMock(services_mode="tcp", gate_port=None)
+        mock_sandbox_cfg.return_value = MagicMock(
+            services_mode="tcp", gate_port=None, token_broker_port=None, ssh_signer_port=None
+        )
         with pytest.raises(SystemExit, match="ports are not all configured"):
             _collect_all_checks("proj", tmp_path)
 
@@ -561,17 +526,7 @@ class TestStreamingGrouping:
             ),
             patch(
                 "terok.lib.orchestration.container_doctor.make_sandbox_config",
-                return_value=MagicMock(),
-            ),
-            patch(
-                "terok.lib.orchestration.container_doctor.VaultManager.token_broker_port",
-                new_callable=PropertyMock,
-                return_value=8080,
-            ),
-            patch(
-                "terok.lib.orchestration.container_doctor.VaultManager.ssh_signer_port",
-                new_callable=PropertyMock,
-                return_value=2222,
+                return_value=MagicMock(token_broker_port=8080, ssh_signer_port=2222),
             ),
             patch(
                 "terok.lib.orchestration.container_doctor._read_desired_shield_state",
@@ -643,17 +598,7 @@ class TestStreamingGrouping:
             ),
             patch(
                 "terok.lib.orchestration.container_doctor.make_sandbox_config",
-                return_value=MagicMock(),
-            ),
-            patch(
-                "terok.lib.orchestration.container_doctor.VaultManager.token_broker_port",
-                new_callable=PropertyMock,
-                return_value=8080,
-            ),
-            patch(
-                "terok.lib.orchestration.container_doctor.VaultManager.ssh_signer_port",
-                new_callable=PropertyMock,
-                return_value=2222,
+                return_value=MagicMock(token_broker_port=8080, ssh_signer_port=2222),
             ),
             patch(
                 "terok.lib.orchestration.container_doctor._read_desired_shield_state",
@@ -667,6 +612,10 @@ class TestStreamingGrouping:
                 "terok.lib.orchestration.container_doctor._check_shield_state",
                 return_value=("ok", "Shield state", "not managed"),
             ),
+            patch(
+                "terok.lib.orchestration.container_doctor._check_per_container_services",
+                return_value=[],
+            ),
         ):
             mock_runtime.container.return_value.state = "running"
             results = run_container_doctor("proj", "42")
@@ -674,3 +623,104 @@ class TestStreamingGrouping:
         # Legacy path returns the accumulated list; streaming path would
         # have returned an empty list.
         assert results == [("ok", "Shield state", "not managed")]
+
+
+class TestPerContainerReachability:
+    """Per-container vault + gate reachability checks (host-side, best-effort)."""
+
+    def _cfg(self, mode: str, *, state_dir: Path, runtime_dir: Path) -> MagicMock:
+        cfg = MagicMock()
+        cfg.services_mode = mode
+        cfg.state_dir = state_dir
+        cfg.runtime_dir = runtime_dir
+        return cfg
+
+    def test_socket_mode_ok_when_sockets_exist(self, tmp_path: Path) -> None:
+        from terok.lib.orchestration.container_doctor import _check_per_container_services
+
+        cname = "proj-cli-42"
+        run_dir = tmp_path / "rt" / "run" / cname
+        run_dir.mkdir(parents=True)
+        (run_dir / "vault.sock").touch()
+        (run_dir / "gate-server.sock").touch()
+
+        cfg = self._cfg("socket", state_dir=tmp_path / "state", runtime_dir=tmp_path / "rt")
+        with patch(
+            "terok.lib.orchestration.container_doctor.make_sandbox_config", return_value=cfg
+        ):
+            results = _check_per_container_services(cname)
+
+        labels = {label: sev for sev, label, _ in results}
+        assert labels == {"Vault reachable": "ok", "Gate reachable": "ok"}
+
+    def test_socket_mode_warns_when_socket_missing(self, tmp_path: Path) -> None:
+        from terok.lib.orchestration.container_doctor import _check_per_container_services
+
+        cname = "proj-cli-42"
+        cfg = self._cfg("socket", state_dir=tmp_path / "state", runtime_dir=tmp_path / "rt")
+        with patch(
+            "terok.lib.orchestration.container_doctor.make_sandbox_config", return_value=cfg
+        ):
+            results = _check_per_container_services(cname)
+
+        # Sockets don't exist → both warn, never fatal.
+        assert {sev for sev, _, _ in results} == {"warn"}
+        assert [label for _, label, _ in results] == ["Vault reachable", "Gate reachable"]
+
+    def test_tcp_mode_reads_sidecar_ports_and_probes(self, tmp_path: Path) -> None:
+        import json
+
+        from terok.lib.orchestration.container_doctor import _check_per_container_services
+
+        cname = "proj-cli-42"
+        sidecar_dir = tmp_path / "state" / "sidecar"
+        sidecar_dir.mkdir(parents=True)
+        (sidecar_dir / f"{cname}.json").write_text(
+            json.dumps({"tcp_port": 18800, "gate_port": 18801})
+        )
+
+        cfg = self._cfg("tcp", state_dir=tmp_path / "state", runtime_dir=tmp_path / "rt")
+        with (
+            patch("terok.lib.orchestration.container_doctor.make_sandbox_config", return_value=cfg),
+            patch(
+                "terok.lib.orchestration.container_doctor._tcp_reachable", return_value=True
+            ) as mock_reach,
+        ):
+            results = _check_per_container_services(cname)
+
+        assert {sev for sev, _, _ in results} == {"ok"}
+        mock_reach.assert_any_call(18800)
+        mock_reach.assert_any_call(18801)
+
+    def test_tcp_mode_warns_when_unreachable(self, tmp_path: Path) -> None:
+        import json
+
+        from terok.lib.orchestration.container_doctor import _check_per_container_services
+
+        cname = "proj-cli-42"
+        sidecar_dir = tmp_path / "state" / "sidecar"
+        sidecar_dir.mkdir(parents=True)
+        (sidecar_dir / f"{cname}.json").write_text(json.dumps({"tcp_port": 18800}))
+
+        cfg = self._cfg("tcp", state_dir=tmp_path / "state", runtime_dir=tmp_path / "rt")
+        with (
+            patch("terok.lib.orchestration.container_doctor.make_sandbox_config", return_value=cfg),
+            patch("terok.lib.orchestration.container_doctor._tcp_reachable", return_value=False),
+        ):
+            results = _check_per_container_services(cname)
+
+        sev_by_label = {label: sev for sev, label, _ in results}
+        # Vault has a recorded port but is unreachable → warn.
+        assert sev_by_label["Vault reachable"] == "warn"
+        # Gate has no recorded port (sidecar omits gate_port) → warn, cannot probe.
+        assert sev_by_label["Gate reachable"] == "warn"
+
+    def test_missing_sidecar_is_best_effort(self, tmp_path: Path) -> None:
+        from terok.lib.orchestration.container_doctor import _read_sidecar_ports
+
+        cfg = self._cfg("tcp", state_dir=tmp_path / "state", runtime_dir=tmp_path / "rt")
+        with patch(
+            "terok.lib.orchestration.container_doctor.make_sandbox_config", return_value=cfg
+        ):
+            # No sidecar file written → empty mapping, no exception.
+            assert _read_sidecar_ports("proj-cli-42") == {}

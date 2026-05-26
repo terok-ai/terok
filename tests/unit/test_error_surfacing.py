@@ -405,47 +405,60 @@ class TestImageCleanupWarning:
 
 
 # ===========================================================================
-# environment.py — SSH key loading and gate fallback
+# environment.py — online-mode gate accelerator wiring
 # ===========================================================================
 
 
 class TestEnvironmentWarnings:
-    """Cover SSH key loading and gate server fallback warnings."""
+    """Cover online-mode gate wiring when the per-container gate is in play."""
 
     @pytest.fixture(autouse=True)
     def _isolate_log(self, tmp_path: Path) -> None:
         with patch("terok.lib.core.paths.core_state_dir", return_value=tmp_path):
             yield
 
-    def test_gate_fallback_warns(self, capsys: pytest.CaptureFixture[str]) -> None:
-        """Gate server unreachable triggers an informational warning on stderr."""
+    def test_online_gate_uses_clone_from_without_fallback_warning(
+        self, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """Online mode wires the per-container gate as a CLONE_FROM accelerator.
+
+        The gate runs inside the supervisor now — there is no host daemon
+        to probe and no "unreachable, falling back" warning anymore.  When
+        the mirror exists, the gate URL + token are wired silently.
+        """
         from terok.lib.orchestration.environment import _security_mode_env_and_volumes
 
         mock_project = MagicMock()
         mock_project.security_class = "online"
         mock_project.id = "test-proj"
+        mock_project.gate_enabled = True
         mock_project.upstream_url = "https://example.com/repo.git"
         mock_project.default_branch = "main"
         mock_project.expose_external_remote = False
-        # gate_path must be a real Path that .exists() works on
+        # gate_path must be a real Path-like that .exists() works on, and a
+        # direct child of the patched gate base so _gate_url accepts it.
         gate_path = MagicMock()
         gate_path.exists.return_value = True
         gate_path.name = "test-proj.git"
+        gate_path.resolve.return_value.parent = Path("/fake/gate")
         mock_project.gate_path = gate_path
 
         with (
             patch(
-                "terok.lib.orchestration.environment.GateServerManager.gate_base_path",
+                "terok.lib.orchestration.environment.SandboxConfig.gate_base_path",
                 new_callable=PropertyMock,
                 return_value=Path("/fake/gate"),
             ),
             patch(
-                "terok.lib.orchestration.environment.GateServerManager.ensure_reachable",
-                side_effect=SystemExit("unreachable"),
+                "terok.lib.orchestration.environment.mint_gate_token",
+                return_value="t" * 32,
             ),
         ):
-            env, _vols = _security_mode_env_and_volumes(mock_project, "task-1", MagicMock())
+            from terok.lib.integrations.sandbox import SandboxConfig
+
+            env, _vols = _security_mode_env_and_volumes(mock_project, SandboxConfig())
 
         err = capsys.readouterr().err
-        assert "Gate server unreachable" in err
-        assert "online mode" in err.lower()
+        assert "unreachable" not in err.lower()
+        assert env["CLONE_FROM"].startswith("http://t")
+        assert env["TEROK_GATE_TOKEN"] == "t" * 32

@@ -20,10 +20,9 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from terok.lib.integrations.sandbox import (
-    GateServerManager,
     SandboxConfig,
-    TokenStore,
     VolumeSpec,
+    mint_gate_token,
 )
 
 from ..core.config import (
@@ -45,11 +44,12 @@ _CONTAINER_RUNTIME_DIR = "/run/terok"
 """Container-side mount point — must match [`terok_sandbox.CONTAINER_RUNTIME_DIR`][terok_sandbox.CONTAINER_RUNTIME_DIR]."""
 
 _CONTAINER_GATE_PORT = 9418
-"""Loopback TCP port the container-side socat bridge listens on in socket mode.
+"""Fixed in-container port the container reaches the gate on, both modes.
 
 Must match the hardcoded ``TCP-LISTEN:9418`` in ``ensure-bridges.sh`` — that
-bridge forwards to the mounted host ``gate-server.sock``, so the CODE_REPO /
-CLONE_FROM URL the container sees is ``http://localhost:9418/<repo>``.
+bridge forwards to the per-container ``gate-server.sock`` (socket mode) or the
+host TCP port (TCP mode), so the CODE_REPO / CLONE_FROM URL the container sees
+is always ``http://localhost:9418/<repo>``.
 """
 
 
@@ -104,65 +104,55 @@ verbatim — keep this set in sync with the spec field assignments, not with
 each new gate env var added downstream."""
 
 
-def _gate_url(
-    gate_repo: Path, gate_base: Path, port: int, token: str, *, use_socket: bool = False
-) -> str:
-    """Build the ``http://`` URL for a gate repo served by ``terok-gate``.
+def _gate_url(gate_repo: Path, gate_base: Path, port: int, token: str) -> str:
+    """Build the ``http://`` URL for a gate repo served by the per-container gate.
 
     The token is embedded as the Basic Auth username in the URL so that git
     handles authentication natively.  Uses the repo directory name as the URL
-    path — the gate server serves repos as direct children of its base path.
+    path — the gate serves repos as direct children of its base path.
 
-    In socket mode the container reaches the gate via a localhost socat bridge
-    (started by ``ensure-bridges.sh``), so the URL points to ``localhost``
-    instead of ``host.containers.internal``.
+    The container always reaches the gate via the localhost socat bridge
+    started by ``ensure-bridges.sh`` (``TCP-LISTEN:9418`` → per-container
+    socket in socket mode, or → host TCP port in TCP mode), so the URL points
+    to ``localhost`` in both modes.
 
     Raises ``SystemExit`` if the repo is not a direct child of the gate base,
-    since the gate server cannot serve repos from arbitrary locations.
+    since the gate cannot serve repos from arbitrary locations.
     """
     if gate_repo.resolve().parent != gate_base.resolve():
         raise SystemExit(
-            "Configured gate.path is not servable by terok-gate.\n"
+            "Configured gate.path is not servable by the gate.\n"
             f"  Gate repo: {gate_repo}\n"
             f"  Gate base: {gate_base}\n"
             "Move the repo under the gate base directory, or adjust\n"
             "gate_server.repos_dir / paths.root in global config."
         )
-    host = f"localhost:{port}" if use_socket else f"host.containers.internal:{port}"
-    return f"http://{token}@{host}/{gate_repo.name}"
+    return f"http://{token}@localhost:{port}/{gate_repo.name}"
 
 
-def _resolve_gate_port(cfg: SandboxConfig, *, use_socket: bool) -> int:
-    """Resolve the port the container reaches the gate on.
+def _resolve_gate_port() -> int:
+    """Resolve the in-container port the gate is reached on.
 
-    Socket mode uses the fixed in-container socat-bridge port (see
-    ensure-bridges.sh); TCP mode uses the host gate server's port —
-    required, so a missing one is fatal.
+    The gate now runs inside the per-container supervisor; the container
+    reaches it through the fixed in-container socat-bridge port
+    (``TCP-LISTEN:9418`` in ``ensure-bridges.sh``) in both socket and TCP
+    modes — the bridge forwards to the per-container unix socket or the
+    host TCP port respectively.  Always the same in-container port.
     """
-    if use_socket:
-        return _CONTAINER_GATE_PORT
-    host_port = GateServerManager(cfg).server_port
-    if host_port is None:
-        raise SystemExit(
-            "Gate server port not configured — required in TCP mode. "
-            "Check sandbox config or switch to socket mode."
-        )
-    return host_port
+    return _CONTAINER_GATE_PORT
 
 
 def _gatekeeping_repo_env(
     project: ProjectConfig,
-    task_id: str,
-    cfg: SandboxConfig,
     gate_base: Path,
     gate_port: int,
-    *,
-    use_socket: bool,
 ) -> dict[str, str]:
     """Repo-access env for a gatekeeping-class task — the gate *is* origin.
 
     The container clones and pushes through the gate, so a missing gate
-    mirror is fatal.
+    mirror is fatal.  Mints a fresh per-task gate token, embeds it in the
+    gate URL, and exposes it via ``TEROK_GATE_TOKEN`` so the per-container
+    supervisor can validate the requests it receives.
     """
     gate_repo = project.gate_path
     if not gate_repo.exists():
@@ -171,10 +161,9 @@ def _gatekeeping_repo_env(
             f"Expected at: {gate_repo}\n"
             f"Run 'terok project gate-sync {project.id}' to create/update the local mirror."
         )
-    GateServerManager(cfg).ensure_reachable()
-    token = TokenStore(cfg).create(project.id, task_id)
-    gate_url = _gate_url(gate_repo, gate_base, gate_port, token, use_socket=use_socket)
-    env: dict[str, str] = {"CODE_REPO": gate_url}
+    token = mint_gate_token()
+    gate_url = _gate_url(gate_repo, gate_base, gate_port, token)
+    env: dict[str, str] = {"CODE_REPO": gate_url, "TEROK_GATE_TOKEN": token}
     if project.default_branch:
         env["GIT_BRANCH"] = project.default_branch
     if project.expose_external_remote and project.upstream_url:
@@ -184,44 +173,32 @@ def _gatekeeping_repo_env(
 
 def _online_repo_env(
     project: ProjectConfig,
-    task_id: str,
-    cfg: SandboxConfig,
     gate_base: Path,
     gate_port: int,
-    *,
-    use_socket: bool,
 ) -> dict[str, str]:
     """Repo-access env for an online-class task — clones from upstream directly.
 
     The gate is used only as an opt-in clone accelerator
-    (``gate.enabled``) when its mirror exists and the server is
-    reachable; ``gate.enabled: false`` is the escape hatch for hosts
-    that cannot reach the gate.
+    (``gate.enabled``) when its mirror exists; ``gate.enabled: false``
+    is the escape hatch for hosts that cannot use the gate.  When the
+    gate is in play it mints a fresh per-task token, embeds it in the
+    gate URL, and exposes it via ``TEROK_GATE_TOKEN`` for the
+    per-container supervisor to validate.
     """
     env: dict[str, str] = {}
     gate_repo = project.gate_path
     if project.gate_enabled and gate_repo.exists():
-        try:
-            GateServerManager(cfg).ensure_reachable()
-        except SystemExit:
-            from ..util.logging_utils import warn_user
-
-            warn_user(
-                "gate",
-                "Gate server unreachable; cloning directly from upstream. "
-                "This is safe — online mode does not require the gate.",
-            )
-        else:
-            token = TokenStore(cfg).create(project.id, task_id)
-            gate_url = _gate_url(gate_repo, gate_base, gate_port, token, use_socket=use_socket)
-            env["CLONE_FROM"] = gate_url
-            # Surface the gate as a named "gate" remote alongside origin
-            # (which points at upstream).  The agent can push WIP branches
-            # host-locally without going to upstream — a free checkpoint
-            # that makes the gate's role coherent across both modes.  In
-            # gatekeeping mode the gate is already origin, so this env var
-            # is online-mode-only.  Consumed by init-ssh-and-repo.sh.
-            env["GATE_REMOTE_URL"] = gate_url
+        token = mint_gate_token()
+        gate_url = _gate_url(gate_repo, gate_base, gate_port, token)
+        env["CLONE_FROM"] = gate_url
+        env["TEROK_GATE_TOKEN"] = token
+        # Surface the gate as a named "gate" remote alongside origin
+        # (which points at upstream).  The agent can push WIP branches
+        # host-locally without going to upstream — a free checkpoint
+        # that makes the gate's role coherent across both modes.  In
+        # gatekeeping mode the gate is already origin, so this env var
+        # is online-mode-only.  Consumed by init-ssh-and-repo.sh.
+        env["GATE_REMOTE_URL"] = gate_url
     if project.upstream_url:
         env["CODE_REPO"] = project.upstream_url
         if project.default_branch:
@@ -231,27 +208,29 @@ def _online_repo_env(
 
 def _security_mode_env_and_volumes(
     project: ProjectConfig,
-    task_id: str,
     cfg: SandboxConfig,
     *,
     use_socket: bool = False,
-) -> tuple[dict[str, str], list[str]]:
+) -> tuple[dict[str, str], list[VolumeSpec]]:
     """Return env vars and volumes for the project's security mode."""
-    volumes: list[str] = []
+    volumes: list[VolumeSpec] = []
     gate_repo = project.gate_path
-    gate_base = GateServerManager(cfg).gate_base_path
-    gate_port = _resolve_gate_port(cfg, use_socket=use_socket)
+    gate_base = cfg.gate_base_path
+    gate_port = _resolve_gate_port()
 
     if project.security_class == "gatekeeping":
-        env = _gatekeeping_repo_env(
-            project, task_id, cfg, gate_base, gate_port, use_socket=use_socket
-        )
+        env = _gatekeeping_repo_env(project, gate_base, gate_port)
     else:
-        env = _online_repo_env(project, task_id, cfg, gate_base, gate_port, use_socket=use_socket)
+        env = _online_repo_env(project, gate_base, gate_port)
 
-    # Gate socket path for the container-side socat bridge (set once for both modes).
+    # Gate socket path for the container-side socat bridge.  The gate now
+    # runs inside the per-container supervisor, which binds
+    # ``gate-server.sock`` inside the per-container ``/run/terok`` dir — the
+    # same dir the supervisor's vault/ssh sockets live in, mounted by the
+    # executor's launch flow.  No host bind-mount is needed here; we only
+    # tell the bridge the well-known in-container path it connects to.
     if use_socket and ("CODE_REPO" in env or "CLONE_FROM" in env) and gate_repo.exists():
-        env["TEROK_GATE_SOCKET"] = f"{_CONTAINER_RUNTIME_DIR}/{cfg.gate_socket_path.name}"
+        env["TEROK_GATE_SOCKET"] = f"{_CONTAINER_RUNTIME_DIR}/gate-server.sock"
 
     return env, volumes
 
@@ -323,34 +302,12 @@ def apply_git_identity_env(
 
 
 # ---------- Vault ----------
-
-
-def ensure_vault() -> None:
-    """Ensure the vault is reachable (respecting the bypass flag).
-
-    Call this before (re)starting a container that was created with vault
-    phantom tokens.  After a host reboot the systemd socket may be active
-    but the service idle — this function brings the TCP ports up so
-    containers can connect.
-
-    No-op when the ``bypass_no_secret_protection`` flag is set.
-    """
-    from ..core.config import get_vault_bypass
-
-    if get_vault_bypass():
-        return
-
-    from terok.lib.integrations.sandbox import VaultManager, VaultUnreachableError
-
-    try:
-        VaultManager(make_sandbox_config()).ensure_reachable()
-    except VaultUnreachableError as exc:
-        raise SystemExit(
-            f"{exc}\n\n"
-            "Start it with:\n"
-            "  terok vault install   (systemd socket activation)\n"
-            "  terok vault start     (manual daemon)"
-        ) from exc
+#
+# Vault is no longer a host daemon — the per-container supervisor
+# (terok-sandbox) embeds a vault proxy per container, started by the
+# OCI hook at container start.  There is no host-side ``ensure_vault``
+# step anymore: the supervisor reads its sidecar JSON at hook fire
+# time and stands the proxy up before the container's first egress.
 
 
 def _apply_claude_oauth_overrides(env: dict[str, str]) -> None:
@@ -549,10 +506,9 @@ class TaskEnvironment:
         cfg = make_sandbox_config()
         use_socket = get_services_mode() == "socket"
 
-        # Pre-resolve gate server URLs → CODE_REPO / CLONE_FROM / GIT_BRANCH
-        sec_env, _sec_volumes = _security_mode_env_and_volumes(
-            project, task_id, cfg, use_socket=use_socket
-        )
+        # Pre-resolve gate server URLs → CODE_REPO / CLONE_FROM / GIT_BRANCH,
+        # plus any security-mode volumes (the gate socket sub-mount).
+        sec_env, sec_volumes = _security_mode_env_and_volumes(project, cfg, use_socket=use_socket)
 
         # Seed workspace from clone cache (fast-start optimisation).
         # Only for new tasks (marker present, no .git yet).  The in-container
@@ -576,10 +532,11 @@ class TaskEnvironment:
             assemble_container_env,
         )
 
-        # Vault: bypass → no vault at all; otherwise ensure it's up before assembly
+        # Vault: bypass disables proxy plumbing entirely; otherwise the
+        # per-container supervisor stands the proxy up on container
+        # start — no host-side daemon to bring up here.
         vault_bypass = get_vault_bypass()
         if not vault_bypass:
-            ensure_vault()
             _check_project_credentials_present(project)
         vault_transport = get_vault_transport()
 
@@ -621,7 +578,7 @@ class TaskEnvironment:
         )
 
         env = dict(result.env)
-        volumes: list[VolumeSpec] = list(result.volumes)
+        volumes: list[VolumeSpec] = [*result.volumes, *sec_volumes]
 
         # terok-specific env vars not covered by the shared assembly
         env["PROJECT_ID"] = project.id
@@ -632,13 +589,9 @@ class TaskEnvironment:
         # too, and forgetting silently dropped the value (#902).
         env.update({k: v for k, v in sec_env.items() if k not in _SPEC_CONSUMED_SEC_ENV_KEYS})
 
-        # Socket mode: mount host runtime dir so socat bridges can reach sockets
-        if use_socket:
-            from terok.lib.integrations.sandbox import Sharing
-
-            volumes.append(
-                VolumeSpec(cfg.runtime_dir, _CONTAINER_RUNTIME_DIR, sharing=Sharing.SHARED)
-            )
+        # Note: the bind-mount for the per-container /run/terok/ dir is
+        # added by AgentRunner.launch_prepared — it knows the container
+        # name (the per-container dir key), this layer does not.
 
         # Claude OAuth env override + leaked-cred scan with exposed-token filtering
         if not vault_bypass:

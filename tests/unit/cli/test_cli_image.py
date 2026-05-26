@@ -250,7 +250,10 @@ class TestCmdBuild:
                 "terok.lib.integrations.executor.ExecutorConfigView.image_base_image",
                 return_value="fedora:43",
             ),
-            patch("terok.lib.core.config.get_global_image_agents", return_value="all"),
+            patch(
+                "terok.lib.integrations.executor.ExecutorConfigView.image_agents",
+                return_value="all",
+            ),
             patch(
                 "terok.lib.integrations.executor.AgentRoster.parse_selection",
                 return_value=sentinel.RESOLVED_AGENTS,
@@ -290,7 +293,10 @@ class TestCmdBuild:
                 "terok.lib.integrations.executor.ExecutorConfigView.image_base_image",
                 return_value="fedora:43",  # would normally be picked
             ),
-            patch("terok.lib.core.config.get_global_image_agents", return_value="all"),
+            patch(
+                "terok.lib.integrations.executor.ExecutorConfigView.image_agents",
+                return_value="all",
+            ),
             patch(
                 "terok.lib.integrations.executor.AgentRoster.parse_selection",
                 return_value=sentinel.RESOLVED_AGENTS,
@@ -330,7 +336,10 @@ class TestCmdBuild:
                 "terok.lib.integrations.executor.ExecutorConfigView.image_base_image",
                 return_value="ubuntu:24.04",
             ),
-            patch("terok.lib.core.config.get_global_image_agents", return_value="all"),
+            patch(
+                "terok.lib.integrations.executor.ExecutorConfigView.image_agents",
+                return_value="all",
+            ),
             patch(
                 "terok.lib.integrations.executor.AgentRoster.parse_selection",
                 side_effect=lambda v: v,
@@ -404,7 +413,10 @@ class TestCmdBuild:
                 "terok.lib.integrations.executor.ExecutorConfigView.image_base_image",
                 return_value="ubuntu:24.04",
             ),
-            patch("terok.lib.core.config.get_global_image_agents", return_value="all"),
+            patch(
+                "terok.lib.integrations.executor.ExecutorConfigView.image_agents",
+                return_value="all",
+            ),
             patch(
                 "terok.lib.integrations.executor.AgentRoster.parse_selection",
                 side_effect=lambda v: v,

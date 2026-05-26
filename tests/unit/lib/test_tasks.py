@@ -11,7 +11,6 @@ from contextlib import redirect_stdout
 from datetime import datetime, timedelta
 from io import StringIO
 from pathlib import Path
-from unittest.mock import PropertyMock
 
 import pytest
 
@@ -352,14 +351,8 @@ class TestTask:
             output = self._task_list_output(project_id, {tid: None}, status="running")
             assert "No tasks found" in output
 
-    @unittest.mock.patch("terok.lib.orchestration.environment.GateServerManager.ensure_reachable")
     @unittest.mock.patch(
-        "terok.lib.orchestration.environment.GateServerManager.server_port",
-        return_value=GATE_PORT,
-        new_callable=PropertyMock,
-    )
-    @unittest.mock.patch(
-        "terok.lib.integrations.sandbox.TokenStore.create", return_value="tok" * 10 + "ab"
+        "terok.lib.orchestration.environment.mint_gate_token", return_value="tok" * 10 + "ab"
     )
     def test_build_task_env_gatekeeping(self, *_mocks) -> None:
         project_id = "proj9"
@@ -376,21 +369,18 @@ class TestTask:
 
             assert "http://" in env["CODE_REPO"]
             assert _gate_repo_fragment(project_id) in env["CODE_REPO"]
-            # No gate volume mount (served via gate server)
-            gate_mounts = [v for v in volumes if "gate" in str(v.host_path)]
+            # The minted gate token is surfaced for the per-container
+            # supervisor to validate.  The gate runs inside the supervisor
+            # now — no host gate-socket bind-mount is emitted.
+            assert env["TEROK_GATE_TOKEN"] == "tok" * 10 + "ab"
+            gate_mounts = [v for v in volumes if v.container_path.endswith("/gate-server.sock")]
             assert gate_mounts == []
             # Verify SSH is NOT mounted by default in gatekeeping mode
             ssh_mounts = [v for v in volumes if str(CONTAINER_SSH_DIR) in v.container_path]
             assert ssh_mounts == []
 
-    @unittest.mock.patch("terok.lib.orchestration.environment.GateServerManager.ensure_reachable")
     @unittest.mock.patch(
-        "terok.lib.orchestration.environment.GateServerManager.server_port",
-        return_value=GATE_PORT,
-        new_callable=PropertyMock,
-    )
-    @unittest.mock.patch(
-        "terok.lib.integrations.sandbox.TokenStore.create", return_value="tok" * 10 + "ab"
+        "terok.lib.orchestration.environment.mint_gate_token", return_value="tok" * 10 + "ab"
     )
     def test_build_task_env_gatekeeping_with_ssh(self, *_mocks) -> None:
         """Gatekeeping mode does not bind-mount SSH (keys go via SSH agent proxy)."""
@@ -419,14 +409,8 @@ class TestTask:
             ssh_mounts = [v for v in volumes if str(CONTAINER_SSH_DIR) in v.container_path]
             assert ssh_mounts == []
 
-    @unittest.mock.patch("terok.lib.orchestration.environment.GateServerManager.ensure_reachable")
     @unittest.mock.patch(
-        "terok.lib.orchestration.environment.GateServerManager.server_port",
-        return_value=GATE_PORT,
-        new_callable=PropertyMock,
-    )
-    @unittest.mock.patch(
-        "terok.lib.integrations.sandbox.TokenStore.create", return_value="tok" * 10 + "ab"
+        "terok.lib.orchestration.environment.mint_gate_token", return_value="tok" * 10 + "ab"
     )
     def test_build_task_env_online(self, *_mocks) -> None:
         project_id = "proj10"
@@ -887,14 +871,8 @@ class TestTask:
                 assert status.hint is not None
                 assert "xclip" in status.hint
 
-    @unittest.mock.patch("terok.lib.orchestration.environment.GateServerManager.ensure_reachable")
     @unittest.mock.patch(
-        "terok.lib.orchestration.environment.GateServerManager.server_port",
-        return_value=GATE_PORT,
-        new_callable=PropertyMock,
-    )
-    @unittest.mock.patch(
-        "terok.lib.integrations.sandbox.TokenStore.create", return_value="tok" * 10 + "ab"
+        "terok.lib.orchestration.environment.mint_gate_token", return_value="tok" * 10 + "ab"
     )
     def test_build_task_env_gatekeeping_expose_external_remote_enabled(self, *_mocks) -> None:
         """Test expose_external_remote=true with upstream_url sets EXTERNAL_REMOTE_URL."""
@@ -917,14 +895,8 @@ class TestTask:
             assert "http://" in env["CODE_REPO"]
             assert _gate_repo_fragment(project_id) in env["CODE_REPO"]
 
-    @unittest.mock.patch("terok.lib.orchestration.environment.GateServerManager.ensure_reachable")
     @unittest.mock.patch(
-        "terok.lib.orchestration.environment.GateServerManager.server_port",
-        return_value=GATE_PORT,
-        new_callable=PropertyMock,
-    )
-    @unittest.mock.patch(
-        "terok.lib.integrations.sandbox.TokenStore.create", return_value="tok" * 10 + "ab"
+        "terok.lib.orchestration.environment.mint_gate_token", return_value="tok" * 10 + "ab"
     )
     def test_build_task_env_gatekeeping_expose_external_remote_disabled(self, *_mocks) -> None:
         """Test expose_external_remote=false does not set EXTERNAL_REMOTE_URL."""
@@ -947,14 +919,8 @@ class TestTask:
             assert "http://" in env["CODE_REPO"]
             assert _gate_repo_fragment(project_id) in env["CODE_REPO"]
 
-    @unittest.mock.patch("terok.lib.orchestration.environment.GateServerManager.ensure_reachable")
     @unittest.mock.patch(
-        "terok.lib.orchestration.environment.GateServerManager.server_port",
-        return_value=GATE_PORT,
-        new_callable=PropertyMock,
-    )
-    @unittest.mock.patch(
-        "terok.lib.integrations.sandbox.TokenStore.create", return_value="tok" * 10 + "ab"
+        "terok.lib.orchestration.environment.mint_gate_token", return_value="tok" * 10 + "ab"
     )
     def test_build_task_env_gatekeeping_expose_external_remote_no_upstream(self, *_mocks) -> None:
         """Test expose_external_remote=true without upstream_url does not set EXTERNAL_REMOTE_URL."""
@@ -976,14 +942,8 @@ class TestTask:
             assert "http://" in env["CODE_REPO"]
             assert _gate_repo_fragment(project_id) in env["CODE_REPO"]
 
-    @unittest.mock.patch("terok.lib.orchestration.environment.GateServerManager.ensure_reachable")
     @unittest.mock.patch(
-        "terok.lib.orchestration.environment.GateServerManager.server_port",
-        return_value=GATE_PORT,
-        new_callable=PropertyMock,
-    )
-    @unittest.mock.patch(
-        "terok.lib.integrations.sandbox.TokenStore.create", return_value="tok" * 10 + "ab"
+        "terok.lib.orchestration.environment.mint_gate_token", return_value="tok" * 10 + "ab"
     )
     def test_build_task_env_online_propagates_gate_remote_url(self, *_mocks) -> None:
         """Online mode forwards GATE_REMOTE_URL through to the container env.
@@ -1148,9 +1108,6 @@ class TestResumeToadContainer:
                     "terok.lib.orchestration.task_runners.toad.assign_web_port",
                     return_value=7862,
                 ),
-                unittest.mock.patch(
-                    "terok.lib.orchestration.task_runners.toad.ensure_vault",
-                ),
                 redirect_stdout(buf),
             ):
                 task_run_toad(project_id, tid)
@@ -1181,9 +1138,6 @@ class TestResumeToadContainer:
                 unittest.mock.patch(
                     "terok.lib.orchestration.task_runners.toad.assign_web_port",
                     return_value=7863,
-                ),
-                unittest.mock.patch(
-                    "terok.lib.orchestration.task_runners.toad.ensure_vault",
                 ),
                 unittest.mock.patch(
                     "terok.lib.orchestration.task_runners.toad._podman_start",
@@ -1736,7 +1690,6 @@ class TestTaskDeleteWarnings:
         mock_runtime,
         project_id: str = "proj_warn",
         *,
-        token_side_effect: BaseException | None = None,
         container_results: list | None = None,
         rmtree_side_effect: BaseException | None = None,
         unlink_side_effect: BaseException | None = None,
@@ -1762,13 +1715,6 @@ class TestTaskDeleteWarnings:
                         return_value=True,
                     ),
                 ]
-                if token_side_effect:
-                    patches.append(
-                        unittest.mock.patch(
-                            "terok.lib.integrations.sandbox.TokenStore.revoke_for_task",
-                            side_effect=token_side_effect,
-                        )
-                    )
                 if rmtree_side_effect:
                     patches.append(
                         unittest.mock.patch(
@@ -1800,15 +1746,6 @@ class TestTaskDeleteWarnings:
         result = self._delete_with_mocks(mock_runtime, project_id="proj_warn1")
         assert isinstance(result, TaskDeleteResult)
         assert result.warnings == []
-
-    def test_token_revoke_failure_produces_warning(self, mock_runtime) -> None:
-        """Failed token revoke adds a warning but deletion still completes."""
-        result = self._delete_with_mocks(
-            mock_runtime,
-            project_id="proj_warn2",
-            token_side_effect=RuntimeError("auth server down"),
-        )
-        assert any("Token revoke" in w for w in result.warnings)
 
     def test_container_rm_failure_produces_warning(self, mock_runtime) -> None:
         """Failed container removal adds a warning and keeps port claimed."""
@@ -1847,14 +1784,12 @@ class TestTaskDeleteWarnings:
         result = self._delete_with_mocks(
             mock_runtime,
             project_id="proj_warn6",
-            token_side_effect=RuntimeError("offline"),
             container_results=[
                 {"name": "c1", "removed": False, "error": "timeout"},
             ],
             rmtree_side_effect=OSError("nfs stale"),
         )
-        assert len(result.warnings) >= 4
-        assert any("Token" in w for w in result.warnings)
+        assert len(result.warnings) >= 3
         assert any("c1" in w for w in result.warnings)
         assert any("Workspace" in w for w in result.warnings)
         assert any("Web port kept claimed" in w for w in result.warnings)

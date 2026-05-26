@@ -3,9 +3,10 @@
 
 """Emergency panic command — cut all resource access immediately.
 
-Raises shields on every running container, stops the vault and gate
-server.  Optionally also SIGKILLs the containers themselves; they are
-not removed.  All actions are reversible.
+Raises shields on every running container and kills the per-container
+supervisors (which stops each container's embedded vault and gate).
+Optionally also SIGKILLs the containers themselves; they are not
+removed.  All actions are reversible.
 
 Exit codes:
 - 0: all operations succeeded
@@ -61,8 +62,11 @@ def _cmd_clear() -> None:
     if is_panicked():
         clear_panic_lock()
         print("Panic state cleared.")
-        print("Note: shields are still raised and services remain stopped.")
-        print("Restart services manually: terok gate start / terok vault start")
+        print("Note: shields are still raised on any containers that were running.")
+        print(
+            "Per-container services (vault, gate) come back automatically when you "
+            "start a fresh task — the supervisor stands them up at container launch."
+        )
     else:
         print("No panic state to clear.")
 

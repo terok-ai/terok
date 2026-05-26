@@ -490,7 +490,10 @@ class TestResolveHostAuthImage:
             patch("terok.lib.integrations.executor.ImageBuilder.image_agents", return_value=set()),
             patch("sys.stdin.isatty", return_value=True),
             patch("sys.stdout.isatty", return_value=True),
-            patch("terok.lib.core.config.get_global_image_agents", return_value="all"),
+            patch(
+                "terok.lib.integrations.executor.ExecutorConfigView.image_agents",
+                return_value="all",
+            ),
             patch(
                 "terok.lib.integrations.executor.ExecutorConfigView.image_base_image",
                 return_value="ubuntu:24.04",
@@ -516,7 +519,10 @@ class TestResolveHostAuthImage:
             patch("terok.lib.integrations.executor.ImageBuilder.image_agents", return_value=set()),
             patch("sys.stdin.isatty", return_value=True),
             patch("sys.stdout.isatty", return_value=True),
-            patch("terok.lib.core.config.get_global_image_agents", return_value="all"),
+            patch(
+                "terok.lib.integrations.executor.ExecutorConfigView.image_agents",
+                return_value="all",
+            ),
             patch(
                 "terok.lib.integrations.executor.ExecutorConfigView.image_base_image",
                 return_value="ubuntu:24.04",
@@ -544,7 +550,10 @@ class TestResolveHostAuthImage:
             patch("terok.lib.integrations.executor.ImageBuilder.image_agents", return_value=set()),
             patch("sys.stdin.isatty", return_value=True),
             patch("sys.stdout.isatty", return_value=True),
-            patch("terok.lib.core.config.get_global_image_agents", return_value="all"),
+            patch(
+                "terok.lib.integrations.executor.ExecutorConfigView.image_agents",
+                return_value="all",
+            ),
             patch(
                 "terok.lib.integrations.executor.ExecutorConfigView.image_base_image",
                 return_value="ubuntu:24.04",
@@ -572,7 +581,10 @@ class TestResolveHostAuthImage:
                 "terok.lib.integrations.executor.ExecutorConfigView.image_base_image",
                 return_value="fedora:43",
             ),
-            patch("terok.lib.core.config.get_global_image_agents", return_value="all"),
+            patch(
+                "terok.lib.integrations.executor.ExecutorConfigView.image_agents",
+                return_value="all",
+            ),
         ):
             image = auth._resolve_host_auth_image("claude")
         assert image == "terok-l1-cli:fedora-43"

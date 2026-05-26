@@ -17,6 +17,8 @@ diagnostic process.
 
 from __future__ import annotations
 
+import json
+import socket
 import subprocess
 from dataclasses import dataclass
 from pathlib import Path
@@ -29,7 +31,6 @@ from terok.lib.integrations.sandbox import (
     DoctorCheck,
     ExecResult,
     ShieldManager,
-    VaultManager,
     sandbox_doctor_checks,
 )
 
@@ -46,6 +47,14 @@ _CheckResult = tuple[str, str, str]
 _SHIELD_STATE_FILENAME = "shield_desired_state"
 _CONTAINER_WORKSPACE = "/workspace"  # nosec B108 — standard workspace mount point
 _SHIELD_STATE_LABEL = "Shield state"
+
+#: Per-container socket file names the supervisor binds inside the
+#: container's runtime dir (``cfg.runtime_dir / "run" / <cname>``).  These
+#: mirror the well-known names the supervisor uses; the gate one only
+#: exists when the container's gate is wired.
+_VAULT_SOCKET_FILENAME = "vault.sock"
+_GATE_SOCKET_FILENAME = "gate-server.sock"
+_REACHABILITY_TCP_TIMEOUT_S = 2.0
 
 #: Map from per-check ``(category, label-prefix)`` → human-readable group
 #: heading.  Checks that match a row here are coalesced under one
@@ -131,29 +140,40 @@ _PORT_DRIFT_HINT = (
 )
 
 
+#: The container always reaches the per-container gate via the localhost
+#: socat bridge on this fixed port (``TCP-LISTEN:9418`` in
+#: ``ensure-bridges.sh``), in both socket and TCP modes — must match
+#: ``environment._CONTAINER_GATE_PORT``.
+_CONTAINER_GATE_HOST = "localhost"
+_CONTAINER_GATE_PORT = 9418
+
+
 def _gatekeeping_remote_verdict(
-    parsed: ParseResult, port: int | None, safe_url: str, gate_port: int | None
+    parsed: ParseResult, port: int | None, safe_url: str
 ) -> CheckVerdict:
     """Verdict for a gatekeeping-class git origin — it must route through the gate.
 
-    Gate URL shape: ``http://<token>@host.containers.internal:<port>/<name>``.
+    Gate URL shape: ``http://<token>@localhost:9418/<name>`` — the gate now
+    runs inside the per-container supervisor and the container reaches it via
+    the fixed in-container socat bridge, the same in both socket and TCP modes.
     """
-    if parsed.hostname != "host.containers.internal":
+    if parsed.hostname != _CONTAINER_GATE_HOST:
         return CheckVerdict(
             "error",
-            f"git origin: {safe_url!r} bypasses gate — should use host.containers.internal",
+            f"git origin: {safe_url!r} bypasses gate — should use {_CONTAINER_GATE_HOST}",
             fixable=False,
         )
-    if gate_port is not None and port != gate_port:
+    if port != _CONTAINER_GATE_PORT:
         return CheckVerdict(
             "error",
-            f"git origin: port {port} does not match gate port {gate_port}" + _PORT_DRIFT_HINT,
+            f"git origin: port {port} does not match gate port {_CONTAINER_GATE_PORT}"
+            + _PORT_DRIFT_HINT,
             fixable=False,
         )
     return CheckVerdict("ok", "git origin: routed through gate")
 
 
-def _git_remote_check(security_class: str, gate_port: int | None) -> DoctorCheck:
+def _git_remote_check(security_class: str) -> DoctorCheck:
     """Check that git origin remote matches the expected pattern for the security class."""
 
     def _eval(rc: int, stdout: str, stderr: str) -> CheckVerdict:
@@ -173,7 +193,7 @@ def _git_remote_check(security_class: str, gate_port: int | None) -> DoctorCheck
         safe_url = urlunparse(parsed._replace(netloc=netloc))
 
         if security_class == "gatekeeping":
-            return _gatekeeping_remote_verdict(parsed, port, safe_url, gate_port)
+            return _gatekeeping_remote_verdict(parsed, port, safe_url)
         # Online mode: any URL is acceptable
         return CheckVerdict("ok", f"git origin: {safe_url}")
 
@@ -214,16 +234,15 @@ def _port_drift_check(env_var: str, label: str, expected: int) -> DoctorCheck:
 
 def _terok_doctor_checks(
     project_id: str,
-    gate_port: int | None,
     token_broker_port: int | None,
     ssh_signer_port: int | None,
 ) -> list[DoctorCheck]:
     """Build terok-level health checks from project config.
 
-    ``None`` for any of the three port arguments selects socket mode
-    for that subsystem: the matching drift check is omitted because
-    sandbox doesn't bake a ``TEROK_*_PORT`` env into the container in
-    that mode, so there is no value to drift from.
+    ``None`` for either port argument selects socket mode for that
+    subsystem: the matching drift check is omitted because sandbox
+    doesn't bake a ``TEROK_*_PORT`` env into the container in that mode,
+    so there is no value to drift from.
     """
     project = load_project(project_id)
 
@@ -237,7 +256,7 @@ def _terok_doctor_checks(
     checks.append(_git_identity_check(human_name, human_email, "name"))
     checks.append(_git_identity_check(human_name, human_email, "email"))
 
-    checks.append(_git_remote_check(project.security_class, gate_port))
+    checks.append(_git_remote_check(project.security_class))
     if token_broker_port is not None:
         checks.append(
             _port_drift_check(
@@ -289,6 +308,94 @@ def _check_shield_state(task_dir: Path, cname: str) -> _CheckResult:
 
 
 # ---------------------------------------------------------------------------
+# Per-container service reachability (host-side, best-effort)
+# ---------------------------------------------------------------------------
+
+
+def _container_runtime_dir(cname: str) -> Path:
+    """Return the host-side per-container runtime dir the supervisor binds into.
+
+    Mirrors terok-sandbox's
+    [`allocate_per_container_resources`][terok_sandbox.allocate_per_container_resources]:
+    ``cfg.runtime_dir / "run" / <container-name>``.  The supervisor binds
+    ``vault.sock`` / ``gate-server.sock`` inside this directory in socket
+    mode; in TCP mode it listens on loopback ports recorded in the sidecar.
+    """
+    return make_sandbox_config().runtime_dir / "run" / cname
+
+
+def _read_sidecar_ports(cname: str) -> dict[str, int]:
+    """Read the per-container sidecar JSON and return its TCP port fields.
+
+    The sidecar is the same file the supervisor reads to learn its wiring;
+    in TCP mode it carries the loopback ports the per-container services
+    listen on.  ``tcp_port`` is the vault token broker; ``gate_port`` the
+    gate (present only once the launch path records it).  Returns an empty
+    mapping when the sidecar is absent or unreadable — this probe is
+    best-effort and never fatal.
+    """
+    try:
+        sidecar = make_sandbox_config().state_dir / "sidecar" / f"{cname}.json"
+        payload = json.loads(sidecar.read_text(encoding="utf-8"))
+    except Exception:  # noqa: BLE001 — best-effort; any read/parse failure → no ports
+        return {}
+    if not isinstance(payload, dict):
+        return {}
+    return {k: v for k in ("tcp_port", "gate_port") if isinstance(v := payload.get(k), int)}
+
+
+def _tcp_reachable(port: int) -> bool:
+    """Return whether a TCP connect to ``127.0.0.1:<port>`` succeeds."""
+    try:
+        with socket.create_connection(("127.0.0.1", port), timeout=_REACHABILITY_TCP_TIMEOUT_S):
+            return True
+    except OSError:
+        return False
+
+
+def _check_service_reachable(
+    label: str, cname: str, socket_filename: str, tcp_port: int | None
+) -> _CheckResult:
+    """Best-effort reachability check for one per-container service.
+
+    Socket mode: the per-container unix socket exists under the runtime
+    dir.  TCP mode: a loopback connect to *tcp_port* succeeds.  Returns a
+    ``warn`` when the endpoint is missing/unreachable and ``ok`` otherwise
+    — never an ``error``, since the supervisor binds these lazily and a
+    transient miss must not fail the doctor run.
+    """
+    if make_sandbox_config().services_mode == "socket":
+        sock_path = _container_runtime_dir(cname) / socket_filename
+        if sock_path.exists():
+            return ("ok", label, f"socket present ({sock_path})")
+        return ("warn", label, f"socket missing ({sock_path})")
+    # TCP mode
+    if tcp_port is None:
+        return ("warn", label, "TCP port not recorded in sidecar — cannot probe")
+    if _tcp_reachable(tcp_port):
+        return ("ok", label, f"reachable on 127.0.0.1:{tcp_port}")
+    return ("warn", label, f"not reachable on 127.0.0.1:{tcp_port}")
+
+
+def _check_per_container_services(cname: str) -> list[_CheckResult]:
+    """Reachability checks for this container's per-container vault + gate.
+
+    Both are warn-level and best-effort: they confirm the supervisor has
+    stood up the endpoints the container talks to, without ever blocking
+    the rest of the doctor run.
+    """
+    ports = _read_sidecar_ports(cname)
+    return [
+        _check_service_reachable(
+            "Vault reachable", cname, _VAULT_SOCKET_FILENAME, ports.get("tcp_port")
+        ),
+        _check_service_reachable(
+            "Gate reachable", cname, _GATE_SOCKET_FILENAME, ports.get("gate_port")
+        ),
+    ]
+
+
+# ---------------------------------------------------------------------------
 # Orchestrator helpers
 # ---------------------------------------------------------------------------
 
@@ -312,9 +419,8 @@ def _collect_all_checks(
     "must be set" gate fires only in TCP mode.
     """
     cfg = make_sandbox_config()
-    vault = VaultManager(cfg)
-    token_broker_port = vault.token_broker_port
-    ssh_signer_port = vault.ssh_signer_port
+    token_broker_port = cfg.token_broker_port
+    ssh_signer_port = cfg.ssh_signer_port
     desired_shield = _read_desired_shield_state(task_dir)
 
     if cfg.services_mode == "tcp" and (
@@ -335,9 +441,7 @@ def _collect_all_checks(
         )
     )
     checks.extend(AgentRoster.shared().doctor_checks(token_broker_port=token_broker_port))
-    checks.extend(
-        _terok_doctor_checks(project_id, cfg.gate_port, token_broker_port, ssh_signer_port)
-    )
+    checks.extend(_terok_doctor_checks(project_id, token_broker_port, ssh_signer_port))
     return checks
 
 
@@ -484,11 +588,17 @@ class ContainerDoctor:
         runtime = _rt.resolve_runtime(load_project(self.project_id))
         checks = list(_collect_all_checks(self.project_id, task_dir))
 
+        # Per-container vault + gate reachability — host-side, best-effort.
+        # Emitted after the layered probes so they read as a closing
+        # "are this container's services actually up?" pair.
+        reachability = _check_per_container_services(cname)
+
         if reporter is None:
             # Legacy path: collect-and-return.  No streaming, no grouping.
             results: list[_CheckResult] = []
             for check in checks:
                 results.extend(_execute_check(runtime, check, cname, task_dir, fix=fix))
+            results.extend(reachability)
             return results
 
         # Streaming path with grouping.
@@ -501,6 +611,8 @@ class ContainerDoctor:
             reporter=reporter,
             label_prefix=label_prefix,
         )
+        for status, label, detail in reachability:
+            reporter.emit(status, f"{label_prefix}{label}", detail)
         return []
 
 

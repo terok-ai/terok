@@ -32,14 +32,12 @@ class TestVaultRoot:
     def test_root_fallback(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Root user gets /var/lib/terok/vault."""
         monkeypatch.delenv("TEROK_VAULT_DIR", raising=False)
-        monkeypatch.delenv("TEROK_CREDENTIALS_DIR", raising=False)
         monkeypatch.setattr(paths, "_is_root", lambda: True)
         assert paths.vault_root() == Path("/var/lib/terok/vault")
 
     def test_platformdirs_fallback(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Non-root with platformdirs delegates to user_data_dir."""
         monkeypatch.delenv("TEROK_VAULT_DIR", raising=False)
-        monkeypatch.delenv("TEROK_CREDENTIALS_DIR", raising=False)
         monkeypatch.setattr(paths, "_is_root", lambda: False)
         monkeypatch.setattr(paths, "_user_data_dir", lambda name: f"{MOCK_BASE}/data/{name}")
         assert paths.vault_root() == MOCK_BASE / "data" / "terok" / "vault"
@@ -47,7 +45,6 @@ class TestVaultRoot:
     def test_xdg_data_home_fallback(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Without platformdirs, XDG_DATA_HOME is honored."""
         monkeypatch.delenv("TEROK_VAULT_DIR", raising=False)
-        monkeypatch.delenv("TEROK_CREDENTIALS_DIR", raising=False)
         monkeypatch.setattr(paths, "_is_root", lambda: False)
         monkeypatch.setattr(paths, "_user_data_dir", None)
         monkeypatch.setenv("XDG_DATA_HOME", str(MOCK_BASE / "xdg-data"))
@@ -56,51 +53,10 @@ class TestVaultRoot:
     def test_bare_fallback(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Last resort: ~/.local/share/terok/vault."""
         monkeypatch.delenv("TEROK_VAULT_DIR", raising=False)
-        monkeypatch.delenv("TEROK_CREDENTIALS_DIR", raising=False)
         monkeypatch.delenv("XDG_DATA_HOME", raising=False)
         monkeypatch.setattr(paths, "_is_root", lambda: False)
         monkeypatch.setattr(paths, "_user_data_dir", None)
         assert paths.vault_root() == Path.home() / ".local" / "share" / "terok" / "vault"
-
-
-class TestVaultLegacyEnvVar:
-    """Verify ``TEROK_CREDENTIALS_DIR`` is honoured as a deprecated fallback."""
-
-    def test_legacy_env_var_returns_its_value(
-        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-    ) -> None:
-        """Without TEROK_VAULT_DIR, TEROK_CREDENTIALS_DIR is read — eases migration."""
-        legacy = tmp_path / "old-credentials"
-        monkeypatch.delenv("TEROK_VAULT_DIR", raising=False)
-        monkeypatch.setenv("TEROK_CREDENTIALS_DIR", str(legacy))
-        with pytest.warns(DeprecationWarning, match="TEROK_CREDENTIALS_DIR is deprecated"):
-            result = paths.vault_root()
-        assert result == legacy
-
-    def test_legacy_env_var_expands_tilde(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        """Tilde in the legacy env var is expanded too."""
-        monkeypatch.delenv("TEROK_VAULT_DIR", raising=False)
-        monkeypatch.setenv("TEROK_CREDENTIALS_DIR", "~/legacy-creds")
-        with pytest.warns(DeprecationWarning):
-            result = paths.vault_root()
-        assert "~" not in str(result)
-        assert result == Path.home() / "legacy-creds"
-
-    def test_new_env_var_takes_precedence_over_legacy(
-        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-    ) -> None:
-        """When both are set, TEROK_VAULT_DIR wins and no warning is emitted."""
-        new_path = tmp_path / "new-vault"
-        legacy = tmp_path / "old-credentials"
-        monkeypatch.setenv("TEROK_VAULT_DIR", str(new_path))
-        monkeypatch.setenv("TEROK_CREDENTIALS_DIR", str(legacy))
-        # pytest.warns with match=None + empty list confirms no warning was raised.
-        import warnings
-
-        with warnings.catch_warnings():
-            warnings.simplefilter("error")  # any warning → raises
-            result = paths.vault_root()
-        assert result == new_path
 
 
 class TestVaultNamespace:
@@ -109,7 +65,6 @@ class TestVaultNamespace:
     def test_default_is_under_namespace(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Default vault_root() nests under the terok/ namespace, not a sibling."""
         monkeypatch.delenv("TEROK_VAULT_DIR", raising=False)
-        monkeypatch.delenv("TEROK_CREDENTIALS_DIR", raising=False)
         monkeypatch.delenv("XDG_DATA_HOME", raising=False)
         monkeypatch.setattr(paths, "_is_root", lambda: False)
         monkeypatch.setattr(paths, "_user_data_dir", None)

@@ -357,19 +357,19 @@ def test_delete_lists_removed_and_skipped(
 
 
 # ---------------------------------------------------------------------------
-# _cmd_gate_path — bare path passthrough
+# _cmd_gate_path — file:// URL for IDEs / host git tools
 # ---------------------------------------------------------------------------
 
 
-def test_gate_path_prints_project_gate_path(capsys: pytest.CaptureFixture[str]) -> None:
-    """Output is the gate path verbatim — pipeable into ``git remote add``."""
+def test_gate_path_prints_project_gate_file_url(capsys: pytest.CaptureFixture[str]) -> None:
+    """Output is the gate mirror as a ``file://`` URL — pipeable into ``git remote add``."""
     from tests.testfs import FAKE_GATE_DIR
 
-    expected = FAKE_GATE_DIR / "p1.git"
-    fake = MagicMock(gate_path=expected)
+    gate_path = FAKE_GATE_DIR / "p1.git"
+    fake = MagicMock(gate_path=gate_path)
     with patch("terok.cli.commands.project.load_project", return_value=fake):
         _cmd_gate_path("p1")
-    assert capsys.readouterr().out.strip() == str(expected)
+    assert capsys.readouterr().out.strip() == gate_path.as_uri()
 
 
 # ---------------------------------------------------------------------------

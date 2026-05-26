@@ -15,7 +15,7 @@ import pytest
 from rich.text import Text
 
 from tests.testfs import MOCK_BASE, MOCK_CONFIG_ROOT
-from tests.testnet import GATE_PORT, TEST_EGRESS_URL, TEST_UPSTREAM_URL
+from tests.testnet import TEST_EGRESS_URL, TEST_UPSTREAM_URL
 from tests.unit.tui.tui_test_helpers import (
     import_app,
     import_screens,
@@ -116,17 +116,6 @@ def make_creation_app(app_class: type) -> object:
     return instance
 
 
-def make_gate_server_status(
-    *, mode: str = "systemd", running: bool = True, port: int = GATE_PORT
-) -> mock.Mock:
-    """Build a gate-server status mock with common defaults."""
-    status = mock.Mock()
-    status.mode = mode
-    status.running = running
-    status.port = port
-    return status
-
-
 def _task_action_cases() -> list[tuple[str, str]]:
     app_mod, _ = import_app()
     return list(app_mod.TASK_ACTION_HANDLERS.items())
@@ -141,11 +130,6 @@ def _auth_providers() -> list[str]:
 def _project_action_cases() -> list[tuple[str, str]]:
     app_mod, _ = import_app()
     return list(app_mod.PROJECT_ACTION_HANDLERS.items())
-
-
-def _gate_server_action_cases() -> list[tuple[str, str]]:
-    app_mod, _ = import_app()
-    return list(app_mod.GATE_SERVER_ACTION_HANDLERS.items())
 
 
 class TestRenderHelpers:
@@ -1362,90 +1346,8 @@ class TestProjectScreenNoneState:
         assert screen._task_count == 3
 
 
-class TestGateServerScreen:
-    """Tests for the GateServerScreen."""
-
-    def test_gate_server_screen_construction(self) -> None:
-        screens, _ = import_screens()
-        status = make_gate_server_status()
-        screen = screens.GateServerScreen(status)
-        assert screen._status == status
-
-    def test_gate_server_screen_construction_default(self) -> None:
-        screens, _ = import_screens()
-        screen = screens.GateServerScreen()
-        assert screen._status is None
-
-    def test_gate_server_screen_dismiss(self) -> None:
-        screens, _ = import_screens()
-        screen = screens.GateServerScreen()
-        screen.dismiss = mock.Mock()
-        run(screen.action_dismiss())
-        screen.dismiss.assert_called_once_with(None)
-
-    @pytest.mark.parametrize(
-        ("method_name", "expected"),
-        [
-            pytest.param("action_gate_install", "gate_install", id="install"),
-            pytest.param("action_gate_uninstall", "gate_uninstall", id="uninstall"),
-            pytest.param("action_gate_start", "gate_start", id="start"),
-            pytest.param("action_gate_stop", "gate_stop", id="stop"),
-        ],
-    )
-    def test_gate_server_screen_actions(self, method_name: str, expected: str) -> None:
-        screens, _ = import_screens()
-        screen = screens.GateServerScreen()
-        screen.dismiss = mock.Mock()
-        getattr(screen, method_name)()
-        screen.dismiss.assert_called_once_with(expected)
-
-
-class TestDisableOptions:
-    """Tests for the _disable_options helper used by systemd-dependent screens."""
-
-    def test_disable_options_disables_matching_ids(self) -> None:
-        """Options whose id is in the frozenset are disabled."""
-        screens, _ = import_screens()
-        option_list = mock.Mock()
-        opts = [mock.Mock(id="a"), mock.Mock(id="b"), mock.Mock(id="c")]
-        option_list.option_count = len(opts)
-        option_list.get_option_at_index = lambda idx: opts[idx]
-
-        screens._disable_options(option_list, frozenset({"a", "c"}))
-
-        option_list.disable_option_at_index.assert_any_call(0)
-        option_list.disable_option_at_index.assert_any_call(2)
-        assert option_list.disable_option_at_index.call_count == 2
-
-    def test_gate_server_systemd_option_ids(self) -> None:
-        """GateServerScreen declares the correct systemd option ids."""
-        screens, _ = import_screens()
-        assert {"gate_install", "gate_uninstall"} == screens.GateServerScreen._SYSTEMD_OPTIONS
-
-    def test_vault_systemd_option_ids(self) -> None:
-        """VaultScreen declares the correct systemd option ids."""
-        screens, _ = import_screens()
-        assert {
-            "vault_install",
-            "vault_uninstall",
-        } == screens.VaultScreen._SYSTEMD_OPTIONS
-
-
 class TestCommandPalette:
     """Tests for command palette customization."""
-
-    def test_get_system_commands_includes_gate_server(self) -> None:
-        from tests.unit.tui.tui_test_helpers import build_textual_stubs
-
-        stubs = build_textual_stubs()
-        _, app_class = import_app(stubs)
-        instance = app_class()
-        # get_system_commands imports SystemCommand at call time, so we need
-        # textual.app in sys.modules during the call.
-        with mock.patch.dict(sys.modules, stubs):
-            commands = list(app_class.get_system_commands(instance, screen=mock.Mock()))
-        titles = [cmd.title for cmd in commands]
-        assert "Git Gate Server" in titles
 
     def test_get_system_commands_includes_authenticate(self) -> None:
         """The host-wide auth flow is reachable from the command palette."""
@@ -1548,83 +1450,24 @@ class TestGlobalAuthBinding:
         instance._action_import_opencode_config.assert_not_called()
 
 
-class TestRenderGateServerStatus:
-    """Tests for the render_gate_server_status helper."""
+class TestProjectDetailsGateLine:
+    """The project-details gate line reflects mirror existence + staleness.
 
-    def test_render_gate_server_status_none(self) -> None:
-        screens, _ = import_screens()
-        result = screens.render_gate_server_status(None)
-        assert isinstance(result, Text)
-        assert "unknown" in str(result)
+    The gate now runs inside each task container's supervisor — there is
+    no host gate daemon whose status could override the mirror state.
+    """
 
-    def test_render_gate_server_status_running(self) -> None:
-        screens, _ = import_screens()
-        status = make_gate_server_status()
-        with mock.patch.object(
-            screens.GateServerManager, "check_units_outdated", return_value=None
-        ):
-            result = screens.render_gate_server_status(status)
-        text_str = str(result)
-        assert "running" in text_str
-        assert "systemd" in text_str
-        assert str(GATE_PORT) in text_str
-
-    def test_render_gate_server_status_stopped(self) -> None:
-        screens, _ = import_screens()
-        status = make_gate_server_status(mode="none", running=False)
-        with mock.patch.object(
-            screens.GateServerManager, "check_units_outdated", return_value=None
-        ):
-            result = screens.render_gate_server_status(status)
-        text_str = str(result)
-        assert "stopped" in text_str
-        assert "not running" in text_str
-
-    def test_render_gate_server_status_outdated(self) -> None:
-        screens, _ = import_screens()
-        status = make_gate_server_status()
-        with mock.patch.object(
-            screens.GateServerManager,
-            "check_units_outdated",
-            return_value="Units outdated (v1 vs v3)",
-        ):
-            result = screens.render_gate_server_status(status)
-        text_str = str(result)
-        assert "outdated" in text_str
-
-
-class TestCombinedGateStatus:
-    """Tests for combined gate status in render_project_details."""
-
-    def test_render_project_details_gate_server_down(self) -> None:
+    def test_gate_line_yes_when_mirror_present(self) -> None:
         widgets = import_widgets()
         project = make_project()
         state = {"ssh": True, "dockerfiles": True, "images": True, "gate": True}
-        gate_status = mock.Mock()
-        gate_status.running = False
 
-        result = widgets.render_project_details(
-            project, state, task_count=5, gate_server_status=gate_status
-        )
-        text_str = str(result)
-        assert "gate down" in text_str
-
-    def test_render_project_details_gate_server_ok(self) -> None:
-        widgets = import_widgets()
-        project = make_project()
-        state = {"ssh": True, "dockerfiles": True, "images": True, "gate": True}
-        gate_status = mock.Mock()
-        gate_status.running = True
-
-        result = widgets.render_project_details(
-            project, state, task_count=5, gate_server_status=gate_status
-        )
+        result = widgets.render_project_details(project, state, task_count=5)
         text_str = str(result)
         assert "gate down" not in text_str
         assert "yes" in text_str
 
-    def test_render_project_details_gate_server_none_fallback(self) -> None:
-        """When gate_server_status is None, show normal repo-based status."""
+    def test_gate_line_no_when_mirror_absent(self) -> None:
         widgets = import_widgets()
         project = make_project()
         state = {"ssh": True, "dockerfiles": True, "images": True, "gate": False}
@@ -1632,27 +1475,6 @@ class TestCombinedGateStatus:
         result = widgets.render_project_details(project, state, task_count=5)
         text_str = str(result)
         assert "gate down" not in text_str
-
-
-class TestGateServerActionDispatch:
-    """Tests for gate server action dispatch routing."""
-
-    @pytest.mark.parametrize(("action", "handler"), _gate_server_action_cases())
-    def test_gate_server_action_dispatch_all(self, action: str, handler: str) -> None:
-        """Every entry in GATE_SERVER_ACTION_HANDLERS routes to its handler."""
-        _, app_class = import_app()
-        instance = mock.Mock(spec=app_class)
-        run(app_class._on_gate_server_action_result(instance, action))
-        getattr(instance, handler).assert_called_once()
-
-    def test_gate_server_action_dispatch_none(self) -> None:
-        """None result does not dispatch any handler."""
-        app_mod, app_class = import_app()
-        instance = mock.Mock(spec=app_class)
-        run(app_class._on_gate_server_action_result(instance, None))
-        # No action handler should have been called
-        for handler in app_mod.GATE_SERVER_ACTION_HANDLERS.values():
-            getattr(instance, handler).assert_not_called()
 
 
 class TestDeleteTaskResult:
@@ -1719,48 +1541,38 @@ class TestDeleteTaskResult:
 # Vault Screen
 # ---------------------------------------------------------------------------
 
-MOCK_VAULT_SOCKET = MOCK_BASE / "run" / "vault.sock"
 MOCK_VAULT_DB = MOCK_BASE / "vault" / "credentials.db"
-MOCK_VAULT_ROUTES = MOCK_BASE / "vault" / "routes.json"
 
 
 def make_vault_status(
     *,
-    mode: str = "daemon",
-    running: bool = True,
-    transport: str | None = None,
-    routes_configured: int = 3,
-    credentials_stored: tuple[str, ...] = ("claude", "gh"),
-    ssh_keys_stored: int = 0,
-    passphrase_source: str | None = "keyring",
     locked: bool = False,
+    passphrase_source: str | None = "keyring",
+    credentials_stored: tuple[str, ...] | None = ("claude", "gh"),
+    credential_types: dict[str, str] | None = None,
+    ssh_keys_stored: int | None = 0,
     plaintext_passphrase_path: object | None = None,
+    db_path: object = MOCK_VAULT_DB,
+    recovery_acknowledged: bool = True,
+    db_error: str | None = None,
 ) -> mock.Mock:
-    """Build a vault status mock with common defaults.
+    """Build a vault status snapshot mock.
 
-    The post-#278 / #282 fields are set explicitly so ``mock.Mock``
-    truthiness doesn't accidentally trip the locked branch or the
-    plaintext-warning branch in
-    [`render_vault_status`][terok.tui.screens.render_vault_status].
-
-    ``transport`` defaults to ``None`` so existing tests get the
-    ``(not configured)`` rendering instead of leaking a ``Mock`` repr.
-    Tests that exercise the TCP / socket port surfacing pass
-    ``transport="tcp"`` / ``"socket"`` explicitly.
+    Mirrors the post-supervisor
+    [`VaultStatusSnapshot`][terok.lib.api.vault.VaultStatusSnapshot]
+    shape — pure DB-side facts, no daemon-mode / socket / transport
+    fields.
     """
     status = mock.Mock()
-    status.mode = mode
-    status.running = running
-    status.transport = transport
-    status.socket_path = MOCK_VAULT_SOCKET
-    status.db_path = MOCK_VAULT_DB
-    status.routes_path = MOCK_VAULT_ROUTES
-    status.routes_configured = routes_configured
-    status.credentials_stored = credentials_stored
-    status.ssh_keys_stored = ssh_keys_stored
-    status.passphrase_source = passphrase_source
     status.locked = locked
+    status.passphrase_source = passphrase_source
+    status.credentials_stored = credentials_stored
+    status.credential_types = credential_types or {}
+    status.ssh_keys_stored = ssh_keys_stored
     status.plaintext_passphrase_path = plaintext_passphrase_path
+    status.db_path = db_path
+    status.recovery_acknowledged = recovery_acknowledged
+    status.db_error = db_error
     return status
 
 
@@ -1791,10 +1603,6 @@ class TestVaultScreen:
     @pytest.mark.parametrize(
         ("method_name", "expected"),
         [
-            pytest.param("action_vault_install", "vault_install", id="install"),
-            pytest.param("action_vault_uninstall", "vault_uninstall", id="uninstall"),
-            pytest.param("action_vault_start", "vault_start", id="start"),
-            pytest.param("action_vault_stop", "vault_stop", id="stop"),
             pytest.param("action_vault_unlock", "vault_unlock", id="unlock"),
             pytest.param("action_vault_lock", "vault_lock", id="lock"),
             pytest.param("action_vault_seal", "vault_seal", id="seal"),
@@ -1820,46 +1628,23 @@ class TestRenderVaultStatus:
         assert isinstance(result, Text)
         assert "unknown" in str(result)
 
-    def test_render_vault_status_running(self) -> None:
-        """Running vault shows status and credential details."""
+    def test_render_vault_status_unlocked_with_creds(self) -> None:
+        """Unlocked snapshot shows credential names and the resolved passphrase tier."""
         screens, _ = import_screens()
         status = make_vault_status()
-        result = screens.render_vault_status(status)
-        text_str = str(result)
-        assert "running" in text_str
+        text_str = str(screens.render_vault_status(status))
         assert "claude" in text_str
-        assert "3 configured" in text_str
+        assert "Locked:" in text_str
+        assert "no" in text_str
+        assert "resolved via keyring" in text_str
 
-    def test_render_vault_status_stopped(self) -> None:
-        """Stopped vault shows hint text."""
+    def test_render_vault_status_locked_shows_help_block(self) -> None:
+        """Locked snapshot ends with the supervisor-aware unlock-hint block."""
         screens, _ = import_screens()
-        status = make_vault_status(running=False)
-        result = screens.render_vault_status(status)
-        text_str = str(result)
-        assert "stopped" in text_str
-        assert "actions below" in text_str
-
-    def test_render_vault_status_standby(self) -> None:
-        """Systemd socket active but service idle shows standby."""
-        screens, _ = import_screens()
-        status = make_vault_status(mode="systemd", running=False)
-        with mock.patch("terok.lib.api.vault.VaultManager.is_socket_active", return_value=True):
-            result = screens.render_vault_status(status)
-        text_str = str(result)
-        assert "standby" in text_str
-        assert "first connection" in text_str
-        # Standby should not show the "actions below" help text
-        assert "actions below" not in text_str
-
-    def test_render_vault_status_systemd_stopped(self) -> None:
-        """Systemd socket inactive shows stopped with help text."""
-        screens, _ = import_screens()
-        status = make_vault_status(mode="systemd", running=False)
-        with mock.patch("terok.lib.api.vault.VaultManager.is_socket_active", return_value=False):
-            result = screens.render_vault_status(status)
-        text_str = str(result)
-        assert "stopped" in text_str
-        assert "actions below" in text_str
+        status = make_vault_status(locked=True, passphrase_source=None)
+        text_str = str(screens.render_vault_status(status))
+        assert "Unlock" in text_str or "unlock" in text_str
+        assert "supervisor" in text_str
 
     def test_render_vault_status_no_credentials(self) -> None:
         """Empty credentials tuple renders 'none stored'."""
@@ -1923,88 +1708,18 @@ class TestRenderVaultStatus:
         assert "WARNING" not in text_str
         assert "plaintext" not in text_str
 
-    def test_render_vault_status_renames_mode_to_activation(self) -> None:
-        """The legacy ``Mode:`` label is gone — lifecycle now reads as ``Activation:``.
+    def test_render_vault_status_shows_db_path(self) -> None:
+        """The DB path (display-only) surfaces on every render.
 
-        Guards the rename so a future regression that re-introduces the
-        old label gets caught here.  The two TUI / CLI views are kept in
-        lockstep (executor#356), so a one-sided revert would leave the
-        operator looking at two different vocabularies.
+        Mirrors the executor CLI's ``vault status`` output so the TUI
+        and shell views agree at a glance.  Per-container daemon
+        endpoints (broker / signer / socket) live inside each
+        supervisor and are not rendered host-side anymore.
         """
         screens, _ = import_screens()
-        status = make_vault_status(mode="systemd", transport=None)
+        status = make_vault_status()
         text_str = str(screens.render_vault_status(status))
-        assert "Activation:  systemd" in text_str
-        assert "Mode:        " not in text_str
-
-    def test_render_vault_status_tcp_surfaces_ports_and_annotates_socket(self) -> None:
-        """TCP mode surfaces ``TCP broker:`` / ``TCP signer:`` and tags ``Socket:``.
-
-        Mirrors the executor CLI behaviour from terok-ai/terok-executor#356:
-        the daemon still binds ``vault.sock`` as a local fast-path probe
-        target but no client traffic touches it, so surfacing the TCP
-        listeners and annotating the lingering Unix line is what keeps
-        operator-readable.
-        """
-        screens, _ = import_screens()
-        status = make_vault_status(mode="systemd", transport="tcp")
-        with (
-            mock.patch(
-                "terok.lib.api.setup.VaultManager.token_broker_port",
-                new_callable=mock.PropertyMock,
-                return_value=18701,
-            ),
-            mock.patch(
-                "terok.lib.api.setup.VaultManager.ssh_signer_port",
-                new_callable=mock.PropertyMock,
-                return_value=18702,
-            ),
-        ):
-            text_str = str(screens.render_vault_status(status))
-        assert "Transport:   tcp" in text_str
-        assert "TCP broker:  127.0.0.1:18701" in text_str
-        assert "TCP signer:  127.0.0.1:18702" in text_str
-        assert "(fast-path probe only)" in text_str
-
-    def test_render_vault_status_socket_surfaces_signer_socket(self, tmp_path) -> None:
-        """Socket mode surfaces the SSH signer socket alongside the broker socket.
-
-        Both bind-mounted endpoints (broker + signer) appear in the
-        rendered block so the TUI matches what containers actually see
-        per the executor env wiring.  TCP-only embellishments must stay
-        absent.
-        """
-        from terok_sandbox import SandboxConfig
-
-        cfg = SandboxConfig(
-            state_dir=tmp_path / "state",
-            runtime_dir=tmp_path / "run",
-            vault_dir=tmp_path / "vault",
-            services_mode="socket",
-        )
-        screens, _ = import_screens()
-        status = make_vault_status(mode="systemd", transport="socket")
-        with mock.patch("terok.lib.api.make_sandbox_config", return_value=cfg):
-            text_str = str(screens.render_vault_status(status))
-        assert "Transport:   socket" in text_str
-        assert f"SSH signer:  {cfg.ssh_signer_socket_path}" in text_str
-        # TCP-only embellishments stay out of the socket-mode render.
-        assert "TCP broker:" not in text_str
-        assert "TCP signer:" not in text_str
-        assert "(fast-path probe only)" not in text_str
-
-    def test_render_vault_status_unknown_transport_falls_back(self) -> None:
-        """``status.transport is None`` (or unexpected) renders ``(not configured)``.
-
-        Also guards the allow-list against any future widening that
-        might leak a raw ``Mock`` / repr into operator-facing output.
-        """
-        screens, _ = import_screens()
-        status = make_vault_status(mode="none", running=False, transport=None)
-        text_str = str(screens.render_vault_status(status))
-        assert "Transport:   (not configured)" in text_str
-        assert "TCP broker:" not in text_str
-        assert "SSH signer:" not in text_str
+        assert str(MOCK_VAULT_DB) in text_str
 
 
 class TestVaultUnlockModal:
@@ -2149,13 +1864,13 @@ class TestVaultScreenRefresh:
     """Tests for vault screen refresh logic."""
 
     def test_refresh_status_updates_status(self) -> None:
-        """_refresh_status fetches new status from terok_sandbox."""
+        """_refresh_status fetches a new snapshot from the api facade."""
         screens, _ = import_screens()
-        screen = screens.VaultScreen(make_vault_status(running=False))
+        screen = screens.VaultScreen(make_vault_status(locked=True, passphrase_source=None))
         detail = mock.Mock()
         screen.query_one = mock.Mock(return_value=detail)
-        new_status = make_vault_status(running=True)
-        with mock.patch("terok.lib.api.vault.VaultManager.get_status", return_value=new_status):
+        new_status = make_vault_status()
+        with mock.patch("terok.lib.api.vault.VaultStatusSnapshot.load", return_value=new_status):
             screen._refresh_status()
         assert screen._status is new_status
         detail.update.assert_called_once()
@@ -2166,7 +1881,7 @@ class TestVaultScreenRefresh:
         screen = screens.VaultScreen(make_vault_status())
         detail = mock.Mock()
         screen.query_one = mock.Mock(return_value=detail)
-        with mock.patch("terok.lib.api.vault.VaultManager.get_status", side_effect=RuntimeError):
+        with mock.patch("terok.lib.api.vault.VaultStatusSnapshot.load", side_effect=RuntimeError):
             screen._refresh_status()
         assert screen._status is None
 
@@ -2201,10 +1916,6 @@ class TestVaultActionDispatch:
     @pytest.mark.parametrize(
         ("action", "handler"),
         [
-            ("vault_install", "_action_vault_install"),
-            ("vault_uninstall", "_action_vault_uninstall"),
-            ("vault_start", "_action_vault_start"),
-            ("vault_stop", "_action_vault_stop"),
             ("vault_unlock", "_action_vault_unlock"),
             ("vault_lock", "_action_vault_lock"),
             ("vault_seal", "_action_vault_seal"),
@@ -2225,10 +1936,12 @@ class TestVaultActionDispatch:
         _, app_class = import_app()
         instance = mock.Mock(spec=app_class)
         run(app_class._on_vault_action_result(instance, None))
-        instance._action_vault_install.assert_not_called()
-        instance._action_vault_uninstall.assert_not_called()
-        instance._action_vault_start.assert_not_called()
-        instance._action_vault_stop.assert_not_called()
+        instance._action_vault_unlock.assert_not_called()
+        instance._action_vault_lock.assert_not_called()
+        instance._action_vault_seal.assert_not_called()
+        instance._action_vault_to_keyring.assert_not_called()
+        instance._action_vault_reveal.assert_not_called()
+        instance._action_vault_acknowledge.assert_not_called()
 
 
 class TestVaultActionImplementations:
@@ -2857,19 +2570,23 @@ class TestRefreshVaultStatus:
         app_mod, app_class = import_app()
         instance = self._make_instance(app_class)
         status = make_vault_status(locked=False, passphrase_source="keyring")
-        with mock.patch.object(app_mod.VaultManager, "get_status", return_value=status):
+        with mock.patch.object(
+            app_mod.VaultStatusSnapshot, "load", classmethod(lambda cls: status)
+        ):
             run(app_class._refresh_vault_status(instance))
         assert instance._last_vault_status is status
         instance._render_status_pill.assert_called_once_with(status)
         instance.push_screen.assert_not_called()
 
     def test_refresh_probe_failure_clears_status(self) -> None:
-        """``get_vault_status`` raising still updates the pill (with ``None``)."""
+        """``VaultStatusSnapshot.load`` raising still updates the pill (with ``None``)."""
         app_mod, app_class = import_app()
         instance = self._make_instance(app_class)
-        with mock.patch.object(
-            app_mod.VaultManager, "get_status", side_effect=RuntimeError("nope")
-        ):
+
+        def _boom(cls):  # noqa: ARG001 — classmethod stub raises unconditionally
+            raise RuntimeError("nope")
+
+        with mock.patch.object(app_mod.VaultStatusSnapshot, "load", classmethod(_boom)):
             run(app_class._refresh_vault_status(instance, push_modal_if_locked=True))
         assert instance._last_vault_status is None
         instance._render_status_pill.assert_called_once_with(None)
@@ -2880,7 +2597,9 @@ class TestRefreshVaultStatus:
         app_mod, app_class = import_app()
         instance = self._make_instance(app_class)
         status = make_vault_status(locked=True, passphrase_source=None)
-        with mock.patch.object(app_mod.VaultManager, "get_status", return_value=status):
+        with mock.patch.object(
+            app_mod.VaultStatusSnapshot, "load", classmethod(lambda cls: status)
+        ):
             run(app_class._refresh_vault_status(instance, push_modal_if_locked=True))
         instance.push_screen.assert_awaited_once()
         modal_arg = instance.push_screen.call_args[0][0]
@@ -2893,7 +2612,9 @@ class TestRefreshVaultStatus:
         app_mod, app_class = import_app()
         instance = self._make_instance(app_class)
         status = make_vault_status(locked=True, passphrase_source=None)
-        with mock.patch.object(app_mod.VaultManager, "get_status", return_value=status):
+        with mock.patch.object(
+            app_mod.VaultStatusSnapshot, "load", classmethod(lambda cls: status)
+        ):
             run(app_class._refresh_vault_status(instance, push_modal_if_locked=False))
         instance.push_screen.assert_not_called()
 

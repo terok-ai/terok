@@ -891,83 +891,20 @@ class ProjectActionsMixin(_MixinBase):
         self.current_project_id = None
         await self.refresh_projects()
 
-    # ---------- Gate server actions ----------
-
-    async def _action_gate_install(self) -> None:
-        """Install systemd socket units for the gate server."""
-        self._run_console_action(
-            "terok.tui.worker_actions:gate_install",
-            title="Installing gate server systemd units",
-        )
-
-    async def _action_gate_uninstall(self) -> None:
-        """Uninstall systemd units for the gate server."""
-        self._run_console_action(
-            "terok.tui.worker_actions:gate_uninstall",
-            title="Uninstalling gate server systemd units",
-        )
-
-    async def _action_gate_start(self) -> None:
-        """Start the gate server daemon."""
-        self._run_console_action(
-            "terok.tui.worker_actions:gate_start",
-            title="Starting gate server daemon",
-        )
-
-    async def _action_gate_stop(self) -> None:
-        """Stop the gate server daemon."""
-        self._run_console_action(
-            "terok.tui.worker_actions:gate_stop",
-            title="Stopping gate server daemon",
-        )
-
     # ---------- Shield actions ----------
 
     async def _action_shield_setup(self) -> None:
-        """Push shield setup modal and run hook installation on result."""
-        from .screens import ShieldSetupScreen
-
-        await self.push_screen(ShieldSetupScreen(), self._on_shield_setup_result)
-
-    async def _on_shield_setup_result(self, result: str | None) -> None:
-        """Run hook installation after shield setup modal choice."""
-        if result is None:
-            return
+        """Install shield OCI hooks into the canonical terok-owned dir."""
         self._run_console_action(
             "terok.tui.worker_actions:shield_setup",
-            result == "root",
             title="Installing shield hooks",
         )
 
     # ---------- Vault actions ----------
-
-    async def _action_vault_install(self) -> None:
-        """Install systemd socket activation for the vault."""
-        self._run_console_action(
-            "terok.tui.worker_actions:vault_install",
-            title="Installing vault systemd socket",
-        )
-
-    async def _action_vault_uninstall(self) -> None:
-        """Uninstall vault systemd units."""
-        self._run_console_action(
-            "terok.tui.worker_actions:vault_uninstall",
-            title="Uninstalling vault systemd units",
-        )
-
-    async def _action_vault_start(self) -> None:
-        """Generate routes and start the vault daemon."""
-        self._run_console_action(
-            "terok.tui.worker_actions:vault_start",
-            title="Starting vault",
-        )
-
-    async def _action_vault_stop(self) -> None:
-        """Stop the vault daemon."""
-        self._run_console_action(
-            "terok.tui.worker_actions:vault_stop",
-            title="Stopping vault",
-        )
+    #
+    # No daemon-lifecycle actions: vault is now a per-container proxy
+    # spawned by the supervisor — there's nothing on the host to
+    # install / uninstall / start / stop.
 
     async def _action_vault_unlock(self) -> None:
         """Prompt for the SQLCipher passphrase and land it on the session-file tier.
@@ -981,7 +918,7 @@ class ProjectActionsMixin(_MixinBase):
         await self.push_screen(VaultUnlockModal(), self._on_vault_unlock_result)
 
     async def _action_vault_lock(self) -> None:
-        """Clear the session-file and stop the daemon (reversible).
+        """Clear the session-file (reversible).
 
         Persistent tiers (keyring, sealed systemd-creds,
         ``credentials.passphrase``) are intentionally untouched — the
@@ -1014,9 +951,10 @@ class ProjectActionsMixin(_MixinBase):
         Defers to sandbox's ``handle_vault_to_keyring``: resolves the
         passphrase from whichever tier currently holds it, writes to
         the keyring, flips ``credentials.use_keyring: true``, drops
-        any plaintext fallbacks, removes the session/sealed copies,
-        and restarts the daemon.  The shell-side equivalent of
-        ``terok vault passphrase to-keyring``.
+        any plaintext fallbacks, and removes the session/sealed copies.
+        There is no host daemon to restart — the new tier is resolved
+        afresh by the next container's supervisor.  The shell-side
+        equivalent of ``terok vault passphrase to-keyring``.
         """
         self._run_console_action(
             "terok.tui.worker_actions:vault_to_keyring",
