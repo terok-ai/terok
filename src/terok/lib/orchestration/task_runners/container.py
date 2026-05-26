@@ -147,6 +147,14 @@ def _run_container(
     the annotation.  Project/task IDs lived as separate annotations in
     earlier iterations; the JSON file made them redundant.
 
+    The same dossier path also flows through
+    [`AgentRunner.launch_prepared`][terok_executor.AgentRunner.launch_prepared]'s
+    ``dossier_path`` kwarg into the per-container supervisor sidecar
+    written before ``podman run`` — the supervisor's OCI prestart hook
+    reads it back at container start, so the in-container vault proxy
+    and clearance hub identify themselves with the correct project /
+    task identity from the first event.
+
     Podman command assembly (userns, shield/bypass, GPU, env redaction,
     CDI detection) is delegated to `AgentRunner.launch_prepared`.
     In sealed isolation mode (``project.is_sealed``) the sandbox splits
@@ -204,6 +212,9 @@ def _run_container(
             runtime=project.runtime,
             hostname=cname,
             annotations=annotations,
+            project_id=project.id,
+            task_id=task_id,
+            dossier_path=task_dossier_path,
         )
     except FileNotFoundError as exc:
         raise SystemExit(f"podman not found; please install podman ({exc})") from exc

@@ -8,33 +8,35 @@ elsewhere in terok import from this module rather than from
 ``terok_clearance`` directly — see the package docstring in
 [`terok.lib.integrations`][terok.lib.integrations] for the rationale.
 
-Every symbol comes from the wheel's top-level public API.  The
-``HubService`` / ``NotifierService`` class pair replaces the previous
-loose installer/uninstaller/version-probe free functions (W5.E);
-``outdated_summary`` is the combined drift query that aggregates
-both services' state for ``terok sickbay``.
+Every symbol comes from the wheel's top-level public API.  In the
+per-container-supervisor model the hub + verdict server are composed
+in-process by the supervisor (one of each per container) and operator
+UIs multiplex across the per-container sockets via
+[`MultiSocketSubscriber`][terok_clearance.MultiSocketSubscriber].
+There is no host-side ``HubService`` / ``NotifierService`` daemon
+anymore — the legacy systemd-unit installers are gone.
 """
 
 from terok_clearance import (  # noqa: F401 — re-exported public API
+    ALL_NOTIFY_CATEGORIES,
     COMMANDS,
-    HUB_UNIT_NAME,
-    NOTIFIER_UNIT_NAME,
+    NOTIFY_BLOCKED,
+    NOTIFY_VERDICT,
     CallbackNotifier,
     EventSubscriber,
-    HubService,
+    MultiSocketSubscriber,
     Notification,
-    NotifierService,
-    outdated_summary,
+    create_notifier,
 )
 
 __all__ = [
+    "ALL_NOTIFY_CATEGORIES",
     "COMMANDS",
     "CallbackNotifier",
     "EventSubscriber",
-    "HUB_UNIT_NAME",
-    "HubService",
-    "NOTIFIER_UNIT_NAME",
+    "MultiSocketSubscriber",
+    "NOTIFY_BLOCKED",
+    "NOTIFY_VERDICT",
     "Notification",
-    "NotifierService",
-    "outdated_summary",
+    "create_notifier",
 ]

@@ -33,7 +33,7 @@ class TestNotifyBridge:
     """Tests for the ClearanceScreen._on_notify → post_message bridge."""
 
     def test_on_notify_posts_message(self) -> None:
-        """_on_notify posts a _NotificationPosted message to the screen."""
+        """_on_notify posts a NotificationPosted message to the screen."""
         mod = _import_clearance()
         screen = mod.ClearanceScreen()
         screen.post_message = mock.Mock()
@@ -135,6 +135,32 @@ class TestLifecycleBridge:
         assert screen.post_message.call_count == 2
 
 
+class TestMultiSocketWiring:
+    """``ClearanceScreen.on_mount`` wires a ``MultiSocketSubscriber``.
+
+    Per-container supervisors expose one varlink hub socket each under
+    ``$XDG_RUNTIME_DIR/terok/clearance/<id>.sock``; the screen must
+    multiplex across that set rather than open a single global socket
+    (which no longer exists).
+    """
+
+    def test_on_mount_builds_multi_socket_subscriber(self) -> None:
+        """``on_mount`` constructs ``MultiSocketSubscriber`` over the per-container glob."""
+        mod = _import_clearance()
+        screen = mod.ClearanceScreen()
+        rich_log = mock.Mock()
+        screen.query_one = mock.Mock(return_value=rich_log)
+
+        with mock.patch("terok.lib.api.clearance.MultiSocketSubscriber") as mock_subscriber_cls:
+            mock_subscriber = mock.Mock()
+            mock_subscriber.start = mock.AsyncMock()
+            mock_subscriber_cls.return_value = mock_subscriber
+            asyncio.run(screen.on_mount())
+
+        mock_subscriber_cls.assert_called_once()
+        mock_subscriber.start.assert_awaited_once()
+
+
 class TestRenderNotification:
     """``_render_notification`` is a one-liner that joins ``summary`` + subscriber body.
 
@@ -150,7 +176,7 @@ class TestRenderNotification:
     def test_passes_subscriber_body_through_verbatim(self) -> None:
         """The dossier-aware body the subscriber composed lands in the log unchanged."""
         mod = _import_clearance()
-        msg = mod._NotificationPosted(
+        msg = mod.NotificationPosted(
             nid=1,
             summary="Blocked: seznam.cz:80",
             body="Task: terok/abc · diligent-octopus\nProtocol: TCP",
@@ -170,7 +196,7 @@ class TestRenderNotification:
     def test_bare_container_body_passes_through_too(self) -> None:
         """Standalone container path: the subscriber's bare-name body reaches the log as-is."""
         mod = _import_clearance()
-        msg = mod._NotificationPosted(
+        msg = mod.NotificationPosted(
             nid=1,
             summary="Blocked: 1.2.3.4:443",
             body="Container: fa0905d97a1c\nProtocol: TCP",
@@ -186,7 +212,7 @@ class TestRenderNotification:
 
 
 class TestOnNotificationPosted:
-    """``on__notification_posted`` routes new blocks vs verdict updates vs info."""
+    """``on_notification_posted`` routes new blocks vs verdict updates vs info."""
 
     def _screen_with_mocked_queries(self, mod: Any) -> tuple[Any, mock.Mock, mock.Mock]:
         """Return a screen whose query_one returns (log, pending_list) mocks.
@@ -214,7 +240,7 @@ class TestOnNotificationPosted:
         """A notification with actions queues onto the pending list and logs once."""
         mod = _import_clearance()
         screen, log, pending_list = self._screen_with_mocked_queries(mod)
-        msg = mod._NotificationPosted(
+        msg = mod.NotificationPosted(
             nid=42,
             summary="Blocked: seznam.cz:80",
             body="Container: my-task\nProtocol: TCP",
@@ -223,7 +249,7 @@ class TestOnNotificationPosted:
             container_id="fa0905d97a1c",
             container_name="my-task",
         )
-        screen.on__notification_posted(msg)
+        screen.on_notification_posted(msg)
         assert 42 in screen._pending
         pending_list.append.assert_called_once()
         log.write.assert_called_once()
@@ -235,7 +261,7 @@ class TestOnNotificationPosted:
         screen, log, pending_list = self._screen_with_mocked_queries(mod)
         screen._pending[42] = mod._PendingRequest(nid=42, summary="s", body="b")
         screen._remove_pending_item = mock.Mock()
-        msg = mod._NotificationPosted(
+        msg = mod.NotificationPosted(
             nid=42,
             summary="Allowed: seznam.cz",
             body="Container: my-task",
@@ -244,7 +270,7 @@ class TestOnNotificationPosted:
             container_id="fa0905d97a1c",
             container_name="my-task",
         )
-        screen.on__notification_posted(msg)
+        screen.on_notification_posted(msg)
         assert 42 not in screen._pending
         screen._remove_pending_item.assert_called_once_with(42)
         log.write.assert_called_once()
@@ -253,10 +279,10 @@ class TestOnNotificationPosted:
         """No actions + no replaces_id → informational line in the log only."""
         mod = _import_clearance()
         screen, log, pending_list = self._screen_with_mocked_queries(mod)
-        msg = mod._NotificationPosted(
+        msg = mod.NotificationPosted(
             nid=1, summary="Info", body="Details", actions=[], replaces_id=0
         )
-        screen.on__notification_posted(msg)
+        screen.on_notification_posted(msg)
         pending_list.append.assert_not_called()
         log.write.assert_called_once()
 

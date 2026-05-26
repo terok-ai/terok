@@ -77,13 +77,26 @@ def _login_title(project_id: str, task_id: str, task_name: str) -> str:
 
 
 def _shield_up(cname: str, task_dir: Path) -> None:
-    """Bring this task's shield up — ``ShieldManager(task_dir).up(cname)``."""
-    ShieldManager(task_dir).up(cname)
+    """Bring this task's shield up.
+
+    Resolves the container UUID first because shield's per-container
+    hub socket is keyed on it — see
+    [`ShieldManager.up`][terok_sandbox.ShieldManager.up].
+    """
+    from ..lib.orchestration.task_runners import resolve_container_uuid
+
+    ShieldManager(task_dir).up(cname, resolve_container_uuid(cname))
 
 
 def _shield_down(cname: str, task_dir: Path, *, allow_all: bool = False) -> None:
-    """Drop this task's shield — ``ShieldManager(task_dir).down(cname, allow_all=…)``."""
-    ShieldManager(task_dir).down(cname, allow_all=allow_all)
+    """Drop this task's shield.
+
+    See [`_shield_up`][terok.tui.task_actions._shield_up] for the
+    container-UUID rationale.
+    """
+    from ..lib.orchestration.task_runners import resolve_container_uuid
+
+    ShieldManager(task_dir).down(cname, resolve_container_uuid(cname), allow_all=allow_all)
 
 
 class TaskActionsMixin(_MixinBase):

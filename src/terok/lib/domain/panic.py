@@ -3,27 +3,44 @@
 
 """Emergency panic — immediately cut all resource access across all projects.
 
-Two-phase sequence: Phase 1 raises shields, locks the vault session
-tier + stops its daemon, and stops the gate server — all in parallel,
-all reversible.  Phase 2 optionally SIGKILLs the containers themselves
-(``podman stop --time 0``) — they are *not* removed.
+Three-step sequence: quarantine → kill supervisors → (optionally) kill
+the containers themselves.  Quarantine alone is not enough: each
+container's supervisor talks to its container over a bind-mounted
+unix socket, and nft sees no traffic there.  Killing the host-side
+supervisor process is what actually denies the container any more
+vault / clearance / signer cycles.
 
-The vault step deletes the session-unlock tmpfs file in addition to
-stopping the daemon so the next socket activation can't auto-resume
-from the session tier — a stopped-but-unlocked daemon defeats the
-point of pressing PANIC.  Persistent tiers (keyring, systemd-creds,
-``credentials.passphrase``) are intentionally untouched; clearing
-them is destructive and the operator can opt-in via
-``terok-sandbox vault lock --forget``.
+Phase 1 (always): in parallel,
+
+  * **Quarantine** every running container's shield (nft blackhole).
+  * **Kill every supervisor** via the per-container PID files under
+    ``state_root()/pids/`` — SIGKILL, no graceful TERM, because panic
+    targets misbehaving containers and the SIGTERM grace period
+    would just hand the supervisor more time to answer socket calls.
+  * **Stop the gate** systemd unit — defense-in-depth.  Quarantine
+    already cuts the container's network egress to it, but stopping
+    the unit denies any host-side reachable peer too.
+  * **Wipe the session-unlock tmpfs file** so a follow-up
+    ``task restart`` after panic cannot bring up a supervisor that
+    auto-unlocks from the same passphrase the operator just panic'd
+    over.  Persistent tiers (keyring, sealed systemd-creds,
+    ``credentials.passphrase``) are intentionally untouched —
+    clearing them is destructive and the operator opts in via
+    ``terok-sandbox vault lock --forget``.
+
+Phase 2 (optional, ``stop_containers=True``): SIGKILL each container
+via ``podman stop --time 0``.  Containers are *not* removed.
 
 Token revocation is deliberately excluded — it is irreversible and
-shields + stopped services already cut access.
+shields + dead supervisors already cut access.
 """
 
 from __future__ import annotations
 
 import logging
-from concurrent.futures import Future, ThreadPoolExecutor, as_completed, wait
+import threading
+import time
+from concurrent.futures import Future, ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
@@ -60,6 +77,8 @@ class PanicResult:
 
     shields_raised: list[str] = field(default_factory=list)
     shield_errors: list[tuple[str, str]] = field(default_factory=list)
+    supervisors_killed: list[str] = field(default_factory=list)
+    supervisor_errors: list[tuple[str, str]] = field(default_factory=list)
     vault_stopped: bool = False
     vault_error: str | None = None
     gate_stopped: bool = False
@@ -73,7 +92,11 @@ class PanicResult:
     def has_errors(self) -> bool:
         """Return whether any operation failed."""
         return bool(
-            self.shield_errors or self.vault_error or self.gate_error or self.container_stop_errors
+            self.shield_errors
+            or self.supervisor_errors
+            or self.vault_error
+            or self.gate_error
+            or self.container_stop_errors
         )
 
 
@@ -119,10 +142,14 @@ def clear_panic_lock() -> None:
 
 def format_panic_report(result: PanicResult) -> str:
     """Format a human-readable summary of the panic result."""
+    sup = f"Supervisors killed: {len(result.supervisors_killed)}"
+    if result.supervisor_errors:
+        sup += f" ({len(result.supervisor_errors)} failed)"
     lines = [
         f"Containers found: {result.total_running}",
         _format_shield_status(result),
-        f"Vault: {'locked + stopped' if result.vault_stopped else 'FAILED'}",
+        sup,
+        f"Vault: {'session tier wiped' if result.vault_stopped else 'FAILED'}",
         f"Gate:  {'stopped' if result.gate_stopped else 'FAILED'}",
     ]
 
@@ -141,14 +168,15 @@ def format_panic_report(result: PanicResult) -> str:
 
 
 def _phase1_lockdown(result: PanicResult, targets: list[_Target]) -> None:
-    """Run Phase 1: shields + vault/gate stop in parallel."""
-    with ThreadPoolExecutor(max_workers=max(len(targets) + 2, 4)) as pool:
+    """Run Phase 1: shields + supervisor-kill + vault/gate stop in parallel."""
+    with ThreadPoolExecutor(max_workers=max(len(targets) + 3, 4)) as pool:
         futs: dict = {}
 
         if not result.shield_bypassed:
             for t in targets:
                 futs[pool.submit(_raise_shield, t)] = ("shield", t[3])
 
+        futs[pool.submit(_kill_supervisors)] = ("supervisors", "")
         futs[pool.submit(_stop_vault)] = ("vault", "")
         futs[pool.submit(_stop_gate)] = ("gate", "")
 
@@ -165,6 +193,8 @@ def _collect_phase1_result(result: PanicResult, kind: str, label: str, fut: Futu
         # Treat any unhandled exception as failure for this kind.
         if kind == "shield":
             result.shield_errors.append((label, str(exc)))
+        elif kind == "supervisors":
+            result.supervisor_errors.append(("*", str(exc)))
         elif kind == "vault":
             result.vault_stopped = False
             result.vault_error = str(exc)
@@ -179,6 +209,12 @@ def _collect_phase1_result(result: PanicResult, kind: str, label: str, fut: Futu
             result.shield_errors.append((cname, err))
         else:
             result.shields_raised.append(cname)
+    elif kind == "supervisors":
+        for container_id, err in res:
+            if err:
+                result.supervisor_errors.append((container_id, err))
+            else:
+                result.supervisors_killed.append(container_id)
     elif kind == "vault":
         stopped, err = res
         result.vault_stopped = bool(stopped)
@@ -202,6 +238,7 @@ def _format_shield_status(result: PanicResult) -> str:
 def _format_errors(result: PanicResult) -> list[str]:
     """Collect all error lines for the panic report."""
     lines = [f"  shield {cname}: {err}" for cname, err in result.shield_errors]
+    lines += [f"  supervisor {cid}: {err}" for cid, err in result.supervisor_errors]
     if result.vault_error:
         lines.append(f"  vault: {result.vault_error}")
     if result.gate_error:
@@ -248,14 +285,35 @@ def _raise_shield(target: _Target) -> tuple[str, str | None]:
         return cname, str(exc)
 
 
-def _stop_vault() -> tuple[bool, str | None]:
-    """Lock the session tier and stop the vault daemon.
+def _kill_supervisors() -> list[tuple[str, str | None]]:
+    """SIGKILL every host-side per-container supervisor process.
 
-    Removes the session-unlock tmpfs file *before* stopping the daemon
-    so a panic genuinely makes the vault locked rather than merely
-    stopped — without this, the daemon happily auto-restarts from the
-    session tier on next socket activation, which is not what an
-    operator hitting "PANIC" wants.
+    The supervisor is the access point that survives nft quarantine —
+    the container talks to it over a bind-mounted unix socket, which
+    nft never sees.  Quarantine + supervisor-kill together deny both
+    network egress and on-host IPC; without the supervisor-kill the
+    container could keep talking to its vault / clearance / signer
+    until the operator's optional ``stop_containers`` step.
+
+    Returns one row per pid file ``(container_id, error_or_None)`` —
+    same shape as terok-sandbox's library function so the caller can
+    surface partial failures.
+    """
+    from terok.lib.integrations.sandbox import kill_all_supervisors
+
+    return kill_all_supervisors()
+
+
+def _stop_vault() -> tuple[bool, str | None]:
+    """Clear the session-unlock tier so future supervisors can't auto-resume.
+
+    The vault is no longer a host daemon — each container's
+    supervisor embeds its own proxy and dies with the container, so
+    panic's container kill is what stops vault access for any
+    container that's actually running.  All the host needs to do is
+    wipe the session-unlock tmpfs file so a follow-up ``task restart``
+    can't bring up a supervisor that auto-unlocks from the same
+    passphrase the operator just panic'd over.
 
     Persistent tiers (keyring, sealed systemd-creds,
     ``credentials.passphrase``) are intentionally NOT wiped: panic
@@ -263,11 +321,10 @@ def _stop_vault() -> tuple[bool, str | None]:
     ``terok-sandbox vault lock --forget`` afterwards if they want
     a destructive lockout.
     """
-    from terok.lib.integrations.sandbox import SandboxConfig, VaultManager
+    from ..core.config import make_sandbox_config
 
     try:
-        SandboxConfig().vault_passphrase_file.unlink(missing_ok=True)
-        VaultManager().stop_daemon()
+        make_sandbox_config().vault_passphrase_file.unlink(missing_ok=True)
         return True, None
     except Exception as exc:
         return False, str(exc)
@@ -300,30 +357,34 @@ def _stop_containers(targets: list[_Target]) -> tuple[list[str], list[tuple[str,
         return [], []
 
     runtime = PodmanRuntime()
+    results: dict[str, str | None] = {}
+
+    def _worker(cname: str) -> None:
+        results[cname] = _kill_container(runtime, cname)
+
+    # Daemon threads so a wedged ``podman stop`` past the panic budget
+    # doesn't pin Python's atexit, letting ``terok panic`` return to the
+    # operator's shell within ``_PHASE2_TIMEOUT_S`` regardless of the
+    # subprocess state.
+    threads = [
+        threading.Thread(target=_worker, args=(t[3],), daemon=True, name=f"panic-stop-{t[3]}")
+        for t in targets
+    ]
+    for th in threads:
+        th.start()
+    deadline = time.monotonic() + _PHASE2_TIMEOUT_S
+    for th in threads:
+        th.join(timeout=max(0.0, deadline - time.monotonic()))
+
     stopped: list[str] = []
     errors: list[tuple[str, str]] = []
-
-    pool = ThreadPoolExecutor(max_workers=max(len(targets), 4))
-    try:
-        futs = {pool.submit(_kill_container, runtime, t[3]): t[3] for t in targets}
-        done, not_done = wait(futs, timeout=_PHASE2_TIMEOUT_S)
-        for fut in done:
-            cname = futs[fut]
-            err = fut.result()
-            if err is None:
-                stopped.append(cname)
-            else:
-                errors.append((cname, err))
-        # Any worker still running past the panic budget is treated as a
-        # timeout error.  ``shutdown(wait=False)`` below lets the caller
-        # return immediately; the threads exit on their own once the
-        # subprocess timeout in ``.stop()`` trips.
-        for fut in not_done:
-            fut.cancel()
-            errors.append((futs[fut], f"timed out after {_PHASE2_TIMEOUT_S}s"))
-    finally:
-        pool.shutdown(wait=False)
-
+    for t in targets:
+        cname = t[3]
+        if cname in results:
+            err = results[cname]
+            (errors.append((cname, err)) if err is not None else stopped.append(cname))
+        else:
+            errors.append((cname, f"timed out after {_PHASE2_TIMEOUT_S}s"))
     return stopped, errors
 
 

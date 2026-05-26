@@ -38,7 +38,7 @@ from ...util.host_cmd import WORKSPACE_DANGEROUS_DIRNAME
 from ...util.yaml import load as _yaml_load
 from ..agent_config import resolve_agent_config
 from ..container_exec import container_git_diff
-from ..environment import build_task_env_and_volumes, ensure_vault
+from ..environment import build_task_env_and_volumes
 from ..hooks import run_hook
 from ..tasks import (
     CONTAINER_TEROK_CONFIG,
@@ -432,10 +432,6 @@ def task_followup_headless(
         agent_config_dir=task_dir / "agent-config",
         prompt=prompt,
     )
-
-    # Ensure the vault is reachable before restarting — after a
-    # host reboot the systemd socket may be active but the service idle.
-    ensure_vault()
 
     # Restart the existing container (re-runs the original bash command,
     # which reads prompt.txt and session files from the volume)

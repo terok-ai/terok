@@ -1,16 +1,19 @@
 # SPDX-FileCopyrightText: 2026 Jiri Vyskocil
 # SPDX-License-Identifier: Apache-2.0
 
-"""In-TUI clearance screen for live D-Bus shield verdict handling.
+"""In-TUI clearance screen for live shield verdict handling.
 
 Provides a ``ClearanceScreen`` backed by ``terok_clearance.CallbackNotifier``
-plugged into ``terok_clearance.EventSubscriber``.  The subscriber handles the
-full signal-to-verdict cycle; the callback notifier bridges D-Bus events
-into Textual messages so the screen can render blocked connections and
-route operator Allow/Deny actions back through D-Bus.
+plugged into ``terok_clearance.MultiSocketSubscriber``.  The subscriber
+multiplexes events across every per-container clearance hub socket
+(``$XDG_RUNTIME_DIR/terok/clearance/<container_id>.sock``) and routes the
+fanned-in stream into one notifier; the callback notifier bridges the
+events into Textual messages so the screen can render blocked connections
+and route operator Allow/Deny actions back through varlink.
 
-The screen listens on the whole session bus — all containers' events are
-shown, with the container name displayed prominently on every row.
+The screen sees every running container's events, with the container
+name (and dossier-driven project / task identity) displayed on every
+row.
 
 Dual use:
 
@@ -21,7 +24,6 @@ Dual use:
 
 from __future__ import annotations
 
-import contextlib
 import logging
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
@@ -72,7 +74,7 @@ class _PendingRequest:
     body: str
 
 
-class _NotificationPosted(Message):
+class NotificationPosted(Message):
     """Posted when ``CallbackNotifier`` fires its ``on_notify`` hook."""
 
     def __init__(
@@ -102,7 +104,7 @@ class _NotificationPosted(Message):
         self.task_name = task_name
 
 
-class _LifecyclePosted(Message):
+class LifecyclePosted(Message):
     """Posted when ``CallbackNotifier`` fires a ``ContainerStarted``/``Exited`` hook.
 
     Rendered in the scrolling event log below the pending list — lifecycle
@@ -122,7 +124,7 @@ class _LifecyclePosted(Message):
 # ---------------------------------------------------------------------------
 
 
-def _render_notification(message: _NotificationPosted) -> str:
+def _render_notification(message: NotificationPosted) -> str:
     """Format a notification for the TUI log + pending list.
 
     The subscriber's body already does dossier-aware identity rendering
@@ -178,13 +180,13 @@ class ClearanceScreen(screen.Screen[None]):
         """Initialise clearance screen state."""
         super().__init__()
         self._notifier: Any = None  # CallbackNotifier
-        self._subscriber: Any = None  # EventSubscriber
+        self._subscriber: Any = None  # MultiSocketSubscriber
         self._pending: dict[int, _PendingRequest] = {}
 
     def _on_notify(self, notification: Notification) -> None:
         """Bridge ``CallbackNotifier`` hook into a Textual message."""
         self.post_message(
-            _NotificationPosted(
+            NotificationPosted(
                 nid=notification.nid,
                 summary=notification.summary,
                 body=notification.body,
@@ -200,11 +202,11 @@ class ClearanceScreen(screen.Screen[None]):
 
     def _on_container_started(self, container: str) -> None:
         """Bridge ``ContainerStarted`` into a Textual message for the event log."""
-        self.post_message(_LifecyclePosted(event="started", container=container))
+        self.post_message(LifecyclePosted(event="started", container=container))
 
     def _on_container_exited(self, container: str, reason: str) -> None:
         """Bridge ``ContainerExited`` into a Textual message for the event log."""
-        self.post_message(_LifecyclePosted(event="exited", container=container, reason=reason))
+        self.post_message(LifecyclePosted(event="exited", container=container, reason=reason))
 
     def compose(self) -> ComposeResult:
         """Build header, pending list, event log.
@@ -222,10 +224,10 @@ class ClearanceScreen(screen.Screen[None]):
         yield RichLog(auto_scroll=True, max_lines=1000, id="event-log")
 
     async def on_mount(self) -> None:
-        """Connect to the clearance hub and start the event subscriber."""
+        """Connect to every per-container clearance hub and start the multi-socket subscriber."""
         log = self.query_one(_ID_EVENT_LOG, RichLog)
         try:
-            from terok.lib.api.clearance import CallbackNotifier, EventSubscriber
+            from terok.lib.api.clearance import CallbackNotifier, MultiSocketSubscriber
 
             self._notifier = CallbackNotifier(
                 on_notify=self._on_notify,
@@ -235,9 +237,12 @@ class ClearanceScreen(screen.Screen[None]):
             # Identity resolution is no longer a TUI concern: the shield
             # reader resolves the orchestrator dossier at emit time and
             # ships it on every event, so the subscriber just reads it.
-            self._subscriber = EventSubscriber(self._notifier)
+            # ``MultiSocketSubscriber`` globs the per-container hub
+            # socket directory and reconciles its child subscribers as
+            # supervisors come and go.
+            self._subscriber = MultiSocketSubscriber(self._notifier)
             await self._subscriber.start()
-            log.write(Text("Connected to clearance hub...", style=_STYLE_INFO))
+            log.write(Text("Connected to per-container clearance hubs...", style=_STYLE_INFO))
         except Exception as exc:
             _log.debug("clearance hub connection failed: %s", exc)
             log.write(Text(f"clearance hub unavailable: {exc}", style=_STYLE_ERROR))
@@ -255,10 +260,18 @@ class ClearanceScreen(screen.Screen[None]):
             self._subscriber = None
 
     def on_app_focus(self, _event: events.AppFocus) -> None:
-        """Cut short any reconnect back-off when the operator refocuses."""
-        if self._subscriber is not None:
-            with contextlib.suppress(Exception):
-                self._subscriber.poke_reconnect()
+        """Refocus hook — no-op under the multi-socket subscriber.
+
+        The legacy single-socket
+        [`EventSubscriber`][terok_clearance.EventSubscriber] exposed a
+        ``poke_reconnect`` to cut short its reconnect back-off when the
+        operator brought the TUI back to focus.  The multi-socket
+        subscriber doesn't carry a per-socket back-off — its rescan
+        loop reconciles disappeared sockets on its own short interval,
+        and any child that fails on connect is dropped + retried on
+        the next rescan automatically.
+        """
+        del _event
 
     async def on_unmount(self) -> None:
         """Stop the subscriber and release resources."""
@@ -276,7 +289,7 @@ class ClearanceScreen(screen.Screen[None]):
 
     # -- message handler --
 
-    def on__notification_posted(self, message: _NotificationPosted) -> None:
+    def on_notification_posted(self, message: NotificationPosted) -> None:
         """Handle notifications from the CallbackNotifier."""
         try:
             log = self.query_one(_ID_EVENT_LOG, RichLog)
@@ -308,7 +321,7 @@ class ClearanceScreen(screen.Screen[None]):
 
         pending_list.border_title = f"Pending ({len(self._pending)})"
 
-    def on__lifecycle_posted(self, message: _LifecyclePosted) -> None:
+    def on_lifecycle_posted(self, message: LifecyclePosted) -> None:
         """Render container-lifecycle events in the scrolling log."""
         try:
             log = self.query_one(_ID_EVENT_LOG, RichLog)

@@ -345,26 +345,18 @@ def vault_dir() -> Path:
     """Return the base directory for the vault (token broker DB, SSH signer keys).
 
     Precedence:
-    - ``TEROK_VAULT_DIR`` environment variable (``TEROK_CREDENTIALS_DIR``
-      accepted as deprecated fallback).
+    - ``TEROK_VAULT_DIR`` environment variable.
     - Global config ``credentials.dir``.
     - Namespace root + ``vault/`` (honors ``paths.root``).
-    """
-    import warnings
 
+    The pre-0.8 ``TEROK_CREDENTIALS_DIR`` env var is gone — operators
+    on pre-0.8 layouts are expected to delete the legacy
+    ``credentials/`` directory and start fresh.
+    """
     from terok_util import namespace_state_dir
 
-    env = "TEROK_VAULT_DIR"
-    if not os.environ.get(env) and os.environ.get("TEROK_CREDENTIALS_DIR"):
-        warnings.warn(
-            "TEROK_CREDENTIALS_DIR is deprecated; use TEROK_VAULT_DIR instead",
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        env = "TEROK_CREDENTIALS_DIR"
-
     return _resolve_path(
-        env,
+        "TEROK_VAULT_DIR",
         ("credentials", "dir"),
         lambda: namespace_state_dir("vault"),
     )
@@ -432,16 +424,6 @@ def get_global_default_agent() -> str | None:
 def get_global_default_login() -> str | None:
     """Return default_login from global config, or None if not set."""
     return _load_validated().default_login
-
-
-def get_global_image_agents() -> str:
-    """Return ``image.agents`` from the global config (defaults to ``"all"``).
-
-    The value is a comma-separated list of roster entries (or the literal
-    string ``"all"``) that drives which agents are baked into L1 builds.
-    Project YAML may override this via its own ``image.agents``.
-    """
-    return _load_validated().image.agents or "all"
 
 
 def get_tui_default_tmux() -> bool:

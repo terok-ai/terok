@@ -25,13 +25,6 @@ import sys
 from contextlib import suppress
 from pathlib import Path
 
-from terok.lib.api.clearance import (
-    CLEARANCE_HUB_UNIT_NAME as _CLEARANCE_HUB_UNIT_NAME,
-    CLEARANCE_NOTIFIER_UNIT_NAME as _CLEARANCE_NOTIFIER_UNIT_NAME,
-    check_clearance_units_outdated as _clearance_check_units_outdated,
-    read_installed_notifier_unit_version as _clearance_notifier_unit_version,
-    read_installed_unit_version as _clearance_hub_unit_version,
-)
 from terok.lib.api.gate import GateServerManager
 from terok.lib.api.setup import (
     SERVICES_TCP_OPTOUT_YAML,
@@ -39,7 +32,7 @@ from terok.lib.api.setup import (
     resolve_container_state_dir,
     systemd_creds_has_tpm2,
 )
-from terok.lib.api.vault import VaultManager
+from terok.lib.api.vault import VaultStatusSnapshot
 
 from ...lib.core import runtime as _rt
 from ...lib.core.config import get_services_mode, global_config_path, make_sandbox_config
@@ -173,32 +166,6 @@ def _check_shield() -> _CheckResult:
     return ("ok", label, detail)
 
 
-def _check_clearance_stack() -> _CheckResult:
-    """Surface stale or half-installed clearance units — pipx upgrade hygiene.
-
-    Delegates drift detection to the clearance package so sickbay
-    tracks whatever new units terok-clearance ships next without
-    knowing the triple's shape itself.  Hub and notifier versions
-    surface side-by-side so an operator who edits the notifier-only
-    profile (e.g. hardening tweaks) doesn't have to read the unit
-    file to see whether their drift was picked up.
-    """
-    label = "Clearance stack"
-    outdated = _clearance_check_units_outdated()
-    if outdated:
-        return ("warn", label, outdated)
-    hub = _clearance_hub_unit_version()
-    notifier = _clearance_notifier_unit_version()
-    if hub is None and notifier is None:
-        return ("ok", label, f"{_CLEARANCE_HUB_UNIT_NAME} not installed")
-    parts: list[str] = []
-    if hub is not None:
-        parts.append(f"{_CLEARANCE_HUB_UNIT_NAME} v{hub}")
-    if notifier is not None:
-        parts.append(f"{_CLEARANCE_NOTIFIER_UNIT_NAME} v{notifier}")
-    return ("ok", label, ", ".join(parts))
-
-
 def _passphrase_tier_label(source: str | None) -> str | None:
     """Render the resolved passphrase tier for the sickbay vault detail line.
 
@@ -224,40 +191,44 @@ def _passphrase_tier_label(source: str | None) -> str | None:
 
 
 def _check_vault() -> _CheckResult:
-    """Check vault status, surfacing the resolved passphrase tier."""
+    """Check vault store state — locked, populated, plaintext-on-disk.
+
+    Vault no longer runs as a host daemon: every container's supervisor
+    embeds its own proxy.  The host-side check therefore reduces to
+    DB-side facts — does the resolver chain unlock the store, what's
+    in it, and is the passphrase exposed on disk?  Per-container proxy
+    health is reported by
+    [`ContainerDoctor`][terok.lib.orchestration.container_doctor.ContainerDoctor]
+    against each running task individually.
+    """
     label = "Vault"
-    vault = VaultManager()
     try:
-        status = vault.get_status()
+        status = VaultStatusSnapshot.load()
     except Exception as exc:  # noqa: BLE001
         return ("warn", label, f"check failed — {exc}")
-    if status.running:
-        configured = get_services_mode()
-        creds = len(status.credentials_stored) if status.credentials_stored else 0
-        parts = [status.mode, status.transport or "tcp"]
-        tier = _passphrase_tier_label(status.passphrase_source)
-        if tier:
-            parts.append(tier)
-        parts.append(f"{creds} credential(s) stored")
-        detail = ", ".join(parts)
-        if configured != (status.transport or "tcp"):
-            return (
-                "warn",
-                label,
-                f"{detail} — config says services.mode: {configured}",
-            )
-        return ("ok", label, detail)
-    if status.mode == "systemd":
-        if vault.is_socket_active():
-            return ("ok", label, "systemd, socket active — service starts on first connection")
+
+    if status.db_error is not None:
+        return ("warn", label, f"DB error — {status.db_error}")
+
+    if status.locked:
         return (
-            "error",
+            "warn",
             label,
-            "socket installed but not active — run 'terok vault start'",
+            "locked — run 'terok vault unlock' to make stored credentials available",
         )
-    if vault.is_systemd_available():
-        return ("warn", label, "not running — run 'terok vault install'")
-    return ("warn", label, "not running — run 'terok vault start'")
+
+    creds = len(status.credentials_stored or ())
+    parts: list[str] = []
+    tier = _passphrase_tier_label(status.passphrase_source)
+    if tier:
+        parts.append(tier)
+    parts.append(f"{creds} credential(s) stored")
+    if status.plaintext_passphrase_path is not None:
+        parts.append("plaintext passphrase on disk")
+    detail = ", ".join(parts)
+    if status.plaintext_passphrase_path is not None:
+        return ("warn", label, detail)
+    return ("ok", label, detail)
 
 
 def _task_meta_path(pid: str, tid: str) -> Path | None:
@@ -578,33 +549,6 @@ def _check_selinux_policy() -> _CheckResult:
             )
 
 
-def _check_vault_migration() -> _CheckResult:
-    """Check for leftover pre-vault credentials directory."""
-    label = "Vault migration"
-    try:
-        from terok.lib.api.setup import namespace_state_dir
-
-        old_dir = namespace_state_dir("credentials")
-        new_dir = namespace_state_dir("vault")
-        if old_dir.is_dir() and not new_dir.is_dir():
-            return (
-                "warn",
-                label,
-                f"legacy credentials/ dir exists at {old_dir} — "
-                "run 'python3 tools/terok-migrate-vault.py' to migrate to vault/",
-            )
-        if old_dir.is_dir() and new_dir.is_dir():
-            return (
-                "info",
-                label,
-                f"legacy credentials/ dir still present at {old_dir} — "
-                "safe to remove after verifying vault/ works",
-            )
-    except Exception as exc:  # noqa: BLE001
-        return ("warn", label, f"check failed — {exc}")
-    return ("ok", label, "no legacy directory")
-
-
 def _check_recovery_acknowledged() -> _CheckResult:
     """Warn / error when the operator hasn't confirmed they saved the recovery key.
 
@@ -682,11 +626,9 @@ _GLOBAL_CHECKS = [
     ("Gate server", _check_gate_server),
     ("Shield", _check_shield),
     ("Vault", _check_vault),
-    ("Vault migration", _check_vault_migration),
     ("Recovery key acknowledged", _check_recovery_acknowledged),
     ("SSH signer", _check_ssh_signer),
     ("SELinux policy", _check_selinux_policy),
-    ("Clearance stack", _check_clearance_stack),
     ("Default agents", _check_default_agents),
 ]
 """Global checks paired with the label shown while they run.

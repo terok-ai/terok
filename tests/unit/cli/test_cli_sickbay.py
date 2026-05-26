@@ -20,21 +20,24 @@ from terok.cli.commands.sickbay import (
 from tests.testfs import MOCK_BASE
 from tests.testgate import OUTDATED_UNITS_MESSAGE, make_gate_server_status
 
-MOCK_VAULT_SOCKET = MOCK_BASE / "run" / "vault.sock"
 MOCK_VAULT_DB = MOCK_BASE / "vault" / "credentials.db"
 
 
-def _make_vault_status(
-    *, running: bool = True, mode: str = "systemd", transport: str | None = "tcp"
+def _make_vault_snapshot(
+    *,
+    locked: bool = False,
+    passphrase_source: str | None = "keyring",
+    credentials_stored: tuple[str, ...] | None = ("claude", "gh"),
+    plaintext_passphrase_path: str | None = None,
+    db_error: str | None = None,
 ) -> MagicMock:
-    """Return a mock VaultStatus."""
+    """Return a mock VaultStatusSnapshot."""
     s = MagicMock()
-    s.running = running
-    s.mode = mode
-    s.transport = transport
-    s.socket_path = MOCK_VAULT_SOCKET
-    s.db_path = MOCK_VAULT_DB
-    s.credentials_stored = ["claude", "gh"]
+    s.locked = locked
+    s.passphrase_source = passphrase_source
+    s.credentials_stored = credentials_stored
+    s.plaintext_passphrase_path = plaintext_passphrase_path
+    s.db_error = db_error
     return s
 
 
@@ -121,17 +124,6 @@ def test_cmd_sickbay_reports_health(
     # without masking unrelated lookups.  Each stub reports ok, keeping the
     # fixture narrowly about the gate-server assertions above.
     _stubs = {
-        "_check_vault_migration": ("ok", "Vault migration", "no legacy directory"),
-        "_check_clearance_hub": (
-            "ok",
-            "Clearance hub",
-            "terok-clearance-hub.service not installed",
-        ),
-        "_check_clearance_notifier": (
-            "ok",
-            "Clearance notifier",
-            "terok-clearance-notifier.service not installed",
-        ),
         # contract covered in test_sickbay.py::TestCheckDefaultAgents
         "_check_default_agents": ("ok", "Default agents", "image.agents = 'all'"),
         # Recovery-key check needs the sandbox marker file present; stub
@@ -163,9 +155,9 @@ def test_cmd_sickbay_reports_health(
         patch("terok.cli.commands.sickbay.shutil.which", return_value="/usr/bin/git"),
         patch("terok.cli.commands.sickbay.check_environment", return_value=mock_ec),
         patch(
-            "terok.cli.commands.sickbay.VaultManager.get_status", return_value=_make_vault_status()
+            "terok.cli.commands.sickbay.VaultStatusSnapshot.load",
+            return_value=_make_vault_snapshot(),
         ),
-        patch("terok.cli.commands.sickbay.VaultManager.is_systemd_available", return_value=False),
         patch("terok.cli.commands.sickbay.get_services_mode", return_value="tcp"),
         patch("terok.cli.commands.sickbay.make_sandbox_config", mock_cfg),
     ):
@@ -271,49 +263,32 @@ def test_check_shield_states(
 
 
 @pytest.mark.parametrize(
-    ("running", "mode", "systemd_avail", "side_effect", "expected_status", "expected_detail"),
+    ("snapshot_kwargs", "side_effect", "expected_status", "expected_detail"),
     [
         pytest.param(
-            True,
-            "systemd",
-            False,
+            {"credentials_stored": ("claude", "gh")},
             None,
             "ok",
             "2 credential(s)",
-            id="running-with-creds",
+            id="unlocked-with-creds",
         ),
         pytest.param(
-            False,
-            "systemd",
-            True,
-            None,
-            "error",
-            "not active",
-            id="socket-inactive",
-        ),
-        pytest.param(
-            False,
-            "none",
-            True,
+            {"locked": True, "passphrase_source": None, "credentials_stored": None},
             None,
             "warn",
-            "install",
-            id="not-running-systemd-available",
+            "locked",
+            id="locked",
         ),
         pytest.param(
-            False,
-            "none",
-            False,
+            {"plaintext_passphrase_path": "/etc/terok/passphrase.yml"},
             None,
             "warn",
-            "start",
-            id="not-running-no-systemd",
+            "plaintext passphrase on disk",
+            id="plaintext-passphrase",
         ),
         pytest.param(
-            False,
-            "none",
-            False,
-            OSError("socket gone"),
+            {},
+            OSError("db gone"),
             "warn",
             "check failed",
             id="check-exception",
@@ -321,39 +296,17 @@ def test_check_shield_states(
     ],
 )
 def test_check_vault_states(
-    running: bool,
-    mode: str,
-    systemd_avail: bool,
+    snapshot_kwargs: dict[str, object],
     side_effect: Exception | None,
     expected_status: str,
     expected_detail: str,
 ) -> None:
-    """_check_vault maps vault states to the correct severity and message."""
-    with (
-        patch(
-            "terok.cli.commands.sickbay.VaultManager.get_status",
-            return_value=_make_vault_status(running=running, mode=mode),
-            side_effect=side_effect,
-        ),
-        patch(
-            "terok.cli.commands.sickbay.VaultManager.is_systemd_available",
-            return_value=systemd_avail,
-        ),
-        # systemd-idle branch consults is_vault_socket_active(); pin it to
-        # False so the test doesn't read host state (the only parametrised
-        # case that reaches this branch is ``socket-inactive``).
-        patch(
-            "terok.cli.commands.sickbay.VaultManager.is_socket_active",
-            return_value=False,
-        ),
-        # Pin services.mode to match the fixture's default ``transport=tcp``
-        # so the running-branch mismatch check doesn't fire.  These
-        # parametrised cases are about reachability / systemd state, not
-        # transport-config consistency.
-        patch(
-            "terok.cli.commands.sickbay.get_services_mode",
-            return_value="tcp",
-        ),
+    """_check_vault maps DB-side facts to the correct severity and message."""
+    snapshot = _make_vault_snapshot(**snapshot_kwargs)
+    with patch(
+        "terok.cli.commands.sickbay.VaultStatusSnapshot.load",
+        return_value=snapshot,
+        side_effect=side_effect,
     ):
         status, label, detail = _check_vault()
 

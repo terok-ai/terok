@@ -20,7 +20,6 @@ The four families:
 
 import getpass
 import os
-import warnings
 from collections.abc import Callable
 from pathlib import Path
 
@@ -147,20 +146,14 @@ def vault_root() -> Path:
     Lives under the ``terok/`` namespace so a single ``rm -rf`` or backup
     captures everything.
 
-    Priority: ``TEROK_VAULT_DIR`` → ``TEROK_CREDENTIALS_DIR`` (deprecated
-    fallback) → ``/var/lib/terok/vault`` (root) → XDG data dir.
+    Priority: ``TEROK_VAULT_DIR`` → ``/var/lib/terok/vault`` (root) →
+    XDG data dir.  The pre-0.8 ``TEROK_CREDENTIALS_DIR`` env var is
+    gone — operators on pre-0.8 layouts are expected to delete the
+    legacy ``credentials/`` directory and start fresh.
     """
     env = os.getenv("TEROK_VAULT_DIR")
     if env:
         return Path(env).expanduser()
-    legacy_env = os.getenv("TEROK_CREDENTIALS_DIR")
-    if legacy_env:
-        warnings.warn(
-            "TEROK_CREDENTIALS_DIR is deprecated; use TEROK_VAULT_DIR instead",
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        return Path(legacy_env).expanduser()
     if _is_root():
         return Path("/var/lib") / APP_NAME / _VAULT_SUBDIR
     if _user_data_dir is not None:

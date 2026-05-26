@@ -204,33 +204,34 @@ connection is handled immediately.
 - **Unit:** `terok-gate.socket` (TCP) + `terok-gate@.service` (instantiated per connection)
 - **When it fits:** stateless, short-lived request handlers with no shared state
 
-### Persistent daemon (`Accept=no`) — Vault
+### Per-container supervisor — Vault + clearance hub
 
-The vault is a long-running aiohttp reverse-proxy that
-holds an open SQLite credential database, a route table, and an SSH
-signer server on a separate port.  It serves multiple concurrent
-containers simultaneously.  The systemd socket unit uses the default
-`Accept=no`: systemd listens on both the Unix socket and the TCP port,
-and on the **first** connection starts the daemon process, handing it the
-inherited file descriptors.  The daemon then stays running and handles
-all subsequent connections itself.
+The vault and the clearance hub no longer run as host-wide daemons —
+each running container has its own **supervisor** process spawned by
+terok-sandbox's OCI prestart hook.  The supervisor:
 
-This means there is a brief startup delay (~1–2 s) on the very first
-container request after a host reboot, after which the vault is fully
-warm.  The status display reflects this as **standby** (socket active,
-service not yet started) vs **running** (daemon active, TCP ports bound).
+* Lives only as long as the container does (the OCI poststop hook
+  reaps it).
+* Embeds the vault token-broker + SSH signer proxies on per-container
+  endpoints under `$XDG_RUNTIME_DIR/terok/`, scoped by container UUID.
+* Embeds the clearance hub varlink server (one per container) so the
+  shield reader emits events to the right operator UI without sharing
+  state across tasks.
+* Reads its identity (project / task / dossier path) from the sidecar
+  JSON file the orchestrator writes before `podman run` — see
+  [`AgentRunner.launch_prepared`][terok_executor.AgentRunner.launch_prepared].
 
-- **Unit:** `terok-vault.socket` (Unix + TCP) + `terok-vault.service`
-- **When it fits:** stateful daemons with shared resources, concurrent connections, or multiple ports
+No long-running user-session daemons remain between tasks; host setup
+just installs the OCI hook and the supervisor entrypoint
+(`terok-sandbox supervisor <container-id>`).  Operator UIs (the
+embedded TUI clearance screen and the standalone `terok clearance`
+CLI) multiplex events across every per-container hub socket via
+[`MultiSocketSubscriber`][terok_clearance.MultiSocketSubscriber] —
+sockets appear when supervisors come up and disappear when they exit.
 
-### Why not unify them?
-
-Forcing the vault into `Accept=yes` would spawn a full
-Python/aiohttp process per HTTP request, cause SQLite contention across
-instances, and orphan the SSH signer port.  Forcing the gate into a
-persistent daemon would add unnecessary complexity for a service whose
-entire protocol is "handle one connection, exit".  Each pattern is the
-natural fit for its workload.
+- **When it fits:** stateful proxies that need per-task identity,
+  isolation between tasks, and lifecycle bound to the container they
+  serve.
 
 ### Socket vs TCP transport — the `services.mode` switch
 
@@ -290,14 +291,21 @@ host-side mode:
 
 ### Connector inventory
 
+Per-container endpoints are keyed on the full podman UUID (`<id>`) so
+multiple supervisors coexist without aliasing.  Identity flows in
+through the sidecar JSON written by the orchestrator before
+`podman run`.
+
 | Service | Host activation | Host endpoint | What it does host-side | Container consumer | Container endpoint | Bridge |
 |---|---|---|---|---|---|---|
-| **Vault token broker** | `terok-vault.socket` (socket) / `terok-vault.service` (tcp); aiohttp app via `_build_app()` in [`terok_sandbox.vault.daemon.token_broker`][terok_sandbox.vault.daemon.token_broker] | `${XDG_RUNTIME_DIR}/.../vault.sock` or `127.0.0.1:<broker_port>` | Reverse-proxies HTTP requests carrying phantom tokens to upstream APIs; substitutes the phantom for the real OAuth / API-key from the encrypted SQLite vault, forwards via TCP egress | Agent HTTP clients (`gh`, `claude`, `curl`) | `http://localhost:${TEROK_VAULT_LOOPBACK_PORT}` and `/tmp/terok-vault.sock` (both exposed) | Bidirectional `socat`: TCP-LISTEN→UNIX-CONNECT (socket mode) and UNIX-LISTEN→TCP-CONNECT (tcp mode) |
-| **Vault SSH signer** | Same `terok-vault` daemon, same switch | `${XDG_RUNTIME_DIR}/.../ssh-agent.sock` or `127.0.0.1:<ssh_signer_port>` | Implements the `ssh-agent` protocol; signs with private keys from the vault DB after validating the per-task phantom token.  The agent never sees the key | `ssh`, `git over ssh` via `$SSH_AUTH_SOCK` | `/tmp/ssh-agent.sock` (always — single endpoint regardless of host mode) | `socat UNIX-LISTEN:/tmp/ssh-agent.sock,fork SYSTEM:ssh-agent-bridge.sh` — `ssh-agent-bridge.sh` is itself the transport-aware bridge |
+| **Vault broker (supervisor)** | OCI prestart hook spawns `terok-sandbox supervisor <id>`; embedded token-broker proxy | Per-container endpoint listed in the sidecar JSON | Reverse-proxies HTTP requests carrying phantom tokens to upstream APIs; substitutes the phantom for the real OAuth / API-key from the encrypted SQLite vault | Agent HTTP clients (`gh`, `claude`, `curl`) | `http://localhost:${TEROK_VAULT_LOOPBACK_PORT}` and `/tmp/terok-vault.sock` (both exposed) | Bidirectional `socat` set up by `ensure-bridges.sh` from sidecar-derived env |
+| **Vault SSH signer (supervisor)** | Same supervisor process, separate socket | Per-container ssh-agent socket | Implements the `ssh-agent` protocol; signs with private keys from the vault DB after validating the per-task phantom token | `ssh`, `git over ssh` via `$SSH_AUTH_SOCK` | `/tmp/ssh-agent.sock` (always — single endpoint regardless of host mode) | `socat UNIX-LISTEN:/tmp/ssh-agent.sock,fork SYSTEM:ssh-agent-bridge.sh` |
+| **Clearance hub (supervisor)** | Same supervisor process; per-container varlink server | `$XDG_RUNTIME_DIR/terok/clearance/<id>.sock` | Receives shield `connection_blocked` events, dispatches them to subscribed operator UIs, accepts allow / deny verdicts back | **None** — host-only | n/a | Host-only Unix socket; multiplexed across containers by [`MultiSocketSubscriber`][terok_clearance.MultiSocketSubscriber] |
+| **Verdict helper (supervisor)** | Same supervisor process; per-container varlink server | `$XDG_RUNTIME_DIR/terok/verdict/<id>.sock` | Receives operator allow / deny decisions and shells to `terok-shield` to update nftables sets for the keyed container | **None** — host-only | n/a | Host-only Unix socket |
+| **Supervisor control** | Reserved — not yet bound | `$XDG_RUNTIME_DIR/terok/control/<id>.sock` | Reserved for future supervisor-control RPCs (drain, reload-routes, etc.) | n/a | n/a | n/a |
 | **Gate server (git)** | `terok-gate.socket` (socket) / `terok-gate.service` (tcp); `ThreadingHTTPServer` in [`terok_sandbox.gate.server`][terok_sandbox.gate.server] | `${XDG_RUNTIME_DIR}/.../gate-server.sock` or `127.0.0.1:<gate_port>` | HTTP backend for `git-upload-pack` / `git-receive-pack`; validates `TEROK_GATE_TOKEN`, then shells to the real `git http-backend` against host repos | `git clone/fetch/push` from inside the container | Socket mode: `http://localhost:9418/`. TCP mode: `http://host.containers.internal:<gate_port>/` *(no bridge)* | Socket mode only: `socat TCP-LISTEN:9418 UNIX-CONNECT:$TEROK_GATE_SOCKET`.  See [Gaps](#gaps) |
 | **ACP host proxy** | Started per-task by the orchestrator; not systemd | `<state_dir>/acp.sock` (always Unix socket, per-task) | Aggregates several in-container ACP agents (`terok-claude-acp`, `terok-codex-acp`, …) behind one endpoint; relays JSON-RPC to the host TUI | The in-container `terok-*-acp` wrappers | Inherited fd or path passed at spawn | Direct mount; single-protocol on both sides |
-| **Shield NFLOG reader → clearance hub** | Spawned per-shielded-container by terok | `${XDG_RUNTIME_DIR}/terok-shield-events.sock` (clearance hub's ingester leg) | Translates kernel `REJECT`s into `connection_blocked` events; clearance hub then notifies via D-Bus and routes operator verdicts back through a shield-exec helper | **None** — host-side end-to-end | n/a | Host-only Unix socket |
-| **Clearance verdict (varlink)** | `terok-clearance-verdict.service` | `${XDG_RUNTIME_DIR}/terok-clearance-verdict.sock` (mode 0600, varlink) | Receives operator allow / deny decisions; calls the shield-exec helper to update nftables sets | **None** — host-only | n/a | Host-only Unix socket |
+| **Shield NFLOG reader → clearance hub** | Spawned per-shielded-container by the shield OCI hook | The container's per-supervisor hub socket above | Translates kernel `REJECT`s into `connection_blocked` events; the supervisor's hub notifies subscribed operator UIs and routes operator verdicts back through the verdict helper | **None** — host-side end-to-end | n/a | Host-only Unix socket |
 | **Workspace bind mount** | Plain `podman -v` at container create | `<task_dir>/workspace/` (host fs) | The task's git checkout | The agent's working dir | `/workspace` | Direct bind mount, no proxy |
 
 ### Is the normalization complete?

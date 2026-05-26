@@ -58,9 +58,6 @@ from terok_sandbox import (  # noqa: F401 — re-exported public API
     SSHManager,
     TcpSSHTransport,
     TokenStore,
-    VaultManager,
-    VaultStatus,
-    VaultUnreachableError,
     VolumeSpec,
     WrongPassphraseError,
     bold,
@@ -89,6 +86,12 @@ from terok_sandbox import (  # noqa: F401 — re-exported public API
     systemd_creds_has_tpm2,
     yaml_update_section,
     yellow,
+)
+from terok_sandbox.paths import (  # noqa: F401 — designated reach-into-private-API site
+    plaintext_passphrase_config_path,
+)
+from terok_sandbox.supervisor.install import (  # noqa: F401 — re-exported
+    kill_all_supervisors,
 )
 
 __all__ = [
@@ -128,9 +131,6 @@ __all__ = [
     "ShieldManager",
     "TcpSSHTransport",
     "TokenStore",
-    "VaultManager",
-    "VaultStatus",
-    "VaultUnreachableError",
     "VolumeSpec",
     "WrongPassphraseError",
     "bold",
@@ -143,7 +143,9 @@ __all__ = [
     "handle_vault_to_keyring",
     "installed_versions",
     "is_ssh_url",
+    "kill_all_supervisors",
     "needs_setup",
+    "plaintext_passphrase_config_path",
     "podman_port_resolver",
     "public_line_of",
     "read_stamp",

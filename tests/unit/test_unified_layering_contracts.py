@@ -165,10 +165,15 @@ def test_terok_executor_run_uses_terok_state() -> None:
 
     tree = _build_wired_tree()
 
+    # ``sandbox vault start`` was a daemon-lifecycle verb that the
+    # per-container supervisor flow removed — surviving verbs are
+    # ``unlock``/``lock``/``passphrase``, none of which currently take
+    # ``cfg``.  Pick another sandbox-subtree handler that still does so
+    # the overlay-scope coverage holds.
     for path in (
         ("executor", "run"),
         ("executor", "show-config"),
-        ("executor", "sandbox", "vault", "start"),
+        ("executor", "sandbox", "uninstall"),
     ):
         cmd = tree.find_at(path)
         assert cmd is not None and cmd.handler is not None, f"missing: {path}"
@@ -499,17 +504,16 @@ def test_check_vault_surfaces_passphrase_tier() -> None:
 
     from terok.cli.commands import sickbay
 
-    fake_status = MagicMock(
-        running=True,
-        mode="systemd",
-        transport="socket",
-        credentials_stored=[],
+    fake_snapshot = MagicMock(
+        locked=False,
         passphrase_source="systemd-creds",
+        credentials_stored=(),
+        plaintext_passphrase_path=None,
+        db_error=None,
     )
 
     with (
-        patch.object(sickbay.VaultManager, "get_status", return_value=fake_status),
-        patch.object(sickbay, "get_services_mode", return_value="socket"),
+        patch.object(sickbay.VaultStatusSnapshot, "load", return_value=fake_snapshot),
         patch.object(sickbay, "systemd_creds_has_tpm2", return_value=False),
     ):
         status, label, detail = sickbay._check_vault()

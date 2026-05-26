@@ -20,7 +20,6 @@ from terok.cli.commands.sickbay import (
     _check_ssh_signer,
     _check_task_hook,
     _check_vault,
-    _check_vault_migration,
     _reconcile_post_stop,
 )
 from terok.lib.util.yaml import dump as yaml_dump
@@ -247,117 +246,60 @@ class TestReconcilePostStop:
 
 
 class TestCheckVault:
-    """Verify _check_vault three-state display."""
+    """Verify ``_check_vault`` against the post-supervisor DB-side snapshot.
 
-    def _make_status(self, **overrides: object) -> unittest.mock.MagicMock:
-        """Build a mock VaultStatus with defaults."""
+    Vault is no longer a host daemon — the check collapses to whether
+    the store unlocks, what's in it, and whether the passphrase is
+    exposed on disk.  No more daemon / socket / transport branches.
+    """
+
+    @staticmethod
+    def _snapshot(**overrides: object) -> unittest.mock.MagicMock:
         defaults = {
-            "mode": "none",
-            "running": False,
-            "healthy": False,
+            "locked": False,
+            "passphrase_source": "keyring",
             "credentials_stored": (),
-            "transport": None,
+            "plaintext_passphrase_path": None,
+            "db_error": None,
         }
         defaults.update(overrides)
         return unittest.mock.MagicMock(**defaults)
 
-    def test_running_shows_ok(self) -> None:
-        """Service active → ok with credential count and transport."""
-        status = self._make_status(
-            mode="systemd", running=True, credentials_stored=("claude",), transport="tcp"
-        )
-        with (
-            unittest.mock.patch(
-                "terok.cli.commands.sickbay.VaultManager.get_status", return_value=status
-            ),
-            unittest.mock.patch("terok.cli.commands.sickbay.get_services_mode", return_value="tcp"),
+    def test_unlocked_with_credentials_is_ok(self) -> None:
+        """Unlocked store + credentials → ok with tier + count."""
+        snap = self._snapshot(credentials_stored=("claude",))
+        with unittest.mock.patch(
+            "terok.cli.commands.sickbay.VaultStatusSnapshot.load", return_value=snap
         ):
             sev, _, detail = _check_vault()
         assert sev == "ok"
         assert "1 credential(s)" in detail
-        assert "tcp" in detail
+        assert "keyring" in detail
 
-    def test_transport_mismatch_warns(self) -> None:
-        """Running on TCP when config says socket → warn."""
-        status = self._make_status(
-            mode="systemd", running=True, credentials_stored=("claude",), transport="tcp"
-        )
-        with (
-            unittest.mock.patch(
-                "terok.cli.commands.sickbay.VaultManager.get_status", return_value=status
-            ),
-            unittest.mock.patch(
-                "terok.cli.commands.sickbay.get_services_mode", return_value="socket"
-            ),
+    def test_locked_is_warn(self) -> None:
+        """Locked → warn with unlock pointer."""
+        snap = self._snapshot(locked=True, passphrase_source=None)
+        with unittest.mock.patch(
+            "terok.cli.commands.sickbay.VaultStatusSnapshot.load", return_value=snap
         ):
             sev, _, detail = _check_vault()
         assert sev == "warn"
-        assert "services.mode: socket" in detail
+        assert "unlock" in detail
 
-    def test_systemd_socket_active_service_idle(self) -> None:
-        """Socket active but service idle → ok with standby message."""
-        status = self._make_status(mode="systemd", running=False)
-        with (
-            unittest.mock.patch(
-                "terok.cli.commands.sickbay.VaultManager.get_status", return_value=status
-            ),
-            unittest.mock.patch(
-                "terok.cli.commands.sickbay.VaultManager.is_socket_active", return_value=True
-            ),
-        ):
-            sev, _, detail = _check_vault()
-        assert sev == "ok"
-        assert "starts on first connection" in detail
-
-    def test_systemd_socket_inactive(self) -> None:
-        """Socket installed but inactive → error."""
-        status = self._make_status(mode="systemd", running=False)
-        with (
-            unittest.mock.patch(
-                "terok.cli.commands.sickbay.VaultManager.get_status", return_value=status
-            ),
-            unittest.mock.patch(
-                "terok.cli.commands.sickbay.VaultManager.is_socket_active", return_value=False
-            ),
-        ):
-            sev, _, detail = _check_vault()
-        assert sev == "error"
-        assert "not active" in detail
-
-    def test_not_installed_systemd_available(self) -> None:
-        """No proxy, systemd available → warn with install hint."""
-        status = self._make_status(mode="none", running=False)
-        with (
-            unittest.mock.patch(
-                "terok.cli.commands.sickbay.VaultManager.get_status", return_value=status
-            ),
-            unittest.mock.patch(
-                "terok.cli.commands.sickbay.VaultManager.is_systemd_available", return_value=True
-            ),
+    def test_plaintext_passphrase_warns(self) -> None:
+        """Plaintext passphrase on disk → warn even when unlocked."""
+        snap = self._snapshot(plaintext_passphrase_path="/etc/terok/passphrase.yml")
+        with unittest.mock.patch(
+            "terok.cli.commands.sickbay.VaultStatusSnapshot.load", return_value=snap
         ):
             sev, _, detail = _check_vault()
         assert sev == "warn"
-        assert "install" in detail
-
-    def test_not_installed_no_systemd(self) -> None:
-        """No proxy, no systemd → warn with start hint."""
-        status = self._make_status(mode="none", running=False)
-        with (
-            unittest.mock.patch(
-                "terok.cli.commands.sickbay.VaultManager.get_status", return_value=status
-            ),
-            unittest.mock.patch(
-                "terok.cli.commands.sickbay.VaultManager.is_systemd_available", return_value=False
-            ),
-        ):
-            sev, _, detail = _check_vault()
-        assert sev == "warn"
-        assert "start" in detail
+        assert "plaintext passphrase on disk" in detail
 
     def test_exception_returns_warn(self) -> None:
-        """Exception during status check → warn."""
+        """Exception during snapshot → warn with the message."""
         with unittest.mock.patch(
-            "terok.cli.commands.sickbay.VaultManager.get_status",
+            "terok.cli.commands.sickbay.VaultStatusSnapshot.load",
             side_effect=RuntimeError("oops"),
         ):
             sev, _, detail = _check_vault()
@@ -581,64 +523,6 @@ class TestCheckSelinuxPolicy:
         assert "install_policy.sh" in detail
 
 
-class TestCheckVaultMigration:
-    """``_check_vault_migration`` detects a lingering pre-vault ``credentials/`` dir."""
-
-    def test_ok_when_no_legacy_dir(self, tmp_path: Path) -> None:
-        """No legacy ``credentials/`` dir → ok."""
-
-        def fake_ns(name: str) -> Path:
-            return tmp_path / name  # neither exists
-
-        with unittest.mock.patch("terok.lib.api.setup.namespace_state_dir", side_effect=fake_ns):
-            sev, label, detail = _check_vault_migration()
-        assert sev == "ok"
-        assert label == "Vault migration"
-        assert "no legacy" in detail
-
-    def test_warn_when_only_legacy_exists(self, tmp_path: Path) -> None:
-        """Legacy dir without new vault dir → warn pointing at the migration script."""
-        legacy = tmp_path / "credentials"
-        legacy.mkdir()  # exists
-        vault = tmp_path / "vault"  # does not exist
-
-        def fake_ns(name: str) -> Path:
-            return legacy if name == "credentials" else vault
-
-        with unittest.mock.patch("terok.lib.api.setup.namespace_state_dir", side_effect=fake_ns):
-            sev, _, detail = _check_vault_migration()
-        assert sev == "warn"
-        assert str(legacy) in detail
-        assert "terok-migrate-vault.py" in detail
-
-    def test_info_when_both_exist(self, tmp_path: Path) -> None:
-        """Both dirs present → info (migration ran but old dir survived for safety)."""
-        legacy = tmp_path / "credentials"
-        legacy.mkdir()
-        vault = tmp_path / "vault"
-        vault.mkdir()
-
-        def fake_ns(name: str) -> Path:
-            return legacy if name == "credentials" else vault
-
-        with unittest.mock.patch("terok.lib.api.setup.namespace_state_dir", side_effect=fake_ns):
-            sev, _, detail = _check_vault_migration()
-        assert sev == "info"
-        assert "still present" in detail
-        assert "safe to remove" in detail
-
-    def test_warn_when_probe_raises(self) -> None:
-        """An exception inside the probe is surfaced as a warn result."""
-        with unittest.mock.patch(
-            "terok.lib.api.setup.namespace_state_dir",
-            side_effect=RuntimeError("boom"),
-        ):
-            sev, label, detail = _check_vault_migration()
-        assert sev == "warn"
-        assert label == "Vault migration"
-        assert "boom" in detail
-
-
 class TestCheckTaskShieldAnnotation:
     """``_check_task_shield_annotation`` cross-checks task_dir ↔ container annotation."""
 
@@ -839,93 +723,6 @@ class TestCheckShieldAnnotations:
         # Only the named task, not the globbed pair
         assert mock_check.call_count == 1
         assert mock_check.call_args.args[1] == "g1abc"
-
-
-class TestCheckClearanceStack:
-    """Unified drift probe over the clearance hub + verdict + notifier triple.
-
-    ``terok_clearance.check_units_outdated`` returns a single warning
-    string when any of the three units are stale or half-installed,
-    so sickbay collapses the previous per-unit checks into one stage.
-    """
-
-    def test_current_version_is_ok(self) -> None:
-        """Both install targets surface in the detail line, side-by-side."""
-        from terok.cli.commands.sickbay import _check_clearance_stack
-
-        with (
-            unittest.mock.patch(
-                "terok.cli.commands.sickbay._clearance_check_units_outdated", return_value=None
-            ),
-            unittest.mock.patch(
-                "terok.cli.commands.sickbay._clearance_hub_unit_version", return_value=1
-            ),
-            unittest.mock.patch(
-                "terok.cli.commands.sickbay._clearance_notifier_unit_version", return_value=3
-            ),
-        ):
-            sev, label, detail = _check_clearance_stack()
-        assert sev == "ok"
-        assert label == "Clearance stack"
-        assert "terok-clearance-hub.service v1" in detail
-        assert "terok-clearance-notifier.service v3" in detail
-
-    def test_outdated_is_warn(self) -> None:
-        from terok.cli.commands.sickbay import _check_clearance_stack
-
-        with unittest.mock.patch(
-            "terok.cli.commands.sickbay._clearance_check_units_outdated",
-            return_value="is outdated (installed unversioned, expected v1) — rerun setup.",
-        ):
-            sev, _, detail = _check_clearance_stack()
-        assert sev == "warn"
-        assert "outdated" in detail
-
-    def test_absent_unit_is_ok_not_installed(self) -> None:
-        """No hub unit on disk = headless host (or pre-setup) → silent ok."""
-        from terok.cli.commands.sickbay import _check_clearance_stack
-
-        with (
-            unittest.mock.patch(
-                "terok.cli.commands.sickbay._clearance_check_units_outdated", return_value=None
-            ),
-            unittest.mock.patch(
-                "terok.cli.commands.sickbay._clearance_hub_unit_version", return_value=None
-            ),
-            unittest.mock.patch(
-                "terok.cli.commands.sickbay._clearance_notifier_unit_version", return_value=None
-            ),
-        ):
-            sev, _, detail = _check_clearance_stack()
-        assert sev == "ok"
-        assert "not installed" in detail
-
-    def test_notifier_only_install_renders_just_the_notifier_line(self) -> None:
-        """Headless hosts that ship only the notifier (or vice versa) render one stamp.
-
-        Sickbay must not assume both stamps are always present — a
-        partial-install host (e.g. someone disabled the hub) should
-        still produce a sensible detail string rather than hiding the
-        one install target that does exist behind a misleading "not
-        installed" branch.
-        """
-        from terok.cli.commands.sickbay import _check_clearance_stack
-
-        with (
-            unittest.mock.patch(
-                "terok.cli.commands.sickbay._clearance_check_units_outdated", return_value=None
-            ),
-            unittest.mock.patch(
-                "terok.cli.commands.sickbay._clearance_hub_unit_version", return_value=None
-            ),
-            unittest.mock.patch(
-                "terok.cli.commands.sickbay._clearance_notifier_unit_version", return_value=3
-            ),
-        ):
-            sev, _, detail = _check_clearance_stack()
-        assert sev == "ok"
-        assert "terok-clearance-hub" not in detail
-        assert "terok-clearance-notifier.service v3" in detail
 
 
 class TestCheckDefaultAgents:

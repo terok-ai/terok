@@ -29,7 +29,6 @@ from terok.lib.integrations.sandbox import (
     DoctorCheck,
     ExecResult,
     ShieldManager,
-    VaultManager,
     sandbox_doctor_checks,
 )
 
@@ -312,9 +311,8 @@ def _collect_all_checks(
     "must be set" gate fires only in TCP mode.
     """
     cfg = make_sandbox_config()
-    vault = VaultManager(cfg)
-    token_broker_port = vault.token_broker_port
-    ssh_signer_port = vault.ssh_signer_port
+    token_broker_port = cfg.token_broker_port
+    ssh_signer_port = cfg.ssh_signer_port
     desired_shield = _read_desired_shield_state(task_dir)
 
     if cfg.services_mode == "tcp" and (

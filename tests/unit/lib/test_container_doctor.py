@@ -6,7 +6,7 @@
 from __future__ import annotations
 
 from pathlib import Path
-from unittest.mock import MagicMock, PropertyMock, patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 from terok_sandbox import ExecResult
@@ -202,16 +202,6 @@ class TestRunContainerDoctor:
     @patch("terok.lib.orchestration.container_doctor.AgentRoster.shared")
     @patch("terok.lib.orchestration.container_doctor._read_desired_shield_state")
     @patch("terok.lib.orchestration.container_doctor.load_project")
-    @patch(
-        "terok.lib.orchestration.container_doctor.VaultManager.ssh_signer_port",
-        new_callable=PropertyMock,
-        return_value=None,
-    )
-    @patch(
-        "terok.lib.orchestration.container_doctor.VaultManager.token_broker_port",
-        new_callable=PropertyMock,
-        return_value=None,
-    )
     @patch("terok.lib.orchestration.container_doctor.make_sandbox_config")
     @patch("terok.lib.orchestration.container_doctor.load_task_meta")
     @patch("terok.lib.orchestration.tasks.meta.tasks_meta_dir")
@@ -220,8 +210,6 @@ class TestRunContainerDoctor:
         mock_meta_dir: MagicMock,
         mock_load_meta: MagicMock,
         mock_sandbox_cfg: MagicMock,
-        mock_broker_port: MagicMock,
-        mock_ssh_port: MagicMock,
         mock_load_project: MagicMock,
         mock_shield_state: MagicMock,
         mock_roster: MagicMock,
@@ -237,9 +225,7 @@ class TestRunContainerDoctor:
         mock_meta_dir.return_value = tmp_path
         mock_load_meta.return_value = ({"mode": "cli"}, tmp_path / "42_meta.yml")
         mock_runtime.container.return_value.state = "running"
-        mock_sandbox_cfg.return_value = MagicMock()
-        mock_broker_port.return_value = 8080
-        mock_ssh_port.return_value = 2222
+        mock_sandbox_cfg.return_value = MagicMock(token_broker_port=8080, ssh_signer_port=2222)
         mock_shield_state.return_value = None
         mock_roster.return_value = MagicMock()
 
@@ -275,16 +261,6 @@ class TestRunContainerDoctor:
     @patch("terok.lib.orchestration.container_doctor.AgentRoster.shared")
     @patch("terok.lib.orchestration.container_doctor._read_desired_shield_state")
     @patch("terok.lib.orchestration.container_doctor.load_project")
-    @patch(
-        "terok.lib.orchestration.container_doctor.VaultManager.ssh_signer_port",
-        new_callable=PropertyMock,
-        return_value=None,
-    )
-    @patch(
-        "terok.lib.orchestration.container_doctor.VaultManager.token_broker_port",
-        new_callable=PropertyMock,
-        return_value=None,
-    )
     @patch("terok.lib.orchestration.container_doctor.make_sandbox_config")
     @patch("terok.lib.orchestration.container_doctor.load_task_meta")
     @patch("terok.lib.orchestration.tasks.meta.tasks_meta_dir")
@@ -293,8 +269,6 @@ class TestRunContainerDoctor:
         mock_meta_dir: MagicMock,
         mock_load_meta: MagicMock,
         mock_sandbox_cfg: MagicMock,
-        mock_broker_port: MagicMock,
-        mock_ssh_port: MagicMock,
         mock_load_project: MagicMock,
         mock_shield_state: MagicMock,
         mock_roster: MagicMock,
@@ -310,9 +284,7 @@ class TestRunContainerDoctor:
         mock_meta_dir.return_value = tmp_path
         mock_load_meta.return_value = ({"mode": "cli"}, tmp_path / "42_meta.yml")
         mock_runtime.container.return_value.state = "running"
-        mock_sandbox_cfg.return_value = MagicMock()
-        mock_broker_port.return_value = 8080
-        mock_ssh_port.return_value = 2222
+        mock_sandbox_cfg.return_value = MagicMock(token_broker_port=8080, ssh_signer_port=2222)
         mock_shield_state.return_value = None
         mock_roster.return_value = MagicMock()
 
@@ -358,16 +330,6 @@ class TestRunContainerDoctor:
     @patch("terok.lib.orchestration.container_doctor.AgentRoster.shared")
     @patch("terok.lib.orchestration.container_doctor._read_desired_shield_state")
     @patch("terok.lib.orchestration.container_doctor.load_project")
-    @patch(
-        "terok.lib.orchestration.container_doctor.VaultManager.ssh_signer_port",
-        new_callable=PropertyMock,
-        return_value=None,
-    )
-    @patch(
-        "terok.lib.orchestration.container_doctor.VaultManager.token_broker_port",
-        new_callable=PropertyMock,
-        return_value=None,
-    )
     @patch("terok.lib.orchestration.container_doctor.make_sandbox_config")
     @patch("terok.lib.orchestration.container_doctor.load_task_meta")
     @patch("terok.lib.orchestration.tasks.meta.tasks_meta_dir")
@@ -376,8 +338,6 @@ class TestRunContainerDoctor:
         mock_meta_dir: MagicMock,
         mock_load_meta: MagicMock,
         mock_sandbox_cfg: MagicMock,
-        mock_broker_port: MagicMock,
-        mock_ssh_port: MagicMock,
         mock_load_project: MagicMock,
         mock_shield_state: MagicMock,
         mock_roster: MagicMock,
@@ -393,9 +353,7 @@ class TestRunContainerDoctor:
         mock_meta_dir.return_value = tmp_path
         mock_load_meta.return_value = ({"mode": "cli"}, tmp_path / "42_meta.yml")
         mock_runtime.container.return_value.state = "running"
-        mock_sandbox_cfg.return_value = MagicMock()
-        mock_broker_port.return_value = 8080
-        mock_ssh_port.return_value = 2222
+        mock_sandbox_cfg.return_value = MagicMock(token_broker_port=8080, ssh_signer_port=2222)
         mock_shield_state.return_value = None
         mock_roster.return_value = MagicMock()
 
@@ -425,22 +383,10 @@ class TestRunContainerDoctor:
         assert results[0] == ("warn", "Future check", "evaluated locally")
         mock_exec.assert_not_called()
 
-    @patch(
-        "terok.lib.orchestration.container_doctor.VaultManager.ssh_signer_port",
-        new_callable=PropertyMock,
-        return_value=None,
-    )
-    @patch(
-        "terok.lib.orchestration.container_doctor.VaultManager.token_broker_port",
-        new_callable=PropertyMock,
-        return_value=None,
-    )
     @patch("terok.lib.orchestration.container_doctor.make_sandbox_config")
     def test_collect_all_checks_raises_in_tcp_mode_with_unset_ports(
         self,
         mock_sandbox_cfg: MagicMock,
-        _broker_port: MagicMock,
-        _ssh_port: MagicMock,
         tmp_path: Path,
     ) -> None:
         """``_collect_all_checks`` refuses TCP mode without resolved ports.
@@ -453,7 +399,9 @@ class TestRunContainerDoctor:
         """
         from terok.lib.orchestration.container_doctor import _collect_all_checks
 
-        mock_sandbox_cfg.return_value = MagicMock(services_mode="tcp", gate_port=None)
+        mock_sandbox_cfg.return_value = MagicMock(
+            services_mode="tcp", gate_port=None, token_broker_port=None, ssh_signer_port=None
+        )
         with pytest.raises(SystemExit, match="ports are not all configured"):
             _collect_all_checks("proj", tmp_path)
 
@@ -561,17 +509,7 @@ class TestStreamingGrouping:
             ),
             patch(
                 "terok.lib.orchestration.container_doctor.make_sandbox_config",
-                return_value=MagicMock(),
-            ),
-            patch(
-                "terok.lib.orchestration.container_doctor.VaultManager.token_broker_port",
-                new_callable=PropertyMock,
-                return_value=8080,
-            ),
-            patch(
-                "terok.lib.orchestration.container_doctor.VaultManager.ssh_signer_port",
-                new_callable=PropertyMock,
-                return_value=2222,
+                return_value=MagicMock(token_broker_port=8080, ssh_signer_port=2222),
             ),
             patch(
                 "terok.lib.orchestration.container_doctor._read_desired_shield_state",
@@ -643,17 +581,7 @@ class TestStreamingGrouping:
             ),
             patch(
                 "terok.lib.orchestration.container_doctor.make_sandbox_config",
-                return_value=MagicMock(),
-            ),
-            patch(
-                "terok.lib.orchestration.container_doctor.VaultManager.token_broker_port",
-                new_callable=PropertyMock,
-                return_value=8080,
-            ),
-            patch(
-                "terok.lib.orchestration.container_doctor.VaultManager.ssh_signer_port",
-                new_callable=PropertyMock,
-                return_value=2222,
+                return_value=MagicMock(token_broker_port=8080, ssh_signer_port=2222),
             ),
             patch(
                 "terok.lib.orchestration.container_doctor._read_desired_shield_state",

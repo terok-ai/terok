@@ -125,45 +125,33 @@ def test_gate_start_and_stop_delegate_to_daemon_controls() -> None:
     m_stop.assert_called_once_with()
 
 
-def test_shield_setup_passes_root_flag() -> None:
-    """``shield_setup`` flips ``root`` and ``user`` to mutually exclusive scopes."""
+def test_shield_setup_installs() -> None:
+    """``shield_setup`` delegates to ``ShieldHooks.install()`` — no scope flags."""
     with mock.patch("terok.lib.integrations.sandbox.ShieldHooks.install") as m:
-        worker_actions.shield_setup(True)
-        worker_actions.shield_setup(False)
-    assert m.call_args_list == [
-        mock.call(root=True, user=False),
-        mock.call(root=False, user=True),
-    ]
+        worker_actions.shield_setup()
+    m.assert_called_once_with()
 
 
 # ── Vault ─────────────────────────────────────────────────────────────
 
 
-def test_vault_lock_unlinks_session_file_and_stops(tmp_path: Path) -> None:
-    """``vault_lock`` removes the session-tier passphrase file and stops the daemon."""
+def test_vault_lock_unlinks_session_file(tmp_path: Path) -> None:
+    """``vault_lock`` removes the session-tier passphrase file."""
     passphrase_file = tmp_path / "vault.passphrase"
     passphrase_file.write_text("not-a-real-passphrase\n", encoding="utf-8")
     cfg = mock.Mock()
     cfg.vault_passphrase_file = passphrase_file
-    with (
-        mock.patch("terok.lib.api.make_sandbox_config", return_value=cfg),
-        mock.patch("terok.lib.api.vault.VaultManager.stop_daemon") as m_stop,
-    ):
+    with mock.patch("terok.lib.api.make_sandbox_config", return_value=cfg):
         worker_actions.vault_lock()
     assert not passphrase_file.exists()
-    m_stop.assert_called_once_with()
 
 
 def test_vault_lock_tolerates_missing_session_file(tmp_path: Path) -> None:
     """No session-file on disk is the cold-start path — must not raise."""
     cfg = mock.Mock()
     cfg.vault_passphrase_file = tmp_path / "never-created.passphrase"
-    with (
-        mock.patch("terok.lib.api.make_sandbox_config", return_value=cfg),
-        mock.patch("terok.lib.api.vault.VaultManager.stop_daemon") as m_stop,
-    ):
+    with mock.patch("terok.lib.api.make_sandbox_config", return_value=cfg):
         worker_actions.vault_lock()
-    m_stop.assert_called_once_with()
 
 
 def test_vault_seal_calls_handle_with_key_auto() -> None:
@@ -282,51 +270,6 @@ def test_gate_uninstall_uses_manager() -> None:
         worker_actions.gate_uninstall()
     m_mgr.assert_called_once_with("CFG")
     m_mgr.return_value.uninstall_systemd_units.assert_called_once_with()
-
-
-def test_vault_install_generates_routes_then_installs_units() -> None:
-    """``vault_install`` generates routes, then installs the vault's systemd units."""
-    cfg = mock.Mock()
-    with (
-        mock.patch("terok.lib.api.make_sandbox_config", return_value=cfg),
-        mock.patch("terok.lib.integrations.executor.AgentRoster.shared") as m_shared,
-        mock.patch("terok.lib.api.vault.VaultManager") as m_mgr,
-    ):
-        worker_actions.vault_install()
-    m_shared.return_value.ensure_vault_routes.assert_called_once_with(cfg=cfg)
-    m_mgr.assert_called_once_with(cfg)
-    m_mgr.return_value.install_systemd_units.assert_called_once_with()
-
-
-def test_vault_uninstall_uses_manager() -> None:
-    """``vault_uninstall`` removes the vault's systemd units."""
-    with (
-        mock.patch("terok.lib.api.make_sandbox_config", return_value="CFG"),
-        mock.patch("terok.lib.api.vault.VaultManager") as m_mgr,
-    ):
-        worker_actions.vault_uninstall()
-    m_mgr.assert_called_once_with("CFG")
-    m_mgr.return_value.uninstall_systemd_units.assert_called_once_with()
-
-
-def test_vault_start_generates_routes_then_starts_daemon() -> None:
-    """``vault_start`` generates routes, then starts the vault daemon."""
-    cfg = mock.Mock()
-    with (
-        mock.patch("terok.lib.api.make_sandbox_config", return_value=cfg),
-        mock.patch("terok.lib.integrations.executor.AgentRoster.shared") as m_shared,
-        mock.patch("terok.lib.api.vault.VaultManager.start_daemon") as m_start,
-    ):
-        worker_actions.vault_start()
-    m_shared.return_value.ensure_vault_routes.assert_called_once_with(cfg=cfg)
-    m_start.assert_called_once_with()
-
-
-def test_vault_stop_delegates_to_sandbox() -> None:
-    """``vault_stop`` stops the vault daemon."""
-    with mock.patch("terok.lib.api.vault.VaultManager.stop_daemon") as m_stop:
-        worker_actions.vault_stop()
-    m_stop.assert_called_once_with()
 
 
 # ── _print_sync_gate_ssh_help ─────────────────────────────────────────

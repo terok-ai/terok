@@ -699,50 +699,17 @@ class ProjectActionsMixin(_MixinBase):
     # ---------- Shield actions ----------
 
     async def _action_shield_setup(self) -> None:
-        """Push shield setup modal and run hook installation on result."""
-        from .screens import ShieldSetupScreen
-
-        await self.push_screen(ShieldSetupScreen(), self._on_shield_setup_result)
-
-    async def _on_shield_setup_result(self, result: str | None) -> None:
-        """Run hook installation after shield setup modal choice."""
-        if result is None:
-            return
+        """Install shield OCI hooks into the canonical terok-owned dir."""
         self._run_console_action(
             "terok.tui.worker_actions:shield_setup",
-            result == "root",
             title="Installing shield hooks",
         )
 
     # ---------- Vault actions ----------
-
-    async def _action_vault_install(self) -> None:
-        """Install systemd socket activation for the vault."""
-        self._run_console_action(
-            "terok.tui.worker_actions:vault_install",
-            title="Installing vault systemd socket",
-        )
-
-    async def _action_vault_uninstall(self) -> None:
-        """Uninstall vault systemd units."""
-        self._run_console_action(
-            "terok.tui.worker_actions:vault_uninstall",
-            title="Uninstalling vault systemd units",
-        )
-
-    async def _action_vault_start(self) -> None:
-        """Generate routes and start the vault daemon."""
-        self._run_console_action(
-            "terok.tui.worker_actions:vault_start",
-            title="Starting vault",
-        )
-
-    async def _action_vault_stop(self) -> None:
-        """Stop the vault daemon."""
-        self._run_console_action(
-            "terok.tui.worker_actions:vault_stop",
-            title="Stopping vault",
-        )
+    #
+    # No daemon-lifecycle actions: vault is now a per-container proxy
+    # spawned by the supervisor — there's nothing on the host to
+    # install / uninstall / start / stop.
 
     async def _action_vault_unlock(self) -> None:
         """Prompt for the SQLCipher passphrase and land it on the session-file tier.
@@ -756,7 +723,7 @@ class ProjectActionsMixin(_MixinBase):
         await self.push_screen(VaultUnlockModal(), self._on_vault_unlock_result)
 
     async def _action_vault_lock(self) -> None:
-        """Clear the session-file and stop the daemon (reversible).
+        """Clear the session-file (reversible).
 
         Persistent tiers (keyring, sealed systemd-creds,
         ``credentials.passphrase``) are intentionally untouched — the

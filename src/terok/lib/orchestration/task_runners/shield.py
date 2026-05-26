@@ -7,10 +7,19 @@
 container starts — it honours ``shield.drop_on_task_run`` on creation,
 ``shield.on_task_restart`` on restart, and always reapplies the
 roster-driven auth-protect denies that survive ``shield down``.
+
+In the per-container-supervisor model the shield's hub socket is
+keyed on the **container UUID**, not the operator-facing name —
+[`resolve_container_uuid`][terok.lib.orchestration.task_runners.shield.resolve_container_uuid]
+threads that ID through every
+[`ShieldManager.up`][terok_sandbox.ShieldManager.up] /
+[`ShieldManager.down`][terok_sandbox.ShieldManager.down] call so
+verdicts reach the right hub.
 """
 
 from __future__ import annotations
 
+import subprocess  # noqa: S404 — wrapping ``podman inspect``; argv is built from fixed verbs + caller-vetted container name
 from typing import TYPE_CHECKING, Any
 
 from terok.lib.integrations.sandbox import ShieldManager
@@ -26,13 +35,53 @@ _DESIRED_SHIELD_STATE_FILENAME = "shield_desired_state"
 _VALID_SHIELD_STATES = frozenset({"up", "down", "disengaged"})
 
 
+def resolve_container_uuid(cname: str) -> str:
+    """Return the full podman UUID for *cname*.
+
+    Shield's per-container hub socket lives at
+    ``$XDG_RUNTIME_DIR/terok/clearance/<container_id>.sock`` (keyed on
+    the UUID, not the operator-facing podman name), so every
+    [`ShieldManager.up`][terok_sandbox.ShieldManager.up] /
+    [`ShieldManager.down`][terok_sandbox.ShieldManager.down] call must
+    carry both: the name for audit log readability, the UUID for hub
+    routing.  The legacy global-socket fallback is gone.
+
+    Raises [`RuntimeError`][RuntimeError] when the container can't be
+    inspected — the caller's intent is "do something to this running
+    container's shield", and a missing container makes that intent
+    unfulfillable.  Callers that tolerate the missing case (e.g. best-
+    effort post-stop reconciliation) wrap the call in their own
+    ``try`` block.
+    """
+    try:
+        out = subprocess.check_output(  # noqa: S603 — argv is fixed verbs + caller-vetted name  # nosec B603 B607
+            ["podman", "container", "inspect", "-f", "{{.Id}}", "--", cname],
+            stderr=subprocess.DEVNULL,
+            text=True,
+            timeout=5.0,
+        ).strip()
+    except (subprocess.CalledProcessError, FileNotFoundError, subprocess.TimeoutExpired) as exc:
+        raise RuntimeError(f"podman inspect failed for container {cname!r}: {exc}") from exc
+    if not out:
+        raise RuntimeError(f"podman inspect returned empty Id for container {cname!r}")
+    return out
+
+
 def _read_desired_shield_state(task_dir: Path) -> str | None:
-    """Read the persisted shield state from the task directory."""
+    """Read the persisted shield state from the task directory.
+
+    Returns ``None`` only when the file is absent — a corrupted value
+    (truncated mid-write, partial filesystem failure) raises ``ValueError``
+    so the caller surfaces an actionable error rather than silently
+    flipping the operator's persisted policy back to the OCI-hook default.
+    """
     path = task_dir / _DESIRED_SHIELD_STATE_FILENAME
     if not path.is_file():
         return None
     value = path.read_text().strip()
-    return value if value in _VALID_SHIELD_STATES else None
+    if value not in _VALID_SHIELD_STATES:
+        raise ValueError(f"corrupt shield-state file {path}: {value!r}")
+    return value
 
 
 def _write_desired_shield_state(task_dir: Path, state: str) -> None:
@@ -46,7 +95,8 @@ def _restore_shield_state(cname: str, task_dir: Path) -> None:
     if desired not in {"down", "disengaged"}:
         return
     try:
-        ShieldManager(task_dir).down(cname, allow_all=(desired == "disengaged"))
+        container_id = resolve_container_uuid(cname)
+        ShieldManager(task_dir).down(cname, container_id, allow_all=(desired == "disengaged"))
     except Exception as exc:
         import warnings
 
@@ -54,10 +104,18 @@ def _restore_shield_state(cname: str, task_dir: Path) -> None:
 
 
 def _drop_shield_on_creation(cname: str, task_dir: Path) -> None:
-    """Drop the shield after fresh container creation and persist the state."""
+    """Drop the shield after fresh container creation and persist the state.
+
+    Records the ``down`` intent *before* attempting the drop so that a
+    transient drop failure (UUID race, shield socket hiccup) still
+    captures the operator's ``shield.drop_on_task_run`` request — the
+    next ``retain`` restart will re-attempt the drop instead of
+    silently leaving the shield UP.
+    """
+    _write_desired_shield_state(task_dir, "down")
     try:
-        ShieldManager(task_dir).down(cname)
-        _write_desired_shield_state(task_dir, "down")
+        container_id = resolve_container_uuid(cname)
+        ShieldManager(task_dir).down(cname, container_id)
         audit_path = task_dir / "shield" / "audit.jsonl"
         print(f"Shield is down. Audit log: {audit_path}")
         print(SHIELD_SECURITY_HINT)
@@ -151,14 +209,7 @@ def _apply_auth_protect_denies(cname: str, task_dir: Path) -> None:
     from ...core.config import exposed_credential_providers
 
     exposed = exposed_credential_providers()
-    try:
-        shield_obj = ShieldManager(task_dir).shield
-    except Exception as exc:  # noqa: BLE001
-        import warnings
-
-        warnings.warn(f"auth-protect: shield unavailable: {exc}", stacklevel=2)
-        return
-
+    shield_obj = ShieldManager(task_dir).shield
     allow_entries = _resolved_allow_entries(shield_obj)
 
     for provider, hosts in _auth_protect_hosts().items():
@@ -167,12 +218,7 @@ def _apply_auth_protect_denies(cname: str, task_dir: Path) -> None:
         for host in hosts:
             if host in allow_entries:
                 continue
-            try:
-                shield_obj.deny(cname, host)
-            except Exception as exc:  # noqa: BLE001
-                import warnings
-
-                warnings.warn(f"auth-protect: deny {host}: {exc}", stacklevel=2)
+            shield_obj.deny(cname, host)
 
 
 def _apply_shield_policy(
@@ -207,4 +253,5 @@ def _apply_shield_policy(
 
 __all__ = [
     "_apply_shield_policy",
+    "resolve_container_uuid",
 ]

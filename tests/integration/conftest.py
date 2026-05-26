@@ -346,7 +346,11 @@ def _isolate_port_registry(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> N
 
 
 @pytest.fixture
-def terok_env(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> TerokIntegrationEnv:
+def terok_env(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    request: pytest.FixtureRequest,
+) -> TerokIntegrationEnv:
     """Return an isolated terok config/state environment for a test."""
     from terok_util import paths as _util_paths
 
@@ -371,11 +375,13 @@ def terok_env(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> TerokIntegrati
 
     # Write default global config with vault bypass — subprocess-based
     # tests spawn a new CLI process that reads this file.  Tests that need the
-    # vault opt out via the needs_vault marker.
-    (system_config_root / "config.yml").write_text(
-        "vault:\n  bypass_no_secret_protection: true\n",
-        encoding="utf-8",
-    )
+    # vault opt out via the needs_vault marker: skip the bypass so the
+    # subprocess CLI exercises the real per-container vault flow.
+    if "needs_vault" not in {m.name for m in request.node.iter_markers()}:
+        (system_config_root / "config.yml").write_text(
+            "vault:\n  bypass_no_secret_protection: true\n",
+            encoding="utf-8",
+        )
     # Sandbox reads ``credentials.passphrase`` from the user-tier
     # config (``$XDG_CONFIG_HOME/terok/config.yml``) — system-tier
     # paths point at ``/etc/terok`` on the real filesystem and won't
@@ -456,22 +462,13 @@ def _bypass_vault(request: pytest.FixtureRequest) -> Iterator[None]:
     as a config file in the ``terok_env`` fixture itself.
     """
     if "needs_vault" in {m.name for m in request.node.iter_markers()}:
-        # Tests exercise the vault path but don't have a real daemon —
-        # bypass reachability probes (socket + TCP health).
-        with (
-            patch.object(
-                __import__(
-                    "terok_sandbox.vault.daemon.lifecycle", fromlist=["VaultManager"]
-                ).VaultManager,
-                "_wait_for_unix_socket",
-                return_value=True,
-            ),
-            patch(
-                "terok_sandbox.vault.daemon.lifecycle.VaultManager._wait_for_ready",
-                return_value=True,
-            ),
-        ):
-            yield
+        # In the per-container-supervisor model the vault is not a host
+        # daemon anymore — each container's supervisor embeds its own
+        # proxy.  ``needs_vault`` tests exercise the in-container vault
+        # path; nothing on the host needs patching, but the marker is
+        # kept as an explicit opt-out from the default ``get_vault_bypass``
+        # patch below.
+        yield
     else:
         with patch(
             "terok.lib.core.config.get_vault_bypass",

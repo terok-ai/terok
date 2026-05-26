@@ -39,26 +39,6 @@ except Exception:  # pragma: no cover - textual not installed
     _HAS_TEXTUAL = False
 
 
-def _vault_migration_warning() -> str | None:
-    """Return a startup warning when a pre-0.8 ``credentials/`` dir is present.
-
-    Returns ``None`` when there is nothing to warn about (no legacy dir, or
-    the sandbox paths module couldn't be imported — the TUI must never
-    crash on startup because of a diagnostic check).
-    """
-    try:
-        from terok.lib.api.setup import namespace_state_dir
-
-        if namespace_state_dir("credentials").is_dir():
-            return (
-                "Legacy credentials/ directory detected. "
-                "Run 'python3 tools/terok-migrate-vault.py' to migrate to vault/."
-            )
-    except Exception:
-        return None
-    return None
-
-
 if _HAS_TEXTUAL:
     # Import textual and our widgets only when available
     from dataclasses import dataclass
@@ -79,7 +59,7 @@ if _HAS_TEXTUAL:
         needs_setup,
     )
     from terok.lib.api.shield import RecoveryStatus, ShieldManager
-    from terok.lib.api.vault import VaultManager, VaultStatus
+    from terok.lib.api.vault import VaultStatusSnapshot
 
     from ..lib.api import (
         BrokenProject,
@@ -183,10 +163,6 @@ if _HAS_TEXTUAL:
     }
 
     VAULT_ACTION_HANDLERS: dict[str, str] = {
-        "vault_install": "_action_vault_install",
-        "vault_uninstall": "_action_vault_uninstall",
-        "vault_start": "_action_vault_start",
-        "vault_stop": "_action_vault_stop",
         "vault_unlock": "_action_vault_unlock",
         "vault_lock": "_action_vault_lock",
         "vault_seal": "_action_vault_seal",
@@ -332,7 +308,7 @@ if _HAS_TEXTUAL:
             self._last_gate_server_running: bool | None = None
             self._last_gate_server_status: GateServerStatus | None = None
             self._last_shield_env: EnvironmentCheck | None = None
-            self._last_vault_status: VaultStatus | None = None
+            self._last_vault_status: VaultStatusSnapshot | None = None
             # Cached state for detail screens
             self._last_project_state: dict | None = None
             self._last_image_old: bool | None = None
@@ -427,11 +403,6 @@ if _HAS_TEXTUAL:
                 # call_after_refresh may not exist on very old Textual; in
                 # that case we simply skip this extra logging.
                 pass
-
-            # Vault migration warning
-            warning = _vault_migration_warning()
-            if warning is not None:
-                self.notify(warning, severity="warning", timeout=15)
 
             # If the DB exists but no resolver tier opens it, push the
             # unlock modal here — otherwise the main view falls back to
@@ -1666,7 +1637,7 @@ if _HAS_TEXTUAL:
         async def action_show_vault(self) -> None:
             """Open the vault management screen."""
             try:
-                self._last_vault_status = VaultManager().get_status()
+                self._last_vault_status = VaultStatusSnapshot.load()
             except Exception:
                 self._last_vault_status = None
             await self.push_screen(
@@ -1734,9 +1705,9 @@ if _HAS_TEXTUAL:
             )
 
         async def _refresh_vault_status(self, *, push_modal_if_locked: bool = False) -> None:
-            """Read fresh ``VaultStatus``, update the pill, optionally push the unlock modal."""
+            """Read a fresh snapshot, update the pill, optionally push the unlock modal."""
             try:
-                self._last_vault_status = VaultManager().get_status()
+                self._last_vault_status = VaultStatusSnapshot.load()
             except Exception:
                 self._last_vault_status = None
 
@@ -1749,7 +1720,7 @@ if _HAS_TEXTUAL:
             ):
                 await self.push_screen(VaultUnlockModal(), self._on_vault_unlock_result)
 
-        def _render_status_pill(self, status: "VaultStatus | None") -> None:
+        def _render_status_pill(self, status: "VaultStatusSnapshot | None") -> None:
             """Update the bottom StatusBar with a short vault-state pill."""
             try:
                 bar = self.query_one("#status-bar", StatusBar)
@@ -1760,7 +1731,7 @@ if _HAS_TEXTUAL:
             if status is None:
                 bar.set_message("")
                 return
-            plaintext = getattr(status, "plaintext_passphrase_path", None)
+            plaintext = status.plaintext_passphrase_path
             if status.locked:
                 bar.set_message("Vault: LOCKED — open Vault from the command palette to unlock")
                 return

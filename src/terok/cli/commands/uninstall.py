@@ -44,11 +44,6 @@ def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) ->
         ),
     )
     p.add_argument(
-        "--root",
-        action="store_true",
-        help="Also remove shield hooks from the system hooks directory (requires sudo)",
-    )
-    p.add_argument(
         "--no-desktop-entry",
         action="store_true",
         help="Skip the XDG desktop entry removal",
@@ -70,7 +65,6 @@ def dispatch(args: argparse.Namespace) -> bool:
     if args.cmd != "uninstall":
         return False
     cmd_uninstall(
-        root=getattr(args, "root", False),
         no_desktop_entry=getattr(args, "no_desktop_entry", False),
         no_sandbox=getattr(args, "no_sandbox", False),
         purge_credentials=getattr(args, "purge_credentials", False),
@@ -83,7 +77,6 @@ def dispatch(args: argparse.Namespace) -> bool:
 
 def cmd_uninstall(
     *,
-    root: bool = False,
     no_desktop_entry: bool = False,
     no_sandbox: bool = False,
     purge_credentials: bool = False,
@@ -103,7 +96,7 @@ def cmd_uninstall(
     if not no_desktop_entry:
         all_ok &= _uninstall_desktop_entry()
     if not no_sandbox:
-        all_ok &= _uninstall_sandbox_stack(root=root)
+        all_ok &= _uninstall_sandbox_stack()
     if purge_credentials:
         all_ok &= _purge_credential_db()
 
@@ -132,7 +125,7 @@ def _uninstall_desktop_entry() -> bool:
         return True
 
 
-def _uninstall_sandbox_stack(*, root: bool) -> bool:
+def _uninstall_sandbox_stack() -> bool:
     """Delegate the full teardown to the sandbox aggregator.
 
     The sandbox aggregator now teardowns both hook pairs (nft + bridge)
@@ -146,7 +139,7 @@ def _uninstall_sandbox_stack(*, root: bool) -> bool:
 
     with stage_line("Sandbox stack") as s:
         try:
-            sandbox_uninstall(root=root)
+            sandbox_uninstall()
         except (SystemExit, Exception) as exc:  # noqa: BLE001 — aggregator may raise
             s.fail(str(exc))
             return False

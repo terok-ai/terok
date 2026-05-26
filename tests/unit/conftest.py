@@ -69,6 +69,13 @@ def _isolate_user_paths(
     monkeypatch.setenv("XDG_RUNTIME_DIR", str(fake_home / "run"))
     for var in _TEROK_PATH_OVERRIDE_ENV_VARS:
         monkeypatch.delenv(var, raising=False)
+    # CI containers whose ``uid_map`` maps ``geteuid()`` → 0 trip the
+    # post-userns ``_is_root()`` → paths route to ``/var/lib/terok``.
+    # Tests run as non-root by definition.
+    monkeypatch.setattr("terok_util.paths._is_root", lambda: False)
+    # CLI ``--config`` / ``--raw`` mutate ``os.environ`` directly,
+    # bypassing monkeypatch — clear per-test to avoid leakage.
+    monkeypatch.delenv("TEROK_CONFIG_FILE", raising=False)
 
 
 @pytest.fixture(autouse=True)

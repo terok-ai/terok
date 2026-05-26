@@ -134,9 +134,13 @@ class TestApplyShieldPolicy:
                 return_value=False,
             ),
             patch("terok.lib.orchestration.task_runners.shield.ShieldManager") as mock_down,
+            patch(
+                "terok.lib.orchestration.task_runners.shield.resolve_container_uuid",
+                return_value="cafef00d",
+            ),
         ):
             _apply_shield_policy(project, "ctr", tmp_path, is_restart=False)
-        mock_down.return_value.down.assert_called_once_with("ctr")
+        mock_down.return_value.down.assert_called_once_with("ctr", "cafef00d")
         assert (tmp_path / "shield_desired_state").read_text().strip() == "down"
 
     def test_skips_when_bypass_active(self) -> None:
@@ -162,9 +166,13 @@ class TestApplyShieldPolicy:
                 return_value=False,
             ),
             patch("terok.lib.orchestration.task_runners.shield.ShieldManager") as mock_down,
+            patch(
+                "terok.lib.orchestration.task_runners.shield.resolve_container_uuid",
+                return_value="cafef00d",
+            ),
         ):
             _apply_shield_policy(project, "ctr", tmp_path, is_restart=True)
-        mock_down.return_value.down.assert_called_once_with("ctr", allow_all=False)
+        mock_down.return_value.down.assert_called_once_with("ctr", "cafef00d", allow_all=False)
 
     def test_restart_retain_restores_disengaged(self, tmp_path: Path) -> None:
         """Restart with retain policy restores a saved 'disengaged' state."""
@@ -178,9 +186,13 @@ class TestApplyShieldPolicy:
                 return_value=False,
             ),
             patch("terok.lib.orchestration.task_runners.shield.ShieldManager") as mock_down,
+            patch(
+                "terok.lib.orchestration.task_runners.shield.resolve_container_uuid",
+                return_value="cafef00d",
+            ),
         ):
             _apply_shield_policy(project, "ctr", tmp_path, is_restart=True)
-        mock_down.return_value.down.assert_called_once_with("ctr", allow_all=True)
+        mock_down.return_value.down.assert_called_once_with("ctr", "cafef00d", allow_all=True)
 
     def test_restart_retain_noop_when_up(self, tmp_path: Path) -> None:
         """Restart with retain + saved 'up' does nothing (hook already applied UP)."""
@@ -198,6 +210,23 @@ class TestApplyShieldPolicy:
             _apply_shield_policy(project, "ctr", tmp_path, is_restart=True)
         mock_down.return_value.down.assert_not_called()
 
+    def test_corrupt_desired_state_raises(self, tmp_path: Path) -> None:
+        """A truncated/corrupt shield-state file must raise — silently
+        falling back to the OCI-hook default would flip the operator's
+        last persisted policy without any diagnostic."""
+        from terok.lib.orchestration.task_runners.shield import _apply_shield_policy
+
+        (tmp_path / "shield_desired_state").write_text("do")
+        project = self._make_project(on_restart="retain")
+        with (
+            patch(
+                "terok.lib.orchestration.task_runners.shield.get_shield_bypass_firewall_no_protection",
+                return_value=False,
+            ),
+            pytest.raises(ValueError, match="corrupt shield-state file"),
+        ):
+            _apply_shield_policy(project, "ctr", tmp_path, is_restart=True)
+
     def test_restart_up_policy_noop(self, tmp_path: Path) -> None:
         """Restart with 'up' policy never calls shield_down."""
         from terok.lib.orchestration.task_runners.shield import _apply_shield_policy
@@ -214,8 +243,10 @@ class TestApplyShieldPolicy:
             _apply_shield_policy(project, "ctr", tmp_path, is_restart=True)
         mock_down.return_value.down.assert_not_called()
 
-    def test_warns_on_failure(self) -> None:
-        """Emits a warning when shield_down raises during fresh creation."""
+    def test_warns_on_failure(self, tmp_path: Path) -> None:
+        """Drop emits a warning then auth-protect propagates — drop is best-
+        effort (will retry on restart) but the auth-protect denies are
+        load-bearing for #873 and must not fail silently."""
         from terok.lib.orchestration.task_runners.shield import _apply_shield_policy
 
         project = self._make_project(drop=True)
@@ -229,8 +260,11 @@ class TestApplyShieldPolicy:
                 side_effect=RuntimeError("nft missing"),
             ),
             pytest.warns(match="shield drop"),
+            pytest.raises(RuntimeError, match="nft missing"),
         ):
-            _apply_shield_policy(project, "ctr", MOCK_TASK_DIR, is_restart=False)
+            _apply_shield_policy(project, "ctr", tmp_path, is_restart=False)
+        # Intent persists even when the drop failed — restart will retry.
+        assert (tmp_path / "shield_desired_state").read_text() == "down\n"
 
     def test_restart_retain_noop_when_no_file(self, tmp_path: Path) -> None:
         """Restart with retain + no persisted state file does nothing."""
@@ -248,7 +282,8 @@ class TestApplyShieldPolicy:
         mock_down.return_value.down.assert_not_called()
 
     def test_restart_retain_warns_on_restore_failure(self, tmp_path: Path) -> None:
-        """Restart with retain emits a warning when shield restore fails."""
+        """Restart with retain warns on restore failure, then auth-protect
+        propagates (containment denies must not fail silently)."""
         from terok.lib.orchestration.task_runners.shield import _apply_shield_policy
 
         (tmp_path / "shield_desired_state").write_text("down\n")
@@ -263,6 +298,7 @@ class TestApplyShieldPolicy:
                 side_effect=RuntimeError("nft not found"),
             ),
             pytest.warns(match="shield restore"),
+            pytest.raises(RuntimeError, match="nft not found"),
         ):
             _apply_shield_policy(project, "ctr", tmp_path, is_restart=True)
 
@@ -408,23 +444,19 @@ class TestApplyAuthProtectDenies:
 
         mock_shield.deny.assert_not_called()
 
-    def test_warns_on_per_host_failure(self, tmp_path: Path) -> None:
-        """A single deny() failure warns but doesn't abort the loop."""
+    def test_propagates_per_host_failure(self, tmp_path: Path) -> None:
+        """A failing deny() aborts the loop — silent containment regressions
+        (terok-ai/terok#873) are worse than a visible launch error."""
         from terok.lib.orchestration.task_runners.shield import _apply_auth_protect_denies
 
         mock_shield = MagicMock()
-        mock_shield.deny.side_effect = [RuntimeError("nft missing"), None]
-        routes = {
-            "claude": self._route("https://api.anthropic.com"),
-            "vibe": self._route("https://api.mistral.ai"),
-        }
+        mock_shield.deny.side_effect = RuntimeError("nft missing")
+        routes = {"claude": self._route("https://api.anthropic.com")}
         with contextlib.ExitStack() as stack:
             for p in self._patches(routes=routes, shield_obj=mock_shield):
                 stack.enter_context(p)
-            with pytest.warns(match="auth-protect: deny"):
+            with pytest.raises(RuntimeError, match="nft missing"):
                 _apply_auth_protect_denies("ctr", tmp_path)
-
-        assert mock_shield.deny.call_count == 2
 
 
 # ── _run_container ────────────────────────────────────────
@@ -933,3 +965,99 @@ class TestApplyUnrestrictedEnv:
         expected = AgentRoster.shared().collect_all_auto_approve_env()
         for key, value in expected.items():
             assert env[key] == value, f"missing or wrong auto-approve key {key}"
+
+
+# ── resolve_container_uuid ────────────────────────────────
+
+
+class TestResolveContainerUuid:
+    """``resolve_container_uuid`` wraps ``podman inspect -f '{{.Id}}'``."""
+
+    def test_returns_inspected_id(self) -> None:
+        """A live container yields the full UUID."""
+        from terok.lib.orchestration.task_runners.shield import resolve_container_uuid
+
+        with patch(
+            "terok.lib.orchestration.task_runners.shield.subprocess.check_output",
+            return_value="0123456789abcdef\n",
+        ):
+            assert resolve_container_uuid("my-task") == "0123456789abcdef"
+
+    def test_raises_on_missing_container(self) -> None:
+        """A failed ``podman inspect`` surfaces as ``RuntimeError`` (no swallow)."""
+        from subprocess import CalledProcessError
+
+        from terok.lib.orchestration.task_runners.shield import resolve_container_uuid
+
+        with patch(
+            "terok.lib.orchestration.task_runners.shield.subprocess.check_output",
+            side_effect=CalledProcessError(125, ["podman"], stderr="no such container"),
+        ):
+            with pytest.raises(RuntimeError, match="podman inspect failed"):
+                resolve_container_uuid("gone")
+
+    def test_raises_on_empty_id(self) -> None:
+        """Empty stdout is treated as a probe failure."""
+        from terok.lib.orchestration.task_runners.shield import resolve_container_uuid
+
+        with patch(
+            "terok.lib.orchestration.task_runners.shield.subprocess.check_output",
+            return_value="\n",
+        ):
+            with pytest.raises(RuntimeError, match="empty Id"):
+                resolve_container_uuid("empty")
+
+
+# ── Identity plumbing into launch_prepared ────────────────
+
+
+class TestLaunchPreparedIdentity:
+    """``_run_container`` threads project/task identity into the sidecar.
+
+    The supervisor reads the sidecar JSON at OCI prestart hook time, so
+    every ``podman run`` issued by terok must carry ``project_id`` /
+    ``task_id`` / ``dossier_path`` for the supervisor to scope its
+    state correctly.
+    """
+
+    def _make_project(self) -> MagicMock:
+        from terok.lib.core.project_model import ProjectConfig
+
+        p = MagicMock(spec=ProjectConfig)
+        p.id = "proj-id-x"
+        p.gpu_enabled = False
+        p.root = MOCK_TASK_DIR
+        p.is_sealed = False
+        p.memory = None
+        p.cpus = None
+        p.nested_containers = False
+        p.runtime = None
+        return p
+
+    def test_identity_kwargs_passed_through(self) -> None:
+        """``launch_prepared`` receives ``project_id``, ``task_id``, ``dossier_path``."""
+        from terok.lib.orchestration.tasks import dossier_path, tasks_meta_dir
+
+        project = self._make_project()
+        with (
+            patch(
+                "terok.lib.orchestration.task_runners.container._agent_runner"
+            ) as sandbox_factory,
+            patch("terok.lib.orchestration.task_runners.container.has_gpu", return_value=False),
+        ):
+            _run_container(
+                task_id="task-id-y",
+                cname="proj-id-x-cli-y",
+                image="img:latest",
+                env={},
+                volumes=[],
+                project=project,
+                task_dir=MOCK_TASK_DIR,
+                command=["true"],
+            )
+
+        kwargs = sandbox_factory.return_value.launch_prepared.call_args.kwargs
+        assert kwargs["project_id"] == "proj-id-x"
+        assert kwargs["task_id"] == "task-id-y"
+        expected_dossier = dossier_path(tasks_meta_dir("proj-id-x"), "task-id-y")
+        assert kwargs["dossier_path"] == expected_dossier

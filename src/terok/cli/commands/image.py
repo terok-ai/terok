@@ -171,7 +171,6 @@ def _cmd_build(
         ImageBuilder,
     )
 
-    from ...lib.core.config import get_global_image_agents
     from ...lib.core.projects import load_project
 
     project = load_project(project_id) if project_id else None
@@ -184,7 +183,9 @@ def _cmd_build(
         else:
             resolved_base = base or ExecutorConfigView.image_base_image() or DEFAULT_BASE_IMAGE
             resolved_family = family
-            resolved_agents = AgentRoster.parse_selection(agents or get_global_image_agents())
+            resolved_agents = AgentRoster.parse_selection(
+                agents or ExecutorConfigView.image_agents() or "all"
+            )
         builder = ImageBuilder(resolved_base, family=resolved_family)
         images = builder.build_base(
             agents=resolved_agents,

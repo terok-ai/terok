@@ -279,34 +279,12 @@ def apply_git_identity_env(
 
 
 # ---------- Vault ----------
-
-
-def ensure_vault() -> None:
-    """Ensure the vault is reachable (respecting the bypass flag).
-
-    Call this before (re)starting a container that was created with vault
-    phantom tokens.  After a host reboot the systemd socket may be active
-    but the service idle — this function brings the TCP ports up so
-    containers can connect.
-
-    No-op when the ``bypass_no_secret_protection`` flag is set.
-    """
-    from ..core.config import get_vault_bypass
-
-    if get_vault_bypass():
-        return
-
-    from terok.lib.integrations.sandbox import VaultManager, VaultUnreachableError
-
-    try:
-        VaultManager(make_sandbox_config()).ensure_reachable()
-    except VaultUnreachableError as exc:
-        raise SystemExit(
-            f"{exc}\n\n"
-            "Start it with:\n"
-            "  terok vault install   (systemd socket activation)\n"
-            "  terok vault start     (manual daemon)"
-        ) from exc
+#
+# Vault is no longer a host daemon — the per-container supervisor
+# (terok-sandbox) embeds a vault proxy per container, started by the
+# OCI hook at container start.  There is no host-side ``ensure_vault``
+# step anymore: the supervisor reads its sidecar JSON at hook fire
+# time and stands the proxy up before the container's first egress.
 
 
 def _apply_claude_oauth_overrides(env: dict[str, str]) -> None:
@@ -527,10 +505,10 @@ class TaskEnvironment:
             assemble_container_env,
         )
 
-        # Vault: bypass → no vault at all; otherwise ensure it's up before assembly
+        # Vault: bypass disables proxy plumbing entirely; otherwise the
+        # per-container supervisor stands the proxy up on container
+        # start — no host-side daemon to bring up here.
         vault_bypass = get_vault_bypass()
-        if not vault_bypass:
-            ensure_vault()
         vault_transport = get_vault_transport()
 
         roster = AgentRoster.shared()
@@ -581,13 +559,9 @@ class TaskEnvironment:
         # too, and forgetting silently dropped the value (#902).
         env.update({k: v for k, v in sec_env.items() if k not in _SPEC_CONSUMED_SEC_ENV_KEYS})
 
-        # Socket mode: mount host runtime dir so socat bridges can reach sockets
-        if use_socket:
-            from terok.lib.integrations.sandbox import Sharing
-
-            volumes.append(
-                VolumeSpec(cfg.runtime_dir, _CONTAINER_RUNTIME_DIR, sharing=Sharing.SHARED)
-            )
+        # Note: the bind-mount for the per-container /run/terok/ dir is
+        # added by AgentRunner.launch_prepared — it knows the container
+        # name (the per-container dir key), this layer does not.
 
         # Claude OAuth env override + leaked-cred scan with exposed-token filtering
         if not vault_bypass:

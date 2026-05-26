@@ -1148,9 +1148,6 @@ class TestResumeToadContainer:
                     "terok.lib.orchestration.task_runners.toad.assign_web_port",
                     return_value=7862,
                 ),
-                unittest.mock.patch(
-                    "terok.lib.orchestration.task_runners.toad.ensure_vault",
-                ),
                 redirect_stdout(buf),
             ):
                 task_run_toad(project_id, tid)
@@ -1181,9 +1178,6 @@ class TestResumeToadContainer:
                 unittest.mock.patch(
                     "terok.lib.orchestration.task_runners.toad.assign_web_port",
                     return_value=7863,
-                ),
-                unittest.mock.patch(
-                    "terok.lib.orchestration.task_runners.toad.ensure_vault",
                 ),
                 unittest.mock.patch(
                     "terok.lib.orchestration.task_runners.toad._podman_start",
