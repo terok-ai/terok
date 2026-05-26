@@ -503,9 +503,9 @@ install time.  To move the passphrase between backends —
 ["Changing tiers" recipe](https://github.com/terok-ai/terok-sandbox/blob/master/docs/credentials-encryption.md)
 in terok-sandbox.
 
-Pressing PANIC also clears the session-unlock file so the daemon
-can't auto-resume from that tier; persistent tiers stay so the panic
-is reversible.
+Pressing PANIC also clears the session-unlock file so a
+freshly-spawned supervisor can't auto-resume from that tier; persistent
+tiers stay so the panic is reversible.
 
 ---
 

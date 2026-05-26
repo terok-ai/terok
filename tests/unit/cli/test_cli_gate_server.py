@@ -1,7 +1,13 @@
 # SPDX-FileCopyrightText: 2026 Jiri Vyskocil
 # SPDX-License-Identifier: Apache-2.0
 
-"""Tests for the structurally-mounted gate commands."""
+"""Tests for the structurally-mounted gate commands.
+
+The gate now lives inside each container's supervisor — there is no host
+daemon to install/start/stop.  The only remaining sandbox-provided verb
+is read-only: ``gate path <project>`` prints the ``file://`` URL of the
+project's bare mirror.
+"""
 
 from __future__ import annotations
 
@@ -21,20 +27,20 @@ def test_gate_group_registered() -> None:
     parser = argparse.ArgumentParser()
     _wire_gate(parser)
 
-    args = parser.parse_args(["gate", "status"])
-    assert args._cmd.name == "status"
+    args = parser.parse_args(["gate", "path", "demo"])
+    assert args._cmd.name == "path"
 
 
-def test_gate_status_dispatches(capsys) -> None:
-    """``gate status`` invokes the handler via [`CommandTree.dispatch`][terok_sandbox.commands.CommandTree.dispatch]."""
+def test_gate_path_dispatches(capsys) -> None:
+    """``gate path`` invokes the handler and prints a ``file://`` mirror URL."""
     parser = argparse.ArgumentParser()
     _wire_gate(parser)
 
-    args = parser.parse_args(["gate", "status"])
+    args = parser.parse_args(["gate", "path", "demo"])
     CommandTree.dispatch(args)
     out = capsys.readouterr().out
-    assert "Mode:" in out
-    assert "Running:" in out
+    assert out.startswith("file://")
+    assert out.strip().endswith("demo.git")
 
 
 def test_gate_group_help_shown_without_subcommand() -> None:

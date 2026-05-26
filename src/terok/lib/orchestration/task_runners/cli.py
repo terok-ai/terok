@@ -19,7 +19,7 @@ from ...core.images import project_cli_image
 from ...core.projects import load_project
 from ...util.ansi import green as _green, red as _red, supports_color as _supports_color
 from ..agent_config import resolve_agent_config
-from ..environment import build_task_env_and_volumes, ensure_vault
+from ..environment import build_task_env_and_volumes
 from ..hooks import run_hook
 from ..tasks import (
     CONTAINER_TEROK_CONFIG,
@@ -58,7 +58,6 @@ def task_run_cli(
 
     # If container already exists, handle it
     if container_state is not None:
-        ensure_vault()
         color_enabled = _supports_color()
         if container_state == "running":
             print(f"Container {_green(cname, color_enabled)} is already running.")

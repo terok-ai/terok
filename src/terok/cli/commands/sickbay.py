@@ -20,29 +20,20 @@ Exit codes:
 from __future__ import annotations
 
 import argparse
-import shutil
 import sys
 from contextlib import suppress
 from pathlib import Path
 
-from terok.lib.api.clearance import (
-    CLEARANCE_HUB_UNIT_NAME as _CLEARANCE_HUB_UNIT_NAME,
-    CLEARANCE_NOTIFIER_UNIT_NAME as _CLEARANCE_NOTIFIER_UNIT_NAME,
-    check_clearance_units_outdated as _clearance_check_units_outdated,
-    read_installed_notifier_unit_version as _clearance_notifier_unit_version,
-    read_installed_unit_version as _clearance_hub_unit_version,
-)
-from terok.lib.api.gate import GateServerManager
 from terok.lib.api.setup import (
     SERVICES_TCP_OPTOUT_YAML,
     check_environment,
     resolve_container_state_dir,
     systemd_creds_has_tpm2,
 )
-from terok.lib.api.vault import VaultManager
+from terok.lib.api.vault import VaultStatusSnapshot
 
 from ...lib.core import runtime as _rt
-from ...lib.core.config import get_services_mode, global_config_path, make_sandbox_config
+from ...lib.core.config import get_services_mode, global_config_path
 from ...lib.core.project_model import ProjectConfig, is_valid_project_id
 from ...lib.core.projects import list_projects, load_project
 from ...lib.orchestration.container_doctor import ContainerDoctor
@@ -90,58 +81,6 @@ def dispatch(args: argparse.Namespace) -> bool:
     return True
 
 
-def _check_gate_server() -> _CheckResult:
-    """Check gate server status.
-
-    Three "not running" paths get different messages because they need
-    different fixes:
-
-    * Operator-pending install → ``warn`` with a ``terok gate start``
-      pointer.
-    * Missing ``git`` on the host → ``warn`` naming the consequence
-      (no git push channel), no remediation pointer — installing git
-      is distro-specific and the operator's call.
-    * No user systemd → ``warn`` naming the gap (gate's inetd-style
-      architecture has no managed-daemon fallback yet, sandbox#…).
-
-    The latter two used to collapse to the same generic "run
-    'terok gate start'" line that would have failed to do anything;
-    the contextual messages match the executor preflight's verdicts.
-    """
-    cfg = make_sandbox_config()
-    gate = GateServerManager(cfg)
-    status = gate.get_status()
-    configured = get_services_mode()
-    label = "Gate server"
-    if status.running:
-        outdated = gate.check_units_outdated()
-        if outdated:
-            return ("warn", label, f"{outdated} Run 'terok gate start' to update.")
-        detail = f"{status.mode}, {status.transport or 'tcp'}"
-        if configured != (status.transport or "tcp"):
-            return (
-                "warn",
-                label,
-                f"{detail} — config says services.mode: {configured}",
-            )
-        return ("ok", label, detail)
-    if status.mode == "systemd":
-        return ("error", label, "socket installed but not active")
-    if not shutil.which("git"):
-        return (
-            "warn",
-            label,
-            "disabled — git not on PATH (no host-side git push channel)",
-        )
-    if not gate.is_systemd_available():
-        return (
-            "warn",
-            label,
-            "disabled — no user systemd (managed-daemon fallback not implemented yet)",
-        )
-    return ("warn", label, "not running — run 'terok gate start'")
-
-
 def _check_shield() -> _CheckResult:
     """Check egress firewall (terok-shield) environment."""
     label = "Shield"
@@ -175,32 +114,6 @@ def _check_shield() -> _CheckResult:
     return ("ok", label, detail)
 
 
-def _check_clearance_stack() -> _CheckResult:
-    """Surface stale or half-installed clearance units — pipx upgrade hygiene.
-
-    Delegates drift detection to the clearance package so sickbay
-    tracks whatever new units terok-clearance ships next without
-    knowing the triple's shape itself.  Hub and notifier versions
-    surface side-by-side so an operator who edits the notifier-only
-    profile (e.g. hardening tweaks) doesn't have to read the unit
-    file to see whether their drift was picked up.
-    """
-    label = "Clearance stack"
-    outdated = _clearance_check_units_outdated()
-    if outdated:
-        return ("warn", label, outdated)
-    hub = _clearance_hub_unit_version()
-    notifier = _clearance_notifier_unit_version()
-    if hub is None and notifier is None:
-        return ("ok", label, f"{_CLEARANCE_HUB_UNIT_NAME} not installed")
-    parts: list[str] = []
-    if hub is not None:
-        parts.append(f"{_CLEARANCE_HUB_UNIT_NAME} v{hub}")
-    if notifier is not None:
-        parts.append(f"{_CLEARANCE_NOTIFIER_UNIT_NAME} v{notifier}")
-    return ("ok", label, ", ".join(parts))
-
-
 def _passphrase_tier_label(source: str | None) -> str | None:
     """Render the resolved passphrase tier for the sickbay vault detail line.
 
@@ -226,40 +139,44 @@ def _passphrase_tier_label(source: str | None) -> str | None:
 
 
 def _check_vault() -> _CheckResult:
-    """Check vault status, surfacing the resolved passphrase tier."""
+    """Check vault store state — locked, populated, plaintext-on-disk.
+
+    Every container's supervisor embeds its own vault proxy, so the
+    host-side check reduces to DB-side facts — does the resolver chain
+    unlock the store, what's in it, and is the passphrase exposed on
+    disk?  Per-container proxy
+    health is reported by
+    [`ContainerDoctor`][terok.lib.orchestration.container_doctor.ContainerDoctor]
+    against each running task individually.
+    """
     label = "Vault"
-    vault = VaultManager()
     try:
-        status = vault.get_status()
+        status = VaultStatusSnapshot.load()
     except Exception as exc:  # noqa: BLE001
         return ("warn", label, f"check failed — {exc}")
-    if status.running:
-        configured = get_services_mode()
-        creds = len(status.credentials_stored) if status.credentials_stored else 0
-        parts = [status.mode, status.transport or "tcp"]
-        tier = _passphrase_tier_label(status.passphrase_source)
-        if tier:
-            parts.append(tier)
-        parts.append(f"{creds} credential(s) stored")
-        detail = ", ".join(parts)
-        if configured != (status.transport or "tcp"):
-            return (
-                "warn",
-                label,
-                f"{detail} — config says services.mode: {configured}",
-            )
-        return ("ok", label, detail)
-    if status.mode == "systemd":
-        if vault.is_socket_active():
-            return ("ok", label, "systemd, socket active — service starts on first connection")
+
+    if status.db_error is not None:
+        return ("warn", label, f"DB error — {status.db_error}")
+
+    if status.locked:
         return (
-            "error",
+            "warn",
             label,
-            "socket installed but not active — run 'terok vault start'",
+            "locked — run 'terok vault unlock' to make stored credentials available",
         )
-    if vault.is_systemd_available():
-        return ("warn", label, "not running — run 'terok vault install'")
-    return ("warn", label, "not running — run 'terok vault start'")
+
+    creds = len(status.credentials_stored or ())
+    parts: list[str] = []
+    tier = _passphrase_tier_label(status.passphrase_source)
+    if tier:
+        parts.append(tier)
+    parts.append(f"{creds} credential(s) stored")
+    if status.plaintext_passphrase_path is not None:
+        parts.append("plaintext passphrase on disk")
+    detail = ", ".join(parts)
+    if status.plaintext_passphrase_path is not None:
+        return ("warn", label, detail)
+    return ("ok", label, detail)
 
 
 def _task_meta_path(pid: str, tid: str) -> Path | None:
@@ -563,6 +480,14 @@ def _check_selinux_policy() -> _CheckResult:
                 "terok_socket_t NOT installed — containers cannot connect to sockets. "
                 f"Fix (pick one): {install_cmd}; {opt_out}",
             )
+        case SelinuxStatus.POLICY_OUTDATED:
+            return (
+                "warn",
+                label,
+                "terok_socket_t policy is outdated — it predates the per-container "
+                "supervisor and lacks the rule it binds its sockets with. "
+                f"Rebuild: {selinux_install_command()}",
+            )
         case SelinuxStatus.LIBSELINUX_MISSING:
             return (
                 "warn",
@@ -578,33 +503,6 @@ def _check_selinux_policy() -> _CheckResult:
                 "terok_socket_t installed, binding functional "
                 f"(installer: {selinux_install_script()})",
             )
-
-
-def _check_vault_migration() -> _CheckResult:
-    """Check for leftover pre-vault credentials directory."""
-    label = "Vault migration"
-    try:
-        from terok.lib.api.setup import namespace_state_dir
-
-        old_dir = namespace_state_dir("credentials")
-        new_dir = namespace_state_dir("vault")
-        if old_dir.is_dir() and not new_dir.is_dir():
-            return (
-                "warn",
-                label,
-                f"legacy credentials/ dir exists at {old_dir} — "
-                "run 'python3 tools/terok-migrate-vault.py' to migrate to vault/",
-            )
-        if old_dir.is_dir() and new_dir.is_dir():
-            return (
-                "info",
-                label,
-                f"legacy credentials/ dir still present at {old_dir} — "
-                "safe to remove after verifying vault/ works",
-            )
-    except Exception as exc:  # noqa: BLE001
-        return ("warn", label, f"check failed — {exc}")
-    return ("ok", label, "no legacy directory")
 
 
 def _check_recovery_acknowledged() -> _CheckResult:
@@ -681,20 +579,17 @@ def _check_default_agents() -> _CheckResult:
 
 
 _GLOBAL_CHECKS = [
-    ("Gate server", _check_gate_server),
     ("Shield", _check_shield),
     ("Vault", _check_vault),
-    ("Vault migration", _check_vault_migration),
     ("Recovery key acknowledged", _check_recovery_acknowledged),
     ("SSH signer", _check_ssh_signer),
     ("SELinux policy", _check_selinux_policy),
-    ("Clearance stack", _check_clearance_stack),
     ("Default agents", _check_default_agents),
 ]
 """Global checks paired with the label shown while they run.
 
 The check functions return their own label inside the ``_CheckResult``
-tuple, but we want to stream ``"  Gate server …… "`` *before* the
+tuple, but we want to stream ``"  Shield …… "`` *before* the
 check runs — so the user sees progress even on slow probes.  The
 label printed up front should match the one the check returns; if it
 ever drifts, the streamed line and the final marker end up on different

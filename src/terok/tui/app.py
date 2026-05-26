@@ -39,26 +39,6 @@ except Exception:  # pragma: no cover - textual not installed
     _HAS_TEXTUAL = False
 
 
-def _vault_migration_warning() -> str | None:
-    """Return a startup warning when a pre-0.8 ``credentials/`` dir is present.
-
-    Returns ``None`` when there is nothing to warn about (no legacy dir, or
-    the sandbox paths module couldn't be imported — the TUI must never
-    crash on startup because of a diagnostic check).
-    """
-    try:
-        from terok.lib.api.setup import namespace_state_dir
-
-        if namespace_state_dir("credentials").is_dir():
-            return (
-                "Legacy credentials/ directory detected. "
-                "Run 'python3 tools/terok-migrate-vault.py' to migrate to vault/."
-            )
-    except Exception:
-        return None
-    return None
-
-
 if _HAS_TEXTUAL:
     # Import textual and our widgets only when available
     from dataclasses import dataclass
@@ -71,7 +51,7 @@ if _HAS_TEXTUAL:
     from textual.worker import Worker, WorkerState
 
     from terok.lib.api import SandboxConfig
-    from terok.lib.api.gate import GateServerManager, GateServerStatus, GateStalenessInfo
+    from terok.lib.api.gate import GateStalenessInfo
     from terok.lib.api.setup import (
         EnvironmentCheck,
         SetupVerdict,
@@ -79,7 +59,7 @@ if _HAS_TEXTUAL:
         needs_setup,
     )
     from terok.lib.api.shield import RecoveryStatus, ShieldManager
-    from terok.lib.api.vault import VaultManager, VaultStatus
+    from terok.lib.api.vault import VaultStatusSnapshot
 
     from ..lib.api import (
         BrokenProject,
@@ -120,7 +100,6 @@ if _HAS_TEXTUAL:
         project: ProjectConfig | None = None
         state: dict | None = None
         staleness: GateStalenessInfo | None = None
-        gate_server_status: GateServerStatus | None = None
         shield_env: EnvironmentCheck | None = None
         error: str | None = None
 
@@ -131,7 +110,6 @@ if _HAS_TEXTUAL:
     from .project_actions import ProjectActionsMixin
     from .screens import (
         ConfirmDestructiveScreen,
-        GateServerScreen,
         ProjectDetailsScreen,
         ShieldScreen,
         TaskDetailsScreen,
@@ -171,22 +149,11 @@ if _HAS_TEXTUAL:
         "delete_project": "_action_delete_project",
     }
 
-    GATE_SERVER_ACTION_HANDLERS: dict[str, str] = {
-        "gate_install": "_action_gate_install",
-        "gate_uninstall": "_action_gate_uninstall",
-        "gate_start": "_action_gate_start",
-        "gate_stop": "_action_gate_stop",
-    }
-
     SHIELD_ACTION_HANDLERS: dict[str, str] = {
         "shield_setup": "_action_shield_setup",
     }
 
     VAULT_ACTION_HANDLERS: dict[str, str] = {
-        "vault_install": "_action_vault_install",
-        "vault_uninstall": "_action_vault_uninstall",
-        "vault_start": "_action_vault_start",
-        "vault_stop": "_action_vault_stop",
         "vault_unlock": "_action_vault_unlock",
         "vault_lock": "_action_vault_lock",
         "vault_seal": "_action_vault_seal",
@@ -327,12 +294,8 @@ if _HAS_TEXTUAL:
             self._auto_sync_cooldown: dict[str, float] = {}  # Per-project cooldown timestamps
             # Container status polling state
             self._container_status_timer = None
-            # Gate server polling state
-            self._gate_server_timer = None
-            self._last_gate_server_running: bool | None = None
-            self._last_gate_server_status: GateServerStatus | None = None
             self._last_shield_env: EnvironmentCheck | None = None
-            self._last_vault_status: VaultStatus | None = None
+            self._last_vault_status: VaultStatusSnapshot | None = None
             # Cached state for detail screens
             self._last_project_state: dict | None = None
             self._last_image_old: bool | None = None
@@ -428,11 +391,6 @@ if _HAS_TEXTUAL:
                 # that case we simply skip this extra logging.
                 pass
 
-            # Vault migration warning
-            warning = _vault_migration_warning()
-            if warning is not None:
-                self.notify(warning, severity="warning", timeout=15)
-
             # If the DB exists but no resolver tier opens it, push the
             # unlock modal here — otherwise the main view falls back to
             # the ``maybe_vault_db`` graceful-degradation state and the
@@ -445,17 +403,6 @@ if _HAS_TEXTUAL:
             # logged in (or just finished setup) deserves a louder
             # reminder; subsequent sessions get the pill alone.
             self._maybe_warn_recovery_unconfirmed()
-
-            # Startup gate server health check
-            self.run_worker(
-                lambda: GateServerManager().get_status(),
-                name="gate-health-check",
-                group="gate-health",
-                thread=True,
-                exit_on_error=False,
-            )
-            # Start periodic gate server polling
-            self._start_gate_server_polling()
 
             # First-run nudge: drive setup → wizard on a fresh install,
             # but also re-prompt for setup whenever a stale stamp is
@@ -973,10 +920,6 @@ if _HAS_TEXTUAL:
                     except Exception:
                         staleness = None
                 try:
-                    gate_status = GateServerManager().get_status()
-                except Exception:
-                    gate_status = None
-                try:
                     shield_env = _shield_check_environment()
                 except Exception:
                     shield_env = None
@@ -985,7 +928,6 @@ if _HAS_TEXTUAL:
                     project,
                     state,
                     staleness,
-                    gate_server_status=gate_status,
                     shield_env=shield_env,
                 )
             except SystemExit as e:
@@ -1120,14 +1062,12 @@ if _HAS_TEXTUAL:
                 self._projects_by_id[psr.project_id] = psr.project
                 self._staleness_info = psr.staleness
                 self._last_project_state = psr.state
-                self._last_gate_server_status = psr.gate_server_status
                 self._last_shield_env = psr.shield_env
                 state_widget.set_state(
                     psr.project,
                     psr.state,
                     self._last_task_count,
                     self._staleness_info,
-                    gate_server_status=psr.gate_server_status,
                     shield_env=psr.shield_env,
                 )
                 return
@@ -1235,33 +1175,6 @@ if _HAS_TEXTUAL:
                     self._start_autopilot_watcher(project_id, task_id)
                 if project_id == self.current_project_id:
                     await self.refresh_tasks()
-                return
-
-            if worker.group == "gate-health":
-                result = worker.result
-                if result and not result.running:
-                    self.notify(
-                        "Gate server is not running. "
-                        "Press Ctrl+P \u2192 Git Gate Server to manage.",
-                        severity="warning",
-                        timeout=10,
-                    )
-                return
-
-            if worker.group == "gate-server-poll":
-                result = worker.result
-                if not result:
-                    return
-                was_running = self._last_gate_server_running
-                now_running = result.running
-                if was_running is True and not now_running:
-                    self.notify("Gate server stopped", severity="warning")
-                elif was_running is False and now_running:
-                    self.notify("Gate server is now running")
-                self._last_gate_server_running = now_running
-                self._last_gate_server_status = result
-                # Refresh project state to update the combined gate line
-                self._refresh_project_state()
                 return
 
             if worker.group == "shield-action":
@@ -1408,7 +1321,6 @@ if _HAS_TEXTUAL:
             """
             self._stop_upstream_polling()
             self._stop_container_status_polling()
-            self._stop_gate_server_polling()
             if self._askpass_service is not None:
                 await self._askpass_service.stop()
 
@@ -1523,18 +1435,13 @@ if _HAS_TEXTUAL:
             yield from super().get_system_commands(screen)
             yield SystemCommand(
                 "Run terok setup",
-                "Install or re-apply the host services (shield, vault, gate, clearance) + desktop entry",
+                "Install or re-apply host shield hooks + the per-container supervisor + desktop entry",
                 self.action_run_setup,
             )
             yield SystemCommand(
                 "Console output",
                 "View live and captured logs from dispatched actions (builds, gate/vault ops)",
                 self.action_show_console_output,
-            )
-            yield SystemCommand(
-                "Git Gate Server",
-                "Manage gate server status and operations",
-                self.action_show_gate_server,
             )
             yield SystemCommand(
                 "Shield Status",
@@ -1633,21 +1540,6 @@ if _HAS_TEXTUAL:
                 severity="information",
             )
 
-        async def action_show_gate_server(self) -> None:
-            """Open the gate server management screen."""
-            await self.push_screen(
-                GateServerScreen(self._last_gate_server_status),
-                self._on_gate_server_action_result,
-            )
-
-        async def _on_gate_server_action_result(self, result: str | None) -> None:
-            """Handle result from gate server screen."""
-            if not result:
-                return
-            handler = GATE_SERVER_ACTION_HANDLERS.get(result)
-            if handler:
-                await getattr(self, handler)()
-
         async def action_show_shield(self) -> None:
             """Open the shield environment screen."""
             await self.push_screen(
@@ -1666,7 +1558,7 @@ if _HAS_TEXTUAL:
         async def action_show_vault(self) -> None:
             """Open the vault management screen."""
             try:
-                self._last_vault_status = VaultManager().get_status()
+                self._last_vault_status = VaultStatusSnapshot.load()
             except Exception:
                 self._last_vault_status = None
             await self.push_screen(
@@ -1734,9 +1626,9 @@ if _HAS_TEXTUAL:
             )
 
         async def _refresh_vault_status(self, *, push_modal_if_locked: bool = False) -> None:
-            """Read fresh ``VaultStatus``, update the pill, optionally push the unlock modal."""
+            """Read a fresh snapshot, update the pill, optionally push the unlock modal."""
             try:
-                self._last_vault_status = VaultManager().get_status()
+                self._last_vault_status = VaultStatusSnapshot.load()
             except Exception:
                 self._last_vault_status = None
 
@@ -1749,7 +1641,7 @@ if _HAS_TEXTUAL:
             ):
                 await self.push_screen(VaultUnlockModal(), self._on_vault_unlock_result)
 
-        def _render_status_pill(self, status: "VaultStatus | None") -> None:
+        def _render_status_pill(self, status: "VaultStatusSnapshot | None") -> None:
             """Update the bottom StatusBar with a short vault-state pill."""
             try:
                 bar = self.query_one("#status-bar", StatusBar)
@@ -1760,7 +1652,7 @@ if _HAS_TEXTUAL:
             if status is None:
                 bar.set_message("")
                 return
-            plaintext = getattr(status, "plaintext_passphrase_path", None)
+            plaintext = status.plaintext_passphrase_path
             if status.locked:
                 bar.set_message("Vault: LOCKED — open Vault from the command palette to unlock")
                 return

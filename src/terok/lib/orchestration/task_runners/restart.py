@@ -21,7 +21,6 @@ from ...util.ansi import (
     hyperlink as _hyperlink,
     supports_color as _supports_color,
 )
-from ..environment import ensure_vault
 from ..hooks import run_hook
 from ..ports import assign_web_port, release_web_port
 from ..tasks import container_name, load_task_meta
@@ -129,7 +128,6 @@ def task_restart(project_id: str, task_id: str) -> None:
     container_state = _rt.resolve_runtime(project).container(cname).state
 
     print(f"Restarting task {project_id}/{task_id} ({mode})...")
-    ensure_vault()
 
     if container_state is None:
         # Container is gone — restart can't recreate it.  User must start

@@ -6,9 +6,10 @@
 Reverse install order: desktop entry first (most user-visible), then
 the sandbox aggregator's symmetric uninstall.  The aggregator owns
 every piece of the service stack — clearance hub/verdict/notifier,
-gate, vault, and the shield hook pair (which now installs both nft
-and bridge hooks together, so a single shield-uninstall covers the
-event wire too).  Terok's wrapper is a thin delegating call.
+vault, and the shield hook pair (which installs both nft and bridge
+hooks together, so a single shield-uninstall covers the event wire
+too).  The git gate runs inside each container's supervisor and leaves
+nothing behind on the host.  Terok's wrapper is a thin delegating call.
 
 The standalone NFLOG reader script under XDG_DATA_HOME survives an
 uninstall on purpose: it's harmless without the hooks that feed it,
@@ -35,18 +36,13 @@ def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) ->
         help="Remove everything `terok setup` installed",
         description=(
             "Symmetric teardown of `terok setup` — removes desktop entry "
-            "plus the full sandbox stack (clearance, gate, vault, shield "
+            "plus the full sandbox stack (clearance, vault, shield "
             "hooks) via the sandbox aggregator.  The standalone NFLOG "
             "reader script under XDG_DATA_HOME is preserved (harmless "
             "without the hooks that feed it; the next setup overwrites "
             "it).  The vault credential DB is also preserved unless "
             "--purge-credentials is passed."
         ),
-    )
-    p.add_argument(
-        "--root",
-        action="store_true",
-        help="Also remove shield hooks from the system hooks directory (requires sudo)",
     )
     p.add_argument(
         "--no-desktop-entry",
@@ -56,7 +52,7 @@ def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) ->
     p.add_argument(
         "--no-sandbox",
         action="store_true",
-        help="Skip the sandbox stack teardown (shield + vault + gate + clearance)",
+        help="Skip the sandbox stack teardown (shield + vault + clearance)",
     )
     p.add_argument(
         "--purge-credentials",
@@ -70,7 +66,6 @@ def dispatch(args: argparse.Namespace) -> bool:
     if args.cmd != "uninstall":
         return False
     cmd_uninstall(
-        root=getattr(args, "root", False),
         no_desktop_entry=getattr(args, "no_desktop_entry", False),
         no_sandbox=getattr(args, "no_sandbox", False),
         purge_credentials=getattr(args, "purge_credentials", False),
@@ -83,7 +78,6 @@ def dispatch(args: argparse.Namespace) -> bool:
 
 def cmd_uninstall(
     *,
-    root: bool = False,
     no_desktop_entry: bool = False,
     no_sandbox: bool = False,
     purge_credentials: bool = False,
@@ -91,9 +85,9 @@ def cmd_uninstall(
     """Tear down every phase ``terok setup`` installs.
 
     Desktop entry first (user-visible surface), sandbox aggregator
-    next (does clearance → gate → vault → shield in reverse install
-    order), credential DB last (only when ``--purge-credentials``).
-    A running container survives a gate/vault teardown more gracefully
+    next (does clearance → vault → shield in reverse install order),
+    credential DB last (only when ``--purge-credentials``).
+    A running container survives a vault teardown more gracefully
     than it survives losing its shield hooks, so the aggregator's
     order keeps shield-hooks last.
     """
@@ -103,7 +97,7 @@ def cmd_uninstall(
     if not no_desktop_entry:
         all_ok &= _uninstall_desktop_entry()
     if not no_sandbox:
-        all_ok &= _uninstall_sandbox_stack(root=root)
+        all_ok &= _uninstall_sandbox_stack()
     if purge_credentials:
         all_ok &= _purge_credential_db()
 
@@ -132,7 +126,7 @@ def _uninstall_desktop_entry() -> bool:
         return True
 
 
-def _uninstall_sandbox_stack(*, root: bool) -> bool:
+def _uninstall_sandbox_stack() -> bool:
     """Delegate the full teardown to the sandbox aggregator.
 
     The sandbox aggregator now teardowns both hook pairs (nft + bridge)
@@ -146,11 +140,11 @@ def _uninstall_sandbox_stack(*, root: bool) -> bool:
 
     with stage_line("Sandbox stack") as s:
         try:
-            sandbox_uninstall(root=root)
+            sandbox_uninstall()
         except (SystemExit, Exception) as exc:  # noqa: BLE001 — aggregator may raise
             s.fail(str(exc))
             return False
-        s.ok("clearance + gate + vault + shield removed")
+        s.ok("clearance + vault + shield removed")
         return True
 
 

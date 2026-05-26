@@ -30,7 +30,6 @@ test files (e.g. `test_tree.py`) and are filled in during review.
 
 from __future__ import annotations
 
-import importlib.metadata
 import os
 import subprocess
 from pathlib import Path
@@ -165,10 +164,15 @@ def test_terok_executor_run_uses_terok_state() -> None:
 
     tree = _build_wired_tree()
 
+    # ``sandbox vault start`` was a daemon-lifecycle verb that the
+    # per-container supervisor flow removed — surviving verbs are
+    # ``unlock``/``lock``/``passphrase``, none of which currently take
+    # ``cfg``.  Pick another sandbox-subtree handler that still does so
+    # the overlay-scope coverage holds.
     for path in (
         ("executor", "run"),
         ("executor", "show-config"),
-        ("executor", "sandbox", "vault", "start"),
+        ("executor", "sandbox", "uninstall"),
     ):
         cmd = tree.find_at(path)
         assert cmd is not None and cmd.handler is not None, f"missing: {path}"
@@ -442,7 +446,6 @@ def test_terok_doctor_checks_emits_port_drift_in_tcp_mode() -> None:
         )
         checks = container_doctor._terok_doctor_checks(
             "any-project",
-            gate_port=18700,
             token_broker_port=18701,
             ssh_signer_port=18702,
         )
@@ -499,17 +502,16 @@ def test_check_vault_surfaces_passphrase_tier() -> None:
 
     from terok.cli.commands import sickbay
 
-    fake_status = MagicMock(
-        running=True,
-        mode="systemd",
-        transport="socket",
-        credentials_stored=[],
+    fake_snapshot = MagicMock(
+        locked=False,
         passphrase_source="systemd-creds",
+        credentials_stored=(),
+        plaintext_passphrase_path=None,
+        db_error=None,
     )
 
     with (
-        patch.object(sickbay.VaultManager, "get_status", return_value=fake_status),
-        patch.object(sickbay, "get_services_mode", return_value="socket"),
+        patch.object(sickbay.VaultStatusSnapshot, "load", return_value=fake_snapshot),
         patch.object(sickbay, "systemd_creds_has_tpm2", return_value=False),
     ):
         status, label, detail = sickbay._check_vault()
@@ -539,24 +541,3 @@ def test_dispatch_host_side_swallows_evaluate_failure(tmp_path: Path) -> None:
     assert status == "warn"
     assert label == "Imaginary check"
     assert "probe died" in detail
-
-
-def test_terok_gate_ownership() -> None:
-    """`terok-gate` console script is provided by terok-sandbox, not terok.
-
-    Iterates installed entry points; the `terok-gate` script must be
-    associated with the `terok-sandbox` distribution.  No terok entry
-    point re-exports it (every package owns the binaries it authors).
-    """
-    eps = importlib.metadata.entry_points(group="console_scripts")
-    gate_eps = [ep for ep in eps if ep.name == "terok-gate"]
-
-    assert gate_eps, "terok-gate script not installed — terok-sandbox missing?"
-    # Each EntryPoint exposes its providing distribution via .dist
-    # (Python 3.10+).  At least one provider should be terok-sandbox;
-    # none should be terok.
-    providers = {ep.dist.name for ep in gate_eps if ep.dist is not None}
-    assert "terok-sandbox" in providers
-    assert "terok" not in providers, (
-        "terok-gate is still re-exported by terok; sandbox should own this binary"
-    )

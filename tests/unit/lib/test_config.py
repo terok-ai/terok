@@ -577,7 +577,7 @@ def test_make_sandbox_config_leaves_ports_unresolved_until_consumer_resolves(
     Post-R2 (sandbox#315), ``SandboxConfig`` is side-effect-free at
     construction — port allocation hits the shared registry and binds
     test sockets, so it's kept out of the constructor and run only by
-    service consumers (``Sandbox``, ``VaultManager``, ``GateServerManager``)
+    service consumers (``Sandbox`` and the per-container supervisor)
     that actually launch services.  ``make_sandbox_config`` therefore
     must NOT resolve ports up-front: passing the resulting cfg into
     sickbay or a config-inspection path stays free of side effects.

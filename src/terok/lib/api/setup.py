@@ -17,11 +17,9 @@ from terok_util import namespace_state_dir  # noqa: F401 — re-exported public 
 from terok.lib.integrations.sandbox import (  # noqa: F401 — re-exported public API
     SERVICES_TCP_OPTOUT_YAML,
     EnvironmentCheck,
-    GateServerManager,
     SelinuxStatus,
     SetupVerdict,
     ShieldHooks,
-    VaultManager,
     check_environment,
     check_selinux_status,
     is_ssh_url,
@@ -37,12 +35,10 @@ from terok.lib.integrations.sandbox import (  # noqa: F401 — re-exported publi
 
 __all__ = [
     "EnvironmentCheck",
-    "GateServerManager",
     "SERVICES_TCP_OPTOUT_YAML",
     "SelinuxStatus",
     "SetupVerdict",
     "ShieldHooks",
-    "VaultManager",
     "check_environment",
     "check_selinux_status",
     "is_ssh_url",

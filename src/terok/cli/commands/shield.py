@@ -67,10 +67,16 @@ def _resolve_task(project_id: str, task_id: str) -> tuple[str, Path]:
 
 
 def _extract_handler_kwargs(args: argparse.Namespace, cmd_def: CommandDef) -> dict:
-    """Extract keyword arguments for a registry handler from parsed args."""
+    """Extract keyword arguments for a registry handler from parsed args.
+
+    Skips the positional ``container`` arg (the CLI resolves it from
+    ``project_id`` + ``task_id``) and ``--container-id``
+    (the orchestrator resolves it from the container's UUID — see
+    [`resolve_container_uuid`][terok.lib.orchestration.task_runners.shield.resolve_container_uuid]).
+    """
     kwargs: dict = {}
     for arg in cmd_def.args:
-        if arg.name == "container":
+        if arg.name in {"container", "--container-id"}:
             continue
         key = arg.dest or arg.name.lstrip("-").replace("-", "_")
         if hasattr(args, key):
@@ -129,8 +135,13 @@ def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) ->
             add_project_id(sp, nargs="?", help="Project ID")
             add_task_id(sp, nargs="?", help="Task ID")
 
+        # ``--container-id`` is the per-container hub socket routing
+        # key; terok always knows the UUID at the call site (it
+        # invokes ``ShieldManager.up`` / ``down`` directly from the
+        # task runner), so we don't surface it as a CLI flag — the
+        # dispatch function injects it from a ``podman inspect`` lookup.
         for arg in cmd.args:
-            if arg.name == "container":
+            if arg.name in {"container", "--container-id"}:
                 continue
             _add_arg(sp, arg)
 
@@ -138,9 +149,7 @@ def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) ->
     # subprocess passthrough).  Named explicitly so it doesn't shadow the
     # top-level ``terok setup`` which installs *all* host services — this
     # one touches only the shield OCI hooks.
-    p_install = sub.add_parser("install-hooks", help="Install global OCI hooks for shield")
-    p_install.add_argument("--root", action="store_true", help="System-wide (sudo)")
-    p_install.add_argument("--user", action="store_true", help="User-local")
+    sub.add_parser("install-hooks", help="Install global OCI hooks for shield")
 
 
 def dispatch(args: argparse.Namespace) -> bool:
@@ -151,19 +160,13 @@ def dispatch(args: argparse.Namespace) -> bool:
     cmd_name = args.shield_cmd
 
     # install-hooks is standalone_only and needs subprocess passthrough
-    # (no registry handler).  The sibling ``run_setup`` is UX-agnostic
-    # (raises ValueError on invalid combos) — terok's CLI surface turns
-    # that refusal into a SystemExit with actionable remediation text.
+    # (no registry handler).  Single layout: descriptors, scripts, and
+    # ballast all land in the canonical terok-owned dir under
+    # ``paths.root``.
     if cmd_name == "install-hooks":
-        if not args.root and not args.user:
-            raise SystemExit(
-                "Specify --root (system-wide, uses sudo) or --user (user-local).\n"
-                "  terok shield install-hooks --root   # /etc/containers/oci/hooks.d\n"
-                "  terok shield install-hooks --user   # ~/.local/share/containers/oci/hooks.d"
-            )
         # Module-attribute access so the test ``@patch("...ShieldHooks.install")``
         # intercepts the call.
-        _shield_api.ShieldHooks.install(root=args.root, user=args.user)
+        _shield_api.ShieldHooks.install()
         return True
 
     cmd_lookup = {cmd.name: cmd for cmd in COMMANDS if not shield_standalone_only(cmd)}
@@ -186,6 +189,14 @@ def dispatch(args: argparse.Namespace) -> bool:
             cname, task_dir = _resolve_task(project_id, task_id)
             shield = ShieldManager(task_dir, make_sandbox_config()).shield
             kwargs = _extract_handler_kwargs(args, cmd_def)
+            if cmd_name in {"up", "down"}:
+                # ``container_id`` is the per-container hub socket
+                # routing key — resolved from the live container at
+                # dispatch time so the operator never needs to think
+                # about UUIDs.
+                from terok.lib.orchestration.task_runners import resolve_container_uuid
+
+                kwargs["container_id"] = resolve_container_uuid(cname)
             if shield_needs_container(cmd_def):
                 cmd_def.handler(shield, cname, **kwargs)
                 _persist_desired_state(cmd_name, task_dir, kwargs)

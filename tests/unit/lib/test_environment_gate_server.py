@@ -1,18 +1,18 @@
 # SPDX-FileCopyrightText: 2026 Jiri Vyskocil
 # SPDX-License-Identifier: Apache-2.0
 
-"""Tests for environment.py gate-server integration."""
+"""Tests for environment.py per-container gate integration."""
 
 from __future__ import annotations
 
-from unittest.mock import PropertyMock, patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 
 from terok.lib.core.projects import ProjectConfig, load_project
 from terok.lib.orchestration.environment import _security_mode_env_and_volumes
 from tests.test_utils import mock_git_config, project_env
-from tests.testnet import GATE_PORT, gate_repo_url
+from tests.testnet import gate_repo_url
 
 _GATEKEEPING_YAML = """\
 project:
@@ -33,9 +33,13 @@ git:
 """
 
 
-def gate_mounts(volumes: list[str]) -> list[str]:
+def gate_mounts(volumes: list) -> list:
     """Return any gate-related volume mounts from the generated volume list."""
-    return [volume for volume in volumes if "git-gate" in volume or "gate" in volume.split(":")[0]]
+    return [
+        vol
+        for vol in volumes
+        if "gate" in str(getattr(vol, "container_path", "")) or "gate" in str(vol)
+    ]
 
 
 def resolve_security_env(
@@ -44,32 +48,32 @@ def resolve_security_env(
     project_id: str,
     with_gate: bool,
     token: str | None = None,
-    ensure_side_effect: BaseException | None = None,
-) -> tuple[ProjectConfig, dict[str, str], list[str]]:
-    """Load a project and evaluate gate-related env/volume settings."""
+    use_socket: bool = False,
+) -> tuple[ProjectConfig, dict[str, str], list]:
+    """Load a project and evaluate gate-related env/volume settings.
+
+    Patches ``mint_gate_token`` so the embedded token is deterministic;
+    the gate base path is read straight off ``cfg.gate_base_path`` (a
+    ``SandboxConfig`` property), so no manager patching is needed.
+    """
     with (
         mock_git_config(),
         project_env(yaml_text, project_id=project_id, with_gate=with_gate) as ctx,
         patch(
-            "terok.lib.orchestration.environment.GateServerManager.ensure_reachable",
-            side_effect=ensure_side_effect,
+            "terok.lib.orchestration.environment.mint_gate_token",
+            return_value=token or "tok" * 10 + "ab",
         ),
         patch(
-            "terok.lib.orchestration.environment.GateServerManager.server_port",
-            new_callable=PropertyMock,
-            return_value=GATE_PORT,
+            "terok.lib.orchestration.environment.SandboxConfig.gate_base_path",
+            new_callable=lambda: property(lambda self: ctx.base / "sandbox-state" / "gate"),
         ),
-        patch(
-            "terok.lib.orchestration.environment.GateServerManager.gate_base_path",
-            new_callable=PropertyMock,
-            return_value=ctx.base / "sandbox-state" / "gate",
-        ),
-        patch("terok.lib.orchestration.environment.TokenStore.create", return_value=token),
     ):
-        from unittest.mock import MagicMock
+        from terok.lib.integrations.sandbox import SandboxConfig
 
         project = load_project(project_id)
-        env, volumes = _security_mode_env_and_volumes(project, "1", MagicMock())
+        env, volumes = _security_mode_env_and_volumes(
+            project, SandboxConfig(), use_socket=use_socket
+        )
     return project, env, volumes
 
 
@@ -86,7 +90,7 @@ def test_gate_projects_use_http_urls_with_tokens(
     token: str,
     env_key: str,
 ) -> None:
-    """Gate-backed project modes generate token-authenticated HTTP URLs."""
+    """Gate-backed project modes generate token-authenticated localhost HTTP URLs."""
     project, env, volumes = resolve_security_env(
         yaml_text,
         project_id=project_id,
@@ -95,6 +99,9 @@ def test_gate_projects_use_http_urls_with_tokens(
     )
 
     assert env[env_key] == gate_repo_url(project_id, token)
+    # The minted token is also surfaced for the supervisor to validate.
+    assert env["TEROK_GATE_TOKEN"] == token
+    # The gate runs in the per-container supervisor — no host bind-mount.
     assert gate_mounts(volumes) == []
 
     if project.security_class == "gatekeeping":
@@ -105,48 +112,27 @@ def test_gate_projects_use_http_urls_with_tokens(
 
 def test_gatekeeping_missing_gate_raises() -> None:
     """Gatekeeping mode requires a synced gate mirror before task startup."""
-    from unittest.mock import MagicMock
-
     with mock_git_config(), project_env(_GATEKEEPING_YAML, project_id="gk-proj", with_gate=False):
         project = load_project("gk-proj")
         with pytest.raises(SystemExit, match="gate-sync"):
-            _security_mode_env_and_volumes(project, "1", MagicMock())
+            _security_mode_env_and_volumes(project, MagicMock())
 
 
-def test_gatekeeping_server_not_running_raises() -> None:
-    """Gatekeeping mode fails when the gate server cannot be reached."""
-    with pytest.raises(SystemExit, match="Gate server"):
-        resolve_security_env(
-            _GATEKEEPING_YAML,
-            project_id="gk-proj",
-            with_gate=True,
-            ensure_side_effect=SystemExit("Gate server unavailable"),
-        )
-
-
-@pytest.mark.parametrize(
-    "server_reachable",
-    [pytest.param(True, id="server-up"), pytest.param(False, id="server-down")],
-)
-def test_online_gate_server_fallback(server_reachable: bool) -> None:
-    """Online mode uses CLONE_FROM only when the gate server is reachable."""
+def test_online_gate_uses_clone_from_and_gate_remote() -> None:
+    """Online mode with a gate mirror uses CLONE_FROM + a named gate remote."""
     _project, env, volumes = resolve_security_env(
         _ONLINE_YAML,
         project_id="online-proj",
         with_gate=True,
         token="cafebabe" * 4,
-        ensure_side_effect=None if server_reachable else SystemExit("server down"),
     )
 
-    if server_reachable:
-        expected_url = gate_repo_url("online-proj", "cafebabe" * 4)
-        assert env["CLONE_FROM"] == expected_url
-        # Gate is also surfaced as a named "gate" remote in online mode
-        # so the agent can push WIP host-locally without going upstream.
-        assert env["GATE_REMOTE_URL"] == expected_url
-    else:
-        assert "CLONE_FROM" not in env
-        assert "GATE_REMOTE_URL" not in env
+    expected_url = gate_repo_url("online-proj", "cafebabe" * 4)
+    assert env["CLONE_FROM"] == expected_url
+    # Gate is also surfaced as a named "gate" remote in online mode
+    # so the agent can push WIP host-locally without going upstream.
+    assert env["GATE_REMOTE_URL"] == expected_url
+    assert env["TEROK_GATE_TOKEN"] == "cafebabe" * 4
     assert env["CODE_REPO"] == "https://example.com/repo.git"
     assert gate_mounts(volumes) == []
 
@@ -160,6 +146,7 @@ def test_online_without_gate_has_no_clone_from() -> None:
     )
     assert "CLONE_FROM" not in env
     assert "GATE_REMOTE_URL" not in env
+    assert "TEROK_GATE_TOKEN" not in env
     assert env["CODE_REPO"] == "https://example.com/repo.git"
     assert gate_mounts(volumes) == []
 
@@ -175,34 +162,39 @@ def test_gatekeeping_does_not_set_gate_remote_url() -> None:
     assert "GATE_REMOTE_URL" not in env
 
 
-def test_tcp_mode_without_gate_port_raises() -> None:
-    """Regression: TCP mode with a ``None`` gate port now fails fast.
+def test_socket_mode_sets_gate_socket_env_without_mount() -> None:
+    """Socket mode sets ``TEROK_GATE_SOCKET`` but no host bind-mount.
 
-    Previously the function silently built ``http://...@host:None/repo``,
-    which only surfaced as an opaque clone failure inside the container.
+    The gate now runs inside the per-container supervisor, which binds
+    ``gate-server.sock`` inside the per-container ``/run/terok`` dir
+    (mounted by the executor's launch flow).  terok only tells the
+    container-side socat bridge the well-known in-container path — it
+    does not emit a host gate-socket VolumeSpec anymore.
     """
-    from unittest.mock import MagicMock
+    from terok.lib.orchestration.environment import _CONTAINER_RUNTIME_DIR
 
-    from terok.lib.orchestration.environment import _security_mode_env_and_volumes
+    _project, env, volumes = resolve_security_env(
+        _GATEKEEPING_YAML,
+        project_id="gk-proj",
+        with_gate=True,
+        token="d" * 32,
+        use_socket=True,
+    )
 
-    with (
-        mock_git_config(),
-        project_env(_GATEKEEPING_YAML, project_id="gk-proj", with_gate=True),
-        patch("terok.lib.orchestration.environment.GateServerManager.ensure_reachable"),
-        patch(
-            "terok.lib.orchestration.environment.GateServerManager.server_port",
-            new_callable=PropertyMock,
-            return_value=None,
-        ),
-        patch(
-            "terok.lib.orchestration.environment.GateServerManager.gate_base_path",
-            new_callable=PropertyMock,
-        ),
-        patch("terok.lib.orchestration.environment.TokenStore.create", return_value="t" * 32),
-    ):
-        project = load_project("gk-proj")
-        with pytest.raises(SystemExit, match="Gate server port"):
-            _security_mode_env_and_volumes(project, "1", MagicMock(), use_socket=False)
+    assert env["TEROK_GATE_SOCKET"] == f"{_CONTAINER_RUNTIME_DIR}/gate-server.sock"
+    assert gate_mounts(volumes) == []
+
+
+def test_resolve_gate_port_always_fixed_bridge_port() -> None:
+    """The container reaches the gate on the fixed in-container bridge port.
+
+    The gate runs in the per-container supervisor and is reached through the
+    fixed ``TCP-LISTEN:9418`` socat bridge in both socket and TCP modes, so
+    the resolver takes no mode argument.
+    """
+    from terok.lib.orchestration.environment import _CONTAINER_GATE_PORT, _resolve_gate_port
+
+    assert _resolve_gate_port() == _CONTAINER_GATE_PORT == 9418
 
 
 def test_project_mounts_dir_shared_returns_global() -> None:
