@@ -89,8 +89,10 @@ Optional but recommended:
 
 ### Installation
 
+Download the latest [release wheel](https://github.com/terok-ai/terok/releases/download/v0.7.9/terok-0.7.9-py3-none-any.whl)
+
 ```bash
-pipx install terok
+pipx install terok-0.7.9-py3-none-any.whl
 ```
 
 ### One-time setup
