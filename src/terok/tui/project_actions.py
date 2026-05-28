@@ -27,6 +27,11 @@ from ..lib.api import (
 )
 from .shell_launch import launch_login
 
+#: Prompt shown to the user after a suspended-TUI subprocess exits — the
+#: blocking input reads any key so the user has time to see the
+#: container's last lines before the TUI redraws over them.
+_RESUME_PROMPT = "\n[Press Enter to return to TerokTUI] "
+
 if TYPE_CHECKING:
     from textual.app import App
 
@@ -146,7 +151,7 @@ class ProjectActionsMixin(_MixinBase):
                     subprocess.run(cmd)
                 except Exception as e:
                     print(f"Error: {e}")
-                input("\n[Press Enter to return to TerokTUI] ")
+                input(_RESUME_PROMPT)
             await self.refresh_tasks()
 
     # ---------- Project infrastructure actions ----------
@@ -413,7 +418,7 @@ class ProjectActionsMixin(_MixinBase):
             except Exception as exc:  # noqa: BLE001 — display whatever podman did
                 print(f"Error: {exc}")
                 exit_code = 1
-            input("\n[Press Enter to return to TerokTUI] ")
+            input(_RESUME_PROMPT)
         self._capture_auth_session(session, exit_code=exit_code)
 
     @work(exclusive=False, group="auth-watch", exit_on_error=False)
@@ -457,7 +462,8 @@ class ProjectActionsMixin(_MixinBase):
         stdout, _ = await wait_proc.communicate()
         try:
             exit_code = int(stdout.decode().strip())
-        except (ValueError, UnicodeDecodeError):
+        except ValueError:
+            # ``UnicodeDecodeError`` is a ``ValueError`` subclass — caught here too.
             exit_code = 1
         self._capture_auth_session(session, exit_code=exit_code)
 
@@ -550,7 +556,7 @@ class ProjectActionsMixin(_MixinBase):
                 await proc.wait()
             except (OSError, ValueError) as exc:
                 print(f"Error launching {editor}: {exc}")
-                input("\n[Press Enter to return to TerokTUI] ")
+                input(_RESUME_PROMPT)
                 return
         self.notify(done_msg)
         self._refresh_project_state()
