@@ -8,6 +8,8 @@ and the project wizard.  Also provides shared TUI helpers used by both
 project and task actions.
 """
 
+from __future__ import annotations
+
 import asyncio
 import os
 import shlex
