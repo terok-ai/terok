@@ -97,7 +97,7 @@ mypy = ">=1.13,<3.0"
 
 [tool.poetry.group.test.dependencies]
 pytest = ">=7.0"
-pytest-asyncio = ">=0.24"
+pytest-asyncio = ">=1.4.0"
 pytest-cov = ">=4.0"
 
 # Optional group — only the matrix runner pulls this in.  Adding
