@@ -70,6 +70,46 @@ def authenticate(provider: str, project_id: str | None = None) -> None:
     )
 
 
+def find_host_auth_image(provider: str) -> str | None:
+    """Return an existing L1 image suitable for host-wide *provider* auth.
+
+    Non-interactive: returns ``None`` when no matching L1 image exists
+    and the provider's OAuth path needs one.  TUI callers handle the
+    missing-image case themselves (notify, push a build screen, etc.)
+    rather than going through the CLI's interactive build prompt in
+    [`_resolve_host_auth_image`][terok.lib.domain.auth._resolve_host_auth_image].
+
+    For API-key-only providers (``supports_oauth`` is False), no
+    container will ever launch, so any L1 tag is fine — returns the
+    default alias unconditionally.
+    """
+    from terok.lib.integrations.executor import (
+        AUTH_PROVIDERS,
+        DEFAULT_BASE_IMAGE,
+        ExecutorConfigView,
+        ImageBuilder,
+    )
+
+    info = AUTH_PROVIDERS.get(provider)
+    needs_container = info is not None and info.supports_oauth
+
+    base = ExecutorConfigView.image_base_image() or DEFAULT_BASE_IMAGE
+    builder = ImageBuilder(base)
+    default_alias = builder.l1_tag()
+    per_agent = builder.l1_tag((provider,))
+
+    # Default alias is reserved for the user's configured set; trust it
+    # iff it actually contains the requested provider.
+    if image_exists(default_alias) and provider in ImageBuilder.image_agents(default_alias):
+        return default_alias
+    if image_exists(per_agent):
+        return per_agent
+    if not needs_container:
+        # API-key-only providers never launch a container, so any tag is fine.
+        return default_alias
+    return None
+
+
 def _resolve_host_auth_image(provider: str) -> str:
     """Pick (or build) an L1 image suitable for host-wide ``terok auth``.
 
@@ -95,7 +135,6 @@ def _resolve_host_auth_image(provider: str) -> str:
     from rich.console import Console
 
     from terok.lib.integrations.executor import (
-        AUTH_PROVIDERS,
         DEFAULT_BASE_IMAGE,
         ExecutorConfigView,
         ImageBuilder,
@@ -103,24 +142,15 @@ def _resolve_host_auth_image(provider: str) -> str:
 
     from ..core.config import get_global_image_agents
 
-    info = AUTH_PROVIDERS.get(provider)
-    needs_container = info is not None and info.supports_oauth
+    existing = find_host_auth_image(provider)
+    if existing is not None:
+        return existing
 
     base = ExecutorConfigView.image_base_image() or DEFAULT_BASE_IMAGE
     agents = get_global_image_agents()
     builder = ImageBuilder(base)
     default_alias = builder.l1_tag()
     per_agent = builder.l1_tag((provider,))
-
-    # Default alias is reserved for the user's configured set; trust it
-    # iff it actually contains the requested provider.
-    if image_exists(default_alias) and provider in ImageBuilder.image_agents(default_alias):
-        return default_alias
-    if image_exists(per_agent):
-        return per_agent
-    if not needs_container:
-        # API-key-only providers never launch a container, so any tag is fine.
-        return default_alias
 
     hint = (
         "No agent image present.  Build one with: terok image build "
@@ -162,4 +192,4 @@ def _resolve_host_auth_image(provider: str) -> str:
     return ImageBuilder(base).ensure_default_l1(agents)
 
 
-__all__ = ["authenticate"]
+__all__ = ["authenticate", "find_host_auth_image"]

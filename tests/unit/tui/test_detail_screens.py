@@ -986,14 +986,12 @@ class TestActionAuth:
         mixin = self._get_mixin()
         instance = mock.Mock(spec=mixin)
         instance.current_project_id = "myproj"
+        # ``_run_auth_flow`` is ``@work``-decorated — sync at call time despite
+        # the async source.  Override the autospec'd AsyncMock so the call
+        # doesn't leak an unawaited coroutine.
+        instance._run_auth_flow = mock.Mock()
         run(mixin._action_auth(instance, "claude"))
-        instance._run_console_action.assert_called_once_with(
-            "terok.tui.worker_actions:auth",
-            "claude",
-            "myproj",
-            title="Authenticating claude for myproj",
-            refresh=None,
-        )
+        instance._run_auth_flow.assert_called_once_with("claude", "myproj")
 
     def test_per_project_without_selection_notifies_and_skips(self) -> None:
         """Without a selection ``_action_auth`` is a no-op — host-wide path is separate."""
@@ -1003,9 +1001,10 @@ class TestActionAuth:
         # ``notify`` lives on the App parent, not the mixin spec — wire it
         # explicitly so the early-return path can call it without erroring.
         instance.notify = mock.Mock()
+        instance._run_auth_flow = mock.Mock()
 
         run(mixin._action_auth(instance, "claude"))
-        instance._run_console_action.assert_not_called()
+        instance._run_auth_flow.assert_not_called()
         instance.notify.assert_called_once()
 
     def test_host_wide_dispatches_auth_with_none(self) -> None:
@@ -1013,14 +1012,9 @@ class TestActionAuth:
         mixin = self._get_mixin()
         instance = mock.Mock(spec=mixin)
         instance.current_project_id = "selected-but-irrelevant"
+        instance._run_auth_flow = mock.Mock()
         run(mixin._action_auth_host_wide(instance, "claude"))
-        instance._run_console_action.assert_called_once_with(
-            "terok.tui.worker_actions:auth",
-            "claude",
-            None,
-            title="Authenticating claude (host-wide)",
-            refresh=None,
-        )
+        instance._run_auth_flow.assert_called_once_with("claude", None)
 
 
 class TestActionSelection:

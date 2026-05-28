@@ -705,6 +705,197 @@ class OpenCodeConfigScreen(screen.ModalScreen[str | None]):
 
 
 # ---------------------------------------------------------------------------
+# Auth: API key entry + mode choice
+# ---------------------------------------------------------------------------
+
+
+class ApiKeyEntryScreen(screen.ModalScreen[str | None]):
+    """Modal for collecting an API key from the operator.
+
+    Replaces the CLI's ``prompt_toolkit`` input — the TUI dispatches
+    actions into a ``stdin=DEVNULL`` subprocess, so the executor's
+    interactive ``_prompt_api_key`` would always see EOF (issue: API key
+    entry broken from TUI).  Dismisses with the stripped key string on
+    submit, or ``None`` on cancel.
+
+    The ``api_key_hint`` from the provider's roster entry is shown above
+    the input so the operator knows where to obtain the token.
+    """
+
+    BINDINGS = [
+        _modal_binding("escape", "cancel", "Cancel"),
+    ]
+
+    CSS = """
+    ApiKeyEntryScreen {
+        align: center middle;
+    }
+
+    #api-key-dialog {
+        width: 80;
+        height: auto;
+        max-height: 80%;
+        border: heavy $primary;
+        border-title-align: right;
+        border-subtitle-align: left;
+        background: $surface;
+        padding: 1;
+    }
+
+    #api-key-hint {
+        margin-bottom: 1;
+        color: $text-muted;
+    }
+
+    #api-key-input {
+        margin-bottom: 1;
+    }
+
+    #api-key-buttons {
+        height: auto;
+        align-horizontal: right;
+    }
+
+    #api-key-buttons Button {
+        margin-left: 1;
+    }
+    """
+
+    def __init__(self, provider_name: str) -> None:
+        """Build the screen for *provider_name*; provider must be in ``AUTH_PROVIDERS``."""
+        super().__init__()
+        self._provider_name = provider_name
+
+    def compose(self) -> ComposeResult:
+        """Build the hint label, masked input, and Cancel/Save buttons."""
+        from terok.lib.api import AUTH_PROVIDERS
+
+        info = AUTH_PROVIDERS.get(self._provider_name)
+        label = info.label if info else self._provider_name
+        hint = (info.api_key_hint if info else "").strip()
+
+        with Vertical(id="api-key-dialog") as dialog:
+            yield Static(hint or "Paste your API key below.", id="api-key-hint")
+            yield Input(
+                placeholder=f"{label} API key",
+                password=True,
+                id="api-key-input",
+            )
+            with Horizontal(id="api-key-buttons"):
+                yield Button("Cancel", id="btn-cancel", variant="default")
+                yield Button("Save", id="btn-save", variant="primary")
+        dialog.border_title = f"Authenticate {label}"
+        dialog.border_subtitle = "Esc to cancel"
+
+    def on_mount(self) -> None:
+        """Focus the input so the operator can type immediately."""
+        inp = self.query_one("#api-key-input", Input)
+        inp.focus()
+
+    def on_button_pressed(self, event: Button.Pressed) -> None:
+        """Route Save / Cancel button presses."""
+        if event.button.id == "btn-save":
+            self._submit()
+        elif event.button.id == "btn-cancel":
+            self.dismiss(None)
+
+    def on_input_submitted(self, event: "Input.Submitted") -> None:
+        """Accept Enter as Save."""
+        self._submit()
+
+    def _submit(self) -> None:
+        """Strip whitespace and dismiss with the key — empty input is a no-op."""
+        inp = self.query_one("#api-key-input", Input)
+        key = inp.value.strip()
+        if not key:
+            self.notify("API key cannot be empty.")
+            return
+        self.dismiss(key)
+
+    def action_cancel(self) -> None:
+        """Dismiss without a result."""
+        self.dismiss(None)
+
+
+class AuthModeScreen(screen.ModalScreen["str | None"]):
+    """Modal for picking ``oauth`` vs ``api_key`` when a provider supports both.
+
+    Mirrors the executor CLI's ``Choose [1/2]:`` prompt but as a proper
+    Textual choice.  Dismisses with ``"oauth"``, ``"api_key"``, or
+    ``None`` on cancel.
+    """
+
+    BINDINGS = [
+        _modal_binding("escape", "cancel", "Cancel"),
+        _modal_binding("q", "cancel", "Cancel"),
+    ]
+
+    CSS = """
+    AuthModeScreen {
+        align: center middle;
+    }
+
+    #auth-mode-dialog {
+        width: 60;
+        height: auto;
+        max-height: 80%;
+        border: heavy $primary;
+        border-title-align: right;
+        border-subtitle-align: left;
+        background: $surface;
+        padding: 1;
+    }
+
+    #auth-mode-list {
+        height: auto;
+    }
+    """
+
+    def __init__(self, provider_name: str) -> None:
+        """Build the screen for *provider_name*; provider must support both modes."""
+        super().__init__()
+        self._provider_name = provider_name
+
+    def compose(self) -> ComposeResult:
+        """Build the two-choice list (OAuth vs API key)."""
+        from terok.lib.api import AUTH_PROVIDERS
+
+        info = AUTH_PROVIDERS.get(self._provider_name)
+        label = info.label if info else self._provider_name
+        options = [
+            Option("\\[1] OAuth / interactive login (launches container)", id="oauth"),
+            Option("\\[2] API key (paste key, no container needed)", id="api_key"),
+        ]
+        with Vertical(id="auth-mode-dialog") as dialog:
+            yield OptionList(*options, id="auth-mode-list")
+        dialog.border_title = f"Authenticate {label}"
+        dialog.border_subtitle = "Esc to cancel"
+
+    def on_mount(self) -> None:
+        """Focus the choice list."""
+        actions = self.query_one("#auth-mode-list", OptionList)
+        actions.focus()
+
+    def on_option_list_option_selected(self, event: "OptionList.OptionSelected") -> None:
+        """Dismiss with the selected mode id."""
+        if event.option_id:
+            self.dismiss(event.option_id)
+
+    def on_key(self, event: events.Key) -> None:
+        """``1`` → oauth, ``2`` → api_key."""
+        if event.character == "1":
+            self.dismiss("oauth")
+            event.stop()
+        elif event.character == "2":
+            self.dismiss("api_key")
+            event.stop()
+
+    def action_cancel(self) -> None:
+        """Dismiss without a result."""
+        self.dismiss(None)
+
+
+# ---------------------------------------------------------------------------
 # Autopilot Prompt Screen
 # ---------------------------------------------------------------------------
 

@@ -28,6 +28,7 @@ from .shell_launch import launch_login
 if TYPE_CHECKING:
     from textual.app import App
 
+    from ..lib.api import AuthSession
     from .console_log import ConsoleLogEntry
 
     _MixinBase = App
@@ -253,35 +254,231 @@ class ProjectActionsMixin(_MixinBase):
 
         Reached from the project-details screen, where a project is
         always selected.  The top-level "Authenticate agents and tools"
-        entry uses `_action_auth_host_wide` instead — it bypasses
+        entry uses ``_action_auth_host_wide`` instead — it bypasses
         ``current_project_id`` so a stray selection in the main pane
         doesn't silently scope a host-wide intent to one project.
         """
         if not self.current_project_id:
             self.notify("No project selected.")
             return
-        self._run_console_action(
-            "terok.tui.worker_actions:auth",
-            provider,
-            self.current_project_id,
-            title=f"Authenticating {provider} for {self.current_project_id}",
-            refresh=None,
-        )
+        self._run_auth_flow(provider, self.current_project_id)
 
     async def _action_auth_host_wide(self, provider: str) -> None:
         """Run the host-wide auth flow for *provider* — no project context.
 
-        Resolves a shared L1 image (or builds one) and writes credentials
-        provider-scoped to the vault, so a later switch to per-project
-        auth doesn't duplicate or overwrite anything.
+        Resolves a shared L1 image (without building) and writes
+        credentials provider-scoped to the vault, so a later switch to
+        per-project auth doesn't duplicate or overwrite anything.
         """
-        self._run_console_action(
-            "terok.tui.worker_actions:auth",
-            provider,
-            None,
-            title=f"Authenticating {provider} (host-wide)",
-            refresh=None,
+        self._run_auth_flow(provider, None)
+
+    @work(exclusive=False, group="auth-flow", exit_on_error=False)
+    async def _run_auth_flow(self, provider: str, project_id: str | None) -> None:
+        """Drive the Textual-native auth flow: API-key form or OAuth container.
+
+        Replaces the previous ``worker_actions:auth`` subprocess dispatch,
+        which couldn't reach a stdin (the worker runs with
+        ``stdin=DEVNULL``) so the executor's ``prompt_toolkit`` API-key
+        prompt always saw EOF.  The OAuth path reuses the same
+        tmux/terminal/suspend cascade as project shell logins.
+        """
+        from ..lib.api import AUTH_PROVIDERS
+        from ..lib.core.config import is_oauth_enabled_for
+        from .screens import AuthModeScreen
+
+        info = AUTH_PROVIDERS.get(provider)
+        if info is None:
+            self.notify(f"Unknown auth provider: {provider}", severity="error")
+            return
+
+        has_oauth = info.supports_oauth and is_oauth_enabled_for(provider)
+        has_api_key = info.supports_api_key
+
+        if has_oauth and has_api_key:
+            mode = await self.push_screen_wait(AuthModeScreen(provider))
+            if mode is None:
+                return
+        elif has_oauth:
+            mode = "oauth"
+        elif has_api_key:
+            mode = "api_key"
+        else:
+            self.notify(
+                f"Auth for {provider!r} requires OAuth, but it is disabled "
+                "by the experimental / allow_oauth gates in config.yml.",
+                severity="error",
+                timeout=10,
+            )
+            return
+
+        if mode == "api_key":
+            await self._auth_via_api_key(provider)
+        else:
+            await self._auth_via_oauth(provider, project_id=project_id)
+
+    async def _auth_via_api_key(self, provider: str) -> None:
+        """Collect an API key via a Textual modal and store it in the vault."""
+        from ..lib.api import store_api_key
+        from .screens import ApiKeyEntryScreen
+
+        key = await self.push_screen_wait(ApiKeyEntryScreen(provider))
+        if not key:
+            return
+        try:
+            store_api_key(provider, key)
+        except Exception as exc:  # noqa: BLE001 — surface every storage failure
+            self.notify(
+                f"Failed to store API key for {provider}: {exc}",
+                severity="error",
+                timeout=10,
+            )
+            return
+        self.notify(f"API key stored for {provider}.")
+
+    async def _auth_via_oauth(self, provider: str, *, project_id: str | None) -> None:
+        """Prepare an OAuth auth container session and hand it to the launcher."""
+        from ..lib.api import Authenticator, find_host_auth_image
+        from ..lib.core.config import (
+            is_claude_oauth_exposed,
+            is_codex_oauth_exposed,
+            sandbox_live_mounts_dir,
         )
+        from ..lib.core.images import project_cli_image
+
+        if project_id is None:
+            image = find_host_auth_image(provider)
+            if image is None:
+                self.notify(
+                    f"No agent image found for OAuth auth of {provider}.  Run "
+                    "`terok image build` first, or use the per-project entry.",
+                    severity="warning",
+                    timeout=12,
+                )
+                return
+        else:
+            image = project_cli_image(project_id)
+
+        expose = (provider == "claude" and is_claude_oauth_exposed()) or (
+            provider == "codex" and is_codex_oauth_exposed()
+        )
+        try:
+            session = Authenticator(provider).prepare_oauth(
+                project_id,
+                mounts_dir=sandbox_live_mounts_dir(),
+                image=image,
+                expose_token=expose,
+            )
+        except SystemExit as exc:
+            self.notify(f"Cannot prepare auth: {exc}", severity="error", timeout=10)
+            return
+
+        await self._launch_oauth_container(session)
+
+    async def _launch_oauth_container(self, session: AuthSession) -> None:
+        """Launch ``session.argv`` via tmux/terminal/suspend; capture on exit.
+
+        Mirrors
+        [`_launch_terminal_session`][terok.tui.project_actions.ProjectActionsMixin._launch_terminal_session]
+        but ends with a capture step: extract credentials from the
+        session's temp dir and write them to the vault.  The
+        tmux/terminal branches dispatch the capture into a background
+        worker (the user closes the spawned terminal whenever they're
+        done); the suspend branch captures inline.
+        """
+        if self.is_web:
+            self.notify(
+                "OAuth auth needs a host terminal — unavailable in the web TUI.  "
+                "Use API-key auth instead, or run `terok auth` on the host.",
+                severity="error",
+                timeout=12,
+            )
+            session.cleanup()
+            return
+
+        method, _port = launch_login(session.argv, title=session.title)
+        if method in ("tmux", "terminal"):
+            self.notify(
+                f"OAuth container started in new {method}.  Credentials "
+                "will be captured automatically when it exits.",
+                timeout=8,
+            )
+            self._watch_auth_session(session)
+            return
+
+        with self.suspend():
+            try:
+                exit_code = subprocess.run(session.argv).returncode
+            except Exception as exc:  # noqa: BLE001 — display whatever podman did
+                print(f"Error: {exc}")
+                exit_code = 1
+            input("\n[Press Enter to return to TerokTUI] ")
+        self._capture_auth_session(session, exit_code=exit_code)
+
+    @work(exclusive=False, group="auth-watch", exit_on_error=False)
+    async def _watch_auth_session(self, session: AuthSession) -> None:
+        """Background: wait for the auth container to exit, then capture.
+
+        Polls ``podman container exists`` so the launched terminal has time
+        to start the container, then blocks on ``podman wait`` and forwards
+        the exit code to ``_capture_auth_session``.
+        """
+        # 2-minute startup grace: the user may take a moment to interact
+        # with the spawned tmux/terminal window before the container is up.
+        for _ in range(120):
+            check = await asyncio.create_subprocess_exec(
+                "podman",
+                "container",
+                "exists",
+                session.container_name,
+                stdout=asyncio.subprocess.DEVNULL,
+                stderr=asyncio.subprocess.DEVNULL,
+            )
+            if (await check.wait()) == 0:
+                break
+            await asyncio.sleep(1)
+        else:
+            self.notify(
+                f"Auth container {session.container_name!r} never started — cleanup only.",
+                severity="warning",
+                timeout=10,
+            )
+            session.cleanup()
+            return
+
+        wait_proc = await asyncio.create_subprocess_exec(
+            "podman",
+            "wait",
+            session.container_name,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.DEVNULL,
+        )
+        stdout, _ = await wait_proc.communicate()
+        try:
+            exit_code = int(stdout.decode().strip())
+        except (ValueError, UnicodeDecodeError):
+            exit_code = 1
+        self._capture_auth_session(session, exit_code=exit_code)
+
+    def _capture_auth_session(self, session: AuthSession, *, exit_code: int) -> None:
+        """Run ``session.capture()`` if the container exited cleanly; always cleanup."""
+        try:
+            if exit_code != 0:
+                self.notify(
+                    f"OAuth container exited {exit_code} — credentials not captured.",
+                    severity="warning",
+                    timeout=10,
+                )
+                return
+            session.capture()
+            self.notify(f"Credentials captured for {session.provider.name}.")
+        except Exception as exc:  # noqa: BLE001 — surface any extractor / vault error
+            self.notify(
+                f"Capture failed for {session.provider.name}: {exc}",
+                severity="error",
+                timeout=10,
+            )
+        finally:
+            session.cleanup()
 
     # ---------- Gate sync ----------
 

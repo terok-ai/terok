@@ -21,7 +21,10 @@ from terok.lib.core.images import (  # noqa: F401 — re-exported public API
     installed_agents,
     installed_agents_for_project,
 )
-from terok.lib.domain.auth import authenticate  # noqa: F401 — re-exported public API
+from terok.lib.domain.auth import (  # noqa: F401 — re-exported public API
+    authenticate,
+    find_host_auth_image,
+)
 from terok.lib.integrations.executor import (  # noqa: F401 — re-exported public API
     AGENT_PROVIDERS,
     AUTH_PROVIDERS,
@@ -32,6 +35,7 @@ from terok.lib.integrations.executor import (  # noqa: F401 — re-exported publ
     AgentRoster,
     AgentRunner,
     Authenticator,
+    AuthSession,
     BuildError,
     ExecutorConfigView,
     ImageBuilder,
@@ -43,7 +47,9 @@ from terok.lib.integrations.executor import (  # noqa: F401 — re-exported publ
     ensure_sandbox_ready,
     get_provider,
     parse_md_agent,
+    prepare_oauth_session,
     resolve_instructions,
+    store_api_key,
 )
 from terok.lib.orchestration.agent_config import (  # noqa: F401 — re-exported public API
     resolve_agent_config,
@@ -60,6 +66,7 @@ __all__ = [
     "AgentRoster",
     "AgentRunner",
     "Authenticator",
+    "AuthSession",
     "BuildError",
     "DEFAULT_BASE_IMAGE",
     "EXECUTOR_COMMANDS",
@@ -74,11 +81,14 @@ __all__ = [
     "build_images",
     "bundled_default_instructions",
     "ensure_sandbox_ready",
+    "find_host_auth_image",
     "generate_dockerfiles",
     "get_provider",
     "installed_agents",
     "installed_agents_for_project",
     "parse_md_agent",
+    "prepare_oauth_session",
     "resolve_agent_config",
     "resolve_instructions",
+    "store_api_key",
 ]
