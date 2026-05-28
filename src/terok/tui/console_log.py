@@ -33,6 +33,7 @@ import asyncio
 import enum
 import itertools
 import json
+import os
 import shlex
 import sys
 import time
@@ -253,6 +254,10 @@ class ConsoleLogMixin(_MixinBase):
         [`child_process_env`][terok.lib.util.subprocess_env.child_process_env]).
         """
         command = " ".join([ref, *(str(arg) for arg in args)])
+        env = {
+            "PYTHONPATH": os.pathsep.join(sys.path),
+            **(env or {}),
+        }
         return self._dispatch_console(worker_argv(ref, args), command, title, on_complete, env)
 
     def dispatch_console_command(
@@ -302,7 +307,12 @@ class ConsoleLogMixin(_MixinBase):
         # disable colour in that case and we'd see flat output in the
         # log viewer.  Caller-supplied env wins so a caller can opt out
         # by setting either var to "0".
-        env = {"FORCE_COLOR": "1", "CLICOLOR_FORCE": "1", **(env or {})}
+        env = {
+            "FORCE_COLOR": "1",
+            "CLICOLOR_FORCE": "1",
+            "PYTHONPATH": os.pathsep.join(sys.path),
+            **(env or {}),
+        }
         try:
             proc = await asyncio.create_subprocess_exec(
                 *entry.argv,
