@@ -103,8 +103,8 @@ async def test_wizard_form_submit_returns_collected_dict() -> None:
     assert app.result["project_id"] == "demo-proj"
     # First radio button is pre-selected on each choice; confirm it mapped
     # through to the slug, not the label.
-    assert app.result["security_class"] == _question("security_class").choices[0][0]
-    assert app.result["base"] == _question("base").choices[0][0]
+    assert app.result["security_class"] == _question("security_class").resolve_choices()[0].slug
+    assert app.result["base"] == _question("base").resolve_choices()[0].slug
     # Optional fields default to empty strings.
     assert app.result["upstream_url"] == ""
     assert app.result["default_branch"] == ""
@@ -198,7 +198,27 @@ async def test_wizard_form_radio_selection_picks_other_option() -> None:
         await pilot.click("#wizard-form-create")
         await pilot.pause()
     assert isinstance(app.result, dict)
-    assert app.result["security_class"] == _question("security_class").choices[1][0]
+    assert app.result["security_class"] == _question("security_class").resolve_choices()[1].slug
+
+
+@pytest.mark.asyncio
+async def test_nvidia_radio_disabled_when_cdi_missing() -> None:
+    """Without CDI, the NVIDIA radio is rendered disabled with the hint below it.
+
+    The wizard probes ``check_gpu_available`` at form-open time; on
+    hosts without CDI the option stays visible (so users see what's on
+    offer) but is unclickable and carries the install-CDI hint.
+    """
+    with patch("terok.lib.domain.wizards.new_project.check_gpu_available", return_value=False):
+        app = _WizardHost(WizardFormScreen())
+        async with app.run_test() as pilot:
+            await pilot.pause()
+            base_set = app.screen.query_one("#wizard-field-base", RadioSet)
+            buttons = {rb.name: rb for rb in base_set.query(RadioButton)}
+            assert buttons["nvidia"].disabled is True
+            assert buttons["fedora"].disabled is False
+            help_lines = [str(lbl.render()) for lbl in app.screen.query(Label)]
+            assert any("Container Device Interface" in line for line in help_lines)
 
 
 # ── ProjectReviewScreen ───────────────────────────────────────────────
@@ -383,8 +403,8 @@ async def test_init_screen_decline_overwrite_distinguishes_from_failure() -> Non
 async def test_form_prefill_populates_widgets() -> None:
     """Re-opening the form with an *initial* dict restores every field."""
     initial = {
-        "security_class": _question("security_class").choices[1][0],  # second choice
-        "base": _question("base").choices[2][0],
+        "security_class": _question("security_class").resolve_choices()[1].slug,  # second choice
+        "base": _question("base").resolve_choices()[2].slug,
         "project_id": "kept-from-back",
         "upstream_url": "https://example.com/r.git",
         "default_branch": "dev",

@@ -72,8 +72,8 @@ class TestProjectTemplate:
         for placeholder in REQUIRED_PLACEHOLDERS:
             assert placeholder in content, f"missing placeholder: {placeholder}"
 
-    @pytest.mark.parametrize("security_class", [s for s, _ in SECURITY_CLASSES])
-    @pytest.mark.parametrize("base", [b for b, _ in BASES])
+    @pytest.mark.parametrize("security_class", [c.slug for c in SECURITY_CLASSES])
+    @pytest.mark.parametrize("base", [c.slug for c in BASES])
     def test_renders_for_every_combination(self, security_class: str, base: str) -> None:
         rendered = _render(security_class, base, project_id=f"proj-{security_class}-{base}")
         # Every placeholder must be substituted away.

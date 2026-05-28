@@ -34,6 +34,7 @@ from typing import Literal
 import jinja2
 from terok_util import ensure_dir_writable
 
+from terok.lib.integrations.sandbox import check_gpu_available
 from terok.ui_utils.editor import open_in_editor
 
 from ...core.config import user_projects_dir
@@ -41,21 +42,40 @@ from ...core.project_model import validate_project_id
 
 # ── Vocabulary ────────────────────────────────────────────────────────
 
+
+@dataclass(frozen=True, slots=True)
+class Choice:
+    """One selectable option for a ``choice``/``multichoice`` question.
+
+    A non-empty [`disabled_reason`][terok.lib.domain.wizards.new_project.Choice.disabled_reason]
+    means the option is offered for visibility (so the user sees what
+    *could* be available) but cannot be selected — presenters grey it
+    out and [`validate_answer`][terok.lib.domain.wizards.new_project.validate_answer]
+    rejects the slug with the reason as the error.
+    """
+
+    slug: str
+    label: str
+    disabled_reason: str = ""
+
+
 # The wizard picks a project template by asking two independent
 # questions (security mode + base image) instead of one combinatorial
 # menu.  Template files on disk follow ``{security}-{base}.yml``.
-SECURITY_CLASSES: list[tuple[str, str]] = [
-    ("online", "Online (agent pushes directly to upstream)"),
-    ("gatekeeping", "Gatekeeping (changes staged for human review)"),
-]
-BASES: list[tuple[str, str]] = sorted(
-    [
-        ("ubuntu", "Ubuntu 24.04"),
-        ("fedora", "Fedora 44"),
-        ("podman", "Podman (Fedora-based)"),
-        ("nvidia", "NVIDIA CUDA (GPU)"),
-    ],
-    key=lambda b: b[1].casefold(),
+SECURITY_CLASSES: tuple[Choice, ...] = (
+    Choice("online", "Online (agent pushes directly to upstream)"),
+    Choice("gatekeeping", "Gatekeeping (changes staged for human review)"),
+)
+BASES: tuple[Choice, ...] = tuple(
+    sorted(
+        (
+            Choice("ubuntu", "Ubuntu 24.04"),
+            Choice("fedora", "Fedora 44"),
+            Choice("podman", "Podman (Fedora-based)"),
+            Choice("nvidia", "NVIDIA CUDA (GPU)"),
+        ),
+        key=lambda c: c.label.casefold(),
+    )
 )
 BASE_IMAGES: dict[str, str] = {
     "ubuntu": "ubuntu:24.04",
@@ -63,6 +83,32 @@ BASE_IMAGES: dict[str, str] = {
     "podman": "quay.io/podman/stable:latest",
     "nvidia": "nvcr.io/nvidia/nvhpc:25.9-devel-cuda13.0-ubuntu24.04",
 }
+
+#: Shown next to the NVIDIA base when ``check_gpu_available()`` returns
+#: ``False`` — short enough to fit inline beside the option label, with a
+#: link to the same docs page [`GpuConfigError.hint`][terok_sandbox.GpuConfigError]
+#: surfaces post-launch so users see one consistent pointer either way.
+_NVIDIA_UNAVAILABLE_REASON = (
+    "NVIDIA Container Device Interface not detected — install the NVIDIA Container Toolkit "
+    "and configure CDI first.  See: https://podman-desktop.io/docs/podman/gpu"
+)
+
+
+def _load_base_choices() -> tuple[Choice, ...]:
+    """Return the base-image options, tagging ``nvidia`` as disabled when CDI is missing.
+
+    Probing podman lives outside the schema so the wizard surfaces the
+    same hint the runtime would emit if the user proceeded blind: see
+    [`check_gpu_available`][terok_sandbox.check_gpu_available] and the
+    on-launch [`GpuConfigError`][terok_sandbox.GpuConfigError] path.
+    """
+    if check_gpu_available():
+        return BASES
+    return tuple(
+        Choice(c.slug, c.label, _NVIDIA_UNAVAILABLE_REASON) if c.slug == "nvidia" else c
+        for c in BASES
+    )
+
 
 _TEMPLATE_DIR: Traversable = resources.files("terok") / "resources" / "templates" / "projects"
 _TEMPLATE_NAME = "project.yml.template"
@@ -94,15 +140,16 @@ class Question:
     help: str = ""
     """Longer explanation, rendered next to the input in the TUI; unused in CLI."""
 
-    choices: tuple[tuple[str, str], ...] = ()
-    """Static ``(value, label)`` pairs for ``kind in {"choice", "multichoice"}``."""
+    choices: tuple[Choice, ...] = ()
+    """Static option list for ``kind in {"choice", "multichoice"}``."""
 
-    choices_loader: Callable[[], tuple[tuple[str, str], ...]] | None = None
+    choices_loader: Callable[[], tuple[Choice, ...]] | None = None
     """Runtime resolver for choices that aren't known at import time.
 
     Set this when the option set lives in a sibling wheel (e.g. the
-    agent roster) and can drift between releases.  When set, takes
-    precedence over [`choices`][terok.lib.domain.wizards.new_project.Question.choices].
+    agent roster) or depends on a host probe (e.g. NVIDIA CDI presence)
+    and can drift between calls.  When set, takes precedence over
+    [`choices`][terok.lib.domain.wizards.new_project.Question.choices].
     """
 
     required: bool = False
@@ -120,7 +167,7 @@ class Question:
     default_visible: bool = False
     """When True, CLI prompt shows ``"(optional)"`` to telegraph "Enter is fine"."""
 
-    def resolve_choices(self) -> tuple[tuple[str, str], ...]:
+    def resolve_choices(self) -> tuple[Choice, ...]:
         """Return the effective option list — runtime loader wins over static.
 
         Called by both presenters whenever they need to render or validate
@@ -181,8 +228,8 @@ def _slugify_project_id(raw: str) -> str:
 _AGENTS_ALL = "all"
 
 
-def _load_agent_choices() -> tuple[tuple[str, str], ...]:
-    """Return ``(slug, label)`` pairs for every roster ``kind: agent`` entry.
+def _load_agent_choices() -> tuple[Choice, ...]:
+    """Return one [`Choice`][terok.lib.domain.wizards.new_project.Choice] per roster ``kind: agent`` entry.
 
     The "all" pseudo-option is purely a presenter concern — it lives in
     the TUI's master checkbox and the CLI's prompt default, not in this
@@ -192,7 +239,7 @@ def _load_agent_choices() -> tuple[tuple[str, str], ...]:
 
     roster = AgentRoster.shared()
     return tuple(
-        (name, roster.providers[name].label if name in roster.providers else name)
+        Choice(name, roster.providers[name].label if name in roster.providers else name)
         for name in roster.agent_names
     )
 
@@ -224,14 +271,14 @@ QUESTIONS: tuple[Question, ...] = (
         key="security_class",
         kind="choice",
         prompt="Select security mode",
-        choices=tuple(SECURITY_CLASSES),
+        choices=SECURITY_CLASSES,
         required=True,
     ),
     Question(
         key="base",
         kind="choice",
         prompt="Select base image",
-        choices=tuple(BASES),
+        choices_loader=_load_base_choices,
         required=True,
     ),
     Question(
@@ -316,10 +363,13 @@ def validate_answer(question: Question, raw: str) -> tuple[str, str | None]:
     if question.required and not value:
         return value, f"{question.prompt} is required."
     if question.kind == "choice" and value:
-        valid_slugs = {slug for slug, _label in question.resolve_choices()}
-        if value not in valid_slugs:
-            allowed = ", ".join(sorted(valid_slugs))
+        choices = question.resolve_choices()
+        match = next((c for c in choices if c.slug == value), None)
+        if match is None:
+            allowed = ", ".join(sorted(c.slug for c in choices))
             return value, f"{question.prompt} must be one of: {allowed}"
+        if match.disabled_reason:
+            return value, match.disabled_reason
     if question.validate:
         err = question.validate(value)
         if err:
@@ -337,18 +387,26 @@ def _prompt(message: str, default: str = "") -> str:
     return value or default
 
 
-def _prompt_choice(title: str, options: list[tuple[str, str]]) -> str | None:
-    """Show a numbered menu and return the selected slug, or ``None`` on bad input."""
+def _prompt_choice(title: str, options: list[Choice]) -> str | None:
+    """Show a numbered menu and return the selected slug, or ``None`` on bad input.
+
+    Disabled options are still listed (so users see what *could* be
+    available) but rejected post-selection by
+    [`validate_answer`][terok.lib.domain.wizards.new_project.validate_answer].
+    The trailing ``[unavailable: …]`` suffix telegraphs the why before
+    the user types the number.
+    """
     print(f"\n{title}")
-    for i, (_slug, label) in enumerate(options, 1):
-        print(f"  {i}) {label}")
+    for i, c in enumerate(options, 1):
+        suffix = f"  [unavailable: {c.disabled_reason}]" if c.disabled_reason else ""
+        print(f"  {i}) {c.label}{suffix}")
 
     choice = input(f"\nChoice [1-{len(options)}]: ").strip()
     if not choice.isdigit():
         return None
     idx = int(choice) - 1
     if 0 <= idx < len(options):
-        return options[idx][0]
+        return options[idx].slug
     return None
 
 
@@ -400,7 +458,7 @@ def _trim_snippet_preamble(content: str) -> str:
     return content.rstrip("\n").rstrip()
 
 
-def _prompt_multichoice(title: str, options: list[tuple[str, str]]) -> str:
+def _prompt_multichoice(title: str, options: list[Choice]) -> str:
     """Lists *options*, then takes one line of comma-separated tokens (default ``"all"``).
 
     Discovery without the menu juggling: we print the slug-and-label
@@ -410,8 +468,8 @@ def _prompt_multichoice(title: str, options: list[tuple[str, str]]) -> str:
     matches the CLI build flag and what most users want first time.
     """
     print(f"\n{title}")
-    for slug, label in options:
-        print(f"  · {slug}  — {label}")
+    for c in options:
+        print(f"  · {c.slug}  — {c.label}")
     raw = input("\nType a comma list, or '-name' to exclude [all]: ").strip()
     return raw or _AGENTS_ALL
 
@@ -668,6 +726,7 @@ def _maybe_print_global_agents_hint(values: dict) -> None:
 __all__ = [
     "AGENTS_QUESTION",
     "BASES",
+    "Choice",
     "QUESTIONS",
     "Question",
     "QuestionKind",

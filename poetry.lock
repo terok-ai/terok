@@ -2,14 +2,14 @@
 
 [[package]]
 name = "agent-client-protocol"
-version = "0.10.0"
+version = "0.10.1"
 description = "A Python implement of Agent Client Protocol (ACP, by Zed Industries)"
 optional = false
 python-versions = "<3.15,>=3.10"
 groups = ["main"]
 files = [
-    {file = "agent_client_protocol-0.10.0-py3-none-any.whl", hash = "sha256:97a1a69c5d094e2625b09c4dbc2d5cf19637c4943630ceed52ab0578ecd5e14c"},
-    {file = "agent_client_protocol-0.10.0.tar.gz", hash = "sha256:f8a6041e27423131e42e4d0cdd850d5b094b1092f79cc29501ab2bd57b92ee88"},
+    {file = "agent_client_protocol-0.10.1-py3-none-any.whl", hash = "sha256:a03d3198f4d772f2e0ec012c00ac1cce131b4710220a3dc9fae3c991d047c750"},
+    {file = "agent_client_protocol-0.10.1.tar.gz", hash = "sha256:355c65ca19f0568344aafc2c1552b7066a8fc491df23ab28e7e253c6c9a85a25"},
 ]
 
 [package.dependencies]
@@ -3602,24 +3602,25 @@ description = "Single-agent task runner for hardened Podman containers"
 optional = false
 python-versions = ">=3.12,<3.15"
 groups = ["main"]
-files = [
-    {file = "terok_executor-0.0.149a24-py3-none-any.whl", hash = "sha256:fded101f525e34aad9d4313f524682db1ae4224e8f13c9922dd33dd7211cdea8"},
-]
+files = []
+develop = false
 
 [package.dependencies]
-agent-client-protocol = ">=0.10"
+agent-client-protocol = ">=0.10.1"
 Jinja2 = ">=3.1"
 prompt-toolkit = ">=3.0"
 pydantic = ">=2.9"
 rich = ">=13.0"
 "ruamel.yaml" = ">=0.18"
-terok_sandbox = {url = "https://github.com/terok-ai/terok-sandbox/releases/download/v0.0.124a20/terok_sandbox-0.0.124a20-py3-none-any.whl"}
+terok-sandbox = {git = "https://github.com/sliwowitz/terok-sandbox.git", rev = "4fcde1db7f047a2700e7643b72ebb304ea4c2fac"}
 terok_util = {url = "https://github.com/terok-ai/terok-util/releases/download/v0.0.2a1/terok_util-0.0.2a1-py3-none-any.whl"}
 tomli-w = ">=1.0"
 
 [package.source]
-type = "url"
-url = "https://github.com/terok-ai/terok-executor/releases/download/v0.0.149a24/terok_executor-0.0.149a24-py3-none-any.whl"
+type = "git"
+url = "https://github.com/sliwowitz/terok-executor.git"
+reference = "1e218dd871ab9fa73db03d4ac236f61233b60cd4"
+resolved_reference = "1e218dd871ab9fa73db03d4ac236f61233b60cd4"
 
 [[package]]
 name = "terok-sandbox"
@@ -3628,9 +3629,8 @@ description = "Hardened Podman container runner with gate server and shield inte
 optional = false
 python-versions = ">=3.12,<4.0"
 groups = ["main"]
-files = [
-    {file = "terok_sandbox-0.0.124a20-py3-none-any.whl", hash = "sha256:9984aae5d7bdf0bde5a7fac0557d877a3aaa48fe348a71ca191eff131426452e"},
-]
+files = []
+develop = false
 
 [package.dependencies]
 aiohttp = ">=3.9"
@@ -3648,8 +3648,10 @@ terok_shield = {url = "https://github.com/terok-ai/terok-shield/releases/downloa
 terok_util = {url = "https://github.com/terok-ai/terok-util/releases/download/v0.0.2a1/terok_util-0.0.2a1-py3-none-any.whl"}
 
 [package.source]
-type = "url"
-url = "https://github.com/terok-ai/terok-sandbox/releases/download/v0.0.124a20/terok_sandbox-0.0.124a20-py3-none-any.whl"
+type = "git"
+url = "https://github.com/sliwowitz/terok-sandbox.git"
+reference = "4fcde1db7f047a2700e7643b72ebb304ea4c2fac"
+resolved_reference = "4fcde1db7f047a2700e7643b72ebb304ea4c2fac"
 
 [[package]]
 name = "terok-shield"
@@ -4568,4 +4570,4 @@ propcache = ">=0.2.1"
 [metadata]
 lock-version = "2.1"
 python-versions = ">=3.12,<3.15"
-content-hash = "4e784612f9f89dd3e0ab132c019c832950e6d7886b8850c120089f13f59b8327"
+content-hash = "898ab7e31c81ec66390dc1fa9fe192ab463c7acdc1489128bdc17b76175e9b36"

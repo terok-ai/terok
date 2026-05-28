@@ -17,6 +17,7 @@ from terok.lib.domain.wizards.new_project import (
     QUESTIONS,
     SECURITY_CLASSES,
     Question,
+    _load_base_choices,
     _slugify_project_id,
     _validate_project_id,
     collect_wizard_inputs,
@@ -28,6 +29,18 @@ from terok.lib.domain.wizards.new_project import (
     write_project_yaml,
 )
 from tests.testfs import mock_wizard_project_file
+
+
+@pytest.fixture(autouse=True)
+def _gpu_available() -> object:
+    """Pretend CDI is configured so wizard inputs that pick NVIDIA still pass.
+
+    The gating tests below patch this themselves to exercise the
+    disabled-option branch — the fixture is here so the existing
+    end-to-end flow keeps testing the happy path on hosts without a GPU.
+    """
+    with patch("terok.lib.domain.wizards.new_project.check_gpu_available", return_value=True) as p:
+        yield p
 
 
 def wizard_values(
@@ -283,13 +296,13 @@ def test_generate_config_templates(values: dict[str, object], expected_snippets:
 
 def test_generate_config_replaces_all_placeholders() -> None:
     """All template placeholders are rendered away for every (mode, base) pair."""
-    for sec_slug, _ in SECURITY_CLASSES:
-        for base_slug, _ in BASES:
+    for sec in SECURITY_CLASSES:
+        for base in BASES:
             _, _, content = generate_into_tmp(
                 wizard_values(
-                    security_class=sec_slug,
-                    base=base_slug,
-                    project_id=f"proj-{sec_slug}-{base_slug}",
+                    security_class=sec.slug,
+                    base=base.slug,
+                    project_id=f"proj-{sec.slug}-{base.slug}",
                     upstream_url="https://example.com/r.git",
                     user_snippet="RUN echo hi",
                 )
@@ -301,7 +314,7 @@ def test_generate_config_replaces_all_placeholders() -> None:
                 "{{USER_SNIPPET}}",
                 "{{AGENTS}}",
             ):
-                assert placeholder not in content, f"{sec_slug}-{base_slug}: {placeholder}"
+                assert placeholder not in content, f"{sec.slug}-{base.slug}: {placeholder}"
 
 
 @pytest.mark.parametrize(
@@ -495,6 +508,42 @@ class TestValidateAnswer:
 
 
 # ---------------------------------------------------------------------------
+# Base-image gating — NVIDIA is offered for visibility but rejected when
+# the host has no CDI for ``nvidia.com/gpu``, so the wizard fails fast
+# instead of letting the user reach a broken ``podman run``.
+# ---------------------------------------------------------------------------
+
+
+class TestBaseChoicesCdiGate:
+    """``_load_base_choices`` reflects ``check_gpu_available`` at call time."""
+
+    def test_all_selectable_when_cdi_available(self, _gpu_available: Mock) -> None:
+        """Probe says yes → no option carries a disabled reason."""
+        _gpu_available.return_value = True
+        for c in _load_base_choices():
+            assert c.disabled_reason == ""
+
+    def test_nvidia_disabled_when_cdi_missing(self, _gpu_available: Mock) -> None:
+        """Probe says no → only the nvidia entry is gated; others stay selectable."""
+        _gpu_available.return_value = False
+        choices = _load_base_choices()
+        by_slug = {c.slug: c for c in choices}
+        assert by_slug["nvidia"].disabled_reason
+        assert "https://podman-desktop.io" in by_slug["nvidia"].disabled_reason
+        for slug in ("ubuntu", "fedora", "podman"):
+            assert by_slug[slug].disabled_reason == ""
+
+    def test_validate_answer_rejects_disabled_slug(self, _gpu_available: Mock) -> None:
+        """Selecting the gated slug surfaces the disabled reason as the error."""
+        _gpu_available.return_value = False
+        base_q = next(q for q in QUESTIONS if q.key == "base")
+        value, err = validate_answer(base_q, "nvidia")
+        assert value == "nvidia"
+        assert err is not None
+        assert "Container Device Interface" in err
+
+
+# ---------------------------------------------------------------------------
 # render_project_yaml / write_project_yaml — TUI-only rendering helpers that
 # need the same template resolution as generate_config.
 # ---------------------------------------------------------------------------
@@ -558,7 +607,7 @@ class TestQuestionsRegistry:
     def test_every_choice_has_non_empty_options(self) -> None:
         for q in QUESTIONS:
             if q.kind == "choice":
-                assert q.choices, f"{q.key} has empty choices"
+                assert q.resolve_choices(), f"{q.key} has empty choices"
 
     def test_agents_question_lives_outside_questions(self) -> None:
         """The agents prompt is gated and presented separately — not part of the main loop."""

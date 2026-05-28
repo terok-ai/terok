@@ -184,16 +184,30 @@ class WizardFormScreen(ModalScreen["dict[str, str] | None"]):
         """Render a ``RadioSet`` for a choice question, optionally preselecting *selected_slug*.
 
         When the prefill slug matches one of the choices it takes
-        precedence; otherwise the first option is preselected — the
-        form is never in an "initially no selection" state, matching
-        the CLI's "pick a number" semantics.
+        precedence; otherwise the first selectable option is preselected
+        — the form is never in an "initially no selection" state,
+        matching the CLI's "pick a number" semantics.  Choices carrying
+        a [`disabled_reason`][terok.lib.domain.wizards.new_project.Choice.disabled_reason]
+        are rendered disabled with the reason in a muted line beneath,
+        so an unavailable option (e.g. NVIDIA without CDI) is visible
+        but unclickable.
         """
-        valid_slugs = {slug for slug, _ in q.choices}
-        preset_slug = selected_slug if selected_slug in valid_slugs else ""
+        choices = q.resolve_choices()
+        selectable_slugs = [c.slug for c in choices if not c.disabled_reason]
+        # Prefill wins if it names a selectable choice; else fall back to the
+        # first selectable one so the set is never initially unselected.
+        preset_slug = selected_slug if selected_slug in selectable_slugs else ""
+        select_slug = preset_slug or (selectable_slugs[0] if selectable_slugs else "")
         with RadioSet(id=self._widget_id(q)):
-            for i, (slug, label) in enumerate(q.choices):
-                selected = (slug == preset_slug) if preset_slug else (i == 0)
-                yield RadioButton(label, value=selected, name=slug)
+            for c in choices:
+                yield RadioButton(
+                    c.label,
+                    value=c.slug == select_slug,
+                    name=c.slug,
+                    disabled=bool(c.disabled_reason),
+                )
+                if c.disabled_reason:
+                    yield Label(c.disabled_reason, classes="wizard-help")
 
     @staticmethod
     def _widget_id(q: Question) -> str:
