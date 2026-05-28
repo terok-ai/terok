@@ -77,7 +77,7 @@ def find_host_auth_image(provider: str) -> str | None:
     and the provider's OAuth path needs one.  TUI callers handle the
     missing-image case themselves (notify, push a build screen, etc.)
     rather than going through the CLI's interactive build prompt in
-    [`_resolve_host_auth_image`][terok.lib.domain.auth._resolve_host_auth_image].
+    ``_resolve_host_auth_image``.
 
     For API-key-only providers (``supports_oauth`` is False), no
     container will ever launch, so any L1 tag is fine — returns the
