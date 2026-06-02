@@ -34,6 +34,7 @@ from terok_executor import (  # noqa: F401 — re-exported public API
     AgentRoster,
     AgentRunner,
     Authenticator,
+    AuthSession,
     BuildError,
     CLIOverrides,
     ContainerEnvSpec,
@@ -55,10 +56,12 @@ from terok_executor import (  # noqa: F401 — re-exported public API
     list_authenticated_agents,
     parse_md_agent,
     prepare_agent_config_dir,
+    prepare_oauth_session,
     resolve_instructions,
     resolve_provider_value,
     scan_leaked_credentials,
     seed_workspace_from_clone_cache,
+    store_api_key,
 )
 from terok_executor.container.build import ImageSet  # noqa: F401 — return type for callers
 
@@ -74,6 +77,7 @@ __all__ = [
     "AgentRoster",
     "AgentRunner",
     "Authenticator",
+    "AuthSession",
     "BuildError",
     "CLIOverrides",
     "ContainerEnvSpec",
@@ -99,8 +103,10 @@ __all__ = [
     "list_authenticated_agents",
     "parse_md_agent",
     "prepare_agent_config_dir",
+    "prepare_oauth_session",
     "resolve_instructions",
     "resolve_provider_value",
     "scan_leaked_credentials",
     "seed_workspace_from_clone_cache",
+    "store_api_key",
 ]

@@ -67,16 +67,6 @@ def init_ssh(project_id: str) -> None:
 # ProjectActionsMixin._action_project_init.
 
 
-# ── Authentication ────────────────────────────────────────────────────
-
-
-def auth(provider: str, project_id: str | None) -> None:
-    """Run the auth flow for *provider*; *project_id* ``None`` means host-wide."""
-    from terok.lib.api import authenticate
-
-    authenticate(provider, project_id)
-
-
 # ── Gate sync ─────────────────────────────────────────────────────────
 
 

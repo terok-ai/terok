@@ -61,17 +61,6 @@ def test_init_ssh_provisions_and_summarizes() -> None:
 # Its coverage lives in test_detail_screens / test_wizard_screens.
 
 
-# ── Authentication ────────────────────────────────────────────────────
-
-
-def test_auth_passes_provider_and_scope() -> None:
-    """``auth`` forwards the provider and the (possibly ``None``) project scope."""
-    with mock.patch("terok.lib.api.authenticate") as m:
-        worker_actions.auth("claude", "proj")
-        worker_actions.auth("claude", None)
-    assert m.call_args_list == [mock.call("claude", "proj"), mock.call("claude", None)]
-
-
 # ── Gate sync ─────────────────────────────────────────────────────────
 
 

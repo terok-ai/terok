@@ -949,7 +949,7 @@ expose = ["summarize_ssh_init"]
 from = ["terok.lib.domain.ssh"]
 
 [[interfaces]]
-expose = ["authenticate"]
+expose = ["authenticate", "find_host_auth_image"]
 from = ["terok.lib.domain.auth"]
 
 [[interfaces]]
