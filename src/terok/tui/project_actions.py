@@ -368,17 +368,17 @@ class ProjectActionsMixin(_MixinBase):
         expose = (provider == "claude" and is_claude_oauth_exposed()) or (
             provider == "codex" and is_codex_oauth_exposed()
         )
-        try:
-            session = Authenticator(provider).prepare_oauth(
-                project_id,
-                mounts_dir=sandbox_live_mounts_dir(),
-                image=image,
-                expose_token=expose,
-            )
-        except SystemExit as exc:
-            self.notify(f"Cannot prepare auth: {exc}", severity="error", timeout=10)
-            return
-
+        # ``prepare_oauth`` raises ``SystemExit`` only for an unknown or
+        # non-OAuth provider — both already excluded by ``_run_auth_flow``
+        # before we get here, so no defensive catch is needed.  An
+        # unexpected raise surfaces through the ``@work`` harness instead
+        # of tearing down the app.
+        session = Authenticator(provider).prepare_oauth(
+            project_id,
+            mounts_dir=sandbox_live_mounts_dir(),
+            image=image,
+            expose_token=expose,
+        )
         await self._launch_oauth_container(session)
 
     async def _launch_oauth_container(self, session: AuthSession) -> None:
@@ -414,11 +414,12 @@ class ProjectActionsMixin(_MixinBase):
 
         with self.suspend():
             try:
-                exit_code = subprocess.run(session.argv).returncode
-            except Exception as exc:  # noqa: BLE001 — display whatever podman did
+                proc = await asyncio.create_subprocess_exec(*session.argv)
+                exit_code = await proc.wait()
+            except (OSError, ValueError) as exc:
                 print(f"Error: {exc}")
                 exit_code = 1
-            input(_RESUME_PROMPT)
+            await asyncio.to_thread(input, _RESUME_PROMPT)
         self._capture_auth_session(session, exit_code=exit_code)
 
     @work(exclusive=False, group="auth-watch", exit_on_error=False)
