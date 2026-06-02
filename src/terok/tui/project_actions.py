@@ -151,7 +151,7 @@ class ProjectActionsMixin(_MixinBase):
                     subprocess.run(cmd)
                 except Exception as e:
                     print(f"Error: {e}")
-                input(_RESUME_PROMPT)
+                await asyncio.to_thread(input, _RESUME_PROMPT)
             await self.refresh_tasks()
 
     # ---------- Project infrastructure actions ----------
@@ -569,7 +569,7 @@ class ProjectActionsMixin(_MixinBase):
                 await proc.wait()
             except (OSError, ValueError) as exc:
                 print(f"Error launching {editor}: {exc}")
-                input(_RESUME_PROMPT)
+                await asyncio.to_thread(input, _RESUME_PROMPT)
                 return
         self.notify(done_msg)
         self._refresh_project_state()
