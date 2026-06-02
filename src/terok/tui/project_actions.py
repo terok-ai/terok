@@ -281,7 +281,19 @@ class ProjectActionsMixin(_MixinBase):
 
     @work(exclusive=False, group="auth-flow", exit_on_error=False)
     async def _run_auth_flow(self, provider: str, project_id: str | None) -> None:
-        """Drive the Textual-native auth flow: API-key form or OAuth container.
+        """Drive the Textual-native auth flow in a worker.
+
+        Thin ``@work`` wrapper around
+        [`_run_auth_flow_body`][terok.tui.project_actions.ProjectActionsMixin._run_auth_flow_body];
+        the worker context is what lets the body sequence modal screens via
+        ``push_screen_wait``.  Split out so the body's mode-selection logic
+        is unit-testable without a running worker (mirrors the wizard's
+        ``_run_wizard_flow`` / ``_run_wizard_flow_body`` pair).
+        """
+        await self._run_auth_flow_body(provider, project_id)
+
+    async def _run_auth_flow_body(self, provider: str, project_id: str | None) -> None:
+        """Pick the auth mode for *provider* and dispatch to the matching flow.
 
         Replaces the previous ``worker_actions:auth`` subprocess dispatch,
         which couldn't reach a stdin (the worker runs with

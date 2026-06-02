@@ -8,6 +8,7 @@ import contextlib
 import inspect
 import sys
 from collections.abc import Callable
+from types import SimpleNamespace
 from unittest import mock
 
 import pytest
@@ -1015,6 +1016,242 @@ class TestActionAuth:
         instance._run_auth_flow = mock.Mock()
         run(mixin._action_auth_host_wide(instance, "claude"))
         instance._run_auth_flow.assert_called_once_with("claude", None)
+
+
+class TestAuthFlow:
+    """``_run_auth_flow_body`` mode selection and the per-mode auth helpers.
+
+    These exercise the pure dispatch logic with the Textual surface
+    (``push_screen_wait``, ``notify``) and the executor calls mocked —
+    the container launch + podman-watch paths are integration-only.
+    """
+
+    def _get_mixin(self):
+        from terok.tui.project_actions import ProjectActionsMixin
+
+        return ProjectActionsMixin
+
+    def _provider(self, *, oauth: bool, api_key: bool, label: str = "Claude") -> SimpleNamespace:
+        """A stand-in for an ``AuthProvider`` roster entry."""
+        return SimpleNamespace(supports_oauth=oauth, supports_api_key=api_key, label=label)
+
+    def _instance(self, mixin) -> mock.Mock:
+        """A mixin mock with the App-provided surface wired up."""
+        instance = mock.Mock(spec=mixin)
+        instance.notify = mock.Mock()
+        instance.push_screen_wait = mock.AsyncMock()
+        instance._auth_via_api_key = mock.AsyncMock()
+        instance._auth_via_oauth = mock.AsyncMock()
+        return instance
+
+    @contextlib.contextmanager
+    def _roster(self, provider: str, info: SimpleNamespace, *, oauth_enabled: bool):
+        """Patch the provider roster and the OAuth gate for *provider*."""
+        with (
+            mock.patch("terok.lib.api.AUTH_PROVIDERS", {provider: info}),
+            mock.patch("terok.lib.core.config.is_oauth_enabled_for", return_value=oauth_enabled),
+        ):
+            yield
+
+    # ---- _run_auth_flow_body: mode selection ----
+
+    def test_unknown_provider_notifies_and_skips(self) -> None:
+        """An unknown provider name is reported and dispatches nothing."""
+        mixin = self._get_mixin()
+        instance = self._instance(mixin)
+        with mock.patch("terok.lib.api.AUTH_PROVIDERS", {}):
+            run(mixin._run_auth_flow_body(instance, "nope", None))
+        instance.notify.assert_called_once()
+        instance._auth_via_api_key.assert_not_awaited()
+        instance._auth_via_oauth.assert_not_awaited()
+
+    def test_both_modes_prompts_then_oauth(self) -> None:
+        """Dual-mode provider: the mode screen's ``oauth`` pick routes to OAuth."""
+        mixin = self._get_mixin()
+        instance = self._instance(mixin)
+        instance.push_screen_wait.return_value = "oauth"
+        with self._roster("claude", self._provider(oauth=True, api_key=True), oauth_enabled=True):
+            run(mixin._run_auth_flow_body(instance, "claude", "proj"))
+        instance.push_screen_wait.assert_awaited_once()
+        instance._auth_via_oauth.assert_awaited_once_with("claude", project_id="proj")
+        instance._auth_via_api_key.assert_not_awaited()
+
+    def test_both_modes_prompts_then_api_key(self) -> None:
+        """Dual-mode provider: the mode screen's ``api_key`` pick routes to API key."""
+        mixin = self._get_mixin()
+        instance = self._instance(mixin)
+        instance.push_screen_wait.return_value = "api_key"
+        with self._roster("claude", self._provider(oauth=True, api_key=True), oauth_enabled=True):
+            run(mixin._run_auth_flow_body(instance, "claude", None))
+        instance._auth_via_api_key.assert_awaited_once_with("claude")
+        instance._auth_via_oauth.assert_not_awaited()
+
+    def test_both_modes_cancel_dispatches_nothing(self) -> None:
+        """Dismissing the mode screen (``None``) aborts without dispatching."""
+        mixin = self._get_mixin()
+        instance = self._instance(mixin)
+        instance.push_screen_wait.return_value = None
+        with self._roster("claude", self._provider(oauth=True, api_key=True), oauth_enabled=True):
+            run(mixin._run_auth_flow_body(instance, "claude", None))
+        instance._auth_via_api_key.assert_not_awaited()
+        instance._auth_via_oauth.assert_not_awaited()
+
+    def test_oauth_only_skips_mode_screen(self) -> None:
+        """An OAuth-only provider goes straight to OAuth — no mode prompt."""
+        mixin = self._get_mixin()
+        instance = self._instance(mixin)
+        with self._roster("claude", self._provider(oauth=True, api_key=False), oauth_enabled=True):
+            run(mixin._run_auth_flow_body(instance, "claude", None))
+        instance.push_screen_wait.assert_not_awaited()
+        instance._auth_via_oauth.assert_awaited_once_with("claude", project_id=None)
+
+    def test_api_key_only_skips_mode_screen(self) -> None:
+        """An API-key-only provider goes straight to the key form — no mode prompt."""
+        mixin = self._get_mixin()
+        instance = self._instance(mixin)
+        info = self._provider(oauth=False, api_key=True, label="Blablador")
+        with self._roster("blablador", info, oauth_enabled=True):
+            run(mixin._run_auth_flow_body(instance, "blablador", None))
+        instance.push_screen_wait.assert_not_awaited()
+        instance._auth_via_api_key.assert_awaited_once_with("blablador")
+
+    def test_oauth_gated_off_falls_back_to_api_key(self) -> None:
+        """A dual-mode provider with the OAuth gate closed uses API key, no prompt."""
+        mixin = self._get_mixin()
+        instance = self._instance(mixin)
+        with self._roster("claude", self._provider(oauth=True, api_key=True), oauth_enabled=False):
+            run(mixin._run_auth_flow_body(instance, "claude", None))
+        instance.push_screen_wait.assert_not_awaited()
+        instance._auth_via_api_key.assert_awaited_once_with("claude")
+
+    def test_oauth_only_but_gated_off_errors(self) -> None:
+        """OAuth-only provider with the gate closed has no usable mode — it errors."""
+        mixin = self._get_mixin()
+        instance = self._instance(mixin)
+        with self._roster("claude", self._provider(oauth=True, api_key=False), oauth_enabled=False):
+            run(mixin._run_auth_flow_body(instance, "claude", None))
+        instance.notify.assert_called_once()
+        assert instance.notify.call_args.kwargs.get("severity") == "error"
+        instance._auth_via_oauth.assert_not_awaited()
+
+    # ---- _auth_via_api_key ----
+
+    def test_api_key_stores_and_notifies(self) -> None:
+        """A submitted key is stored in the vault and confirmed."""
+        mixin = self._get_mixin()
+        instance = mock.Mock(spec=mixin)
+        instance.notify = mock.Mock()
+        instance.push_screen_wait = mock.AsyncMock(return_value="sk-test-key")
+        with mock.patch("terok.lib.api.store_api_key") as store:
+            run(mixin._auth_via_api_key(instance, "claude"))
+        store.assert_called_once_with("claude", "sk-test-key")
+        instance.notify.assert_called_once()
+
+    def test_api_key_empty_is_noop(self) -> None:
+        """A cancelled / empty key form stores nothing."""
+        mixin = self._get_mixin()
+        instance = mock.Mock(spec=mixin)
+        instance.notify = mock.Mock()
+        instance.push_screen_wait = mock.AsyncMock(return_value=None)
+        with mock.patch("terok.lib.api.store_api_key") as store:
+            run(mixin._auth_via_api_key(instance, "claude"))
+        store.assert_not_called()
+
+    def test_api_key_store_failure_notifies_error(self) -> None:
+        """A vault write failure surfaces as an error toast, not a crash."""
+        mixin = self._get_mixin()
+        instance = mock.Mock(spec=mixin)
+        instance.notify = mock.Mock()
+        instance.push_screen_wait = mock.AsyncMock(return_value="sk")
+        with mock.patch("terok.lib.api.store_api_key", side_effect=RuntimeError("vault locked")):
+            run(mixin._auth_via_api_key(instance, "claude"))
+        assert instance.notify.call_args.kwargs.get("severity") == "error"
+
+    # ---- _auth_via_oauth ----
+
+    def test_oauth_host_wide_missing_image_warns(self) -> None:
+        """Host-wide OAuth with no L1 image present warns and never launches."""
+        mixin = self._get_mixin()
+        instance = mock.Mock(spec=mixin)
+        instance.notify = mock.Mock()
+        instance._launch_oauth_container = mock.AsyncMock()
+        with mock.patch("terok.lib.api.find_host_auth_image", return_value=None):
+            run(mixin._auth_via_oauth(instance, "claude", project_id=None))
+        assert instance.notify.call_args.kwargs.get("severity") == "warning"
+        instance._launch_oauth_container.assert_not_awaited()
+
+    def test_oauth_host_wide_prepares_and_launches(self) -> None:
+        """Host-wide OAuth resolves the L1 image, prepares a session, launches it."""
+        mixin = self._get_mixin()
+        instance = mock.Mock(spec=mixin)
+        instance._launch_oauth_container = mock.AsyncMock()
+        session = mock.Mock()
+        authenticator = mock.Mock()
+        authenticator.prepare_oauth.return_value = session
+        with (
+            mock.patch("terok.lib.api.find_host_auth_image", return_value="terok-l1:test"),
+            mock.patch("terok.lib.api.Authenticator", return_value=authenticator),
+            mock.patch("terok.lib.core.config.sandbox_live_mounts_dir", return_value=MOCK_BASE),
+        ):
+            run(mixin._auth_via_oauth(instance, "claude", project_id=None))
+        authenticator.prepare_oauth.assert_called_once()
+        instance._launch_oauth_container.assert_awaited_once_with(session)
+
+    def test_oauth_project_scoped_uses_project_image(self) -> None:
+        """Project-scoped OAuth reuses the project's CLI image, skips host resolution."""
+        mixin = self._get_mixin()
+        instance = mock.Mock(spec=mixin)
+        instance._launch_oauth_container = mock.AsyncMock()
+        session = mock.Mock()
+        authenticator = mock.Mock()
+        authenticator.prepare_oauth.return_value = session
+        with (
+            mock.patch("terok.lib.core.images.project_cli_image", return_value="proj:img") as pci,
+            mock.patch("terok.lib.api.find_host_auth_image") as find_host,
+            mock.patch("terok.lib.api.Authenticator", return_value=authenticator),
+            mock.patch("terok.lib.core.config.sandbox_live_mounts_dir", return_value=MOCK_BASE),
+        ):
+            run(mixin._auth_via_oauth(instance, "claude", project_id="myproj"))
+        pci.assert_called_once_with("myproj")
+        find_host.assert_not_called()
+        instance._launch_oauth_container.assert_awaited_once_with(session)
+
+    # ---- _capture_auth_session ----
+
+    def test_capture_success_stores_and_cleans_up(self) -> None:
+        """A clean container exit captures credentials and tears the session down."""
+        mixin = self._get_mixin()
+        instance = mock.Mock(spec=mixin)
+        instance.notify = mock.Mock()
+        session = mock.Mock()
+        session.provider.name = "claude"
+        mixin._capture_auth_session(instance, session, exit_code=0)
+        session.capture.assert_called_once()
+        session.cleanup.assert_called_once()
+        instance.notify.assert_called_once()
+
+    def test_capture_nonzero_exit_skips_capture(self) -> None:
+        """A non-zero exit warns, skips capture, but still cleans up."""
+        mixin = self._get_mixin()
+        instance = mock.Mock(spec=mixin)
+        instance.notify = mock.Mock()
+        session = mock.Mock()
+        mixin._capture_auth_session(instance, session, exit_code=130)
+        session.capture.assert_not_called()
+        session.cleanup.assert_called_once()
+        assert instance.notify.call_args.kwargs.get("severity") == "warning"
+
+    def test_capture_extractor_error_still_cleans_up(self) -> None:
+        """An extractor / vault error is reported and the session is still cleaned up."""
+        mixin = self._get_mixin()
+        instance = mock.Mock(spec=mixin)
+        instance.notify = mock.Mock()
+        session = mock.Mock()
+        session.provider.name = "claude"
+        session.capture.side_effect = RuntimeError("extract failed")
+        mixin._capture_auth_session(instance, session, exit_code=0)
+        session.cleanup.assert_called_once()
+        assert instance.notify.call_args.kwargs.get("severity") == "error"
 
 
 class TestActionSelection:
