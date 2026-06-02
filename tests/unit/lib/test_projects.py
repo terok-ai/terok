@@ -294,6 +294,33 @@ class TestProject:
         captured = capsys.readouterr()
         assert captured.err.strip() == ""
 
+    def test_discover_surfaces_legacy_reserved_id_as_broken(self) -> None:
+        """A legacy on-disk project named ``default`` is broken, not silently dropped.
+
+        ``default`` was creatable before the reserved-name guard landed, so an
+        upgraded install can still have one on disk.  Discovery must not let the
+        reservation hide it — that would turn "project vanished" into a mystery
+        (#565).  It surfaces as a BrokenProject carrying the reserved-name hint.
+        """
+        with tempfile.TemporaryDirectory() as td:
+            base = Path(td)
+            config_base = base / "config"
+            projects_root = config_base / "projects"
+            write_project(
+                projects_root,
+                "default",
+                "project:\n  id: default\ngit:\n  upstream_url: https://example.com/d.git\n",
+            )
+            with unittest.mock.patch.dict(
+                os.environ,
+                {"TEROK_CONFIG_DIR": str(config_base), "XDG_CONFIG_HOME": str(base / "empty")},
+            ):
+                valid, broken = discover_projects()
+
+        assert [p.id for p in valid] == []
+        assert [bp.id for bp in broken] == ["default"]
+        assert "reserved" in broken[0].error
+
     def test_list_projects_skips_malformed_yaml(self) -> None:
         with tempfile.TemporaryDirectory() as td:
             base = Path(td)

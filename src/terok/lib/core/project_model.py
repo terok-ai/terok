@@ -172,10 +172,17 @@ _RESERVED_PROJECT_IDS: frozenset[str] = frozenset({"default"})
 
 
 def is_valid_project_id(project_id: str) -> bool:
-    """Return whether *project_id* matches the ``[a-z0-9][a-z0-9_-]*`` contract."""
-    if not project_id or _PROJECT_ID_RE.fullmatch(project_id) is None:
-        return False
-    return project_id not in _RESERVED_PROJECT_IDS
+    """Return whether *project_id* matches the ``[a-z0-9][a-z0-9_-]*`` contract.
+
+    Pattern-only — this is the structural/path-safety predicate used by
+    discovery and task-path guards.  Reserved-name policy (e.g.
+    ``"default"``) lives in [`validate_project_id`][terok.lib.core.project_model.validate_project_id]
+    instead: a legacy on-disk project named ``default`` must still be
+    *discoverable* so [`discover_projects`][terok.lib.core.projects.discover_projects]
+    can surface it as broken (with a rename hint) rather than silently
+    dropping it from the listing.
+    """
+    return bool(project_id) and _PROJECT_ID_RE.fullmatch(project_id) is not None
 
 
 def validate_project_id(project_id: str) -> None:
