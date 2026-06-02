@@ -2538,14 +2538,14 @@ re2 = ["google-re2 (>=1.1)"]
 
 [[package]]
 name = "platformdirs"
-version = "4.9.6"
+version = "4.10.0"
 description = "A small Python package for determining appropriate platform-specific dirs, e.g. a `user data dir`."
 optional = false
 python-versions = ">=3.10"
 groups = ["main", "dev", "docs"]
 files = [
-    {file = "platformdirs-4.9.6-py3-none-any.whl", hash = "sha256:e61adb1d5e5cb3441b4b7710bea7e4c12250ca49439228cc1021c00dcfac0917"},
-    {file = "platformdirs-4.9.6.tar.gz", hash = "sha256:3bfa75b0ad0db84096ae777218481852c0ebc6c727b3168c1b9e0118e458cf0a"},
+    {file = "platformdirs-4.10.0-py3-none-any.whl", hash = "sha256:fb516cdb12eb0d857d0cd85a7c57cea4d060bee4578d6cf5a14dfdf8cbf8784a"},
+    {file = "platformdirs-4.10.0.tar.gz", hash = "sha256:31e761a6a0ca04faf7353ea759bdba55652be214725111e5aac52dfa29d4bef7"},
 ]
 
 [[package]]
@@ -3602,9 +3602,8 @@ description = "Single-agent task runner for hardened Podman containers"
 optional = false
 python-versions = ">=3.12,<3.15"
 groups = ["main"]
-files = [
-    {file = "terok_executor-0.0.149a27-py3-none-any.whl", hash = "sha256:c848a637b9a4404dd1e6ca52731260d317955120b0f4aca497ca3b95dd6908ce"},
-]
+files = []
+develop = false
 
 [package.dependencies]
 agent-client-protocol = ">=0.10.1"
@@ -3613,13 +3612,15 @@ prompt-toolkit = ">=3.0"
 pydantic = ">=2.9"
 rich = ">=13.0"
 "ruamel.yaml" = ">=0.18"
-terok_sandbox = {url = "https://github.com/terok-ai/terok-sandbox/releases/download/v0.0.124a21/terok_sandbox-0.0.124a21-py3-none-any.whl"}
+terok-sandbox = {git = "https://github.com/sliwowitz/terok-sandbox.git", rev = "feat/apparmor-dnsmasq-profile"}
 terok_util = {url = "https://github.com/terok-ai/terok-util/releases/download/v0.0.2a1/terok_util-0.0.2a1-py3-none-any.whl"}
 tomli-w = ">=1.0"
 
 [package.source]
-type = "url"
-url = "https://github.com/terok-ai/terok-executor/releases/download/v0.0.149a27/terok_executor-0.0.149a27-py3-none-any.whl"
+type = "git"
+url = "https://github.com/sliwowitz/terok-executor.git"
+reference = "feat/apparmor-dnsmasq-profile"
+resolved_reference = "508c794dd9af8fe7fb8387635da31e04fccb5aa8"
 
 [[package]]
 name = "terok-sandbox"
@@ -3628,9 +3629,8 @@ description = "Hardened Podman container runner with gate server and shield inte
 optional = false
 python-versions = ">=3.12,<4.0"
 groups = ["main"]
-files = [
-    {file = "terok_sandbox-0.0.124a21-py3-none-any.whl", hash = "sha256:0919ce1dbf89613be6743e20c43007595ee7bc43e132e5387712beed9ddc0916"},
-]
+files = []
+develop = false
 
 [package.dependencies]
 aiohttp = ">=3.9"
@@ -3638,18 +3638,20 @@ cryptography = ">=46.0.7"
 jinja2 = ">=3.1"
 keyring = ">=25.0"
 packaging = ">=24"
-platformdirs = ">=4.9.6"
+platformdirs = ">=4.10.0"
 prompt-toolkit = ">=3.0"
 pydantic = ">=2.9"
 "ruamel.yaml" = ">=0.18"
 sqlcipher3 = ">=0.6.2"
 terok_clearance = {url = "https://github.com/terok-ai/terok-clearance/releases/download/v0.6.14a7/terok_clearance-0.6.14a7-py3-none-any.whl"}
-terok_shield = {url = "https://github.com/terok-ai/terok-shield/releases/download/v0.6.42a9/terok_shield-0.6.42a9-py3-none-any.whl"}
+terok-shield = {git = "https://github.com/sliwowitz/terok-shield.git", rev = "feat/apparmor-dnsmasq-profile"}
 terok_util = {url = "https://github.com/terok-ai/terok-util/releases/download/v0.0.2a1/terok_util-0.0.2a1-py3-none-any.whl"}
 
 [package.source]
-type = "url"
-url = "https://github.com/terok-ai/terok-sandbox/releases/download/v0.0.124a21/terok_sandbox-0.0.124a21-py3-none-any.whl"
+type = "git"
+url = "https://github.com/sliwowitz/terok-sandbox.git"
+reference = "feat/apparmor-dnsmasq-profile"
+resolved_reference = "89dbfd43336fde182d2311bc13f40f072369ef1c"
 
 [[package]]
 name = "terok-shield"
@@ -3658,9 +3660,8 @@ description = "nftables-based egress firewalling for Podman containers"
 optional = false
 python-versions = ">=3.12,<4.0"
 groups = ["main"]
-files = [
-    {file = "terok_shield-0.6.42a9-py3-none-any.whl", hash = "sha256:0b70cd297908a96b2c5fcc483c81a31c3103f0c798a4e493454f20120476e48d"},
-]
+files = []
+develop = false
 
 [package.dependencies]
 pydantic = ">=2.0"
@@ -3668,8 +3669,10 @@ PyYAML = ">=6.0"
 terok_util = {url = "https://github.com/terok-ai/terok-util/releases/download/v0.0.2a1/terok_util-0.0.2a1-py3-none-any.whl"}
 
 [package.source]
-type = "url"
-url = "https://github.com/terok-ai/terok-shield/releases/download/v0.6.42a9/terok_shield-0.6.42a9-py3-none-any.whl"
+type = "git"
+url = "https://github.com/sliwowitz/terok-shield.git"
+reference = "feat/apparmor-dnsmasq-profile"
+resolved_reference = "dba9e1808dd4a737565e55cdd9ea69e60606b453"
 
 [[package]]
 name = "terok-util"
@@ -4568,4 +4571,4 @@ propcache = ">=0.2.1"
 [metadata]
 lock-version = "2.1"
 python-versions = ">=3.12,<3.15"
-content-hash = "2bce96e768d889f4fbdec563020a88b5d0ecd4970aa26323f66826be26d7a89c"
+content-hash = "63ce60f365f450b33fa9bc4cc3f91b94859153dc5cf70bf48637b02395d8fe04"
