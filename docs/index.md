@@ -83,7 +83,7 @@ terok                                   # bare `terok` on a TTY runs the TUI
 
 - Press **n** to run the project wizard (creates config, builds images, sets up SSH + gate)
 - Select your new project, press **a** to authenticate your agent
-- Press **t** to start a task (CLI, Toad, or autopilot) — straight from the project pane
+- Press **t** to start a task (CLI, Toad, or autopilot)
 
 Or do the same from the command line:
 
