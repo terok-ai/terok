@@ -7,6 +7,7 @@
 
 # terok
 
+[![PyPI](https://img.shields.io/pypi/v/terok)](https://pypi.org/project/terok/)
 [![License: Apache-2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 [![REUSE status](https://api.reuse.software/badge/github.com/terok-ai/terok)](https://api.reuse.software/info/github.com/terok-ai/terok)
 [![Quality Gate Status](https://sonarcloud.io/api/project_badges/measure?project=terok-ai_terok&metric=alert_status)](https://sonarcloud.io/summary/new_code?id=terok-ai_terok)
@@ -26,7 +27,7 @@ and a Textual TUI on top of a stack of independently-released
 Python packages.
 
 <p align="center">
-  <img src="docs/img/architecture.svg" alt="terok ecosystem at a glance">
+  <img src="https://terok-ai.github.io/terok/img/architecture.svg" alt="terok ecosystem at a glance">
 </p>
 
 ## What you get
