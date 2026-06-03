@@ -270,6 +270,34 @@ def test_check_shield_states(
     assert expected_detail in detail
 
 
+def test_check_shield_surfaces_apparmor_advisory_on_lower_tier() -> None:
+    """On a dnsmasq→dig downgrade, _check_shield surfaces shield's precise reason."""
+    advisory = (
+        "dnsmasq is present but AppArmor confines it from the shield state "
+        "directory — install the terok AppArmor profile (see docs/apparmor.md)"
+    )
+    mock_ec = MagicMock(
+        health="ok", hooks="per-container", dns_tier="dig", setup_hint="", issues=[advisory]
+    )
+    with patch("terok.cli.commands.sickbay.check_environment", return_value=mock_ec):
+        status, _label, detail = _check_shield()
+    assert status == "ok"
+    assert "AppArmor" in detail
+    assert "docs/apparmor.md" in detail
+    assert "install dnsmasq for live IP rotation" not in detail
+
+
+def test_check_shield_generic_dnsmasq_hint_without_reported_reason() -> None:
+    """With no shield-reported reason, the generic dnsmasq hint is still shown."""
+    mock_ec = MagicMock(
+        health="ok", hooks="per-container", dns_tier="dig", setup_hint="", issues=[]
+    )
+    with patch("terok.cli.commands.sickbay.check_environment", return_value=mock_ec):
+        status, _label, detail = _check_shield()
+    assert status == "ok"
+    assert "install dnsmasq" in detail
+
+
 @pytest.mark.parametrize(
     ("running", "mode", "systemd_avail", "side_effect", "expected_status", "expected_detail"),
     [

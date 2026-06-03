@@ -164,12 +164,14 @@ def _check_shield() -> _CheckResult:
         return ("warn", label, f"unexpected health: {ec.health}")
     dns = getattr(ec, "dns_tier", "unknown")
     detail = f"active ({ec.hooks}, {dns} DNS)"
-    # Surface the dnsmasq install hint when shield demoted to a lower
-    # tier: the lower tiers (dig, getent) work — they just can't handle
-    # runtime IP rotation or live domain allow-list updates, which is
-    # the daily-driver benefit dnsmasq pays for.
+    # On a lower tier (dig/getent) surface shield's own reason: dnsmasq
+    # missing and dnsmasq AppArmor-confined need different fixes, and
+    # shield reports the precise one (with any docs pointer) in ec.issues.
     if dns != "dnsmasq":
-        detail += " — install dnsmasq for live IP rotation + domain updates"
+        hint = (
+            ec.issues[0] if ec.issues else "install dnsmasq for live IP rotation + domain updates"
+        )
+        detail += f" — {hint}"
     return ("ok", label, detail)
 
 
