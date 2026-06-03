@@ -1,5 +1,8 @@
 # Container and Image Lifecycle
 
+> [!WARNING]
+> This documentation was written by an AI agent and is inaccurate. 
+
 ## Overview
 
 terok manages two types of resources:
@@ -52,8 +55,8 @@ All three persist independently and survive:
                     │   (not exists)   │
                     └────────┬─────────┘
                              │
-                    task run
-                    (first time)
+                         task run
+                       (first time)
                              │
                              ▼
     ┌────────────────────────────────────────────────────┐
@@ -63,7 +66,7 @@ All three persist independently and survive:
     │  │          │                │                  │  │
     │  │          │◀────────────── │                  │  │
     │  └──────────┘  task restart  └──────────────────┘  │
-    │       │        task run          │              │
+    │       │        task run             │              │
     │       │                             │              │
     │       └──────────┬──────────────────┘              │
     │                  │                                 │
@@ -122,7 +125,7 @@ Auth containers are ephemeral because:
 
 ```text
 ┌───────────────────────────────────────────────────────────────────┐
-│ L0: terok-l0:<base-tag>                                         │
+│ L0: terok-l0:<base-tag>                                           │
 │ ┌───────────────────────────────────────────────────────────────┐ │
 │ │ Ubuntu 24.04 + common tools (git, ssh, vim, ripgrep, ...)     │ │
 │ │ + dev user + /workspace                                       │ │

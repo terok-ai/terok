@@ -2,6 +2,11 @@
 
 Complete guide to installing, configuring, and using terok.
 
+> [!WARNING]
+> Terok is in **alpha** development phase. It is under active development and until version
+> 1.0.0 is released, APIs, internals, and security boundaries may change
+> without deprecation notice. Not recommended for production deployment.
+
 ## Table of Contents
 
 - [Installation](#installation)
@@ -19,6 +24,9 @@ Complete guide to installing, configuring, and using terok.
 - [FAQ](#faq)
 
 ---
+
+> [!WARNING]
+> This documentation was written by an AI agent and is inaccurate. 
 
 ## Installation
 

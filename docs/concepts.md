@@ -1,5 +1,8 @@
 # Concepts
 
+> [!WARNING]
+> This documentation was written by an AI agent and is inaccurate. 
+
 This page explains the core ideas behind terok — why containerized agents
 exist, what problems they solve, and how terok's architecture maps to
 real-world workflows.

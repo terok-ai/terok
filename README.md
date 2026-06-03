@@ -12,18 +12,17 @@
 [![Quality Gate Status](https://sonarcloud.io/api/project_badges/measure?project=terok-ai_terok&metric=alert_status)](https://sonarcloud.io/summary/new_code?id=terok-ai_terok)
 
 > [!WARNING]
-> Terok is **alpha**. It is under active development and until version
+> Terok is in **alpha** development phase. It is under active development and until version
 > 1.0.0 is released, APIs, internals, and security boundaries may change
-> without deprecation notice. Not recommended for production.
+> without deprecation notice. Not recommended for production deployment.
 
-An open, Podman-native runtime for AI coding agents you can let off
-the leash — without giving them the leash to your machine.
+An open, Podman-native runtime for sandboxing AI coding agents in YOLO mode.
 
-terok runs each agent task inside a hardened, rootless container with
+Terok runs each agent task inside a hardened, rootless container with
 default-deny outbound networking, a credential vault that keeps real
 keys on the host, a per-task git checkpoint, and a desktop
 notification path for live allow/deny decisions.  It ships a CLI
-and a Textual TUI on top of a focused stack of independently-released
+and a Textual TUI on top of a stack of independently-released
 Python packages.
 
 <p align="center">
@@ -35,30 +34,24 @@ Python packages.
 ### Hardening
 
 - **Rootless Podman** — no daemon, no privileged user namespace
-- **Default-deny egress firewall** with curated allowlist profiles
-  and per-container audit logs (via
-  [terok-shield](https://github.com/terok-ai/terok-shield))
+- **Default-deny egress firewall** — via [terok-shield](https://github.com/terok-ai/terok-shield)
 - **Credential vault** — secrets stay on the host
-- **Per-task git gate** — a git mirror that the agent pushes through,
-  giving you a human-review point before changes leave your machine
-- **Live Allow / Deny prompts** — desktop notifications on blocked
-  outbound traffic, turned into immediate firewall rules
+- **Per-task git gate** — a git mirror that the agent pushes through;
+  a human-review point before changes leave your machine
+- **Live Allow / Deny prompts** — desktop notifications on blocked outbound traffic
 
-### Workflow
+### Features
 
 - **Projects ⊃ Tasks** — long-lived project config, ephemeral task
-  containers; many tasks per project
+  containers; many tasks per project.
 - **Headless / interactive / web interface** — pick the launch mode
-  per task; same agents, same hardening
+  per task; same agents, same hardening.
 - **Layered images** — base distro · agent CLIs · per-project
   snippet, cached and reused across projects; Ubuntu / Debian /
   Fedora / nvidia/cuda out of the box, GPU passthrough for projects
-  whose base image supports it
-- **Sickbay + panic** — health checks with auto-remediation and an
-  emergency kill-switch
+  whose base image supports it.
 - **Multi-vendor agents** — Claude Code, Codex, Copilot, Vibe, plus
-  custom LLM endpoints via OpenCode (Helmholtz, university, or your
-  own endpoint — bundled defaults included)
+  custom LLM endpoints via OpenCode.
 
 ## The five-package stack
 
@@ -89,10 +82,8 @@ Optional but recommended:
 
 ### Installation
 
-Download the latest [release wheel](https://github.com/terok-ai/terok/releases/download/v0.7.9/terok-0.7.9-py3-none-any.whl)
-
 ```bash
-pipx install terok-0.7.9-py3-none-any.whl
+pipx install terok
 ```
 
 ### One-time setup
@@ -101,8 +92,7 @@ pipx install terok-0.7.9-py3-none-any.whl
 terok setup                             # idempotent; safe to re-run after upgrades
 ```
 
-`setup` installs the shield OCI hooks, the vault, the git gate, the
-D-Bus clearance bridge, the XDG desktop entry for the TUI, and shell
+`setup` installs the shield OCI hooks, the XDG desktop entry for the TUI, and shell
 completions for your detected shell.
 
 To remove everything later:
@@ -116,7 +106,7 @@ terok uninstall                         # reverse of setup; preserves credential
 Launch the TUI:
 
 ```bash
-terok                                   # bare `terok` on a TTY runs the TUI
+terok                                   # bare `terok` runs the TUI
 ```
 
 - Press **n** to run the project wizard (creates config, builds images, sets up SSH + gate)
@@ -131,7 +121,7 @@ terok auth                              # interactive menu — pick multiple pro
 terok project wizard                    # interactive project setup
 terok task run myproj                   # create a CLI task and attach (default on TTY)
 terok task run myproj --mode toad       # web interface (browser access)
-terok login myproj a3                   # re-attach later by task ID prefix
+terok login myproj t3x                  # re-attach later by task ID prefix
 ```
 
 For manual project configuration or CI, see the [User Guide](docs/usage.md).
@@ -173,8 +163,12 @@ terok completions install               # Re-install shell completions
   otherwise the shield + clearance services bind sockets as
   `unconfined_t` and podman will refuse to talk to them.  The exact
   install command (a `sudo bash` over the script terok-sandbox
-  ships) is printed by `terok sickbay` when the policy is missing —
+  ships) is printed by `terok setup` when the policy is missing —
   run it once, then re-run `terok setup`.
+- **AppArmor hosts**: install the policy otherwise the shield's dnsmasq won't 
+  be able to read its confguration.  The exact install command (a `sudo bash` over 
+  the script terok-sandbox ships) is printed by `terok setup` when the policy is 
+  missing — run it once, then re-run `terok setup`.
 - **Clipboard**: If mouse selection doesn't copy to your clipboard,
   hold **Shift** while selecting, then **Shift+Ctrl+C** to copy.
   See [Tips](docs/usage.md#tips) for details.

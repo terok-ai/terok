@@ -1,9 +1,7 @@
-<!--
-SPDX-FileCopyrightText: 2026 Jiri Vyskocil
-SPDX-License-Identifier: Apache-2.0
--->
-
 # Container Runtimes
+
+> [!WARNING]
+> This documentation was written by an AI agent and is inaccurate. 
 
 terok supports two OCI runtimes:
 

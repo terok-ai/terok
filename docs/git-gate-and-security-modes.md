@@ -1,5 +1,8 @@
 # Git Gate and Security Modes
 
+> [!WARNING]
+> This documentation was written by an AI agent and is inaccurate. 
+
 The **git gate** is a host-side bare git repository managed by
 [terok-sandbox](https://github.com/terok-ai/terok-sandbox).  When a
 project has an upstream configured, the gate mirrors it; without one,

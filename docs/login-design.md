@@ -1,5 +1,8 @@
 # Login Feature — Design
 
+> [!WARNING]
+> This documentation was written by an AI agent and is inaccurate. 
+
 ## Problem
 
 terok manages containerized AI coding agent tasks. Users need to open interactive

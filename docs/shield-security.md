@@ -1,5 +1,8 @@
 # Shield Security Guide
 
+> [!WARNING]
+> This documentation was written by an AI agent and is inaccurate. 
+
 The **shield** is an egress firewall that restricts outbound network access
 from task containers using nftables OCI hooks.  It is provided by
 [terok-shield](https://github.com/terok-ai/terok-shield) and integrated

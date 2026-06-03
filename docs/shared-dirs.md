@@ -1,5 +1,8 @@
 # Shared Directories
 
+> [!WARNING]
+> This documentation was written by an AI agent and is inaccurate. 
+
 ## Overview
 
 When a task starts, terok mounts host directories into the container for workspace access and shared agent configuration.

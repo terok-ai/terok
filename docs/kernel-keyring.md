@@ -1,5 +1,8 @@
 # Kernel Keyring Exhaustion
 
+> [!WARNING]
+> This documentation was written by an AI agent and is inaccurate. 
+
 ## Symptom
 
 After starting and stopping many containers, `podman run` fails with:

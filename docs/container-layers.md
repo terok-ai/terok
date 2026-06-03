@@ -1,5 +1,8 @@
 # Container Layers
 
+> [!WARNING]
+> This documentation was written by an AI agent and is inaccurate. 
+
 ## Overview
 
 terok builds project containers in three logical layers. L0 (dev) and L1 (agent) are project-agnostic and cache well; L2 is project-specific.

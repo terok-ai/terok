@@ -1,9 +1,10 @@
 # Running terok in Docker
 
-> **Experimental — not audited for security.**
+> [!WARNING]
+> This documentation was written by an AI agent and is inaccurate. 
+
+> **Experimental — not tested regularly.**
 > This mode is intended for local evaluation only.
-> Do not expose terok-in-Docker to the public internet or use it in production.
-> For production use, install terok natively on a host with Podman.
 
 terok-in-Docker runs the full terok stack — web TUI, terok-sandbox
 runtime (gate server, shield), and rootless Podman — inside a single

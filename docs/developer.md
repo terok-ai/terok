@@ -1,5 +1,8 @@
 # Developer Guide
 
+> [!WARNING]
+> This documentation was written by an AI agent and is inaccurate. 
+
 This document covers internal architecture and implementation details for contributors and maintainers of terok.
 
 ## Domain Model Architecture
