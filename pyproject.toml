@@ -80,8 +80,8 @@ include = [
 version = "0.7.9"
 
 [tool.poetry.group.dev.dependencies]
-pydevd-pycharm = "262.6228.39"
-ruff = ">=0.15.14"
+pydevd-pycharm = "262.6653.28"
+ruff = ">=0.15.15"
 markdown-it-py = ">=4.0.0"
 mdit-py-plugins = ">=0.5.0"
 tach = "^0.35.0"
