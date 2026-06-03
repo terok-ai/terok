@@ -688,20 +688,36 @@ class TestBackgroundLaunchCompletion:
 
 
 # ---------------------------------------------------------------------------
-# n binding in TaskList
+# New-task ``t`` binding in both panes (#1025)
 # ---------------------------------------------------------------------------
 
 
-class TestTaskListNewBinding:
-    """Tests for the n binding in the task list widget."""
+class TestNewTaskBinding:
+    """The New-task shortcut is ``t`` and reachable from either pane."""
 
-    def test_task_list_has_n_binding(self) -> None:
+    @staticmethod
+    def _binding_map(bindings: object) -> dict[str, str]:
+        """Map binding keys to their action strings for either tuple/Binding form."""
+        return {
+            (b[0] if isinstance(b, tuple) else b.key): (b[1] if isinstance(b, tuple) else b.action)
+            for b in bindings
+        }
+
+    def test_task_list_new_binding_is_t(self) -> None:
         from tests.unit.tui.tui_test_helpers import import_widgets
 
-        widgets = import_widgets()
-        bindings = widgets.TaskList.BINDINGS
-        binding_keys = [b[0] if isinstance(b, tuple) else b.key for b in bindings]
-        assert "n" in binding_keys
+        bindings = self._binding_map(import_widgets().TaskList.BINDINGS)
+        # ``t`` replaced the old ``n`` so the shortcut matches the project pane.
+        assert bindings.get("t") == "app.create_task_from_main"
+        assert "n" not in bindings
+
+    def test_project_list_exposes_new_task_binding(self) -> None:
+        from tests.unit.tui.tui_test_helpers import import_widgets
+
+        bindings = self._binding_map(import_widgets().ProjectList.BINDINGS)
+        # New task from the project pane, while ``n`` stays the project wizard.
+        assert bindings.get("t") == "app.create_task_from_main"
+        assert bindings.get("n") == "app.new_project_wizard"
 
 
 # ---------------------------------------------------------------------------

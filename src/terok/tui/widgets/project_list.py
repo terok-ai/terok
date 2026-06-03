@@ -49,6 +49,7 @@ class ProjectList(ListView):
     BINDINGS = [
         ("enter", "app.show_project_actions", "Project\u2026"),
         ("n", "app.new_project_wizard", "New Project"),
+        ("t", "app.create_task_from_main", "New task"),
     ]
 
     class ProjectSelected(Message):
