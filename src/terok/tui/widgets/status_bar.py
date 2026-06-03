@@ -15,7 +15,7 @@ class StatusBar(Static):
     This replaces Textual's default Footer so we can free horizontal space
     for real status messages instead of a long list of shortcuts. The
     shortcut hints are kept very small here because the primary shortcut
-    hints already live in the ProjectActions button bar.
+    hints already live in the footer.
     """
 
     def __init__(self, **kwargs: Any) -> None:

@@ -1,15 +1,12 @@
 # SPDX-FileCopyrightText: 2026 Jiri Vyskocil
 # SPDX-License-Identifier: Apache-2.0
 
-"""Project list and action bar widgets."""
+"""Project list widget and helpers."""
 
-import inspect
 from typing import Any
 
-from textual.app import ComposeResult
-from textual.containers import Horizontal
 from textual.message import Message
-from textual.widgets import Button, ListItem, ListView, Static
+from textual.widgets import ListItem, ListView, Static
 
 from ...lib.api import (
     GPU_DISPLAY,
@@ -128,51 +125,3 @@ class ProjectList(ListView):
         if item.generation != self._generation:
             return
         self.post_message(self.ProjectSelected(item.project_id, is_broken=item.is_broken))
-
-
-class ProjectActions(Static):
-    """Single-row action bar for project + task actions."""
-
-    def compose(self) -> ComposeResult:
-        """Yield two rows of action buttons for project and task operations."""
-        with Horizontal():
-            yield Button("[yellow]g[/yellow]en", id="btn-generate", compact=True)
-            yield Button("[yellow]b[/yellow]uild", id="btn-build", compact=True)
-            yield Button("[yellow]A[/yellow]gents", id="btn-build-agents", compact=True)
-            yield Button("[yellow]F[/yellow]ull", id="btn-build-full", compact=True)
-            yield Button("[yellow]s[/yellow]sh", id="btn-ssh-init", compact=True)
-            yield Button("[yellow]S[/yellow]ync", id="btn-sync-gate", compact=True)
-
-        with Horizontal():
-            yield Button("[yellow]t[/yellow] new", id="btn-new-task", compact=True)
-            yield Button("[yellow]r[/yellow] cli", id="btn-task-run-cli", compact=True)
-            yield Button("[yellow]w[/yellow] toad", id="btn-task-run-toad", compact=True)
-            yield Button("[yellow]d[/yellow]el", id="btn-task-delete", compact=True)
-
-    async def on_button_pressed(self, event: Button.Pressed) -> None:
-        """Route button presses to the corresponding App action method."""
-        btn_id = event.button.id
-        app = self.app
-        if not app or not btn_id:
-            return
-
-        mapping = {
-            "btn-generate": "action_generate_dockerfiles",
-            "btn-build": "action_build_images",
-            "btn-build-agents": "_action_build_agents",
-            "btn-build-full": "_action_build_full",
-            "btn-ssh-init": "action_init_ssh",
-            "btn-sync-gate": "action_sync_gate",
-            "btn-new-task": "action_new_task",
-            "btn-task-run-cli": "action_run_cli",
-            "btn-task-run-toad": "action_run_toad",
-            "btn-task-delete": "action_delete_task",
-        }
-        method_name = mapping.get(btn_id)
-        if not method_name or not hasattr(app, method_name):
-            return
-
-        method = getattr(app, method_name)
-        result = method()
-        if inspect.isawaitable(result):
-            await result
