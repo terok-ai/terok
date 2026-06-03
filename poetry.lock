@@ -3576,34 +3576,32 @@ tomli-w = ">=1.0,<2.0"
 
 [[package]]
 name = "terok-clearance"
-version = "0.6.14a8"
+version = "0.7.0"
 description = "Shield clearance and desktop notifications for terok"
 optional = false
-python-versions = ">=3.12,<4.0"
+python-versions = "<4.0,>=3.12"
 groups = ["main"]
 files = [
-    {file = "terok_clearance-0.6.14a8-py3-none-any.whl", hash = "sha256:778770589c5d1d180b2d5126d376a22dee2032908a86d2abaf434ad2a5c2e9ab"},
+    {file = "terok_clearance-0.7.0-py3-none-any.whl", hash = "sha256:c02c26cec9e3b3430fa7f39c825442a89af9ed4cf57606e7c7b445cfe5d25afb"},
+    {file = "terok_clearance-0.7.0.tar.gz", hash = "sha256:ebfde2d76ea3dead54c113e83149bb8073df0070b47ea9c088107a3b921591b5"},
 ]
 
 [package.dependencies]
 asyncvarlink = ">=0.3.1,<0.4.0"
 dbus-fast = ">=4.3.0,<5.0"
 pyyaml = ">=6.0"
-terok_util = {url = "https://github.com/terok-ai/terok-util/releases/download/v0.0.2a2/terok_util-0.0.2a2-py3-none-any.whl"}
-
-[package.source]
-type = "url"
-url = "https://github.com/terok-ai/terok-clearance/releases/download/v0.6.14a8/terok_clearance-0.6.14a8-py3-none-any.whl"
+terok-util = ">=0.1.0,<0.2.0"
 
 [[package]]
 name = "terok-executor"
-version = "0.0.149a29"
+version = "0.1.0"
 description = "Single-agent task runner for hardened Podman containers"
 optional = false
-python-versions = ">=3.12,<3.15"
+python-versions = "<3.15,>=3.12"
 groups = ["main"]
 files = [
-    {file = "terok_executor-0.0.149a29-py3-none-any.whl", hash = "sha256:79af933db04ad0614e1116b71f635ded3b2f1b5ae0d1d94b8b006dd2e07a6365"},
+    {file = "terok_executor-0.1.0-py3-none-any.whl", hash = "sha256:ebd87bc0753e28f2f01cd3284e9af18340d451dbcedb62330bc900c5c30fde6a"},
+    {file = "terok_executor-0.1.0.tar.gz", hash = "sha256:1d15c167406dc0dfa0380ff163c936710c385a863c203b06247ad7f4139534ae"},
 ]
 
 [package.dependencies]
@@ -3613,23 +3611,20 @@ prompt-toolkit = ">=3.0"
 pydantic = ">=2.9"
 rich = ">=13.0"
 "ruamel.yaml" = ">=0.18"
-terok_sandbox = {url = "https://github.com/terok-ai/terok-sandbox/releases/download/v0.0.124a23/terok_sandbox-0.0.124a23-py3-none-any.whl"}
-terok_util = {url = "https://github.com/terok-ai/terok-util/releases/download/v0.0.2a2/terok_util-0.0.2a2-py3-none-any.whl"}
+terok-sandbox = ">=0.1.0,<0.2.0"
+terok-util = ">=0.1.0,<0.2.0"
 tomli-w = ">=1.0"
-
-[package.source]
-type = "url"
-url = "https://github.com/terok-ai/terok-executor/releases/download/v0.0.149a29/terok_executor-0.0.149a29-py3-none-any.whl"
 
 [[package]]
 name = "terok-sandbox"
-version = "0.0.124a23"
+version = "0.1.0"
 description = "Hardened Podman container runner with gate server and shield integration"
 optional = false
-python-versions = ">=3.12,<4.0"
+python-versions = "<4.0,>=3.12"
 groups = ["main"]
 files = [
-    {file = "terok_sandbox-0.0.124a23-py3-none-any.whl", hash = "sha256:7953cc0969f9705455913e7a9fdf0bb716e7389958de966b59477dc53e9675bd"},
+    {file = "terok_sandbox-0.1.0-py3-none-any.whl", hash = "sha256:466b2cfa856c9ae8ca6f0d6666800c5cc4db8b276266d46481c3de8a5e5f192b"},
+    {file = "terok_sandbox-0.1.0.tar.gz", hash = "sha256:3b2eec3c5a5f76aace67fd15a8b11a60f675812ae10ec8745f3ed815e2296842"},
 ]
 
 [package.dependencies]
@@ -3643,52 +3638,42 @@ prompt-toolkit = ">=3.0"
 pydantic = ">=2.9"
 "ruamel.yaml" = ">=0.18"
 sqlcipher3 = ">=0.6.2"
-terok_clearance = {url = "https://github.com/terok-ai/terok-clearance/releases/download/v0.6.14a8/terok_clearance-0.6.14a8-py3-none-any.whl"}
-terok_shield = {url = "https://github.com/terok-ai/terok-shield/releases/download/v0.6.42a11/terok_shield-0.6.42a11-py3-none-any.whl"}
-terok_util = {url = "https://github.com/terok-ai/terok-util/releases/download/v0.0.2a2/terok_util-0.0.2a2-py3-none-any.whl"}
-
-[package.source]
-type = "url"
-url = "https://github.com/terok-ai/terok-sandbox/releases/download/v0.0.124a23/terok_sandbox-0.0.124a23-py3-none-any.whl"
+terok-clearance = ">=0.7.0,<0.8.0"
+terok-shield = ">=0.7.0,<0.8.0"
+terok-util = ">=0.1.0,<0.2.0"
 
 [[package]]
 name = "terok-shield"
-version = "0.6.42a11"
+version = "0.7.0"
 description = "nftables-based egress firewalling for Podman containers"
 optional = false
-python-versions = ">=3.12,<4.0"
+python-versions = "<4.0,>=3.12"
 groups = ["main"]
 files = [
-    {file = "terok_shield-0.6.42a11-py3-none-any.whl", hash = "sha256:2be9069bbbc646962d685bbe2f8ca9d884e1ae0ac92d9f4fd652eba2f069cfc0"},
+    {file = "terok_shield-0.7.0-py3-none-any.whl", hash = "sha256:f246e405a3c060af556b63f71fddc5ab80beb1e88f51d251cfd0267bf6ac8438"},
+    {file = "terok_shield-0.7.0.tar.gz", hash = "sha256:660133de84140e8fd79215e35c804a6e247951df9a73860361194cad8fa93808"},
 ]
 
 [package.dependencies]
 pydantic = ">=2.0"
 PyYAML = ">=6.0"
-terok_util = {url = "https://github.com/terok-ai/terok-util/releases/download/v0.0.2a2/terok_util-0.0.2a2-py3-none-any.whl"}
-
-[package.source]
-type = "url"
-url = "https://github.com/terok-ai/terok-shield/releases/download/v0.6.42a11/terok_shield-0.6.42a11-py3-none-any.whl"
+terok-util = ">=0.1.0,<0.2.0"
 
 [[package]]
 name = "terok-util"
-version = "0.0.2a2"
+version = "0.1.0"
 description = "Shared utility library for the terok-* sibling packages"
 optional = false
-python-versions = ">=3.12,<4.0"
+python-versions = "<4.0,>=3.12"
 groups = ["main"]
 files = [
-    {file = "terok_util-0.0.2a2-py3-none-any.whl", hash = "sha256:92f70ff04b108570b10a0a3822898133235c1544537f7b84cecae0450329b20f"},
+    {file = "terok_util-0.1.0-py3-none-any.whl", hash = "sha256:2e1dfa321bb1a574460a07caf578ed8020bb6aab01ce44158ed41528bf1ae577"},
+    {file = "terok_util-0.1.0.tar.gz", hash = "sha256:27bcb70b41fd86bc54b529120a7c53ca8bc4bf7b5d332478e80035b746526199"},
 ]
 
 [package.dependencies]
 platformdirs = ">=4.10.0"
 "ruamel.yaml" = ">=0.18"
-
-[package.source]
-type = "url"
-url = "https://github.com/terok-ai/terok-util/releases/download/v0.0.2a2/terok_util-0.0.2a2-py3-none-any.whl"
 
 [[package]]
 name = "textual"
@@ -4544,4 +4529,4 @@ propcache = ">=0.2.1"
 [metadata]
 lock-version = "2.1"
 python-versions = ">=3.12,<3.15"
-content-hash = "e8380606d46b9526ba4cc33b25daad65529cbde809ebff0baf3bef9308d7cc16"
+content-hash = "a9b0929cca75d97099b6f247ef459d2a8820ac299699650fa5e82c0a5f7a5b59"
