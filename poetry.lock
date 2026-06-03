@@ -3597,13 +3597,14 @@ url = "https://github.com/terok-ai/terok-clearance/releases/download/v0.6.14a8/t
 
 [[package]]
 name = "terok-executor"
-version = "0.0.149a28"
+version = "0.0.149a29"
 description = "Single-agent task runner for hardened Podman containers"
 optional = false
 python-versions = ">=3.12,<3.15"
 groups = ["main"]
-files = []
-develop = false
+files = [
+    {file = "terok_executor-0.0.149a29-py3-none-any.whl", hash = "sha256:79af933db04ad0614e1116b71f635ded3b2f1b5ae0d1d94b8b006dd2e07a6365"},
+]
 
 [package.dependencies]
 agent-client-protocol = ">=0.10.1"
@@ -3612,25 +3613,24 @@ prompt-toolkit = ">=3.0"
 pydantic = ">=2.9"
 rich = ">=13.0"
 "ruamel.yaml" = ">=0.18"
-terok-sandbox = {git = "https://github.com/sliwowitz/terok-sandbox.git", rev = "feat/per-container-supervisor-v3"}
+terok_sandbox = {url = "https://github.com/terok-ai/terok-sandbox/releases/download/v0.0.124a23/terok_sandbox-0.0.124a23-py3-none-any.whl"}
 terok_util = {url = "https://github.com/terok-ai/terok-util/releases/download/v0.0.2a2/terok_util-0.0.2a2-py3-none-any.whl"}
 tomli-w = ">=1.0"
 
 [package.source]
-type = "git"
-url = "https://github.com/sliwowitz/terok-executor.git"
-reference = "feat/per-container-supervisor-v3"
-resolved_reference = "49240e62f137798e51aa9bb4f2c691c335e09aae"
+type = "url"
+url = "https://github.com/terok-ai/terok-executor/releases/download/v0.0.149a29/terok_executor-0.0.149a29-py3-none-any.whl"
 
 [[package]]
 name = "terok-sandbox"
-version = "0.0.124a22"
+version = "0.0.124a23"
 description = "Hardened Podman container runner with gate server and shield integration"
 optional = false
 python-versions = ">=3.12,<4.0"
 groups = ["main"]
-files = []
-develop = false
+files = [
+    {file = "terok_sandbox-0.0.124a23-py3-none-any.whl", hash = "sha256:7953cc0969f9705455913e7a9fdf0bb716e7389958de966b59477dc53e9675bd"},
+]
 
 [package.dependencies]
 aiohttp = ">=3.9"
@@ -3648,10 +3648,8 @@ terok_shield = {url = "https://github.com/terok-ai/terok-shield/releases/downloa
 terok_util = {url = "https://github.com/terok-ai/terok-util/releases/download/v0.0.2a2/terok_util-0.0.2a2-py3-none-any.whl"}
 
 [package.source]
-type = "git"
-url = "https://github.com/sliwowitz/terok-sandbox.git"
-reference = "feat/per-container-supervisor-v3"
-resolved_reference = "b7a64e1f288a917770983567ef7dc92ff3089a56"
+type = "url"
+url = "https://github.com/terok-ai/terok-sandbox/releases/download/v0.0.124a23/terok_sandbox-0.0.124a23-py3-none-any.whl"
 
 [[package]]
 name = "terok-shield"
@@ -4546,4 +4544,4 @@ propcache = ">=0.2.1"
 [metadata]
 lock-version = "2.1"
 python-versions = ">=3.12,<3.15"
-content-hash = "c0939ad0dc24d9539f7aad6747e7913fcac66d493528b5bfa9b24810febfa291"
+content-hash = "1dc7823484a569d53cde82eb2bd3e529a4b2d3b48e5d158c9d84b5366aac5ea1"
