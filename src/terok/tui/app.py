@@ -1124,8 +1124,16 @@ if _HAS_TEXTUAL:
                 project_id, states = result
                 if project_id != self.current_project_id:
                     return
-                # Update container_state on all TaskMeta instances
                 task_list = self.query_one("#task-list", TaskList)
+                # The batch query re-reads the on-disk task set every tick, so
+                # its keys reveal tasks created or deleted outside the TUI.
+                # Reconcile membership first: this level-triggered diff against
+                # the source of truth can't miss a change the way edge-polling
+                # could, and it converges in a single tick.
+                if set(states) != {tm.task_id for tm in task_list.tasks}:
+                    await self.refresh_tasks()
+                    return
+                # Update container_state on all TaskMeta instances
                 changed = False
                 for tm in task_list.tasks:
                     new_state = states.get(tm.task_id)
