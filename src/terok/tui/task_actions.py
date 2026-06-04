@@ -114,6 +114,7 @@ class TaskActionsMixin(_MixinBase):
         current_project_id: str | None
         current_task: Any
         _last_selected_tasks: dict[str, str]
+        _deleting_tasks: set[tuple[str, str]]
 
         async def refresh_tasks(self) -> None: ...
         def _log_debug(self, message: str) -> None: ...
@@ -184,6 +185,7 @@ class TaskActionsMixin(_MixinBase):
 
     def _queue_task_delete(self, project_id: str, task_id: str, task_name: str) -> None:
         """Schedule a background worker to delete a task."""
+        self._deleting_tasks.add((project_id, task_id))
         self.run_worker(
             lambda: self._delete_task(project_id, task_id, task_name),
             name=f"task-delete:{project_id}:{task_id}",
@@ -731,8 +733,11 @@ class TaskActionsMixin(_MixinBase):
         tname = self.current_task.name or ""
         pid = self.current_project_id
         task_label = f"{pid} {tid}" + (f" {tname}" if tname else "")
-        if self.current_task.deleting:
-            self.notify(f"Task {task_label} is already deleting.")
+        # Guard on the live in-flight set, not the on-disk ``deleting`` flag:
+        # a flag left behind by a crashed session is stale and must stay
+        # retriable, whereas a worker running *now* must not be double-queued.
+        if (pid, tid) in self._deleting_tasks:
+            self.notify(f"Task {task_label} is already being deleted.")
             return
 
         self._log_debug(f"delete: start project_id={pid} task_id={tid}")

@@ -312,6 +312,12 @@ if _HAS_TEXTUAL:
             # Tasks whose CLI/Toad launch worker is in flight; drives the
             # ⏳ badge via ``TaskMeta.starting``.
             self._launching_tasks: set[tuple[str, str]] = set()
+            # Tasks whose delete worker is in flight *this session*.  The
+            # on-disk ``deleting`` flag persists across restarts (and survives
+            # a crash mid-delete); this set tracks only live workers, so the
+            # delete guard can tell an active teardown apart from a stale flag
+            # left by an interrupted session.
+            self._deleting_tasks: set[tuple[str, str]] = set()
 
         def _update_title(self) -> None:
             """Update the TUI title with version and branch information.
@@ -381,6 +387,9 @@ if _HAS_TEXTUAL:
             self._load_selection_state()
 
             await self.refresh_projects()
+            # Re-drive any teardown a previous session left half-finished
+            # before the operator can interact — see the method docstring.
+            self._resume_interrupted_deletes()
             # Defer layout logging until after the first refresh cycle so
             # widgets have real sizes. This will help compare left vs right
             # panes and confirm whether the task list/details get space.
@@ -824,6 +833,28 @@ if _HAS_TEXTUAL:
             # Update project state panel (Dockerfiles/images/SSH/cache + task count)
             self._refresh_project_state(task_count=task_count)
 
+        def _resume_interrupted_deletes(self) -> None:
+            """Re-queue deletes a previous session started but never finished.
+
+            A task is flagged ``deleting`` on disk the instant a delete begins,
+            *before* the background teardown runs.  If the TUI dies in between,
+            the flag survives the crash (and reboots) yet no worker is left to
+            act on it — the task is stranded ``deleting`` forever, and the
+            delete guard refuses to retry it.  On startup we sweep every loaded
+            project for such orphans and re-queue their teardown, which is
+            idempotent and best-effort, so the interrupted delete simply runs
+            to completion.
+            """
+            resumed = 0
+            for pid in self._projects_by_id:
+                for task in get_tasks(pid):
+                    if not task.deleting or (pid, task.task_id) in self._deleting_tasks:
+                        continue
+                    self._queue_task_delete(pid, task.task_id, task.name or "")
+                    resumed += 1
+            if resumed:
+                self.notify(f"Resuming {resumed} interrupted task deletion(s)...")
+
         def _update_task_details(self) -> None:
             """Refresh the task details panel for the currently selected task."""
             details = self.query_one("#task-details", TaskDetails)
@@ -1114,6 +1145,7 @@ if _HAS_TEXTUAL:
                 if not result:
                     return
                 project_id, task_id, task_name, error, warnings = result
+                self._deleting_tasks.discard((project_id, task_id))
                 task_label = f"{project_id} {task_id}" + (f" {task_name}" if task_name else "")
                 if error:
                     self.notify(f"Delete error for task {task_label}: {error}")
