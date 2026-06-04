@@ -280,8 +280,13 @@ class TestTaskLaunchScreen:
         screen.on_input_submitted(event)
         screen._do_login.assert_called_once()
 
-    def test_on_key_ctrl_enter_inserts_newline(self) -> None:
-        """Ctrl+Enter in focused prompt TextArea inserts a newline."""
+    def test_on_key_ctrl_enter_is_owned_by_the_widget(self) -> None:
+        """The screen ignores Ctrl+Enter — newline insertion lives in the widget.
+
+        ``_SubmittablePromptArea`` inserts the newline and stops the event, so
+        Ctrl+Enter never reaches the screen's ``on_key``; if it somehow does,
+        the screen must treat it as a no-op (no insert, no submit).
+        """
         screens, _ = import_screens()
         screen = screens.TaskLaunchScreen(container_name="c", project_id="p", task_id="1")
 
@@ -304,9 +309,9 @@ class TestTaskLaunchScreen:
         event.key = "ctrl+enter"
         screen.on_key(event)
 
-        # Verify newline was inserted
-        mock_textarea.insert.assert_called_once_with("\n")
-        event.stop.assert_called_once()
+        # The screen does nothing — the widget already handled the newline.
+        mock_textarea.insert.assert_not_called()
+        event.stop.assert_not_called()
 
     def test_on_key_enter_submits_when_ready_and_focused(self) -> None:
         """Enter (without Ctrl) submits when container ready and prompt has focus."""
@@ -719,6 +724,21 @@ class TestNewTaskBinding:
         assert bindings.get("t") == "app.create_task_from_main"
         assert bindings.get("n") == "app.new_project_wizard"
 
+    def test_login_moved_to_i_freeing_l_for_vim(self) -> None:
+        """Login is ``i`` (Log[i]n) so lowercase ``l`` is free for vim-right."""
+        from tests.unit.tui.tui_test_helpers import import_widgets
+
+        bindings = self._binding_map(import_widgets().TaskList.BINDINGS)
+        assert bindings.get("i") == "app.login_from_main"
+        assert "l" not in bindings, "l must stay free for vim navigation"
+
+    def test_verdicts_moved_to_v(self) -> None:
+        """Verdicts is ``v`` (first-letter) — clearer than the old ``i``."""
+        from tests.unit.tui.tui_test_helpers import import_widgets
+
+        bindings = self._binding_map(import_widgets().TaskList.BINDINGS)
+        assert bindings.get("v") == "app.shield_interactive_from_main"
+
 
 # ---------------------------------------------------------------------------
 # TaskLaunchScreen.compose border title
@@ -805,12 +825,12 @@ class TestTaskLaunchScreenCompose:
 
 
 # ---------------------------------------------------------------------------
-# _SubmittablePromptArea — Enter / Ctrl+Enter bubble up instead of inserting
+# _SubmittablePromptArea — Enter submits (bubbles); modifiers insert newlines
 # ---------------------------------------------------------------------------
 
 
 class TestSubmittablePromptArea:
-    """Verify the prompt TextArea forwards Enter/Ctrl+Enter to the parent screen.
+    """Verify Enter bubbles to submit while modifier+Enter inserts a newline.
 
     These tests use Textual's ``Pilot`` against a real ``App`` so the
     actual message-pump dispatch is exercised — the previous mock-event
@@ -852,12 +872,12 @@ class TestSubmittablePromptArea:
         assert area.text == "", "Enter must not insert into the prompt"
 
     @pytest.mark.asyncio
-    async def test_ctrl_enter_does_not_insert_into_textarea(self) -> None:
-        """Pressing Ctrl+Enter while the prompt has focus must not insert.
+    @pytest.mark.parametrize("key", ["ctrl+enter", "shift+enter", "ctrl+j"])
+    async def test_modifier_enter_inserts_a_single_newline(self, key: str) -> None:
+        """Ctrl+Enter / Shift+Enter / Ctrl+J each insert exactly one newline.
 
-        The host screen handles Ctrl+Enter explicitly (it does its own
-        ``prompt.insert("\\n")``); the TextArea must NOT also insert one,
-        or every Ctrl+Enter would double-up.
+        The widget owns this now (the host screen no longer touches it), so a
+        focused prompt must end up with one ``\\n`` and no double-up.
         """
         from textual.app import App
         from textual.widgets import TextArea
@@ -873,9 +893,35 @@ class TestSubmittablePromptArea:
             area = app.query_one("#probe", TextArea)
             area.focus()
             await pilot.pause()
-            await pilot.press("ctrl+enter")
+            await pilot.press(key)
             await pilot.pause()
-        assert area.text == ""
+        assert area.text == "\n", f"{key} must insert exactly one newline"
+
+    @pytest.mark.asyncio
+    async def test_modifier_enter_does_not_bubble_to_parent(self) -> None:
+        """A newline modifier is consumed by the widget — the screen never sees it."""
+        from textual.app import App
+        from textual.widgets import TextArea
+
+        from terok.tui.screens import _SubmittablePromptArea
+
+        seen: list[str] = []
+
+        class _Host(App):
+            def compose(self):
+                yield _SubmittablePromptArea(id="probe")
+
+            def on_key(self, event) -> None:  # type: ignore[no-untyped-def]
+                seen.append(event.key)
+
+        app = _Host()
+        async with app.run_test() as pilot:
+            area = app.query_one("#probe", TextArea)
+            area.focus()
+            await pilot.pause()
+            await pilot.press("ctrl+j")
+            await pilot.pause()
+        assert "ctrl+j" not in seen, "newline modifier must not bubble to the screen"
 
     @pytest.mark.asyncio
     async def test_enter_bubbles_to_parent_screen_on_key(self) -> None:

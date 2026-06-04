@@ -45,6 +45,7 @@ if _HAS_TEXTUAL:
 
     from textual import on, work
     from textual.app import App, ComposeResult
+    from textual.binding import Binding
     from textual.containers import Horizontal, Vertical
     from textual.css.query import NoMatches
     from textual.widgets import Footer, Header
@@ -261,6 +262,17 @@ if _HAS_TEXTUAL:
             ("q", "quit", "Quit"),
             ("a", "authenticate", "Auth"),
             ("P", "panic", "PANIC"),
+            # Vim-style navigation, deliberately hidden from the footer (the
+            # arrow keys remain the discoverable path).  These are global
+            # because every list/menu in the app — the two main panes plus the
+            # modal OptionList/RadioSet menus — answers to ``cursor_up`` /
+            # ``cursor_down``, so one set of bindings covers them all.  A
+            # focused text widget swallows the keystroke before the binding
+            # fires, so typing "j" in a prompt still types "j".
+            Binding("j", "vim_down", "Down", show=False),
+            Binding("k", "vim_up", "Up", show=False),
+            Binding("h", "vim_left", "Left", show=False),
+            Binding("l", "vim_right", "Right", show=False),
         ]
 
         def __init__(self) -> None:
@@ -369,6 +381,48 @@ if _HAS_TEXTUAL:
 
             # Use Textual's default Footer which will show key bindings
             yield Footer()
+
+        # -- Vim-style navigation -----------------------------------------
+        # j/k move the cursor within whatever list or menu holds focus; h/l
+        # hop between the two main panes.  Each is a no-op when the focus has
+        # nowhere to go (a single-column menu, a button), so they stay quietly
+        # inert outside the contexts where they make sense.
+
+        def action_vim_down(self) -> None:
+            """Move the focused list/menu cursor down (vim ``j``)."""
+            self._vim_move_cursor("action_cursor_down")
+
+        def action_vim_up(self) -> None:
+            """Move the focused list/menu cursor up (vim ``k``)."""
+            self._vim_move_cursor("action_cursor_up")
+
+        def _vim_move_cursor(self, action: str) -> None:
+            """Invoke *action* on the focused widget when it offers one."""
+            move = getattr(self.focused, action, None)
+            if callable(move):
+                move()
+
+        def action_vim_left(self) -> None:
+            """Focus the left (projects) pane (vim ``h``)."""
+            self._vim_focus_pane(ProjectList)
+
+        def action_vim_right(self) -> None:
+            """Focus the right (tasks) pane (vim ``l``)."""
+            self._vim_focus_pane(TaskList)
+
+        def _vim_focus_pane(self, pane: type) -> None:
+            """Focus *pane*, but only while a main pane already holds focus.
+
+            Pane-hopping is meaningful only on the main two-pane screen; inside
+            a modal menu (where ``self.focused`` is some OptionList or Button)
+            h/l must do nothing rather than yank focus out from under the modal.
+            """
+            if not isinstance(self.focused, (ProjectList, TaskList)):
+                return
+            try:
+                self.query_one(pane).focus()
+            except NoMatches:
+                pass
 
         async def on_mount(self) -> None:
             """Load projects, restore selection state, and start polling on first mount."""

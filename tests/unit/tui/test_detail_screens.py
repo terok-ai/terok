@@ -1404,13 +1404,72 @@ class TestDefaultAgentsAction:
         instance.notify.assert_not_called()
 
 
+def _binding_key_action(b: object) -> tuple[str, str]:
+    """Extract ``(key, action)`` from a plain-tuple or stub ``Binding`` entry.
+
+    The stub ``Binding`` (a ``_StubObject``) isn't subscriptable; it stashes
+    its constructor args on ``_stub_args``.  Plain tuples index directly.
+    """
+    if isinstance(b, tuple):
+        return (b[0], b[1])
+    return (b._stub_args[0], b._stub_args[1])  # type: ignore[attr-defined]
+
+
+class TestVimNavigation:
+    """Hidden hjkl bindings and the cursor/pane actions they drive."""
+
+    def test_hjkl_bound_to_vim_actions_and_hidden(self) -> None:
+        """j/k/h/l map to the vim_* actions and never surface in the footer."""
+        _, app_class = import_app()
+        by_key = {b._stub_args[0]: b for b in app_class.BINDINGS if not isinstance(b, tuple)}
+        expected = {"j": "vim_down", "k": "vim_up", "h": "vim_left", "l": "vim_right"}
+        for key, action in expected.items():
+            binding = by_key[key]
+            assert binding._stub_args[1] == action
+            assert binding._stub_kwargs.get("show") is False, f"{key} must be hidden"
+
+    def test_vim_move_cursor_drives_focused_widget(self) -> None:
+        """j/k forward to the focused widget's cursor action when it has one."""
+        _, app_class = import_app()
+        instance = mock.Mock()
+        instance.focused = mock.Mock(spec=["action_cursor_down"])
+        app_class._vim_move_cursor(instance, "action_cursor_down")
+        instance.focused.action_cursor_down.assert_called_once_with()
+
+    def test_vim_move_cursor_noop_without_cursor_action(self) -> None:
+        """A focused widget lacking the action (e.g. a Button) is left untouched."""
+        _, app_class = import_app()
+        instance = mock.Mock()
+        instance.focused = object()  # no ``action_cursor_down`` attribute
+        app_class._vim_move_cursor(instance, "action_cursor_down")  # must not raise
+
+    def test_vim_focus_pane_switches_between_main_lists(self) -> None:
+        """h/l move focus to the other pane when a main pane already holds it."""
+        app_mod, app_class = import_app()
+        instance = mock.Mock()
+        instance.focused = mock.Mock(spec=app_mod.ProjectList)  # left pane focused
+        target = mock.Mock()
+        instance.query_one.return_value = target
+        app_class._vim_focus_pane(instance, app_mod.TaskList)
+        instance.query_one.assert_called_once_with(app_mod.TaskList)
+        target.focus.assert_called_once_with()
+
+    def test_vim_focus_pane_inert_inside_modal(self) -> None:
+        """With a non-pane widget focused (a modal menu), h/l do nothing."""
+        app_mod, app_class = import_app()
+        instance = mock.Mock()
+        instance.focused = object()  # not a ProjectList / TaskList
+        app_class._vim_focus_pane(instance, app_mod.TaskList)
+        instance.query_one.assert_not_called()
+
+
 class TestGlobalAuthBinding:
     """The top-level ``a`` shortcut + ``action_authenticate`` route."""
 
     def test_app_binds_a_to_authenticate(self) -> None:
         """``a`` on the main screen opens the auth modal — no project required."""
         _, app_class = import_app()
-        bindings = {(b[0], b[1]) for b in app_class.BINDINGS}
+        bindings = {_binding_key_action(b) for b in app_class.BINDINGS}
         assert ("a", "authenticate") in bindings
 
     def test_action_authenticate_pushes_auth_actions_screen(self) -> None:
