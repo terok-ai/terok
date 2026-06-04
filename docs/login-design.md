@@ -109,3 +109,10 @@ and the goal is a single coherent web-served login story.)
 `terok tui --tmux` wraps the TUI in a managed tmux session with the host config
 (blue status bar, usage hints). Login sessions become additional tmux windows.
 This is opt-in — without the flag, the TUI runs directly in the terminal as before.
+The global `tui.default_tmux` config setting flips the default so the flag is
+implied; `--no-tmux` overrides it for one launch.
+
+The wrapper uses `tmux new-session -A -s terok`, so a second `--tmux` launch
+**attaches** to the running `terok` session rather than erroring on the
+duplicate name. `--new-session` opts out, dropping `-s` so tmux auto-names a
+parallel session.

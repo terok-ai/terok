@@ -441,6 +441,22 @@ This wraps the TUI in a managed tmux session with a blue status bar showing
 keyboard shortcuts. Login sessions open as additional tmux windows — press
 `^b n`/`^b p` to switch between TUI and container shells.
 
+To launch the TUI in tmux by default without passing `--tmux` every time, set
+it in your config:
+
+```yaml
+tui:
+  default_tmux: true
+```
+
+`--no-tmux` overrides the config setting for a single launch.
+
+When tmux mode is active, terok **attaches to the shared `terok` session** if
+one is already running, so a second `terok tui --tmux` reconnects to your
+existing TUI instead of failing on the duplicate session name. Pass
+`--new-session` to opt out and start a separate, tmux-named session alongside
+it.
+
 #### tmux Quick Reference
 
 | Context | Prefix | Status bar color | Common keys |

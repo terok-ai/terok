@@ -1719,13 +1719,19 @@ if _HAS_TEXTUAL:
             """Open the clearance screen from the main screen."""
             await self.action_show_clearance()
 
-    def _launch_in_tmux() -> None:
+    def _launch_in_tmux(force_new: bool = False) -> None:
         """Launch the TUI inside a managed tmux session.
 
-        If already inside tmux, just run the TUI directly.
-        Otherwise, verify that tmux is installed and exec into it with the
-        terok host config (blue status bar, usage hints).  Exits with an
-        actionable error message if tmux is not found on ``$PATH``.
+        If already inside tmux, just run the TUI directly.  Otherwise verify
+        that tmux is installed and exec into it with the terok host config
+        (blue status bar, usage hints).  Exits with an actionable error
+        message if tmux is not found on ``$PATH``.
+
+        By default this attaches to the shared ``terok`` session if one is
+        already running (``new-session -A``), so a second ``terok --tmux``
+        reconnects rather than failing on the duplicate name.  Pass
+        ``force_new=True`` (``--new-session``) to spin up a fresh, tmux-named
+        session alongside the existing one instead.
         """
         if os.environ.get("TMUX"):
             # Already inside tmux — no double-wrap
@@ -1750,18 +1756,15 @@ if _HAS_TEXTUAL:
         # Note: os.execvp replaces this process so the context manager's
         # __exit__ never runs.  This is fine — tmux reads the config file
         # at startup, and OS process cleanup handles any temp resources.
+        # ``-A -s terok`` attaches to the shared session if it exists and
+        # creates it otherwise; ``--new-session`` drops the name so tmux
+        # auto-assigns one for a parallel session.  ``terok-tui`` is only run
+        # when tmux actually creates the session — on attach it is ignored.
+        session_args = ["new-session"] if force_new else ["new-session", "-A", "-s", "terok"]
         with _res.as_file(tmux_conf) as conf_path:
             os.execvp(
                 "tmux",
-                [
-                    "tmux",
-                    "-f",
-                    str(conf_path),
-                    "new-session",
-                    "-s",
-                    "terok",
-                    "terok-tui",
-                ],
+                ["tmux", "-f", str(conf_path), *session_args, "terok-tui"],
             )
 
     import argparse
@@ -1792,6 +1795,15 @@ if _HAS_TEXTUAL:
         )
         parser.set_defaults(tmux=None)
         parser.add_argument(
+            "--new-session",
+            action="store_true",
+            default=False,
+            help=(
+                "Start a fresh tmux session instead of attaching to the running "
+                "'terok' one (only meaningful in tmux mode)"
+            ),
+        )
+        parser.add_argument(
             "--experimental",
             action="store_true",
             default=False,
@@ -1816,6 +1828,10 @@ if _HAS_TEXTUAL:
           terminal.
         - When neither flag is passed, the global config setting
           ``tui.default_tmux`` decides (defaults to ``False``).
+
+        In tmux mode the TUI attaches to the shared ``terok`` session when one
+        is already running; ``--new-session`` opts out and starts a parallel,
+        tmux-named session instead.
         """
         args = _build_arg_parser().parse_args()
         set_experimental(args.experimental)
@@ -1836,7 +1852,7 @@ if _HAS_TEXTUAL:
         from .shell_launch import is_web_mode
 
         if use_tmux and not is_web_mode():
-            _launch_in_tmux()
+            _launch_in_tmux(force_new=args.new_session)
             return
         TerokTUI().run()
 

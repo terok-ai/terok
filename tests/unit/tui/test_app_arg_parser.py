@@ -56,3 +56,11 @@ class TestOtherFlags:
     def test_no_emoji_can_be_enabled(self) -> None:
         """``--no-emoji`` swaps emojis for plain-text labels."""
         assert _build_arg_parser().parse_args(["--no-emoji"]).no_emoji is True
+
+    def test_new_session_defaults_to_false(self) -> None:
+        """Without ``--new-session`` the launcher attaches to the shared session."""
+        assert _build_arg_parser().parse_args([]).new_session is False
+
+    def test_new_session_can_be_enabled(self) -> None:
+        """``--new-session`` opts out of attaching and forces a fresh session."""
+        assert _build_arg_parser().parse_args(["--new-session"]).new_session is True

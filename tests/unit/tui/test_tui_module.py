@@ -42,3 +42,35 @@ def test_tmux_configuration_integration(
         monkeypatch.setenv("TEROK_CONFIG_FILE", str(cfg_path))
 
     assert get_tui_default_tmux() is expected
+
+
+@pytest.mark.parametrize(
+    ("force_new", "expected_session_args"),
+    [
+        pytest.param(False, ["new-session", "-A", "-s", "terok"], id="attach-shared"),
+        pytest.param(True, ["new-session"], id="force-new"),
+    ],
+)
+def test_launch_in_tmux_attaches_or_forks(
+    monkeypatch: pytest.MonkeyPatch,
+    force_new: bool,
+    expected_session_args: list[str],
+) -> None:
+    """Default launch attaches to the shared ``terok`` session; ``--new-session`` forks."""
+    import shutil
+
+    from terok.tui import app
+
+    monkeypatch.delenv("TMUX", raising=False)
+    # ``_launch_in_tmux`` does a local ``import shutil``; patch the real module.
+    monkeypatch.setattr(shutil, "which", lambda _cmd: "/usr/bin/tmux")
+
+    captured: list[str] = []
+    monkeypatch.setattr(app.os, "execvp", lambda _file, argv: captured.extend(argv))
+
+    app._launch_in_tmux(force_new=force_new)
+
+    # argv is ["tmux", "-f", <conf>, *session_args, "terok-tui"]; the conf path
+    # is materialised at runtime so we assert around it rather than on it.
+    assert captured[:2] == ["tmux", "-f"]
+    assert captured[3:] == [*expected_session_args, "terok-tui"]
