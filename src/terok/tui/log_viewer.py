@@ -303,7 +303,7 @@ class _TuiLogFormatter:
 
 
 # ---------------------------------------------------------------------------
-# Plain text formatter (non-autopilot modes)
+# Plain text formatter (non-unattended modes)
 # ---------------------------------------------------------------------------
 
 

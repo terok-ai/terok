@@ -137,7 +137,7 @@ def register(
 
     # Unified ``task run <project>`` — creates a new task and runs it in the
     # chosen mode.  CLI (interactive) is the default; ``--mode headless``
-    # runs autopilot (requires ``--prompt``); ``--mode toad`` starts the
+    # runs unattended (requires ``--prompt``); ``--mode toad`` starts the
     # Toad multi-agent TUI (browser access).
     t_run = tsub.add_parser(
         "run",
@@ -148,7 +148,7 @@ def register(
         "--mode",
         choices=("cli", "toad", "headless"),
         default="cli",
-        help="Runtime mode: cli (interactive, default), toad (browser TUI), headless (autopilot)",
+        help="Runtime mode: cli (interactive, default), toad (browser TUI), headless (unattended)",
     )
     t_run.add_argument(
         "--prompt",
@@ -517,7 +517,7 @@ def _cmd_task_run_interactive(args: argparse.Namespace, *, runner: Any, attach: 
 
 
 def _cmd_task_run_headless(args: argparse.Namespace) -> None:
-    """Autopilot path: create a task and run it headlessly against the prompt.
+    """Unattended path: create a task and run it headlessly against the prompt.
 
     Cheap validation (``--prompt`` present, ``--instructions`` file readable)
     runs first so the user sees those errors before the image preflight

@@ -14,7 +14,7 @@ Complete guide to installing, configuring, and using terok.
 - [Global Configuration](#global-configuration)
 - [From Zero to First Run](#from-zero-to-first-run)
 - [Authentication](#authentication)
-- [Headless Agent Runs (Autopilot)](#headless-agent-runs-autopilot)
+- [Headless Agent Runs (Unattended)](#headless-agent-runs-unattended)
 - [Presets](#presets)
 - [Task Lifecycle Hooks](#task-lifecycle-hooks)
 - [Image Management](#image-management)
@@ -533,7 +533,7 @@ tiers stay so the panic is reversible.
 
 ---
 
-## Headless Agent Runs (Autopilot)
+## Headless Agent Runs (Unattended)
 
 Run any supported agent headlessly in a container — no interactive session needed.
 Useful for CI/CD pipelines, batch tasks, or scripted workflows.

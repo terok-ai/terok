@@ -722,15 +722,15 @@ class AuthModeScreen(screen.ModalScreen["str | None"]):
 
 
 # ---------------------------------------------------------------------------
-# Autopilot Prompt Screen
+# Unattended Prompt Screen
 # ---------------------------------------------------------------------------
 
 
 class SubagentInfo(TypedDict):
-    """Metadata for a single sub-agent shown in the autopilot selection screen.
+    """Metadata for a single sub-agent shown in the unattended selection screen.
 
     Sub-agents are provider-specific assistants (currently Claude only) that can
-    be included in an autopilot run via ``--agents`` JSON.
+    be included in an unattended run via ``--agents`` JSON.
 
     Attributes:
         name: Unique sub-agent identifier used as the dict key in ``--agents`` JSON.
@@ -743,10 +743,10 @@ class SubagentInfo(TypedDict):
     default: bool
 
 
-class AutopilotPromptScreen(screen.ModalScreen[str | None]):
-    """Modal for entering an autopilot prompt.
+class UnattendedPromptScreen(screen.ModalScreen[str | None]):
+    """Modal for entering an unattended prompt.
 
-    A modal dialog that prompts the user to enter a prompt for the autopilot
+    A modal dialog that prompts the user to enter a prompt for the unattended
     (headless Claude) mode. The user can enter their prompt in a text area and
     submit it or cancel.
 
@@ -759,11 +759,11 @@ class AutopilotPromptScreen(screen.ModalScreen[str | None]):
     ]
 
     CSS = """
-    AutopilotPromptScreen {
+    UnattendedPromptScreen {
         align: center middle;
     }
 
-    #autopilot-dialog {
+    #unattended-dialog {
         width: 80;
         height: auto;
         max-height: 80%;
@@ -791,12 +791,12 @@ class AutopilotPromptScreen(screen.ModalScreen[str | None]):
 
     def compose(self) -> ComposeResult:
         """Build the prompt text area and submit/cancel buttons."""
-        with Vertical(id="autopilot-dialog") as dialog:
+        with Vertical(id="unattended-dialog") as dialog:
             yield _SubmittablePromptArea(id="prompt-area")
             with Horizontal(id="prompt-buttons"):
                 yield Button("Cancel", id="btn-cancel", variant="default")
                 yield Button("Run ▶", id="btn-run", variant="primary")
-        dialog.border_title = "Autopilot Prompt"
+        dialog.border_title = "Unattended Prompt"
         dialog.border_subtitle = "Enter to run · Ctrl+J newline · Esc cancel"
 
     def on_mount(self) -> None:
@@ -839,7 +839,7 @@ class AutopilotPromptScreen(screen.ModalScreen[str | None]):
 
 
 class AgentSelectionScreen(screen.ModalScreen[tuple[str, list[str] | None] | None]):
-    """Combined modal for selecting the autopilot agent and optional sub-agents.
+    """Combined modal for selecting the unattended agent and optional sub-agents.
 
     The top section lists all registered headless agents (Claude, Codex, etc.)
     with the project default marked ``*``.  The bottom section shows sub-agent
@@ -1141,7 +1141,7 @@ class TaskCreateScreen(screen.ModalScreen["tuple[str, str] | None"]):
     """Modal for creating a new task: name input + mode selection.
 
     Dismisses with ``(sanitized_name, mode)`` or ``None`` if cancelled.
-    Mode is one of ``"cli"``, ``"toad"``, ``"autopilot"``.
+    Mode is one of ``"cli"``, ``"toad"``, ``"unattended"``.
     """
 
     BINDINGS = [
@@ -1194,7 +1194,7 @@ class TaskCreateScreen(screen.ModalScreen["tuple[str, str] | None"]):
             options = [
                 Option("CLI", id="cli"),
                 Option("Toad (browser TUI)", id="toad"),
-                Option("Autopilot (headless)", id="autopilot"),
+                Option("Unattended (headless)", id="unattended"),
             ]
             yield OptionList(*options, id="create-mode-list")
             with Horizontal(id="create-buttons"):
@@ -1744,7 +1744,9 @@ class TaskDetailsScreen(screen.Screen[str | None]):
             Option("Start Toad task  \\[w]  (new task + browser TUI)", id="task_start_toad"),
         ]
         options.append(
-            Option("Start \\[A]utopilot task  (new task + run headless)", id="task_start_autopilot")
+            Option(
+                "Start \\[U]nattended task  (new task + run headless)", id="task_start_unattended"
+            )
         )
         if self._has_tasks:
             options.append(Option("\\[l]ogin to container", id="login"))
@@ -1827,9 +1829,9 @@ class TaskDetailsScreen(screen.Screen[str | None]):
             event.stop()
             return
 
-        # Shift keys (uppercase) — A always available, others require tasks
+        # Shift keys (uppercase) — U always available, others require tasks
         shift_map: dict[str, str] = {
-            "A": "task_start_autopilot",
+            "U": "task_start_unattended",
             "H": "diff_head",
             "P": "diff_prev",
             "X": "delete",

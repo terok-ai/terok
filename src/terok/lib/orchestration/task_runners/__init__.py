@@ -18,7 +18,7 @@ The implementation is split per mode and per concern:
 * [`toad`][terok.lib.orchestration.task_runners.toad] — the Caddy-gated
   web-TUI runner.
 * [`headless`][terok.lib.orchestration.task_runners.headless] —
-  autopilot run + follow-up runners and their request value objects.
+  unattended run + follow-up runners and their request value objects.
 * [`restart`][terok.lib.orchestration.task_runners.restart] — stop +
   start an existing task container.
 

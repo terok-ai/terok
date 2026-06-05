@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: 2025 Jiri Vyskocil
 # SPDX-License-Identifier: Apache-2.0
 
-"""Headless (autopilot) task runner.
+"""Headless (unattended) task runner.
 
 ``task_run_headless`` creates a fresh task and runs an agent to
 completion in a detached container; ``task_followup_headless`` sends a
@@ -60,7 +60,7 @@ _PROMPT_HISTORY_FILENAME = "prompt-history.txt"
 
 @dataclass(frozen=True)
 class HeadlessRunRequest:
-    """Groups all parameters for a headless (autopilot) agent run."""
+    """Groups all parameters for a headless (unattended) agent run."""
 
     project_id: str
     prompt: str
@@ -167,7 +167,7 @@ def _report_headless_result(
 
 
 def task_run_headless(request: HeadlessRunRequest) -> str:
-    """Run an agent headlessly (autopilot mode) in a new task container.
+    """Run an agent headlessly (unattended mode) in a new task container.
 
     Creates a new task, prepares the agent-config directory with the provider's
     wrapper function and filtered subagents, then launches a detached container
@@ -391,7 +391,7 @@ def task_followup_headless(
     if mode != "run":
         raise SystemExit(
             f"Task {task_id} is not a headless task (mode={mode!r}). "
-            f"Follow-up is only supported for autopilot (mode='run') tasks."
+            f"Follow-up is only supported for unattended (mode='run') tasks."
         )
 
     cname = container_name(project.id, "run", task_id)

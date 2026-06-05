@@ -49,7 +49,7 @@ EFFECTIVE_STATUS_CASES = [
 
 MODE_INFO_CASES = [
     ({"mode": "cli"}, "💻", "CLI"),
-    ({"mode": "run"}, "🚀", "Autopilot"),
+    ({"mode": "run"}, "🚀", "Unattended"),
     ({"mode": None}, "🦗", ""),
 ]
 

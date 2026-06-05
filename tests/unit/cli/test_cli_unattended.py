@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: 2026 Jiri Vyskocil
 # SPDX-License-Identifier: Apache-2.0
 
-"""Tests for autopilot CLI: ``terok task run --mode headless``."""
+"""Tests for unattended CLI: ``terok task run --mode headless``."""
 
 from __future__ import annotations
 
@@ -151,7 +151,7 @@ def test_run_forwards_optional_flags(
     field: str,
     expected: object,
 ) -> None:
-    """Optional autopilot flags are forwarded into the headless request."""
+    """Optional unattended flags are forwarded into the headless request."""
     assert getattr(capture_headless_request("myproject", "test", *extra_args), field) == expected
 
 

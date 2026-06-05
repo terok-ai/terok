@@ -658,7 +658,7 @@ class TestTaskImageIsOld:
 
 
 # ---------------------------------------------------------------------------
-# wait_for_container_exit (moved from orchestration.autopilot → tasks.lifecycle)
+# wait_for_container_exit (moved from orchestration.unattended → tasks.lifecycle)
 # ---------------------------------------------------------------------------
 
 

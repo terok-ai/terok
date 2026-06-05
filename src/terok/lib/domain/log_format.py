@@ -323,7 +323,7 @@ def auto_detect_formatter(
     """Return the appropriate formatter for a task's mode and provider.
 
     Args:
-        mode: Task mode (``"run"`` for headless/autopilot, ``"cli"``, ``"web"``).
+        mode: Task mode (``"run"`` for headless/unattended, ``"cli"``, ``"web"``).
         streaming: Enable partial streaming for supported formatters.
         color: Force color on/off. ``None`` auto-detects from terminal.
         provider: Headless provider name.  When mode is ``"run"`` and

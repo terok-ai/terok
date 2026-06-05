@@ -205,16 +205,16 @@ class TestRenderHelpers:
         assert isinstance(result, Text)
         assert "No project" in str(result)
 
-    def test_render_task_details_autopilot_mode(self) -> None:
+    def test_render_task_details_unattended_mode(self) -> None:
         widgets = import_widgets()
         task = make_task(widgets, task_id="5", mode="run")
         result = widgets.render_task_details(task, project_id="proj1")
         assert isinstance(result, Text)
         text_str = str(result)
-        assert "Autopilot" in text_str
+        assert "Unattended" in text_str
         assert "terok task logs" in text_str
 
-    def test_render_task_details_autopilot_with_exit_code(self) -> None:
+    def test_render_task_details_unattended_with_exit_code(self) -> None:
         widgets = import_widgets()
         task = make_task(widgets, task_id="5", mode="run", exit_code=0)
         result = widgets.render_task_details(task, project_id="proj1")
@@ -378,7 +378,7 @@ class TestRenderHelpers:
                 {"task_id": "3", "mode": "run"},
                 ["🚀"],
                 [],
-                id="autopilot",
+                id="unattended",
             ),
         ],
     )
@@ -513,7 +513,7 @@ class TestScreenConstruction:
         assert screen._project_id == "proj1"
         assert not screen._image_old
 
-    @pytest.mark.parametrize("screen_name", ["AuthActionsScreen", "AutopilotPromptScreen"])
+    @pytest.mark.parametrize("screen_name", ["AuthActionsScreen", "UnattendedPromptScreen"])
     def test_simple_screen_construction(self, screen_name: str) -> None:
         screens, _ = import_screens()
         assert getattr(screens, screen_name)() is not None
@@ -594,7 +594,7 @@ class TestTaskScreenKeyBinding:
         [
             pytest.param("c", False, "task_start_cli", None, True, id="lower-c"),
             pytest.param("w", False, "task_start_toad", None, True, id="lower-w"),
-            pytest.param("A", False, "task_start_autopilot", None, True, id="shift-a"),
+            pytest.param("U", False, "task_start_unattended", None, True, id="shift-u"),
             pytest.param("H", True, "diff_head", None, None, id="shift-h"),
             pytest.param("P", True, "diff_prev", None, None, id="shift-p"),
             pytest.param("X", True, "delete", None, None, id="shift-x"),
@@ -605,7 +605,7 @@ class TestTaskScreenKeyBinding:
             pytest.param("s", True, "shield_up", None, None, id="lower-s"),
             pytest.param("escape", False, None, None, None, id="escape"),
             pytest.param("q", False, None, None, None, id="q"),
-            pytest.param("f", True, "follow_logs", "run", None, id="follow-autopilot"),
+            pytest.param("f", True, "follow_logs", "run", None, id="follow-unattended"),
             pytest.param("f", True, "follow_logs", "cli", None, id="follow-cli"),
         ],
     )
@@ -749,11 +749,11 @@ class TestActionDispatch:
         run(app_class.action_delete_task_from_main(instance))
         instance.action_delete_task.assert_called_once()
 
-    def test_action_run_autopilot_from_main(self) -> None:
+    def test_action_run_unattended_from_main(self) -> None:
         _, app_class = import_app()
         instance = mock.Mock(spec=app_class)
-        run(app_class.action_run_autopilot_from_main(instance))
-        instance._action_task_start_autopilot.assert_called_once()
+        run(app_class.action_run_unattended_from_main(instance))
+        instance._action_task_start_unattended.assert_called_once()
 
     def test_action_follow_logs_from_main(self) -> None:
         _, app_class = import_app()
@@ -1278,7 +1278,7 @@ class TestActionSelection:
         )
         instance.refresh_tasks.assert_awaited()
 
-    def test_autopilot_launch_selects_created_task(self) -> None:
+    def test_unattended_launch_selects_created_task(self) -> None:
         app_mod, app_class = import_app()
 
         instance = app_class()
@@ -1286,11 +1286,11 @@ class TestActionSelection:
         instance._last_selected_tasks = {}
         instance.notify = mock.Mock()
         instance._save_selection_state = mock.Mock()
-        instance._start_autopilot_watcher = mock.Mock()
+        instance._start_unattended_watcher = mock.Mock()
         instance.refresh_tasks = mock.AsyncMock()
 
         worker = mock.Mock()
-        worker.group = "autopilot-launch"
+        worker.group = "unattended-launch"
         worker.result = ("proj1", "123", None)
         event = mock.Mock()
         event.worker = worker
@@ -1300,7 +1300,7 @@ class TestActionSelection:
 
         assert instance._last_selected_tasks.get("proj1") == "123"
         instance._save_selection_state.assert_called_once()
-        instance._start_autopilot_watcher.assert_called_once_with("proj1", "123")
+        instance._start_unattended_watcher.assert_called_once_with("proj1", "123")
         instance.refresh_tasks.assert_awaited_once()
 
 

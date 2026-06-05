@@ -3,7 +3,7 @@
 
 """TaskActionsMixin — task lifecycle operations for TerokTUI.
 
-Handles task creation, deletion, renaming, running (CLI/toad/autopilot),
+Handles task creation, deletion, renaming, running (CLI/toad/unattended),
 login, restart, follow-up, log viewing, and diff copying.
 """
 
@@ -36,11 +36,11 @@ from ..lib.api import (
 from .clipboard import copy_to_clipboard_detailed
 from .screens import (
     AgentSelectionScreen,
-    AutopilotPromptScreen,
     SubagentInfo,
     TaskCreateScreen,
     TaskLaunchScreen,
     TaskNameScreen,
+    UnattendedPromptScreen,
 )
 from .widgets import TaskList
 
@@ -107,7 +107,7 @@ class TaskActionsMixin(_MixinBase):
     interface plus the instance attributes initialised by ``TerokTUI.__init__``.
     """
 
-    _autopilot_pending_name: str | None = None
+    _unattended_pending_name: str | None = None
 
     if TYPE_CHECKING:
         # TerokTUI-specific state and helpers (not on textual.App).
@@ -419,8 +419,8 @@ class TaskActionsMixin(_MixinBase):
         self.notify("Starting Toad task\u2026")
         await self.refresh_tasks()
 
-    async def _action_task_start_autopilot(self) -> None:
-        """Create a new task and run Claude headlessly (autopilot)."""
+    async def _action_task_start_unattended(self) -> None:
+        """Create a new task and run Claude headlessly (unattended)."""
         if not self.current_project_id:
             self.notify("No project selected.")
             return
@@ -429,25 +429,25 @@ class TaskActionsMixin(_MixinBase):
         default_name = generate_task_name(self.current_project_id)
         await self.push_screen(
             TaskNameScreen(default_name=default_name),
-            self._on_autopilot_name_result,
+            self._on_unattended_name_result,
         )
 
-    _autopilot_pending_agent: tuple[str, list[str] | None] | None = None
+    _unattended_pending_agent: tuple[str, list[str] | None] | None = None
 
-    async def _on_autopilot_name_result(self, name: str | None) -> None:
-        """Handle the name returned from TaskNameScreen for autopilot."""
+    async def _on_unattended_name_result(self, name: str | None) -> None:
+        """Handle the name returned from TaskNameScreen for unattended."""
         if name is None or not self.current_project_id:
             return
 
         pid = self.current_project_id
 
         # Store the name and show agent selection screen
-        self._autopilot_pending_name = name
+        self._unattended_pending_name = name
 
         try:
             project = load_project(pid)
         except (SystemExit, Exception) as e:
-            self._autopilot_pending_name = None
+            self._unattended_pending_name = None
             self.notify(f"Error loading project: {e}")
             return
 
@@ -466,7 +466,7 @@ class TaskActionsMixin(_MixinBase):
         except (SystemExit, Exception):
             # podman missing or inspect failure — fall back to unfiltered picker
             # (unlabeled images are treated as unrestricted) rather than aborting
-            # the autopilot flow.
+            # the unattended flow.
             pass
 
         await self.push_screen(
@@ -481,24 +481,24 @@ class TaskActionsMixin(_MixinBase):
     async def _on_agent_selection_result(self, result: tuple[str, list[str] | None] | None) -> None:
         """Handle the result from AgentSelectionScreen, then show the prompt screen."""
         if result is None:
-            self._autopilot_pending_name = None
+            self._unattended_pending_name = None
             return
 
-        self._autopilot_pending_agent = result
+        self._unattended_pending_agent = result
         await self.push_screen(
-            AutopilotPromptScreen(),
-            self._on_autopilot_prompt_result,
+            UnattendedPromptScreen(),
+            self._on_unattended_prompt_result,
         )
 
-    async def _on_autopilot_prompt_result(self, prompt: str | None) -> None:
-        """Handle the prompt returned from AutopilotPromptScreen and launch."""
+    async def _on_unattended_prompt_result(self, prompt: str | None) -> None:
+        """Handle the prompt returned from UnattendedPromptScreen and launch."""
         if not prompt:
-            self._autopilot_pending_name = None
-            self._autopilot_pending_agent = None
+            self._unattended_pending_name = None
+            self._unattended_pending_agent = None
             return
 
-        result = self._autopilot_pending_agent
-        self._autopilot_pending_agent = None
+        result = self._unattended_pending_agent
+        self._unattended_pending_agent = None
         if not result:
             return
 
@@ -510,22 +510,22 @@ class TaskActionsMixin(_MixinBase):
         provider = AGENT_PROVIDERS.get(agent_name)
         agents = selected_subagents if provider and provider.supports_agents_json else None
 
-        await self._launch_autopilot(prompt, agents=agents, provider=agent_name)
+        await self._launch_unattended(prompt, agents=agents, provider=agent_name)
 
-    async def _launch_autopilot(
+    async def _launch_unattended(
         self, prompt: str, agents: list[str] | None = None, provider: str | None = None
     ) -> None:
-        """Launch a headless autopilot task in a background worker."""
+        """Launch a headless unattended task in a background worker."""
         if not self.current_project_id:
             return
         pid = self.current_project_id
-        name = getattr(self, "_autopilot_pending_name", None)
-        self._autopilot_pending_name = None
-        self.notify(f"Starting autopilot task for {pid}...")
+        name = getattr(self, "_unattended_pending_name", None)
+        self._unattended_pending_name = None
+        self.notify(f"Starting unattended task for {pid}...")
         self.run_worker(
             lambda: self._run_headless_worker(pid, prompt, agents, name, provider=provider),
-            name=f"autopilot-launch:{pid}",
-            group="autopilot-launch",
+            name=f"unattended-launch:{pid}",
+            group="unattended-launch",
             thread=True,
             exit_on_error=False,
         )
@@ -556,39 +556,39 @@ class TaskActionsMixin(_MixinBase):
         except Exception as e:
             return project_id, "", str(e)
 
-    def _start_autopilot_watcher(self, project_id: str, task_id: str) -> None:
+    def _start_unattended_watcher(self, project_id: str, task_id: str) -> None:
         """Spawn a background worker that waits for the container to finish
         and updates task metadata with the exit code."""
         cname = container_name(project_id, "run", task_id)
         self.run_worker(
-            lambda: self._autopilot_wait_worker(project_id, task_id, cname),
-            name=f"autopilot-wait:{project_id}:{task_id}",
-            group="autopilot-wait",
+            lambda: self._unattended_wait_worker(project_id, task_id, cname),
+            name=f"unattended-wait:{project_id}:{task_id}",
+            group="unattended-wait",
             thread=True,
             exit_on_error=False,
         )
 
-    def _autopilot_wait_worker(
+    def _unattended_wait_worker(
         self, project_id: str, task_id: str, cname: str
     ) -> tuple[str, str, int | None, str | None]:
         """Background worker: wait for the container to exit and update metadata."""
         exit_code, error = wait_for_container_exit(cname, project_id, task_id)
         return project_id, task_id, exit_code, error
 
-    # ── Follow-up on completed/failed autopilot tasks ──
+    # ── Follow-up on completed/failed unattended tasks ──
 
     async def _action_task_followup(self) -> None:
-        """Follow up on a completed/failed autopilot task with a new prompt."""
+        """Follow up on a completed/failed unattended task with a new prompt."""
         if not self.current_project_id or not self.current_task:
             self.notify("No task selected.")
             return
         task = self.current_task
         if task.mode != "run" or effective_status(task) not in {"completed", "failed"}:
-            self.notify("Follow-up is only available for completed/failed autopilot tasks.")
+            self.notify("Follow-up is only available for completed/failed unattended tasks.")
             return
 
         await self.push_screen(
-            AutopilotPromptScreen(),
+            UnattendedPromptScreen(),
             self._on_followup_prompt_result,
         )
 
@@ -946,12 +946,12 @@ class TaskActionsMixin(_MixinBase):
         """Login to the selected task from the main screen."""
         await self._action_login()
 
-    async def action_run_autopilot_from_main(self) -> None:
-        """Start a new autopilot task from the main screen."""
-        await self._action_task_start_autopilot()
+    async def action_run_unattended_from_main(self) -> None:
+        """Start a new unattended task from the main screen."""
+        await self._action_task_start_unattended()
 
     async def action_follow_logs_from_main(self) -> None:
-        """Follow logs for the selected autopilot task from the main screen."""
+        """Follow logs for the selected unattended task from the main screen."""
         await self._action_follow_logs()
 
     async def action_create_task_from_main(self) -> None:
@@ -974,5 +974,5 @@ class TaskActionsMixin(_MixinBase):
             await self._start_cli_task_background(name)
         elif mode == "toad":
             await self._start_toad_task_background(name)
-        elif mode == "autopilot":
-            await self._on_autopilot_name_result(name)
+        elif mode == "unattended":
+            await self._on_unattended_name_result(name)

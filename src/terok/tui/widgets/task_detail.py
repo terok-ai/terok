@@ -62,7 +62,7 @@ def render_task_details(
     m_info = mode_info(task.mode)
     m_emoji = render_emoji(m_info)
     # Empty label for an unset mode lets the cricket emoji speak for
-    # itself — modes are picked via the Start CLI/Toad/Autopilot menu,
+    # itself — modes are picked via the Start CLI/Toad/Unattended menu,
     # not from this panel.
     mode_display = m_info.label
 

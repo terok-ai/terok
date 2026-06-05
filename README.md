@@ -127,7 +127,7 @@ terok login myproj t3x                  # re-attach later by task ID prefix
 
 For manual project configuration or CI, see the [User Guide](docs/usage.md).
 
-### Headless agent runs (autopilot)
+### Headless agent runs (unattended)
 
 ```bash
 # Run an agent headlessly with a prompt (uses default_agent config; falls back to claude)

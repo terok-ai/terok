@@ -83,7 +83,7 @@ terok                                   # bare `terok` on a TTY runs the TUI
 
 - Press **n** to run the project wizard (creates config, builds images, sets up SSH + gate)
 - Select your new project, press **a** to authenticate your agent
-- Press **t** to start a task (CLI, Toad, or autopilot)
+- Press **t** to start a task (CLI, Toad, or unattended)
 
 Or do the same from the command line:
 
@@ -97,7 +97,7 @@ terok login myproj a3                   # re-attach later by task ID prefix
 
 For manual project configuration or CI, see the [User Guide](usage.md).
 
-### Headless Agent Runs (Autopilot)
+### Headless Agent Runs (Unattended)
 
 ```bash
 # Run an agent headlessly with a prompt

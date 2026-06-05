@@ -109,9 +109,9 @@ class TestTaskCreateScreen:
         screen._submit = mock.Mock()
 
         event = mock.Mock()
-        event.option_id = "autopilot"
+        event.option_id = "unattended"
         screen.on_option_list_option_selected(event)
-        screen._submit.assert_called_once_with("autopilot")
+        screen._submit.assert_called_once_with("unattended")
 
 
 # ---------------------------------------------------------------------------
@@ -398,13 +398,13 @@ class TestTaskLaunchScreen:
         event.stop.assert_not_called()
 
 
-class TestAutopilotPromptOnKey:
-    """AutopilotPromptScreen submits on Enter only while the prompt has focus."""
+class TestUnattendedPromptOnKey:
+    """UnattendedPromptScreen submits on Enter only while the prompt has focus."""
 
     @staticmethod
     def _screen_with_focus(*, has_focus: bool):
         screens, _ = import_screens()
-        screen = screens.AutopilotPromptScreen()
+        screen = screens.UnattendedPromptScreen()
         screen._submit = mock.Mock()
         area = mock.Mock()
         area.has_focus = has_focus
@@ -412,7 +412,7 @@ class TestAutopilotPromptOnKey:
         return screen
 
     def test_enter_submits_when_prompt_focused(self) -> None:
-        """Enter (bubbled from the prompt area) runs the autopilot prompt."""
+        """Enter (bubbled from the prompt area) runs the unattended prompt."""
         screen = self._screen_with_focus(has_focus=True)
         event = mock.Mock()
         event.key = "enter"

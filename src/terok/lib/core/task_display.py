@@ -62,7 +62,7 @@ STATUS_DISPLAY: dict[str, StatusInfo] = {
 
 MODE_DISPLAY: dict[str | None, ModeInfo] = {
     "cli": ModeInfo(emoji="\U0001f4bb", label="CLI"),
-    "run": ModeInfo(emoji="\U0001f680", label="Autopilot"),
+    "run": ModeInfo(emoji="\U0001f680", label="Unattended"),
     "toad": ModeInfo(emoji="\U0001f438", label="Toad"),
     None: ModeInfo(emoji="\U0001f997", label=""),
 }

@@ -166,7 +166,7 @@ if _HAS_TEXTUAL:
     TASK_ACTION_HANDLERS: dict[str, str] = {
         "task_start_cli": "_action_task_start_cli",
         "task_start_toad": "_action_task_start_toad",
-        "task_start_autopilot": "_action_task_start_autopilot",
+        "task_start_unattended": "_action_task_start_unattended",
         "delete": "action_delete_task",
         "restart": "_action_restart_task",
         "followup": "_action_task_followup",
@@ -1227,32 +1227,32 @@ if _HAS_TEXTUAL:
                     return
                 await self.refresh_tasks()
 
-            if worker.group == "autopilot-launch":
+            if worker.group == "unattended-launch":
                 result = worker.result
                 if not result:
                     return
                 project_id, task_id, error = result
                 if error:
-                    self.notify(f"Autopilot error: {error}")
+                    self.notify(f"Unattended error: {error}")
                 elif task_id:
                     self._focus_task_after_creation(project_id, task_id)
-                    self.notify(f"Autopilot task {task_id} started for {project_id}")
-                    self._start_autopilot_watcher(project_id, task_id)
+                    self.notify(f"Unattended task {task_id} started for {project_id}")
+                    self._start_unattended_watcher(project_id, task_id)
                 if project_id == self.current_project_id:
                     await self.refresh_tasks()
                 return
 
-            if worker.group == "autopilot-wait":
+            if worker.group == "unattended-wait":
                 result = worker.result
                 if not result:
                     return
                 project_id, task_id, exit_code, error = result
                 if error:
-                    self.notify(f"Autopilot watcher error for task {task_id}: {error}")
+                    self.notify(f"Unattended watcher error for task {task_id}: {error}")
                 elif exit_code == 0:
-                    self.notify(f"Autopilot task {task_id} completed successfully")
+                    self.notify(f"Unattended task {task_id} completed successfully")
                 else:
-                    self.notify(f"Autopilot task {task_id} failed (exit {exit_code})")
+                    self.notify(f"Unattended task {task_id} failed (exit {exit_code})")
                 if project_id == self.current_project_id:
                     await self.refresh_tasks()
                 return
@@ -1266,7 +1266,7 @@ if _HAS_TEXTUAL:
                     self.notify(f"Follow-up error: {error}")
                 else:
                     self.notify(f"Follow-up started for task {task_id}")
-                    self._start_autopilot_watcher(project_id, task_id)
+                    self._start_unattended_watcher(project_id, task_id)
                 if project_id == self.current_project_id:
                     await self.refresh_tasks()
                 return
