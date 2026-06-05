@@ -3,19 +3,15 @@
 
 """Best-effort file logging + structured stderr warnings.
 
-Thin shim over
-[`terok_util.logging.BestEffortLogger`][terok_util.logging.BestEffortLogger] —
-the implementation lives once in terok-util, at the bottom of the
-dependency chain, so every sibling shares the same idiom.  Module-level
-functions preserve the legacy call shape so existing call sites stay
-untouched.
+Module-level helpers over
+[`terok_util.logging.BestEffortLogger`][terok_util.logging.BestEffortLogger]
+bound to terok's library log.
 
 [`warn_user`][terok.lib.util.logging_utils.warn_user] runs both the
 *component* tag and the *message* through
-[`sanitize_tty`][terok_util.security.sanitize_tty] before handing
-them off to the sandbox logger so a bad config file or remote-supplied
-string can't smuggle ANSI escape sequences into the operator's
-terminal (CWE-150).
+[`sanitize_tty`][terok_util.security.sanitize_tty] so a bad config file or
+remote-supplied string can't smuggle ANSI escape sequences into the
+operator's terminal (CWE-150).
 """
 
 from __future__ import annotations

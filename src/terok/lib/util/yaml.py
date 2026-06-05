@@ -3,11 +3,8 @@
 
 """Centralised YAML I/O — round-trip mode everywhere.
 
-Re-export of the shared facade in
-[`terok_util.yaml`][terok_util.yaml], which lives at the bottom of the
-dependency chain so every sibling shares one ``load`` / ``dump`` /
-``YAMLError`` surface.  This module keeps the ``terok.lib.util.yaml``
-import path stable for terok's own call sites.
+Re-export of the shared [`terok_util.yaml`][terok_util.yaml] facade under
+terok's own ``terok.lib.util.yaml`` import path.
 
 The facade hands out a fresh ``ruamel.yaml`` instance per call: a shared
 module-level instance carries composer/parser/scanner state and races
