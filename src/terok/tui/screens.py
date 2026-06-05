@@ -792,17 +792,27 @@ class AutopilotPromptScreen(screen.ModalScreen[str | None]):
     def compose(self) -> ComposeResult:
         """Build the prompt text area and submit/cancel buttons."""
         with Vertical(id="autopilot-dialog") as dialog:
-            yield TextArea(id="prompt-area")
+            yield _SubmittablePromptArea(id="prompt-area")
             with Horizontal(id="prompt-buttons"):
                 yield Button("Cancel", id="btn-cancel", variant="default")
                 yield Button("Run ▶", id="btn-run", variant="primary")
         dialog.border_title = "Autopilot Prompt"
-        dialog.border_subtitle = "Esc to cancel"
+        dialog.border_subtitle = "Enter to run · Ctrl+J newline · Esc cancel"
 
     def on_mount(self) -> None:
         """Focus the text area for immediate typing."""
         area = self.query_one("#prompt-area", TextArea)
         area.focus()
+
+    def on_key(self, event: events.Key) -> None:
+        """Submit on Enter (bubbled from the prompt area); modifiers add newlines.
+
+        Newline insertion (Ctrl+Enter / Shift+Enter / Ctrl+J) is owned by
+        `_SubmittablePromptArea` and never reaches here.
+        """
+        if event.key == "enter" and self.query_one("#prompt-area", TextArea).has_focus:
+            self._submit()
+            event.stop()
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
         """Handle Run or Cancel button clicks."""
@@ -1253,24 +1263,38 @@ class TaskCreateScreen(screen.ModalScreen["tuple[str, str] | None"]):
 if TextArea is not None:
 
     class _SubmittablePromptArea(TextArea):
-        """TextArea where Enter bubbles up to the parent screen for submission.
+        """Multiline prompt where Enter confirms and a modifier inserts a newline.
 
-        Textual's stock TextArea consumes ``enter`` in its ``_on_key`` (calls
-        ``event.stop()`` and inserts ``\\n``), which prevents an enclosing
-        screen from treating Enter as form submit.  This subclass forwards
-        ``enter`` and ``ctrl+enter`` upstream untouched — the host screen's
-        ``on_key`` distinguishes them (Enter submits, Ctrl+Enter inserts).
+        The stock TextArea treats ``enter`` as "insert a newline", which is the
+        wrong reflex for a short prompt sitting in front of a confirm button.
+        Here the roles are swapped to match the rest of the app:
 
-        ``event.prevent_default()`` is the load-bearing call: returning early
-        from ``_on_key`` is *not* enough — Textual's message-pump runs the
-        widget's default handler after the user override unless that flag is
-        set, and TextArea's default would insert ``\\n`` for ``enter``.
-        ``event.stop()`` is deliberately *not* called so the host screen's
-        ``on_key`` still sees the key and can submit.
+        * **Enter** is suppressed locally and left to bubble to the host
+          screen's ``on_key``, which submits the dialog (or ignores it when
+          there is nothing to confirm).
+        * **Ctrl+Enter**, **Shift+Enter**, and **Ctrl+J** insert a literal
+          newline and stop there — the screen never sees them.
+
+        Terminal caveat: most terminals send the same byte for Enter and for
+        Ctrl/Shift+Enter, so the latter two only arrive as distinct keys under
+        the enhanced (Kitty) keyboard protocol. ``ctrl+j`` is the one newline
+        key that works on every terminal.
+
+        ``event.prevent_default()`` on Enter is load-bearing: without it
+        Textual still runs TextArea's own ``enter`` binding (insert ``\\n``)
+        after this handler returns. ``event.stop()`` is deliberately omitted
+        for Enter so the host screen's ``on_key`` still receives it.
         """
 
+        _NEWLINE_KEYS = frozenset({"ctrl+enter", "shift+enter", "ctrl+j"})
+
         async def _on_key(self, event: events.Key) -> None:
-            if event.key in {"enter", "ctrl+enter"}:
+            if event.key in self._NEWLINE_KEYS:
+                self.insert("\n")
+                event.prevent_default()
+                event.stop()
+                return
+            if event.key == "enter":
                 event.prevent_default()
                 return
             await super()._on_key(event)
@@ -1398,7 +1422,7 @@ class TaskLaunchScreen(screen.ModalScreen["tuple[str, str, str, str, str, str | 
                 yield Button("Dismiss", id="btn-dismiss", variant="default")
                 yield Button("Login", id="btn-login", variant="primary", disabled=True)
         dialog.border_title = f"CLI Task {self._task_id} ({self._task_name})"
-        dialog.border_subtitle = "Esc to dismiss"
+        dialog.border_subtitle = "Enter to login · Ctrl+J newline · Esc dismiss"
 
     def _build_agent_choices(self) -> list[tuple[str, str]]:
         """Build the (label, value) list for the agent Select.
@@ -1451,26 +1475,18 @@ class TaskLaunchScreen(screen.ModalScreen["tuple[str, str, str, str, str, str | 
         self._poll_timer = self.set_interval(1.5, self._poll_status)
 
     def on_key(self, event: events.Key) -> None:
-        """Handle special keys when prompt input has focus.
+        """Submit on Enter (bubbled from the prompt) once the container is ready.
 
-        - Ctrl+Enter inserts a newline character (for multi-line prompts)
-        - Enter (without Ctrl) submits the form (presses Login)
-        - Tab moves focus between widgets (default behavior)
+        Newline insertion (Ctrl+Enter / Shift+Enter / Ctrl+J) is owned by
+        `_SubmittablePromptArea` and never reaches here; Tab still cycles
+        focus by default.
         """
-        # Only handle keys when the prompt TextArea has focus
+        # Only act on Enter while the prompt TextArea holds focus.
         if not self.query_one("#launch-prompt", TextArea).has_focus:
             return
-
-        if event.key == "ctrl+enter":
-            # Insert a newline at cursor position using TextArea.insert()
-            prompt = self.query_one("#launch-prompt", TextArea)
-            prompt.insert("\n")
+        if event.key == "enter" and self._container_ready:
+            self._do_login()
             event.stop()
-        elif event.key == "enter":
-            # Enter submits the form (presses Login) if container is ready
-            if self._container_ready:
-                self._do_login()
-                event.stop()
 
     # If no container has appeared within this many wall-clock seconds, assume
     # the launch failed and surface a hint.  Wall-clock based (not tick count)
