@@ -31,7 +31,7 @@ dependencies = [
     "terok-sandbox>=0.1.0,<0.2.0",
     "terok-shield>=0.7.0,<0.8.0",
     "terok-clearance>=0.7.0,<0.8.0",
-    "terok-util>=0.1.0,<0.2.0",
+    "terok-util @ git+https://github.com/terok-ai/terok-util.git@refs/pull/16/head",
 ]
 
 [project.urls]

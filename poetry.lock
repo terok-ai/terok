@@ -3664,16 +3664,20 @@ name = "terok-util"
 version = "0.1.0"
 description = "Shared utility library for the terok-* sibling packages"
 optional = false
-python-versions = "<4.0,>=3.12"
+python-versions = ">=3.12,<4.0"
 groups = ["main"]
-files = [
-    {file = "terok_util-0.1.0-py3-none-any.whl", hash = "sha256:2e1dfa321bb1a574460a07caf578ed8020bb6aab01ce44158ed41528bf1ae577"},
-    {file = "terok_util-0.1.0.tar.gz", hash = "sha256:27bcb70b41fd86bc54b529120a7c53ca8bc4bf7b5d332478e80035b746526199"},
-]
+files = []
+develop = false
 
 [package.dependencies]
 platformdirs = ">=4.10.0"
 "ruamel.yaml" = ">=0.18"
+
+[package.source]
+type = "git"
+url = "https://github.com/terok-ai/terok-util.git"
+reference = "refs/pull/16/head"
+resolved_reference = "577ea02fde7a6ca4f1387967d14954c01512c59b"
 
 [[package]]
 name = "textual"
@@ -4529,4 +4533,4 @@ propcache = ">=0.2.1"
 [metadata]
 lock-version = "2.1"
 python-versions = ">=3.12,<3.15"
-content-hash = "a9b0929cca75d97099b6f247ef459d2a8820ac299699650fa5e82c0a5f7a5b59"
+content-hash = "af05d8ad04bd6ae70319c892bbb1dc486630cdbc85c63310dfa97bf6fdb07269"
