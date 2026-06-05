@@ -398,6 +398,38 @@ class TestTaskLaunchScreen:
         event.stop.assert_not_called()
 
 
+class TestAutopilotPromptOnKey:
+    """AutopilotPromptScreen submits on Enter only while the prompt has focus."""
+
+    @staticmethod
+    def _screen_with_focus(*, has_focus: bool):
+        screens, _ = import_screens()
+        screen = screens.AutopilotPromptScreen()
+        screen._submit = mock.Mock()
+        area = mock.Mock()
+        area.has_focus = has_focus
+        screen.query_one = lambda *a, **k: area
+        return screen
+
+    def test_enter_submits_when_prompt_focused(self) -> None:
+        """Enter (bubbled from the prompt area) runs the autopilot prompt."""
+        screen = self._screen_with_focus(has_focus=True)
+        event = mock.Mock()
+        event.key = "enter"
+        screen.on_key(event)
+        screen._submit.assert_called_once()
+        event.stop.assert_called_once()
+
+    def test_enter_noop_when_prompt_not_focused(self) -> None:
+        """Enter elsewhere (e.g. on a button) is left for the default handler."""
+        screen = self._screen_with_focus(has_focus=False)
+        event = mock.Mock()
+        event.key = "enter"
+        screen.on_key(event)
+        screen._submit.assert_not_called()
+        event.stop.assert_not_called()
+
+
 # ---------------------------------------------------------------------------
 # TaskLaunchScreen — lazy agent dropdown
 # ---------------------------------------------------------------------------

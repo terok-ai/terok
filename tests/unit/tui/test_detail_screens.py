@@ -1462,6 +1462,34 @@ class TestVimNavigation:
         app_class._vim_focus_pane(instance, app_mod.TaskList)
         instance.query_one.assert_not_called()
 
+    def test_action_vim_down_forwards_cursor_down(self) -> None:
+        """The ``j`` action asks the focused widget to move its cursor down."""
+        _, app_class = import_app()
+        instance = mock.Mock()
+        app_class.action_vim_down(instance)
+        instance._vim_move_cursor.assert_called_once_with("action_cursor_down")
+
+    def test_action_vim_up_forwards_cursor_up(self) -> None:
+        """The ``k`` action asks the focused widget to move its cursor up."""
+        _, app_class = import_app()
+        instance = mock.Mock()
+        app_class.action_vim_up(instance)
+        instance._vim_move_cursor.assert_called_once_with("action_cursor_up")
+
+    def test_action_vim_left_targets_the_projects_pane(self) -> None:
+        """The ``h`` action routes focus toward the left (projects) pane."""
+        app_mod, app_class = import_app()
+        instance = mock.Mock()
+        app_class.action_vim_left(instance)
+        instance._vim_focus_pane.assert_called_once_with(app_mod.ProjectList)
+
+    def test_action_vim_right_targets_the_tasks_pane(self) -> None:
+        """The ``l`` action routes focus toward the right (tasks) pane."""
+        app_mod, app_class = import_app()
+        instance = mock.Mock()
+        app_class.action_vim_right(instance)
+        instance._vim_focus_pane.assert_called_once_with(app_mod.TaskList)
+
 
 class TestGlobalAuthBinding:
     """The top-level ``a`` shortcut + ``action_authenticate`` route."""
