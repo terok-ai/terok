@@ -25,7 +25,6 @@ from terok_sandbox import (  # noqa: F401 — re-exported public API
     DEFAULT_GUEST_SSHD_PORT,
     DEFAULT_SSH_HOST,
     SERVICES_TCP_OPTOUT_YAML,
-    BestEffortLogger,
     CheckVerdict,
     ContainerRuntime,
     CredentialDB,
@@ -94,7 +93,6 @@ from terok_sandbox.supervisor.install import (  # noqa: F401 — re-exported
 )
 
 __all__ = [
-    "BestEffortLogger",
     "CheckVerdict",
     "ContainerRuntime",
     "CredentialDB",

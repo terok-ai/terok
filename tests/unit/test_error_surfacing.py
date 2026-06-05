@@ -58,15 +58,15 @@ class TestWarnUser:
     def test_never_raises_on_stderr_failure(self) -> None:
         """Exception safety: writing to stderr fails silently.
 
-        After the cross-package logger unification (terok-sandbox#244)
-        the underlying ``sys`` reference lives in
-        ``terok_sandbox._util._logging`` — patch there.
+        The shared ``BestEffortLogger`` now lives in terok-util, so the
+        underlying ``sys`` reference whose stderr write must soft-fail is
+        ``terok_util.logging.sys`` — patch there.
         """
         import io
 
         broken = io.StringIO()
         broken.write = lambda _: (_ for _ in ()).throw(OSError("broken pipe"))
-        with patch("terok_sandbox._util._logging.sys") as mock_sys:
+        with patch("terok_util.logging.sys") as mock_sys:
             mock_sys.stderr = broken
             # Must not raise
             warn_user("test", "should not crash")

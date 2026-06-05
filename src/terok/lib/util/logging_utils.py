@@ -4,10 +4,11 @@
 """Best-effort file logging + structured stderr warnings.
 
 Thin shim over
-[`terok_sandbox.BestEffortLogger`][terok_sandbox.BestEffortLogger] —
-the implementation lives once in terok-sandbox so terok and the
-sandbox share the same idiom.  Module-level functions preserve the
-legacy call shape so existing call sites stay untouched.
+[`terok_util.logging.BestEffortLogger`][terok_util.logging.BestEffortLogger] —
+the implementation lives once in terok-util, at the bottom of the
+dependency chain, so every sibling shares the same idiom.  Module-level
+functions preserve the legacy call shape so existing call sites stay
+untouched.
 
 [`warn_user`][terok.lib.util.logging_utils.warn_user] runs both the
 *component* tag and the *message* through
@@ -21,9 +22,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from terok_util import sanitize_tty
-
-from terok.lib.integrations.sandbox import BestEffortLogger
+from terok_util import BestEffortLogger, sanitize_tty
 
 LOG_FILENAME = "terok.log"
 """Filename for the best-effort terok library log (written under ``core_state_dir()``)."""
