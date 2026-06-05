@@ -1,9 +1,9 @@
 # SPDX-FileCopyrightText: 2026 Jiri Vyskocil
 # SPDX-License-Identifier: Apache-2.0
 
-"""Lists installed AI coding agents and sets the global default selection.
+"""Lists installed AI coding agents, sets the default, and locates their mounts.
 
-Two leaf verbs:
+Three leaf verbs:
 
 - ``terok agents list [--all]`` — print the roster (agents only, or
   agents + tools when ``--all`` is passed).
@@ -11,6 +11,9 @@ Two leaf verbs:
   ``config.yml`` under ``image.agents``.  Interactive picker when
   ``SELECTION`` is omitted; same comma-list grammar that
   ``terok image build --agents`` and the new-project wizard accept.
+- ``terok agents dir [AGENT]`` — print the shared agent-config mounts
+  directory (or one agent's subdirectory), surfacing the otherwise-hidden
+  ``~/.local/share/terok/…/mounts/`` where skills and subagent definitions live.
 """
 
 from __future__ import annotations
@@ -68,6 +71,22 @@ def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) ->
         ),
     )
 
+    p_dir = sub.add_parser(
+        "dir",
+        help="Print the shared agent-config mounts directory (or one agent's subdir)",
+        description=(
+            "Print the host directory that holds the per-agent config mounts "
+            "bind-mounted into task containers.  With an AGENT, print that "
+            "agent's config subdirectory (e.g. _claude-config) instead."
+        ),
+    )
+    p_dir.add_argument(
+        "agent",
+        nargs="?",
+        default=None,
+        help="Optional agent name; print its config-mount subdirectory",
+    )
+
 
 def dispatch(args: argparse.Namespace) -> bool:
     """Handle ``terok agents …``.  Returns True if handled."""
@@ -78,9 +97,10 @@ def dispatch(args: argparse.Namespace) -> bool:
     if sub is None:
         # Bare ``terok agents`` — print the group's help so users see the verbs.
         print(
-            "usage: terok agents {list,set} ...\n\n"
+            "usage: terok agents {list,set,dir} ...\n\n"
             "  list  List available AI coding agents\n"
-            "  set   Set the global image.agents default in config.yml\n",
+            "  set   Set the global image.agents default in config.yml\n"
+            "  dir   Print the shared agent-config mounts directory\n",
             file=sys.stderr,
         )
         return True
@@ -90,6 +110,9 @@ def dispatch(args: argparse.Namespace) -> bool:
         return True
     if sub == "set":
         _set_global_default(selection=getattr(args, "selection", None))
+        return True
+    if sub == "dir":
+        _print_mounts_dir(agent=getattr(args, "agent", None))
         return True
     return False
 
@@ -132,3 +155,35 @@ def _set_global_default(*, selection: str | None) -> None:
     roster.validate_selection(raw)
     path = ExecutorConfigView.set_image_agents(raw)
     print(f"Wrote image.agents = {raw!r} to {path}")
+
+
+def _print_mounts_dir(*, agent: str | None) -> None:
+    """Print the shared agent-config mounts directory, or one agent's subdir.
+
+    The mounts directory holds the per-agent config trees (``_claude-config/``,
+    ``_codex-config/``, …) terok bind-mounts into task containers — the place to
+    drop skills, subagent definitions, or other per-agent settings.  It is
+    otherwise undiscoverable; this verb surfaces it.
+
+    With *agent*, the agent's config subdirectory is resolved from the roster;
+    an unknown agent exits ``2`` with the list of agents that have a mount.
+    """
+    from terok.lib.core.config import sandbox_live_mounts_dir
+
+    root = sandbox_live_mounts_dir()
+    if agent is None:
+        print(root)
+        return
+
+    from terok.lib.api.agents import AgentRoster
+
+    roster = AgentRoster.shared()
+    auth = roster.auth_providers.get(agent)
+    if auth is None:
+        available = ", ".join(sorted(roster.auth_providers)) or "(none)"
+        print(
+            f"Unknown agent {agent!r}.  Agents with a config mount: {available}",
+            file=sys.stderr,
+        )
+        raise SystemExit(2)
+    print(root / auth.host_dir_name)

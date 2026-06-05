@@ -30,6 +30,11 @@ def _ns_set(selection: str | None = None) -> argparse.Namespace:
     return argparse.Namespace(cmd="agents", agents_cmd="set", selection=selection)
 
 
+def _ns_dir(agent: str | None = None) -> argparse.Namespace:
+    """Namespace shaped as ``terok agents dir [AGENT]`` post-parse."""
+    return argparse.Namespace(cmd="agents", agents_cmd="dir", agent=agent)
+
+
 def _fake_roster(
     *,
     agent_names: tuple[str, ...] = ("claude", "codex"),
@@ -224,6 +229,41 @@ def test_set_prompts_when_no_argument(tmp_path: Path, monkeypatch: pytest.Monkey
     write_mock.assert_called_once_with("all")
 
 
+# ── dir ───────────────────────────────────────────────────────────────
+
+
+def test_dir_prints_mounts_root(capsys: pytest.CaptureFixture[str]) -> None:
+    """``terok agents dir`` prints the shared mounts directory (tmp-isolated)."""
+    assert agents.dispatch(_ns_dir()) is True
+    assert capsys.readouterr().out.strip().endswith("mounts")
+
+
+def test_dir_prints_agent_config_subdir(capsys: pytest.CaptureFixture[str]) -> None:
+    """``terok agents dir AGENT`` resolves the agent's config-mount subdir from the roster."""
+    roster = _fake_roster()
+    roster.auth_providers = {"claude": SimpleNamespace(host_dir_name="_claude-config")}
+    with patch("terok.lib.integrations.executor.AgentRoster.shared", return_value=roster):
+        assert agents.dispatch(_ns_dir("claude")) is True
+    out = capsys.readouterr().out.strip()
+    assert out.endswith("_claude-config")
+    assert "mounts" in out
+
+
+def test_dir_rejects_unknown_agent(capsys: pytest.CaptureFixture[str]) -> None:
+    """An agent with no config mount exits 2 and lists the ones that have one."""
+    roster = _fake_roster()
+    roster.auth_providers = {"claude": SimpleNamespace(host_dir_name="_claude-config")}
+    with (
+        patch("terok.lib.integrations.executor.AgentRoster.shared", return_value=roster),
+        pytest.raises(SystemExit) as excinfo,
+    ):
+        agents.dispatch(_ns_dir("bogus"))
+    assert excinfo.value.code == 2
+    err = capsys.readouterr().err
+    assert "Unknown agent" in err
+    assert "claude" in err
+
+
 # ── registration ──────────────────────────────────────────────────────
 
 
@@ -244,3 +284,8 @@ def test_register_creates_group_with_list_and_set() -> None:
 
     parsed_bare_set = parser.parse_args(["agents", "set"])
     assert parsed_bare_set.selection is None
+
+    parsed_dir = parser.parse_args(["agents", "dir", "claude"])
+    assert parsed_dir.agents_cmd == "dir"
+    assert parsed_dir.agent == "claude"
+    assert parser.parse_args(["agents", "dir"]).agent is None
