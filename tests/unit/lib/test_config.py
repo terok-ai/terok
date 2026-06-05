@@ -125,6 +125,25 @@ def test_tui_external_editor(
     assert cfg.get_tui_external_editor() is expected
 
 
+@pytest.mark.parametrize(
+    ("config_text", "expected"),
+    [
+        ("", 14400),
+        ("tui:\n  container_resync_seconds: 2\n", 2),
+        ("tui:\n  container_resync_seconds: 0\n", 0),
+    ],
+    ids=["default-4h", "monitor-2s", "disabled"],
+)
+def test_tui_container_resync_seconds(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    config_text: str,
+    expected: int,
+) -> None:
+    monkeypatch.setenv("TEROK_CONFIG_FILE", str(write_config(tmp_path, config_text)))
+    assert cfg.get_tui_container_resync_seconds() == expected
+
+
 def test_experimental_flag_roundtrip() -> None:
     assert not cfg.is_experimental()
     cfg.set_experimental(True)

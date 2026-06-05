@@ -406,6 +406,19 @@ class RawTUISection(BaseModel):
             "``xdg-utils`` is missing."
         ),
     )
+    container_resync_seconds: int = Field(
+        default=14400,
+        description=(
+            "Full container-state resync interval, in seconds (default: "
+            "14400 = 4 hours).  The task list is driven by events — inotify on "
+            "task metadata plus a podman event stream — so this periodic resync "
+            "is only insurance against a missed event, and is deliberately slow "
+            "(à la a Kubernetes informer resync).  Set it low (e.g. ``2``) on a "
+            "monitor where inotify can't be trusted (network filesystem, or no "
+            "podman event stream), trading disk activity for fault tolerance; "
+            "set ``0`` to disable the resync entirely and rely purely on events."
+        ),
+    )
 
 
 class RawLogsSection(BaseModel):

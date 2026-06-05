@@ -77,7 +77,9 @@ from .naming import (  # noqa: F401 — re-exported public API
     validate_task_name,
 )
 from .query import (  # noqa: F401 — re-exported public API
+    ContainerEventStream,
     TaskMeta,
+    container_event_stream,
     get_all_task_states,
     get_task_container_state,
     get_task_meta,
@@ -92,10 +94,12 @@ __all__ = [
     "CONTAINER_MODES",
     "CONTAINER_TEROK_CONFIG",
     "TASK_NAME_MAX_LEN",
+    "ContainerEventStream",
     "TaskDeleteResult",
     "TaskMeta",
     "agent_config_dir",
     "capture_task_logs",
+    "container_event_stream",
     "container_name",
     "dossier_path",
     "generate_task_name",

@@ -461,6 +461,22 @@ def get_tui_desktop_entry() -> str:
     return _load_validated().tui.desktop_entry
 
 
+def get_tui_container_resync_seconds() -> int:
+    """Return the container-state resync interval in seconds (default 14400 = 4h).
+
+    The task list updates from events (inotify + podman event stream); this
+    periodic full resync is only insurance against a missed event, so it is
+    slow by default.  ``0`` disables it (pure event-driven); a small value
+    (e.g. ``2``) suits a monitor where inotify can't be trusted.
+
+    Global config (config.yml)::
+
+        tui:
+          container_resync_seconds: 2   # default 14400 (4 hours); 0 disables
+    """
+    return _load_validated().tui.container_resync_seconds
+
+
 def get_logs_partial_streaming() -> bool:
     """Return whether partial streaming is enabled for log viewing (default True).
 
