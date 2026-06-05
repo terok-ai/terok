@@ -38,10 +38,10 @@ def test_returns_stream_when_runtime_supports_events(monkeypatch: Any) -> None:
 
 
 def test_returns_none_when_runtime_lacks_events(monkeypatch: Any) -> None:
-    class OldRuntime:
-        """A sandbox build predating the event stream."""
+    class EventlessRuntime:
+        """A runtime with no event stream (e.g. a non-podman backend)."""
 
-    _patch_runtime(monkeypatch, OldRuntime)
+    _patch_runtime(monkeypatch, EventlessRuntime)
     assert container_event_stream(PID) is None
 
 

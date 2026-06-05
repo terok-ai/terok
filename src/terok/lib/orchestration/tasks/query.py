@@ -349,22 +349,15 @@ def container_event_stream(project_id: str) -> ContainerEventStream | None:
     [`get_all_task_states`][terok.lib.orchestration.tasks.query.get_all_task_states]:
     a closable iterator of lifecycle events for the project's containers, so a
     watcher reacts to a container starting / dying instead of polling
-    ``podman ps``.  Returns ``None`` when the runtime can't stream events (a
-    ``terok-sandbox`` build predating the stream); events are backend-specific,
-    not part of the ``ContainerRuntime`` protocol, so callers must tolerate
-    ``None`` and fall back to the periodic resync.
+    ``podman ps``.  Returns ``None`` when the subscription can't be opened (no
+    ``podman`` on PATH, or a non-podman runtime); the caller then leans on the
+    periodic resync.
     """
     from terok.lib.integrations.sandbox import PodmanRuntime
 
-    # Capability probe rather than an unconditional call: ``events`` is a
-    # backend extension (like ``container_states``), absent from older sandbox
-    # wheels.  Drop the guard once the sandbox floor includes it.
-    events = getattr(PodmanRuntime(), "events", None)
-    if events is None:
-        return None
     try:
-        return events(project_id)
-    except Exception:  # noqa: BLE001 — best-effort; the resync covers a failed subscribe
+        return PodmanRuntime().events(project_id)
+    except Exception:  # noqa: BLE001 — podman absent / subscribe failed; resync covers it
         return None
 
 
