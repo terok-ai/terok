@@ -161,6 +161,23 @@ class TestOverviewOutput:
         assert data["projects"][0]["project_name"] == "proj1"
         assert "id" not in data["projects"][0]
 
+    @patch("terok.cli.commands._storage_view.supports_color", return_value=False)
+    def test_text_projects_render_project_names(self, _color, capsys):
+        """Overview text renders the project table with project names."""
+        overview = _make_overview(
+            global_images=[],
+            projects=[
+                ProjectSummary("proj1", 500_000_000, 200_000_000, 2),
+                ProjectSummary("longer-project", 100_000_000, 50_000_000, 1),
+            ],
+        )
+        with patch("terok.lib.domain.storage.get_storage_overview", return_value=overview):
+            cmd_overview(json_output=False)
+        output = capsys.readouterr().out
+        assert "Projects" in output
+        assert "proj1" in output
+        assert "longer-project" in output
+
 
 # ---------------------------------------------------------------------------
 # Detail output (render layer)

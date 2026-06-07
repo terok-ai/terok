@@ -20,6 +20,7 @@ from terok.lib.core.projects import (
     list_projects,
     load_project,
     normalize_project_name,
+    require_project_exists,
     set_project_image_agents,
 )
 from terok.lib.domain.project_state import get_project_state
@@ -346,6 +347,38 @@ class TestProject:
         assert "name: actual" in content
         assert "description: Pretty Project" in content
 
+    def test_normalize_project_name_replaces_invalid_project_section(self) -> None:
+        """The quick fix repairs an invalid ``project:`` scalar section."""
+        yaml = "project: Pretty Project\n"
+        with project_env(yaml, project_name="actual"):
+            path = normalize_project_name("actual")
+            project = load_project("actual")
+            raw = yaml_load(path.read_text(encoding="utf-8"))
+
+        assert project.name == "actual"
+        assert raw["project"]["name"] == "actual"
+
+    def test_normalize_project_name_rejects_malformed_yaml(self) -> None:
+        """Malformed ``project.yml`` still reports an explicit read/parse failure."""
+        with project_env(project_yaml("actual"), project_name="actual") as ctx:
+            path = ctx.config_root / "actual" / "project.yml"
+            path.write_text("project:\n  name: [unterminated\n", encoding="utf-8")
+            with pytest.raises(SystemExit, match="Failed to read"):
+                normalize_project_name("actual")
+
+    def test_normalize_project_name_rejects_non_mapping_yaml(self) -> None:
+        """The quick fix requires the top-level YAML document to be a mapping."""
+        with project_env(project_yaml("actual"), project_name="actual") as ctx:
+            path = ctx.config_root / "actual" / "project.yml"
+            path.write_text("- not-a-mapping\n", encoding="utf-8")
+            with pytest.raises(SystemExit, match="expected a mapping"):
+                normalize_project_name("actual")
+
+    def test_require_project_exists_accepts_existing_project(self) -> None:
+        """The stat-only project existence guard accepts a known project."""
+        with project_env(project_yaml("actual"), project_name="actual"):
+            require_project_exists("actual")
+
     def test_derive_project_preserves_legacy_display_name_as_description(self) -> None:
         """Deriving a legacy config does not discard the old display label."""
         source = (
@@ -367,6 +400,15 @@ class TestProject:
         assert "name: derived" in content
         assert "description: Pretty Source" in content
         assert "id:" not in content
+
+    def test_derive_project_rejects_target_path_escape(self) -> None:
+        """The derive target stays under the user projects directory."""
+        with project_env(project_yaml("source"), project_name="source"):
+            with (
+                unittest.mock.patch("terok.lib.core.projects.validate_project_name"),
+                pytest.raises(SystemExit, match="path escapes projects directory"),
+            ):
+                derive_project("source", "../escape")
 
     def test_discover_projects_splits_valid_and_broken(
         self, capsys: pytest.CaptureFixture[str]
