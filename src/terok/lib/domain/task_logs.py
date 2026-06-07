@@ -110,7 +110,7 @@ def task_logs(
                 tail=options.tail,
                 streaming=options.streaming,
                 mode=mode,
-                provider=meta.get("provider"),
+                agent=meta.get("agent"),
             )
             return
         raise SystemExit(
@@ -130,8 +130,8 @@ def task_logs(
             raise SystemExit("podman not found; please install podman")
 
     # Formatted mode: pipe through formatter
-    provider = meta.get("provider")
-    formatter = auto_detect_formatter(mode, streaming=options.streaming, provider=provider)
+    agent = meta.get("agent")
+    formatter = auto_detect_formatter(mode, streaming=options.streaming, agent=agent)
 
     try:
         proc = runner.stream_logs_process(cname, follow=options.follow, tail=options.tail)
@@ -219,7 +219,7 @@ def _show_persisted_logs(
     tail: int | None = None,
     streaming: bool = True,
     mode: str | None = None,
-    provider: str | None = None,
+    agent: str | None = None,
 ) -> None:
     """Display logs from a persisted log file on disk.
 
@@ -229,7 +229,7 @@ def _show_persisted_logs(
     """
     from collections import deque
 
-    formatter = auto_detect_formatter(mode, streaming=streaming, provider=provider)
+    formatter = auto_detect_formatter(mode, streaming=streaming, agent=agent)
 
     with log_file.open("r", encoding="utf-8", errors="replace") as f:
         if tail is not None and tail > 0:

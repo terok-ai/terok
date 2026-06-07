@@ -22,7 +22,7 @@ def make_plain_text_formatter() -> object:
 
 
 def make_log_viewer_screen(
-    *, mode: str = "cli", follow: bool = True, provider: str | None = None
+    *, mode: str = "cli", follow: bool = True, agent: str | None = None
 ) -> object:
     """Build a LogViewerScreen with captured posted output."""
     mod = import_log_viewer()
@@ -31,7 +31,7 @@ def make_log_viewer_screen(
         task_id="1",
         mode=mode,
         container_name="p-cli-1",
-        provider=provider,
+        agent=agent,
     )
     screen = mod.LogViewerScreen(ref, follow=follow)
     screen._posted = []
@@ -556,8 +556,8 @@ class TestStreamLogs:
     @mock.patch("subprocess.Popen")
     @mock.patch("select.select")
     def test_uses_claude_formatter_for_run_mode(self, mock_select, mock_popen):
-        """Run mode with claude provider uses the structured formatter."""
-        screen = make_log_viewer_screen(mode="run", provider="claude")
+        """Run mode with claude agent uses the structured formatter."""
+        screen = make_log_viewer_screen(mode="run", agent="claude")
 
         log_line = json.dumps(
             {"type": "system", "subtype": "init", "session_id": "sess1", "model": "claude-4"}

@@ -446,11 +446,11 @@ class TestTaskLaunchScreenLazyAgents:
         assert screen._build_agent_choices() == [("bash", "bash")]
 
     def test_build_agent_choices_loaded_prepends_bash_to_providers(self) -> None:
-        from terok.lib.integrations.executor import AGENT_PROVIDERS
+        from terok.lib.integrations.executor import AGENTS
 
         screens, _ = import_screens()
         # Filter to a single known provider so the assertion is stable.
-        target = next(iter(AGENT_PROVIDERS))
+        target = next(iter(AGENTS))
         screen = screens.TaskLaunchScreen(
             container_name="c",
             project_id="p",
@@ -459,13 +459,13 @@ class TestTaskLaunchScreenLazyAgents:
         )
         choices = screen._build_agent_choices()
         assert choices[0] == ("bash", "bash")
-        assert (AGENT_PROVIDERS[target].label, target) in choices
+        assert (AGENTS[target].label, target) in choices
 
     def test_set_installed_populates_select_and_restores_default(self) -> None:
-        from terok.lib.integrations.executor import AGENT_PROVIDERS
+        from terok.lib.integrations.executor import AGENTS
 
         screens, _ = import_screens()
-        target = next(iter(AGENT_PROVIDERS))
+        target = next(iter(AGENTS))
         screen = screens.TaskLaunchScreen(
             container_name="c",
             project_id="p",
@@ -483,7 +483,7 @@ class TestTaskLaunchScreenLazyAgents:
         mock_select.set_options.assert_called_once()
         passed_choices = mock_select.set_options.call_args[0][0]
         assert ("bash", "bash") in passed_choices
-        assert (AGENT_PROVIDERS[target].label, target) in passed_choices
+        assert (AGENTS[target].label, target) in passed_choices
         assert mock_select.value == target
         assert mock_select.prompt == "Select an agent"
         assert mock_select.disabled is False
@@ -549,7 +549,7 @@ def _run_launch_with_prompt(agent: str, prompt: str | None) -> tuple[mock.Mock, 
             },
         ),
         mock.patch.dict(
-            "terok_executor.provider.providers.AGENT_PROVIDERS",
+            "terok_executor.provider.providers.AGENTS",
             {"claude": fake_provider},
             clear=True,
         ),
@@ -836,10 +836,10 @@ class TestTaskLaunchScreenCompose:
 
     def test_compose_renders_select_enabled_when_loaded(self) -> None:
         """Once ``_installed`` is set, the dropdown renders enabled with providers."""
-        from terok.lib.integrations.executor import AGENT_PROVIDERS
+        from terok.lib.integrations.executor import AGENTS
 
         screens, _ = import_screens()
-        target = next(iter(AGENT_PROVIDERS))
+        target = next(iter(AGENTS))
         screen = screens.TaskLaunchScreen(
             container_name="c",
             project_id="p",
@@ -853,7 +853,7 @@ class TestTaskLaunchScreenCompose:
         assert sel._stub_kwargs.get("prompt") == "Select an agent"
         choices = sel._stub_args[0]
         assert ("bash", "bash") in choices
-        assert (AGENT_PROVIDERS[target].label, target) in choices
+        assert (AGENTS[target].label, target) in choices
 
 
 # ---------------------------------------------------------------------------
@@ -1398,7 +1398,7 @@ class TestOnLaunchScreenResultTitle:
                 },
             ),
             mock.patch.dict(
-                "terok_executor.provider.providers.AGENT_PROVIDERS",
+                "terok_executor.provider.providers.AGENTS",
                 {"claude": fake_provider},
                 clear=True,
             ),
@@ -1439,7 +1439,7 @@ class TestOnLaunchScreenResultTitle:
                 },
             ),
             mock.patch.dict(
-                "terok_executor.provider.providers.AGENT_PROVIDERS",
+                "terok_executor.provider.providers.AGENTS",
                 {},
                 clear=True,
             ),

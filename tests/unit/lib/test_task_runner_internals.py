@@ -439,11 +439,17 @@ class TestApplyAuthProtectDenies:
         }
 
     def test_skips_exposed_providers(self, tmp_path: Path) -> None:
-        """Providers in expose_credential_providers don't get denies."""
+        """Exposed agents don't get denies — the agent name resolves to its provider.
+
+        ``_auth_protect_hosts`` is keyed by provider (``anthropic``) while
+        ``exposed_credential_providers`` yields agent names (``claude``); the
+        skip resolves claude → anthropic so the exposed agent's own upstream is
+        not denied.
+        """
         from terok.lib.orchestration.task_runners.shield import _apply_auth_protect_denies
 
         mock_shield = MagicMock()
-        routes = {"claude": self._route("https://api.anthropic.com")}
+        routes = {"anthropic": self._route("https://api.anthropic.com")}
         with contextlib.ExitStack() as stack:
             for p in self._patches(
                 routes=routes, exposed=frozenset({"claude"}), shield_obj=mock_shield

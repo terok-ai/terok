@@ -493,6 +493,14 @@ Each provider offers the modes its vendor supports — OAuth / interactive
 login (launches an auth container), API key (paste, no container needed),
 or both with a chooser prompt.
 
+On a headless host (no local browser), Codex's OAuth login can't open the
+usual browser callback. Use the device-code flow instead — it shows a URL
+and a short code to enter on another device:
+
+```bash
+terok auth codex --device-auth
+```
+
 ### Container snapshot: auth must exist before `task run`
 
 Agent env vars (and the phantom tokens that route each container's
@@ -552,19 +560,19 @@ terok task run myproj "Add unit tests for utils.py" --model opus --max-turns 50 
 # Detach immediately (don't stream output)
 terok task run myproj "Refactor the database layer" --no-follow
 
-# Use a specific provider
-terok task run myproj "Fix the auth bug" --provider codex
-terok task run myproj "Add tests" --provider copilot
+# Use a specific agent
+terok task run myproj "Fix the auth bug" --agent codex
+terok task run myproj "Add tests" --agent copilot
 ```
 
 The command creates a new task, starts a container, runs the agent with the given
 prompt, and streams the output. When the agent finishes, the task is marked as
 completed and a diff summary is printed.
 
-### Default Provider
+### Default Agent
 
-The provider is resolved in this order:
-1. `--provider` flag (if given)
+The agent is resolved in this order:
+1. `--agent` flag (if given)
 2. `default_agent` in project config (`project.yml`)
 3. `default_agent` in global config (`config.yml`)
 4. `claude` (ultimate fallback)
@@ -584,7 +592,6 @@ default_agent: claude
 | `--model` | Yes | Yes | Yes | Yes (`--agent`) | No | Yes |
 | `--max-turns` | Yes | No | No | Yes | No | No |
 | Session resume | Yes | No | No | Yes | Yes | Yes |
-| Sub-agents (`--agent`) | Yes | No | No | No | No | No |
 | Structured log output | Yes | No | No | No | No | No |
 
 ### Per-Provider Config Values
@@ -690,94 +697,13 @@ terok task status myproj v9krt
 
 The TUI task detail panel also shows the permission mode.
 
-### Sub-Agent Configuration
+### Native Claude Agents and MCPs
 
-Define sub-agents in your `project.yml` under the `agent:` section. Each
-sub-agent gets a `default` flag — default agents are always included, others
-are available on demand via `--agent`.
-
-```yaml
-# ~/.config/terok/projects/myproj/project.yml
-project:
-  id: myproj
-  security_class: online
-
-git:
-  upstream_url: git@github.com:yourorg/yourrepo.git
-  default_branch: main
-
-agent:
-  subagents:
-    # Always included in every task
-    - name: code-reviewer
-      description: Reviews code for quality and correctness
-      tools: [Read, Grep, Glob]
-      model: sonnet
-      default: true
-      system_prompt: |
-        You are a code reviewer. Focus on correctness, security, and clarity.
-
-    # Only included when explicitly selected with --agent
-    - name: debugger
-      description: Debugging specialist
-      tools: [Read, Edit, Bash, Grep]
-      model: opus
-      default: false
-      system_prompt: |
-        You are an expert debugger. Use systematic analysis.
-
-    # Reference a .md file (YAML frontmatter + body as prompt)
-    - file: agents/planner.md
-      default: false
-```
-
-#### Selecting Non-Default Agents
-
-```bash
-# Include the debugger agent for this run (sub-agents require --provider claude)
-terok task run myproj "Find and fix the memory leak" --provider claude --agent debugger
-
-# Include multiple non-default agents
-terok task run myproj "Debug and plan a fix" --provider claude --agent debugger --agent planner
-```
-
-The `--agent` flag also works with interactive modes:
-
-```bash
-terok task run myproj --agent debugger
-```
-
-#### Agent .md File Format
-
-Agent definitions can be stored as `.md` files with YAML frontmatter:
-
-```markdown
----
-name: planner
-description: Architecture and planning specialist
-tools: [Read, Grep, Glob]
-model: sonnet
----
-You are an architecture planner. Analyze the codebase and propose
-structured implementation plans before writing code.
-```
-
-Reference them in `project.yml` with `file:` (paths relative to project root).
-
-#### Providing Extra Agents via Config File
-
-Pass an additional YAML file with `--config` to add more sub-agents at runtime:
-
-```bash
-terok task run myproj "Review the PR" --config /path/to/extra-agents.yml
-```
-
-The file should contain a `subagents:` list in the same format as `project.yml`.
-
-### Global Agents and MCPs
-
-Global agents and MCP servers are managed natively by Claude — terok does not
-interfere with them:
+Sub-agents, skills, and MCP servers are managed natively by Claude — terok
+does not own a sub-agent abstraction of its own and does not inject any
+`--agents` flag. Drop your definitions into the shared Claude config mount
+(`terok agents dir claude` prints its path) and Claude discovers them on its
+own, exactly as it would outside a container:
 
 | What | Where |
 |------|-------|
@@ -786,8 +712,8 @@ interfere with them:
 | Project agents | `<workspace>/.claude/agents/` |
 | Project MCPs | `<workspace>/.claude/settings.json` |
 
-Per-sub-agent MCPs can be defined inline using the `mcpServers` field in the
-agent definition (same format as Claude's native agent JSON).
+Any extra flags you pass to the in-container `claude` command are forwarded
+straight through, so per-invocation customization needs no terok support.
 
 Run `terok config` to see the actual paths on your system.
 
@@ -926,7 +852,6 @@ global presets you create will shadow them automatically.
 |--------|-------------|-------------|
 | `solo` | Single Sonnet agent, 25 turns | Quick fixes, small features |
 | `review` | Read-only Opus reviewer | Code review, architecture analysis |
-| `team` | Multi-agent team (architect + engineers + testers) | Larger features, refactors |
 
 ```bash
 # Quick fix — single fast agent
@@ -934,12 +859,6 @@ terok task run myproj "Fix the typo in login.py" --preset solo
 
 # Code review — read-only analysis
 terok task run myproj "Review the auth module for security issues" --preset review
-
-# Full dev team — architect plans, engineers implement, testers verify
-terok task run myproj "Add pagination to the /users endpoint" --preset team
-
-# Team preset with an on-demand agent enabled
-terok task run myproj "Update the CLI help text" --preset team --agent cli-engineer
 ```
 
 Presets work with all task modes:
@@ -955,7 +874,7 @@ terok task run myproj --preset review
 terok project presets myproj
 
 # Show what a preset resolves to
-terok config resolved myproj --preset team
+terok config resolved myproj --preset review
 ```
 
 ### Customize: Global Presets
@@ -979,14 +898,7 @@ Or create one from scratch:
 cat > ~/.config/terok/core/presets/quick-review.yml << 'EOF'
 model: sonnet
 max_turns: 10
-subagents:
-  - name: reviewer
-    description: Fast code review
-    tools: [Read, Grep, Glob]
-    model: sonnet
-    default: true
-    system_prompt: |
-      Review the code for bugs and suggest fixes. Be concise.
+timeout: 900
 EOF
 ```
 
@@ -1008,12 +920,12 @@ same name, and a project preset shadows both.
 Run multiple tasks in the same project, each with a different preset:
 
 ```bash
-# Task 1: architect reviews the codebase
+# Task 1: reviewer analyzes the codebase
 terok task run myproj --preset review
-# Task 2: team implements the feature
-terok task run myproj --preset team
-# Task 3: solo agent writes docs
+# Task 2: solo agent implements the feature
 terok task run myproj --preset solo
+# Task 3: another solo agent writes docs
+terok task run myproj "Document the new endpoint" --preset solo
 ```
 
 Each task remembers its preset — `terok task restart` reuses it automatically.

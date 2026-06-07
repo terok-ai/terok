@@ -208,9 +208,16 @@ def _apply_auth_protect_denies(cname: str, task_dir: Path) -> None:
     already present in the active allow profiles (the developer has
     explicitly opted that endpoint back in).
     """
+    from terok.lib.integrations.executor import credential_provider
+
     from ...core.config import exposed_credential_providers
 
-    exposed = exposed_credential_providers()
+    # ``_auth_protect_hosts()`` is keyed by *provider* name (the vault-route
+    # key, e.g. ``anthropic``), but ``exposed_credential_providers()`` yields
+    # *agent* names (e.g. ``claude``).  Resolve agents → their default provider
+    # so the exposed-skip matches — otherwise an exposed agent's own upstream
+    # gets denied and its direct egress is refused.
+    exposed = {credential_provider(name) for name in exposed_credential_providers()}
     shield_obj = ShieldManager(task_dir).shield
     allow_entries = _resolved_allow_entries(shield_obj)
 

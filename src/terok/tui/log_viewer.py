@@ -334,7 +334,7 @@ class TaskContainerRef:
     task_id: str
     mode: str
     container_name: str
-    provider: str | None = None
+    agent: str | None = None
 
 
 class LogViewerScreen(screen.Screen[None]):
@@ -380,7 +380,7 @@ class LogViewerScreen(screen.Screen[None]):
         """Create a log viewer for a container.
 
         Args:
-            ref: Task container reference (project, task, mode, container name, provider).
+            ref: Task container reference (project, task, mode, container name, agent).
             follow: If True, stream logs in real-time with auto-scroll.
         """
         super().__init__()
@@ -389,7 +389,7 @@ class LogViewerScreen(screen.Screen[None]):
         self.mode = ref.mode
         self.container_name = ref.container_name
         self.follow = follow
-        self.provider = ref.provider
+        self.agent = ref.agent
         self._stop_event = threading.Event()
         self._process: subprocess.Popen | None = None
 
@@ -415,7 +415,7 @@ class LogViewerScreen(screen.Screen[None]):
         could cause lines to get stuck unread in the Python buffer.
         """
         formatter: _TuiLogFormatter | _PlainTextTuiFormatter
-        if self.mode == "run" and (self.provider or "claude") == "claude":
+        if self.mode == "run" and (self.agent or "claude") == "claude":
             formatter = _TuiLogFormatter(streaming=self.follow)
         else:
             formatter = _PlainTextTuiFormatter()

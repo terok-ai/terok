@@ -130,10 +130,10 @@ def _print_roster(*, show_all: bool) -> None:
 
     rows: list[tuple[str, str]] = []
     for name in sorted(names):
-        provider = roster.providers.get(name)
+        agent = roster.agents.get(name)
         auth = roster.auth_providers.get(name)
-        if provider is not None:
-            label = provider.label
+        if agent is not None:
+            label = agent.label
         elif auth is not None:
             label = auth.label
         else:

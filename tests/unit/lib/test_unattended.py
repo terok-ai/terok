@@ -105,18 +105,6 @@ def task_paths(base: Path, project_id: str, task_id: str = "1") -> tuple[Path, P
     )
 
 
-DEFAULT_SUBAGENTS_YAML = (
-    "agent:\n"
-    "  subagents:\n"
-    "    - name: reviewer\n"
-    "      default: true\n"
-    "      system_prompt: Review code\n"
-    "    - name: debugger\n"
-    "      default: false\n"
-    "      system_prompt: Debug code\n"
-)
-
-
 def write_runner_project(base: Path, project_id: str, extra_yml: str = "") -> Path:
     """Write a minimal project config and matching global config file for task runners."""
     config_base = base / "config"
@@ -131,11 +119,6 @@ def write_runner_project(base: Path, project_id: str, extra_yml: str = "") -> Pa
         f"project:\n  id: {project_id}\n  security_class: online\n{extra_yml}",
     )
     return config_file
-
-
-def read_task_agents(base: Path, project_id: str, task_id: str = "1") -> dict[str, object]:
-    """Load ``agents.json`` for a task."""
-    return json.loads((task_paths(base, project_id, task_id)[0] / "agents.json").read_text())
 
 
 def read_task_meta(base: Path, project_id: str, task_id: str = "1") -> dict[str, object]:
@@ -166,7 +149,6 @@ def prepare_agent_config(
             AgentConfigSpec(
                 project.tasks_root,
                 task_id,
-                subagents=[],
                 instructions=instructions,
                 default_agent=project.default_agent,
                 mounts_base=Path(td),
@@ -295,11 +277,7 @@ class TestAgentConfigProject:
             write_project(
                 projects_root,
                 "proj_agent",
-                (
-                    "project:\n  id: proj_agent\nagent:\n  subagents:\n"
-                    "    - name: reviewer\n      default: true\n"
-                    "      system_prompt: Review code\n"
-                ),
+                ("project:\n  id: proj_agent\nagent:\n  model: opus\n  timeout: 900\n"),
             )
 
             with unittest.mock.patch.dict(
@@ -308,32 +286,8 @@ class TestAgentConfigProject:
             ):
                 with mock_git_config():
                     p = load_project("proj_agent")
-                assert "subagents" in p.agent_config
-                assert p.agent_config["subagents"][0]["name"] == "reviewer"
-
-    def test_agent_config_resolves_subagent_file_paths(self) -> None:
-        """Project resolves relative file: paths in subagents."""
-        with tempfile.TemporaryDirectory() as td:
-            base = Path(td)
-            config_root = base / "config"
-            projects_root = config_root / "projects"
-
-            write_project(
-                projects_root,
-                "proj_sa",
-                ("project:\n  id: proj_sa\nagent:\n  subagents:\n    - file: agents/reviewer.md\n"),
-            )
-
-            with unittest.mock.patch.dict(
-                os.environ,
-                {"TEROK_CONFIG_DIR": str(config_root), "TEROK_STATE_DIR": str(base / "s")},
-            ):
-                with mock_git_config():
-                    p = load_project("proj_sa")
-                # File path should be resolved to absolute
-                sa = p.agent_config["subagents"][0]
-                assert Path(sa["file"]).is_absolute()
-                assert "agents/reviewer.md" in sa["file"]
+                assert p.agent_config["model"] == "opus"
+                assert p.agent_config["timeout"] == 900
 
 
 class TestTaskRunHeadless:
@@ -400,38 +354,6 @@ class TestTaskRunHeadless:
             assert settings.is_file()
             assert "SessionStart" in json.loads(settings.read_text())["hooks"]
 
-    def test_headless_with_default_subagents(self) -> None:
-        """task_run_headless includes default subagents in agents.json."""
-        with tempfile.TemporaryDirectory() as td:
-            base = Path(td)
-
-            result = run_headless_request(
-                base,
-                write_runner_project(base, "proj_agents", DEFAULT_SUBAGENTS_YAML),
-                HeadlessRunRequest("proj_agents", "test"),
-            )
-
-            agents_data = read_task_agents(base, "proj_agents", result.task_id)
-            assert isinstance(agents_data, dict)
-            assert "reviewer" in agents_data
-            assert "debugger" not in agents_data
-            assert agents_data["reviewer"]["prompt"] == "Review code"
-
-    def test_headless_with_agent_selection(self) -> None:
-        """task_run_headless includes selected non-default agents in agents.json."""
-        with tempfile.TemporaryDirectory() as td:
-            base = Path(td)
-
-            result = run_headless_request(
-                base,
-                write_runner_project(base, "proj_sel", DEFAULT_SUBAGENTS_YAML),
-                HeadlessRunRequest("proj_sel", "test", agents=["debugger"]),
-            )
-
-            agents_data = read_task_agents(base, "proj_sel", result.task_id)
-            assert "reviewer" in agents_data
-            assert "debugger" in agents_data
-
     def test_headless_cli_model_max_turns_in_command(self) -> None:
         """CLI model/max_turns appear in headless bash command, not in wrapper."""
         with tempfile.TemporaryDirectory() as td:
@@ -496,6 +418,39 @@ class TestTaskRunHeadless:
             assert_task_id(result.task_id)
             assert f"proj_nf-run-{result.task_id}" in result.output
 
+    def test_headless_provider_override_sets_terok_provider_env(self) -> None:
+        """``--provider`` flows into the container as ``TEROK_PROVIDER``."""
+        with tempfile.TemporaryDirectory() as td:
+            base = Path(td)
+            result = run_headless_request(
+                base,
+                write_runner_project(base, "proj_prov"),
+                HeadlessRunRequest("proj_prov", "test", provider="openrouter"),
+            )
+            assert result.last_spec.env["TEROK_PROVIDER"] == "openrouter"
+
+    def test_headless_default_provider_sets_terok_provider_env(self) -> None:
+        """A project ``default_provider`` reaches the container without a flag."""
+        with tempfile.TemporaryDirectory() as td:
+            base = Path(td)
+            result = run_headless_request(
+                base,
+                write_runner_project(base, "proj_dp", "default_provider: openrouter\n"),
+                HeadlessRunRequest("proj_dp", "test"),
+            )
+            assert result.last_spec.env["TEROK_PROVIDER"] == "openrouter"
+
+    def test_headless_no_provider_omits_terok_provider_env(self) -> None:
+        """No provider selected → ``TEROK_PROVIDER`` is absent from the env."""
+        with tempfile.TemporaryDirectory() as td:
+            base = Path(td)
+            result = run_headless_request(
+                base,
+                write_runner_project(base, "proj_np"),
+                HeadlessRunRequest("proj_np", "test"),
+            )
+            assert "TEROK_PROVIDER" not in result.last_spec.env
+
     def test_headless_uses_claude_function_in_command(self) -> None:
         """task_run_headless uses claude wrapper via --terok-timeout."""
         with tempfile.TemporaryDirectory() as td:
@@ -515,19 +470,13 @@ class TestTaskRunHeadless:
             assert '--add-dir "/"' not in bash_cmd
             assert "GIT_AUTHOR_NAME=Claude" not in bash_cmd
 
-    def test_headless_with_config_file_subagents(self) -> None:
-        """task_run_headless reads subagents from YAML config file."""
+    def test_headless_config_file_overrides_agent_settings(self) -> None:
+        """task_run_headless applies overrides from the --config YAML file."""
         with tempfile.TemporaryDirectory() as td:
             base = Path(td)
 
             agent_config = base / "my-agent-config.yml"
-            agent_config.write_text(
-                "subagents:\n"
-                "  - name: extra-agent\n"
-                "    default: true\n"
-                "    system_prompt: I am an extra agent\n",
-                encoding="utf-8",
-            )
+            agent_config.write_text("model: opus\nmax_turns: 42\n", encoding="utf-8")
 
             result = run_headless_request(
                 base,
@@ -535,9 +484,9 @@ class TestTaskRunHeadless:
                 HeadlessRunRequest("proj_cfgfile", "test", config_path=str(agent_config)),
             )
 
-            agents_data = read_task_agents(base, "proj_cfgfile", result.task_id)
-            assert "extra-agent" in agents_data
-            assert agents_data["extra-agent"]["prompt"] == "I am an extra agent"
+            bash_cmd = result.last_spec.command[-1]
+            assert "--model opus" in bash_cmd
+            assert "--max-turns 42" in bash_cmd
 
 
 class TestTaskFollowupHeadless:

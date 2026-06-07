@@ -63,16 +63,15 @@ def _prepare_agent_config(
     project: ProjectConfig,
     project_id: str,
     task_id: str,
-    agents: list[str] | None,
     preset: str | None,
     *,
-    provider_name: str | None = None,
+    agent_name: str | None = None,
 ) -> Path:
     """Resolve agent config, instructions, and prepare the agent-config dir.
 
     Shared by task runners to avoid duplicating the resolve → instructions →
-    prepare sequence.  *provider_name* overrides the auto-detected provider
-    (e.g. explicit provider selection).
+    prepare sequence.  *agent_name* overrides the auto-detected agent
+    (e.g. explicit agent selection).
     """
     effective = resolve_agent_config(
         project_id,
@@ -80,18 +79,15 @@ def _prepare_agent_config(
         project_root=project.root,
         preset=preset,
     )
-    subagents = tuple(effective.get("subagents") or ())
-    from terok.lib.integrations.executor import get_provider as _get_provider
+    from terok.lib.integrations.executor import get_agent as _get_agent
 
-    resolved = _get_provider(provider_name, default_agent=project.default_agent)
+    resolved = _get_agent(agent_name, default_agent=project.default_agent)
     instr_text = resolve_instructions(effective, resolved.name, project_root=project.root)
     return prepare_agent_config_dir(
         AgentConfigSpec(
             tasks_root=project.tasks_root,
             task_id=task_id,
-            subagents=subagents,
-            selected_agents=tuple(agents) if agents is not None else None,
-            provider=resolved.name,
+            agent=resolved.name,
             instructions=instr_text,
             default_agent=project.default_agent,
             mounts_base=project_mounts_dir(project),

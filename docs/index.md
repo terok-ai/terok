@@ -106,8 +106,8 @@ terok task run myproj "Fix the authentication bug"
 # With model override and timeout
 terok task run myproj "Add tests" --model opus --timeout 3600
 
-# Use a specific provider
-terok task run myproj "Fix the bug" --provider codex
+# Use a specific agent
+terok task run myproj "Fix the bug" --agent codex
 ```
 
 ## Documentation

@@ -67,20 +67,19 @@ tui:
 
 # Agent configuration
 # -----------------------------------------------------------------
-# Native Claude handles global agents and MCPs:
+# Native Claude handles sub-agents, skills, and MCPs — terok does not own a
+# sub-agent abstraction of its own and injects no --agents flag:
 #   - Global agents:  ~/.claude/agents/        (available to all projects)
 #   - Global MCPs:    ~/.claude/settings.json  (mcpServers section)
 #   - Project agents: <workspace>/.claude/agents/
 #   - Project MCPs:   <workspace>/.claude/settings.json
 #
-# terok converts per-project sub-agent YAML definitions (in project.yml)
-# to JSON for the --agents flag at task runtime. See project.yml for examples.
+# Drop your definitions into the shared Claude config mount
+# (`terok agents dir claude` prints its path) and Claude discovers them on its
+# own. Extra flags passed to the in-container `claude` command pass straight
+# through.
 #
 # Run `terok config` to see the actual paths on your system.
-#
-# TODO: future — support global agent definitions here (agent.subagents)
-# that would be merged with per-project subagents. Use a generic merge
-# approach compatible with multiple agent runtimes.
 
 # Note: GPU passthrough is a per-project opt-in only. Configure it in
 # <project>/project.yml under `run.gpus` (true or "all"). There is no

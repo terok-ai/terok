@@ -53,6 +53,7 @@ class ProjectConfig(BaseModel):
     auto_sync_enabled: bool = False
     auto_sync_branches: list[str] = Field(default_factory=list)
     default_agent: str | None = None
+    default_provider: str | None = None
     default_shell: str | None = None
     agent_config: dict[str, Any] = Field(default_factory=dict)
     credentials_scope: Literal["shared", "project"] = "shared"

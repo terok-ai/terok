@@ -318,21 +318,21 @@ def auto_detect_formatter(
     *,
     streaming: bool = True,
     color: bool | None = None,
-    provider: str | None = None,
+    agent: str | None = None,
 ) -> AgentLogFormatter:
-    """Return the appropriate formatter for a task's mode and provider.
+    """Return the appropriate formatter for a task's mode and agent.
 
     Args:
         mode: Task mode (``"run"`` for headless/unattended, ``"cli"``, ``"web"``).
         streaming: Enable partial streaming for supported formatters.
         color: Force color on/off. ``None`` auto-detects from terminal.
-        provider: Headless provider name.  When mode is ``"run"`` and
-            provider is ``"claude"`` (or ``None``), returns the Claude
+        agent: Headless agent name.  When mode is ``"run"`` and
+            agent is ``"claude"`` (or ``None``), returns the Claude
             stream-json formatter.  Other providers get plain text.
     """
     if mode == "run":
-        effective_provider = provider or "claude"
-        if effective_provider == "claude":
+        effective_agent = agent or "claude"
+        if effective_agent == "claude":
             return ClaudeStreamJsonFormatter(streaming=streaming, color=color)
         return PlainTextFormatter()
     return PlainTextFormatter()

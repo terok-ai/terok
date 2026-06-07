@@ -11,7 +11,6 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-from terok.lib.api.agents import parse_md_agent
 from terok.lib.api.shield import ShieldManager
 
 from ..lib.api import (
@@ -36,7 +35,6 @@ from ..lib.api import (
 from .clipboard import copy_to_clipboard_detailed
 from .screens import (
     AgentSelectionScreen,
-    SubagentInfo,
     TaskCreateScreen,
     TaskLaunchScreen,
     TaskNameScreen,
@@ -142,39 +140,6 @@ class TaskActionsMixin(_MixinBase):
         def _unmark_launching(self, project_id: str, task_id: str) -> None: ...
 
     # ---------- Helpers ----------
-
-    @staticmethod
-    def _normalize_subagents(subagents: list[dict]) -> list[SubagentInfo]:
-        """Resolve ``file:`` shorthand entries into full sub-agent dicts.
-
-        Each entry in *subagents* may be either an inline dict (already has
-        ``name``, ``description``, etc.) or a ``file:`` reference whose
-        ``name`` and ``description`` live inside the ``.md`` YAML frontmatter.
-        This normalises both forms into [`SubagentInfo`][terok.tui.screens.SubagentInfo] dicts so the UI
-        screens always have ``name`` and ``description`` to display.
-        """
-        result: list[SubagentInfo] = []
-        for sa in subagents:
-            if "file" in sa:
-                parsed = parse_md_agent(sa["file"])
-                if not parsed:
-                    continue
-                if "default" in sa:
-                    parsed["default"] = sa["default"]
-                agent = parsed
-            else:
-                agent = dict(sa)
-            name = agent.get("name")
-            if not name:
-                continue
-            result.append(
-                SubagentInfo(
-                    name=name,
-                    description=agent.get("description", ""),
-                    default=bool(agent.get("default", False)),
-                )
-            )
-        return result
 
     def _focus_task_after_creation(self, project_id: str, task_id: str) -> None:
         """Persist selection so the newly created task is focused after refresh."""
@@ -350,13 +315,13 @@ class TaskActionsMixin(_MixinBase):
         if agent == "bash":
             cmd = base_cmd
         else:
-            from terok.lib.api.agents import AGENT_PROVIDERS
+            from terok.lib.api.agents import AGENTS
 
-            provider = AGENT_PROVIDERS.get(agent)
-            if not provider:
+            agent_obj = AGENTS.get(agent)
+            if not agent_obj:
                 self.notify(f"Unknown agent: {agent}")
                 return
-            cmd = [*base_cmd, "bash", "-lc", provider.binary]
+            cmd = [*base_cmd, "bash", "-lc", agent_obj.binary]
 
         await self._launch_terminal_session(
             cmd, title=_login_title(pid, tid, task_name), cname=cname
@@ -432,7 +397,7 @@ class TaskActionsMixin(_MixinBase):
             self._on_unattended_name_result,
         )
 
-    _unattended_pending_agent: tuple[str, list[str] | None] | None = None
+    _unattended_pending_agent: str | None = None
 
     async def _on_unattended_name_result(self, name: str | None) -> None:
         """Handle the name returned from TaskNameScreen for unattended."""
@@ -452,8 +417,6 @@ class TaskActionsMixin(_MixinBase):
             return
 
         default_agent = project.default_agent or "claude"
-        raw_subagents = project.agent_config.get("subagents", [])
-        subagents = self._normalize_subagents(raw_subagents) if raw_subagents else []
 
         # podman inspect would block the event loop; offload it.
         import asyncio
@@ -471,14 +434,13 @@ class TaskActionsMixin(_MixinBase):
 
         await self.push_screen(
             AgentSelectionScreen(
-                subagents=subagents or None,
                 default_agent=default_agent,
                 installed=installed,
             ),
             self._on_agent_selection_result,
         )
 
-    async def _on_agent_selection_result(self, result: tuple[str, list[str] | None] | None) -> None:
+    async def _on_agent_selection_result(self, result: str | None) -> None:
         """Handle the result from AgentSelectionScreen, then show the prompt screen."""
         if result is None:
             self._unattended_pending_name = None
@@ -497,24 +459,14 @@ class TaskActionsMixin(_MixinBase):
             self._unattended_pending_agent = None
             return
 
-        result = self._unattended_pending_agent
+        agent_name = self._unattended_pending_agent
         self._unattended_pending_agent = None
-        if not result:
+        if not agent_name:
             return
 
-        agent_name, selected_subagents = result
+        await self._launch_unattended(prompt, agent=agent_name)
 
-        # Only pass sub-agents if the agent supports them
-        from terok.lib.api.agents import AGENT_PROVIDERS
-
-        provider = AGENT_PROVIDERS.get(agent_name)
-        agents = selected_subagents if provider and provider.supports_agents_json else None
-
-        await self._launch_unattended(prompt, agents=agents, provider=agent_name)
-
-    async def _launch_unattended(
-        self, prompt: str, agents: list[str] | None = None, provider: str | None = None
-    ) -> None:
+    async def _launch_unattended(self, prompt: str, agent: str | None = None) -> None:
         """Launch a headless unattended task in a background worker."""
         if not self.current_project_id:
             return
@@ -523,7 +475,7 @@ class TaskActionsMixin(_MixinBase):
         self._unattended_pending_name = None
         self.notify(f"Starting unattended task for {pid}...")
         self.run_worker(
-            lambda: self._run_headless_worker(pid, prompt, agents, name, provider=provider),
+            lambda: self._run_headless_worker(pid, prompt, name, agent=agent),
             name=f"unattended-launch:{pid}",
             group="unattended-launch",
             thread=True,
@@ -534,9 +486,8 @@ class TaskActionsMixin(_MixinBase):
         self,
         project_id: str,
         prompt: str,
-        agents: list[str] | None,
         name: str | None = None,
-        provider: str | None = None,
+        agent: str | None = None,
     ) -> tuple[str, str, str | None]:
         """Background worker: launch task_run_headless and return result."""
         try:
@@ -545,9 +496,8 @@ class TaskActionsMixin(_MixinBase):
                     project_id=project_id,
                     prompt=prompt,
                     follow=False,
-                    agents=agents,
                     name=name,
-                    provider=provider,
+                    agent=agent,
                 )
             )
             return project_id, task_id, None
@@ -641,7 +591,7 @@ class TaskActionsMixin(_MixinBase):
 
         from .log_viewer import LogViewerScreen, TaskContainerRef
 
-        provider = getattr(task, "provider", None)
+        agent = getattr(task, "agent", None)
         await self.push_screen(
             LogViewerScreen(
                 TaskContainerRef(
@@ -649,7 +599,7 @@ class TaskActionsMixin(_MixinBase):
                     task_id=tid,
                     mode=task.mode,
                     container_name=cname,
-                    provider=provider,
+                    agent=agent,
                 ),
                 follow=follow,
             )

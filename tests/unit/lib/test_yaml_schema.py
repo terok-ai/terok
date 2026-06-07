@@ -54,6 +54,7 @@ class RawProjectYamlTests(unittest.TestCase):
             "shield": {"drop_on_task_run": False, "on_task_restart": "up"},
             "image": {"base_image": "nvidia/cuda:12.0", "user_snippet_inline": "RUN echo hi"},
             "default_agent": "claude",
+            "default_provider": "openrouter",
             "agent": {"model": "opus"},
         }
         raw = RawProjectYaml.model_validate(data)
@@ -71,6 +72,7 @@ class RawProjectYamlTests(unittest.TestCase):
         self.assertEqual(raw.shield.on_task_restart, "up")
         self.assertEqual(raw.image.base_image, "nvidia/cuda:12.0")
         self.assertEqual(raw.default_agent, "claude")
+        self.assertEqual(raw.default_provider, "openrouter")
 
     def test_unknown_key_rejected(self) -> None:
         """Unknown top-level key raises ValidationError (typo detection)."""
@@ -271,6 +273,7 @@ class RawGlobalConfigTests(unittest.TestCase):
                 },
                 "gate_server": {"port": 1234, "suppress_systemd_warning": True},
                 "default_agent": "codex",
+                "default_provider": "openrouter",
             }
         )
         self.assertTrue(cfg.tui.default_tmux)
@@ -281,6 +284,7 @@ class RawGlobalConfigTests(unittest.TestCase):
         self.assertEqual(cfg.gate_server.port, 1234)
         self.assertTrue(cfg.gate_server.suppress_systemd_warning)
         self.assertEqual(cfg.default_agent, "codex")
+        self.assertEqual(cfg.default_provider, "openrouter")
 
     def test_port_validation_rejects_out_of_range(self) -> None:
         """Port fields reject values outside 1–65535."""

@@ -5,7 +5,7 @@
 
 """Full-page and modal Textual screens for the terok TUI."""
 
-from typing import TYPE_CHECKING, Any, TypedDict
+from typing import TYPE_CHECKING, Any
 
 from textual import events, screen
 from textual.app import ComposeResult
@@ -19,7 +19,7 @@ from textual.widgets import Button, Static
 if TYPE_CHECKING:
     from textual.binding import Binding
     from textual.timer import Timer
-    from textual.widgets import Input, OptionList, SelectionList, TextArea
+    from textual.widgets import Input, OptionList, TextArea
     from textual.widgets.option_list import Option
 
     from .console_log import ConsoleLogEntry
@@ -43,11 +43,6 @@ else:
         from textual.widgets import TextArea
     except Exception:  # pragma: no cover - textual may be a stub module
         TextArea = None
-
-    try:  # pragma: no cover - optional import for test stubs
-        from textual.widgets import SelectionList
-    except Exception:  # pragma: no cover - textual may be a stub module
-        SelectionList = None
 
     try:  # pragma: no cover - optional import for test stubs
         from textual.widgets import Input
@@ -109,18 +104,18 @@ _DETAIL_SCREEN_CSS = """
 # ---------------------------------------------------------------------------
 
 
-def _visible_providers(installed: frozenset[str] | None) -> list[str]:
+def _visible_agents(installed: frozenset[str] | None) -> list[str]:
     """Provider names visible to the user given an *installed* filter.
 
     Empty/``None`` *installed* (legacy or unlabeled image) → no filtering;
     every known provider is shown.  Otherwise the registry is intersected
     with the install set, preserving registry order.
     """
-    from terok.lib.api.agents import AGENT_PROVIDERS
+    from terok.lib.api.agents import AGENTS
 
     if not installed:
-        return list(AGENT_PROVIDERS)
-    return [name for name in AGENT_PROVIDERS if name in installed]
+        return list(AGENTS)
+    return [name for name in AGENTS if name in installed]
 
 
 # ---------------------------------------------------------------------------
@@ -726,23 +721,6 @@ class AuthModeScreen(screen.ModalScreen["str | None"]):
 # ---------------------------------------------------------------------------
 
 
-class SubagentInfo(TypedDict):
-    """Metadata for a single sub-agent shown in the unattended selection screen.
-
-    Sub-agents are provider-specific assistants (currently Claude only) that can
-    be included in an unattended run via ``--agents`` JSON.
-
-    Attributes:
-        name: Unique sub-agent identifier used as the dict key in ``--agents`` JSON.
-        description: Human-readable summary of the sub-agent's purpose.
-        default: Whether the sub-agent is pre-selected when the selection screen opens.
-    """
-
-    name: str
-    description: str
-    default: bool
-
-
 class UnattendedPromptScreen(screen.ModalScreen[str | None]):
     """Modal for entering an unattended prompt.
 
@@ -838,17 +816,14 @@ class UnattendedPromptScreen(screen.ModalScreen[str | None]):
 # ---------------------------------------------------------------------------
 
 
-class AgentSelectionScreen(screen.ModalScreen[tuple[str, list[str] | None] | None]):
-    """Combined modal for selecting the unattended agent and optional sub-agents.
+class AgentSelectionScreen(screen.ModalScreen[str | None]):
+    """Modal for selecting the unattended agent.
 
-    The top section lists all registered headless agents (Claude, Codex, etc.)
-    with the project default marked ``*``.  The bottom section shows sub-agent
-    checkboxes when the project defines them (currently Claude-only).
+    Lists all registered headless agents (Claude, Codex, etc.) with the project
+    default marked ``*``.  Number keys (1-9) act as shortcuts for agent
+    selection.
 
-    Number keys (1-9) act as shortcuts for agent selection.
-
-    Dismisses with ``(agent_name, selected_subagents_or_None)`` on OK,
-    or ``None`` if cancelled.
+    Dismisses with the chosen ``agent_name`` on OK, or ``None`` if cancelled.
     """
 
     BINDINGS = [
@@ -877,18 +852,6 @@ class AgentSelectionScreen(screen.ModalScreen[tuple[str, list[str] | None] | Non
         margin-bottom: 1;
     }
 
-    #subagent-label {
-        height: 1;
-        margin-top: 1;
-        color: $text-muted;
-    }
-
-    #subagent-selection {
-        height: auto;
-        max-height: 8;
-        margin-bottom: 1;
-    }
-
     #agent-buttons {
         height: auto;
         align-horizontal: right;
@@ -901,30 +864,26 @@ class AgentSelectionScreen(screen.ModalScreen[tuple[str, list[str] | None] | Non
 
     def __init__(
         self,
-        subagents: list[SubagentInfo] | None = None,
         default_agent: str = "claude",
         installed: frozenset[str] | None = None,
     ) -> None:
-        """Create the combined agent + sub-agent selection screen.
+        """Create the agent selection screen.
 
         Args:
-            subagents: Optional list of sub-agent dicts. When non-empty a
-                checkbox section is shown below the agent list.
             default_agent: Name of the project's default agent (pre-highlighted
                 and marked with ``*``).
             installed: Names baked into the project's L1 image (from the
                 ``ai.terok.agents`` label).  When provided and non-empty,
                 the picker hides agents not in the set.  ``None`` or empty
-                means no filtering — every known provider is shown.
+                means no filtering — every known agent is shown.
         """
         super().__init__()
-        self._subagents = subagents or []
         self._installed = installed
 
-        from terok.lib.api.agents import AGENT_PROVIDERS
+        from terok.lib.api.agents import AGENTS
 
-        visible = _visible_providers(installed)
-        if default_agent in AGENT_PROVIDERS and (not installed or default_agent in installed):
+        visible = _visible_agents(installed)
+        if default_agent in AGENTS and (not installed or default_agent in installed):
             self._default_agent: str | None = default_agent
         elif visible:
             self._default_agent = visible[0]
@@ -935,28 +894,17 @@ class AgentSelectionScreen(screen.ModalScreen[tuple[str, list[str] | None] | Non
         self._selected_agent: str | None = self._default_agent
 
     def compose(self) -> ComposeResult:
-        """Build the agent list, optional sub-agent checkboxes, and buttons."""
-        from terok.lib.api.agents import AGENT_PROVIDERS
+        """Build the agent list and buttons."""
+        from terok.lib.api.agents import AGENTS
 
         with Vertical(id="agent-dialog") as dialog:
             options = []
-            visible = _visible_providers(self._installed)
+            visible = _visible_agents(self._installed)
             for i, name in enumerate(visible, 1):
-                provider = AGENT_PROVIDERS[name]
-                marker = " *" if provider.name == self._default_agent else ""
-                options.append(Option(f"\\[{i}] {provider.label}{marker}", id=provider.name))
+                agent = AGENTS[name]
+                marker = " *" if agent.name == self._default_agent else ""
+                options.append(Option(f"\\[{i}] {agent.label}{marker}", id=agent.name))
             yield OptionList(*options, id="agent-list")
-
-            if self._subagents:
-                yield Static("Sub-agents (Claude only):", id="subagent-label")
-                items = []
-                for sa in self._subagents:
-                    name = sa.get("name", "unnamed")
-                    desc = sa.get("description", "")
-                    label = f"{name}: {desc}" if desc else name
-                    initial = bool(sa.get("default", False))
-                    items.append((label, name, initial))
-                yield SelectionList(*items, id="subagent-selection")
 
             with Horizontal(id="agent-buttons"):
                 yield Button("Cancel", id="btn-cancel", variant="default")
@@ -968,7 +916,7 @@ class AgentSelectionScreen(screen.ModalScreen[tuple[str, list[str] | None] | Non
         """Focus the agent list and highlight the default entry."""
         agent_list = self.query_one("#agent-list", OptionList)
 
-        for idx, name in enumerate(_visible_providers(self._installed)):
+        for idx, name in enumerate(_visible_agents(self._installed)):
             if name == self._default_agent:
                 agent_list.highlighted = idx
                 break
@@ -980,13 +928,10 @@ class AgentSelectionScreen(screen.ModalScreen[tuple[str, list[str] | None] | Non
             self._selected_agent = event.option_id
 
     def on_option_list_option_selected(self, event: OptionList.OptionSelected) -> None:
-        """Confirm agent choice on Enter and advance focus."""
+        """Confirm agent choice on Enter and advance focus to OK."""
         if event.option_id:
             self._selected_agent = event.option_id
-        if self._subagents:
-            self.query_one("#subagent-selection", SelectionList).focus()
-        else:
-            self.query_one("#btn-ok", Button).focus()
+        self.query_one("#btn-ok", Button).focus()
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
         """Handle OK or Cancel button clicks."""
@@ -996,7 +941,7 @@ class AgentSelectionScreen(screen.ModalScreen[tuple[str, list[str] | None] | Non
             self.dismiss(None)
 
     def _submit(self) -> None:
-        """Dismiss with the selected agent and sub-agent list.
+        """Dismiss with the selected agent.
 
         Rejects the submission when no agent is selectable (empty visible
         list) so the caller never receives a falsy agent name.
@@ -1005,17 +950,13 @@ class AgentSelectionScreen(screen.ModalScreen[tuple[str, list[str] | None] | Non
         if not agent:
             self.notify("No agents available — rebuild the image or adjust selection.")
             return
-        subagents: list[str] | None = None
-        if self._subagents:
-            sel = self.query_one("#subagent-selection", SelectionList)
-            subagents = list(sel.selected)
-        self.dismiss((agent, subagents))
+        self.dismiss(agent)
 
     def on_key(self, event: events.Key) -> None:
         """Handle number-key shortcuts (1-9) to select an agent."""
         if event.character and event.character.isdigit():
             idx = int(event.character) - 1
-            visible = _visible_providers(self._installed)
+            visible = _visible_agents(self._installed)
             if 0 <= idx < len(visible):
                 self._selected_agent = visible[idx]
                 agent_list = self.query_one("#agent-list", OptionList)
@@ -1431,13 +1372,13 @@ class TaskLaunchScreen(screen.ModalScreen["tuple[str, str, str, str, str, str | 
         flight (``_installed is None``); once populated, prepends ``bash``
         to the visible providers.
         """
-        from terok.lib.api.agents import AGENT_PROVIDERS
+        from terok.lib.api.agents import AGENTS
 
         choices: list[tuple[str, str]] = [("bash", "bash")]
         if self._installed is None:
             return choices
-        for name in _visible_providers(self._installed):
-            p = AGENT_PROVIDERS[name]
+        for name in _visible_agents(self._installed):
+            p = AGENTS[name]
             choices.append((p.label, p.name))
         return choices
 

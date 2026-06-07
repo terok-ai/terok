@@ -44,7 +44,7 @@ def _fake_roster(
     """Stand-in for [`AgentRoster`][terok.lib.integrations.executor.AgentRoster] reading what the dispatcher needs."""
     if labels is None:
         labels = {"claude": "Anthropic Claude", "codex": "OpenAI Codex", "gh": "GitHub CLI"}
-    providers = {name: SimpleNamespace(label=labels.get(name, name)) for name in all_names}
+    agents = {name: SimpleNamespace(label=labels.get(name, name)) for name in all_names}
     auth_providers: dict[str, SimpleNamespace] = {}
 
     def _resolve(_selection: object) -> tuple[str, ...]:
@@ -63,7 +63,7 @@ def _fake_roster(
     roster = SimpleNamespace(
         agent_names=agent_names,
         all_names=all_names,
-        providers=providers,
+        agents=agents,
         auth_providers=auth_providers,
         resolve_selection=_resolve,
         parse_selection=staticmethod(_parse),
@@ -146,7 +146,7 @@ def test_list_handles_empty_roster(capsys: pytest.CaptureFixture[str]) -> None:
 def test_list_falls_back_to_auth_provider_label(capsys: pytest.CaptureFixture[str]) -> None:
     """An agent missing from ``providers`` still renders via ``auth_providers``."""
     roster = _fake_roster(agent_names=("kisski",), all_names=("kisski",), labels={})
-    roster.providers = {}
+    roster.agents = {}
     roster.auth_providers = {"kisski": SimpleNamespace(label="KISSKI AcademicCloud")}
     with patch("terok.lib.integrations.executor.AgentRoster.shared", return_value=roster):
         agents.dispatch(_ns_list())
@@ -156,7 +156,7 @@ def test_list_falls_back_to_auth_provider_label(capsys: pytest.CaptureFixture[st
 def test_list_falls_back_to_name_when_no_label(capsys: pytest.CaptureFixture[str]) -> None:
     """An agent in neither providers nor auth_providers shows the bare name as label."""
     roster = _fake_roster(agent_names=("nolabel",), all_names=("nolabel",), labels={})
-    roster.providers = {}
+    roster.agents = {}
     roster.auth_providers = {}
     with patch("terok.lib.integrations.executor.AgentRoster.shared", return_value=roster):
         agents.dispatch(_ns_list())

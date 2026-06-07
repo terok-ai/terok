@@ -11,7 +11,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 
-from terok.lib.integrations.executor import resolve_provider_value
+from terok.lib.integrations.executor import resolve_agent_value
 from terok.lib.integrations.sandbox import Sharing, VolumeSpec
 
 from ...core import runtime as _rt
@@ -40,7 +40,6 @@ from .shield import _apply_shield_policy
 def task_run_cli(
     project_id: str,
     task_id: str,
-    agents: list[str] | None = None,
     preset: str | None = None,
     unrestricted: bool | None = None,
 ) -> None:
@@ -89,7 +88,7 @@ def task_run_cli(
     env, volumes = build_task_env_and_volumes(project, task_id)
 
     # Resolve layered agent config (global → project → preset → CLI overrides)
-    agent_config_dir = _prepare_agent_config(project, project_id, task_id, agents, preset)
+    agent_config_dir = _prepare_agent_config(project, project_id, task_id, preset)
     volumes.append(VolumeSpec(agent_config_dir, CONTAINER_TEROK_CONFIG, sharing=Sharing.PRIVATE))
 
     # Resolve unrestricted mode: CLI flag → config → default (True)
@@ -100,7 +99,7 @@ def task_run_cli(
             project_root=project.root,
             preset=preset,
         )
-        _cfg_val = resolve_provider_value(
+        _cfg_val = resolve_agent_value(
             "unrestricted", _effective, project.default_agent or "claude"
         )
         unrestricted = _cfg_val is None or _str_to_bool(_cfg_val)

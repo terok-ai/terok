@@ -239,7 +239,7 @@ def _load_agent_choices() -> tuple[Choice, ...]:
 
     roster = AgentRoster.shared()
     return tuple(
-        Choice(name, roster.providers[name].label if name in roster.providers else name)
+        Choice(name, roster.agents[name].label if name in roster.agents else name)
         for name in roster.agent_names
     )
 

@@ -77,7 +77,6 @@ def test_run_dispatches_to_task_run_headless() -> None:
     assert request.max_turns == 50
     assert request.timeout == 3600
     assert request.follow is True
-    assert request.agents is None
     assert request.preset is None
     assert request.name is None
     assert request.provider is None
@@ -94,10 +93,10 @@ def test_headless_without_prompt_exits() -> None:
     [
         pytest.param(("task", "run"), 2, None, id="missing-project"),
         pytest.param(
-            ("task", "run", "myproject", "--mode", "headless", "--prompt", "t", "--provider", "x"),
+            ("task", "run", "myproject", "--mode", "headless", "--prompt", "t", "--agent", "x"),
             2,
             None,
-            id="bad-provider",
+            id="bad-agent",
         ),
         pytest.param(
             (
@@ -136,14 +135,9 @@ def test_run_rejects_invalid_invocations(
             "/path/to/agent.yml",
             id="config",
         ),
-        pytest.param(
-            ["--agent", "debugger", "--agent", "planner"],
-            "agents",
-            ["debugger", "planner"],
-            id="agents",
-        ),
-        pytest.param(["--provider", "codex"], "provider", "codex", id="provider"),
-        pytest.param([], "provider", None, id="provider-default"),
+        pytest.param(["--agent", "codex"], "agent", "codex", id="agent"),
+        pytest.param([], "agent", None, id="agent-default"),
+        pytest.param(["--provider", "openrouter"], "provider", "openrouter", id="provider"),
     ],
 )
 def test_run_forwards_optional_flags(
@@ -233,7 +227,7 @@ def test_run_interactive_mode_creates_and_runs(mode: str, runner_target: str) ->
         run_cli("task", "run", "myproj", "--mode", mode, "--no-attach")
 
     mock_new.assert_called_once_with("myproj", name=None)
-    mock_runner.assert_called_once_with("myproj", "42", agents=None, preset=None, unrestricted=None)
+    mock_runner.assert_called_once_with("myproj", "42", preset=None, unrestricted=None)
     mock_login.assert_not_called()
 
 
@@ -293,14 +287,10 @@ def test_task_attach_forwards_to_runner(mode: str, runner_target: str) -> None:
             "1",
             "--mode",
             mode,
-            "--agent",
-            "debugger",
             prog="terokctl",
         )
 
-    mock_run.assert_called_once_with(
-        "myproject", "1", agents=["debugger"], preset=None, unrestricted=None
-    )
+    mock_run.assert_called_once_with("myproject", "1", preset=None, unrestricted=None)
 
 
 def test_task_attach_not_in_terok() -> None:

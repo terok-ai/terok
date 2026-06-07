@@ -17,7 +17,7 @@ import secrets
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
-from terok.lib.integrations.executor import resolve_provider_value
+from terok.lib.integrations.executor import resolve_agent_value
 from terok.lib.integrations.sandbox import Sharing, VolumeSpec
 
 from ...core import runtime as _rt
@@ -180,7 +180,6 @@ def _resume_toad_container(
 def task_run_toad(
     project_id: str,
     task_id: str,
-    agents: list[str] | None = None,
     preset: str | None = None,
     unrestricted: bool | None = None,
 ) -> None:
@@ -218,7 +217,7 @@ def task_run_toad(
 
     env, volumes = build_task_env_and_volumes(project, task_id)
 
-    agent_config_dir = _prepare_agent_config(project, project_id, task_id, agents, preset)
+    agent_config_dir = _prepare_agent_config(project, project_id, task_id, preset)
     volumes.append(VolumeSpec(agent_config_dir, CONTAINER_TEROK_CONFIG, sharing=Sharing.PRIVATE))
 
     token = _ensure_toad_token(agent_config_dir)
@@ -235,7 +234,7 @@ def task_run_toad(
             project_root=project.root,
             preset=preset,
         )
-        _cfg_val = resolve_provider_value(
+        _cfg_val = resolve_agent_value(
             "unrestricted", _effective, project.default_agent or "claude"
         )
         unrestricted = _cfg_val is None or _str_to_bool(_cfg_val)

@@ -18,10 +18,39 @@ from __future__ import annotations
 from collections.abc import Callable
 from pathlib import Path
 
-from terok.lib.integrations.executor import Authenticator
+from terok.lib.integrations.executor import AGENTS, AUTH_PROVIDERS, Authenticator
 
 from ..core.images import project_cli_image
 from ..orchestration.image import image_exists
+
+
+def auth_provider_aliases() -> dict[str, str]:
+    """Map an LLM-provider name to the auth entry that authenticates it.
+
+    A native agent is reached for auth under its own name (``terok auth codex``)
+    yet authenticates a differently-named provider — codex → ``openai``, claude →
+    ``anthropic``, vibe → ``mistral`` — so the user should be able to type either.
+    Built from the ``AGENTS`` entries whose ``provider_binding.default`` differs
+    from their name; tools (``gh``, ``sonar``) and the collapsed harness-providers
+    (``blablador``, …) aren't in ``AGENTS``, so they yield no alias — each is
+    already reached under its own name.
+    """
+    return {
+        agent.provider_binding.default: name
+        for name, agent in AGENTS.items()
+        if agent.provider_binding
+        and agent.provider_binding.default
+        and agent.provider_binding.default != name
+        and name in AUTH_PROVIDERS
+    }
+
+
+def resolve_auth_provider(name: str) -> str:
+    """Resolve an LLM-provider alias (``openai``) to its auth entry (``codex``).
+
+    Returns *name* unchanged when it is already an auth entry (or unknown).
+    """
+    return auth_provider_aliases().get(name, name)
 
 
 def resolve_credential_routing(project_id: str | None) -> tuple[Path, str]:
@@ -78,12 +107,21 @@ def authenticate(provider: str, project_id: str | None = None) -> None:
     and stores the agent-config files under the project's own mount
     tree.  When *project_id* is ``None``, both default to the host-wide
     bucket — no project context exists to override them.
+
+    Providers that declare a headless device-code login (``device_auth`` in
+    the roster, e.g. codex) offer it as a method in the auth flow's prompt —
+    no separate flag here.
+
+    *provider* accepts either an auth-entry name (``codex``) or the LLM provider
+    it authenticates (``openai``); the latter is resolved to the former.
     """
     from ..core.config import (
         is_claude_oauth_exposed,
         is_codex_oauth_exposed,
         is_oauth_enabled_for,
     )
+
+    provider = resolve_auth_provider(provider)
 
     expose = (provider == "claude" and is_claude_oauth_exposed()) or (
         provider == "codex" and is_codex_oauth_exposed()
@@ -232,4 +270,10 @@ def _resolve_host_auth_image(provider: str) -> str:
     return ImageBuilder(base).ensure_default_l1(agents)
 
 
-__all__ = ["authenticate", "find_host_auth_image", "resolve_credential_routing"]
+__all__ = [
+    "auth_provider_aliases",
+    "authenticate",
+    "find_host_auth_image",
+    "resolve_auth_provider",
+    "resolve_credential_routing",
+]

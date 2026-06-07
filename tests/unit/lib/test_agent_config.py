@@ -219,14 +219,13 @@ class TestResolveAgentConfig:
             write_test_project(
                 layout,
                 "proj",
-                "project:\n  id: proj\nagent:\n  model: sonnet\n  subagents:\n"
-                "    - name: a1\n      default: true\n",
+                "project:\n  id: proj\nagent:\n  model: sonnet\n  instructions:\n"
+                "    - Follow house style\n",
             )
 
             result = resolve_test_agent_config(layout, "proj")
             assert result["model"] == "sonnet"
-            assert len(result["subagents"]) == 1
-            assert result["subagents"][0]["name"] == "a1"
+            assert result["instructions"] == ["Follow house style"]
 
     def test_global_provides_defaults(self) -> None:
         """Global agent config provides defaults when project has none."""
@@ -290,27 +289,25 @@ class TestResolveAgentConfig:
             assert result["model"] == "opus"
             assert result["max_turns"] == 99
 
-    def test_inherit_extends_subagents(self) -> None:
-        """Preset with _inherit extends project subagents list."""
+    def test_inherit_extends_list(self) -> None:
+        """Preset with _inherit extends a project list value."""
         with tempfile.TemporaryDirectory() as td:
             layout = make_layout(Path(td))
             write_test_project(
                 layout,
                 "proj",
-                "project:\n  id: proj\nagent:\n  subagents:\n"
-                "    - name: base-agent\n      default: true\n",
+                "project:\n  id: proj\nagent:\n  instructions:\n    - base rule\n",
             )
 
             write_project_preset(
                 layout,
                 "proj",
                 "extend",
-                "subagents:\n  - _inherit\n  - name: extra-agent\n    default: true\n",
+                "instructions:\n  - _inherit\n  - extra rule\n",
             )
 
             result = resolve_test_agent_config(layout, "proj", preset="extend")
-            names = [s["name"] for s in result["subagents"] if isinstance(s, dict)]
-            assert names == ["base-agent", "extra-agent"]
+            assert result["instructions"] == ["base rule", "extra rule"]
 
     def test_project_config_without_preset(self) -> None:
         """Project agent config resolves correctly without a preset."""
@@ -319,13 +316,12 @@ class TestResolveAgentConfig:
             write_test_project(
                 layout,
                 "proj2",
-                "project:\n  id: proj2\nagent:\n  model: sonnet\n"
-                "  subagents:\n    - name: sa1\n      default: true\n",
+                "project:\n  id: proj2\nagent:\n  model: sonnet\n  max_turns: 7\n",
             )
 
             result = resolve_test_agent_config(layout, "proj2")
             assert result["model"] == "sonnet"
-            assert result["subagents"][0]["name"] == "sa1"
+            assert result["max_turns"] == 7
 
 
 class TestPreset:
@@ -411,25 +407,6 @@ class TestPreset:
 class TestPresetFileRef:
     """Tests for file references within presets."""
 
-    def test_preset_resolves_relative_subagent_file(self) -> None:
-        """Subagent file: paths in presets are resolved relative to presets dir."""
-        with tempfile.TemporaryDirectory() as td:
-            layout = make_layout(Path(td))
-            write_test_project(layout, "proj")
-
-            presets_dir = project_presets_dir(layout, "proj")
-            write_project_preset(
-                layout,
-                "proj",
-                "custom",
-                "subagents:\n  - name: from-file\n    file: ./agents/reviewer.md\n",
-            )
-
-            data, _path = load_test_preset(layout, "proj", "custom")
-            resolved = data["subagents"][0]["file"]
-            expected = str((presets_dir / "agents" / "reviewer.md").resolve())
-            assert resolved == expected
-
     def test_global_preset_fallback(self) -> None:
         """load_preset finds a preset in the global presets dir when not in project."""
         with tempfile.TemporaryDirectory() as td:
@@ -450,24 +427,6 @@ class TestPresetFileRef:
             data, path = load_test_preset(layout, "proj", "fast")
             assert data["model"] == "opus"
             assert path == preset_path
-
-    def test_global_preset_file_resolution(self) -> None:
-        """Subagent file: paths in global presets resolve relative to global presets dir."""
-        with tempfile.TemporaryDirectory() as td:
-            layout = make_layout(Path(td))
-            write_test_project(layout, "proj")
-
-            global_presets = user_presets_dir(layout)
-            write_global_preset(
-                layout,
-                "with-file",
-                "subagents:\n  - name: sa\n    file: ./agents/custom.md\n",
-            )
-
-            data, _path = load_test_preset(layout, "proj", "with-file")
-            resolved = data["subagents"][0]["file"]
-            expected = str((global_presets / "agents" / "custom.md").resolve())
-            assert resolved == expected
 
 
 class TestGlobalPresetList:

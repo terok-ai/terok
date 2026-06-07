@@ -121,10 +121,9 @@ class AgentsSelectScreen(ModalScreen[str | None]):
         from terok.lib.api.agents import AgentRoster
 
         roster = AgentRoster.shared()
-        providers = roster.providers
+        agents = roster.agents
         self._choices = tuple(
-            (name, providers[name].label if name in providers else name)
-            for name in roster.agent_names
+            (name, agents[name].label if name in agents else name) for name in roster.agent_names
         )
 
         preset_slugs, is_all = self._resolve_initial(roster)

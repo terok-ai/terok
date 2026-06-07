@@ -58,11 +58,31 @@ def test_auth_parses_project_flag() -> None:
     assert args.project_flag == "p"
 
 
+def test_auth_accepts_provider_alias() -> None:
+    """``auth openai`` is accepted — the LLM-provider alias of the codex entry."""
+    args = _make_parser().parse_args(["auth", "openai"])
+    assert args.provider == "openai"
+
+
 def test_auth_rejects_unknown_provider() -> None:
     """argparse's choices validation still fires for unknown provider names."""
     with pytest.raises(SystemExit) as exc:
         _make_parser().parse_args(["auth", "not-a-provider"])
     assert exc.value.code == 2
+
+
+def test_resolve_auth_provider_maps_provider_to_agent() -> None:
+    """The LLM provider resolves to the auth entry that authenticates it."""
+    from terok.lib.domain.auth import auth_provider_aliases, resolve_auth_provider
+
+    assert auth_provider_aliases() == {
+        "anthropic": "claude",
+        "openai": "codex",
+        "mistral": "vibe",
+    }
+    assert resolve_auth_provider("openai") == "codex"
+    assert resolve_auth_provider("codex") == "codex"  # already an auth entry
+    assert resolve_auth_provider("gh") == "gh"  # tool, no provider — unchanged
 
 
 # ── dispatch wiring ────────────────────────────────────────────────────
@@ -118,6 +138,14 @@ def test_parse_provider_selection_accepts_mixed_numbers_and_names() -> None:
     """Numeric indices and names co-exist in one selection string."""
     names = ["claude", "codex", "gh"]
     assert _parse_provider_selection("1, gh, 2", names) == ["claude", "gh", "codex"]
+
+
+def test_parse_provider_selection_resolves_provider_alias() -> None:
+    """A provider alias in the pick-list resolves to its auth entry."""
+    names = ["claude", "codex", "gh"]
+    assert _parse_provider_selection("openai", names) == ["codex"]
+    # alias + canonical name of the same entry collapse to one
+    assert _parse_provider_selection("openai, codex", names) == ["codex"]
 
 
 def test_parse_provider_selection_deduplicates() -> None:
@@ -197,3 +225,18 @@ def test_run_one_skips_install_check_when_host_wide() -> None:
         _run_one("claude", project_id=None)
     mock_load.assert_not_called()
     mock_auth.assert_called_once_with("claude", None)
+
+
+def test_run_one_resolves_alias_for_install_check() -> None:
+    """``_run_one("openai", project)`` checks the *codex* agent is installed."""
+    fake_project = SimpleNamespace(id="p1")
+    with (
+        patch("terok.cli.commands.auth.load_project", return_value=fake_project),
+        patch("terok.cli.commands.auth.require_agent_installed") as mock_check,
+        patch("terok.cli.commands.auth.authenticate") as mock_auth,
+    ):
+        _run_one("openai", project_id="p1")
+    # the baked-agent lookup uses the resolved agent name, not the provider alias
+    mock_check.assert_called_once_with(fake_project, "codex", noun="Provider")
+    # authenticate gets the original token; it resolves the alias itself
+    mock_auth.assert_called_once_with("openai", "p1")

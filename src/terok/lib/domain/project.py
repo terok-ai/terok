@@ -53,7 +53,7 @@ from typing import TYPE_CHECKING, Any, TypedDict
 from terok.lib.integrations.executor import (
     AGENTS_LABEL,
     ACPEndpointStatus,
-    get_provider,
+    get_agent,
     list_authenticated_agents,
     resolve_instructions,
 )
@@ -95,7 +95,7 @@ from .vault import vault_db
 if TYPE_CHECKING:
     from collections.abc import Callable
 
-    from terok.lib.integrations.executor import AgentProvider
+    from terok.lib.integrations.executor import Agent
     from terok.lib.integrations.sandbox import SSHInitResult
 
     from ..core.project_model import PresetInfo
@@ -600,9 +600,9 @@ class AgentManager:
         effective = self.resolve_config(preset=preset)
         return resolve_instructions(effective, provider_name, project_root=self._config.root)
 
-    def get_provider(self, name: str | None = None) -> AgentProvider:
+    def get_agent(self, name: str | None = None) -> Agent:
         """Resolve the active headless provider for this project."""
-        return get_provider(name, default_agent=self._config.default_agent)
+        return get_agent(name, default_agent=self._config.default_agent)
 
 
 class Project:

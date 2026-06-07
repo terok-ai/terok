@@ -328,6 +328,10 @@ class RawProjectYaml(BaseModel):
     default_agent: str | None = Field(
         default=None, description="Default agent provider (e.g. ``claude``, ``codex``)"
     )
+    default_provider: str | None = Field(
+        default=None,
+        description="Default LLM endpoint provider the agent routes to (e.g. ``openrouter``)",
+    )
     default_shell: str | None = None
     shared_dir: bool | str | None = Field(
         default=None,
@@ -335,7 +339,7 @@ class RawProjectYaml(BaseModel):
     )
     agent: dict[str, Any] = Field(
         default_factory=dict,
-        description="Agent configuration dict (model, subagents, MCP servers, etc.)",
+        description="Agent configuration dict (model, timeout, instructions, etc.)",
     )
 
     _SECTION_KEYS: ClassVar[frozenset[str]] = frozenset(
@@ -461,6 +465,7 @@ class RawGlobalConfig(ExecutorConfigView):
     tasks: RawTasksGlobalSection = Field(default_factory=RawTasksGlobalSection)
     git: RawGlobalGitSection = Field(default_factory=RawGlobalGitSection)
     default_agent: str | None = None
+    default_provider: str | None = None
     default_shell: str | None = None
     agent: dict[str, Any] = Field(default_factory=dict)
 

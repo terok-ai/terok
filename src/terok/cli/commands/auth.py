@@ -23,7 +23,7 @@ from __future__ import annotations
 import argparse
 import sys
 
-from terok.lib.api.agents import AUTH_PROVIDERS
+from terok.lib.api.agents import AUTH_PROVIDERS, auth_provider_aliases, resolve_auth_provider
 
 from ...lib.api import authenticate
 from ...lib.core.config import is_oauth_enabled_for
@@ -32,10 +32,26 @@ from ...lib.core.projects import load_project, require_project_exists
 from ._completers import complete_project_ids as _complete_project_ids, set_completer
 
 
+def _provider_of() -> dict[str, str]:
+    """Map each auth entry to the LLM provider it authenticates.
+
+    Inverse of [`auth_provider_aliases`][terok.lib.domain.auth.auth_provider_aliases]
+    (provider→entry); used to show both names in the auth listings.
+    """
+    return {entry: provider for provider, entry in auth_provider_aliases().items()}
+
+
 def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
     """Register the ``auth`` top-level command."""
-    provider_names = list(AUTH_PROVIDERS)
-    providers_help = ", ".join(f"{p.name} ({p.label})" for p in AUTH_PROVIDERS.values())
+    # Accept either an auth-entry name (codex) or the LLM provider it
+    # authenticates (openai → codex), since the two can be confusing.
+    provider_of = _provider_of()
+    accepted = list(AUTH_PROVIDERS) + list(provider_of.values())
+    entries = []
+    for name, p in AUTH_PROVIDERS.items():
+        suffix = f" → {provider_of[name]}" if name in provider_of else ""
+        entries.append(f"{name} ({p.label}{suffix})")
+    providers_help = ", ".join(entries)
     p_auth = subparsers.add_parser(
         "auth",
         help="Authenticate an agent/tool (host-wide by default; --project scopes it)",
@@ -57,7 +73,7 @@ def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) ->
         "provider",
         nargs="?",
         default=None,
-        choices=provider_names,
+        choices=accepted,
         metavar="provider",
     )
     set_completer(
@@ -87,12 +103,19 @@ def dispatch(args: argparse.Namespace) -> bool:
 
 
 def _run_one(provider: str, project_id: str | None) -> None:
-    """Authenticate a single provider, optionally scoped to a project."""
+    """Authenticate a single provider, optionally scoped to a project.
+
+    *provider* may be an auth-entry name or an LLM-provider alias of one;
+    ``authenticate`` resolves it, and the install check resolves it too so the
+    baked-agent lookup uses the agent name, not the provider alias.
+    """
     if project_id is not None:
         # Project-scoped: verify the L2 image actually has the agent baked
         # in before launching.  Host-wide auth resolves the image in the
         # facade and does its own checks there.
-        require_agent_installed(load_project(project_id), provider, noun="Provider")
+        require_agent_installed(
+            load_project(project_id), resolve_auth_provider(provider), noun="Provider"
+        )
     authenticate(provider, project_id)
 
 
@@ -102,15 +125,19 @@ def _run_interactive(project_id: str | None) -> None:
         require_project_exists(project_id)
 
     provider_names = list(AUTH_PROVIDERS)
-    print("Authenticate agents — pick one or more (comma-separated):")
+    provider_of = _provider_of()
+    print("Authenticate agents — pick one or more by number or name (agent or provider):")
     for i, name in enumerate(provider_names, 1):
         info = AUTH_PROVIDERS[name]
         modes = []
         if info.supports_oauth and is_oauth_enabled_for(name):
             modes.append("oauth")
+            if info.supports_device_auth:
+                modes.append("device-code")
         if info.supports_api_key:
             modes.append("api-key")
-        print(f"  {i:>2}. {name:<12} {info.label}  [{', '.join(modes)}]")
+        label = f"{info.label} → {provider_of[name]}" if name in provider_of else info.label
+        print(f"  {i:>2}. {name:<12} {label:<22} [{', '.join(modes)}]")
 
     try:
         answer = input("\nChoice (numbers or names, comma-separated; empty = cancel): ").strip()
@@ -133,9 +160,10 @@ def _run_interactive(project_id: str | None) -> None:
 def _parse_provider_selection(raw: str, provider_names: list[str]) -> list[str]:
     """Parse a comma-separated pick-list into a de-duped ordered provider list.
 
-    Accepts either numeric indices (1-based, matching the displayed menu) or
-    provider names.  Unknown tokens are reported on stderr and skipped —
-    partial success is preferable to aborting the whole menu interaction.
+    Accepts numeric indices (1-based, matching the displayed menu), auth-entry
+    names, or the LLM-provider alias of one (``openai`` → ``codex``).  Unknown
+    tokens are reported on stderr and skipped — partial success is preferable to
+    aborting the whole menu interaction.
     """
     selected: list[str] = []
     seen: set[str] = set()
@@ -148,8 +176,8 @@ def _parse_provider_selection(raw: str, provider_names: list[str]) -> list[str]:
             idx = int(token) - 1
             if 0 <= idx < len(provider_names):
                 resolved = provider_names[idx]
-        elif token in provider_names:
-            resolved = token
+        elif (canonical := resolve_auth_provider(token)) in provider_names:
+            resolved = canonical
         if resolved is None:
             print(f"  Skipped unknown provider: {token!r}", file=sys.stderr)
             continue

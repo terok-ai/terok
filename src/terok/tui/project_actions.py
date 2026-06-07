@@ -650,7 +650,7 @@ class ProjectActionsMixin(_MixinBase):
             return
         pid = self.current_project_id
 
-        from terok.lib.api.agents import get_provider, resolve_instructions
+        from terok.lib.api.agents import get_agent, resolve_instructions
 
         from ..lib.api import resolve_agent_config
         from .text_screens import TextViewScreen
@@ -659,7 +659,7 @@ class ProjectActionsMixin(_MixinBase):
         effective = resolve_agent_config(
             pid, agent_config=project.agent_config, project_root=project.root
         )
-        provider = get_provider(None, default_agent=project.default_agent)
+        provider = get_agent(None, default_agent=project.default_agent)
         text = resolve_instructions(effective, provider.name, project_root=project.root)
         await self.push_screen(TextViewScreen(text, title=f"Resolved instructions — {pid}"))
 

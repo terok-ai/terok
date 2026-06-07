@@ -86,7 +86,7 @@ class TaskMeta(TaskState):
     backend: str | None = None
     preset: str | None = None
     name: str = ""
-    provider: str | None = None
+    agent: str | None = None
     unrestricted: bool | None = None
     work_status: str | None = None
     work_message: str | None = None
@@ -189,7 +189,7 @@ def get_task_meta(project_id: str, task_id: str) -> TaskMeta:
         initialized=_is_initialized(raw),
         preset=raw.get("preset"),
         name=raw["name"],
-        provider=raw.get("provider"),
+        agent=raw.get("agent"),
         unrestricted=raw.get("unrestricted"),
         work_status=ws_status,
         work_message=ws_message,
@@ -272,7 +272,7 @@ def _get_tasks(project_id: str, reverse: bool = False) -> list[TaskMeta]:
                     initialized=_is_initialized(meta),
                     preset=meta.get("preset"),
                     name=meta["name"],
-                    provider=meta.get("provider"),
+                    agent=meta.get("agent"),
                     unrestricted=meta.get("unrestricted"),
                     work_status=ws_status,
                     work_message=ws_message,

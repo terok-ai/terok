@@ -19,8 +19,8 @@ from pathlib import Path
 from terok.lib.integrations.executor import (
     AgentConfigSpec,
     prepare_agent_config_dir,
+    resolve_agent_value,
     resolve_instructions,
-    resolve_provider_value,
 )
 from terok.lib.integrations.sandbox import Sharing, VolumeSpec
 
@@ -69,10 +69,13 @@ class HeadlessRunRequest:
     max_turns: int | None = None
     timeout: int | None = None
     follow: bool = True
-    agents: list[str] | None = None
     preset: str | None = None
     name: str | None = None
+    agent: str | None = None
+    """Agent to run (``claude``, ``codex``, …); ``None`` → project/global default."""
     provider: str | None = None
+    """LLM endpoint provider override (``anthropic``, ``openrouter``, …) the agent
+    routes to at runtime; ``None`` → the agent's default provider."""
     instructions: str | None = None
     unrestricted: bool | None = None
 
@@ -170,7 +173,7 @@ def task_run_headless(request: HeadlessRunRequest) -> str:
     """Run an agent headlessly (unattended mode) in a new task container.
 
     Creates a new task, prepares the agent-config directory with the provider's
-    wrapper function and filtered subagents, then launches a detached container
+    wrapper function and instructions, then launches a detached container
     that runs init-ssh-and-repo.sh followed by the agent command.
 
     Args:
@@ -180,11 +183,11 @@ def task_run_headless(request: HeadlessRunRequest) -> str:
     """
     from terok.lib.integrations.executor import (
         CLIOverrides,
-        get_provider,
+        get_agent,
     )
 
     project = load_project(request.project_id)
-    resolved = get_provider(request.provider, default_agent=project.default_agent)
+    resolved = get_agent(request.agent, default_agent=project.default_agent)
     require_agent_installed(project, resolved.name)
 
     # Resolve layered agent config (global → project → preset → CLI overrides)
@@ -229,19 +232,14 @@ def task_run_headless(request: HeadlessRunRequest) -> str:
     # Create a new task
     task_id = task_new(request.project_id, name=request.name)
 
-    # Collect subagents from resolved config
-    subagents = tuple(effective.get("subagents") or ())
-
-    # Prepare agent-config dir with wrapper, agents.json, prompt.txt, instructions.md
+    # Prepare agent-config dir with wrapper, prompt.txt, instructions.md
     task_dir = project.tasks_root / str(task_id)
     agent_config_dir = prepare_agent_config_dir(
         AgentConfigSpec(
             tasks_root=project.tasks_root,
             task_id=task_id,
-            subagents=subagents,
-            selected_agents=tuple(request.agents) if request.agents is not None else None,
             prompt=effective_prompt,
-            provider=resolved.name,
+            agent=resolved.name,
             instructions=instr_text,
             default_agent=project.default_agent,
             mounts_base=project_mounts_dir(project),
@@ -251,11 +249,11 @@ def task_run_headless(request: HeadlessRunRequest) -> str:
     # Resolve unrestricted mode: CLI flag → config → default (True)
     unrestricted = request.unrestricted
     if unrestricted is None:
-        cfg_val = resolve_provider_value("unrestricted", effective, resolved.name)
+        cfg_val = resolve_agent_value("unrestricted", effective, resolved.name)
         unrestricted = _str_to_bool(cfg_val) if cfg_val is not None else True
 
-    # Build env and volumes
-    env, volumes = build_task_env_and_volumes(project, task_id)
+    # Build env and volumes (per-run --provider overrides the project/global default)
+    env, volumes = build_task_env_and_volumes(project, task_id, provider=request.provider)
 
     # Set TEROK_UNRESTRICTED for the wrapper functions inside the container
     if unrestricted:
@@ -310,7 +308,9 @@ def task_run_headless(request: HeadlessRunRequest) -> str:
     # Update task metadata
     meta["mode"] = "run"
     meta["ready_at"] = datetime.now(UTC).isoformat()
-    meta["provider"] = resolved.name
+    meta["agent"] = resolved.name
+    if request.provider:
+        meta["provider"] = request.provider
     meta["unrestricted"] = unrestricted
     if request.preset:
         meta["preset"] = request.preset
@@ -382,7 +382,7 @@ def task_followup_headless(
     original ``task_run_headless`` invocation since ``podman start``
     re-executes the same container command.
     """
-    from terok.lib.integrations.executor import AGENT_PROVIDERS
+    from terok.lib.integrations.executor import AGENTS
 
     project = load_project(project_id)
     meta, meta_path = load_task_meta(project.id, task_id)
@@ -406,17 +406,17 @@ def task_followup_headless(
             f"Container {cname} not found. Cannot follow up — the container may have been removed."
         )
 
-    # Resolve provider from task metadata
-    provider_name = meta.get("provider", "claude")
-    resolved = AGENT_PROVIDERS.get(provider_name)
+    # Resolve agent from task metadata
+    agent_name = meta.get("agent", "claude")
+    resolved = AGENTS.get(agent_name)
     if resolved is None:
         import warnings
 
         warnings.warn(
-            f"Unknown provider {provider_name!r} in task metadata; session resume check skipped.",
+            f"Unknown agent {agent_name!r} in task metadata; session resume check skipped.",
             stacklevel=2,
         )
-    label = resolved.label if resolved else provider_name
+    label = resolved.label if resolved else agent_name
 
     if resolved and not resolved.supports_session_resume:
         print(

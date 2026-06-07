@@ -10,7 +10,7 @@ import json
 import sys
 from typing import Any
 
-from terok.lib.api.agents import PROVIDER_NAMES as _PROVIDER_NAMES
+from terok.lib.api.agents import AGENT_NAMES as _AGENT_NAMES
 
 from ...lib.api import (
     HeadlessRunRequest,
@@ -155,14 +155,6 @@ def register(
         default=None,
         help="Agent prompt — required when --mode=headless, ignored otherwise",
     )
-    # Common flags (meaningful in all modes)
-    t_run.add_argument(
-        "--agent",
-        dest="selected_agents",
-        action="append",
-        default=None,
-        help="Include a non-default agent by name (repeatable)",
-    )
     set_completer(
         t_run.add_argument("--preset", help="Name of a preset to apply (global or project-level)"),
         complete_preset_names,
@@ -186,10 +178,18 @@ def register(
     )
     # Headless-only flags (silently ignored in cli/toad modes)
     t_run.add_argument(
-        "--provider",
-        choices=list(_PROVIDER_NAMES),
+        "--agent",
+        choices=list(_AGENT_NAMES),
         default=None,
-        help="Agent provider (headless only; default: from project/global config, or claude)",
+        help="Agent to run (headless only; default: from project/global config, or claude)",
+    )
+    t_run.add_argument(
+        "--provider",
+        default=None,
+        help=(
+            "LLM endpoint provider the agent routes to, e.g. openrouter "
+            "(headless only; default: from project/global config, or the agent's own provider)"
+        ),
     )
     t_run.add_argument(
         "--config",
@@ -235,13 +235,6 @@ def register(
             choices=("cli", "toad"),
             default="cli",
             help="Runtime mode: cli (default) or toad",
-        )
-        t_attach.add_argument(
-            "--agent",
-            dest="selected_agents",
-            action="append",
-            default=None,
-            help="Include a non-default agent by name (repeatable)",
         )
         set_completer(
             t_attach.add_argument(
@@ -507,7 +500,6 @@ def _cmd_task_run_interactive(args: argparse.Namespace, *, runner: Any, attach: 
     runner(
         pid,
         tid,
-        agents=getattr(args, "selected_agents", None),
         preset=getattr(args, "preset", None),
         unrestricted=_resolve_unrestricted(args),
     )
@@ -540,9 +532,9 @@ def _cmd_task_run_headless(args: argparse.Namespace) -> None:
             max_turns=getattr(args, "max_turns", None),
             timeout=getattr(args, "timeout", None),
             follow=not getattr(args, "no_follow", False),
-            agents=getattr(args, "selected_agents", None),
             preset=getattr(args, "preset", None),
             name=getattr(args, "name", None),
+            agent=getattr(args, "agent", None),
             provider=getattr(args, "provider", None),
             instructions=instructions_text,
             unrestricted=_resolve_unrestricted(args),
@@ -715,7 +707,6 @@ def _dispatch_task_sub(args: argparse.Namespace) -> bool:
         runner(
             pid,
             tid,
-            agents=getattr(args, "selected_agents", None),
             preset=getattr(args, "preset", None),
             unrestricted=_resolve_unrestricted(args),
         )

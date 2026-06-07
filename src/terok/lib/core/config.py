@@ -421,6 +421,11 @@ def get_global_default_agent() -> str | None:
     return _load_validated().default_agent
 
 
+def get_global_default_provider() -> str | None:
+    """Return default_provider from global config, or None if not set."""
+    return _load_validated().default_provider
+
+
 def get_global_default_shell() -> str | None:
     """Return ``default_shell`` from global config, or ``None`` if not set."""
     return _load_validated().default_shell

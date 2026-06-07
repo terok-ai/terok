@@ -287,8 +287,8 @@ class TestAutoDetectFormatter:
     def test_run_mode_returns_claude_formatter(self) -> None:
         assert isinstance(auto_detect_formatter("run"), ClaudeStreamJsonFormatter)
 
-    def test_run_mode_non_claude_provider_returns_plain_text(self) -> None:
-        assert isinstance(auto_detect_formatter("run", provider="openai"), PlainTextFormatter)
+    def test_run_mode_non_claude_agent_returns_plain_text(self) -> None:
+        assert isinstance(auto_detect_formatter("run", agent="openai"), PlainTextFormatter)
 
     @pytest.mark.parametrize("mode", ["cli", "web", None], ids=["cli", "web", "none"])
     def test_plain_text_modes(self, mode: str | None) -> None:

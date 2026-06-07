@@ -25,6 +25,7 @@ from .config import (
     bundled_presets_dir,
     gate_repos_dir,
     get_global_default_agent,
+    get_global_default_provider,
     get_global_default_shell,
     get_global_hooks,
     get_global_section,
@@ -113,24 +114,6 @@ def _git_global_identity() -> dict[str, str]:
     if email:
         result["human_email"] = email
     return result
-
-
-def _resolve_subagent_files(subagents: list[Any] | None, base_dir: Path) -> None:
-    """Resolve relative ``file`` paths in subagent entries against *base_dir*.
-
-    The list comes from raw YAML so each entry could be anything — the
-    isinstance guards filter to dict entries before we touch them.
-    """
-    for sa in subagents or []:
-        if not isinstance(sa, dict):
-            continue
-        raw_file = sa.get("file")
-        if not isinstance(raw_file, str) or not raw_file.strip():
-            continue
-        file_path = Path(raw_file).expanduser()
-        if not file_path.is_absolute():
-            file_path = base_dir / file_path
-        sa["file"] = str(file_path.resolve())
 
 
 def _format_validation_error(exc: ValidationError, cfg_path: Path) -> str:
@@ -235,7 +218,6 @@ def _build_project_config(
             shared_dir = None
 
     agent_cfg = dict(raw.agent)
-    _resolve_subagent_files(agent_cfg.get("subagents", []), root)
 
     shield_drop, shield_restart = _resolve_shield_config(raw)
     hook_pre, hook_post, hook_ready, hook_stop = _resolve_hooks(raw)
@@ -282,6 +264,7 @@ def _build_project_config(
         auto_sync_enabled=raw.gatekeeping.auto_sync.enabled,
         auto_sync_branches=raw.gatekeeping.auto_sync.branches,
         default_agent=raw.default_agent or get_global_default_agent(),
+        default_provider=raw.default_provider or get_global_default_provider(),
         default_shell=raw.default_shell or get_global_default_shell(),
         credentials_scope=raw.credentials.scope,
         agent_config=agent_cfg,
@@ -359,8 +342,6 @@ def load_preset(project_id: str, preset_name: str) -> tuple[dict[str, Any], Path
         data = _yaml_load(path.read_text(encoding="utf-8")) or {}
     except YAMLError as exc:
         raise SystemExit(f"Failed to parse preset '{preset_name}' ({path}): {exc}")
-    # Resolve subagent file: paths relative to the preset file's directory
-    _resolve_subagent_files(data.get("subagents", []), path.parent)
     return data, path
 
 

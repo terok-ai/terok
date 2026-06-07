@@ -840,6 +840,7 @@ expose = [
     "get_global_human_name",
     "get_global_human_email",
     "get_global_default_agent",
+    "get_global_default_provider",
     "get_global_default_shell",
     "get_global_image_agents",
     "global_config_path",
@@ -950,7 +951,13 @@ expose = ["summarize_ssh_init"]
 from = ["terok.lib.domain.ssh"]
 
 [[interfaces]]
-expose = ["authenticate", "find_host_auth_image", "resolve_credential_routing"]
+expose = [
+    "auth_provider_aliases",
+    "authenticate",
+    "find_host_auth_image",
+    "resolve_auth_provider",
+    "resolve_credential_routing",
+]
 from = ["terok.lib.domain.auth"]
 
 [[interfaces]]

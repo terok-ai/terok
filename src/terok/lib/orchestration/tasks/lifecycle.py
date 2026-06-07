@@ -589,7 +589,7 @@ def task_status(project_id: str, task_id: str) -> None:
         initialized=_is_initialized(meta),
         container_state=cs,
         name=meta["name"],
-        provider=meta.get("provider"),
+        agent=meta.get("agent"),
         unrestricted=meta.get("unrestricted"),
         created_at=meta.get("created_at"),
     )

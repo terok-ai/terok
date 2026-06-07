@@ -523,28 +523,11 @@ class TestScreenConstruction:
         screen = screens.AgentSelectionScreen()
         assert screen is not None
         assert screen._default_agent == "claude"
-        assert screen._subagents == []
 
     def test_agent_selection_screen_custom_default(self) -> None:
         screens, _ = import_screens()
         screen = screens.AgentSelectionScreen(default_agent="codex")
         assert screen._default_agent == "codex"
-
-    def test_agent_selection_screen_with_subagents(self) -> None:
-        screens, _ = import_screens()
-        subagents = [
-            {"name": "reviewer", "description": "Code reviewer", "default": True},
-            {"name": "debugger", "description": "Debugger", "default": False},
-        ]
-        screen = screens.AgentSelectionScreen(subagents=subagents)
-        assert screen is not None
-        assert len(screen._subagents) == 2
-
-    def test_agent_selection_screen_no_subagents(self) -> None:
-        screens, _ = import_screens()
-        screen = screens.AgentSelectionScreen(subagents=None)
-        assert screen is not None
-        assert screen._subagents == []
 
     def test_agent_selection_screen_invalid_default_falls_back(self) -> None:
         screens, _ = import_screens()
@@ -560,29 +543,28 @@ class TestScreenConstruction:
         screen.action_cancel()
         screen.dismiss.assert_called_once_with(None)
 
-    def test_agent_selection_screen_submit_returns_tuple(self) -> None:
+    def test_agent_selection_screen_submit_returns_agent(self) -> None:
         screens, _ = import_screens()
         screen = screens.AgentSelectionScreen(default_agent="codex")
         screen.dismiss = mock.Mock()
-        # Simulate submit without subagents — should return (agent, None)
         screen._submit()
-        screen.dismiss.assert_called_once()
-        result = screen.dismiss.call_args[0][0]
-        assert isinstance(result, tuple)
-        assert result[0] == "codex"
-        assert result[1] is None
+        screen.dismiss.assert_called_once_with("codex")
 
     def test_agent_selection_screen_number_key_updates_selection(self) -> None:
         screens, _ = import_screens()
-        screen = screens.AgentSelectionScreen(default_agent="claude")
+        from terok.lib.api.agents import AGENTS
+
+        names = list(AGENTS)
+        # Default to the last agent so pressing "1" (the first) always changes
+        # the selection regardless of registry order.
+        screen = screens.AgentSelectionScreen(default_agent=names[-1])
         # Stub query_one to return a mock OptionList
         mock_option_list = mock.Mock()
         screen.query_one = mock.Mock(return_value=mock_option_list)
-        # Press "1" — selects the first agent (alphabetically), which is not "claude"
         event = make_key_event("1")
         event.character = "1"
         screen.on_key(event)
-        assert screen._selected_agent != "claude"
+        assert screen._selected_agent == names[0]
         event.stop.assert_called_once()
 
 

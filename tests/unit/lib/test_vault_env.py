@@ -79,13 +79,23 @@ class TestVaultPatchProviderSets:
     """Verify Codex shared-config patch selection from terok config."""
 
     def _roster(self) -> SimpleNamespace:
+        # Post-keystone shape: auth providers are keyed by agent/tool name and
+        # carry the provider they resolve to (credential_provider); vault routes
+        # are keyed by provider name. The patch-provider set is the auth-provider
+        # names whose resolved route carries a shared config patch.
         return SimpleNamespace(
+            auth_providers={
+                "codex": SimpleNamespace(credential_provider="openai"),
+                "vibe": SimpleNamespace(credential_provider="mistral"),
+                "gh": SimpleNamespace(credential_provider="github"),
+                "claude": SimpleNamespace(credential_provider="anthropic"),
+            },
             vault_routes={
-                "codex": SimpleNamespace(shared_config_patch={"file": "config.toml"}),
-                "vibe": SimpleNamespace(shared_config_patch={"file": "config.toml"}),
-                "gh": SimpleNamespace(shared_config_patch={"file": "config.yml"}),
-                "claude": SimpleNamespace(shared_config_patch=None),
-            }
+                "openai": SimpleNamespace(shared_config_patch={"file": "config.toml"}),
+                "mistral": SimpleNamespace(shared_config_patch={"file": "config.toml"}),
+                "github": SimpleNamespace(shared_config_patch={"file": "config.yml"}),
+                "anthropic": SimpleNamespace(shared_config_patch=None),
+            },
         )
 
     def test_proxied_keeps_codex_patch(self) -> None:
