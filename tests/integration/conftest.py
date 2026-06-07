@@ -111,6 +111,31 @@ hooks_unavailable = pytest.mark.skipif(
 )
 
 
+def _reset_layered_config_caches() -> None:
+    """Clear terok/sandbox config caches after tests rewrite config files."""
+    import terok_sandbox.config as _sandbox_config
+    from terok_util import paths as _util_paths
+
+    import terok.lib.core.config as _config
+
+    _util_paths._reset_config_caches_for_tests()
+    _config._validated_config_cache = None
+    _config._raw_config_cache = None
+    for name in (
+        "_credentials_section",
+        "_gate_server_section",
+        "_network_section",
+        "_paths_section",
+        "_services_section",
+        "_shield_section",
+        "_ssh_section",
+        "_vault_section",
+    ):
+        cache = getattr(_sandbox_config, name, None)
+        if cache is not None and hasattr(cache, "cache_clear"):
+            cache.cache_clear()
+
+
 # ── Mock shield CommandRunner ─────────────────────────────
 
 
@@ -352,13 +377,7 @@ def terok_env(
     request: pytest.FixtureRequest,
 ) -> TerokIntegrationEnv:
     """Return an isolated terok config/state environment for a test."""
-    from terok_util import paths as _util_paths
-
-    import terok.lib.core.config as _config
-
-    _util_paths._reset_config_caches_for_tests()
-    _config._validated_config_cache = None
-    _config._raw_config_cache = None
+    _reset_layered_config_caches()
 
     home_dir = tmp_path / HOME_DIR_NAME
     xdg_config_home = tmp_path / XDG_CONFIG_HOME_NAME
@@ -373,28 +392,20 @@ def terok_env(
     monkeypatch.setenv("TEROK_CONFIG_DIR", str(system_config_root))
     monkeypatch.setenv("TEROK_STATE_DIR", str(state_root))
 
-    # Write default global config with vault bypass — subprocess-based
-    # tests spawn a new CLI process that reads this file.  Tests that need the
-    # vault opt out via the needs_vault marker: skip the bypass so the
-    # subprocess CLI exercises the real per-container vault flow.
+    # Subprocess-based tests spawn a fresh CLI process, so expose the
+    # isolated test config through TEROK_CONFIG_FILE.  That keeps both terok
+    # and terok-sandbox away from the real /etc/user config stack and also
+    # avoids root/user-namespace path heuristics in nested CI containers.
+    config_dir = xdg_config_home / "terok"
+    config_dir.mkdir(parents=True, exist_ok=True)
+    config_file = config_dir / "config.yml"
+    config_lines = []
     if "needs_vault" not in {m.name for m in request.node.iter_markers()}:
-        (system_config_root / "config.yml").write_text(
-            "vault:\n  bypass_no_secret_protection: true\n",
-            encoding="utf-8",
-        )
-    # Sandbox reads ``credentials.passphrase`` from the user-tier
-    # config (``$XDG_CONFIG_HOME/terok/config.yml``) — system-tier
-    # paths point at ``/etc/terok`` on the real filesystem and won't
-    # see our tmp-rooted config.yml.  Seeding a deterministic
-    # passphrase makes the resolution chain hit the config tier and
-    # lets ``CredentialDB`` open the encrypted DB without a daemon,
-    # keyring, or interactive prompt — the realistic shape for
-    # subprocess-based integration tests.
-    (xdg_config_home / "terok").mkdir(parents=True, exist_ok=True)
-    (xdg_config_home / "terok" / "config.yml").write_text(
-        "credentials:\n  passphrase: integration-test-passphrase\n",
-        encoding="utf-8",
-    )
+        config_lines.extend(["vault:", "  bypass_no_secret_protection: true"])
+    config_lines.extend(["credentials:", "  passphrase: integration-test-passphrase"])
+    config_file.write_text("\n".join(config_lines) + "\n", encoding="utf-8")
+    monkeypatch.setenv("TEROK_CONFIG_FILE", str(config_file))
+    _reset_layered_config_caches()
 
     env = TerokIntegrationEnv(
         base_dir=tmp_path,

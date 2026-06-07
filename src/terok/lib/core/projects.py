@@ -475,12 +475,11 @@ def _rewrite_project_identity(cfg: dict[str, Any], project_name: str) -> None:
 def normalize_project_name(project_name: str) -> Path:
     """Rewrite ``project.yml`` so ``project.name`` matches its directory.
 
-    This is the explicit quick fix for
-    [`_validate_project_name_matches_directory`][terok.lib.core.projects._validate_project_name_matches_directory]:
-    directory names are the local project identity, and the config file is
-    normalised to declare the same name.  Legacy ``project.id`` is removed
-    and any old display-only ``project.name`` is preserved as
-    ``project.description`` when safe.
+    This is the explicit quick fix for project-name mismatches: directory
+    names are the local project identity, and the config file is normalised
+    to declare the same name.  Legacy ``project.id`` is removed and any old
+    display-only ``project.name`` is preserved as ``project.description``
+    when safe.
     """
     validate_project_name(project_name)
     cfg_path = _find_project_root(project_name) / _PROJECT_YML

@@ -34,7 +34,7 @@ agent:
 COMMENTED_PROJECT = f"""
 # === Project identity ===
 project:
-  name: alpha
+  name: commented
   security_class: online  # keep this online for dev
 
 # --- Git configuration ---
