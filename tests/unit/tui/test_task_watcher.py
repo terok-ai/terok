@@ -51,6 +51,23 @@ class TestLifecycle:
         watcher.stop()  # second call must not raise
         assert watcher.fileno == -1
 
+    def test_restart_keeps_the_fd_and_resyncs(self, tmp_path: Path) -> None:
+        """A second start() reconciles the set in place — it never leaks a new fd."""
+        meta, agent_cfg = tmp_path / "meta", tmp_path / "agent-config"
+        meta.mkdir()
+        agent_cfg.mkdir()
+        watcher = _started([meta])
+        try:
+            fd = watcher.fileno
+            # Re-arm with an extended set: the fd is reused, not reopened, and
+            # the newly added directory comes under watch (i.e. sync ran).
+            assert watcher.start([meta, agent_cfg]) is True
+            assert watcher.fileno == fd
+            (agent_cfg / "work-status.yml").write_text("x", encoding="utf-8")
+            assert watcher.drain() is True
+        finally:
+            watcher.stop()
+
 
 class TestDetectsChanges:
     """Every membership / lifecycle move surfaces as a drained event."""

@@ -167,6 +167,20 @@ class TestLifecycleWiring:
             instance._start_container_status_polling()
         instance.set_interval.assert_not_called()  # no timer at all
 
+    def test_seed_runs_after_both_push_sources_are_armed(self) -> None:
+        """No startup blind spot: arm inotify + the event stream, then seed."""
+        _app_mod, app_class = import_app()
+        instance = self._app(app_class)
+        manager = mock.Mock()
+        instance._start_task_watcher = manager.watcher
+        instance._start_container_event_worker = manager.events
+        instance._poll_container_status = manager.seed
+        with mock.patch("terok.lib.core.config.get_tui_container_resync_seconds", return_value=0):
+            instance._start_container_status_polling()
+        # A change between snapshot and first event would be lost if seed ran
+        # first; both push sources must be live before the seed reads state.
+        assert [call[0] for call in manager.mock_calls] == ["watcher", "events", "seed"]
+
     def test_event_worker_skipped_when_stream_unavailable(self) -> None:
         _app_mod, app_class = import_app()
         instance = app_class()
@@ -216,3 +230,73 @@ class TestLifecycleWiring:
         instance.current_project_id = "p1"
         instance._task_watcher = None
         instance._resync_task_watches()  # must not raise
+
+
+class TestStartTaskWatcher:
+    """`_start_task_watcher` arms inotify, or degrades to the resync on failure.
+
+    Every failure path returns ``False`` (the caller then leans on the periodic
+    resync) and leaves no half-armed state — an opened fd is always closed.
+    """
+
+    def _app(self, app_class: type) -> Any:
+        instance = app_class()
+        instance._task_watcher = None
+        instance._task_watch_paths = mock.Mock(return_value=["/meta"])
+        instance._log_debug = mock.Mock()
+        return instance
+
+    def test_success_registers_the_fd_and_keeps_the_watcher(self) -> None:
+        _app_mod, app_class = import_app()
+        instance = self._app(app_class)
+        watcher = mock.Mock(fileno=7)
+        watcher.start.return_value = True
+        loop = mock.Mock()
+        with (
+            mock.patch("terok.tui.task_watcher.TaskWatcher", return_value=watcher),
+            mock.patch("asyncio.get_running_loop", return_value=loop),
+        ):
+            assert instance._start_task_watcher("p1") is True
+        loop.add_reader.assert_called_once_with(7, instance._on_task_dir_changed)
+        assert instance._task_watcher is watcher
+
+    def test_unstartable_watcher_never_attaches(self) -> None:
+        """No inotify (start() False) → no add_reader, no retained watcher."""
+        _app_mod, app_class = import_app()
+        instance = self._app(app_class)
+        watcher = mock.Mock()
+        watcher.start.return_value = False
+        loop = mock.Mock()
+        with (
+            mock.patch("terok.tui.task_watcher.TaskWatcher", return_value=watcher),
+            mock.patch("asyncio.get_running_loop", return_value=loop),
+        ):
+            assert instance._start_task_watcher("p1") is False
+        loop.add_reader.assert_not_called()
+        assert instance._task_watcher is None
+
+    def test_attach_failure_closes_the_fd_and_degrades(self) -> None:
+        """A loop without add_reader support (NotImplementedError) is survived."""
+        _app_mod, app_class = import_app()
+        instance = self._app(app_class)
+        watcher = mock.Mock(fileno=7)
+        watcher.start.return_value = True
+        loop = mock.Mock()
+        loop.add_reader.side_effect = NotImplementedError("loop has no reader support")
+        with (
+            mock.patch("terok.tui.task_watcher.TaskWatcher", return_value=watcher),
+            mock.patch("asyncio.get_running_loop", return_value=loop),
+        ):
+            assert instance._start_task_watcher("p1") is False
+        watcher.stop.assert_called_once()  # the opened fd is closed, not leaked
+        assert instance._task_watcher is None
+
+    def test_watcher_init_failure_degrades(self) -> None:
+        """Even constructing the watcher failing is non-fatal (resync covers it)."""
+        _app_mod, app_class = import_app()
+        instance = self._app(app_class)
+        with mock.patch(
+            "terok.tui.task_watcher.TaskWatcher", side_effect=OSError("no libc")
+        ):
+            assert instance._start_task_watcher("p1") is False
+        assert instance._task_watcher is None
