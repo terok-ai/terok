@@ -650,11 +650,6 @@ class Project:
         return self._config.name
 
     @property
-    def description(self) -> str | None:
-        """Return the optional free-text project description, if set."""
-        return self._config.description
-
-    @property
     def config(self) -> ProjectConfig:
         """Return the underlying configuration value object."""
         return self._config

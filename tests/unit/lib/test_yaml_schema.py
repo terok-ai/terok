@@ -170,6 +170,18 @@ class ProjectIdValidationTests(unittest.TestCase):
         s = RawProjectSection.model_validate({"id": None})
         self.assertIsNone(s.name)
 
+    def test_legacy_id_and_name_map_to_name_and_description(self) -> None:
+        """Pre-rename ``id`` (slug) and ``name`` (display) map to name + description."""
+        s = RawProjectSection.model_validate({"id": "proj", "name": "Pretty Proj"})
+        self.assertEqual(s.name, "proj")
+        self.assertEqual(s.description, "Pretty Proj")
+
+    def test_new_name_and_description(self) -> None:
+        """New-form ``name`` (slug) and ``description`` pass through unchanged."""
+        s = RawProjectSection.model_validate({"name": "proj", "description": "Pretty Proj"})
+        self.assertEqual(s.name, "proj")
+        self.assertEqual(s.description, "Pretty Proj")
+
     def test_uppercase_rejected(self) -> None:
         """Uppercase IDs are rejected."""
         with self.assertRaises(ValidationError):

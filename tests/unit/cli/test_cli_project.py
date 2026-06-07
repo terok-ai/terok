@@ -201,6 +201,21 @@ def test_list_formats_shared_dir_hint(capsys: pytest.CaptureFixture[str]) -> Non
     assert "shared=/shared/x" in capsys.readouterr().out
 
 
+def test_list_prints_description_when_set(capsys: pytest.CaptureFixture[str]) -> None:
+    """A project's optional description renders on its own indented line."""
+    proj = SimpleNamespace(
+        name="p",
+        description="My nice project",
+        security_class="online",
+        upstream_url=None,
+        shared_dir=None,
+        root="/r",
+    )
+    with patch("terok.cli.commands.project.list_projects", return_value=[proj]):
+        _cmd_project_list()
+    assert "My nice project" in capsys.readouterr().out
+
+
 # ---------------------------------------------------------------------------
 # _cmd_project_derive
 # ---------------------------------------------------------------------------
