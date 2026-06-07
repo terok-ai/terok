@@ -295,8 +295,6 @@ class TestStartTaskWatcher:
         """Even constructing the watcher failing is non-fatal (resync covers it)."""
         _app_mod, app_class = import_app()
         instance = self._app(app_class)
-        with mock.patch(
-            "terok.tui.task_watcher.TaskWatcher", side_effect=OSError("no libc")
-        ):
+        with mock.patch("terok.tui.task_watcher.TaskWatcher", side_effect=OSError("no libc")):
             assert instance._start_task_watcher("p1") is False
         assert instance._task_watcher is None
