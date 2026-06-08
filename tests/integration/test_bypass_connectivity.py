@@ -139,14 +139,17 @@ class TestBypassContainerConnectivity:
         """
         pytest.importorskip("terok_sandbox")
 
-        # Simulate what _apply_shield_policy does: call shield.down() on a
-        # container that was started WITHOUT shield pre_start.
-        from terok_sandbox import down as shield_down
+        # Simulate what _apply_shield_policy does: call ShieldManager.down()
+        # on a container that was started WITHOUT shield pre_start — exactly
+        # as the production drop path does (see ``_drop_shield_on_creation``).
+        from terok.lib.integrations.sandbox import ShieldManager
+        from terok.lib.orchestration.task_runners.shield import resolve_container_uuid
 
         with tempfile.TemporaryDirectory() as td:
             task_dir = Path(td)
             try:
-                shield_down(bypass_container, task_dir)
+                container_id = resolve_container_uuid(bypass_container)
+                ShieldManager(task_dir).down(bypass_container, container_id)
             except Exception:
                 pass  # nft missing in alpine, nsenter perms, etc. — tolerable
 

@@ -104,8 +104,7 @@ def shell_test_image(tmp_path_factory: pytest.TempPathFactory) -> Iterator[str]:
     # Reading the raw template and writing it verbatim leaves `{{ BASE_IMAGE }}`
     # and `{% if family ... %}` placeholders un-substituted, so podman build
     # dies at `FROM {{` with "invalid reference format".
-    from terok_executor import stage_scripts, stage_tmux_config
-    from terok_executor.container.build import render_l0
+    from terok_executor.container.build import render_l0, stage_scripts, stage_tmux_config
 
     (build_dir / "L0.Dockerfile").write_text(render_l0())
 

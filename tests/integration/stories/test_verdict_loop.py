@@ -142,7 +142,7 @@ async def test_verdict_loop_blocked_to_allow(
         #    factory returns a NullNotifier in that case, which would
         #    silently swallow the notifications under test.
         notifier = await create_notifier()
-        from terok_clearance import DbusNotifier
+        from terok_clearance.notifications.desktop import DbusNotifier
 
         if not isinstance(notifier, DbusNotifier):
             pytest.skip("DbusNotifier not available on this session bus")
