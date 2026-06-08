@@ -113,6 +113,7 @@ if _HAS_TEXTUAL:
     from .screens import (
         ConfirmDestructiveScreen,
         ProjectDetailsScreen,
+        QuitConfirmScreen,
         ShieldScreen,
         TaskDetailsScreen,
         VaultScreen,
@@ -261,7 +262,7 @@ if _HAS_TEXTUAL:
         """
 
         BINDINGS = [
-            ("q", "quit", "Quit"),
+            ("q", "confirm_quit", "Quit"),
             ("a", "authenticate", "Auth"),
             ("P", "panic", "PANIC"),
             # Vim-style navigation, deliberately hidden from the footer (the
@@ -1420,6 +1421,22 @@ if _HAS_TEXTUAL:
                 exit_on_error=False,
             )
 
+        def action_confirm_quit(self) -> None:
+            """Guard the main-screen ``q``: ask for a second ``q`` before quitting.
+
+            A stray ``q`` on the main screen would otherwise tear down the
+            whole TUI.  Sub-screens bind their own ``q`` to dismiss, so this
+            only intercepts the top-level quit; the command-palette "Quit"
+            still calls [`action_quit`][terok.tui.app.TerokTUI.action_quit]
+            directly.
+            """
+            self.push_screen(QuitConfirmScreen(), self._on_quit_confirmed)
+
+        async def _on_quit_confirmed(self, should_quit: bool | None) -> None:
+            """Quit the TUI when the operator pressed ``q`` a second time."""
+            if should_quit:
+                await self.action_quit()
+
         async def action_quit(self) -> None:
             """Exit the TUI cleanly.
 
@@ -1542,7 +1559,13 @@ if _HAS_TEXTUAL:
             """Add gate, shield, and proxy management to the command palette."""
             from textual.app import SystemCommand
 
-            yield from super().get_system_commands(screen)
+            # Textual's built-in "Keys" command toggles the key panel; rename it
+            # so it doesn't read as a peer of "SSH Key Routing" in the palette.
+            for command in super().get_system_commands(screen):
+                if command.title == "Keys":
+                    yield command._replace(title="Keyboard shortcuts")
+                else:
+                    yield command
             yield SystemCommand(
                 "Run terok setup",
                 "Install or re-apply host shield hooks + the per-container supervisor + desktop entry",
@@ -1562,6 +1585,11 @@ if _HAS_TEXTUAL:
                 "Vault",
                 "Manage vault status and operations",
                 self.action_show_vault,
+            )
+            yield SystemCommand(
+                "SSH Key Routing",
+                "Wire vault SSH keys to projects on a routing matrix; mint and delete keys",
+                self.action_show_key_routing,
             )
             yield SystemCommand(
                 "PANIC — Emergency Kill Switch",
@@ -1664,6 +1692,12 @@ if _HAS_TEXTUAL:
             handler = SHIELD_ACTION_HANDLERS.get(result)
             if handler:
                 await getattr(self, handler)()
+
+        async def action_show_key_routing(self) -> None:
+            """Open the SSH key ↔ project routing matrix."""
+            from .key_routing_screen import KeyRoutingScreen
+
+            await self.push_screen(KeyRoutingScreen())
 
         async def action_show_vault(self) -> None:
             """Open the vault management screen."""

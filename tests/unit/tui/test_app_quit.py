@@ -19,6 +19,7 @@ import pytest
 from textual.worker import WorkerState
 
 from terok.tui.app import TerokTUI
+from terok.tui.screens import QuitConfirmScreen
 
 
 def _worker(state: WorkerState, group: str = "") -> SimpleNamespace:
@@ -88,3 +89,50 @@ class TestActionQuit:
         await TerokTUI.action_quit(quit_stub)
         quit_stub._askpass_service.stop.assert_awaited_once()
         quit_stub.exit.assert_called_once()
+
+
+class TestConfirmQuit:
+    """The main-screen ``q`` asks for a second ``q`` before tearing down the TUI."""
+
+    def test_confirm_quit_opens_the_guard_modal(self) -> None:
+        """``q`` pushes a QuitConfirmScreen rather than quitting outright."""
+        stub = SimpleNamespace(push_screen=MagicMock(), _on_quit_confirmed=object())
+        TerokTUI.action_confirm_quit(stub)
+        screen, callback = stub.push_screen.call_args[0]
+        assert isinstance(screen, QuitConfirmScreen)
+        assert callback is stub._on_quit_confirmed
+
+    @pytest.mark.asyncio
+    async def test_second_q_quits(self) -> None:
+        """A confirmed guard (``True``) runs the real teardown."""
+        stub = SimpleNamespace(action_quit=AsyncMock())
+        await TerokTUI._on_quit_confirmed(stub, True)
+        stub.action_quit.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_any_other_key_does_not_quit(self) -> None:
+        """A dismissed guard (``False``/``None``) leaves the TUI running."""
+        stub = SimpleNamespace(action_quit=AsyncMock())
+        await TerokTUI._on_quit_confirmed(stub, False)
+        await TerokTUI._on_quit_confirmed(stub, None)
+        stub.action_quit.assert_not_awaited()
+
+
+class TestQuitConfirmScreen:
+    """The guard modal quits only on a second ``q``."""
+
+    def test_q_dismisses_true(self) -> None:
+        """Pressing ``q`` confirms the quit and stops the event."""
+        screen = QuitConfirmScreen.__new__(QuitConfirmScreen)
+        screen.dismiss = MagicMock()
+        event = SimpleNamespace(key="q", stop=MagicMock())
+        QuitConfirmScreen.on_key(screen, event)
+        event.stop.assert_called_once()
+        screen.dismiss.assert_called_once_with(True)
+
+    def test_other_key_dismisses_false(self) -> None:
+        """Any other key returns to terok without quitting."""
+        screen = QuitConfirmScreen.__new__(QuitConfirmScreen)
+        screen.dismiss = MagicMock()
+        QuitConfirmScreen.on_key(screen, SimpleNamespace(key="x", stop=MagicMock()))
+        screen.dismiss.assert_called_once_with(False)

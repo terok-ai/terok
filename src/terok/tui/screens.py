@@ -1694,6 +1694,41 @@ class ConfirmDestructiveScreen(screen.ModalScreen[bool]):
         self.dismiss(False)
 
 
+class QuitConfirmScreen(screen.ModalScreen[bool]):
+    """Second-``q`` guard so a stray keystroke can't kill the whole TUI.
+
+    Dismisses with ``True`` when the operator presses ``q`` again, and
+    ``False`` on any other key — closing menus and screens with ``q``
+    stays a single press; only quitting the app needs ``qq``.
+    """
+
+    CSS = """
+    QuitConfirmScreen {
+        align: center middle;
+    }
+    #quit-confirm {
+        width: auto;
+        height: auto;
+        border: round $primary;
+        background: $surface;
+        padding: 1 2;
+    }
+    """
+
+    def compose(self) -> ComposeResult:
+        """A single centred prompt; the ``q`` shortcut wears the footer key colour."""
+        yield Static(
+            "Press \\[[$footer-key-foreground]q[/]] again to quit,\n"
+            "any other key to go back to terok.",
+            id="quit-confirm",
+        )
+
+    def on_key(self, event: events.Key) -> None:
+        """Quit on a second ``q``; any other key returns to terok."""
+        event.stop()
+        self.dismiss(event.key == "q")
+
+
 class TaskDetailsScreen(screen.Screen[str | None]):
     """Full-page detail screen for a task with categorized actions."""
 

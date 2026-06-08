@@ -89,6 +89,7 @@ depends_on = [
     "terok.lib.api.project",
     "terok.lib.api.setup",
     "terok.lib.api.shield",
+    "terok.lib.api.ssh_routing",
     "terok.lib.api.task",
     "terok.lib.api.vault",
     "terok.lib.core.version",
@@ -170,6 +171,16 @@ depends_on = [
 path = "terok.lib.api.vault"
 layer = "domain"
 depends_on = [
+    "terok.lib.domain.vault",
+    "terok.lib.integrations.sandbox",
+]
+
+[[modules]]
+path = "terok.lib.api.ssh_routing"
+layer = "domain"
+depends_on = [
+    "terok.lib.core.projects",
+    "terok.lib.domain.project",
     "terok.lib.domain.vault",
     "terok.lib.integrations.sandbox",
 ]
