@@ -918,16 +918,40 @@ class ProjectActionsMixin(_MixinBase):
         await self.push_screen(VaultUnlockModal(), self._on_vault_unlock_result)
 
     async def _action_vault_lock(self) -> None:
-        """Clear the session-file (reversible).
+        """Lock the vault — clear every stored copy of the passphrase.
 
-        Persistent tiers (keyring, sealed systemd-creds,
-        ``credentials.passphrase``) are intentionally untouched — the
-        TUI's lock action is the reversible one, ``vault lock --forget``
-        from a shell remains the destructive escape hatch.
+        Locking removes the session file *and* every durable tier
+        (keyring, sealed systemd-creds, plaintext config): against a
+        machine-bound tier a soft-lock would just auto-unlock on the next
+        access (the BitLocker-Suspend trap), so the only honest lock is
+        eviction.  Reversible only by re-supplying the passphrase, so it's
+        gated behind a confirmation modal — the TUI can't run the shell's
+        typed-``SAVED`` prompt.
         """
+        from .screens import ConfirmDestructiveScreen
+
+        await self.push_screen(
+            ConfirmDestructiveScreen(
+                message=(
+                    "This clears EVERY stored copy of the vault passphrase — the "
+                    "session file, the OS keyring, the sealed systemd-creds "
+                    "credential, and any plaintext config.\n\n"
+                    "You will need your saved passphrase to unlock again. If you "
+                    "have not saved it off-host, the vault becomes unrecoverable."
+                ),
+                title="Lock vault",
+                confirm_label="Lock",
+            ),
+            self._on_vault_lock_confirmed,
+        )
+
+    def _on_vault_lock_confirmed(self, confirmed: bool | None) -> None:
+        """Run the lock worker once the operator confirms the destructive clear."""
+        if not confirmed:
+            return
         self._run_console_action(
             "terok.tui.worker_actions:vault_lock",
-            title="Locking vault (clearing session tier)",
+            title="Locking vault (clearing every stored copy)",
             refresh="vault_status",
         )
 

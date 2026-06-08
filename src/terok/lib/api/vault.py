@@ -33,6 +33,7 @@ from terok.lib.integrations.sandbox import (  # noqa: F401 — re-exported publi
     WrongPassphraseError,
     handle_vault_seal,
     handle_vault_to_keyring,
+    purge_passphrase_tiers,
 )
 
 
@@ -166,5 +167,6 @@ __all__ = [
     "WrongPassphraseError",
     "handle_vault_seal",
     "handle_vault_to_keyring",
+    "purge_passphrase_tiers",
     "vault_db",
 ]

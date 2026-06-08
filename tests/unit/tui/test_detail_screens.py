@@ -2079,16 +2079,35 @@ class TestVaultActionImplementations:
         assert type(modal_arg).__name__ == "VaultUnlockModal"
         assert callback_arg is instance._on_vault_unlock_result
 
-    def test_lock_dispatches_vault_lock(self) -> None:
-        """``_action_vault_lock`` dispatches the vault_lock worker action + refreshes status."""
+    def test_lock_pushes_confirm_modal(self) -> None:
+        """``_action_vault_lock`` gates the destructive clear behind a confirmation modal."""
         mixin = self._get_mixin()
         instance = mock.Mock(spec=mixin)
+        instance.push_screen = mock.AsyncMock()
+        instance._on_vault_lock_confirmed = mock.Mock()
         run(mixin._action_vault_lock(instance))
+        instance.push_screen.assert_awaited_once()
+        modal_arg, callback_arg = instance.push_screen.call_args[0]
+        assert type(modal_arg).__name__ == "ConfirmDestructiveScreen"
+        assert callback_arg is instance._on_vault_lock_confirmed
+
+    def test_lock_confirmed_dispatches_worker(self) -> None:
+        """Confirming the modal runs the vault_lock worker + refreshes status."""
+        mixin = self._get_mixin()
+        instance = mock.Mock(spec=mixin)
+        mixin._on_vault_lock_confirmed(instance, True)
         instance._run_console_action.assert_called_once_with(
             "terok.tui.worker_actions:vault_lock",
-            title="Locking vault (clearing session tier)",
+            title="Locking vault (clearing every stored copy)",
             refresh="vault_status",
         )
+
+    def test_lock_cancelled_does_nothing(self) -> None:
+        """Declining (or dismissing) the modal must not touch the vault."""
+        mixin = self._get_mixin()
+        instance = mock.Mock(spec=mixin)
+        mixin._on_vault_lock_confirmed(instance, False)
+        instance._run_console_action.assert_not_called()
 
     def test_seal_dispatches_vault_seal(self) -> None:
         """``_action_vault_seal`` dispatches the vault_seal worker action + refreshes status."""

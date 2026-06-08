@@ -339,52 +339,39 @@ class TestRaiseShield:
 
 
 class TestStopVault:
-    """Tests for _stop_vault — the panic "wipe the session-unlock tier" step.
+    """Tests for _stop_vault — the panic hard-lock step.
 
     Vault is no longer a host daemon — supervisors stop with the
-    containers panic kills.  The host's only job is to wipe the
-    session-unlock tmpfs file so a follow-up restart can't auto-resume
-    from the same passphrase the operator just panic'd over.
+    containers panic kills.  Panic assumes the worst, so the host
+    *destroys every stored copy* of the passphrase (a machine-bound tier
+    left in place would auto-unlock on next access).  Recovery is by
+    re-supplying the passphrase the operator was required to save.
     """
 
-    def test_success_when_file_missing(self, tmp_path) -> None:
-        """No session file → still succeeds; missing_ok=True covers the cold-start path."""
+    def test_success_purges_every_tier(self) -> None:
+        """Panic delegates to ``purge_passphrase_tiers`` with the resolved cfg."""
         from terok.lib.domain.panic import _stop_vault
 
-        missing = tmp_path / "never-created.passphrase"
         fake_cfg = MagicMock()
-        fake_cfg.vault_passphrase_file = missing
-        with patch("terok.lib.integrations.sandbox.SandboxConfig", return_value=fake_cfg):
+        with (
+            patch("terok.lib.core.config.make_sandbox_config", return_value=fake_cfg),
+            patch("terok.lib.integrations.sandbox.purge_passphrase_tiers") as purge,
+        ):
             ok, err = _stop_vault()
         assert ok and err is None
-
-    def test_removes_session_unlock_file(self, tmp_path) -> None:
-        """Panic unlinks the tmpfs session-unlock file.
-
-        Without this, the next supervisor to come up auto-resumes from
-        the session tier — a stopped-container plus an intact session
-        passphrase defeats the point of pressing PANIC.
-        """
-        from terok.lib.domain.panic import _stop_vault
-
-        passphrase_file = tmp_path / "vault.passphrase"
-        passphrase_file.write_text("not-a-real-passphrase\n", encoding="utf-8")
-        fake_cfg = MagicMock()
-        fake_cfg.vault_passphrase_file = passphrase_file
-        with patch("terok.lib.integrations.sandbox.SandboxConfig", return_value=fake_cfg):
-            ok, err = _stop_vault()
-        assert ok and err is None
-        assert not passphrase_file.exists()
+        purge.assert_called_once_with(fake_cfg)
 
     def test_failure_returns_error(self) -> None:
-        """Any exception during unlink → returns the error."""
+        """Any exception during the purge → returns the error, doesn't raise."""
         from terok.lib.domain.panic import _stop_vault
 
-        bad_path = MagicMock()
-        bad_path.unlink.side_effect = OSError("permission denied")
-        fake_cfg = MagicMock()
-        fake_cfg.vault_passphrase_file = bad_path
-        with patch("terok.lib.integrations.sandbox.SandboxConfig", return_value=fake_cfg):
+        with (
+            patch("terok.lib.core.config.make_sandbox_config", return_value=MagicMock()),
+            patch(
+                "terok.lib.integrations.sandbox.purge_passphrase_tiers",
+                side_effect=OSError("permission denied"),
+            ),
+        ):
             ok, err = _stop_vault()
         assert not ok and "permission denied" in err
 
@@ -420,11 +407,9 @@ class TestFormatReport:
         r = PanicResult(shields_raised=["c1"], vault_stopped=True, total_running=1)
         report = format_panic_report(r)
         assert "FAILED" not in report
-        # The label states exactly what panic did: wipe the session-unlock
-        # tmpfs tier.  Persistent tiers (keyring, systemd-creds) stay,
-        # and the running supervisors die with their containers — so
-        # claiming the vault is "locked" would overclaim.
-        assert "session tier wiped" in report
+        # Panic hard-locks: every stored copy of the passphrase is destroyed,
+        # so the vault is genuinely shut until the operator re-supplies it.
+        assert "passphrase destroyed" in report
 
     def test_errors(self):
         """Failures shown."""

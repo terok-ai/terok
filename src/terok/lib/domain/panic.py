@@ -105,7 +105,8 @@ def execute_panic(
 
     Discovers every running container, then (in parallel) raises shields,
     kills the per-container supervisors (which also stops each container's
-    embedded gate), and wipes the session passphrase.  If *stop_containers*,
+    embedded gate), and destroys every stored copy of the vault
+    passphrase (hard-lock).  If *stop_containers*,
     also SIGKILLs the containers afterwards (they are not removed).
     """
     result = PanicResult()
@@ -147,7 +148,7 @@ def format_panic_report(result: PanicResult) -> str:
         f"Containers found: {result.total_running}",
         _format_shield_status(result),
         sup,
-        f"Vault: {'session tier wiped' if result.vault_stopped else 'FAILED'}",
+        f"Vault: {'passphrase destroyed (re-supply to unlock)' if result.vault_stopped else 'FAILED'}",
     ]
 
     if result.containers_stopped:
@@ -301,25 +302,23 @@ def _kill_supervisors() -> list[tuple[str, str | None]]:
 
 
 def _stop_vault() -> tuple[bool, str | None]:
-    """Clear the session-unlock tier so future supervisors can't auto-resume.
+    """Hard-lock the vault: destroy every stored copy of the passphrase.
 
-    Each container's supervisor embeds its own vault proxy and dies
-    with the container, so panic's container kill is what stops vault
-    access for any container that's actually running.  All the host needs to do is
-    wipe the session-unlock tmpfs file so a follow-up ``task restart``
-    can't bring up a supervisor that auto-unlocks from the same
-    passphrase the operator just panic'd over.
-
-    Persistent tiers (keyring, sealed systemd-creds,
-    ``credentials.passphrase``) are intentionally NOT wiped: panic
-    must stay reversible, and the operator can run
-    ``terok-sandbox vault lock --forget`` afterwards if they want
-    a destructive lockout.
+    Panic assumes the worst, so a half-measure won't do.  Wiping only
+    the session file would leave a machine-bound tier (sealed
+    systemd-creds, keyring, plaintext config) that auto-unlocks the vault
+    on the *next* access — the lock would be theatre.  So panic evicts
+    every tier via
+    [`purge_passphrase_tiers`][terok_sandbox.purge_passphrase_tiers], with
+    no confirmation: the operator was told to save the recovery passphrase
+    off-host (the escrow-before-enable gate enforces it), so the vault is
+    recoverable by re-supplying it — but until then it is genuinely shut.
     """
     from ..core.config import make_sandbox_config
+    from ..integrations.sandbox import purge_passphrase_tiers
 
     try:
-        make_sandbox_config().vault_passphrase_file.unlink(missing_ok=True)
+        purge_passphrase_tiers(make_sandbox_config())
         return True, None
     except Exception as exc:
         return False, str(exc)

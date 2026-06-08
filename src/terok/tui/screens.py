@@ -2454,7 +2454,7 @@ class VaultScreen(screen.Screen[str | None]):
         _modal_binding("escape", "dismiss", "Back"),
         _modal_binding("q", "dismiss", "Back"),
         _modal_binding("n", "vault_unlock", "Unlock (session-file tier)"),
-        _modal_binding("l", "vault_lock", "Lock (clear session-file)"),
+        _modal_binding("l", "vault_lock", "Lock (clear all tiers)"),
         _modal_binding("e", "vault_seal", "Seal into systemd-creds"),
         _modal_binding("k", "vault_to_keyring", "Move passphrase to keyring"),
         _modal_binding("v", "vault_reveal", "Reveal recovery passphrase"),
@@ -2486,7 +2486,7 @@ class VaultScreen(screen.Screen[str | None]):
 
         yield OptionList(
             Option("u\\[n]lock (write to session-file tier)", id="vault_unlock"),
-            Option("\\[l]ock (clear session-file)", id="vault_lock"),
+            Option("\\[l]ock (clear all tiers)", id="vault_lock"),
             Option("s\\[e]al current passphrase into systemd-creds", id="vault_seal"),
             Option("move passphrase to \\[k]eyring", id="vault_to_keyring"),
             None,

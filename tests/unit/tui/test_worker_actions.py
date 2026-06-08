@@ -103,23 +103,15 @@ def test_shield_setup_installs() -> None:
 # ── Vault ─────────────────────────────────────────────────────────────
 
 
-def test_vault_lock_unlinks_session_file(tmp_path: Path) -> None:
-    """``vault_lock`` removes the session-tier passphrase file."""
-    passphrase_file = tmp_path / "vault.passphrase"
-    passphrase_file.write_text("not-a-real-passphrase\n", encoding="utf-8")
+def test_vault_lock_purges_every_tier(tmp_path: Path) -> None:
+    """``vault_lock`` clears every stored copy via ``purge_passphrase_tiers``."""
     cfg = mock.Mock()
-    cfg.vault_passphrase_file = passphrase_file
-    with mock.patch("terok.lib.api.make_sandbox_config", return_value=cfg):
+    with (
+        mock.patch("terok.lib.api.make_sandbox_config", return_value=cfg),
+        mock.patch("terok.lib.api.vault.purge_passphrase_tiers") as purge,
+    ):
         worker_actions.vault_lock()
-    assert not passphrase_file.exists()
-
-
-def test_vault_lock_tolerates_missing_session_file(tmp_path: Path) -> None:
-    """No session-file on disk is the cold-start path — must not raise."""
-    cfg = mock.Mock()
-    cfg.vault_passphrase_file = tmp_path / "never-created.passphrase"
-    with mock.patch("terok.lib.api.make_sandbox_config", return_value=cfg):
-        worker_actions.vault_lock()
+    purge.assert_called_once_with(cfg)
 
 
 def test_vault_seal_calls_handle_with_key_auto() -> None:

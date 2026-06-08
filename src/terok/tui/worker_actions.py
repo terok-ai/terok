@@ -151,16 +151,19 @@ def shield_setup() -> None:
 
 
 def vault_lock() -> None:
-    """Clear the session-tier passphrase file (reversible).
+    """Lock the vault — clear every stored copy of the passphrase.
 
-    Persistent tiers (keyring, sealed systemd-creds,
-    ``credentials.passphrase``) are intentionally NOT touched — those
-    are setup-time decisions the operator opts out of via the explicit
-    ``terok-sandbox vault lock --forget`` destructive verb.
+    Removes the session file *and* every durable tier (keyring, sealed
+    systemd-creds, plaintext config): against a machine-bound tier a
+    soft-lock would just auto-unlock on the next access.  Reversible only
+    by re-supplying the passphrase — the action gates this behind a
+    confirmation modal (see ``_action_vault_lock``), so this worker runs
+    only after the operator has agreed.
     """
     from terok.lib.api import make_sandbox_config
+    from terok.lib.api.vault import purge_passphrase_tiers
 
-    make_sandbox_config().vault_passphrase_file.unlink(missing_ok=True)
+    purge_passphrase_tiers(make_sandbox_config())
 
 
 def vault_seal() -> None:
