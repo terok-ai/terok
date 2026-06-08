@@ -799,6 +799,71 @@ class TestSickbayDispatch:
         containers.assert_not_called()
 
 
+class TestCmdSickbayFullRun:
+    """The non-``--system`` path: host checks, then the per-container walk."""
+
+    @staticmethod
+    def _patch_walk(sb, *, hooks=(), annotations=()):
+        """Patch the three per-container walk helpers with canned results."""
+        return (
+            unittest.mock.patch.object(sb, "_check_unfired_hooks", return_value=list(hooks)),
+            unittest.mock.patch.object(
+                sb, "_check_shield_annotations", return_value=list(annotations)
+            ),
+            unittest.mock.patch.object(sb, "_stream_containers"),
+        )
+
+    def test_full_run_streams_walk_after_globals(self, capsys: pytest.CaptureFixture[str]) -> None:
+        """A plain run prints the separator, emits walk rows, and runs the container doctor."""
+        from terok.cli.commands import sickbay as sb
+
+        walk_hooks, walk_annos, stream = self._patch_walk(
+            sb,
+            hooks=[("warn", "Hooks", "unfired post_stop")],
+            annotations=[("ok", "Shield annotation", "matches")],
+        )
+        with (
+            unittest.mock.patch.object(
+                sb, "_GLOBAL_CHECKS", [("Fake", lambda: ("ok", "Fake", "fine"))]
+            ),
+            walk_hooks,
+            walk_annos,
+            stream as containers,
+            pytest.raises(SystemExit) as exc,  # a "warn" row forces exit 1
+        ):
+            sb._cmd_sickbay()
+        assert exc.value.code == 1
+        containers.assert_called_once()
+        out = capsys.readouterr().out
+        assert "unfired post_stop" in out
+
+    def test_single_task_emits_consistent_summary(self, capsys: pytest.CaptureFixture[str]) -> None:
+        """A clean single-task run appends the ``consistent`` summary line."""
+        from terok.cli.commands import sickbay as sb
+
+        h, a, s = self._patch_walk(sb)
+        with h, a, s:
+            sb._cmd_sickbay(project_name="alpha", task_id="t1")
+        assert "Task alpha/t1" in capsys.readouterr().out
+
+    def test_error_row_exits_2(self) -> None:
+        """An ``error`` from any check sets exit code 2."""
+        from terok.cli.commands import sickbay as sb
+
+        h, a, s = self._patch_walk(sb)
+        with (
+            unittest.mock.patch.object(
+                sb, "_GLOBAL_CHECKS", [("Bad", lambda: ("error", "Bad", "boom"))]
+            ),
+            h,
+            a,
+            s,
+            pytest.raises(SystemExit) as exc,
+        ):
+            sb._cmd_sickbay()
+        assert exc.value.code == 2
+
+
 class TestCheckUnfiredHooks:
     """``_check_unfired_hooks`` walks projects and flags pending post_stop hooks."""
 
