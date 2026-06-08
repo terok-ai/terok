@@ -30,6 +30,16 @@ Python packages.
   <img src="https://terok-ai.github.io/terok/img/architecture.svg" alt="terok ecosystem at a glance">
 </p>
 
+<p align="right">
+Terok was started at the <a href="https://www.casus.science/">Center for Advanced Systems Understanding (CASUS)</a> <br>
+an institute of <a href="https://www.hzdr.de/">Helmholtz-Zentrum Dresden-Rossendorf (HZDR)</a> <br>
+    <a href="https://www.casus.science" target="_blank"><img src="docs/casus-logo.png" alt="CASUS" width="120"></a>
+    <a href="https://www.hzdr.de" target="_blank"><img src="docs/hzdr-logo.png" alt="HZDR" width="120"></a> <br>
+    <a href="https://helmholtz.software/software/terok" target="_blank">see also HELMHOLTZ.software</a>
+    
+</p>
+
+
 ## What you get
 
 ### Hardening
