@@ -10,6 +10,13 @@ Scoping:
 - ``terok sickbay`` — all projects
 - ``terok sickbay <project>`` — single project
 - ``terok sickbay <project> <task>`` — single task
+- ``terok sickbay --system`` — host-wide checks only (shield, vault,
+  recovery, ssh signer, selinux, default agents); skips the slow
+  per-container walk.  Mutually exclusive with a project/task scope.
+
+``--fix`` is orthogonal to scope and auto-remediates (e.g. unfired
+post_stop hooks); it has no effect under ``--system``, which runs no
+container-level checks.  Exit codes are unchanged by either flag.
 
 Exit codes:
 - 0: all checks passed
