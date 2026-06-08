@@ -86,10 +86,12 @@ class RawProjectSection(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    id: str | None = Field(
-        default=None, description="Unique project identifier (lowercase, ``[a-z0-9_-]``)"
+    name: str | None = Field(
+        default=None, description="Unique project name / slug (lowercase, ``[a-z0-9_-]``)"
     )
-    name: str | None = Field(default=None, description="Human-readable project name (display only)")
+    description: str | None = Field(
+        default=None, description="Free-text, human-readable project description (display only)"
+    )
     security_class: str = Field(
         default="gatekeeping",
         description="Security mode: ``gatekeeping`` (gated mirror, default) or ``online`` (direct push)",
@@ -98,19 +100,24 @@ class RawProjectSection(BaseModel):
         default="shared", description="shared (bind mounts) or sealed (no mounts)"
     )
 
-    @field_validator("id")
+    @model_validator(mode="before")
     @classmethod
-    def _validate_id(cls, v: str | None) -> str | None:
-        """Validate project ID format when explicitly set."""
-        if v is None:
-            return None
-        import re
+    def _accept_legacy_keys(cls, data: Any) -> Any:
+        """Read pre-rename ``id`` / ``name`` keys from older ``project.yml`` files.
 
-        if not re.fullmatch(r"[a-z0-9][a-z0-9_-]*", v):
-            raise ValueError(
-                f"must match [a-z0-9][a-z0-9_-]* (lowercase, no path separators), got {v!r}"
-            )
-        return v
+        Before the rename, ``id`` was the slug and ``name`` a free-text display
+        label.  Now ``name`` is the slug and ``description`` the label.  When the
+        legacy ``id`` key is present we treat the file as pre-rename: its ``id``
+        becomes ``name`` and any old ``name`` becomes ``description``.  New files
+        (no ``id`` key) pass through untouched.
+        """
+        if isinstance(data, dict) and "id" in data:
+            data = dict(data)
+            legacy_slug = data.pop("id")
+            if data.get("name") is not None and data.get("description") is None:
+                data["description"] = data["name"]
+            data["name"] = legacy_slug
+        return data
 
     @field_validator("security_class")
     @classmethod

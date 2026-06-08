@@ -116,7 +116,7 @@ CONTAINER_CLAUDE_SESSION_PATH = CONTAINER_TEROK_DIR / "claude-session.txt"
 CONTAINER_TEROK_MOUNT_Z = f"{CONTAINER_TEROK_DIR}:Z"
 """Bind-mount fragment for the container terok directory with SELinux relabeling."""
 
-CONTAINER_CLAUDE_MEMORY_OVERRIDE = "/home/dev/.claude/projects/${PROJECT_ID}-workspace/memory"
+CONTAINER_CLAUDE_MEMORY_OVERRIDE = "/home/dev/.claude/projects/${PROJECT_NAME}-workspace/memory"
 """Literal shell path used in generated Claude wrapper memory override assertions."""
 
 WORKSPACE_ROOT = Path("/workspace")
@@ -137,6 +137,6 @@ STATE_ROOT_NAME = "state"
 """Temporary terok state root name used by integration fixtures."""
 
 
-def mock_wizard_project_file(project_id: str) -> Path:
-    """Return a fake wizard output path for ``project_id``."""
-    return FAKE_WIZARD_PROJECTS_DIR / project_id / "project.yml"
+def mock_wizard_project_file(project_name: str) -> Path:
+    """Return a fake wizard output path for ``project_name``."""
+    return FAKE_WIZARD_PROJECTS_DIR / project_name / "project.yml"

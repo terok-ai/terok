@@ -49,7 +49,7 @@ def test_render_project_details_handles_instructions_probe_failure() -> None:
     file present".  Covers project_state.py:159-162.
     """
     project = MagicMock()
-    project.id = "demo"
+    project.name = "demo"
     project.upstream_url = None
     project.security_class = "online"
     project.agents = []

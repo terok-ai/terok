@@ -17,9 +17,9 @@ def _mock_load_project():
     """Skip real project resolution — these tests care about exec dispatch only.
 
     ``container_git_diff`` resolves the per-project runtime via
-    ``load_project(project_id)`` so it can route through krun's
+    ``load_project(project_name)`` so it can route through krun's
     SSH-over-passt-TCP transport when needed.  Every test here passes
-    fake project IDs and patches ``resolve_runtime`` (via the autouse
+    fake project names and patches ``resolve_runtime`` (via the autouse
     ``mock_runtime``) to ignore the actual project, so we just need
     ``load_project`` not to raise on a non-existent ID.
     """

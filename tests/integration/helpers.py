@@ -154,47 +154,47 @@ class TerokIntegrationEnv:
 
     def write_project(
         self,
-        project_id: str,
+        project_name: str,
         yaml_text: str,
         *,
         scope: ProjectScope = "user",
     ) -> Path:
-        """Write ``project.yml`` for *project_id* under the requested scope."""
-        project_root = self._projects_root(scope) / project_id
+        """Write ``project.yml`` for *project_name* under the requested scope."""
+        project_root = self._projects_root(scope) / project_name
         project_root.mkdir(parents=True, exist_ok=True)
         content = textwrap.dedent(yaml_text).strip() + "\n"
         (project_root / PROJECT_FILENAME).write_text(content, encoding="utf-8")
         return project_root
 
-    def project_root(self, project_id: str, *, scope: ProjectScope = "user") -> Path:
-        """Return the project root path for *project_id* in the requested scope."""
-        return self._projects_root(scope) / project_id
+    def project_root(self, project_name: str, *, scope: ProjectScope = "user") -> Path:
+        """Return the project root path for *project_name* in the requested scope."""
+        return self._projects_root(scope) / project_name
 
-    def tasks_root(self, project_id: str) -> Path:
-        """Return the live task workspace root for *project_id*."""
-        return self.sandbox_live_root / "tasks" / project_id
+    def tasks_root(self, project_name: str) -> Path:
+        """Return the live task workspace root for *project_name*."""
+        return self.sandbox_live_root / "tasks" / project_name
 
-    def task_dir(self, project_id: str, task_id: str) -> Path:
+    def task_dir(self, project_name: str, task_id: str) -> Path:
         """Return the task directory for *task_id*."""
-        return self.tasks_root(project_id) / task_id
+        return self.tasks_root(project_name) / task_id
 
-    def task_workspace(self, project_id: str, task_id: str) -> Path:
+    def task_workspace(self, project_name: str, task_id: str) -> Path:
         """Return the task workspace directory for *task_id*."""
-        return self.task_dir(project_id, task_id) / WORKSPACE_DIRNAME
+        return self.task_dir(project_name, task_id) / WORKSPACE_DIRNAME
 
-    def task_meta_dir(self, project_id: str) -> Path:
+    def task_meta_dir(self, project_name: str) -> Path:
         """Return the metadata directory for project tasks."""
-        return self.state_root / "projects" / project_id / "tasks"
+        return self.state_root / "projects" / project_name / "tasks"
 
-    def task_meta_path(self, project_id: str, task_id: str) -> Path:
+    def task_meta_path(self, project_name: str, task_id: str) -> Path:
         """Return the metadata YAML path for *task_id*."""
-        return self.task_meta_dir(project_id) / f"{task_id}_meta.yml"
+        return self.task_meta_dir(project_name) / f"{task_id}_meta.yml"
 
-    def task_dossier_path(self, project_id: str, task_id: str) -> Path:
+    def task_dossier_path(self, project_name: str, task_id: str) -> Path:
         """Return the wire-dossier JSON path for *task_id*."""
-        return self.task_meta_dir(project_id) / f"{task_id}_dossier.json"
+        return self.task_meta_dir(project_name) / f"{task_id}_dossier.json"
 
-    def task_meta(self, project_id: str, task_id: str) -> dict:
+    def task_meta(self, project_name: str, task_id: str) -> dict:
         """Return the merged on-disk task meta — dossier (JSON) ∪ bookkeeping (YAML).
 
         Mirrors the in-memory shape ``read_task_meta`` produces for terok
@@ -205,26 +205,26 @@ class TerokIntegrationEnv:
         from ruamel.yaml import YAML
 
         result: dict = {}
-        yml = self.task_meta_path(project_id, task_id)
+        yml = self.task_meta_path(project_name, task_id)
         if yml.is_file():
             data = YAML(typ="rt").load(yml.read_text(encoding="utf-8")) or {}
             result.update({str(k): v for k, v in data.items()})
-        dossier = self.task_dossier_path(project_id, task_id)
+        dossier = self.task_dossier_path(project_name, task_id)
         if dossier.is_file():
             text = dossier.read_text(encoding="utf-8")
             wire = json.loads(text) if text.strip() else {}
-            for src, dst in (("project", "project_id"), ("task", "task_id"), ("name", "name")):
+            for src, dst in (("project", "project_name"), ("task", "task_id"), ("name", "name")):
                 if wire.get(src):
                     result[dst] = wire[src]
         return result
 
-    def task_archive_root(self, project_id: str) -> Path:
+    def task_archive_root(self, project_name: str) -> Path:
         """Return the archive root for deleted tasks."""
-        return self.base_dir / "archive" / project_id / "tasks"
+        return self.base_dir / "archive" / project_name / "tasks"
 
-    def gate_path(self, project_id: str) -> Path:
-        """Return the host-side gate mirror path for ``project_id``."""
-        return self.sandbox_state_root / "gate" / f"{project_id}.git"
+    def gate_path(self, project_name: str) -> Path:
+        """Return the host-side gate mirror path for ``project_name``."""
+        return self.sandbox_state_root / "gate" / f"{project_name}.git"
 
 
 def _hook_diagnostics(extra_args: list[str]) -> str:

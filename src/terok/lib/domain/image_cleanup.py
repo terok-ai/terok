@@ -47,7 +47,7 @@ class ImageInfo:
 
         Podman labels every locally-built image with a ``localhost/`` registry
         prefix.  terok's classification (global vs L2) and project lookups key
-        off bare project ids, so callers compare against this property rather
+        off bare project names, so callers compare against this property rather
         than the raw [`repository`][terok.lib.domain.image_cleanup.ImageInfo.repository] string.
         """
         return self.repository.removeprefix("localhost/")
@@ -73,15 +73,15 @@ class CleanupResult:
     dry_run: bool
 
 
-def _known_project_ids() -> set[str] | None:
-    """Return the set of currently configured project IDs, or None on failure.
+def _known_project_names() -> set[str] | None:
+    """Return the set of currently configured project names, or None on failure.
 
     Returning None (rather than an empty set) lets callers distinguish
     "no projects configured" from "project discovery failed", preventing
     accidental deletion of valid L2 images.
     """
     try:
-        return {p.id for p in list_projects()}
+        return {p.name for p in list_projects()}
     except Exception as exc:
         from ..util.logging_utils import log_warning
 
@@ -106,11 +106,11 @@ def _is_terok_image(repo: str, tag: str) -> bool:
     return _is_terok_l2_image(repo, tag)
 
 
-def list_images(project_id: str | None = None) -> list[ImageInfo]:
+def list_images(project_name: str | None = None) -> list[ImageInfo]:
     """List terok-managed images, optionally filtered by project.
 
     Args:
-        project_id: If given, only show images for this project.
+        project_name: If given, only show images for this project.
 
     Returns:
         List of ImageInfo objects for matching images.
@@ -120,9 +120,9 @@ def list_images(project_id: str | None = None) -> list[ImageInfo]:
         repo = image.repository.removeprefix("localhost/")
         if not _is_terok_image(repo, image.tag):
             continue
-        if project_id is not None:
+        if project_name is not None:
             # Filter: L2 images must match the project; L0/L1 always shown
-            if _is_terok_l2_image(repo, image.tag) and repo != project_id:
+            if _is_terok_l2_image(repo, image.tag) and repo != project_name:
                 continue
         images.append(ImageInfo.from_image(image))
     return images
@@ -135,7 +135,7 @@ def find_orphaned_images() -> list[ImageInfo]:
     - Dangling images (``<none>:<none>``) from terok layer rebuilds
     - L2 project images whose project no longer exists in the config
     """
-    known_ids = _known_project_ids()
+    known_ids = _known_project_names()
 
     # Dangling images that descended from terok base layers
     dangling = _find_dangling_terok_images()

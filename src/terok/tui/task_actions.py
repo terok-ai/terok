@@ -61,17 +61,17 @@ else:
 _INITIAL_PROMPT_FILENAME = "initial-prompt.txt"
 
 
-def _save_initial_prompt(project_id: str, task_id: str, prompt: str | None) -> None:
+def _save_initial_prompt(project_name: str, task_id: str, prompt: str | None) -> None:
     """Persist the user's initial prompt to the task's mounted agent-config dir."""
     if not prompt:
         return
-    path = agent_config_dir(project_id, task_id) / _INITIAL_PROMPT_FILENAME
+    path = agent_config_dir(project_name, task_id) / _INITIAL_PROMPT_FILENAME
     path.write_text(prompt + "\n", encoding="utf-8")
 
 
-def _login_title(project_id: str, task_id: str, task_name: str) -> str:
+def _login_title(project_name: str, task_id: str, task_name: str) -> str:
     """Build a unified terminal/tmux title for task login sessions."""
-    return f"{project_id}:{task_id}:{task_name}"
+    return f"{project_name}:{task_id}:{task_name}"
 
 
 def _shield_up(cname: str, task_dir: Path) -> None:
@@ -109,7 +109,7 @@ class TaskActionsMixin(_MixinBase):
 
     if TYPE_CHECKING:
         # TerokTUI-specific state and helpers (not on textual.App).
-        current_project_id: str | None
+        current_project_name: str | None
         current_task: Any
         _last_selected_tasks: dict[str, str]
         _deleting_tasks: set[tuple[str, str]]
@@ -136,50 +136,50 @@ class TaskActionsMixin(_MixinBase):
         def _launch_terminal_session(self, *args: Any, **kwargs: Any) -> Any: ...
         def _save_selection_state(self) -> None: ...
         def _update_task_details(self) -> None: ...
-        def _mark_launching(self, project_id: str, task_id: str) -> None: ...
-        def _unmark_launching(self, project_id: str, task_id: str) -> None: ...
+        def _mark_launching(self, project_name: str, task_id: str) -> None: ...
+        def _unmark_launching(self, project_name: str, task_id: str) -> None: ...
 
     # ---------- Helpers ----------
 
-    def _focus_task_after_creation(self, project_id: str, task_id: str) -> None:
+    def _focus_task_after_creation(self, project_name: str, task_id: str) -> None:
         """Persist selection so the newly created task is focused after refresh."""
-        self._last_selected_tasks[project_id] = task_id
+        self._last_selected_tasks[project_name] = task_id
         self._save_selection_state()
 
     # ---------- Worker helpers ----------
 
-    def _queue_task_delete(self, project_id: str, task_id: str, task_name: str) -> None:
+    def _queue_task_delete(self, project_name: str, task_id: str, task_name: str) -> None:
         """Schedule a background worker to delete a task."""
-        self._deleting_tasks.add((project_id, task_id))
+        self._deleting_tasks.add((project_name, task_id))
         self.run_worker(
-            lambda: self._delete_task(project_id, task_id, task_name),
-            name=f"task-delete:{project_id}:{task_id}",
+            lambda: self._delete_task(project_name, task_id, task_name),
+            name=f"task-delete:{project_name}:{task_id}",
             group="task-delete",
             thread=True,
             exit_on_error=False,
         )
 
     def _delete_task(
-        self, project_id: str, task_id: str, task_name: str
+        self, project_name: str, task_id: str, task_name: str
     ) -> tuple[str, str, str, str | None, list[str]]:
-        """Delete a task and return ``(project_id, task_id, task_name, error, warnings)``."""
+        """Delete a task and return ``(project_name, task_id, task_name, error, warnings)``."""
         try:
-            result = task_delete(project_id, task_id)
-            return project_id, task_id, task_name, None, result.warnings
+            result = task_delete(project_name, task_id)
+            return project_name, task_id, task_name, None, result.warnings
         except SystemExit as e:
-            return project_id, task_id, task_name, str(e), []
+            return project_name, task_id, task_name, str(e), []
         except Exception as e:
-            return project_id, task_id, task_name, str(e), []
+            return project_name, task_id, task_name, str(e), []
 
     # ---------- Task lifecycle actions ----------
 
     async def _action_task_start_cli(self) -> None:
         """Create a new task and immediately run CLI agent."""
-        if not self.current_project_id:
+        if not self.current_project_name:
             self.notify("No project selected.")
             return
 
-        default_name = generate_task_name(self.current_project_id)
+        default_name = generate_task_name(self.current_project_name)
         await self.push_screen(
             TaskNameScreen(default_name=default_name),
             self._on_task_start_cli_name,
@@ -187,7 +187,7 @@ class TaskActionsMixin(_MixinBase):
 
     async def _on_task_start_cli_name(self, name: str | None) -> None:
         """Handle name result from TaskNameScreen for CLI task start."""
-        if name is None or not self.current_project_id:
+        if name is None or not self.current_project_name:
             return
         await self._start_cli_task_background(name)
 
@@ -203,7 +203,7 @@ class TaskActionsMixin(_MixinBase):
         runs in a worker and fills the dropdown when it returns.  This
         keeps the prompt TextArea instantly typeable.
         """
-        pid = self.current_project_id
+        pid = self.current_project_name
         if not pid:
             return
         try:
@@ -250,7 +250,7 @@ class TaskActionsMixin(_MixinBase):
 
         launch_screen = TaskLaunchScreen(
             container_name=cname,
-            project_id=pid,
+            project_name=pid,
             task_id=task_id,
             task_name=name,
             default_shell=default_shell,
@@ -277,7 +277,7 @@ class TaskActionsMixin(_MixinBase):
         except (SystemExit, Exception) as exc:
             self._log_debug(
                 f"_fill_installed_agents: agents lookup failed for project "
-                f"{getattr(project, 'id', '?')!r}; dropdown will show all. {exc}"
+                f"{getattr(project, 'name', '?')!r}; dropdown will show all. {exc}"
             )
             installed = frozenset()
         launch_screen.set_installed(installed)
@@ -329,11 +329,11 @@ class TaskActionsMixin(_MixinBase):
 
     async def _action_task_start_toad(self) -> None:
         """Create a new task and immediately run Toad serve."""
-        if not self.current_project_id:
+        if not self.current_project_name:
             self.notify("No project selected.")
             return
 
-        default_name = generate_task_name(self.current_project_id)
+        default_name = generate_task_name(self.current_project_name)
         await self.push_screen(
             TaskNameScreen(default_name=default_name),
             self._on_task_start_toad_name,
@@ -341,7 +341,7 @@ class TaskActionsMixin(_MixinBase):
 
     async def _on_task_start_toad_name(self, name: str | None) -> None:
         """Handle name result from TaskNameScreen for Toad task start."""
-        if name is None or not self.current_project_id:
+        if name is None or not self.current_project_name:
             return
         await self._start_toad_task_background(name)
 
@@ -351,7 +351,7 @@ class TaskActionsMixin(_MixinBase):
         The container start runs as a captured ConsoleLog entry \u2014 view
         it from the ``Console output`` command if it needs inspecting.
         """
-        pid = self.current_project_id
+        pid = self.current_project_name
         if not pid:
             return
         try:
@@ -386,12 +386,12 @@ class TaskActionsMixin(_MixinBase):
 
     async def _action_task_start_unattended(self) -> None:
         """Create a new task and run Claude headlessly (unattended)."""
-        if not self.current_project_id:
+        if not self.current_project_name:
             self.notify("No project selected.")
             return
 
         # Show name input screen first, then prompt
-        default_name = generate_task_name(self.current_project_id)
+        default_name = generate_task_name(self.current_project_name)
         await self.push_screen(
             TaskNameScreen(default_name=default_name),
             self._on_unattended_name_result,
@@ -401,10 +401,10 @@ class TaskActionsMixin(_MixinBase):
 
     async def _on_unattended_name_result(self, name: str | None) -> None:
         """Handle the name returned from TaskNameScreen for unattended."""
-        if name is None or not self.current_project_id:
+        if name is None or not self.current_project_name:
             return
 
-        pid = self.current_project_id
+        pid = self.current_project_name
 
         # Store the name and show agent selection screen
         self._unattended_pending_name = name
@@ -468,9 +468,9 @@ class TaskActionsMixin(_MixinBase):
 
     async def _launch_unattended(self, prompt: str, agent: str | None = None) -> None:
         """Launch a headless unattended task in a background worker."""
-        if not self.current_project_id:
+        if not self.current_project_name:
             return
-        pid = self.current_project_id
+        pid = self.current_project_name
         name = getattr(self, "_unattended_pending_name", None)
         self._unattended_pending_name = None
         self.notify(f"Starting unattended task for {pid}...")
@@ -484,7 +484,7 @@ class TaskActionsMixin(_MixinBase):
 
     def _run_headless_worker(
         self,
-        project_id: str,
+        project_name: str,
         prompt: str,
         name: str | None = None,
         agent: str | None = None,
@@ -493,43 +493,43 @@ class TaskActionsMixin(_MixinBase):
         try:
             task_id = task_run_headless(
                 HeadlessRunRequest(
-                    project_id=project_id,
+                    project_name=project_name,
                     prompt=prompt,
                     follow=False,
                     name=name,
                     agent=agent,
                 )
             )
-            return project_id, task_id, None
+            return project_name, task_id, None
         except SystemExit as e:
-            return project_id, "", str(e)
+            return project_name, "", str(e)
         except Exception as e:
-            return project_id, "", str(e)
+            return project_name, "", str(e)
 
-    def _start_unattended_watcher(self, project_id: str, task_id: str) -> None:
+    def _start_unattended_watcher(self, project_name: str, task_id: str) -> None:
         """Spawn a background worker that waits for the container to finish
         and updates task metadata with the exit code."""
-        cname = container_name(project_id, "run", task_id)
+        cname = container_name(project_name, "run", task_id)
         self.run_worker(
-            lambda: self._unattended_wait_worker(project_id, task_id, cname),
-            name=f"unattended-wait:{project_id}:{task_id}",
+            lambda: self._unattended_wait_worker(project_name, task_id, cname),
+            name=f"unattended-wait:{project_name}:{task_id}",
             group="unattended-wait",
             thread=True,
             exit_on_error=False,
         )
 
     def _unattended_wait_worker(
-        self, project_id: str, task_id: str, cname: str
+        self, project_name: str, task_id: str, cname: str
     ) -> tuple[str, str, int | None, str | None]:
         """Background worker: wait for the container to exit and update metadata."""
-        exit_code, error = wait_for_container_exit(cname, project_id, task_id)
-        return project_id, task_id, exit_code, error
+        exit_code, error = wait_for_container_exit(cname, project_name, task_id)
+        return project_name, task_id, exit_code, error
 
     # ── Follow-up on completed/failed unattended tasks ──
 
     async def _action_task_followup(self) -> None:
         """Follow up on a completed/failed unattended task with a new prompt."""
-        if not self.current_project_id or not self.current_task:
+        if not self.current_project_name or not self.current_task:
             self.notify("No task selected.")
             return
         task = self.current_task
@@ -544,9 +544,9 @@ class TaskActionsMixin(_MixinBase):
 
     async def _on_followup_prompt_result(self, prompt: str | None) -> None:
         """Handle the prompt returned from follow-up prompt screen."""
-        if not prompt or not self.current_project_id or not self.current_task:
+        if not prompt or not self.current_project_name or not self.current_task:
             return
-        pid = self.current_project_id
+        pid = self.current_project_name
         tid = self.current_task.task_id
         self.notify(f"Sending follow-up to task {tid}...")
         self.run_worker(
@@ -558,20 +558,20 @@ class TaskActionsMixin(_MixinBase):
         )
 
     def _run_followup_worker(
-        self, project_id: str, task_id: str, prompt: str
+        self, project_name: str, task_id: str, prompt: str
     ) -> tuple[str, str, str | None]:
         """Background worker: call task_followup_headless and return result."""
         try:
-            task_followup_headless(project_id, task_id, prompt, follow=False)
-            return project_id, task_id, None
+            task_followup_headless(project_name, task_id, prompt, follow=False)
+            return project_name, task_id, None
         except SystemExit as e:
-            return project_id, task_id, str(e)
+            return project_name, task_id, str(e)
         except Exception as e:
-            return project_id, task_id, str(e)
+            return project_name, task_id, str(e)
 
     async def _action_follow_logs(self) -> None:
         """View logs for a task in the integrated log viewer."""
-        if not self.current_project_id or not self.current_task:
+        if not self.current_project_name or not self.current_task:
             self.notify("No task selected.")
             return
         task = self.current_task
@@ -579,7 +579,7 @@ class TaskActionsMixin(_MixinBase):
             self.notify("Task has no mode set (never started).")
             return
 
-        pid = self.current_project_id
+        pid = self.current_project_name
         tid = task.task_id
         cname = container_name(pid, task.mode, tid)
 
@@ -595,7 +595,7 @@ class TaskActionsMixin(_MixinBase):
         await self.push_screen(
             LogViewerScreen(
                 TaskContainerRef(
-                    project_id=pid,
+                    project_name=pid,
                     task_id=tid,
                     mode=task.mode,
                     container_name=cname,
@@ -607,10 +607,10 @@ class TaskActionsMixin(_MixinBase):
 
     async def _action_restart_task(self) -> None:
         """Restart a task container (stops it first if running)."""
-        if not self.current_project_id or not self.current_task:
+        if not self.current_project_name or not self.current_task:
             self.notify("No task selected.")
             return
-        pid = self.current_project_id
+        pid = self.current_project_name
         tid = self.current_task.task_id
         self._run_console_action(
             "terok.tui.worker_actions:task_restart",
@@ -622,10 +622,10 @@ class TaskActionsMixin(_MixinBase):
 
     async def _action_stop_task(self) -> None:
         """Stop a running task container."""
-        if not self.current_project_id or not self.current_task:
+        if not self.current_project_name or not self.current_task:
             self.notify("No task selected.")
             return
-        pid = self.current_project_id
+        pid = self.current_project_name
         tid = self.current_task.task_id
         self._run_console_action(
             "terok.tui.worker_actions:task_stop",
@@ -644,7 +644,7 @@ class TaskActionsMixin(_MixinBase):
         error notification pointing at the toad-mode alternative (its
         browser URL works without a host shell).
         """
-        if not self.current_project_id or not self.current_task:
+        if not self.current_project_name or not self.current_task:
             self.notify("No task selected.")
             return
         if self.is_web:
@@ -656,7 +656,7 @@ class TaskActionsMixin(_MixinBase):
                 timeout=12,
             )
             return
-        pid = self.current_project_id
+        pid = self.current_project_name
         tid = self.current_task.task_id
         try:
             cmd = get_login_command(pid, tid)
@@ -675,13 +675,13 @@ class TaskActionsMixin(_MixinBase):
 
     async def action_delete_task(self) -> None:
         """Delete the currently selected task and its containers."""
-        if not self.current_project_id or not self.current_task:
+        if not self.current_project_name or not self.current_task:
             self.notify("No task selected.")
             return
 
         tid = self.current_task.task_id
         tname = self.current_task.name or ""
-        pid = self.current_project_id
+        pid = self.current_project_name
         task_label = f"{pid} {tid}" + (f" {tname}" if tname else "")
         # Guard on the live in-flight set, not the on-disk ``deleting`` flag:
         # a flag left behind by a crashed session is stale and must stay
@@ -690,7 +690,7 @@ class TaskActionsMixin(_MixinBase):
             self.notify(f"Task {task_label} is already being deleted.")
             return
 
-        self._log_debug(f"delete: start project_id={pid} task_id={tid}")
+        self._log_debug(f"delete: start project_name={pid} task_id={tid}")
         self.notify(f"Deleting task {task_label}...")
 
         self.current_task.deleting = True
@@ -703,7 +703,7 @@ class TaskActionsMixin(_MixinBase):
 
     async def _action_rename_task(self) -> None:
         """Rename the currently selected task."""
-        if not self.current_project_id or not self.current_task:
+        if not self.current_project_name or not self.current_task:
             self.notify("No task selected.")
             return
         current_name = self.current_task.name or ""
@@ -714,9 +714,9 @@ class TaskActionsMixin(_MixinBase):
 
     async def _on_rename_task_result(self, name: str | None) -> None:
         """Handle name result from TaskNameScreen for rename."""
-        if name is None or not self.current_project_id or not self.current_task:
+        if name is None or not self.current_project_name or not self.current_task:
             return
-        pid = self.current_project_id
+        pid = self.current_project_name
         tid = self.current_task.task_id
         try:
             task_rename(pid, tid, name)
@@ -728,12 +728,12 @@ class TaskActionsMixin(_MixinBase):
 
     async def _copy_diff_to_clipboard(self, git_ref: str, label: str) -> None:
         """Common helper to copy a git diff to the clipboard."""
-        if not self.current_project_id or not self.current_task:
+        if not self.current_project_name or not self.current_task:
             self.notify("No task selected.")
             return
 
         task_id = self.current_task.task_id
-        diff = get_workspace_git_diff(self.current_project_id, task_id, git_ref)
+        diff = get_workspace_git_diff(self.current_project_name, task_id, git_ref)
 
         if diff is None:
             self.notify("Failed to get git diff. Is this a git repository?")
@@ -774,10 +774,10 @@ class TaskActionsMixin(_MixinBase):
         shield_fn: Callable[[str, Path], None],
     ) -> None:
         """Run a shield action (down/up) for the current task in a background worker."""
-        if not self.current_project_id or not self.current_task:
+        if not self.current_project_name or not self.current_task:
             self.notify("No task selected.")
             return
-        pid = self.current_project_id
+        pid = self.current_project_name
         task = self.current_task
         tid = task.task_id
         cname = container_name(pid, task.mode or "cli", tid)
@@ -906,10 +906,10 @@ class TaskActionsMixin(_MixinBase):
 
     async def action_create_task_from_main(self) -> None:
         """Show the task creation modal from the main screen."""
-        if not self.current_project_id:
+        if not self.current_project_name:
             self.notify("No project selected.")
             return
-        default_name = generate_task_name(self.current_project_id)
+        default_name = generate_task_name(self.current_project_name)
         await self.push_screen(
             TaskCreateScreen(default_name=default_name),
             self._on_create_task_result,

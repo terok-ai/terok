@@ -58,7 +58,7 @@ class RawProjectYamlTests(unittest.TestCase):
             "agent": {"model": "opus"},
         }
         raw = RawProjectYaml.model_validate(data)
-        self.assertEqual(raw.project.id, "myproj")
+        self.assertEqual(raw.project.name, "myproj")
         self.assertEqual(raw.project.security_class, "gatekeeping")
         self.assertEqual(raw.git.upstream_url, "https://example.com/repo.git")
         self.assertTrue(raw.ssh.use_personal)
@@ -157,33 +157,45 @@ class IsolationValidationTests(unittest.TestCase):
         self.assertEqual(s.isolation, "shared")
 
 
-class ProjectIdValidationTests(unittest.TestCase):
-    """Tests for the project.id field validator."""
+class ProjectNameLegacyMappingTests(unittest.TestCase):
+    """Tests for raw project identity key mapping."""
 
     def test_valid_id(self) -> None:
-        """Valid lowercase ID is accepted."""
+        """Valid lowercase name is accepted (legacy ``id`` key still read)."""
         s = RawProjectSection.model_validate({"id": "my-project_1"})
-        self.assertEqual(s.id, "my-project_1")
+        self.assertEqual(s.name, "my-project_1")
 
     def test_none_id(self) -> None:
-        """None ID is accepted (defaults to directory name)."""
+        """None name is accepted (defaults to directory name)."""
         s = RawProjectSection.model_validate({"id": None})
-        self.assertIsNone(s.id)
+        self.assertIsNone(s.name)
 
-    def test_uppercase_rejected(self) -> None:
-        """Uppercase IDs are rejected."""
-        with self.assertRaises(ValidationError):
-            RawProjectSection.model_validate({"id": "MyProject"})
+    def test_legacy_id_and_name_map_to_name_and_description(self) -> None:
+        """Pre-rename ``id`` (slug) and ``name`` (display) map to name + description."""
+        s = RawProjectSection.model_validate({"id": "proj", "name": "Pretty Proj"})
+        self.assertEqual(s.name, "proj")
+        self.assertEqual(s.description, "Pretty Proj")
 
-    def test_path_separator_rejected(self) -> None:
-        """Path separators in IDs are rejected."""
-        with self.assertRaises(ValidationError):
-            RawProjectSection.model_validate({"id": "../escape"})
+    def test_new_name_and_description(self) -> None:
+        """New-form ``name`` (slug) and ``description`` pass through unchanged."""
+        s = RawProjectSection.model_validate({"name": "proj", "description": "Pretty Proj"})
+        self.assertEqual(s.name, "proj")
+        self.assertEqual(s.description, "Pretty Proj")
 
-    def test_absolute_path_rejected(self) -> None:
-        """Absolute paths as IDs are rejected."""
-        with self.assertRaises(ValidationError):
-            RawProjectSection.model_validate({"id": "/etc/passwd"})
+    def test_new_display_name_without_id_is_kept_for_loader(self) -> None:
+        """No-``id`` old display names are left intact for loader mismatch handling."""
+        s = RawProjectSection.model_validate({"name": "Pretty Project"})
+        self.assertEqual(s.name, "Pretty Project")
+
+    def test_uppercase_id_is_left_for_resolved_loader_validation(self) -> None:
+        """Raw schema maps legacy IDs; resolved project loading owns slug validation."""
+        s = RawProjectSection.model_validate({"id": "MyProject"})
+        self.assertEqual(s.name, "MyProject")
+
+    def test_path_separator_id_is_left_for_resolved_loader_validation(self) -> None:
+        """Raw schema keeps path-looking legacy IDs so project loading can explain them."""
+        s = RawProjectSection.model_validate({"id": "../escape"})
+        self.assertEqual(s.name, "../escape")
 
 
 class NameCategoriesTests(unittest.TestCase):

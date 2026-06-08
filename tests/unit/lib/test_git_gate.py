@@ -24,14 +24,14 @@ TEST_UPSTREAM_URL = "https://example.com/repo.git"
 
 
 def git_project_yaml(
-    project_id: str,
+    project_name: str,
     *,
     upstream_url: str | None = TEST_UPSTREAM_URL,
     default_branch: str | None = "main",
     gate_path: Path | None = None,
 ) -> str:
     """Build a project config for git-gate-related tests."""
-    lines = [f"project:\n  id: {project_id}\n"]
+    lines = [f"project:\n  id: {project_name}\n"]
     if upstream_url is not None or default_branch is not None:
         lines.append("git:\n")
         if upstream_url is not None:
@@ -51,7 +51,7 @@ def git_result(*, returncode: int = 0, stdout: str = "", stderr: str = "") -> Ma
 
 def configure_shared_gate(
     ctx,
-    project_id: str,
+    project_name: str,
     upstream_url: str,
     gate_name: str,
 ) -> Path:
@@ -60,9 +60,9 @@ def configure_shared_gate(
     shared_gate.mkdir(parents=True, exist_ok=True)
     write_project(
         ctx.config_root,
-        project_id,
+        project_name,
         git_project_yaml(
-            project_id, upstream_url=upstream_url, default_branch=None, gate_path=shared_gate
+            project_name, upstream_url=upstream_url, default_branch=None, gate_path=shared_gate
         ),
     )
     return shared_gate
@@ -72,27 +72,27 @@ def test_sync_project_gate_ssh_requires_config() -> None:
     """SSH upstreams require a vault key or explicit personal-SSH opt-in before syncing."""
     from terok_sandbox.gate.mirror import GateAuthNotConfigured
 
-    project_id = "proj6"
+    project_name = "proj6"
     with (
         project_env(
             git_project_yaml(
-                project_id, upstream_url="git@github.com:org/repo.git", default_branch=None
+                project_name, upstream_url="git@github.com:org/repo.git", default_branch=None
             ),
-            project_id=project_id,
+            project_name=project_name,
             with_config_file=True,
         ),
         pytest.raises(GateAuthNotConfigured),
     ):
-        make_git_gate(load_project(project_id)).sync()
+        make_git_gate(load_project(project_name)).sync()
 
 
 def test_sync_project_gate_https_clone() -> None:
     """Initial gate sync performs a mirror clone with git env overrides."""
-    project_id = "proj7"
+    project_name = "proj7"
     with project_env(
-        git_project_yaml(project_id, default_branch=None), project_id=project_id
+        git_project_yaml(project_name, default_branch=None), project_name=project_name
     ) as ctx:
-        gate_dir = ctx.base / "sandbox-state" / "gate" / f"{project_id}.git"
+        gate_dir = ctx.base / "sandbox-state" / "gate" / f"{project_name}.git"
 
         def run_side_effect(cmd: list[str], **kwargs: object) -> MagicMock:
             if cmd[:3] == ["git", "clone", "--mirror"]:
@@ -105,7 +105,7 @@ def test_sync_project_gate_https_clone() -> None:
         with patch(
             "terok_sandbox.gate.mirror.subprocess.run", side_effect=run_side_effect
         ) as run_mock:
-            result = make_git_gate(load_project(project_id)).sync()
+            result = make_git_gate(load_project(project_name)).sync()
 
     assert result == {
         "path": str(gate_dir),
@@ -143,13 +143,13 @@ def test_sync_project_gate_https_clone() -> None:
 )
 def test_last_commit(with_gate: bool, run_result: MagicMock | None, expected: dict | None) -> None:
     """Last-commit lookup returns commit metadata when the gate exists."""
-    project_id = "proj-last-commit"
+    project_name = "proj-last-commit"
     with project_env(
-        git_project_yaml(project_id, default_branch=None),
-        project_id=project_id,
+        git_project_yaml(project_name, default_branch=None),
+        project_name=project_name,
         with_gate=with_gate,
     ):
-        gate = make_git_gate(load_project(project_id))
+        gate = make_git_gate(load_project(project_name))
         if run_result is None:
             assert gate.last_commit() is None
         else:
@@ -158,7 +158,7 @@ def test_last_commit(with_gate: bool, run_result: MagicMock | None, expected: di
 
 
 @pytest.mark.parametrize(
-    ("project_id", "yaml_text", "branch", "run_behavior", "expected"),
+    ("project_name", "yaml_text", "branch", "run_behavior", "expected"),
     [
         pytest.param(
             "proj-upstream-ok",
@@ -223,15 +223,15 @@ def test_last_commit(with_gate: bool, run_result: MagicMock | None, expected: di
     ],
 )
 def test_get_upstream_head(
-    project_id: str,
+    project_name: str,
     yaml_text: str,
     branch: str | None,
     run_behavior: dict[str, object] | None,
     expected: dict | None,
 ) -> None:
     """Upstream HEAD lookup handles success, missing config, and network failures."""
-    with project_env(yaml_text, project_id=project_id):
-        project = load_project(project_id)
+    with project_env(yaml_text, project_name=project_name):
+        project = load_project(project_name)
         if project.upstream_url is None or run_behavior is None:
             assert expected is None
         else:
@@ -263,9 +263,11 @@ def test_get_gate_branch_head(
     expected: str | None,
 ) -> None:
     """Gate branch HEAD lookup returns the branch commit or ``None``."""
-    project_id = "proj-gate-head"
-    with project_env(git_project_yaml(project_id), project_id=project_id, with_gate=with_gate):
-        project = load_project(project_id)
+    project_name = "proj-gate-head"
+    with project_env(
+        git_project_yaml(project_name), project_name=project_name, with_gate=with_gate
+    ):
+        project = load_project(project_name)
         effective_branch = branch or project.default_branch
         if run_result is None:
             assert _get_gate_branch_head(project.gate_path, effective_branch, {}) is None
@@ -380,7 +382,7 @@ def test_compare_gate_vs_upstream(
     expected: dict[str, object],
 ) -> None:
     """Gate staleness comparison reports sync, stale, and error states."""
-    project_id = "proj-compare"
+    project_name = "proj-compare"
 
     def _range_side_effect(_gate_dir, from_ref, to_ref, _env):
         """Return behind or ahead count depending on ref order."""
@@ -391,7 +393,9 @@ def test_compare_gate_vs_upstream(
                 return count_ahead
         return None
 
-    with project_env(git_project_yaml(project_id), project_id=project_id, with_gate=with_gate):
+    with project_env(
+        git_project_yaml(project_name), project_name=project_name, with_gate=with_gate
+    ):
         with (
             patch("terok_sandbox.gate.mirror._get_gate_branch_head", return_value=gate_head),
             patch("terok_sandbox.gate.mirror._get_upstream_head", return_value=upstream_info),
@@ -400,7 +404,7 @@ def test_compare_gate_vs_upstream(
                 side_effect=_range_side_effect,
             ),
         ):
-            result = make_git_gate(load_project(project_id)).compare_vs_upstream()
+            result = make_git_gate(load_project(project_name)).compare_vs_upstream()
 
     assert result.branch == "main"
     for key, value in expected.items():
@@ -458,9 +462,11 @@ def test_sync_branches(
     expected: dict[str, object],
 ) -> None:
     """Branch sync reports success, initialization problems, and fetch failures."""
-    project_id = "proj-sync-branches"
-    with project_env(git_project_yaml(project_id), project_id=project_id, with_gate=with_gate):
-        gate = make_git_gate(load_project(project_id))
+    project_name = "proj-sync-branches"
+    with project_env(
+        git_project_yaml(project_name), project_name=project_name, with_gate=with_gate
+    ):
+        gate = make_git_gate(load_project(project_name))
         if run_behavior is None:
             assert gate.sync_branches(branches) == expected
         else:
@@ -476,7 +482,7 @@ def test_sync_branches_rejects_mismatched_upstream() -> None:
             upstream_url="https://github.com/org/existing-repo.git",
             default_branch=None,
         ),
-        project_id="existing-proj",
+        project_name="existing-proj",
     ) as ctx:
         shared_gate = configure_shared_gate(
             ctx, "existing-proj", "https://github.com/org/existing-repo.git", "sync-conflict.git"
@@ -502,7 +508,7 @@ def test_find_projects_sharing_gate() -> None:
         git_project_yaml(
             "proj-a", upstream_url="https://github.com/org/repo.git", default_branch=None
         ),
-        project_id="proj-a",
+        project_name="proj-a",
     ) as ctx:
         shared_gate = configure_shared_gate(
             ctx, "proj-a", "https://github.com/org/repo.git", "shared.git"
@@ -529,7 +535,7 @@ def test_validate_gate_upstream_match_same_url() -> None:
         git_project_yaml(
             "proj-same-a", upstream_url="https://github.com/org/repo.git", default_branch=None
         ),
-        project_id="proj-same-a",
+        project_name="proj-same-a",
     ) as ctx:
         shared_gate = configure_shared_gate(
             ctx, "proj-same-a", "https://github.com/org/repo.git", "shared.git"
@@ -555,7 +561,7 @@ def test_validate_gate_upstream_match_different_url_fails() -> None:
         git_project_yaml(
             "proj-conflict-a", upstream_url="https://github.com/org/repo-A.git", default_branch=None
         ),
-        project_id="proj-conflict-a",
+        project_name="proj-conflict-a",
     ) as ctx:
         shared_gate = configure_shared_gate(
             ctx, "proj-conflict-a", "https://github.com/org/repo-A.git", "conflict.git"
@@ -590,7 +596,7 @@ def test_sync_project_gate_rejects_mismatched_upstream() -> None:
             upstream_url="https://github.com/org/existing-repo.git",
             default_branch=None,
         ),
-        project_id="existing-proj",
+        project_name="existing-proj",
     ) as ctx:
         shared_gate = configure_shared_gate(
             ctx, "existing-proj", "https://github.com/org/existing-repo.git", "init-conflict.git"

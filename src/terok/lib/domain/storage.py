@@ -84,11 +84,11 @@ def format_bytes(n: int) -> str:
 
 _GLOBAL_PREFIXES = ("terok-l0", "terok-l1-cli")
 
-ORPHAN_PROJECT_ID = "(orphans)"
-"""Synthetic project id for the overview row that collects L2 images whose
+ORPHAN_PROJECT_NAME = "(orphans)"
+"""Synthetic project name for the overview row that collects L2 images whose
 project no longer exists in the config.
 
-Parentheses are forbidden in real project ids (validated against
+Parentheses are forbidden in real project names (validated against
 ``[a-z0-9][a-z0-9_-]*`` in ``project_model``), so this value can never
 collide with a configured project."""
 
@@ -100,8 +100,8 @@ def _is_global_image(img: ImageInfo) -> bool:
     return img.project_key.startswith(_GLOBAL_PREFIXES)
 
 
-def _image_project_id(img: ImageInfo) -> str | None:
-    """Extract the project ID from an L2 image, or None for global images."""
+def _image_project_name(img: ImageInfo) -> str | None:
+    """Extract the project name from an L2 image, or None for global images."""
     if _is_global_image(img):
         return None
     if img.tag in ("l2-cli", "l2-dev"):
@@ -118,7 +118,7 @@ def _image_project_id(img: ImageInfo) -> str | None:
 class ProjectSummary:
     """One-line digest of a project's storage footprint."""
 
-    project_id: str
+    project_name: str
     image_bytes: int
     workspace_bytes: int
     task_count: int
@@ -172,7 +172,7 @@ class StorageOverview:
 class ProjectDetail:
     """Full per-task storage breakdown for a single project."""
 
-    project_id: str
+    project_name: str
     images: list[ImageInfo]
     tasks: list[TaskStorageInfo]
     overlays: dict[str, int]
@@ -227,7 +227,7 @@ def get_storage_overview() -> StorageOverview:
     projects_conf = list_projects()
     project_image_bytes: dict[str, int] = {}
     for img in all_images:
-        pid = _image_project_id(img)
+        pid = _image_project_name(img)
         if pid:
             project_image_bytes[pid] = project_image_bytes.get(pid, 0) + parse_image_size(img.size)
 
@@ -245,8 +245,8 @@ def get_storage_overview() -> StorageOverview:
             )
         summaries.append(
             ProjectSummary(
-                project_id=proj.id,
-                image_bytes=project_image_bytes.get(proj.id, 0),
+                project_name=proj.name,
+                image_bytes=project_image_bytes.get(proj.name, 0),
                 workspace_bytes=sum(t.workspace_bytes for t in tasks),
                 task_count=len(tasks),
                 credential_mounts_bytes=cred_mounts_bytes,
@@ -255,12 +255,12 @@ def get_storage_overview() -> StorageOverview:
 
     # Surface L2 images whose project is no longer configured so they roll up
     # into the grand total instead of vanishing from the overview.
-    known_ids = {p.id for p in projects_conf}
+    known_ids = {p.name for p in projects_conf}
     orphan_bytes = sum(b for pid, b in project_image_bytes.items() if pid not in known_ids)
     if orphan_bytes:
         summaries.append(
             ProjectSummary(
-                project_id=ORPHAN_PROJECT_ID,
+                project_name=ORPHAN_PROJECT_NAME,
                 image_bytes=orphan_bytes,
                 workspace_bytes=0,
                 task_count=0,
@@ -274,7 +274,7 @@ def get_storage_overview() -> StorageOverview:
     )
 
 
-def get_project_storage_detail(project_id: str) -> ProjectDetail:
+def get_project_storage_detail(project_name: str) -> ProjectDetail:
     """Detailed view for one project, including overlay sizes.
 
     This triggers ``podman ps --size`` for the project's containers —
@@ -283,13 +283,13 @@ def get_project_storage_detail(project_id: str) -> ProjectDetail:
     from ..core import runtime as _rt
     from ..core.projects import load_project
 
-    project = load_project(project_id)
-    project_images = [img for img in list_images(project_id) if not _is_global_image(img)]
+    project = load_project(project_name)
+    project_images = [img for img in list_images(project_name) if not _is_global_image(img)]
     tasks = TaskStorageInfo.measure_all(project.tasks_root)
     runtime = _rt.resolve_runtime(project)
     # ``container_rw_sizes`` is podman-specific; not every backend exposes it.
     overlays = (
-        runtime.container_rw_sizes(project_id) if hasattr(runtime, "container_rw_sizes") else {}
+        runtime.container_rw_sizes(project_name) if hasattr(runtime, "container_rw_sizes") else {}
     )
 
     # Per-project credential mounts (only present when scope=project).
@@ -302,7 +302,7 @@ def get_project_storage_detail(project_id: str) -> ProjectDetail:
         )
 
     return ProjectDetail(
-        project_id=project_id,
+        project_name=project_name,
         images=project_images,
         tasks=tasks,
         overlays=overlays,

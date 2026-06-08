@@ -26,10 +26,10 @@ _LOCK = "terok.lib.domain.panic._write_panic_lock"
 _STOP = "terok.lib.domain.panic._stop_containers"
 
 
-def _target(project_id="proj1", task_id="1", mode="cli"):
+def _target(project_name="proj1", task_id="1", mode="cli"):
     """Build a target tuple for testing."""
-    cname = f"{project_id}-{mode}-{task_id}"
-    return (project_id, task_id, mode, cname, FAKE_PROJECT_TASKS_ROOT / task_id)
+    cname = f"{project_name}-{mode}-{task_id}"
+    return (project_name, task_id, mode, cname, FAKE_PROJECT_TASKS_ROOT / task_id)
 
 
 def _task_meta(task_id, mode="cli"):
@@ -47,7 +47,8 @@ class TestDiscovery:
     @patch("terok.lib.domain.panic.get_all_task_states")
     def test_finds_running_skips_exited(self, mock_states, mock_tasks, mock_projects):
         """Only running/paused containers are discovered."""
-        cfg = MagicMock(id="proj1", tasks_root=FAKE_PROJECT_TASKS_ROOT)
+        cfg = MagicMock(tasks_root=FAKE_PROJECT_TASKS_ROOT)
+        cfg.name = "proj1"
         mock_projects.return_value = [cfg]
         mock_tasks.return_value = [_task_meta("1"), _task_meta("2", "web"), _task_meta("3", None)]
         mock_states.return_value = {"1": "running", "2": "exited", "3": None}
@@ -62,7 +63,9 @@ class TestDiscovery:
     @patch("terok.lib.domain.panic.get_tasks")
     def test_skips_broken_projects(self, mock_tasks, mock_projects):
         """Projects where get_tasks raises are skipped."""
-        mock_projects.return_value = [MagicMock(id="broken")]
+        broken = MagicMock()
+        broken.name = "broken"
+        mock_projects.return_value = [broken]
         mock_tasks.side_effect = Exception("boom")
 
         from terok.lib.domain.panic import _discover_targets
@@ -73,7 +76,9 @@ class TestDiscovery:
     @patch("terok.lib.domain.panic.get_tasks")
     def test_skips_projects_with_no_tasks(self, mock_tasks, mock_projects):
         """Projects with empty task list are skipped."""
-        mock_projects.return_value = [MagicMock(id="empty")]
+        empty = MagicMock()
+        empty.name = "empty"
+        mock_projects.return_value = [empty]
         mock_tasks.return_value = []
 
         from terok.lib.domain.panic import _discover_targets
@@ -85,7 +90,8 @@ class TestDiscovery:
     @patch("terok.lib.domain.panic.get_all_task_states")
     def test_includes_paused_containers(self, mock_states, mock_tasks, mock_projects):
         """Paused containers are also discovered."""
-        cfg = MagicMock(id="proj1", tasks_root=FAKE_PROJECT_TASKS_ROOT)
+        cfg = MagicMock(tasks_root=FAKE_PROJECT_TASKS_ROOT)
+        cfg.name = "proj1"
         mock_projects.return_value = [cfg]
         mock_tasks.return_value = [_task_meta("1")]
         mock_states.return_value = {"1": "paused"}
@@ -99,7 +105,8 @@ class TestDiscovery:
     @patch("terok.lib.domain.panic.get_all_task_states")
     def test_skips_broken_task_states(self, mock_states, mock_tasks, mock_projects):
         """Projects where get_all_task_states raises are skipped."""
-        cfg = MagicMock(id="proj1", tasks_root=FAKE_PROJECT_TASKS_ROOT)
+        cfg = MagicMock(tasks_root=FAKE_PROJECT_TASKS_ROOT)
+        cfg.name = "proj1"
         mock_projects.return_value = [cfg]
         mock_tasks.return_value = [_task_meta("1")]
         mock_states.side_effect = Exception("state lookup failed")

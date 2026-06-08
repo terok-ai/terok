@@ -126,13 +126,13 @@ class TestTaskLaunchScreen:
         screens, _ = import_screens()
         screen = screens.TaskLaunchScreen(
             container_name="terok-p-cli-1",
-            project_id="p",
+            project_name="p",
             task_id="1",
             task_name="fix-bug",
             default_shell="claude",
         )
         assert screen._container_name == "terok-p-cli-1"
-        assert screen._project_id == "p"
+        assert screen._project_name == "p"
         assert screen._task_id == "1"
         assert screen._task_name == "fix-bug"
         assert screen._default_shell == "claude"
@@ -140,20 +140,20 @@ class TestTaskLaunchScreen:
 
     def test_construction_default_bash(self) -> None:
         screens, _ = import_screens()
-        screen = screens.TaskLaunchScreen(container_name="c", project_id="p", task_id="1")
+        screen = screens.TaskLaunchScreen(container_name="c", project_name="p", task_id="1")
         assert screen._default_shell == "bash"
         assert screen._task_name == "1"  # falls back to task_id
 
     def test_dismiss_returns_none(self) -> None:
         screens, _ = import_screens()
-        screen = screens.TaskLaunchScreen(container_name="c", project_id="p", task_id="1")
+        screen = screens.TaskLaunchScreen(container_name="c", project_name="p", task_id="1")
         screen.dismiss = mock.Mock()
         screen.action_dismiss_screen()
         screen.dismiss.assert_called_once_with(None)
 
     def test_dismiss_via_button(self) -> None:
         screens, _ = import_screens()
-        screen = screens.TaskLaunchScreen(container_name="c", project_id="p", task_id="1")
+        screen = screens.TaskLaunchScreen(container_name="c", project_name="p", task_id="1")
         screen.dismiss = mock.Mock()
         event = mock.Mock()
         event.button = mock.Mock()
@@ -166,14 +166,14 @@ class TestTaskLaunchScreen:
         screens, _ = import_screens()
         entry = mock.Mock()
         screen = screens.TaskLaunchScreen(
-            container_name="c", project_id="p", task_id="1", console_entry=entry
+            container_name="c", project_name="p", task_id="1", console_entry=entry
         )
         assert screen._console_entry is entry
 
     def test_console_entry_defaults_to_none(self) -> None:
         """Without a console_entry there is nothing to foreground — Show-log is omitted."""
         screens, _ = import_screens()
-        screen = screens.TaskLaunchScreen(container_name="c", project_id="p", task_id="1")
+        screen = screens.TaskLaunchScreen(container_name="c", project_name="p", task_id="1")
         assert screen._console_entry is None
 
     def test_show_log_button_opens_worker_log_view(self) -> None:
@@ -181,7 +181,7 @@ class TestTaskLaunchScreen:
         screens, _ = import_screens()
         entry = mock.Mock()
         screen = screens.TaskLaunchScreen(
-            container_name="c", project_id="p", task_id="1", console_entry=entry
+            container_name="c", project_name="p", task_id="1", console_entry=entry
         )
         screen.app = mock.Mock()
         event = mock.Mock()
@@ -193,7 +193,7 @@ class TestTaskLaunchScreen:
     def test_do_login_returns_agent_and_prompt(self) -> None:
         screens, _ = import_screens()
         screen = screens.TaskLaunchScreen(
-            container_name="c", project_id="p", task_id="1", task_name="fix-bug"
+            container_name="c", project_name="p", task_id="1", task_name="fix-bug"
         )
         screen.dismiss = mock.Mock()
 
@@ -215,7 +215,7 @@ class TestTaskLaunchScreen:
     def test_do_login_bash_keeps_prompt(self) -> None:
         screens, _ = import_screens()
         screen = screens.TaskLaunchScreen(
-            container_name="c", project_id="p", task_id="1", task_name="my-task"
+            container_name="c", project_name="p", task_id="1", task_name="my-task"
         )
         screen.dismiss = mock.Mock()
 
@@ -239,7 +239,7 @@ class TestTaskLaunchScreen:
     def test_do_login_bash_empty_prompt_is_none(self) -> None:
         screens, _ = import_screens()
         screen = screens.TaskLaunchScreen(
-            container_name="c", project_id="p", task_id="1", task_name="my-task"
+            container_name="c", project_name="p", task_id="1", task_name="my-task"
         )
         screen.dismiss = mock.Mock()
 
@@ -260,7 +260,7 @@ class TestTaskLaunchScreen:
 
     def test_login_button_blocked_when_not_ready(self) -> None:
         screens, _ = import_screens()
-        screen = screens.TaskLaunchScreen(container_name="c", project_id="p", task_id="1")
+        screen = screens.TaskLaunchScreen(container_name="c", project_name="p", task_id="1")
         screen._do_login = mock.Mock()
 
         assert not screen._container_ready
@@ -272,7 +272,7 @@ class TestTaskLaunchScreen:
 
     def test_login_button_allowed_when_ready(self) -> None:
         screens, _ = import_screens()
-        screen = screens.TaskLaunchScreen(container_name="c", project_id="p", task_id="1")
+        screen = screens.TaskLaunchScreen(container_name="c", project_name="p", task_id="1")
         screen._do_login = mock.Mock()
         screen._container_ready = True
 
@@ -288,7 +288,7 @@ class TestTaskLaunchScreen:
         the screen must treat it as a no-op (no insert, no submit).
         """
         screens, _ = import_screens()
-        screen = screens.TaskLaunchScreen(container_name="c", project_id="p", task_id="1")
+        screen = screens.TaskLaunchScreen(container_name="c", project_name="p", task_id="1")
 
         mock_textarea = mock.Mock()
         mock_textarea.text = "line1"
@@ -316,7 +316,7 @@ class TestTaskLaunchScreen:
     def test_on_key_enter_submits_when_ready_and_focused(self) -> None:
         """Enter (without Ctrl) submits when container ready and prompt has focus."""
         screens, _ = import_screens()
-        screen = screens.TaskLaunchScreen(container_name="c", project_id="p", task_id="1")
+        screen = screens.TaskLaunchScreen(container_name="c", project_name="p", task_id="1")
         screen._container_ready = True
         screen._do_login = mock.Mock()
 
@@ -344,7 +344,7 @@ class TestTaskLaunchScreen:
     def test_on_key_enter_noop_when_not_ready(self) -> None:
         """Enter does nothing when container is not ready, even with focus."""
         screens, _ = import_screens()
-        screen = screens.TaskLaunchScreen(container_name="c", project_id="p", task_id="1")
+        screen = screens.TaskLaunchScreen(container_name="c", project_name="p", task_id="1")
         screen._container_ready = False
         screen._do_login = mock.Mock()
 
@@ -372,7 +372,7 @@ class TestTaskLaunchScreen:
     def test_on_key_enter_noop_when_not_focused(self) -> None:
         """Enter does nothing when prompt doesn't have focus, even if ready."""
         screens, _ = import_screens()
-        screen = screens.TaskLaunchScreen(container_name="c", project_id="p", task_id="1")
+        screen = screens.TaskLaunchScreen(container_name="c", project_name="p", task_id="1")
         screen._container_ready = True
         screen._do_login = mock.Mock()
 
@@ -441,7 +441,7 @@ class TestTaskLaunchScreenLazyAgents:
     def test_build_agent_choices_loading_returns_bash_only(self) -> None:
         screens, _ = import_screens()
         screen = screens.TaskLaunchScreen(
-            container_name="c", project_id="p", task_id="1", installed=None
+            container_name="c", project_name="p", task_id="1", installed=None
         )
         assert screen._build_agent_choices() == [("bash", "bash")]
 
@@ -453,7 +453,7 @@ class TestTaskLaunchScreenLazyAgents:
         target = next(iter(AGENTS))
         screen = screens.TaskLaunchScreen(
             container_name="c",
-            project_id="p",
+            project_name="p",
             task_id="1",
             installed=frozenset({target}),
         )
@@ -468,7 +468,7 @@ class TestTaskLaunchScreenLazyAgents:
         target = next(iter(AGENTS))
         screen = screens.TaskLaunchScreen(
             container_name="c",
-            project_id="p",
+            project_name="p",
             task_id="1",
             default_shell=target,
             installed=None,
@@ -493,7 +493,7 @@ class TestTaskLaunchScreenLazyAgents:
         screens, _ = import_screens()
         screen = screens.TaskLaunchScreen(
             container_name="c",
-            project_id="p",
+            project_name="p",
             task_id="1",
             default_shell="not-installed-agent",
             installed=None,
@@ -513,7 +513,7 @@ class TestTaskLaunchScreenLazyAgents:
         """Calling set_installed before compose mounted the Select is a no-op."""
         screens, _ = import_screens()
         screen = screens.TaskLaunchScreen(
-            container_name="c", project_id="p", task_id="1", installed=None
+            container_name="c", project_name="p", task_id="1", installed=None
         )
         screen.query_one = mock.Mock(side_effect=RuntimeError("not mounted"))
         # Must not raise.
@@ -531,7 +531,7 @@ def _run_launch_with_prompt(agent: str, prompt: str | None) -> tuple[mock.Mock, 
     """Drive _on_launch_screen_result for *agent*/*prompt* and return mocks."""
     _, app_class = import_app()
     instance = app_class()
-    instance.current_project_id = "proj1"
+    instance.current_project_name = "proj1"
     instance.refresh_tasks = mock.AsyncMock()
     instance._launch_terminal_session = mock.AsyncMock()
 
@@ -641,7 +641,7 @@ class TestBackgroundLaunchCompletion:
     def _run_and_capture_on_complete(app_class, start_method: str):
         """Run a ``_start_*_task_background`` with dispatch mocked; return (instance, on_complete)."""
         instance = app_class()
-        instance.current_project_id = "proj1"
+        instance.current_project_name = "proj1"
         instance._last_selected_tasks = {}
         instance._save_selection_state = mock.Mock()
         instance.notify = mock.Mock()
@@ -805,7 +805,7 @@ class TestTaskLaunchScreenCompose:
     def test_compose_border_title_includes_name(self) -> None:
         screens, _ = import_screens()
         screen = screens.TaskLaunchScreen(
-            container_name="c", project_id="p", task_id="3", task_name="fix-auth"
+            container_name="c", project_name="p", task_id="3", task_name="fix-auth"
         )
         dialog = self._run_compose(screens, screen)
         assert dialog is not None
@@ -813,7 +813,7 @@ class TestTaskLaunchScreenCompose:
 
     def test_compose_border_title_fallback_to_id(self) -> None:
         screens, _ = import_screens()
-        screen = screens.TaskLaunchScreen(container_name="c", project_id="p", task_id="7")
+        screen = screens.TaskLaunchScreen(container_name="c", project_name="p", task_id="7")
         dialog = self._run_compose(screens, screen)
         assert dialog is not None
         assert dialog.border_title == "CLI Task 7 (7)"
@@ -822,7 +822,7 @@ class TestTaskLaunchScreenCompose:
         """While ``_installed is None`` the agent Select is rendered disabled."""
         screens, _ = import_screens()
         screen = screens.TaskLaunchScreen(
-            container_name="c", project_id="p", task_id="1", installed=None
+            container_name="c", project_name="p", task_id="1", installed=None
         )
         widgets = list(screen.compose())
         selects = [w for w in widgets if isinstance(w, screens.Select)]
@@ -842,7 +842,7 @@ class TestTaskLaunchScreenCompose:
         target = next(iter(AGENTS))
         screen = screens.TaskLaunchScreen(
             container_name="c",
-            project_id="p",
+            project_name="p",
             task_id="1",
             installed=frozenset({target}),
         )
@@ -1015,7 +1015,7 @@ class TestActionLoginTitle:
     def test_action_login_passes_unified_title(self) -> None:
         _, app_class = import_app()
         instance = app_class()
-        instance.current_project_id = "proj1"
+        instance.current_project_name = "proj1"
         instance.current_task = mock.Mock()
         instance.current_task.task_id = "5"
         instance.current_task.name = "fix-login-bug"
@@ -1042,7 +1042,7 @@ class TestActionLoginTitle:
     def test_action_login_falls_back_to_task_id_when_unnamed(self) -> None:
         _, app_class = import_app()
         instance = app_class()
-        instance.current_project_id = "proj1"
+        instance.current_project_name = "proj1"
         instance.current_task = mock.Mock()
         instance.current_task.task_id = "8"
         instance.current_task.name = ""
@@ -1067,7 +1067,7 @@ class TestActionLoginTitle:
     def test_action_login_no_task_notifies(self) -> None:
         _, app_class = import_app()
         instance = app_class()
-        instance.current_project_id = "proj1"
+        instance.current_project_name = "proj1"
         instance.current_task = None
         instance.notify = mock.Mock()
         instance._launch_terminal_session = mock.AsyncMock()
@@ -1082,7 +1082,7 @@ class TestActionLoginTitle:
         _, app_class = import_app()
         instance = app_class()
         instance.is_web = True
-        instance.current_project_id = "proj1"
+        instance.current_project_name = "proj1"
         instance.current_task = mock.Mock()
         instance.current_task.task_id = "5"
         instance.notify = mock.Mock()
@@ -1140,21 +1140,21 @@ class TestTaskLaunchScreenNamePropagation:
     def test_empty_name_falls_back_to_task_id(self) -> None:
         screens, _ = import_screens()
         screen = screens.TaskLaunchScreen(
-            container_name="c", project_id="p", task_id="42", task_name=""
+            container_name="c", project_name="p", task_id="42", task_name=""
         )
         assert screen._task_name == "42"
 
     def test_none_name_falls_back_to_task_id(self) -> None:
         screens, _ = import_screens()
         screen = screens.TaskLaunchScreen(
-            container_name="c", project_id="p", task_id="5", task_name=None
+            container_name="c", project_name="p", task_id="5", task_name=None
         )
         assert screen._task_name == "5"
 
     def test_explicit_name_preserved(self) -> None:
         screens, _ = import_screens()
         screen = screens.TaskLaunchScreen(
-            container_name="c", project_id="p", task_id="1", task_name="fix-login"
+            container_name="c", project_name="p", task_id="1", task_name="fix-login"
         )
         assert screen._task_name == "fix-login"
 
@@ -1162,7 +1162,7 @@ class TestTaskLaunchScreenNamePropagation:
         """The 6-tuple dismiss result includes task_name at position 2."""
         screens, _ = import_screens()
         screen = screens.TaskLaunchScreen(
-            container_name="ctr", project_id="proj", task_id="9", task_name="deploy-fix"
+            container_name="ctr", project_name="proj", task_id="9", task_name="deploy-fix"
         )
         screen.dismiss = mock.Mock()
 
@@ -1183,7 +1183,7 @@ class TestTaskLaunchScreenNamePropagation:
     def test_do_login_unnamed_task_uses_id(self) -> None:
         """When no task_name given, the result falls back to task_id."""
         screens, _ = import_screens()
-        screen = screens.TaskLaunchScreen(container_name="c", project_id="p", task_id="11")
+        screen = screens.TaskLaunchScreen(container_name="c", project_name="p", task_id="11")
         screen.dismiss = mock.Mock()
 
         mock_select = mock.Mock()
@@ -1212,7 +1212,7 @@ class TestStartCliTaskBackgroundPassesName:
     def test_task_name_forwarded_to_launch_screen(self) -> None:
         _, app_class = import_app()
         instance = app_class()
-        instance.current_project_id = "proj1"
+        instance.current_project_name = "proj1"
         instance._last_selected_tasks = {}
         instance._save_selection_state = mock.Mock()
         instance.notify = mock.Mock()
@@ -1241,7 +1241,7 @@ class TestStartCliTaskBackgroundPassesName:
         launch_screen = instance.push_screen.call_args[0][0]
         assert launch_screen._task_name == "deploy-hotfix"
         assert launch_screen._task_id == "7"
-        assert launch_screen._project_id == "proj1"
+        assert launch_screen._project_name == "proj1"
         assert launch_screen._default_shell == "claude"
         # Launch screen is pushed in the "loading" state so the prompt
         # TextArea is typeable immediately — the agent dropdown fills in
@@ -1266,7 +1266,7 @@ class TestStartCliTaskBackgroundLoadFailure:
     def test_launch_screen_finalised_when_load_project_fails(self) -> None:
         _, app_class = import_app()
         instance = app_class()
-        instance.current_project_id = "proj1"
+        instance.current_project_name = "proj1"
         instance._last_selected_tasks = {}
         instance._save_selection_state = mock.Mock()
         instance.notify = mock.Mock()
@@ -1332,7 +1332,7 @@ class TestFillInstalledAgents:
         instance._log_debug = mock.Mock()
 
         fake_project = mock.Mock()
-        fake_project.id = "proj1"
+        fake_project.name = "proj1"
         launch_screen = mock.Mock()
 
         with mock.patch(
@@ -1359,7 +1359,7 @@ class TestOnLaunchScreenResultTitle:
     def test_bash_login_title_includes_task_name(self) -> None:
         _, app_class = import_app()
         instance = app_class()
-        instance.current_project_id = "proj1"
+        instance.current_project_name = "proj1"
         instance.refresh_tasks = mock.AsyncMock()
         instance._launch_terminal_session = mock.AsyncMock()
 
@@ -1380,7 +1380,7 @@ class TestOnLaunchScreenResultTitle:
     def test_agent_login_title_includes_task_name(self) -> None:
         _, app_class = import_app()
         instance = app_class()
-        instance.current_project_id = "proj1"
+        instance.current_project_name = "proj1"
         instance.refresh_tasks = mock.AsyncMock()
         instance._launch_terminal_session = mock.AsyncMock()
 
@@ -1423,7 +1423,7 @@ class TestOnLaunchScreenResultTitle:
     def test_unknown_agent_notifies(self) -> None:
         _, app_class = import_app()
         instance = app_class()
-        instance.current_project_id = "proj1"
+        instance.current_project_name = "proj1"
         instance.refresh_tasks = mock.AsyncMock()
         instance.notify = mock.Mock()
         instance._launch_terminal_session = mock.AsyncMock()

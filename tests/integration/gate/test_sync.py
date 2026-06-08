@@ -22,7 +22,7 @@ pytestmark = pytest.mark.needs_host_features
 
 PROJECT_TEMPLATE = """
 project:
-  id: {project_id}
+  name: {project_name}
   security_class: gatekeeping
 git:
   upstream_url: {upstream_url}
@@ -47,7 +47,7 @@ class TestGateSync:
         terok_env.write_project(
             "demo",
             PROJECT_TEMPLATE.format(
-                project_id="demo",
+                project_name="demo",
                 upstream_url=file_repo_url(upstream),
                 gate_path=gate_path,
             ),
@@ -81,7 +81,7 @@ class TestGateSync:
         terok_env.write_project(
             "alpha",
             PROJECT_TEMPLATE.format(
-                project_id="alpha",
+                project_name="alpha",
                 upstream_url=file_repo_url(alpha_upstream),
                 gate_path=shared_gate,
             ),
@@ -91,7 +91,7 @@ class TestGateSync:
         terok_env.write_project(
             "beta",
             PROJECT_TEMPLATE.format(
-                project_id="beta",
+                project_name="beta",
                 upstream_url=file_repo_url(beta_upstream),
                 gate_path=shared_gate,
             ),

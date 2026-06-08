@@ -17,7 +17,7 @@ from ..util.logging_utils import _log_debug
 
 
 def container_git_diff(
-    project_id: str,
+    project_name: str,
     task_id: str,
     mode: str,
     *args: str,
@@ -26,7 +26,7 @@ def container_git_diff(
     """Run ``git diff`` inside a task container and return stdout.
 
     Args:
-        project_id: Project identifier.
+        project_name: Project identifier.
         task_id: Task identifier.
         mode: Container mode (``"cli"``, ``"web"``, ``"run"``, ``"toad"``).
         *args: Additional arguments passed to ``git diff`` (e.g.
@@ -41,9 +41,9 @@ def container_git_diff(
     ``/workspace`` path — the host ``workspace-dangerous`` path is never
     passed to any subprocess.
     """
-    project = load_project(project_id)
+    project = load_project(project_name)
     runtime = _rt.resolve_runtime(project)
-    cname = _container_name(project_id, mode, task_id)
+    cname = _container_name(project_name, mode, task_id)
     container = runtime.container(cname)
     state = container.state
 

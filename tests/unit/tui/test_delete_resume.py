@@ -93,7 +93,7 @@ class TestDeleteGuard:
     def _ready_instance(self, app_class: type) -> Any:
         """Instance wired for a single ``action_delete_task`` call."""
         instance = _instance(app_class)
-        instance.current_project_id = "p1"
+        instance.current_project_name = "p1"
         instance._log_debug = mock.Mock()
         instance._update_task_details = mock.Mock()
         instance.query_one = mock.Mock(return_value=mock.Mock())
@@ -145,7 +145,7 @@ class TestInFlightBookkeeping:
         instance = app_class()
         instance.notify = mock.Mock()
         # A different current project so the handler returns before refresh_tasks.
-        instance.current_project_id = "other"
+        instance.current_project_name = "other"
         instance._deleting_tasks.add(("p1", "7"))
 
         worker = mock.Mock()

@@ -35,7 +35,7 @@ def _preset_scope_label(preset_path: Path) -> str:
 
 
 def build_agent_config_stack(
-    project_id: str,
+    project_name: str,
     *,
     agent_config: dict[str, Any] | None = None,
     project_root: Path | None = None,
@@ -45,7 +45,7 @@ def build_agent_config_stack(
     """Build config stack: global → project → preset → CLI overrides.
 
     Args:
-        project_id: Project identifier (needed for preset resolution).
+        project_name: Project identifier (needed for preset resolution).
         agent_config: Project-level agent config dict (from ``project.agent_config``).
         project_root: Project root path (for provenance display).
         preset: Optional preset name.
@@ -70,7 +70,7 @@ def build_agent_config_stack(
     if preset:
         from terok.lib.core.projects import load_preset
 
-        preset_data, preset_path = load_preset(project_id, preset)
+        preset_data, preset_path = load_preset(project_name, preset)
         # Skip empty presets – they contribute nothing to the merge and would
         # only add noise to provenance output from ``config resolved``.
         if preset_data:
@@ -85,7 +85,7 @@ def build_agent_config_stack(
 
 
 def resolve_agent_config(
-    project_id: str,
+    project_name: str,
     *,
     agent_config: dict[str, Any] | None = None,
     project_root: Path | None = None,
@@ -98,7 +98,7 @@ def resolve_agent_config(
     that only need the final resolved dict (e.g. task runners).
     """
     return build_agent_config_stack(
-        project_id,
+        project_name,
         agent_config=agent_config,
         project_root=project_root,
         preset=preset,

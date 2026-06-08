@@ -29,9 +29,9 @@ from terok.lib.util.fs import (
 from tests.test_utils import project_env
 
 
-def project_yaml(project_id: str) -> str:
+def project_yaml(project_name: str) -> str:
     """Build a minimal project config for archive tests."""
-    return f"project:\n  id: {project_id}\ngit:\n  upstream_url: https://example.com/repo.git\n"
+    return f"project:\n  id: {project_name}\ngit:\n  upstream_url: https://example.com/repo.git\n"
 
 
 def archive_member_names(path: str) -> list[str]:
@@ -40,16 +40,16 @@ def archive_member_names(path: str) -> list[str]:
         return tar.getnames()
 
 
-def create_task_state(project_id: str) -> None:
+def create_task_state(project_name: str) -> None:
     """Create a sample task metadata file for an archived project."""
-    meta_dir = core_state_dir() / "projects" / project_id / "tasks"
+    meta_dir = core_state_dir() / "projects" / project_name / "tasks"
     meta_dir.mkdir(parents=True, exist_ok=True)
     (meta_dir / "1.yml").write_text("task_id: '1'\nname: test\n")
 
 
-def create_build_dir(project_id: str) -> None:
+def create_build_dir(project_name: str) -> None:
     """Create a sample build artifact for an archived project."""
-    staging = build_dir() / project_id
+    staging = build_dir() / project_name
     staging.mkdir(parents=True, exist_ok=True)
     (staging / "L2.Dockerfile").write_text("FROM scratch")
 
@@ -140,7 +140,7 @@ class TestArchiveProject:
     """Tests for _archive_project()."""
 
     @pytest.mark.parametrize(
-        ("project_id", "setup", "expected_fragment"),
+        ("project_name", "setup", "expected_fragment"),
         [
             ("arch-cfg", lambda _pid: None, "config/"),
             ("arch-state", create_task_state, "state/"),
@@ -150,24 +150,24 @@ class TestArchiveProject:
     )
     def test_archive_includes_expected_sections(
         self,
-        project_id: str,
+        project_name: str,
         setup: Callable[[str], None],
         expected_fragment: str,
     ) -> None:
-        with project_env(project_yaml(project_id), project_id=project_id):
-            setup(project_id)
-            archive_path = _archive_project(project_id)
+        with project_env(project_yaml(project_name), project_name=project_name):
+            setup(project_name)
+            archive_path = _archive_project(project_name)
             assert archive_path is not None
             assert any(expected_fragment in name for name in archive_member_names(archive_path))
 
     def test_missing_dirs_graceful(self) -> None:
-        with project_env(project_yaml("arch-min"), project_id="arch-min"):
+        with project_env(project_yaml("arch-min"), project_name="arch-min"):
             archive_path = _archive_project("arch-min")
             assert archive_path is not None
             assert Path(archive_path).is_file()
 
     def test_archive_stored_in_archive_dir(self) -> None:
-        with project_env(project_yaml("arch-loc"), project_id="arch-loc"):
+        with project_env(project_yaml("arch-loc"), project_name="arch-loc"):
             archive_path = _archive_project("arch-loc")
             assert archive_path is not None
             assert Path(archive_path).parent == archive_dir()
@@ -175,7 +175,7 @@ class TestArchiveProject:
     def test_archive_bundles_task_archives_and_cleans_up(self) -> None:
         """Project archive includes task archives and removes the subtree."""
         pid = "arch-tasks"
-        with project_env(project_yaml(pid), project_id=pid):
+        with project_env(project_yaml(pid), project_name=pid):
             # Populate task archive entries
             task_archive_root = archive_dir() / pid / "tasks"
             task_archive_root.mkdir(parents=True, exist_ok=True)
@@ -195,7 +195,7 @@ class TestDeleteProjectArchive:
     """Tests for delete_project() archive integration."""
 
     def test_delete_creates_archive_before_deleting(self) -> None:
-        with project_env(project_yaml("del-arch"), project_id="del-arch"):
+        with project_env(project_yaml("del-arch"), project_name="del-arch"):
             create_task_state("del-arch")
             create_build_dir("del-arch")
             result = delete_project("del-arch")
@@ -208,14 +208,14 @@ class TestDeleteProjectArchive:
             assert "build/L2.Dockerfile" in members
 
     def test_archive_survives_deletion(self) -> None:
-        with project_env(project_yaml("del-surv"), project_id="del-surv"):
+        with project_env(project_yaml("del-surv"), project_name="del-surv"):
             project = load_project("del-surv")
             result = delete_project("del-surv")
             assert not project.root.is_dir()
             assert Path(result["archive"]).is_file()
 
     def test_archive_contains_project_config(self) -> None:
-        with project_env(project_yaml("del-cont"), project_id="del-cont"):
+        with project_env(project_yaml("del-cont"), project_name="del-cont"):
             result = delete_project("del-cont")
             assert any(
                 name.startswith("config/") for name in archive_member_names(result["archive"])

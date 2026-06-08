@@ -69,7 +69,7 @@ def _set_state_sequence(mock_runtime, states: list[str | None]):
     )
 
 
-def _gate_repo_fragment(project_id: str, *, port: int = GATE_PORT) -> str:
+def _gate_repo_fragment(project_name: str, *, port: int = GATE_PORT) -> str:
     """Return the gate URL fragment embedded in task env vars.
 
     Intentionally mode-agnostic: socket transport builds URLs with
@@ -77,7 +77,7 @@ def _gate_repo_fragment(project_id: str, *, port: int = GATE_PORT) -> str:
     with ``host.containers.internal:<port>``.  We only assert on the
     repo path so these tests pass regardless of ``services.mode``.
     """
-    return f":{port}/{project_id}.git"
+    return f":{port}/{project_name}.git"
 
 
 class TestTask:
@@ -108,14 +108,14 @@ class TestTask:
         run_mock.assert_called()
 
     def test_task_new_and_delete(self) -> None:
-        project_id = "proj8"
+        project_name = "proj8"
         with project_env(
-            f"project:\n  id: {project_id}\n",
-            project_id=project_id,
+            f"project:\n  id: {project_name}\n",
+            project_name=project_name,
         ) as ctx:
-            returned_id = task_new(project_id)
+            returned_id = task_new(project_name)
             assert_task_id(returned_id)
-            meta_dir = ctx.state_dir / "projects" / project_id / "tasks"
+            meta_dir = ctx.state_dir / "projects" / project_name / "tasks"
             meta_path = meta_dir / f"{returned_id}_dossier.json"
             assert meta_path.is_file()
 
@@ -127,7 +127,7 @@ class TestTask:
             assert workspace.is_dir()
 
             # Verify second task returns a different hex ID
-            second_id = task_new(project_id)
+            second_id = task_new(project_name)
             assert_task_id(second_id)
             assert second_id != returned_id
 
@@ -135,7 +135,7 @@ class TestTask:
                 unittest.mock.patch("terok_executor.AgentRunner.capture_logs", return_value=False),
                 mock_git_config(),
             ):
-                result = task_delete(project_id, returned_id)
+                result = task_delete(project_name, returned_id)
 
             assert isinstance(result, TaskDeleteResult)
             assert not meta_path.exists()
@@ -147,13 +147,13 @@ class TestTask:
         The TUI uses this field to sort tasks newest-first; task_id is random hex
         and carries no temporal information.
         """
-        project_id = "proj_created_at"
+        project_name = "proj_created_at"
         with project_env(
-            f"project:\n  id: {project_id}\n",
-            project_id=project_id,
+            f"project:\n  id: {project_name}\n",
+            project_name=project_name,
         ) as ctx:
-            tid = task_new(project_id)
-            meta_dir = ctx.state_dir / "projects" / project_id / "tasks"
+            tid = task_new(project_name)
+            meta_dir = ctx.state_dir / "projects" / project_name / "tasks"
             meta = read_task_meta(meta_dir, tid) or {}
 
             assert "created_at" in meta
@@ -161,7 +161,7 @@ class TestTask:
             assert parsed.tzinfo is not None, "created_at must be timezone-aware"
             assert parsed.utcoffset() == timedelta(0), "created_at must be UTC"
 
-            [task] = [t for t in get_tasks(project_id) if t.task_id == tid]
+            [task] = [t for t in get_tasks(project_name) if t.task_id == tid]
             assert task.created_at == meta["created_at"]
 
     def test_task_new_creates_marker_file(self) -> None:
@@ -171,16 +171,16 @@ class TestTask:
         task and the workspace should be reset to the latest remote HEAD.
         See the docstring in task_new() for the full protocol description.
         """
-        project_id = "proj_marker"
+        project_name = "proj_marker"
         with project_env(
-            f"project:\n  id: {project_id}\n",
-            project_id=project_id,
+            f"project:\n  id: {project_name}\n",
+            project_name=project_name,
         ) as ctx:
-            task_id = task_new(project_id)
+            task_id = task_new(project_name)
 
             # Verify marker file exists in the workspace subdirectory
             sandbox_live = ctx.base / "sandbox-live"
-            workspace_dir = sandbox_live / "tasks" / project_id / task_id / "workspace-dangerous"
+            workspace_dir = sandbox_live / "tasks" / project_name / task_id / "workspace-dangerous"
             marker_path = workspace_dir / ".new-task-marker"
             assert marker_path.is_file()
 
@@ -189,9 +189,9 @@ class TestTask:
             assert "reset to the latest remote HEAD" in marker_content
 
     @staticmethod
-    def _patch_task_meta(ctx, project_id: str, tid: str, **updates) -> None:
+    def _patch_task_meta(ctx, project_name: str, tid: str, **updates) -> None:
         """Load a task's metadata, apply updates, and write it back."""
-        meta_dir = ctx.state_dir / "projects" / project_id / "tasks"
+        meta_dir = ctx.state_dir / "projects" / project_name / "tasks"
         meta = read_task_meta(meta_dir, tid) or {}
         meta.update(updates)
         # Setting mode implies the task reached readiness (ready_at marker).
@@ -200,7 +200,7 @@ class TestTask:
         write_task_meta(dossier_path(meta_dir, tid), meta)
 
     @staticmethod
-    def _task_list_output(project_id: str, states: dict[str, str | None], **filters: str) -> str:
+    def _task_list_output(project_name: str, states: dict[str, str | None], **filters: str) -> str:
         """Run ``task_list`` with mocked container states and capture stdout."""
         with unittest.mock.patch(
             "terok.lib.orchestration.tasks.query.get_all_task_states",
@@ -208,7 +208,7 @@ class TestTask:
         ):
             buf = StringIO()
             with redirect_stdout(buf):
-                task_list(project_id, **filters)
+                task_list(project_name, **filters)
         return buf.getvalue()
 
     @staticmethod
@@ -218,18 +218,18 @@ class TestTask:
 
     def test_task_list_no_filters(self) -> None:
         """task_list with no filters prints all tasks."""
-        project_id = "proj_list"
+        project_name = "proj_list"
         with project_env(
-            f"project:\n  id: {project_id}\n",
-            project_id=project_id,
+            f"project:\n  id: {project_name}\n",
+            project_name=project_name,
         ) as ctx:
-            tid1 = task_new(project_id)
-            tid2 = task_new(project_id)
+            tid1 = task_new(project_name)
+            tid2 = task_new(project_name)
 
-            self._patch_task_meta(ctx, project_id, tid1, mode="cli")
-            self._patch_task_meta(ctx, project_id, tid2, mode="web")
+            self._patch_task_meta(ctx, project_name, tid1, mode="cli")
+            self._patch_task_meta(ctx, project_name, tid2, mode="web")
 
-            output = self._task_list_output(project_id, {tid1: "running", tid2: "exited"})
+            output = self._task_list_output(project_name, {tid1: "running", tid2: "exited"})
             assert self._task_row_pattern(tid1).search(output)
             assert "running" in output
             assert self._task_row_pattern(tid2).search(output)
@@ -237,19 +237,19 @@ class TestTask:
 
     def test_task_list_filter_by_status(self) -> None:
         """task_list --status filters tasks by effective status."""
-        project_id = "proj_filt_status"
+        project_name = "proj_filt_status"
         with project_env(
-            f"project:\n  id: {project_id}\n",
-            project_id=project_id,
+            f"project:\n  id: {project_name}\n",
+            project_name=project_name,
         ) as ctx:
-            tid1 = task_new(project_id)
-            tid2 = task_new(project_id)
+            tid1 = task_new(project_name)
+            tid2 = task_new(project_name)
 
-            self._patch_task_meta(ctx, project_id, tid1, mode="cli")
-            self._patch_task_meta(ctx, project_id, tid2, mode="cli")
+            self._patch_task_meta(ctx, project_name, tid1, mode="cli")
+            self._patch_task_meta(ctx, project_name, tid2, mode="cli")
 
             output = self._task_list_output(
-                project_id, {tid1: "running", tid2: "exited"}, status="running"
+                project_name, {tid1: "running", tid2: "exited"}, status="running"
             )
             assert self._task_row_pattern(tid1).search(output)
             assert "running" in output
@@ -257,18 +257,18 @@ class TestTask:
 
     def test_task_list_id_format(self) -> None:
         """task_list prints hex task IDs with no alignment padding."""
-        project_id = "proj_align"
+        project_name = "proj_align"
         with project_env(
-            f"project:\n  id: {project_id}\n",
-            project_id=project_id,
+            f"project:\n  id: {project_name}\n",
+            project_name=project_name,
         ) as ctx:
-            tid1 = task_new(project_id)
-            tid2 = task_new(project_id)
-            self._patch_task_meta(ctx, project_id, tid1, mode="cli")
-            self._patch_task_meta(ctx, project_id, tid2, mode="cli")
+            tid1 = task_new(project_name)
+            tid2 = task_new(project_name)
+            self._patch_task_meta(ctx, project_name, tid1, mode="cli")
+            self._patch_task_meta(ctx, project_name, tid2, mode="cli")
 
             output = self._task_list_output(
-                project_id,
+                project_name,
                 {
                     tid1: "running",
                     tid2: "exited",
@@ -280,59 +280,59 @@ class TestTask:
 
     def test_task_list_filter_by_mode(self) -> None:
         """task_list --mode filters tasks by their mode field."""
-        project_id = "proj_filt_mode"
+        project_name = "proj_filt_mode"
         with project_env(
-            f"project:\n  id: {project_id}\n",
-            project_id=project_id,
+            f"project:\n  id: {project_name}\n",
+            project_name=project_name,
         ) as ctx:
-            tid1 = task_new(project_id)
-            tid2 = task_new(project_id)
+            tid1 = task_new(project_name)
+            tid2 = task_new(project_name)
 
-            self._patch_task_meta(ctx, project_id, tid1, mode="cli")
-            self._patch_task_meta(ctx, project_id, tid2, mode="web")
+            self._patch_task_meta(ctx, project_name, tid1, mode="cli")
+            self._patch_task_meta(ctx, project_name, tid2, mode="web")
 
-            output = self._task_list_output(project_id, {tid2: None}, mode="web")
+            output = self._task_list_output(project_name, {tid2: None}, mode="web")
             assert not self._task_row_pattern(tid1).search(output)
             assert self._task_row_pattern(tid2).search(output)
 
     def test_task_list_filter_by_agent(self) -> None:
         """task_list --agent filters tasks by their preset field."""
-        project_id = "proj_filt_agent"
+        project_name = "proj_filt_agent"
         with project_env(
-            f"project:\n  id: {project_id}\n",
-            project_id=project_id,
+            f"project:\n  id: {project_name}\n",
+            project_name=project_name,
         ) as ctx:
-            tid1 = task_new(project_id)
-            tid2 = task_new(project_id)
+            tid1 = task_new(project_name)
+            tid2 = task_new(project_name)
 
-            self._patch_task_meta(ctx, project_id, tid1, preset="claude")
-            self._patch_task_meta(ctx, project_id, tid2, preset="codex")
+            self._patch_task_meta(ctx, project_name, tid1, preset="claude")
+            self._patch_task_meta(ctx, project_name, tid2, preset="codex")
 
-            output = self._task_list_output(project_id, {tid1: None, tid2: None}, agent="claude")
+            output = self._task_list_output(project_name, {tid1: None, tid2: None}, agent="claude")
             assert self._task_row_pattern(tid1).search(output)
             assert not self._task_row_pattern(tid2).search(output)
 
     def test_task_list_combined_filters(self) -> None:
         """task_list with multiple filters applies all of them (AND logic)."""
-        project_id = "proj_filt_combo"
+        project_name = "proj_filt_combo"
         with project_env(
-            f"project:\n  id: {project_id}\n",
-            project_id=project_id,
+            f"project:\n  id: {project_name}\n",
+            project_name=project_name,
         ) as ctx:
-            tid1 = task_new(project_id)
-            tid2 = task_new(project_id)
-            tid3 = task_new(project_id)
+            tid1 = task_new(project_name)
+            tid2 = task_new(project_name)
+            tid3 = task_new(project_name)
 
             for tid, mode in [
                 (tid1, "cli"),
                 (tid2, "web"),
                 (tid3, "cli"),
             ]:
-                self._patch_task_meta(ctx, project_id, tid, mode=mode)
+                self._patch_task_meta(ctx, project_name, tid, mode=mode)
 
             # mode filter narrows to cli first, then status=running keeps only task 1
             output = self._task_list_output(
-                project_id, {tid1: "running", tid3: "exited"}, status="running", mode="cli"
+                project_name, {tid1: "running", tid3: "exited"}, status="running", mode="cli"
             )
             assert self._task_row_pattern(tid1).search(output)
             assert not self._task_row_pattern(tid2).search(output)
@@ -340,35 +340,35 @@ class TestTask:
 
     def test_task_list_no_match(self) -> None:
         """task_list prints 'No tasks found' when filters match nothing."""
-        project_id = "proj_filt_none"
+        project_name = "proj_filt_none"
         with project_env(
-            f"project:\n  id: {project_id}\n",
-            project_id=project_id,
+            f"project:\n  id: {project_name}\n",
+            project_name=project_name,
         ):
-            tid = task_new(project_id)
+            tid = task_new(project_name)
 
             # New task has no mode → effective status is "created", not "running"
-            output = self._task_list_output(project_id, {tid: None}, status="running")
+            output = self._task_list_output(project_name, {tid: None}, status="running")
             assert "No tasks found" in output
 
     @unittest.mock.patch(
         "terok.lib.orchestration.environment.mint_gate_token", return_value="tok" * 10 + "ab"
     )
     def test_build_task_env_gatekeeping(self, *_mocks) -> None:
-        project_id = "proj9"
+        project_name = "proj9"
         with project_env(
-            f"project:\n  id: {project_id}\n  security_class: gatekeeping\ngit:\n  default_branch: main\n",
-            project_id=project_id,
+            f"project:\n  id: {project_name}\n  security_class: gatekeeping\ngit:\n  default_branch: main\n",
+            project_name=project_name,
             with_config_file=True,
             with_gate=True,
         ):
             env, volumes = build_task_env_and_volumes(
-                project=load_project(project_id),
+                project=load_project(project_name),
                 task_id="7",
             )
 
             assert "http://" in env["CODE_REPO"]
-            assert _gate_repo_fragment(project_id) in env["CODE_REPO"]
+            assert _gate_repo_fragment(project_name) in env["CODE_REPO"]
             # The minted gate token is surfaced for the per-container
             # supervisor to validate.  The gate runs inside the supervisor
             # now — no host gate-socket bind-mount is emitted.
@@ -384,27 +384,27 @@ class TestTask:
     )
     def test_build_task_env_gatekeeping_with_ssh(self, *_mocks) -> None:
         """Gatekeeping mode does not bind-mount SSH (keys go via SSH agent proxy)."""
-        project_id = "proj_gatekeeping_ssh"
+        project_name = "proj_gatekeeping_ssh"
         with project_env(
             "placeholder",
-            project_id=project_id,
+            project_name=project_name,
             with_config_file=True,
             with_gate=True,
         ) as ctx:
             write_project(
                 ctx.config_root,
-                project_id,
-                f"project:\n  id: {project_id}\n  security_class: gatekeeping\ngit:\n  default_branch: main\n",
+                project_name,
+                f"project:\n  id: {project_name}\n  security_class: gatekeeping\ngit:\n  default_branch: main\n",
             )
 
             env, volumes = build_task_env_and_volumes(
-                project=load_project(project_id),
+                project=load_project(project_name),
                 task_id="9",
             )
 
             # Verify gatekeeping behavior: CODE_REPO is http:// URL with token
             assert "http://" in env["CODE_REPO"]
-            assert _gate_repo_fragment(project_id) in env["CODE_REPO"]
+            assert _gate_repo_fragment(project_name) in env["CODE_REPO"]
             # Verify SSH is NOT mounted (keys are served via SSH agent proxy)
             ssh_mounts = [v for v in volumes if str(CONTAINER_SSH_DIR) in v.container_path]
             assert ssh_mounts == []
@@ -413,49 +413,49 @@ class TestTask:
         "terok.lib.orchestration.environment.mint_gate_token", return_value="tok" * 10 + "ab"
     )
     def test_build_task_env_online(self, *_mocks) -> None:
-        project_id = "proj10"
+        project_name = "proj10"
         with project_env(
             "placeholder",
-            project_id=project_id,
+            project_name=project_name,
             with_config_file=True,
             with_gate=True,
         ) as ctx:
             write_project(
                 ctx.config_root,
-                project_id,
-                f"project:\n  id: {project_id}\n  security_class: online\ngit:\n  upstream_url: https://example.com/repo.git\n  default_branch: main\n",
+                project_name,
+                f"project:\n  id: {project_name}\n  security_class: online\ngit:\n  upstream_url: https://example.com/repo.git\n  default_branch: main\n",
             )
 
-            env, volumes = build_task_env_and_volumes(load_project(project_id), task_id="8")
+            env, volumes = build_task_env_and_volumes(load_project(project_name), task_id="8")
             assert env["CODE_REPO"] == "https://example.com/repo.git"
             assert env["GIT_BRANCH"] == "main"
             assert env["TEROK_GIT_AUTHORSHIP"] == "agent-human"
             assert "http://" in env["CLONE_FROM"]
-            assert _gate_repo_fragment(project_id) in env["CLONE_FROM"]
+            assert _gate_repo_fragment(project_name) in env["CLONE_FROM"]
             # SSH is NOT bind-mounted (keys are served via SSH agent proxy)
             ssh_mounts = [v for v in volumes if str(CONTAINER_SSH_DIR) in v.container_path]
             assert ssh_mounts == []
 
     def test_build_task_env_uses_configured_git_authorship(self) -> None:
         """Task containers receive the resolved Git authorship mode."""
-        project_id = "proj_authorship_env"
+        project_name = "proj_authorship_env"
         with project_env(
-            f"project:\n  id: {project_id}\n  security_class: online\ngit:\n  upstream_url: https://example.com/repo.git\n  authorship: human-agent\n",
-            project_id=project_id,
+            f"project:\n  id: {project_name}\n  security_class: online\ngit:\n  upstream_url: https://example.com/repo.git\n  authorship: human-agent\n",
+            project_name=project_name,
         ):
-            env, _volumes = build_task_env_and_volumes(load_project(project_id), task_id="1")
+            env, _volumes = build_task_env_and_volumes(load_project(project_name), task_id="1")
             assert env["TEROK_GIT_AUTHORSHIP"] == "human-agent"
 
     def test_task_run_cli_colors_login_lines_when_tty(self, mock_runtime) -> None:
-        project_id = "proj_cli_color"
+        project_name = "proj_cli_color"
         with project_env(
-            f"project:\n  id: {project_id}\n  security_class: online\n",
-            project_id=project_id,
+            f"project:\n  id: {project_name}\n  security_class: online\n",
+            project_name=project_name,
             with_config_file=True,
             clear_env=True,
         ):
-            tid = task_new(project_id)
-            cname = f"{project_id}-cli-{tid}"
+            tid = task_new(project_name)
+            cname = f"{project_name}-cli-{tid}"
             mock_runtime.container.return_value.login_command.return_value = [
                 "podman",
                 "exec",
@@ -473,10 +473,10 @@ class TestTask:
             ):
                 buffer = StringIO()
                 with redirect_stdout(buffer):
-                    task_run_cli(project_id, tid)
+                    task_run_cli(project_name, tid)
 
             output = buffer.getvalue()
-            cname = f"{project_id}-cli-{tid}"
+            cname = f"{project_name}-cli-{tid}"
             expected_name = f"\x1b[32m{cname}\x1b[0m"
             expected_enter = f"\x1b[34mpodman exec -it {cname} bash\x1b[0m"
             expected_stop = f"\x1b[31mpodman stop {cname}\x1b[0m"
@@ -486,22 +486,22 @@ class TestTask:
 
     def test_task_run_cli_does_not_add_files_before_clone(self, mock_runtime) -> None:
         """Interactive CLI startup must not add files to workspace before init clone."""
-        project_id = "proj_cli_clean_workspace"
+        project_name = "proj_cli_clean_workspace"
         with project_env(
-            f"project:\n  id: {project_id}\n  security_class: online\n",
-            project_id=project_id,
+            f"project:\n  id: {project_name}\n  security_class: online\n",
+            project_name=project_name,
             with_config_file=True,
             clear_env=True,
         ) as ctx:
-            tid = task_new(project_id)
+            tid = task_new(project_name)
             sandbox_live = ctx.base / "sandbox-live"
-            workspace_dir = sandbox_live / "tasks" / project_id / tid / "workspace-dangerous"
+            workspace_dir = sandbox_live / "tasks" / project_name / tid / "workspace-dangerous"
             assert sorted(p.name for p in workspace_dir.iterdir()) == [".new-task-marker"]
             with (
                 _set_state_sequence(mock_runtime, [None, "running"]),
                 mock_git_config(),
             ):
-                task_run_cli(project_id, tid)
+                task_run_cli(project_name, tid)
 
             assert sorted(p.name for p in workspace_dir.iterdir()) == [".new-task-marker"]
             agent_mounts = ctx.base / "sandbox-live" / "mounts"
@@ -509,14 +509,14 @@ class TestTask:
 
     def test_task_run_toad_passes_public_url(self, mock_runtime) -> None:
         """task_run_toad must pass --public-url with the host port to toad serve."""
-        project_id = "proj_toad_url"
+        project_name = "proj_toad_url"
         with project_env(
-            f"project:\n  id: {project_id}\n  security_class: online\n",
-            project_id=project_id,
+            f"project:\n  id: {project_name}\n  security_class: online\n",
+            project_name=project_name,
             with_config_file=True,
             clear_env=True,
         ):
-            tid = task_new(project_id)
+            tid = task_new(project_name)
             mock_runtime.container.return_value.state = None
             mock_runtime.container.return_value.running = True
             with (
@@ -529,7 +529,7 @@ class TestTask:
                     "terok.lib.orchestration.task_runners.container._agent_runner"
                 ) as sandbox_factory,
             ):
-                task_run_toad(project_id, tid)
+                task_run_toad(project_name, tid)
 
             spec = captured_runspec(sandbox_factory)
             bash_cmd = spec.command[-1]
@@ -548,17 +548,17 @@ class TestTask:
         self, monkeypatch: pytest.MonkeyPatch, mock_runtime
     ) -> None:
         """task_run_toad must use TEROK_PUBLIC_HOST for URLs and bind to 0.0.0.0."""
-        project_id = "proj_toad_pub"
+        project_name = "proj_toad_pub"
         monkeypatch.setenv("TEROK_PUBLIC_HOST", "myserver")
         with project_env(
-            f"project:\n  id: {project_id}\n  security_class: online\n",
-            project_id=project_id,
+            f"project:\n  id: {project_name}\n  security_class: online\n",
+            project_name=project_name,
             with_config_file=True,
             clear_env=True,
         ):
             # Re-apply after clear_env
             monkeypatch.setenv("TEROK_PUBLIC_HOST", "myserver")
-            tid = task_new(project_id)
+            tid = task_new(project_name)
             mock_runtime.container.return_value.state = None
             mock_runtime.container.return_value.running = True
             with (
@@ -571,7 +571,7 @@ class TestTask:
                     "terok.lib.orchestration.task_runners.container._agent_runner"
                 ) as sandbox_factory,
             ):
-                task_run_toad(project_id, tid)
+                task_run_toad(project_name, tid)
 
             spec = captured_runspec(sandbox_factory)
             bash_cmd = spec.command[-1]
@@ -584,17 +584,17 @@ class TestTask:
 
     def test_task_run_cli_already_running(self, mock_runtime) -> None:
         """task_run_cli prints message and exits when container is already running."""
-        project_id = "proj_cli_running"
+        project_name = "proj_cli_running"
         with project_env(
-            f"project:\n  id: {project_id}\n",
-            project_id=project_id,
+            f"project:\n  id: {project_name}\n",
+            project_name=project_name,
         ):
-            tid = task_new(project_id)
+            tid = task_new(project_name)
             mock_runtime.container.return_value.state = "running"
             with mock_git_config():
                 buffer = StringIO()
                 with redirect_stdout(buffer):
-                    task_run_cli(project_id, tid)
+                    task_run_cli(project_name, tid)
 
                 # Verify message indicates already running
                 output = buffer.getvalue()
@@ -602,27 +602,27 @@ class TestTask:
 
     def test_task_run_cli_starts_stopped_container(self, mock_runtime) -> None:
         """task_run_cli uses 'podman start' for stopped container."""
-        project_id = "proj_cli_stopped"
+        project_name = "proj_cli_stopped"
         with project_env(
-            f"project:\n  id: {project_id}\n",
-            project_id=project_id,
+            f"project:\n  id: {project_name}\n",
+            project_name=project_name,
         ) as ctx:
-            tid = task_new(project_id)
-            meta_dir = ctx.state_dir / "projects" / project_id / "tasks"
+            tid = task_new(project_name)
+            meta_dir = ctx.state_dir / "projects" / project_name / "tasks"
 
             # Simulate task was previously run
             meta = read_task_meta(meta_dir, tid) or {}
             meta["mode"] = "cli"
             write_task_meta(dossier_path(meta_dir, tid), meta)
 
-            cname = f"{project_id}-cli-{tid}"
+            cname = f"{project_name}-cli-{tid}"
             with (
                 _set_state_sequence(mock_runtime, ["exited", "running"]),
                 mock_git_config(),
             ):
                 buffer = StringIO()
                 with redirect_stdout(buffer):
-                    task_run_cli(project_id, tid)
+                    task_run_cli(project_name, tid)
 
                 # Verify container(cname).start() was called
                 mock_runtime.container.assert_any_call(cname)
@@ -634,35 +634,35 @@ class TestTask:
 
     def test_get_workspace_git_diff_no_task(self) -> None:
         """Test get_workspace_git_diff returns None when task doesn't exist."""
-        project_id = "proj_diff_1"
+        project_name = "proj_diff_1"
         with project_env(
-            f"project:\n  id: {project_id}\n",
-            project_id=project_id,
+            f"project:\n  id: {project_name}\n",
+            project_name=project_name,
         ):
-            result = get_workspace_git_diff(project_id, "999")
+            result = get_workspace_git_diff(project_name, "999")
             assert result is None
 
     def test_get_workspace_git_diff_no_mode(self) -> None:
         """Test get_workspace_git_diff returns None when task has no mode set."""
-        project_id = "proj_diff_2"
+        project_name = "proj_diff_2"
         with project_env(
-            f"project:\n  id: {project_id}\n",
-            project_id=project_id,
+            f"project:\n  id: {project_name}\n",
+            project_name=project_name,
         ):
-            tid = task_new(project_id)
+            tid = task_new(project_name)
             # Task exists but has never been run (mode=None)
-            result = get_workspace_git_diff(project_id, tid)
+            result = get_workspace_git_diff(project_name, tid)
             assert result is None
 
     def test_get_workspace_git_diff_delegates_to_container(self) -> None:
         """Test get_workspace_git_diff delegates to container_git_diff."""
-        project_id = "proj_diff_3"
+        project_name = "proj_diff_3"
         with project_env(
-            f"project:\n  id: {project_id}\n",
-            project_id=project_id,
+            f"project:\n  id: {project_name}\n",
+            project_name=project_name,
         ):
-            tid = task_new(project_id)
-            meta_dir = tasks_meta_dir(project_id)
+            tid = task_new(project_name)
+            meta_dir = tasks_meta_dir(project_name)
             meta = read_task_meta(meta_dir, tid) or {}
             meta["mode"] = "cli"
             write_task_meta(dossier_path(meta_dir, tid), meta)
@@ -672,19 +672,19 @@ class TestTask:
                 "terok.lib.orchestration.tasks.query.container_git_diff",
                 return_value=expected,
             ) as mock_diff:
-                result = get_workspace_git_diff(project_id, tid, "HEAD")
+                result = get_workspace_git_diff(project_name, tid, "HEAD")
                 assert result == expected
-                mock_diff.assert_called_once_with(project_id, tid, "cli", "HEAD")
+                mock_diff.assert_called_once_with(project_name, tid, "cli", "HEAD")
 
     def test_get_workspace_git_diff_prev_commit(self) -> None:
         """Test get_workspace_git_diff with PREV option passes HEAD~1..HEAD."""
-        project_id = "proj_diff_5"
+        project_name = "proj_diff_5"
         with project_env(
-            f"project:\n  id: {project_id}\n",
-            project_id=project_id,
+            f"project:\n  id: {project_name}\n",
+            project_name=project_name,
         ):
-            tid = task_new(project_id)
-            meta_dir = tasks_meta_dir(project_id)
+            tid = task_new(project_name)
+            meta_dir = tasks_meta_dir(project_name)
             meta = read_task_meta(meta_dir, tid) or {}
             meta["mode"] = "run"
             write_task_meta(dossier_path(meta_dir, tid), meta)
@@ -694,19 +694,19 @@ class TestTask:
                 "terok.lib.orchestration.tasks.query.container_git_diff",
                 return_value=expected,
             ) as mock_diff:
-                result = get_workspace_git_diff(project_id, tid, "PREV")
+                result = get_workspace_git_diff(project_name, tid, "PREV")
                 assert result == expected
-                mock_diff.assert_called_once_with(project_id, tid, "run", "HEAD~1", "HEAD")
+                mock_diff.assert_called_once_with(project_name, tid, "run", "HEAD~1", "HEAD")
 
     def test_get_workspace_git_diff_container_failure(self) -> None:
         """Test get_workspace_git_diff returns None when container exec fails."""
-        project_id = "proj_diff_6"
+        project_name = "proj_diff_6"
         with project_env(
-            f"project:\n  id: {project_id}\n",
-            project_id=project_id,
+            f"project:\n  id: {project_name}\n",
+            project_name=project_name,
         ):
-            tid = task_new(project_id)
-            meta_dir = tasks_meta_dir(project_id)
+            tid = task_new(project_name)
+            meta_dir = tasks_meta_dir(project_name)
             meta = read_task_meta(meta_dir, tid) or {}
             meta["mode"] = "cli"
             write_task_meta(dossier_path(meta_dir, tid), meta)
@@ -715,7 +715,7 @@ class TestTask:
                 "terok.lib.orchestration.tasks.query.container_git_diff",
                 return_value=None,
             ):
-                result = get_workspace_git_diff(project_id, tid)
+                result = get_workspace_git_diff(project_name, tid)
                 assert result is None
 
     def test_copy_to_clipboard_empty_text(self) -> None:
@@ -876,16 +876,16 @@ class TestTask:
     )
     def test_build_task_env_gatekeeping_expose_external_remote_enabled(self, *_mocks) -> None:
         """Test expose_external_remote=true with upstream_url sets EXTERNAL_REMOTE_URL."""
-        project_id = "proj_external_remote_enabled"
+        project_name = "proj_external_remote_enabled"
         upstream_url = "https://github.com/example/repo.git"
         with project_env(
-            f"project:\n  id: {project_id}\n  security_class: gatekeeping\ngit:\n  upstream_url: {upstream_url}\n  default_branch: main\ngatekeeping:\n  expose_external_remote: true\n",
-            project_id=project_id,
+            f"project:\n  id: {project_name}\n  security_class: gatekeeping\ngit:\n  upstream_url: {upstream_url}\n  default_branch: main\ngatekeeping:\n  expose_external_remote: true\n",
+            project_name=project_name,
             with_config_file=True,
             with_gate=True,
         ):
             env, _ = build_task_env_and_volumes(
-                project=load_project(project_id),
+                project=load_project(project_name),
                 task_id="10",
             )
 
@@ -893,23 +893,23 @@ class TestTask:
             assert env["EXTERNAL_REMOTE_URL"] == upstream_url
             # Verify gatekeeping mode settings are still correct
             assert "http://" in env["CODE_REPO"]
-            assert _gate_repo_fragment(project_id) in env["CODE_REPO"]
+            assert _gate_repo_fragment(project_name) in env["CODE_REPO"]
 
     @unittest.mock.patch(
         "terok.lib.orchestration.environment.mint_gate_token", return_value="tok" * 10 + "ab"
     )
     def test_build_task_env_gatekeeping_expose_external_remote_disabled(self, *_mocks) -> None:
         """Test expose_external_remote=false does not set EXTERNAL_REMOTE_URL."""
-        project_id = "proj_external_remote_disabled"
+        project_name = "proj_external_remote_disabled"
         upstream_url = "https://github.com/example/repo.git"
         with project_env(
-            f"project:\n  id: {project_id}\n  security_class: gatekeeping\ngit:\n  upstream_url: {upstream_url}\n  default_branch: main\ngatekeeping:\n  expose_external_remote: false\n",
-            project_id=project_id,
+            f"project:\n  id: {project_name}\n  security_class: gatekeeping\ngit:\n  upstream_url: {upstream_url}\n  default_branch: main\ngatekeeping:\n  expose_external_remote: false\n",
+            project_name=project_name,
             with_config_file=True,
             with_gate=True,
         ):
             env, _ = build_task_env_and_volumes(
-                project=load_project(project_id),
+                project=load_project(project_name),
                 task_id="11",
             )
 
@@ -917,22 +917,22 @@ class TestTask:
             assert "EXTERNAL_REMOTE_URL" not in env
             # Verify gatekeeping mode settings are still correct
             assert "http://" in env["CODE_REPO"]
-            assert _gate_repo_fragment(project_id) in env["CODE_REPO"]
+            assert _gate_repo_fragment(project_name) in env["CODE_REPO"]
 
     @unittest.mock.patch(
         "terok.lib.orchestration.environment.mint_gate_token", return_value="tok" * 10 + "ab"
     )
     def test_build_task_env_gatekeeping_expose_external_remote_no_upstream(self, *_mocks) -> None:
         """Test expose_external_remote=true without upstream_url does not set EXTERNAL_REMOTE_URL."""
-        project_id = "proj_external_remote_no_upstream"
+        project_name = "proj_external_remote_no_upstream"
         with project_env(
-            f"project:\n  id: {project_id}\n  security_class: gatekeeping\ngit:\n  default_branch: main\ngatekeeping:\n  expose_external_remote: true\n",
-            project_id=project_id,
+            f"project:\n  id: {project_name}\n  security_class: gatekeeping\ngit:\n  default_branch: main\ngatekeeping:\n  expose_external_remote: true\n",
+            project_name=project_name,
             with_config_file=True,
             with_gate=True,
         ):
             env, _ = build_task_env_and_volumes(
-                project=load_project(project_id),
+                project=load_project(project_name),
                 task_id="12",
             )
 
@@ -940,7 +940,7 @@ class TestTask:
             assert "EXTERNAL_REMOTE_URL" not in env
             # Verify gatekeeping mode settings are still correct
             assert "http://" in env["CODE_REPO"]
-            assert _gate_repo_fragment(project_id) in env["CODE_REPO"]
+            assert _gate_repo_fragment(project_name) in env["CODE_REPO"]
 
     @unittest.mock.patch(
         "terok.lib.orchestration.environment.mint_gate_token", return_value="tok" * 10 + "ab"
@@ -953,21 +953,21 @@ class TestTask:
         allowlist of keys from ``sec_env``.  Missing the var here means
         the init script never adds the ``gate`` remote.
         """
-        project_id = "proj_gate_remote_online"
+        project_name = "proj_gate_remote_online"
         upstream_url = "https://github.com/example/repo.git"
         with project_env(
-            f"project:\n  id: {project_id}\n  security_class: online\ngit:\n  upstream_url: {upstream_url}\n  default_branch: main\n",
-            project_id=project_id,
+            f"project:\n  id: {project_name}\n  security_class: online\ngit:\n  upstream_url: {upstream_url}\n  default_branch: main\n",
+            project_name=project_name,
             with_config_file=True,
             with_gate=True,
         ):
             env, _ = build_task_env_and_volumes(
-                project=load_project(project_id),
+                project=load_project(project_name),
                 task_id="13",
             )
 
             assert "http://" in env["GATE_REMOTE_URL"]
-            assert _gate_repo_fragment(project_id) in env["GATE_REMOTE_URL"]
+            assert _gate_repo_fragment(project_name) in env["GATE_REMOTE_URL"]
             # Origin still points at upstream — gate is the secondary remote.
             assert env["CODE_REPO"] == upstream_url
 
@@ -1044,15 +1044,15 @@ class TestToadHelpers:
 
     def test_rehydrate_toad_token_writes_file_from_metadata(self, tmp_path: Path) -> None:
         """Saved token in ``meta`` is returned and rewritten to disk."""
-        project_id = "proj_rehydrate"
+        project_name = "proj_rehydrate"
         with project_env(
-            f"project:\n  id: {project_id}\n",
-            project_id=project_id,
+            f"project:\n  id: {project_name}\n",
+            project_name=project_name,
             with_config_file=True,
             clear_env=True,
         ):
-            task_id = task_new(project_id)
-            project = load_project(project_id)
+            task_id = task_new(project_name)
+            project = load_project(project_name)
             agent_cfg = project.tasks_root / str(task_id) / "agent-config"
             agent_cfg.mkdir(parents=True, exist_ok=True)
 
@@ -1064,15 +1064,15 @@ class TestToadHelpers:
 
     def test_rehydrate_toad_token_requires_metadata(self) -> None:
         """Missing ``web_token`` raises a clear SystemExit — tells the user to re-create."""
-        project_id = "proj_no_token"
+        project_name = "proj_no_token"
         with project_env(
-            f"project:\n  id: {project_id}\n",
-            project_id=project_id,
+            f"project:\n  id: {project_name}\n",
+            project_name=project_name,
             with_config_file=True,
             clear_env=True,
         ):
-            task_id = task_new(project_id)
-            project = load_project(project_id)
+            task_id = task_new(project_name)
+            project = load_project(project_name)
             with pytest.raises(SystemExit, match="no saved web_token"):
                 _rehydrate_toad_token(project, task_id, {}, cname="c1")
 
@@ -1081,25 +1081,25 @@ class TestResumeToadContainer:
     """End-to-end tests for the existing-container resume branch of ``task_run_toad``."""
 
     @staticmethod
-    def _seed_toad_meta(project_id: str, task_id: str, *, port: int, token: str) -> None:
+    def _seed_toad_meta(project_name: str, task_id: str, *, port: int, token: str) -> None:
         """Preload task metadata as if a toad launch had already succeeded."""
-        project = load_project(project_id)
-        meta, dossier_handle = load_task_meta(project.id, task_id, "toad")
+        project = load_project(project_name)
+        meta, dossier_handle = load_task_meta(project.name, task_id, "toad")
         meta.update({"mode": "toad", "web_port": port, "web_token": token})
         write_task_meta(dossier_handle, meta)
         (project.tasks_root / str(task_id) / "agent-config").mkdir(parents=True, exist_ok=True)
 
     def test_resume_running_container_prints_tokenized_url(self, mock_runtime) -> None:
         """A running container short-circuits with the printed ``?token=…`` URL."""
-        project_id = "proj_resume_running"
+        project_name = "proj_resume_running"
         with project_env(
-            f"project:\n  id: {project_id}\n",
-            project_id=project_id,
+            f"project:\n  id: {project_name}\n",
+            project_name=project_name,
             with_config_file=True,
             clear_env=True,
         ):
-            tid = task_new(project_id)
-            self._seed_toad_meta(project_id, tid, port=7862, token="tok-running")
+            tid = task_new(project_name)
+            self._seed_toad_meta(project_name, tid, port=7862, token="tok-running")
             mock_runtime.container.return_value.state = "running"
             buf = StringIO()
             with (
@@ -1110,27 +1110,27 @@ class TestResumeToadContainer:
                 ),
                 redirect_stdout(buf),
             ):
-                task_run_toad(project_id, tid)
+                task_run_toad(project_name, tid)
             out = buf.getvalue()
             assert "is already running" in out
             assert "?token=tok-running" in out
             # Token file rehydrated even though the container was already up.
-            project = load_project(project_id)
+            project = load_project(project_name)
             assert (
                 project.tasks_root / str(tid) / "agent-config" / "toad.token"
             ).read_text() == "tok-running"
 
     def test_resume_stopped_container_restarts_and_prints_url(self, mock_runtime) -> None:
         """An existing-but-stopped container is started again with the same token."""
-        project_id = "proj_resume_stopped"
+        project_name = "proj_resume_stopped"
         with project_env(
-            f"project:\n  id: {project_id}\n",
-            project_id=project_id,
+            f"project:\n  id: {project_name}\n",
+            project_name=project_name,
             with_config_file=True,
             clear_env=True,
         ):
-            tid = task_new(project_id)
-            self._seed_toad_meta(project_id, tid, port=7863, token="tok-stopped")
+            tid = task_new(project_name)
+            self._seed_toad_meta(project_name, tid, port=7863, token="tok-stopped")
             mock_runtime.container.return_value.state = "exited"
             buf = StringIO()
             with (
@@ -1150,7 +1150,7 @@ class TestResumeToadContainer:
                 ),
                 redirect_stdout(buf),
             ):
-                task_run_toad(project_id, tid)
+                task_run_toad(project_name, tid)
             out = buf.getvalue()
             assert "Starting existing container" in out
             assert "Container started" in out
@@ -1158,15 +1158,15 @@ class TestResumeToadContainer:
 
     def test_resume_rejects_changed_port(self, mock_runtime) -> None:
         """If the saved port is taken by another user, fail fast."""
-        project_id = "proj_resume_taken"
+        project_name = "proj_resume_taken"
         with project_env(
-            f"project:\n  id: {project_id}\n",
-            project_id=project_id,
+            f"project:\n  id: {project_name}\n",
+            project_name=project_name,
             with_config_file=True,
             clear_env=True,
         ):
-            tid = task_new(project_id)
-            self._seed_toad_meta(project_id, tid, port=7864, token="tok")
+            tid = task_new(project_name)
+            self._seed_toad_meta(project_name, tid, port=7864, token="tok")
             mock_runtime.container.return_value.state = "running"
             with (
                 unittest.mock.patch(
@@ -1175,17 +1175,17 @@ class TestResumeToadContainer:
                 ),
                 pytest.raises(SystemExit, match="no longer available"),
             ):
-                task_run_toad(project_id, tid)
+                task_run_toad(project_name, tid)
 
 
 class TestTaskLogs:
     """Tests for task_logs() function."""
 
-    def _setup_task_with_mode(self, project_id, mode="run"):
+    def _setup_task_with_mode(self, project_name, mode="run"):
         """Create a task and set its mode in metadata."""
-        task_id = task_new(project_id)
+        task_id = task_new(project_name)
         # Manually update metadata to set mode (normally done by task runners)
-        meta_dir = tasks_meta_dir(project_id)
+        meta_dir = tasks_meta_dir(project_name)
         meta = read_task_meta(meta_dir, task_id) or {}
         meta["mode"] = mode
         write_task_meta(dossier_path(meta_dir, task_id), meta)
@@ -1195,7 +1195,7 @@ class TestTaskLogs:
         """task_logs raises SystemExit for non-existent task."""
         with project_env(
             "project:\n  id: proj_logs1\n",
-            project_id="proj_logs1",
+            project_name="proj_logs1",
         ):
             with mock_git_config():
                 with pytest.raises(SystemExit) as cm:
@@ -1206,7 +1206,7 @@ class TestTaskLogs:
         """task_logs raises SystemExit when task has no mode set."""
         with project_env(
             "project:\n  id: proj_logs2\n",
-            project_id="proj_logs2",
+            project_name="proj_logs2",
         ):
             with mock_git_config():
                 task_id = task_new("proj_logs2")
@@ -1219,7 +1219,7 @@ class TestTaskLogs:
         mock_runtime.container.return_value.state = None
         with project_env(
             "project:\n  id: proj_logs3\n",
-            project_id="proj_logs3",
+            project_name="proj_logs3",
         ):
             with mock_git_config():
                 task_id = self._setup_task_with_mode("proj_logs3", "run")
@@ -1232,7 +1232,7 @@ class TestTaskLogs:
         mock_runtime.container.return_value.state = "running"
         with project_env(
             "project:\n  id: proj_logs4\n",
-            project_id="proj_logs4",
+            project_name="proj_logs4",
         ):
             with mock_git_config():
                 task_id = self._setup_task_with_mode("proj_logs4", "run")
@@ -1245,7 +1245,7 @@ class TestTaskLogs:
         mock_runtime.container.return_value.state = "exited"
         with project_env(
             "project:\n  id: proj_logs5\n",
-            project_id="proj_logs5",
+            project_name="proj_logs5",
         ):
             with mock_git_config():
                 task_id = self._setup_task_with_mode("proj_logs5", "cli")
@@ -1271,7 +1271,7 @@ class TestTaskLogs:
         mock_runtime.container.return_value.state = "exited"
         with project_env(
             "project:\n  id: proj_logs6\n",
-            project_id="proj_logs6",
+            project_name="proj_logs6",
         ):
             with mock_git_config():
                 task_id = self._setup_task_with_mode("proj_logs6", "cli")
@@ -1288,7 +1288,7 @@ class TestTaskLogs:
         mock_runtime.container.return_value.state = "exited"
         with project_env(
             "project:\n  id: proj_logs7\n",
-            project_id="proj_logs7",
+            project_name="proj_logs7",
         ):
             with mock_git_config():
                 task_id = self._setup_task_with_mode("proj_logs7", "run")
@@ -1335,7 +1335,7 @@ class TestTaskLogs:
         mock_runtime.container.return_value.state = "running"
         with project_env(
             "project:\n  id: proj_logs8\n",
-            project_id="proj_logs8",
+            project_name="proj_logs8",
         ):
             with mock_git_config():
                 task_id = self._setup_task_with_mode("proj_logs8", "run")
@@ -1354,7 +1354,7 @@ class TestTaskLogs:
         mock_runtime.container.return_value.state = None
         with project_env(
             "project:\n  id: proj_logs_persist\n",
-            project_id="proj_logs_persist",
+            project_name="proj_logs_persist",
         ):
             with mock_git_config():
                 task_id = self._setup_task_with_mode("proj_logs_persist", "run")
@@ -1387,7 +1387,7 @@ class TestTaskLogs:
         mock_runtime.container.return_value.state = None
         with project_env(
             "project:\n  id: proj_logs_tail\n",
-            project_id="proj_logs_tail",
+            project_name="proj_logs_tail",
         ):
             with mock_git_config():
                 task_id = self._setup_task_with_mode("proj_logs_tail", "run")
@@ -1414,7 +1414,7 @@ class TestTaskLogs:
         mock_runtime.container.return_value.state = None
         with project_env(
             "project:\n  id: proj_logs_nolog\n",
-            project_id="proj_logs_nolog",
+            project_name="proj_logs_nolog",
         ):
             with mock_git_config():
                 task_id = self._setup_task_with_mode("proj_logs_nolog", "run")
@@ -1427,7 +1427,7 @@ class TestTaskLogs:
         mock_runtime.container.return_value.state = None
         with project_env(
             "project:\n  id: proj_logs_negtail\n",
-            project_id="proj_logs_negtail",
+            project_name="proj_logs_negtail",
         ):
             with mock_git_config():
                 task_id = self._setup_task_with_mode("proj_logs_negtail", "run")
@@ -1449,14 +1449,14 @@ class TestTaskArchive:
 
     def test_task_delete_creates_archive(self) -> None:
         """task_delete archives metadata and logs before cleanup."""
-        project_id = "proj_archive1"
+        project_name = "proj_archive1"
         with project_env(
-            f"project:\n  id: {project_id}\n",
-            project_id=project_id,
+            f"project:\n  id: {project_name}\n",
+            project_name=project_name,
         ) as ctx:
             with mock_git_config():
-                task_id = task_new(project_id)
-                meta_dir = ctx.state_dir / "projects" / project_id / "tasks"
+                task_id = task_new(project_name)
+                meta_dir = ctx.state_dir / "projects" / project_name / "tasks"
 
                 # Set mode in metadata (simulating a task that ran)
                 meta = read_task_meta(meta_dir, task_id) or {}
@@ -1466,7 +1466,7 @@ class TestTaskArchive:
                 write_task_meta(dossier_path(meta_dir, task_id), meta)
 
                 # Create logs dir to simulate persisted logs
-                task_dir = ctx.state_dir / "tasks" / project_id / task_id
+                task_dir = ctx.state_dir / "tasks" / project_name / task_id
                 logs_dir = task_dir / "logs"
                 logs_dir.mkdir(parents=True, exist_ok=True)
                 (logs_dir / "container.log").write_text("log content\n")
@@ -1481,7 +1481,7 @@ class TestTaskArchive:
                     "terok_executor.AgentRunner.capture_logs",
                     new=_fake_capture,
                 ):
-                    task_delete(project_id, task_id)
+                    task_delete(project_name, task_id)
 
                 # Task should be deleted
                 assert not dossier_path(meta_dir, task_id).exists()
@@ -1489,7 +1489,7 @@ class TestTaskArchive:
                 # Archive should exist under namespace archive tree
                 from terok.lib.orchestration.tasks import tasks_archive_dir
 
-                archive_root = tasks_archive_dir(project_id)
+                archive_root = tasks_archive_dir(project_name)
                 assert archive_root.is_dir()
                 archives = list(archive_root.iterdir())
                 assert len(archives) == 1
@@ -1513,13 +1513,13 @@ class TestTaskArchive:
 
     def test_task_delete_archives_without_logs(self) -> None:
         """task_delete still archives metadata even when no logs exist."""
-        project_id = "proj_archive2"
+        project_name = "proj_archive2"
         with project_env(
-            f"project:\n  id: {project_id}\n",
-            project_id=project_id,
+            f"project:\n  id: {project_name}\n",
+            project_name=project_name,
         ):
             with mock_git_config():
-                task_id = task_new(project_id)
+                task_id = task_new(project_name)
 
                 def fake_run(cmd, *, stdout=None, stderr=None, timeout=None, **kw):
                     """No-op mock for subprocess.run."""
@@ -1531,11 +1531,11 @@ class TestTaskArchive:
                     "terok_executor.AgentRunner.capture_logs",
                     return_value=True,
                 ):
-                    task_delete(project_id, task_id)
+                    task_delete(project_name, task_id)
 
                 from terok.lib.orchestration.tasks import tasks_archive_dir
 
-                archive_root = tasks_archive_dir(project_id)
+                archive_root = tasks_archive_dir(project_name)
                 assert archive_root.is_dir()
                 archives = list(archive_root.iterdir())
                 assert len(archives) == 1
@@ -1549,13 +1549,13 @@ class TestTaskArchive:
         """list_archived_tasks returns archived tasks sorted newest-first."""
         from terok.lib.orchestration.tasks import list_archived_tasks, tasks_archive_dir
 
-        project_id = "proj_archive3"
+        project_name = "proj_archive3"
         with project_env(
-            f"project:\n  id: {project_id}\n",
-            project_id=project_id,
+            f"project:\n  id: {project_name}\n",
+            project_name=project_name,
         ):
             # Create archive entries manually
-            archive_root = tasks_archive_dir(project_id)
+            archive_root = tasks_archive_dir(project_name)
             archive_root.mkdir(parents=True, exist_ok=True)
 
             for i, ts in enumerate(["20260301T100000Z", "20260302T100000Z", "20260303T100000Z"]):
@@ -1573,7 +1573,7 @@ class TestTaskArchive:
                     )
                 )
 
-            archived = list_archived_tasks(project_id)
+            archived = list_archived_tasks(project_name)
             assert len(archived) == 3
             # Newest first
             assert archived[0].task_id == "3"
@@ -1585,42 +1585,42 @@ class TestTaskArchive:
         """task_archive_logs returns log file path for matching archive."""
         from terok.lib.orchestration.tasks import task_archive_logs, tasks_archive_dir
 
-        project_id = "proj_archive4"
+        project_name = "proj_archive4"
         with project_env(
-            f"project:\n  id: {project_id}\n",
-            project_id=project_id,
+            f"project:\n  id: {project_name}\n",
+            project_name=project_name,
         ):
-            archive_root = tasks_archive_dir(project_id)
+            archive_root = tasks_archive_dir(project_name)
             entry_dir = archive_root / "20260305T120000Z_1_my-task"
             logs_dir = entry_dir / "logs"
             logs_dir.mkdir(parents=True, exist_ok=True)
             (logs_dir / "container.log").write_text("archived log\n")
 
             # Full match
-            result = task_archive_logs(project_id, "20260305T120000Z_1_my-task")
+            result = task_archive_logs(project_name, "20260305T120000Z_1_my-task")
             assert result is not None
             assert result.read_text() == "archived log\n"
 
             # Prefix match
-            result = task_archive_logs(project_id, "20260305T120000Z")
+            result = task_archive_logs(project_name, "20260305T120000Z")
             assert result is not None
 
             # No match
-            result = task_archive_logs(project_id, "20990101")
+            result = task_archive_logs(project_name, "20990101")
             assert result is None
 
     def test_task_archive_list_empty(self) -> None:
         """task_archive_list prints message when no archives exist."""
         from terok.lib.orchestration.tasks import task_archive_list
 
-        project_id = "proj_archive5"
+        project_name = "proj_archive5"
         with project_env(
-            f"project:\n  id: {project_id}\n",
-            project_id=project_id,
+            f"project:\n  id: {project_name}\n",
+            project_name=project_name,
         ):
             buf = StringIO()
             with redirect_stdout(buf):
-                task_archive_list(project_id)
+                task_archive_list(project_name)
             assert "No archived tasks found" in buf.getvalue()
 
     def test_capture_task_logs(self) -> None:
@@ -1628,13 +1628,13 @@ class TestTaskArchive:
         returns the log file path when the executor reports success."""
         from terok.lib.orchestration.tasks import capture_task_logs
 
-        project_id = "proj_capture1"
+        project_name = "proj_capture1"
         with project_env(
-            f"project:\n  id: {project_id}\n",
-            project_id=project_id,
+            f"project:\n  id: {project_name}\n",
+            project_name=project_name,
         ):
             with mock_git_config():
-                task_id = task_new(project_id)
+                task_id = task_new(project_name)
 
                 log_content = "2026-03-05T12:00:00Z stdout line\n"
 
@@ -1647,7 +1647,7 @@ class TestTaskArchive:
                     "terok_executor.AgentRunner.capture_logs",
                     new=fake_capture,
                 ):
-                    log_file = capture_task_logs(project_id, task_id, "run")
+                    log_file = capture_task_logs(project_name, task_id, "run")
 
                 assert log_file is not None
                 assert "stdout line" in log_file.read_text()
@@ -1658,19 +1658,19 @@ class TestTaskArchive:
         way through AgentRunner.capture_logs)."""
         from terok.lib.orchestration.tasks import capture_task_logs
 
-        project_id = "proj_capture2"
+        project_name = "proj_capture2"
         with project_env(
-            f"project:\n  id: {project_id}\n",
-            project_id=project_id,
+            f"project:\n  id: {project_name}\n",
+            project_name=project_name,
         ):
             with mock_git_config():
-                task_id = task_new(project_id)
+                task_id = task_new(project_name)
 
                 with unittest.mock.patch(
                     "terok_executor.AgentRunner.capture_logs",
                     return_value=False,
                 ):
-                    result = capture_task_logs(project_id, task_id, "run")
+                    result = capture_task_logs(project_name, task_id, "run")
 
                 assert result is None
 
@@ -1688,7 +1688,7 @@ class TestTaskDeleteWarnings:
     def _delete_with_mocks(
         self,
         mock_runtime,
-        project_id: str = "proj_warn",
+        project_name: str = "proj_warn",
         *,
         container_results: list | None = None,
         rmtree_side_effect: BaseException | None = None,
@@ -1703,11 +1703,11 @@ class TestTaskDeleteWarnings:
         ]
 
         with project_env(
-            f"project:\n  id: {project_id}\n",
-            project_id=project_id,
+            f"project:\n  id: {project_name}\n",
+            project_name=project_name,
         ):
             with mock_git_config():
-                task_id = task_new(project_id)
+                task_id = task_new(project_name)
 
                 patches = [
                     unittest.mock.patch(
@@ -1739,11 +1739,11 @@ class TestTaskDeleteWarnings:
                             unittest.mock.patch.object(Path, "unlink", _guarded_unlink)
                         )
 
-                    return task_delete(project_id, task_id)
+                    return task_delete(project_name, task_id)
 
     def test_clean_delete_returns_empty_warnings(self, mock_runtime) -> None:
         """Normal deletion returns TaskDeleteResult with no warnings."""
-        result = self._delete_with_mocks(mock_runtime, project_id="proj_warn1")
+        result = self._delete_with_mocks(mock_runtime, project_name="proj_warn1")
         assert isinstance(result, TaskDeleteResult)
         assert result.warnings == []
 
@@ -1751,7 +1751,7 @@ class TestTaskDeleteWarnings:
         """Failed container removal adds a warning and keeps port claimed."""
         result = self._delete_with_mocks(
             mock_runtime,
-            project_id="proj_warn3",
+            project_name="proj_warn3",
             container_results=[
                 {"name": "proj-cli-1", "removed": True},
                 {"name": "proj-web-1", "removed": False, "error": "locked"},
@@ -1765,7 +1765,7 @@ class TestTaskDeleteWarnings:
         """Failed workspace rmtree adds a warning."""
         result = self._delete_with_mocks(
             mock_runtime,
-            project_id="proj_warn4",
+            project_name="proj_warn4",
             rmtree_side_effect=PermissionError("busy"),
         )
         assert any("Workspace removal" in w for w in result.warnings)
@@ -1774,7 +1774,7 @@ class TestTaskDeleteWarnings:
         """Failed metadata unlink adds a warning."""
         result = self._delete_with_mocks(
             mock_runtime,
-            project_id="proj_warn5",
+            project_name="proj_warn5",
             unlink_side_effect=PermissionError("read-only"),
         )
         assert any("Metadata removal" in w for w in result.warnings)
@@ -1783,7 +1783,7 @@ class TestTaskDeleteWarnings:
         """Multiple failures from different steps all appear in warnings."""
         result = self._delete_with_mocks(
             mock_runtime,
-            project_id="proj_warn6",
+            project_name="proj_warn6",
             container_results=[
                 {"name": "c1", "removed": False, "error": "timeout"},
             ],
@@ -1833,7 +1833,7 @@ class TestArchiveListing:
         from terok.lib.orchestration.tasks import list_archived_tasks, tasks_archive_dir
 
         pid = "proj_arc_skip"
-        with project_env(f"project:\n  id: {pid}\n", project_id=pid):
+        with project_env(f"project:\n  id: {pid}\n", project_name=pid):
             root = tasks_archive_dir(pid)
             root.mkdir(parents=True)
             (root / "stray-file.txt").write_text("not a dir")
@@ -1850,7 +1850,7 @@ class TestArchiveListing:
         from terok.lib.orchestration.tasks import task_archive_list, tasks_archive_dir
 
         pid = "proj_arc_fmt"
-        with project_env(f"project:\n  id: {pid}\n", project_id=pid):
+        with project_env(f"project:\n  id: {pid}\n", project_name=pid):
             entry = tasks_archive_dir(pid) / "20260103T120000Z_k3v8h_fix-bug"
             entry.mkdir(parents=True)
             (entry / "task.json").write_text(
@@ -1868,7 +1868,7 @@ class TestArchiveListing:
         from terok.lib.orchestration.tasks import task_archive_logs
 
         pid = "proj_arc_nodir"
-        with project_env(f"project:\n  id: {pid}\n", project_id=pid):
+        with project_env(f"project:\n  id: {pid}\n", project_name=pid):
             assert task_archive_logs(pid, "anything") is None
 
 
@@ -1880,7 +1880,7 @@ class TestGetTaskMeta:
         from terok.lib.orchestration.tasks import get_task_meta
 
         pid = "proj_gtm_unknown"
-        with project_env(f"project:\n  id: {pid}\n", project_id=pid):
+        with project_env(f"project:\n  id: {pid}\n", project_name=pid):
             with pytest.raises(SystemExit, match="Unknown task"):
                 get_task_meta(pid, "g1v2h")
 
@@ -1889,7 +1889,7 @@ class TestGetTaskMeta:
         from terok.lib.orchestration.tasks import get_task_meta
 
         pid = "proj_gtm_live"
-        with project_env(f"project:\n  id: {pid}\n", project_id=pid), mock_git_config():
+        with project_env(f"project:\n  id: {pid}\n", project_name=pid), mock_git_config():
             task_id = task_new(pid)
             meta_dir = tasks_meta_dir(pid)
             meta = read_task_meta(meta_dir, task_id)
@@ -1907,7 +1907,7 @@ class TestGetTaskMeta:
         from terok.lib.orchestration.tasks import get_task_meta
 
         pid = "proj_gtm_nomode"
-        with project_env(f"project:\n  id: {pid}\n", project_id=pid), mock_git_config():
+        with project_env(f"project:\n  id: {pid}\n", project_name=pid), mock_git_config():
             task_id = task_new(pid)  # fresh task — mode is None
             tm = get_task_meta(pid, task_id)
             assert tm.mode is None
@@ -1944,7 +1944,7 @@ class TestMetaMutations:
         from terok.lib.orchestration.tasks import mark_task_deleting, tasks_meta_dir
 
         pid = "proj_mtd"
-        with project_env(f"project:\n  id: {pid}\n", project_id=pid), mock_git_config():
+        with project_env(f"project:\n  id: {pid}\n", project_name=pid), mock_git_config():
             task_id = task_new(pid)
             mark_task_deleting(pid, task_id)
             assert read_task_meta(tasks_meta_dir(pid), task_id)["deleting"] is True
@@ -1954,7 +1954,7 @@ class TestMetaMutations:
         from terok.lib.orchestration.tasks import mark_task_deleting
 
         pid = "proj_mtd_missing"
-        with project_env(f"project:\n  id: {pid}\n", project_id=pid):
+        with project_env(f"project:\n  id: {pid}\n", project_name=pid):
             mark_task_deleting(pid, "g1v2h")  # must not raise
 
     def test_mark_deleting_swallows_write_errors(self) -> None:
@@ -1962,7 +1962,7 @@ class TestMetaMutations:
         from terok.lib.orchestration.tasks import mark_task_deleting
 
         pid = "proj_mtd_err"
-        with project_env(f"project:\n  id: {pid}\n", project_id=pid), mock_git_config():
+        with project_env(f"project:\n  id: {pid}\n", project_name=pid), mock_git_config():
             task_id = task_new(pid)
             with unittest.mock.patch(
                 "terok.lib.orchestration.tasks.meta.write_task_meta",
@@ -1975,5 +1975,5 @@ class TestMetaMutations:
         from terok.lib.orchestration.tasks import update_task_exit_code
 
         pid = "proj_uec_missing"
-        with project_env(f"project:\n  id: {pid}\n", project_id=pid):
+        with project_env(f"project:\n  id: {pid}\n", project_name=pid):
             update_task_exit_code(pid, "g1v2h", 0)  # must not raise

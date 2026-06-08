@@ -24,14 +24,14 @@ from tests.unit.tui.tui_test_helpers import (
 )
 
 MOCK_WORKSPACE = str(MOCK_BASE / "ws")
-TEST_PROJECT_ID = "test-proj"
-TEST_PROJECT_ROOT = MOCK_CONFIG_ROOT / "projects" / TEST_PROJECT_ID
+TEST_PROJECT_NAME = "test-proj"
+TEST_PROJECT_ROOT = MOCK_CONFIG_ROOT / "projects" / TEST_PROJECT_NAME
 
 
 def make_project(**overrides: object) -> mock.Mock:
     """Return a project mock with sensible defaults for TUI rendering tests."""
     project = mock.Mock()
-    project.id = TEST_PROJECT_ID
+    project.name = TEST_PROJECT_NAME
     project.upstream_url = TEST_UPSTREAM_URL
     project.security_class = "online"
     project.agents = ["codex"]
@@ -60,7 +60,7 @@ def make_task_screen(*, has_tasks: bool, mode: str | None = None) -> object:
     """Build a TaskDetailsScreen with a mocked dismiss method."""
     screens, widgets = import_screens()
     task = None if mode is None else make_task(widgets, task_id="t1", mode=mode)
-    screen = screens.TaskDetailsScreen(task=task, has_tasks=has_tasks, project_id="p")
+    screen = screens.TaskDetailsScreen(task=task, has_tasks=has_tasks, project_name="p")
     screen.dismiss = mock.Mock()
     return screen
 
@@ -69,7 +69,7 @@ def render_task_details_text(**overrides: object) -> str:
     """Render task details and return plain text for substring assertions."""
     widgets = import_widgets()
     task = make_task(widgets, **overrides)
-    return str(widgets.render_task_details(task, project_id="proj1"))
+    return str(widgets.render_task_details(task, project_name="proj1"))
 
 
 def format_task_label(**overrides: object) -> str:
@@ -104,7 +104,7 @@ async def fake_push_screen(
 def make_creation_app(app_class: type) -> object:
     """Build a TUI app instance prepared for task-creation workflows."""
     instance = app_class()
-    instance.current_project_id = "proj1"
+    instance.current_project_name = "proj1"
     instance._last_selected_tasks = {}
     instance.notify = mock.Mock()
     instance.suspend = mock.Mock(return_value=contextlib.nullcontext())
@@ -149,7 +149,7 @@ class TestRenderHelpers:
 
         assert isinstance(result, Text)
         text_str = str(result)
-        assert TEST_PROJECT_ID in text_str
+        assert TEST_PROJECT_NAME in text_str
 
     def test_render_project_details_shows_config_path(self) -> None:
         widgets = import_widgets()
@@ -168,12 +168,30 @@ class TestRenderHelpers:
         assert isinstance(result, Text)
         assert "No project" in str(result)
 
+    def test_render_project_details_shows_description(self) -> None:
+        widgets = import_widgets()
+        project = make_project(description="A friendly summary")
+        state = {"ssh": True, "dockerfiles": True, "images": True, "gate": True}
+
+        result = widgets.render_project_details(project, state, task_count=5)
+
+        assert "A friendly summary" in str(result)
+
+    def test_render_project_details_omits_description_when_none(self) -> None:
+        widgets = import_widgets()
+        project = make_project(description=None)
+        state = {"ssh": True, "dockerfiles": True, "images": True, "gate": True}
+
+        result = widgets.render_project_details(project, state, task_count=5)
+
+        assert "Desc:" not in str(result)
+
     def test_render_task_details_returns_text(self) -> None:
         widgets = import_widgets()
 
         task = make_task(widgets, task_id="42", backend="codex")
 
-        result = widgets.render_task_details(task, project_id="proj1")
+        result = widgets.render_task_details(task, project_name="proj1")
 
         assert isinstance(result, Text)
         text_str = str(result)
@@ -189,7 +207,7 @@ class TestRenderHelpers:
 
     def test_render_project_loading(self) -> None:
         widgets = import_widgets()
-        project = make_project(id="myproj", upstream_url=TEST_EGRESS_URL)
+        project = make_project(name="myproj", upstream_url=TEST_EGRESS_URL)
 
         result = widgets.render_project_loading(project, task_count=3)
 
@@ -205,10 +223,26 @@ class TestRenderHelpers:
         assert isinstance(result, Text)
         assert "No project" in str(result)
 
+    def test_render_project_loading_shows_description(self) -> None:
+        widgets = import_widgets()
+        project = make_project(description="Loading-time summary")
+
+        result = widgets.render_project_loading(project, task_count=1)
+
+        assert "Loading-time summary" in str(result)
+
+    def test_render_project_loading_omits_description_when_none(self) -> None:
+        widgets = import_widgets()
+        project = make_project(description=None)
+
+        result = widgets.render_project_loading(project, task_count=1)
+
+        assert "Desc:" not in str(result)
+
     def test_render_task_details_unattended_mode(self) -> None:
         widgets = import_widgets()
         task = make_task(widgets, task_id="5", mode="run")
-        result = widgets.render_task_details(task, project_id="proj1")
+        result = widgets.render_task_details(task, project_name="proj1")
         assert isinstance(result, Text)
         text_str = str(result)
         assert "Unattended" in text_str
@@ -217,7 +251,7 @@ class TestRenderHelpers:
     def test_render_task_details_unattended_with_exit_code(self) -> None:
         widgets = import_widgets()
         task = make_task(widgets, task_id="5", mode="run", exit_code=0)
-        result = widgets.render_task_details(task, project_id="proj1")
+        result = widgets.render_task_details(task, project_name="proj1")
         text_str = str(result)
         assert "Exit code: 0" in text_str
 
@@ -229,7 +263,7 @@ class TestRenderHelpers:
 
         widgets = import_widgets()
         task = make_task(widgets, task_id="42", mode="toad", web_port=8123, web_token="t0k")
-        result = widgets.render_task_details(task, project_id="proj1", is_web=False)
+        result = widgets.render_task_details(task, project_name="proj1", is_web=False)
         # Render to a buffer with ``force_terminal`` so styles serialise
         # to ANSI; the plain ``str(result)`` projection drops styling.
         buf = io.StringIO()
@@ -246,7 +280,7 @@ class TestRenderHelpers:
 
         widgets = import_widgets()
         task = make_task(widgets, task_id="42", mode="toad", web_port=8123, web_token="t0k")
-        result = widgets.render_task_details(task, project_id="proj1", is_web=True)
+        result = widgets.render_task_details(task, project_name="proj1", is_web=True)
         buf = io.StringIO()
         Console(file=buf, width=80, force_terminal=True, color_system="standard").print(result)
         ansi = buf.getvalue()
@@ -345,7 +379,7 @@ class TestRenderHelpers:
         """Stopped containers with healthy hooks show 'ready', no warning."""
         widgets = import_widgets()
         task = make_task(widgets, task_id="99", shield_state="OFFLINE", container_state="exited")
-        text = str(widgets.render_task_details(task, project_id="proj1", shield_hooks_ok=True))
+        text = str(widgets.render_task_details(task, project_name="proj1", shield_hooks_ok=True))
         assert "ready" in text
         assert "offline" not in text
         assert "shield-security" not in text
@@ -354,7 +388,7 @@ class TestRenderHelpers:
         """Stopped containers with broken hooks still show offline warning."""
         widgets = import_widgets()
         task = make_task(widgets, task_id="99", shield_state="OFFLINE", container_state="exited")
-        text = str(widgets.render_task_details(task, project_id="proj1", shield_hooks_ok=False))
+        text = str(widgets.render_task_details(task, project_name="proj1", shield_hooks_ok=False))
         assert "offline" in text
         assert "shield-security" in text
         assert "ready" not in text
@@ -429,7 +463,7 @@ class TestScreenConstruction:
 
     def test_project_details_screen_construction(self) -> None:
         screens, _ = import_screens()
-        project = make_project(id="proj1")
+        project = make_project(name="proj1")
         staleness = mock.Mock()
 
         screen = screens.ProjectDetailsScreen(
@@ -454,7 +488,7 @@ class TestScreenConstruction:
     def test_project_details_action_set_agents_opens_modal(self) -> None:
         """``action_set_agents`` calls ``_open_agents_modal`` — keeps the wiring honest."""
         screens, _ = import_screens()
-        project = make_project(id="proj1")
+        project = make_project(name="proj1")
         screen = screens.ProjectDetailsScreen(project=project, state=None, task_count=0)
         screen._open_agents_modal = mock.Mock()
         screen.action_set_agents()
@@ -463,7 +497,7 @@ class TestScreenConstruction:
     def test_project_details_option_list_routes_set_agents(self) -> None:
         """Selecting the OptionList entry pushes the modal instead of dismissing."""
         screens, _ = import_screens()
-        project = make_project(id="proj1")
+        project = make_project(name="proj1")
         screen = screens.ProjectDetailsScreen(project=project, state=None, task_count=0)
         screen._open_agents_modal = mock.Mock()
         screen.dismiss = mock.Mock()
@@ -476,7 +510,7 @@ class TestScreenConstruction:
     def test_project_details_agents_modal_writes_selection(self) -> None:
         """A non-None selection from the modal lands in ``set_project_image_agents``."""
         screens, _ = import_screens()
-        project = make_project(id="proj1", agents="all")
+        project = make_project(name="proj1", agents="all")
         screen = screens.ProjectDetailsScreen(project=project, state=None, task_count=0)
         screen.notify = mock.Mock()
         with mock.patch("terok.lib.api.set_project_image_agents") as write_mock:
@@ -490,7 +524,7 @@ class TestScreenConstruction:
     def test_project_details_agents_modal_cancel_is_noop(self) -> None:
         """``None`` from the modal must NOT touch project.yml."""
         screens, _ = import_screens()
-        project = make_project(id="proj1", agents="all")
+        project = make_project(name="proj1", agents="all")
         screen = screens.ProjectDetailsScreen(project=project, state=None, task_count=0)
         screen.notify = mock.Mock()
         with mock.patch("terok.lib.api.set_project_image_agents") as write_mock:
@@ -505,12 +539,12 @@ class TestScreenConstruction:
         screen = screens.TaskDetailsScreen(
             task=task,
             has_tasks=True,
-            project_id="proj1",
+            project_name="proj1",
             image_old=False,
         )
         assert screen._task_meta == task
         assert screen._has_tasks
-        assert screen._project_id == "proj1"
+        assert screen._project_name == "proj1"
         assert not screen._image_old
 
     @pytest.mark.parametrize("screen_name", ["AuthActionsScreen", "UnattendedPromptScreen"])
@@ -757,7 +791,7 @@ class TestSSHKeyRegistration:
         """action_init_ssh dispatches the init_ssh worker action for the selection."""
         mixin = self._get_mixin()
         instance = mock.Mock(spec=mixin)
-        instance.current_project_id = "proj"
+        instance.current_project_name = "proj"
         run(mixin.action_init_ssh(instance))
         instance._run_console_action.assert_called_once_with(
             "terok.tui.worker_actions:init_ssh",
@@ -776,13 +810,13 @@ class TestSSHKeyRegistration:
         """
         mixin = self._get_mixin()
         instance = mock.Mock(spec=mixin)
-        instance.current_project_id = "proj"
+        instance.current_project_name = "proj"
         instance.push_screen = mock.AsyncMock()
         run(mixin._action_project_init(instance))
         instance.push_screen.assert_awaited_once()
         screen = instance.push_screen.call_args[0][0]
         assert type(screen).__name__ == "InitProgressScreen"
-        assert screen._project_id == "proj"
+        assert screen._project_name == "proj"
         assert screen._rendered_yaml is None
 
 
@@ -948,11 +982,11 @@ class TestActionAuth:
 
         return ProjectActionsMixin
 
-    def test_per_project_dispatches_auth_with_project_id(self) -> None:
+    def test_per_project_dispatches_auth_with_project_name(self) -> None:
         """``_action_auth`` is the project-details path — passes the selection."""
         mixin = self._get_mixin()
         instance = mock.Mock(spec=mixin)
-        instance.current_project_id = "myproj"
+        instance.current_project_name = "myproj"
         # ``_run_auth_flow`` is ``@work``-decorated — sync at call time despite
         # the async source.  Override the autospec'd AsyncMock so the call
         # doesn't leak an unawaited coroutine.
@@ -964,7 +998,7 @@ class TestActionAuth:
         """Without a selection ``_action_auth`` is a no-op — host-wide path is separate."""
         mixin = self._get_mixin()
         instance = mock.Mock(spec=mixin)
-        instance.current_project_id = None
+        instance.current_project_name = None
         # ``notify`` lives on the App parent, not the mixin spec — wire it
         # explicitly so the early-return path can call it without erroring.
         instance.notify = mock.Mock()
@@ -975,10 +1009,10 @@ class TestActionAuth:
         instance.notify.assert_called_once()
 
     def test_host_wide_dispatches_auth_with_none(self) -> None:
-        """``_action_auth_host_wide`` ignores ``current_project_id`` by design."""
+        """``_action_auth_host_wide`` ignores ``current_project_name`` by design."""
         mixin = self._get_mixin()
         instance = mock.Mock(spec=mixin)
-        instance.current_project_id = "selected-but-irrelevant"
+        instance.current_project_name = "selected-but-irrelevant"
         instance._run_auth_flow = mock.Mock()
         run(mixin._action_auth_host_wide(instance, "claude"))
         instance._run_auth_flow.assert_called_once_with("claude", None)
@@ -1039,7 +1073,7 @@ class TestAuthFlow:
         with self._roster("claude", self._provider(oauth=True, api_key=True), oauth_enabled=True):
             run(mixin._run_auth_flow_body(instance, "claude", "proj"))
         instance.push_screen_wait.assert_awaited_once()
-        instance._auth_via_oauth.assert_awaited_once_with("claude", project_id="proj")
+        instance._auth_via_oauth.assert_awaited_once_with("claude", project_name="proj")
         instance._auth_via_api_key.assert_not_awaited()
 
     def test_both_modes_prompts_then_api_key(self) -> None:
@@ -1049,7 +1083,7 @@ class TestAuthFlow:
         instance.push_screen_wait.return_value = "api_key"
         with self._roster("claude", self._provider(oauth=True, api_key=True), oauth_enabled=True):
             run(mixin._run_auth_flow_body(instance, "claude", None))
-        instance._auth_via_api_key.assert_awaited_once_with("claude", project_id=None)
+        instance._auth_via_api_key.assert_awaited_once_with("claude", project_name=None)
         instance._auth_via_oauth.assert_not_awaited()
 
     def test_both_modes_cancel_dispatches_nothing(self) -> None:
@@ -1069,7 +1103,7 @@ class TestAuthFlow:
         with self._roster("claude", self._provider(oauth=True, api_key=False), oauth_enabled=True):
             run(mixin._run_auth_flow_body(instance, "claude", None))
         instance.push_screen_wait.assert_not_awaited()
-        instance._auth_via_oauth.assert_awaited_once_with("claude", project_id=None)
+        instance._auth_via_oauth.assert_awaited_once_with("claude", project_name=None)
 
     def test_api_key_only_skips_mode_screen(self) -> None:
         """An API-key-only provider goes straight to the key form — no mode prompt."""
@@ -1079,7 +1113,7 @@ class TestAuthFlow:
         with self._roster("blablador", info, oauth_enabled=True):
             run(mixin._run_auth_flow_body(instance, "blablador", None))
         instance.push_screen_wait.assert_not_awaited()
-        instance._auth_via_api_key.assert_awaited_once_with("blablador", project_id=None)
+        instance._auth_via_api_key.assert_awaited_once_with("blablador", project_name=None)
 
     def test_oauth_gated_off_falls_back_to_api_key(self) -> None:
         """A dual-mode provider with the OAuth gate closed uses API key, no prompt."""
@@ -1088,7 +1122,7 @@ class TestAuthFlow:
         with self._roster("claude", self._provider(oauth=True, api_key=True), oauth_enabled=False):
             run(mixin._run_auth_flow_body(instance, "claude", None))
         instance.push_screen_wait.assert_not_awaited()
-        instance._auth_via_api_key.assert_awaited_once_with("claude", project_id=None)
+        instance._auth_via_api_key.assert_awaited_once_with("claude", project_name=None)
 
     def test_oauth_only_but_gated_off_errors(self) -> None:
         """OAuth-only provider with the gate closed has no usable mode — it errors."""
@@ -1109,7 +1143,7 @@ class TestAuthFlow:
         instance.notify = mock.Mock()
         instance.push_screen_wait = mock.AsyncMock(return_value="sk-test-key")
         with mock.patch("terok.lib.api.store_api_key") as store:
-            run(mixin._auth_via_api_key(instance, "claude", project_id=None))
+            run(mixin._auth_via_api_key(instance, "claude", project_name=None))
         store.assert_called_once_with("claude", "sk-test-key", credential_set="default")
         instance.notify.assert_called_once()
 
@@ -1120,7 +1154,7 @@ class TestAuthFlow:
         instance.notify = mock.Mock()
         instance.push_screen_wait = mock.AsyncMock(return_value=None)
         with mock.patch("terok.lib.api.store_api_key") as store:
-            run(mixin._auth_via_api_key(instance, "claude", project_id=None))
+            run(mixin._auth_via_api_key(instance, "claude", project_name=None))
         store.assert_not_called()
 
     def test_api_key_store_failure_notifies_error(self) -> None:
@@ -1130,7 +1164,7 @@ class TestAuthFlow:
         instance.notify = mock.Mock()
         instance.push_screen_wait = mock.AsyncMock(return_value="sk")
         with mock.patch("terok.lib.api.store_api_key", side_effect=RuntimeError("vault locked")):
-            run(mixin._auth_via_api_key(instance, "claude", project_id=None))
+            run(mixin._auth_via_api_key(instance, "claude", project_name=None))
         assert instance.notify.call_args.kwargs.get("severity") == "error"
 
     # ---- _auth_via_oauth ----
@@ -1142,7 +1176,7 @@ class TestAuthFlow:
         instance.notify = mock.Mock()
         instance._launch_oauth_container = mock.AsyncMock()
         with mock.patch("terok.lib.api.find_host_auth_image", return_value=None):
-            run(mixin._auth_via_oauth(instance, "claude", project_id=None))
+            run(mixin._auth_via_oauth(instance, "claude", project_name=None))
         assert instance.notify.call_args.kwargs.get("severity") == "warning"
         instance._launch_oauth_container.assert_not_awaited()
 
@@ -1159,7 +1193,7 @@ class TestAuthFlow:
             mock.patch("terok.lib.api.Authenticator", return_value=authenticator),
             mock.patch("terok.lib.core.config.sandbox_live_mounts_dir", return_value=MOCK_BASE),
         ):
-            run(mixin._auth_via_oauth(instance, "claude", project_id=None))
+            run(mixin._auth_via_oauth(instance, "claude", project_name=None))
         authenticator.prepare_oauth.assert_called_once()
         instance._launch_oauth_container.assert_awaited_once_with(session)
 
@@ -1179,7 +1213,7 @@ class TestAuthFlow:
                 "terok.lib.api.resolve_credential_routing", return_value=(MOCK_BASE, "myproj")
             ),
         ):
-            run(mixin._auth_via_oauth(instance, "claude", project_id="myproj"))
+            run(mixin._auth_via_oauth(instance, "claude", project_name="myproj"))
         pci.assert_called_once_with("myproj")
         find_host.assert_not_called()
         # Per-project credential set reaches prepare_oauth.
@@ -1264,7 +1298,7 @@ class TestActionSelection:
         app_mod, app_class = import_app()
 
         instance = app_class()
-        instance.current_project_id = "proj1"
+        instance.current_project_name = "proj1"
         instance._last_selected_tasks = {}
         instance.notify = mock.Mock()
         instance._save_selection_state = mock.Mock()
@@ -1298,7 +1332,7 @@ class TestGateSyncAction:
         """With a selection, the action dispatches the sync_gate worker entrypoint."""
         mixin = self._get_mixin()
         instance = mock.Mock(spec=mixin)
-        instance.current_project_id = "proj1"
+        instance.current_project_name = "proj1"
         run(mixin._action_sync_gate(instance))
         instance._run_console_action.assert_called_once_with(
             "terok.tui.worker_actions:sync_gate",
@@ -1310,7 +1344,7 @@ class TestGateSyncAction:
         """No project selected — the action notifies and dispatches nothing."""
         mixin = self._get_mixin()
         instance = mock.Mock(spec=mixin)
-        instance.current_project_id = None
+        instance.current_project_name = None
         instance.notify = mock.Mock()
         run(mixin._action_sync_gate(instance))
         instance._run_console_action.assert_not_called()
@@ -1322,7 +1356,7 @@ class TestProjectScreenNoneState:
 
     def test_project_screen_stores_none_state(self) -> None:
         screens, _ = import_screens()
-        project = make_project(id="proj1")
+        project = make_project(name="proj1")
         screen = screens.ProjectDetailsScreen(project=project, state=None, task_count=3)
         assert screen._state is None
         assert screen._task_count == 3
@@ -1574,7 +1608,7 @@ class TestDeleteTaskResult:
         try:
             return app_class._delete_task(
                 instance,
-                kwargs.get("project_id", "proj1"),
+                kwargs.get("project_name", "proj1"),
                 kwargs.get("task_id", "3"),
                 kwargs.get("task_name", "fix-login"),
             )
@@ -1582,7 +1616,7 @@ class TestDeleteTaskResult:
             fn_globals["task_delete"] = orig
 
     def test_delete_task_success_returns_five_tuple(self) -> None:
-        """Successful deletion returns (project_id, task_id, task_name, None, [])."""
+        """Successful deletion returns (project_name, task_id, task_name, None, [])."""
         assert self._call_delete() == ("proj1", "3", "fix-login", None, [])
 
     def test_delete_task_error_returns_five_tuple(self) -> None:

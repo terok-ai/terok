@@ -203,7 +203,7 @@ class TestGateSyncAuthNotConfigured:
 
         from terok.cli.commands.project import _cmd_gate_sync
 
-        args = MagicMock(project_id="proj", use_personal_ssh=False, force_reinit=False)
+        args = MagicMock(project_name="proj", use_personal_ssh=False, force_reinit=False)
         gate = MagicMock()
         gate.sync.side_effect = GateAuthNotConfigured("proj")
         with (

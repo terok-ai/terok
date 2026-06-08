@@ -48,8 +48,8 @@ class WorkerLogScreen(ModalScreen[None]):
 
         entry = app.dispatch_console_action(
             "terok.lib.api:build_images",
-            project_id,
-            title=f"Building images for {project_id}",
+            project_name,
+            title=f"Building images for {project_name}",
         )
         app.push_screen(WorkerLogScreen(entry))
 

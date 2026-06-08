@@ -47,7 +47,7 @@ def _make_overview(**kwargs) -> StorageOverview:
 def _make_detail(**kwargs) -> ProjectDetail:
     """Build a minimal ProjectDetail for testing."""
     defaults = {
-        "project_id": "myproject",
+        "project_name": "myproject",
         "images": [ImageInfo("myproject", "l2-cli", "id2", "3GB", "1d ago")],
         "tasks": [],
         "overlays": {},
@@ -150,6 +150,34 @@ class TestOverviewOutput:
         assert "projects" in data
         assert "grand_total_bytes" in data
 
+    def test_json_projects_use_project_name_key(self, capsys):
+        """Overview JSON uses the renamed project_name field consistently."""
+        with patch(
+            "terok.lib.domain.storage.get_storage_overview",
+            return_value=_make_overview(),
+        ):
+            cmd_overview(json_output=True)
+        data = json.loads(capsys.readouterr().out)
+        assert data["projects"][0]["project_name"] == "proj1"
+        assert "id" not in data["projects"][0]
+
+    @patch("terok.cli.commands._storage_view.supports_color", return_value=False)
+    def test_text_projects_render_project_names(self, _color, capsys):
+        """Overview text renders the project table with project names."""
+        overview = _make_overview(
+            global_images=[],
+            projects=[
+                ProjectSummary("proj1", 500_000_000, 200_000_000, 2),
+                ProjectSummary("longer-project", 100_000_000, 50_000_000, 1),
+            ],
+        )
+        with patch("terok.lib.domain.storage.get_storage_overview", return_value=overview):
+            cmd_overview(json_output=False)
+        output = capsys.readouterr().out
+        assert "Projects" in output
+        assert "proj1" in output
+        assert "longer-project" in output
+
 
 # ---------------------------------------------------------------------------
 # Detail output (render layer)
@@ -195,6 +223,6 @@ class TestDetailOutput:
 
         cmd_detail("myproject", json_output=True)
         data = json.loads(capsys.readouterr().out)
-        assert data["project_id"] == "myproject"
+        assert data["project_name"] == "myproject"
         assert "images" in data
         assert "tasks" in data

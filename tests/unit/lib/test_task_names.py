@@ -32,26 +32,26 @@ from tests.test_utils import project_env
 SLUG_PATTERN = r"^[a-z]+-[a-z0-9]+$"
 
 
-def project_yaml(project_id: str, *, name_categories: list[str] | None = None) -> str:
+def project_yaml(project_name: str, *, name_categories: list[str] | None = None) -> str:
     """Build a minimal project config with optional task name categories."""
-    yaml_text = f"project:\n  id: {project_id}\n"
+    yaml_text = f"project:\n  id: {project_name}\n"
     if name_categories:
         yaml_text += "tasks:\n  name_categories:\n"
         yaml_text += "".join(f"    - {category}\n" for category in name_categories)
     return yaml_text
 
 
-def task_meta_name(ctx, project_id: str, task_id: str) -> str:
+def task_meta_name(ctx, project_name: str, task_id: str) -> str:
     """Return the persisted task name from task metadata."""
-    meta_path = ctx.state_dir / "projects" / project_id / "tasks" / f"{task_id}_dossier.json"
+    meta_path = ctx.state_dir / "projects" / project_name / "tasks" / f"{task_id}_dossier.json"
     return json.loads(meta_path.read_text() or "{}")["name"]
 
 
-def create_task_and_get_name(project_id: str, *, explicit_name: str | None = None) -> str:
+def create_task_and_get_name(project_name: str, *, explicit_name: str | None = None) -> str:
     """Create one task in a temporary project env and return its resulting task name."""
-    with project_env(project_yaml(project_id), project_id=project_id):
-        task_new(project_id, name=explicit_name)
-        tasks = get_tasks(project_id)
+    with project_env(project_yaml(project_name), project_name=project_name):
+        task_new(project_name, name=explicit_name)
+        tasks = get_tasks(project_name)
         assert len(tasks) == 1
         return tasks[0].name
 
@@ -111,20 +111,20 @@ def test_generate_task_name_outputs_non_empty_slug() -> None:
 
 
 @pytest.mark.parametrize(
-    ("project_id", "explicit_name", "expected", "pattern"),
+    ("project_name", "explicit_name", "expected", "pattern"),
     [
         pytest.param("proj_name1", "Fix Auth Bug", "fix-auth-bug", None, id="explicit-sanitized"),
         pytest.param("proj_name2", None, None, SLUG_PATTERN, id="generated-default"),
     ],
 )
 def test_task_new_assigns_expected_name(
-    project_id: str,
+    project_name: str,
     explicit_name: str | None,
     expected: str | None,
     pattern: str | None,
 ) -> None:
     """New tasks use either the explicit sanitized name or an auto-generated slug."""
-    name = create_task_and_get_name(project_id, explicit_name=explicit_name)
+    name = create_task_and_get_name(project_name, explicit_name=explicit_name)
     if expected is not None:
         assert name == expected
     else:
@@ -134,21 +134,21 @@ def test_task_new_assigns_expected_name(
 @pytest.mark.parametrize("bad_name", ["@#$", "-my-task"], ids=["invalid", "leading-hyphen"])
 def test_task_new_rejects_invalid_names(bad_name: str) -> None:
     """Invalid task names fail before writing task metadata."""
-    project_id = "proj_name_invalid"
-    with project_env(project_yaml(project_id), project_id=project_id) as ctx:
+    project_name = "proj_name_invalid"
+    with project_env(project_yaml(project_name), project_name=project_name) as ctx:
         with pytest.raises(SystemExit):
-            task_new(project_id, name=bad_name)
-        tasks_dir = ctx.state_dir / "projects" / project_id / "tasks"
+            task_new(project_name, name=bad_name)
+        tasks_dir = ctx.state_dir / "projects" / project_name / "tasks"
         assert not tasks_dir.exists() or not list(iter_task_ids(tasks_dir))
 
 
 def test_task_new_prints_name() -> None:
     """Task creation output includes the resolved task name."""
-    project_id = "proj_name3"
-    with project_env(project_yaml(project_id), project_id=project_id):
+    project_name = "proj_name3"
+    with project_env(project_yaml(project_name), project_name=project_name):
         output = StringIO()
         with redirect_stdout(output):
-            task_new(project_id, name="my-task")
+            task_new(project_name, name="my-task")
     assert "my-task" in output.getvalue()
 
 
@@ -168,33 +168,33 @@ def test_task_rename_updates_or_rejects(
     raises: bool,
 ) -> None:
     """Task renaming persists the sanitized value or rejects invalid names."""
-    project_id = "proj_rename"
-    with project_env(project_yaml(project_id), project_id=project_id) as ctx:
-        task_id = task_new(project_id, name=initial_name)
+    project_name = "proj_rename"
+    with project_env(project_yaml(project_name), project_name=project_name) as ctx:
+        task_id = task_new(project_name, name=initial_name)
         if raises:
             with pytest.raises(SystemExit):
-                task_rename(project_id, task_id, new_name)
+                task_rename(project_name, task_id, new_name)
         else:
-            task_rename(project_id, task_id, new_name)
-            assert task_meta_name(ctx, project_id, task_id) == expected
+            task_rename(project_name, task_id, new_name)
+            assert task_meta_name(ctx, project_name, task_id) == expected
 
 
 def test_task_rename_unknown_task_raises() -> None:
     """Renaming an unknown task raises ``SystemExit``."""
-    project_id = "proj_rename_unknown"
-    with project_env(project_yaml(project_id), project_id=project_id):
+    project_name = "proj_rename_unknown"
+    with project_env(project_yaml(project_name), project_name=project_name):
         with pytest.raises(SystemExit):
-            task_rename(project_id, "999", "new-name")
+            task_rename(project_name, "999", "new-name")
 
 
 def test_get_tasks_loads_name() -> None:
     """Task loading populates ``TaskMeta.name`` from YAML."""
-    project_id = "proj_load_name"
-    assert create_task_and_get_name(project_id, explicit_name="test-task") == "test-task"
+    project_name = "proj_load_name"
+    assert create_task_and_get_name(project_name, explicit_name="test-task") == "test-task"
 
 
 def test_default_categories_for_project_are_valid_and_deterministic() -> None:
-    """Hash-based default categories are valid and stable per project ID."""
+    """Hash-based default categories are valid and stable per project name."""
     import namer
 
     categories = _default_categories_for_project("stable-proj")
@@ -220,39 +220,42 @@ def test_resolve_name_categories(
     expected: list[str] | None,
 ) -> None:
     """Project config wins, then global config, then the deterministic hash fallback."""
-    project_id = "proj_categories"
+    project_name = "proj_categories"
     with (
         project_env(
-            project_yaml(project_id, name_categories=project_categories), project_id=project_id
+            project_yaml(project_name, name_categories=project_categories),
+            project_name=project_name,
         ),
         patch("terok.lib.core.config.get_task_name_categories", return_value=global_categories),
     ):
-        categories = _resolve_name_categories(project_id)
+        categories = _resolve_name_categories(project_name)
 
-    assert categories == (expected or _default_categories_for_project(project_id))
+    assert categories == (expected or _default_categories_for_project(project_name))
 
 
-@pytest.mark.parametrize("project_id", [None, "proj_gen_cat"], ids=["no-project", "project-aware"])
-def test_generate_task_name_with_optional_project_id(project_id: str | None) -> None:
+@pytest.mark.parametrize(
+    "project_name", [None, "proj_gen_cat"], ids=["no-project", "project-aware"]
+)
+def test_generate_task_name_with_optional_project_name(project_name: str | None) -> None:
     """Task-name generation works with and without project-aware category resolution."""
-    if project_id is None:
+    if project_name is None:
         name = generate_task_name()
     else:
         with project_env(
-            project_yaml(project_id, name_categories=["animals"]), project_id=project_id
+            project_yaml(project_name, name_categories=["animals"]), project_name=project_name
         ):
-            name = generate_task_name(project_id)
+            name = generate_task_name(project_name)
 
     assert isinstance(name, str)
     assert re.search(SLUG_PATTERN, name)
 
 
 def test_task_new_uses_project_categories() -> None:
-    """Task creation passes the project ID through for category resolution."""
-    project_id = "proj_new_cat"
-    with project_env(project_yaml(project_id), project_id=project_id):
-        task_new(project_id)
-        tasks = get_tasks(project_id)
+    """Task creation passes the project name through for category resolution."""
+    project_name = "proj_new_cat"
+    with project_env(project_yaml(project_name), project_name=project_name):
+        task_new(project_name)
+        tasks = get_tasks(project_name)
 
     assert len(tasks) == 1
     assert tasks[0].name is not None

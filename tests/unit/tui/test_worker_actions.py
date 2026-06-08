@@ -203,7 +203,7 @@ def test_selinux_switch_to_tcp_writes_services_mode(tmp_path) -> None:
 
 
 def test_task_restart_and_stop_delegate_to_facade() -> None:
-    """``task_restart`` / ``task_stop`` forward ``(project_id, task_id)`` to the facade."""
+    """``task_restart`` / ``task_stop`` forward ``(project_name, task_id)`` to the facade."""
     with mock.patch("terok.lib.api.task_restart") as m_restart:
         worker_actions.task_restart("proj", "tid")
     m_restart.assert_called_once_with("proj", "tid")
@@ -213,14 +213,14 @@ def test_task_restart_and_stop_delegate_to_facade() -> None:
 
 
 def test_start_cli_container_delegates_to_task_run_cli() -> None:
-    """``start_cli_container`` forwards ``(project_id, task_id)`` to ``task_run_cli``."""
+    """``start_cli_container`` forwards ``(project_name, task_id)`` to ``task_run_cli``."""
     with mock.patch("terok.lib.api.task_run_cli") as m:
         worker_actions.start_cli_container("proj", "tid")
     m.assert_called_once_with("proj", "tid")
 
 
 def test_start_toad_container_delegates_to_task_run_toad() -> None:
-    """``start_toad_container`` forwards ``(project_id, task_id)`` to ``task_run_toad``."""
+    """``start_toad_container`` forwards ``(project_name, task_id)`` to ``task_run_toad``."""
     with mock.patch("terok.lib.api.task_run_toad") as m:
         worker_actions.start_toad_container("proj", "tid")
     m.assert_called_once_with("proj", "tid")

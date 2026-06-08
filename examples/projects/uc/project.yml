@@ -1,6 +1,6 @@
 project:
-  id: "uc"
-  name: "Ultimate Container"
+  name: "uc"
+  description: "Ultimate Container"
   security_class: "online"      # agent can push directly to upstream
 
 git:

@@ -101,7 +101,7 @@ def patch_config_command(layout: SimpleNamespace) -> Iterator[None]:
         stack.enter_context(
             patch(
                 "terok.cli.commands.info.list_projects",
-                return_value=[SimpleNamespace(id="alpha", root=layout.project_root)],
+                return_value=[SimpleNamespace(name="alpha", root=layout.project_root)],
             )
         )
         stack.enter_context(
@@ -205,13 +205,13 @@ class TestConfigDispatch:
         mock.assert_called_once()
 
     def test_resolved_invokes_config_resolved(self) -> None:
-        """``config resolved`` forwards project_id and preset to the handler."""
+        """``config resolved`` forwards project_name and preset to the handler."""
         import argparse
 
         from terok.cli.commands.info import dispatch
 
         args = argparse.Namespace(
-            cmd="config", config_cmd="resolved", project_id="myproj", preset="team"
+            cmd="config", config_cmd="resolved", project_name="myproj", preset="team"
         )
         with patch("terok.cli.commands.info._cmd_config_resolved") as mock:
             assert dispatch(args) is True
@@ -223,7 +223,7 @@ class TestConfigDispatch:
 
         from terok.cli.commands.info import dispatch
 
-        args = argparse.Namespace(cmd="config", config_cmd="resolved", project_id="p")
+        args = argparse.Namespace(cmd="config", config_cmd="resolved", project_name="p")
         with patch("terok.cli.commands.info._cmd_config_resolved") as mock:
             assert dispatch(args) is True
         mock.assert_called_once_with("p", None)

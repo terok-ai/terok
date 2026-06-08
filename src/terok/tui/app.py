@@ -98,7 +98,7 @@ if _HAS_TEXTUAL:
     class ProjectStateResult:
         """Result of loading project infrastructure state in a background thread."""
 
-        project_id: str
+        project_name: str
         project: ProjectConfig | None = None
         state: dict | None = None
         staleness: GateStalenessInfo | None = None
@@ -290,11 +290,11 @@ if _HAS_TEXTUAL:
             # only — forgotten when the app closes.
             self.console_logs = ConsoleLogRegistry()
 
-            self.current_project_id: str | None = None
+            self.current_project_name: str | None = None
             self.current_task: TaskMeta | None = None
             self._projects_by_id: dict[str, ProjectConfig] = {}
             self._broken_by_id: dict[str, BrokenProject] = {}
-            # Tracks which broken-project IDs have already been toasted so
+            # Tracks which broken-project names have already been toasted so
             # repeated ``refresh_projects`` calls don't re-notify the same
             # set on every action (#565).  Resets when all breakages clear,
             # so a later regression toasts again.
@@ -303,7 +303,7 @@ if _HAS_TEXTUAL:
             # Upstream polling state
             self._staleness_info: GateStalenessInfo | None = None
             self._polling_timer = None
-            self._polling_project_id: str | None = None  # Project ID the timer was started for
+            self._polling_project_name: str | None = None  # Project name the timer was started for
             self._last_notified_stale: bool = False  # Track if we already notified about staleness
             self._auto_sync_cooldown: dict[str, float] = {}  # Per-project cooldown timestamps
             # Container status tracking: inotify watch + podman event stream,
@@ -319,7 +319,7 @@ if _HAS_TEXTUAL:
             self._last_image_old: bool | None = None
             # Selection persistence
             self._last_selected_project: str | None = None
-            self._last_selected_tasks: dict[str, str] = {}  # project_id -> task_id
+            self._last_selected_tasks: dict[str, str] = {}  # project_name -> task_id
             # First-run nudge marker — flipped when the wizard has auto-opened
             # once, so subsequent empty-install starts don't nag.
             self._first_run_dismissed: bool = False
@@ -744,7 +744,7 @@ if _HAS_TEXTUAL:
                 state_path = self._config.core_state_dir / "terok-state.json"
                 state_path.parent.mkdir(parents=True, exist_ok=True)
                 state = {
-                    "last_project": self.current_project_id,
+                    "last_project": self.current_project_name,
                     "last_tasks": self._last_selected_tasks,
                     "first_run_dismissed": getattr(self, "_first_run_dismissed", False),
                 }
@@ -759,8 +759,8 @@ if _HAS_TEXTUAL:
         async def refresh_projects(self) -> None:
             """Reload projects from disk and rebuild every dependent pane."""
             projects, broken = discover_projects()
-            self._projects_by_id = {p.id: p for p in projects}
-            self._broken_by_id = {bp.id: bp for bp in broken}
+            self._projects_by_id = {p.name: p for p in projects}
+            self._broken_by_id = {bp.name: bp for bp in broken}
 
             proj_widget = self.query_one("#project-list", ProjectList)
             proj_widget.set_projects(projects, broken)
@@ -774,22 +774,22 @@ if _HAS_TEXTUAL:
             self._last_project_state = None
             self._last_image_old = None
 
-            if self.current_project_id in self._broken_by_id:
+            if self.current_project_name in self._broken_by_id:
                 # Broken projects have no loadable config; ``refresh_tasks`` and
                 # the polling loop would raise inside ``load_project``.
-                self._render_broken_selection(self.current_project_id)
+                self._render_broken_selection(self.current_project_name)
             else:
                 await self.refresh_tasks()
                 self._start_upstream_polling()
 
         def _announce_newly_broken(self, broken: list[BrokenProject]) -> None:
-            """Toast once when the set of broken-project IDs changes.
+            """Toast once when the set of broken-project names changes.
 
             Users upgrading across a schema change need to see the breakage
             immediately — but only once per distinct set, so repeated
             ``refresh_projects`` calls don't spam (#565).
             """
-            current_ids = {bp.id for bp in broken}
+            current_ids = {bp.name for bp in broken}
             if not current_ids:
                 # Breakages cleared — forget announced so a regression re-fires.
                 self._announced_broken_ids = set()
@@ -797,7 +797,7 @@ if _HAS_TEXTUAL:
             if current_ids == self._announced_broken_ids:
                 return
             first = broken[0]
-            summary = f"{first.id}: {first.error.splitlines()[0]}"
+            summary = f"{first.name}: {first.error.splitlines()[0]}"
             extra = f" (+{len(broken) - 1} more)" if len(broken) > 1 else ""
             self.notify(
                 f"Broken project config detected — {summary}{extra}",
@@ -813,43 +813,43 @@ if _HAS_TEXTUAL:
             broken: list[BrokenProject],
         ) -> None:
             """Restore the previously-selected project, or fall back to the first row."""
-            candidate_ids = [bp.id for bp in broken] + [p.id for p in projects]
+            candidate_ids = [bp.name for bp in broken] + [p.name for p in projects]
             last_project = self._last_selected_project
             if last_project and last_project in candidate_ids:
-                self.current_project_id = last_project
-                proj_widget.select_project(self.current_project_id)
-            elif self.current_project_id is None:
-                self.current_project_id = candidate_ids[0]
-                proj_widget.select_project(self.current_project_id)
+                self.current_project_name = last_project
+                proj_widget.select_project(self.current_project_name)
+            elif self.current_project_name is None:
+                self.current_project_name = candidate_ids[0]
+                proj_widget.select_project(self.current_project_name)
 
         def _render_empty_project_state(self) -> None:
             """Clear every pane when no projects exist on disk at all."""
-            self.current_project_id = None
+            self.current_project_name = None
             self._last_project_state = None
             self._last_image_old = None
             self.query_one("#task-list", TaskList).set_tasks("", [])
             self.query_one("#task-details", TaskDetails).set_task(None)
             self.query_one("#project-state", ProjectState).set_state(None, None, None)
 
-        def _render_broken_selection(self, project_id: str) -> None:
+        def _render_broken_selection(self, project_name: str) -> None:
             """Render a broken project's error and clear the task/details panes."""
-            bp = self._broken_by_id.get(project_id)
+            bp = self._broken_by_id.get(project_name)
             state_widget = self.query_one("#project-state", ProjectState)
             if bp is None:
                 state_widget.set_state(None, None, None)
                 return
             state_widget.set_broken(bp)
             task_list = self.query_one("#task-list", TaskList)
-            task_list.set_tasks(project_id, [])
+            task_list.set_tasks(project_name, [])
             task_details = self.query_one("#task-details", TaskDetails)
             task_details.set_task(None)
             self.current_task = None
 
         async def refresh_tasks(self) -> None:
             """Reload tasks for the current project and update the task list."""
-            if not self.current_project_id:
+            if not self.current_project_name:
                 return
-            pid = self.current_project_id
+            pid = self.current_project_name
             tasks_meta = get_tasks(pid, reverse=True)
             # Set the launching flag before ``set_tasks`` so the first
             # label render is already correct — avoids reformatting every
@@ -861,7 +861,7 @@ if _HAS_TEXTUAL:
 
             if task_list.tasks:
                 # Try to restore last selected task for this project
-                last_task_id = self._last_selected_tasks.get(self.current_project_id)
+                last_task_id = self._last_selected_tasks.get(self.current_project_name)
                 desired_idx = 0
                 if last_task_id:
                     for idx, task in enumerate(task_list.tasks):
@@ -923,13 +923,13 @@ if _HAS_TEXTUAL:
                 return
             details.set_task(self.current_task)
             if not self.current_task.deleting:
-                self._queue_task_image_status(self.current_project_id, self.current_task)
+                self._queue_task_image_status(self.current_project_name, self.current_task)
 
         # ---------- Launch tracking ----------
 
         def _apply_launching_to_tasks(self) -> None:
             """Mirror ``_launching_tasks`` onto current ``TaskMeta`` instances and repaint."""
-            pid = self.current_project_id
+            pid = self.current_project_name
             if pid is None:
                 return
             task_list = self.query_one("#task-list", TaskList)
@@ -943,22 +943,22 @@ if _HAS_TEXTUAL:
                 ) in self._launching_tasks
                 self.query_one("#task-details", TaskDetails).set_task(self.current_task)
 
-        def _mark_launching(self, project_id: str, task_id: str) -> None:
+        def _mark_launching(self, project_name: str, task_id: str) -> None:
             """Flag a task as currently being launched.  Triggers a repaint."""
-            key = (project_id, task_id)
+            key = (project_name, task_id)
             if key in self._launching_tasks:
                 return
             self._launching_tasks.add(key)
-            if project_id == self.current_project_id:
+            if project_name == self.current_project_name:
                 self._apply_launching_to_tasks()
 
-        def _unmark_launching(self, project_id: str, task_id: str) -> None:
+        def _unmark_launching(self, project_name: str, task_id: str) -> None:
             """Clear the launching flag once the worker has reached a terminal state."""
-            key = (project_id, task_id)
+            key = (project_name, task_id)
             if key not in self._launching_tasks:
                 return
             self._launching_tasks.discard(key)
-            if project_id == self.current_project_id:
+            if project_name == self.current_project_name:
                 self._apply_launching_to_tasks()
 
         # ---------- Status / notifications ----------
@@ -971,32 +971,32 @@ if _HAS_TEXTUAL:
             """
             state_widget = self.query_one("#project-state", ProjectState)
 
-            if not self.current_project_id:
+            if not self.current_project_name:
                 state_widget.set_state(None, None, None)
                 return
             if task_count is not None:
                 self._last_task_count = task_count
 
-            project_id = self.current_project_id
-            project = self._projects_by_id.get(project_id)
+            project_name = self.current_project_name
+            project = self._projects_by_id.get(project_name)
             if project is not None:
                 state_widget.show_loading(project, self._last_task_count)
             else:
                 state_widget.update("Loading project details...")
 
             self.run_worker(
-                lambda: self._load_project_state(project_id),
-                name=f"project-state:{project_id}",
+                lambda: self._load_project_state(project_name),
+                name=f"project-state:{project_name}",
                 group="project-state",
                 exclusive=True,
                 thread=True,
                 exit_on_error=False,
             )
 
-        def _load_project_state(self, project_id: str) -> ProjectStateResult:
+        def _load_project_state(self, project_name: str) -> ProjectStateResult:
             """Load project infrastructure state in a background thread."""
             try:
-                project = load_project(project_id)
+                project = load_project(project_name)
                 gate = make_git_gate(project)
 
                 def _gate_commit_provider(_pid: str) -> dict | None:
@@ -1015,28 +1015,28 @@ if _HAS_TEXTUAL:
                 except Exception:
                     shield_env = None
                 return ProjectStateResult(
-                    project_id,
+                    project_name,
                     project,
                     state,
                     staleness,
                     shield_env=shield_env,
                 )
             except SystemExit as e:
-                return ProjectStateResult(project_id, error=str(e))
+                return ProjectStateResult(project_name, error=str(e))
             except Exception as e:
-                return ProjectStateResult(project_id, error=str(e))
+                return ProjectStateResult(project_name, error=str(e))
 
-        def _queue_task_image_status(self, project_id: str | None, task: TaskMeta | None) -> None:
+        def _queue_task_image_status(self, project_name: str | None, task: TaskMeta | None) -> None:
             """Schedule a background check for whether the task's image is outdated."""
-            if not project_id or task is None:
+            if not project_name or task is None:
                 return
             if task.deleting:
                 return
 
             task_id = task.task_id
             self.run_worker(
-                lambda: self._load_task_image_status(project_id, task),
-                name=f"task-image:{project_id}:{task_id}",
+                lambda: self._load_task_image_status(project_name, task),
+                name=f"task-image:{project_name}:{task_id}",
                 group="task-image",
                 exclusive=True,
                 thread=True,
@@ -1044,20 +1044,20 @@ if _HAS_TEXTUAL:
             )
 
         def _load_task_image_status(
-            self, project_id: str, task: TaskMeta
+            self, project_name: str, task: TaskMeta
         ) -> tuple[str, str, bool | None]:
             """Check whether a task's container image is outdated (runs in thread)."""
-            image_old = Task(load_project(project_id), task).image_is_old()
-            return project_id, task.task_id, image_old
+            image_old = Task(load_project(project_name), task).image_is_old()
+            return project_name, task.task_id, image_old
 
-        def _query_shield_state(self, project_id: str, task: TaskMeta) -> None:
+        def _query_shield_state(self, project_name: str, task: TaskMeta) -> None:
             """Schedule a background worker to query shield state for a task."""
             if not task.mode:
                 return
             tid = task.task_id
             self.run_worker(
-                lambda: self._load_shield_state(project_id, task),
-                name=f"shield-state:{project_id}:{tid}",
+                lambda: self._load_shield_state(project_name, task),
+                name=f"shield-state:{project_name}:{tid}",
                 group="shield-state",
                 exclusive=True,
                 thread=True,
@@ -1065,31 +1065,31 @@ if _HAS_TEXTUAL:
             )
 
         @staticmethod
-        def _load_shield_state(project_id: str, task: TaskMeta) -> tuple[str, str, str | None]:
+        def _load_shield_state(project_name: str, task: TaskMeta) -> tuple[str, str, str | None]:
             """Query shield state for a task (runs in thread)."""
             try:
-                project = load_project(project_id)
+                project = load_project(project_name)
                 mode = task.mode or "cli"
-                cname = container_name(project_id, mode, task.task_id)
+                cname = container_name(project_name, mode, task.task_id)
                 task_dir = project.tasks_root / str(task.task_id)
                 st = ShieldManager(task_dir).state(cname)
                 # ``ShieldManager.state`` returns an Any-annotated
                 # ShieldState (importlinter keeps terok_shield out of
                 # this layer); the runtime value is an enum whose
                 # ``.name`` is the display string.
-                return project_id, task.task_id, st.name
+                return project_name, task.task_id, st.name
             except Exception:
-                return project_id, task.task_id, None
+                return project_name, task.task_id, None
 
         # ---------- Selection handlers (from widgets) ----------
 
         @on(ProjectList.ProjectSelected)
         async def handle_project_selected(self, message: ProjectList.ProjectSelected) -> None:
             """Called when user selects a project in the list."""
-            self.current_project_id = message.project_id
+            self.current_project_name = message.project_name
             self._last_project_state = None
             # Save the project selection
-            self._last_selected_project = self.current_project_id
+            self._last_selected_project = self.current_project_name
             self._save_selection_state()
 
             # Broken projects have no loadable config, so the usual task /
@@ -1099,7 +1099,7 @@ if _HAS_TEXTUAL:
             if message.is_broken:
                 self._stop_upstream_polling()
                 self._stop_container_status_polling()
-                self._render_broken_selection(message.project_id)
+                self._render_broken_selection(message.project_name)
                 return
 
             await self.refresh_tasks()
@@ -1110,21 +1110,21 @@ if _HAS_TEXTUAL:
         @on(TaskList.TaskSelected)
         async def handle_task_selected(self, message: TaskList.TaskSelected) -> None:
             """Called when user selects a task in the list."""
-            self.current_project_id = message.project_id
+            self.current_project_name = message.project_name
             self.current_task = message.task
             self._last_image_old = None
 
             # Save the task selection for this project
-            if self.current_project_id and self.current_task:
-                self._last_selected_tasks[self.current_project_id] = self.current_task.task_id
+            if self.current_project_name and self.current_task:
+                self._last_selected_tasks[self.current_project_name] = self.current_task.task_id
                 self._save_selection_state()
 
             self._update_task_details()
 
             # Immediately check container state when task is selected
             if self.current_task and self.current_task.mode:
-                self._queue_container_state_check(message.project_id)
-                self._query_shield_state(message.project_id, self.current_task)
+                self._queue_container_state_check(message.project_name)
+                self._query_shield_state(message.project_name, self.current_task)
 
         @on(Worker.StateChanged)
         async def handle_worker_state_changed(self, event: Worker.StateChanged) -> None:
@@ -1141,7 +1141,7 @@ if _HAS_TEXTUAL:
                 if not result:
                     return
                 psr: ProjectStateResult = result
-                if psr.project_id != self.current_project_id:
+                if psr.project_name != self.current_project_name:
                     return
                 state_widget = self.query_one("#project-state", ProjectState)
                 if psr.error:
@@ -1150,7 +1150,7 @@ if _HAS_TEXTUAL:
                 if psr.project is None or psr.state is None:
                     state_widget.set_state(None, None, None)
                     return
-                self._projects_by_id[psr.project_id] = psr.project
+                self._projects_by_id[psr.project_name] = psr.project
                 self._staleness_info = psr.staleness
                 self._last_project_state = psr.state
                 self._last_shield_env = psr.shield_env
@@ -1167,8 +1167,8 @@ if _HAS_TEXTUAL:
                 result = worker.result
                 if not result:
                     return
-                project_id, task_id, image_old = result
-                if project_id != self.current_project_id:
+                project_name, task_id, image_old = result
+                if project_name != self.current_project_name:
                     return
                 if not self.current_task or self.current_task.task_id != task_id:
                     return
@@ -1181,8 +1181,8 @@ if _HAS_TEXTUAL:
                 result = worker.result
                 if not result:
                     return
-                project_id, metas = result
-                if project_id != self.current_project_id:
+                project_name, metas = result
+                if project_name != self.current_project_name:
                     return
                 task_list = self.query_one("#task-list", TaskList)
                 # The batch query re-reads the on-disk task set every tick, so
@@ -1222,24 +1222,24 @@ if _HAS_TEXTUAL:
                 result = worker.result
                 if not result:
                     return
-                project_id, task_id, task_name, error, warnings = result
-                self._deleting_tasks.discard((project_id, task_id))
-                task_label = f"{project_id} {task_id}" + (f" {task_name}" if task_name else "")
+                project_name, task_id, task_name, error, warnings = result
+                self._deleting_tasks.discard((project_name, task_id))
+                task_label = f"{project_name} {task_id}" + (f" {task_name}" if task_name else "")
                 if error:
                     self.notify(f"Delete error for task {task_label}: {error}")
                 elif warnings:
                     detail = "; ".join(warnings)
                     self.notify(
                         f"Deleted task {task_label} with warnings:\n{detail}\n"
-                        f"Archive: terok task archive list {project_id}",
+                        f"Archive: terok task archive list {project_name}",
                     )
                 else:
                     self.notify(
                         f"Deleted task {task_label}.\n"
-                        f"Archive: terok task archive list {project_id}",
+                        f"Archive: terok task archive list {project_name}",
                     )
 
-                if project_id != self.current_project_id:
+                if project_name != self.current_project_name:
                     return
                 await self.refresh_tasks()
 
@@ -1247,14 +1247,14 @@ if _HAS_TEXTUAL:
                 result = worker.result
                 if not result:
                     return
-                project_id, task_id, error = result
+                project_name, task_id, error = result
                 if error:
                     self.notify(f"Unattended error: {error}")
                 elif task_id:
-                    self._focus_task_after_creation(project_id, task_id)
-                    self.notify(f"Unattended task {task_id} started for {project_id}")
-                    self._start_unattended_watcher(project_id, task_id)
-                if project_id == self.current_project_id:
+                    self._focus_task_after_creation(project_name, task_id)
+                    self.notify(f"Unattended task {task_id} started for {project_name}")
+                    self._start_unattended_watcher(project_name, task_id)
+                if project_name == self.current_project_name:
                     await self.refresh_tasks()
                 return
 
@@ -1262,14 +1262,14 @@ if _HAS_TEXTUAL:
                 result = worker.result
                 if not result:
                     return
-                project_id, task_id, exit_code, error = result
+                project_name, task_id, exit_code, error = result
                 if error:
                     self.notify(f"Unattended watcher error for task {task_id}: {error}")
                 elif exit_code == 0:
                     self.notify(f"Unattended task {task_id} completed successfully")
                 else:
                     self.notify(f"Unattended task {task_id} failed (exit {exit_code})")
-                if project_id == self.current_project_id:
+                if project_name == self.current_project_name:
                     await self.refresh_tasks()
                 return
 
@@ -1277,13 +1277,13 @@ if _HAS_TEXTUAL:
                 result = worker.result
                 if not result:
                     return
-                project_id, task_id, error = result
+                project_name, task_id, error = result
                 if error:
                     self.notify(f"Follow-up error: {error}")
                 else:
                     self.notify(f"Follow-up started for task {task_id}")
-                    self._start_unattended_watcher(project_id, task_id)
-                if project_id == self.current_project_id:
+                    self._start_unattended_watcher(project_name, task_id)
+                if project_name == self.current_project_name:
                     await self.refresh_tasks()
                 return
 
@@ -1291,7 +1291,7 @@ if _HAS_TEXTUAL:
                 result = worker.result
                 if not result:
                     return
-                project_id, task_id, error = result
+                project_name, task_id, error = result
                 if error:
                     self.notify(f"Shield action failed: {error}")
                 else:
@@ -1308,17 +1308,17 @@ if _HAS_TEXTUAL:
                 if (
                     self.current_task
                     and self.current_task.task_id == task_id
-                    and project_id == self.current_project_id
+                    and project_name == self.current_project_name
                 ):
-                    self._query_shield_state(project_id, self.current_task)
+                    self._query_shield_state(project_name, self.current_task)
                 return
 
             if worker.group == "shield-state":
                 result = worker.result
                 if not result:
                     return
-                project_id, task_id, shield_st = result
-                if project_id != self.current_project_id:
+                project_name, task_id, shield_st = result
+                if project_name != self.current_project_name:
                     return
                 if not self.current_task or self.current_task.task_id != task_id:
                     return
@@ -1462,18 +1462,18 @@ if _HAS_TEXTUAL:
 
         async def action_show_project_actions(self) -> None:
             """Show detail screen with project info and actions."""
-            if not self.current_project_id:
+            if not self.current_project_name:
                 self.notify("No project selected.")
                 return
-            if self.current_project_id in self._broken_by_id:
-                bp = self._broken_by_id[self.current_project_id]
+            if self.current_project_name in self._broken_by_id:
+                bp = self._broken_by_id[self.current_project_name]
                 self.notify(
-                    f"Cannot act on broken project '{bp.id}'. Fix {bp.config_path} first.",
+                    f"Cannot act on broken project '{bp.name}'. Fix {bp.config_path} first.",
                     severity="warning",
                     timeout=10,
                 )
                 return
-            project = self._projects_by_id.get(self.current_project_id)
+            project = self._projects_by_id.get(self.current_project_name)
             if not project:
                 self.notify("Project data not loaded yet.")
                 return
@@ -1489,7 +1489,7 @@ if _HAS_TEXTUAL:
 
         async def action_show_task_actions(self) -> None:
             """Show detail screen with task info and actions."""
-            if not self.current_project_id:
+            if not self.current_project_name:
                 self.notify("No project selected.")
                 return
             try:
@@ -1501,7 +1501,7 @@ if _HAS_TEXTUAL:
                 TaskDetailsScreen(
                     self.current_task,
                     has_tasks,
-                    self.current_project_id,
+                    self.current_project_name,
                     self._last_image_old,
                 ),
                 self._on_task_action_screen_result,
@@ -1594,7 +1594,7 @@ if _HAS_TEXTUAL:
             """Open the host-wide ``Authenticate agents and tools`` modal.
 
             Reuses [`AuthActionsScreen`][terok.tui.screens.AuthActionsScreen], but the result handler
-            forces a host-wide auth flow (``project_id=None``) regardless
+            forces a host-wide auth flow (``project_name=None``) regardless
             of what's selected in the main pane — the per-project entry
             lives on the project-details screen.
             """
@@ -1606,7 +1606,7 @@ if _HAS_TEXTUAL:
             """Route the host-wide auth modal's selection.
 
             ``auth_<provider>`` lands in `_action_auth_host_wide`
-            (forced ``project_id=None``); ``import_opencode_config``
+            (forced ``project_name=None``); ``import_opencode_config``
             shares the project-screen handler since the import is
             project-agnostic anyway.
             """

@@ -45,11 +45,11 @@ def _validate_restart_preconditions(
     """
     web_port = meta.get("web_port")
     if isinstance(web_port, int):
-        actual = assign_web_port(project.id, task_id, preferred=web_port)
+        actual = assign_web_port(project.name, task_id, preferred=web_port)
         if actual != web_port:
-            release_web_port(project.id, task_id)
+            release_web_port(project.name, task_id)
             raise SystemExit(
-                f"Port {web_port} for {project.id}/{task_id} is no longer available "
+                f"Port {web_port} for {project.name}/{task_id} is no longer available "
                 f"(got {actual}).  Re-create the task to use the new port."
             )
     if mode == "toad":
@@ -69,7 +69,7 @@ def _stop_running_container(
     run_hook(
         "post_stop",
         project.hook_post_stop,
-        project_id=project.id,
+        project_name=project.name,
         task_id=task_id,
         mode=mode,
         cname=cname,
@@ -88,7 +88,7 @@ def _start_and_report_restart(
     run_hook(
         "post_start",
         project.hook_post_start,
-        project_id=project.id,
+        project_name=project.name,
         task_id=task_id,
         mode=mode,
         cname=cname,
@@ -100,7 +100,7 @@ def _start_and_report_restart(
     color_enabled = _supports_color()
     print(f"Restarted task {task_id}: {_green(cname, color_enabled)}")
     if mode == "cli":
-        _print_login_instructions(project.id, task_id, cname, color_enabled)
+        _print_login_instructions(project.name, task_id, cname, color_enabled)
     elif mode == "toad":
         port = meta.get("web_port")
         token = meta.get("web_token")
@@ -109,7 +109,7 @@ def _start_and_report_restart(
             print(f"Toad: {_hyperlink(_blue(url, color_enabled), url, enabled=color_enabled)}")
 
 
-def task_restart(project_id: str, task_id: str) -> None:
+def task_restart(project_name: str, task_id: str) -> None:
     """Restart a task's container.
 
     Semantics: stop the container if running, then start it.  If the
@@ -117,17 +117,17 @@ def task_restart(project_id: str, task_id: str) -> None:
     raise ``SystemExit`` with an actionable pointer to ``terok task run``
     — "restart" only means restart, not re-run.
     """
-    project = load_project(project_id)
-    meta, meta_path = load_task_meta(project.id, task_id)
+    project = load_project(project_name)
+    meta, meta_path = load_task_meta(project.name, task_id)
 
     mode = meta.get("mode")
     if not mode:
         raise SystemExit(f"Task {task_id} has never been run (no mode set)")
 
-    cname = container_name(project.id, mode, task_id)
+    cname = container_name(project.name, mode, task_id)
     container_state = _rt.resolve_runtime(project).container(cname).state
 
-    print(f"Restarting task {project_id}/{task_id} ({mode})...")
+    print(f"Restarting task {project_name}/{task_id} ({mode})...")
 
     if container_state is None:
         # Container is gone — restart can't recreate it.  User must start
@@ -135,7 +135,7 @@ def task_restart(project_id: str, task_id: str) -> None:
         raise SystemExit(
             f"Container {cname} no longer exists.  Restart requires a running "
             f"or stopped container.  Create a new task with:\n"
-            f"  terok task run {project_id}"
+            f"  terok task run {project_name}"
             + (' "<prompt>" --mode headless' if mode == "run" else "")
         )
 

@@ -1,6 +1,6 @@
 project:
-  id: "cp2k"
-  name: "CP2K VM dev"
+  name: "cp2k"
+  description: "CP2K VM dev"
   security_class: "gatekeeping"
 
 git:

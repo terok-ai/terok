@@ -62,7 +62,7 @@ logger = logging.getLogger(__name__)
 _LOCK_FILENAME = "panic.lock"
 _PHASE2_TIMEOUT_S = 15
 
-# (project_id, task_id, mode, cname, task_dir)
+# (project_name, task_id, mode, cname, task_dir)
 type _Target = tuple[str, str, str, str, Path]
 
 
@@ -248,19 +248,19 @@ def _discover_targets() -> list[_Target]:
     targets: list[_Target] = []
     for cfg in list_projects():
         try:
-            tasks = get_tasks(cfg.id)
+            tasks = get_tasks(cfg.name)
             if not tasks:
                 continue
-            states = get_all_task_states(cfg.id, tasks)
+            states = get_all_task_states(cfg.name, tasks)
         except Exception:
-            logger.debug("panic: failed to list tasks for %s", cfg.id, exc_info=True)
+            logger.debug("panic: failed to list tasks for %s", cfg.name, exc_info=True)
             continue
         targets.extend(
             (
-                cfg.id,
+                cfg.name,
                 t.task_id,
                 t.mode,
-                container_name(cfg.id, t.mode, t.task_id),
+                container_name(cfg.name, t.mode, t.task_id),
                 cfg.tasks_root / str(t.task_id),
             )
             for t in tasks

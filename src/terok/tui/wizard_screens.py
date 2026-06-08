@@ -346,16 +346,16 @@ class ProjectReviewScreen(ModalScreen["str | object | None"]):
     }
     """
 
-    def __init__(self, project_id: str, rendered: str) -> None:
+    def __init__(self, project_name: str, rendered: str) -> None:
         """Create the review screen with the initial rendered YAML text."""
         super().__init__()
-        self._project_id = project_id
+        self._project_name = project_name
         self._rendered = rendered
 
     def compose(self) -> ComposeResult:
         """Build the editable YAML pane and Back/Initialize buttons."""
         dialog = Vertical(id="wizard-review-dialog")
-        dialog.border_title = f"Review project.yml — {self._project_id}"
+        dialog.border_title = f"Review project.yml — {self._project_name}"
         with dialog:
             yield TextArea.code_editor(
                 self._rendered,
@@ -564,7 +564,7 @@ class InitProgressScreen(ModalScreen[InitOutcome]):
         "gate": "Gate sync",
     }
 
-    def __init__(self, project_id: str, rendered_yaml: str | None = None) -> None:
+    def __init__(self, project_name: str, rendered_yaml: str | None = None) -> None:
         """Create the init screen.
 
         *rendered_yaml* is the ``project.yml`` content the new-project
@@ -574,7 +574,7 @@ class InitProgressScreen(ModalScreen[InitOutcome]):
         writing and confirming nothing.
         """
         super().__init__()
-        self._project_id = project_id
+        self._project_name = project_name
         self._rendered_yaml = rendered_yaml
         self._ssh_continue: Any = None  # an asyncio.Event, set when user clicks continue
         # Default pessimistic — the worker flips this to SUCCESS on a clean
@@ -585,7 +585,7 @@ class InitProgressScreen(ModalScreen[InitOutcome]):
     def compose(self) -> ComposeResult:
         """Build the per-step status list, log pane, and buttons."""
         dialog = Vertical(id="wizard-init-dialog")
-        dialog.border_title = f"Initializing project — {self._project_id}"
+        dialog.border_title = f"Initializing project — {self._project_name}"
         with dialog:
             with Vertical(id="wizard-init-steps"):
                 for key in self._STEP_KEYS:
@@ -632,7 +632,7 @@ class InitProgressScreen(ModalScreen[InitOutcome]):
     async def on_mount(self) -> None:
         """Confirm overwrite when needed, persist the YAML, then run init.
 
-        When a ``project.yml`` already exists for this project ID, the
+        When a ``project.yml`` already exists for this project name, the
         TUI mirrors the CLI's overwrite prompt via a modal confirm.
         The heavy lifting (confirm → write → worker) happens in a
         ``@work`` coroutine so ``push_screen_wait`` has the worker
@@ -676,9 +676,9 @@ class InitProgressScreen(ModalScreen[InitOutcome]):
                         self._outcome = InitOutcome.DECLINED
                         return
 
-                log.write(f"[dim]Writing project.yml for {self._project_id}…[/]")
+                log.write(f"[dim]Writing project.yml for {self._project_name}…[/]")
                 try:
-                    write_project_yaml(self._project_id, self._rendered_yaml, overwrite=True)
+                    write_project_yaml(self._project_name, self._rendered_yaml, overwrite=True)
                 except (OSError, SystemExit) as exc:
                     log.write(f"[red]Failed to write project.yml: {exc}[/]")
                     return
@@ -692,7 +692,7 @@ class InitProgressScreen(ModalScreen[InitOutcome]):
         """Return the on-disk ``project.yml`` path if it already exists, else None."""
         from ..lib.api import get_config
 
-        candidate = get_config().user_projects_dir / self._project_id / "project.yml"
+        candidate = get_config().user_projects_dir / self._project_name / "project.yml"
         return candidate if candidate.is_file() else None
 
     async def _confirm_overwrite(self, path: Path) -> bool:
@@ -703,10 +703,10 @@ class InitProgressScreen(ModalScreen[InitOutcome]):
         # invariant — Screen[bool] doesn't satisfy it. Stubs issue.
         screen_obj: Any = ConfirmDestructiveScreen(
             message=(
-                f"A configuration for project '{self._project_id}' already "
+                f"A configuration for project '{self._project_name}' already "
                 f"exists at:\n\n{path}\n\nOverwrite with the reviewed content?"
             ),
-            title=f"Overwrite project.yml — {self._project_id}",
+            title=f"Overwrite project.yml — {self._project_name}",
             confirm_label="Overwrite",
         )
         return bool(await self.app.push_screen_wait(screen_obj))
@@ -853,7 +853,7 @@ class InitProgressScreen(ModalScreen[InitOutcome]):
             summarize_ssh_init,
         )
 
-        project = get_project(self._project_id)
+        project = get_project(self._project_name)
         log = self.query_one("#wizard-init-log", RichLog)
         self._ssh_continue = asyncio.Event()
 
@@ -904,7 +904,7 @@ class InitProgressScreen(ModalScreen[InitOutcome]):
             # Step 2: Dockerfiles
             self._mark("generate", "running")
             with _log_capture(log):
-                await asyncio.to_thread(generate_dockerfiles, self._project_id)
+                await asyncio.to_thread(generate_dockerfiles, self._project_name)
             self._mark("generate", "done")
 
             # ``ProjectConfig`` is what the askpass + gate-enabled checks
@@ -921,9 +921,9 @@ class InitProgressScreen(ModalScreen[InitOutcome]):
             log.write("[dim]Building images — output follows.[/]")
             await self._run_dispatched_step(
                 "terok.tui.worker_actions:build",
-                self._project_id,
+                self._project_name,
                 log=log,
-                title=f"Building images for {self._project_id}",
+                title=f"Building images for {self._project_name}",
                 env=subprocess_env,
                 fail_msg="Image build failed",
             )
@@ -939,16 +939,16 @@ class InitProgressScreen(ModalScreen[InitOutcome]):
                 log.write("[dim]Syncing the git gate — output follows.[/]")
                 await self._run_dispatched_step(
                     "terok.tui.worker_actions:sync_gate",
-                    self._project_id,
+                    self._project_name,
                     log=log,
-                    title=f"Syncing gate for {self._project_id}",
+                    title=f"Syncing gate for {self._project_name}",
                     env=subprocess_env,
                     fail_msg="Gate sync failed",
                 )
                 self._mark("gate", "done")
 
             self._outcome = InitOutcome.SUCCESS
-            log.write(f"[green]Project '{self._project_id}' is ready.[/]")
+            log.write(f"[green]Project '{self._project_name}' is ready.[/]")
         except (Exception, SystemExit) as exc:
             # Many facade calls (``load_project``, etc.) signal user-
             # friendly errors with ``SystemExit`` which does *not*

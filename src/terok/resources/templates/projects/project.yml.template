@@ -8,7 +8,7 @@
 {%- endif %}
 
 project:
-  id: "{{PROJECT_ID}}"
+  name: "{{PROJECT_NAME}}"
   security_class: "{{SECURITY_CLASS}}"
 
 git:
@@ -29,7 +29,7 @@ image:
 {%- else %}
   # agents: "all"    # uncomment to override the global default — see
   #                  # `terok agents set` (global) or
-  #                  # `terok project agents set {{PROJECT_ID}}` (per-project).
+  #                  # `terok project agents set {{PROJECT_NAME}}` (per-project).
 {%- endif %}
   # Optional: extra Dockerfile commands injected into the project image.
   # Use user_snippet_file to point to an external .dockerinclude file.

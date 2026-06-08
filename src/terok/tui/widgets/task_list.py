@@ -17,10 +17,10 @@ from ...ui_utils.terminal import wrap_with_hanging_indent
 class TaskListItem(ListItem):
     """List item that carries task metadata."""
 
-    def __init__(self, project_id: str, task: TaskMeta, label: str, generation: int) -> None:
+    def __init__(self, project_name: str, task: TaskMeta, label: str, generation: int) -> None:
         """Create a task list item with its metadata and display label."""
         super().__init__(Static(label, markup=False))
-        self.project_id = project_id
+        self.project_name = project_name
         self.task_meta = task
         self.generation = generation
 
@@ -58,16 +58,16 @@ class TaskList(ListView):
     class TaskSelected(Message):
         """Posted when a task is highlighted in the list."""
 
-        def __init__(self, project_id: str, task: TaskMeta) -> None:
-            """Create the message with the owning project ID and task metadata."""
+        def __init__(self, project_name: str, task: TaskMeta) -> None:
+            """Create the message with the owning project name and task metadata."""
             super().__init__()
-            self.project_id = project_id
+            self.project_name = project_name
             self.task = task
 
     def __init__(self, **kwargs: Any) -> None:
         """Initialize the task list with empty state."""
         super().__init__(**kwargs)
-        self.project_id: str | None = None
+        self.project_name: str | None = None
         self.tasks: list[TaskMeta] = []
         self._generation = 0
         self._last_label_width = -1
@@ -118,14 +118,14 @@ class TaskList(ListView):
         self._last_label_width = width
         self.refresh_labels()
 
-    def set_tasks(self, project_id: str, tasks_meta: list[TaskMeta]) -> None:
+    def set_tasks(self, project_name: str, tasks_meta: list[TaskMeta]) -> None:
         """Populate the list from ``TaskMeta`` instances, newest first."""
         existing_states: dict[str, str | None] = {}
-        if self.project_id == project_id:
+        if self.project_name == project_name:
             for task in self.tasks:
                 existing_states[task.task_id] = task.container_state
 
-        self.project_id = project_id
+        self.project_name = project_name
         self.tasks = []
         self._generation += 1
         self.clear()
@@ -137,7 +137,7 @@ class TaskList(ListView):
             self.tasks.append(tm)
 
             label = self._format_task_label(tm, width)
-            self.append(TaskListItem(project_id, tm, label, self._generation))
+            self.append(TaskListItem(project_name, tm, label, self._generation))
 
     def mark_deleting(self, task_id: str) -> bool:
         """Mark a task as 'deleting' in the list and refresh its label."""
@@ -168,7 +168,7 @@ class TaskList(ListView):
 
     def _post_selected_task(self, item: ListItem | None = None) -> None:
         """Emit a TaskSelected message for the given or currently highlighted item."""
-        if self.project_id is None:
+        if self.project_name is None:
             return
         if item is None:
             item = self.highlighted_child
@@ -178,6 +178,6 @@ class TaskList(ListView):
             return
         if item.generation != self._generation:
             return
-        if item.project_id != self.project_id:
+        if item.project_name != self.project_name:
             return
-        self.post_message(self.TaskSelected(self.project_id, item.task_meta))
+        self.post_message(self.TaskSelected(self.project_name, item.task_meta))

@@ -13,10 +13,10 @@ pytestmark = pytest.mark.needs_host_features
 
 PROJECT_TEMPLATE = """
 project:
-  id: {project_id}
+  name: {project_name}
   security_class: gatekeeping
 git:
-  upstream_url: https://example.com/{project_id}.git
+  upstream_url: https://example.com/{project_name}.git
 """
 
 
@@ -35,7 +35,7 @@ class TestSshInit:
         """
         terok_env.write_project(
             "demo",
-            PROJECT_TEMPLATE.format(project_id="demo"),
+            PROJECT_TEMPLATE.format(project_name="demo"),
         )
 
         first = terok_env.run_cli("project", "ssh-init", "demo")
@@ -52,7 +52,7 @@ class TestSshInit:
         """``--force`` rotates: scope ends up with a fresh key, distinct fingerprint."""
         terok_env.write_project(
             "rot",
-            PROJECT_TEMPLATE.format(project_id="rot"),
+            PROJECT_TEMPLATE.format(project_name="rot"),
         )
 
         initial = terok_env.run_cli("project", "ssh-init", "rot")
@@ -67,7 +67,7 @@ class TestSshInit:
         """``--comment`` lands verbatim in the printed public key line."""
         terok_env.write_project(
             "commented",
-            PROJECT_TEMPLATE.format(project_id="commented"),
+            PROJECT_TEMPLATE.format(project_name="commented"),
         )
 
         result = terok_env.run_cli(

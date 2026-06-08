@@ -45,7 +45,8 @@ class TestListProjects:
         from terok.lib import api
         from terok.lib.domain.project import Project
 
-        a, b = MagicMock(id="a"), MagicMock(id="b")
+        a, b = MagicMock(), MagicMock()
+        a.name, b.name = "a", "b"
         with patch("terok.lib.domain.project._list_projects", return_value=[a, b]) as lister:
             result = api.list_projects()
         lister.assert_called_once()
@@ -66,7 +67,8 @@ class TestDeriveProject:
         from terok.lib import api
         from terok.lib.domain.project import Project
 
-        derived_cfg = MagicMock(id="derived")
+        derived_cfg = MagicMock()
+        derived_cfg.name = "derived"
         with (
             patch("terok.lib.domain.project._derive_project") as derive,
             patch("terok.lib.domain.project._share_ssh_key_assignments") as share,
@@ -112,11 +114,12 @@ class TestShareSshKeyAssignments:
         db.assign_ssh_key.assert_not_called()
 
 
-def _project_with_id(project_id: str, **extra: object) -> object:
-    """Build a minimal ``Project`` exposing just ``self._config.id`` (+overrides)."""
+def _project_with_id(project_name: str, **extra: object) -> object:
+    """Build a minimal ``Project`` exposing just ``self._config.name`` (+overrides)."""
     from terok.lib.domain.project import Project
 
-    config = MagicMock(id=project_id, **extra)
+    config = MagicMock(**extra)
+    config.name = project_name
     return Project(config)
 
 
@@ -216,7 +219,7 @@ class TestAuthenticate:
     """authenticate dispatches to the raw executor call with the right image+scope."""
 
     def test_project_scoped_uses_l2_image(self) -> None:
-        """``authenticate(provider, project_id)`` reuses the project's L2 image."""
+        """``authenticate(provider, project_name)`` reuses the project's L2 image."""
         from terok.lib import api
 
         # Shared-default project: scope-aware routing returns the same
@@ -239,11 +242,11 @@ class TestAuthenticate:
             patch("terok.lib.core.projects.load_project", return_value=fake_project),
             patch("terok.lib.domain.auth.Authenticator.run") as mock_auth,
         ):
-            api.authenticate("claude", project_id="p1")
+            api.authenticate("claude", project_name="p1")
 
         mock_l2.assert_called_once_with("p1")
         mock_auth.assert_called_once()
-        # Positional call arg 0 is the container-scope string: the project id.
+        # Positional call arg 0 is the container-scope string: the project name.
         assert mock_auth.call_args.args[0] == "p1"
         assert mock_auth.call_args.kwargs["image"] == "terok-p1:latest"
         assert mock_auth.call_args.kwargs["expose_token"] is False
@@ -274,7 +277,7 @@ class TestAuthenticate:
             patch("terok.lib.core.projects.load_project", return_value=fake_project),
             patch("terok.lib.domain.auth.Authenticator.run") as mock_auth,
         ):
-            api.authenticate("claude", project_id="p1")
+            api.authenticate("claude", project_name="p1")
 
         assert mock_auth.call_args.kwargs["mounts_dir"] == project_root / "mounts"
         assert mock_auth.call_args.kwargs["credential_set"] == "p1"
@@ -601,7 +604,8 @@ class TestProjectState:
     def test_delegates_with_loaded_config(self) -> None:
         from terok.lib.domain.project import Project
 
-        cfg = MagicMock(id="myproj")
+        cfg = MagicMock()
+        cfg.name = "myproj"
         with patch(
             "terok.lib.domain.project_state.get_project_state",
             return_value={"gate": True},
@@ -613,7 +617,8 @@ class TestProjectState:
     def test_threads_gate_commit_provider(self) -> None:
         from terok.lib.domain.project import Project
 
-        cfg = MagicMock(id="myproj")
+        cfg = MagicMock()
+        cfg.name = "myproj"
         provider = MagicMock()
         with patch(
             "terok.lib.domain.project_state.get_project_state",
@@ -626,10 +631,11 @@ class TestProjectState:
 class TestProjectStorageDetail:
     """Project.storage_detail() delegates to get_project_storage_detail."""
 
-    def test_delegates_with_project_id(self) -> None:
+    def test_delegates_with_project_name(self) -> None:
         from terok.lib.domain.project import Project
 
-        cfg = MagicMock(id="myproj")
+        cfg = MagicMock()
+        cfg.name = "myproj"
         sentinel = MagicMock()
         with patch(
             "terok.lib.domain.storage.get_project_storage_detail",
@@ -647,7 +653,8 @@ class TestTaskImageIsOld:
     def test_passes_through_helper_result(self, value: bool | None) -> None:
         from terok.lib.domain.task import Task
 
-        cfg = MagicMock(id="myproj")
+        cfg = MagicMock()
+        cfg.name = "myproj"
         meta = MagicMock()
         with patch(
             "terok.lib.domain.project_state.is_task_image_old",

@@ -37,9 +37,9 @@ def _load_archived_task_meta(entry: Path) -> dict | None:
         return None
 
 
-def list_archived_tasks(project_id: str) -> list[ArchivedTask]:
-    """Return archived tasks for *project_id*, sorted newest-first."""
-    archive_root = tasks_archive_dir(project_id)
+def list_archived_tasks(project_name: str) -> list[ArchivedTask]:
+    """Return archived tasks for *project_name*, sorted newest-first."""
+    archive_root = tasks_archive_dir(project_name)
     if not archive_root.is_dir():
         return []
     results: list[ArchivedTask] = []
@@ -65,9 +65,9 @@ def list_archived_tasks(project_id: str) -> list[ArchivedTask]:
     return results
 
 
-def task_archive_list(project_id: str) -> None:
-    """Print archived tasks for *project_id*."""
-    archived = list_archived_tasks(project_id)
+def task_archive_list(project_name: str) -> None:
+    """Print archived tasks for *project_name*."""
+    archived = list_archived_tasks(project_name)
     if not archived:
         print("No archived tasks found")
         return
@@ -81,13 +81,13 @@ def task_archive_list(project_id: str) -> None:
         print(f"- {a.archived_at} #{a.task_id}: {a.name}{extra_s}")
 
 
-def task_archive_logs(project_id: str, archive_id: str) -> Path | None:
+def task_archive_logs(project_name: str, archive_id: str) -> Path | None:
     """Return the log file path for an archived task identified by *archive_id*.
 
     *archive_id* is matched against archive directory names (prefix match).
     Returns the log file path if found, or ``None``.
     """
-    archive_root = tasks_archive_dir(project_id)
+    archive_root = tasks_archive_dir(project_name)
     if not archive_root.is_dir():
         return None
     for entry in sorted(archive_root.iterdir(), reverse=True):

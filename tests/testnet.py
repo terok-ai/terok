@@ -73,11 +73,11 @@ def localhost_url(port: int) -> str:
 GATE_HOST = "localhost"
 
 
-def gate_repo_url(project_id: str, token: str, *, port: int = GATE_PORT) -> str:
+def gate_repo_url(project_name: str, token: str, *, port: int = GATE_PORT) -> str:
     """Build the authenticated in-container gate repository URL.
 
     The container always reaches the per-container gate through the fixed
     localhost socat bridge (``TCP-LISTEN:9418``) in both socket and TCP
     modes, so the URL points at ``localhost``.
     """
-    return f"http://{token}@{GATE_HOST}:{port}/{project_id}.git"
+    return f"http://{token}@{GATE_HOST}:{port}/{project_name}.git"

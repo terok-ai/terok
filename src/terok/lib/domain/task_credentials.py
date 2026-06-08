@@ -19,7 +19,7 @@ Two verbs ride alongside the rest of ``terok task ...``:
 
 Both translate the operator's project/task identifiers into the opaque
 ``(scope, subject)`` pair the sandbox actually keys on.  ``scope`` is
-the project id; ``subject`` is the task id.  The mapping lives here
+the project name; ``subject`` is the task id.  The mapping lives here
 rather than in ``terok-sandbox`` because the sandbox makes no claim
 about what those labels identify.
 """
@@ -35,8 +35,8 @@ if TYPE_CHECKING:
     from datetime import datetime
 
 
-def revoke_credentials(project_id: str, task_id: str) -> int:
-    """Revoke every phantom token bound to ``(project_id, task_id)``.
+def revoke_credentials(project_name: str, task_id: str) -> int:
+    """Revoke every phantom token bound to ``(project_name, task_id)``.
 
     The DB-side delete takes effect on the next request the agent
     issues — the broker has no in-memory token cache, so an in-flight
@@ -46,7 +46,7 @@ def revoke_credentials(project_id: str, task_id: str) -> int:
     block further use, don't kill in-flight TCP.
 
     Args:
-        project_id: Project id (becomes the token's ``scope``).
+        project_name: Project id (becomes the token's ``scope``).
         task_id: Task id (becomes the token's ``subject``).
 
     Returns:
@@ -56,18 +56,18 @@ def revoke_credentials(project_id: str, task_id: str) -> int:
     from .vault import vault_db
 
     with vault_db() as db:
-        return db.revoke_tokens(project_id, task_id)
+        return db.revoke_tokens(project_name, task_id)
 
 
 def audit_credentials(
-    project_id: str,
+    project_name: str,
     task_id: str,
     *,
     provider: str | None = None,
     since: datetime | None = None,
     tail: int | None = None,
 ) -> Iterator[dict]:
-    """Yield audit lines for ``(project_id, task_id)`` after filtering.
+    """Yield audit lines for ``(project_name, task_id)`` after filtering.
 
     Reads the broker's
     [`credential_audit_log_path`][terok_sandbox.SandboxConfig.credential_audit_log_path]
@@ -76,7 +76,7 @@ def audit_credentials(
     keeps only the last ``tail`` survivors when set.
 
     Args:
-        project_id: Project id (matched against the line's ``scope``).
+        project_name: Project id (matched against the line's ``scope``).
         task_id: Task id (matched against the line's ``subject``).
         provider: When set, drop lines whose ``provider`` field differs.
         since: When set, drop lines whose ``ts`` parses earlier than
@@ -93,7 +93,7 @@ def audit_credentials(
 
     audit_path = make_sandbox_config().credential_audit_log_path
     matches: Iterable[dict] = _filtered_lines(
-        audit_path, project_id, task_id, provider=provider, since=since
+        audit_path, project_name, task_id, provider=provider, since=since
     )
     if tail is not None and tail > 0:
         # Materialise to slice from the tail; full-history scans rarely
@@ -104,7 +104,7 @@ def audit_credentials(
 
 def _filtered_lines(
     audit_path: Path,
-    project_id: str,
+    project_name: str,
     task_id: str,
     *,
     provider: str | None,
@@ -125,7 +125,7 @@ def _filtered_lines(
             entry = _parse_line(raw)
             if entry is None:
                 continue
-            if entry.get("scope") != project_id or entry.get("subject") != task_id:
+            if entry.get("scope") != project_name or entry.get("subject") != task_id:
                 continue
             if provider is not None and entry.get("provider") != provider:
                 continue

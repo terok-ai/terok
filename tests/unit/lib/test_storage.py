@@ -14,7 +14,7 @@ from unittest.mock import patch
 
 from terok.lib.domain.image_cleanup import ImageInfo
 from terok.lib.domain.storage import (
-    ORPHAN_PROJECT_ID,
+    ORPHAN_PROJECT_NAME,
     ProjectSummary,
     StorageOverview,
     _is_global_image,
@@ -157,7 +157,7 @@ class TestGetStorageOverview:
         assert len(overview.global_images) == 1
         assert overview.global_images[0].repository == "terok-l0"
         assert len(overview.projects) == 1
-        assert overview.projects[0].project_id == "myproject"
+        assert overview.projects[0].project_name == "myproject"
 
     @patch("terok.lib.domain.storage.SharedMountStorageInfo.measure_all", return_value=[])
     @patch("terok.lib.domain.storage.TaskStorageInfo.measure_all", return_value=[])
@@ -176,14 +176,14 @@ class TestGetStorageOverview:
     def test_localhost_prefix_attributes_to_project(
         self, _mounts, mock_images, mock_projects, _tasks, _shared
     ):
-        """L2 images with podman's ``localhost/`` prefix roll up to the bare project id."""
+        """L2 images with podman's ``localhost/`` prefix roll up to the bare project name."""
         mock_images.return_value = [
             ImageInfo("localhost/myproject", "l2-cli", "id", "3GB", "1d ago"),
         ]
         mock_projects.return_value = [_fake_project("myproject")]
         overview = get_storage_overview()
         assert len(overview.projects) == 1
-        assert overview.projects[0].project_id == "myproject"
+        assert overview.projects[0].project_name == "myproject"
         assert overview.projects[0].image_bytes == 3_000_000_000
 
     @patch("terok.lib.domain.storage.SharedMountStorageInfo.measure_all", return_value=[])
@@ -201,9 +201,9 @@ class TestGetStorageOverview:
         ]
         mock_projects.return_value = [_fake_project("myproject")]
         overview = get_storage_overview()
-        project_ids = [p.project_id for p in overview.projects]
-        assert ORPHAN_PROJECT_ID in project_ids
-        orphan = next(p for p in overview.projects if p.project_id == ORPHAN_PROJECT_ID)
+        project_names = [p.project_name for p in overview.projects]
+        assert ORPHAN_PROJECT_NAME in project_names
+        orphan = next(p for p in overview.projects if p.project_name == ORPHAN_PROJECT_NAME)
         assert orphan.image_bytes == 2_000_000_000
         assert orphan.task_count == 0
         # Orphan bytes contribute to the grand total.
@@ -223,7 +223,7 @@ class TestGetStorageOverview:
         ]
         mock_projects.return_value = [_fake_project("myproject")]
         overview = get_storage_overview()
-        assert all(p.project_id != ORPHAN_PROJECT_ID for p in overview.projects)
+        assert all(p.project_name != ORPHAN_PROJECT_NAME for p in overview.projects)
 
 
 # ---------------------------------------------------------------------------
@@ -241,7 +241,7 @@ class TestGetProjectStorageDetail:
         mock_runtime.container_rw_sizes.return_value = {"abc": 1024}
         mock_load.return_value = _fake_project("myproject")
         detail = get_project_storage_detail("myproject")
-        assert detail.project_id == "myproject"
+        assert detail.project_name == "myproject"
         assert detail.overlays == {"abc": 1024}
 
 
@@ -255,6 +255,6 @@ def _fake_project(pid: str):
     from unittest.mock import MagicMock
 
     p = MagicMock()
-    p.id = pid
+    p.name = pid
     p.tasks_root = MOCK_BASE / "tasks" / pid
     return p

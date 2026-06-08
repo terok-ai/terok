@@ -243,7 +243,7 @@ def test_terok_task_slash_alias() -> None:
     Exercises the argparse layer plus
     [`_normalize_pt`][terok.cli.commands.task._normalize_pt] (which
     [`dispatch`][terok.cli.commands.task.dispatch] runs first) and
-    asserts the resulting ``(project_id, task_id)`` is the same for
+    asserts the resulting ``(project_name, task_id)`` is the same for
     both input forms.  Uses ``task stop`` as a representative verb
     that takes both positionals.
     """
@@ -260,8 +260,8 @@ def test_terok_task_slash_alias() -> None:
     slash = parser.parse_args(["task", "stop", "myproj/mytask"])
     _normalize_pt(slash)
 
-    assert (space.project_id, space.task_id) == ("myproj", "mytask")
-    assert (slash.project_id, slash.task_id) == ("myproj", "mytask")
+    assert (space.project_name, space.task_id) == ("myproj", "mytask")
+    assert (slash.project_name, slash.task_id) == ("myproj", "mytask")
 
 
 def test_lookup_container_by_pt_resolves_and_handles_misses() -> None:
@@ -314,31 +314,31 @@ def test_normalize_pt_rejects_path_traversal(slash_form: str) -> None:
 
     from terok.cli.commands.task import _normalize_pt
 
-    args = argparse.Namespace(project_id=slash_form, task_id=None)
+    args = argparse.Namespace(project_name=slash_form, task_id=None)
     with pytest.raises(SystemExit, match="(?i)invalid"):
         _normalize_pt(args)
 
 
 @pytest.mark.parametrize(
-    ("project_id", "task_id"),
+    ("project_name", "task_id"),
     [
         ("../escape", "a1b2c"),
-        ("MYPROJ", "a1b2c"),  # validate_project_id is lowercase-only
+        ("MYPROJ", "a1b2c"),  # validate_project_name is lowercase-only
         ("myproj", ".."),
         ("myproj", "evil/sub"),
         ("myproj", ""),
     ],
 )
-def test_lookup_container_by_pt_rejects_unsafe_ids(project_id: str, task_id: str) -> None:
+def test_lookup_container_by_pt_rejects_unsafe_ids(project_name: str, task_id: str) -> None:
     """`lookup_container_by_pt` returns None for any input that could traverse out of the task store."""
     from terok.lib.orchestration.tasks import lookup_container_by_pt
 
-    assert lookup_container_by_pt(project_id, task_id) is None
+    assert lookup_container_by_pt(project_name, task_id) is None
 
 
 @pytest.mark.parametrize("bad", ["", ".", "..", "../escape", "..hidden", "a/b", "a\\b"])
-def test_meta_path_builders_reject_unsafe_project_id(bad: str) -> None:
-    """The five ``tasks/meta.py`` path-builders raise on a path-unsafe project_id.
+def test_meta_path_builders_reject_unsafe_project_name(bad: str) -> None:
+    """The five ``tasks/meta.py`` path-builders raise on a path-unsafe project_name.
 
     Defense-in-depth: even if a caller smuggles past the CLI / resolver
     guards (``_normalize_pt``, ``lookup_container_by_pt``), the
@@ -347,7 +347,7 @@ def test_meta_path_builders_reject_unsafe_project_id(bad: str) -> None:
     [`tasks_meta_dir`][terok.lib.orchestration.tasks.meta.tasks_meta_dir],
     [`tasks_archive_dir`][terok.lib.orchestration.tasks.meta.tasks_archive_dir],
     and [`agent_config_dir`][terok.lib.orchestration.tasks.meta.agent_config_dir]
-    (the project_id-consuming builders).
+    (the project_name-consuming builders).
     """
     from terok.lib.orchestration.tasks.meta import (
         agent_config_dir,
@@ -356,9 +356,9 @@ def test_meta_path_builders_reject_unsafe_project_id(bad: str) -> None:
     )
 
     for builder in (tasks_meta_dir, tasks_archive_dir):
-        with pytest.raises(SystemExit, match="project_id"):
+        with pytest.raises(SystemExit, match="project_name"):
             builder(bad)
-    with pytest.raises(SystemExit, match="project_id"):
+    with pytest.raises(SystemExit, match="project_name"):
         agent_config_dir(bad, "a1b2c")
 
 

@@ -137,32 +137,32 @@ def find_projects_sharing_gate(
 
     Args:
         gate_path: The gate path to check for
-        exclude_project: Project ID to exclude from results (usually the current project)
+        exclude_project: Project name to exclude from results (usually the current project)
 
     Returns:
-        List of (project_id, upstream_url) tuples for projects sharing this gate
+        List of (project_name, upstream_url) tuples for projects sharing this gate
     """
     from ..core.projects import list_projects as _list_projects
 
     gate_path = gate_path.resolve()
     return [
-        (project.id, project.upstream_url)
+        (project.name, project.upstream_url)
         for project in _list_projects()
-        if project.id != exclude_project and project.gate_path.resolve() == gate_path
+        if project.name != exclude_project and project.gate_path.resolve() == gate_path
     ]
 
 
-def validate_gate_upstream_match(project_id: str) -> None:
+def validate_gate_upstream_match(project_name: str) -> None:
     """Validate that no other project uses the same gate with a different upstream.
 
     Raises SystemExit if another project uses the same gate path but has a
     different upstream_url configured.
 
     Args:
-        project_id: The project to validate
+        project_name: The project to validate
     """
-    project = load_project(project_id)
-    sharing = find_projects_sharing_gate(project.gate_path, exclude_project=project_id)
+    project = load_project(project_name)
+    sharing = find_projects_sharing_gate(project.gate_path, exclude_project=project_name)
 
     for other_id, other_url in sharing:
         if other_url is None or project.upstream_url is None or other_url != project.upstream_url:
@@ -181,7 +181,7 @@ def validate_gate_upstream_match(project_id: str) -> None:
                 f"\n"
                 f"  Gate path: {project.gate_path}\n"
                 f"\n"
-                f"  This project ({project_id}):\n"
+                f"  This project ({project_name}):\n"
                 f"    upstream_url: {this_display}\n"
                 f"\n"
                 f"  Conflicting project ({other_id}):\n"
@@ -204,7 +204,7 @@ def make_git_gate(config: ProjectConfig, *, use_personal_ssh: bool | None = None
     """
     effective = use_personal_ssh if use_personal_ssh is not None else config.ssh_use_personal
     return GitGate(
-        scope=config.id,
+        scope=config.name,
         gate_path=config.gate_path,
         upstream_url=config.upstream_url,
         default_branch=config.default_branch,
@@ -221,7 +221,7 @@ def make_ssh_manager(config: ProjectConfig) -> SSHManager:
     the DB connection closes on exit.
     """
     return SSHManager.open_for_config(
-        scope=config.id, cfg=make_sandbox_config(), prompt_on_tty=True
+        scope=config.name, cfg=make_sandbox_config(), prompt_on_tty=True
     )
 
 
@@ -232,14 +232,14 @@ def make_ssh_manager(config: ProjectConfig) -> SSHManager:
 # ---------------------------------------------------------------------------
 
 
-def get_project(project_id: str) -> Project:
-    """Load a project by ID and return a rich [`Project`][terok.lib.domain.project.Project] aggregate."""
-    return Project(load_project(project_id))
+def get_project(project_name: str) -> Project:
+    """Load a project by name and return a rich [`Project`][terok.lib.domain.project.Project] aggregate."""
+    return Project(load_project(project_name))
 
 
-def project_image_exists(project_id: str) -> bool:
+def project_image_exists(project_name: str) -> bool:
     """Return ``True`` when the project's L2 CLI image is present locally."""
-    return image_exists(project_cli_image(project_id))
+    return image_exists(project_cli_image(project_name))
 
 
 def list_projects() -> list[Project]:
@@ -284,8 +284,8 @@ class ACPEndpoint:
     probe or open the socket.
     """
 
-    project_id: str
-    """The owning project's id."""
+    project_name: str
+    """The owning project's name."""
 
     task_id: str
     """The task this endpoint serves."""
@@ -305,7 +305,7 @@ class ACPEndpoint:
     agent for the open session; ``None`` otherwise."""
 
 
-def _read_bound_agent(project_id: str, task_id: str) -> str | None:
+def _read_bound_agent(project_name: str, task_id: str) -> str | None:
     """Read the bound-agent name from the proxy daemon's sidecar JSON.
 
     The daemon writes ``{"agent": "<name>"}`` atomically (via os.replace)
@@ -313,7 +313,7 @@ def _read_bound_agent(project_id: str, task_id: str) -> str | None:
     error path collapses to ``None`` so the listing surface keeps
     working when the daemon is mid-update or the file is absent.
     """
-    path = acp_bound_path(project_id, task_id)
+    path = acp_bound_path(project_name, task_id)
     try:
         payload = json.loads(path.read_text("utf-8"))
     except (OSError, json.JSONDecodeError):
@@ -323,7 +323,7 @@ def _read_bound_agent(project_id: str, task_id: str) -> str | None:
 
 
 def _task_has_any_authed_agent(
-    project_id: str,
+    project_name: str,
     task: Task,
     authed: set[str],
     *,
@@ -343,13 +343,13 @@ def _task_has_any_authed_agent(
     or N sandbox constructions.
     """
     image_agents = _image_agents_for_task(
-        project_id, task, sandbox=sandbox, label_cache=label_cache
+        project_name, task, sandbox=sandbox, label_cache=label_cache
     )
     return bool(image_agents & authed) if image_agents else False
 
 
 def _image_agents_for_task(
-    project_id: str,
+    project_name: str,
     task: Task,
     *,
     sandbox: Any,
@@ -367,7 +367,7 @@ def _image_agents_for_task(
     if task.mode is None:
         return set()
     try:
-        cname = container_name(project_id, task.mode, task.id)
+        cname = container_name(project_name, task.mode, task.id)
         container = sandbox.runtime.container(cname)
         image = container.image
         if image is None:
@@ -384,7 +384,7 @@ def _image_agents_for_task(
     return parsed
 
 
-def _archive_project(project_id: str) -> str | None:
+def _archive_project(project_name: str) -> str | None:
     """Create a compressed archive of project data before deletion.
 
     Collects project config, task metadata, task archives, and build
@@ -397,8 +397,8 @@ def _archive_project(project_id: str) -> str | None:
     Returns the archive file path as a string, or ``None`` on failure.
     """
     try:
-        project = load_project(project_id)
-        pid = project.id
+        project = load_project(project_name)
+        pid = project.name
 
         archive_root = archive_dir()
         ts = archive_timestamp()
@@ -453,7 +453,7 @@ def _archive_project(project_id: str) -> str | None:
         _logger.debug("_archive_project: archived %s to %s", pid, archive_path)
         return str(archive_path)
     except Exception as exc:
-        _logger.warning("_archive_project: failed to archive %s: %s", project_id, exc)
+        _logger.warning("_archive_project: failed to archive %s: %s", project_name, exc)
         return None
 
 
@@ -502,21 +502,21 @@ def _rmtree_managed(path: Path, label: str, deleted: list[str], skipped: list[st
     deleted.append(str(path))
 
 
-def delete_project(project_id: str) -> DeleteProjectResult:
+def delete_project(project_name: str) -> DeleteProjectResult:
     """Delete a project and all its associated data.
 
     Removes task workspaces, task metadata, build artifacts, SSH credentials,
     the git gate (if not shared with other projects), and the project config
     directory.
     """
-    archive_path = _archive_project(project_id)
+    archive_path = _archive_project(project_name)
     if archive_path is None:
         raise SystemExit(
-            f"Project archiving failed for '{project_id}'; aborting deletion to prevent data loss."
+            f"Project archiving failed for '{project_name}'; aborting deletion to prevent data loss."
         )
 
-    project = load_project(project_id)
-    pid = project.id
+    project = load_project(project_name)
+    pid = project.name
     deleted: list[str] = []
     skipped: list[str] = []
 
@@ -588,7 +588,7 @@ class AgentManager:
     ) -> dict[str, Any]:
         """Return the merged agent config dict."""
         return resolve_agent_config(
-            self._config.id,
+            self._config.name,
             agent_config=self._config.agent_config,
             project_root=self._config.root,
             preset=preset,
@@ -618,8 +618,8 @@ class Project:
         task.stop()
         project.gate.sync()
 
-    **Identity** is based on ``project.id`` — two ``Project`` instances with
-    the same ID compare equal and hash identically, so they work correctly
+    **Identity** is based on ``project.name`` — two ``Project`` instances with
+    the same name compare equal and hash identically, so they work correctly
     in sets and dicts.
 
     **Subsystem access** (``gate``, ``ssh``, ``agents``) uses lazy
@@ -645,9 +645,9 @@ class Project:
     # --- Identity (delegates to ProjectConfig) ---
 
     @property
-    def id(self) -> str:
-        """Return the project ID."""
-        return self._config.id
+    def name(self) -> str:
+        """Return the project name (slug)."""
+        return self._config.name
 
     @property
     def config(self) -> ProjectConfig:
@@ -660,24 +660,24 @@ class Project:
         return self._config.security_class
 
     def __eq__(self, other: object) -> bool:
-        """Two projects are equal iff they share the same ID."""
-        return isinstance(other, Project) and self.id == other.id
+        """Two projects are equal iff they share the same name."""
+        return isinstance(other, Project) and self.name == other.name
 
     def __hash__(self) -> int:
-        """Hash by project ID for use in sets and dicts."""
-        return hash(self.id)
+        """Hash by project name for use in sets and dicts."""
+        return hash(self.name)
 
     # --- Task containment (Factory Method) ---
 
     def create_task(self, *, name: str | None = None) -> Task:
         """Create a new task and return a rich Task entity."""
-        task_id = task_new(self._config.id, name=name)
-        meta = get_task_meta(self._config.id, task_id)
+        task_id = task_new(self._config.name, name=name)
+        meta = get_task_meta(self._config.name, task_id)
         return Task(self._config, meta)
 
     def get_task(self, task_id: str) -> Task:
         """Return a rich Task entity for an existing task."""
-        meta = get_task_meta(self._config.id, task_id)
+        meta = get_task_meta(self._config.name, task_id)
         return Task(self._config, meta)
 
     @property
@@ -687,11 +687,11 @@ class Project:
 
     def list_tasks(self, *, status: str | None = None, mode: str | None = None) -> list[Task]:
         """Return all tasks, optionally filtered by status or mode."""
-        metas = get_tasks(self._config.id)
+        metas = get_tasks(self._config.name)
         if mode:
             metas = [m for m in metas if m.mode == mode]
         # Hydrate live container state so status filtering is accurate
-        live_states = get_all_task_states(self._config.id, metas)
+        live_states = get_all_task_states(self._config.name, metas)
         for m in metas:
             m.container_state = live_states.get(m.task_id)
         if status:
@@ -728,20 +728,20 @@ class Project:
         label_cache: dict[str, set[str]] = {}
         out: list[ACPEndpoint] = []
         for task in running:
-            sock = acp_socket_path(self._config.id, task.id)
+            sock = acp_socket_path(self._config.name, task.id)
             sock_exists = sock.exists()
-            bound = _read_bound_agent(self._config.id, task.id) if sock_exists else None
+            bound = _read_bound_agent(self._config.name, task.id) if sock_exists else None
             if sock_exists:
                 status = ACPEndpointStatus.ACTIVE
             elif _task_has_any_authed_agent(
-                self._config.id, task, authed, sandbox=sandbox, label_cache=label_cache
+                self._config.name, task, authed, sandbox=sandbox, label_cache=label_cache
             ):
                 status = ACPEndpointStatus.READY
             else:
                 status = ACPEndpointStatus.UNSUPPORTED
             out.append(
                 ACPEndpoint(
-                    project_id=self._config.id,
+                    project_name=self._config.name,
                     task_id=task.id,
                     socket_path=sock,
                     status=status,
@@ -753,33 +753,33 @@ class Project:
     def run_headless(self, request: HeadlessRunRequest) -> Task:
         """Create and run a headless task atomically.  Returns the Task."""
         task_id = task_run_headless(request)
-        meta = get_task_meta(self._config.id, task_id)
+        meta = get_task_meta(self._config.name, task_id)
         return Task(self._config, meta)
 
     def followup_headless(self, task_id: str, prompt: str, follow: bool = True) -> None:
         """Send a follow-up prompt to a completed headless task."""
         from ..orchestration.task_runners import task_followup_headless
 
-        task_followup_headless(self._config.id, task_id, prompt, follow=follow)
+        task_followup_headless(self._config.name, task_id, prompt, follow=follow)
 
     # --- Project lifecycle ---
 
     def delete(self) -> DeleteProjectResult:
         """Delete the project and all associated data."""
-        return delete_project(self._config.id)
+        return delete_project(self._config.name)
 
     # --- Infrastructure ---
 
     def generate_dockerfiles(self) -> None:
         """Render and write Dockerfiles for this project."""
-        generate_dockerfiles(self._config.id)
+        generate_dockerfiles(self._config.name)
 
     def build_images(
         self, *, include_dev: bool = False, refresh_agents: bool = False, full: bool = False
     ) -> None:
         """Build container images for this project."""
         build_images(
-            self._config.id,
+            self._config.name,
             include_dev=include_dev,
             refresh_agents=refresh_agents,
             full_rebuild=full,
@@ -789,21 +789,21 @@ class Project:
         """Return the project's infrastructure state snapshot.
 
         *gate_commit_provider* is an optional callable that, given a
-        project id, returns the last gate commit dict (or ``None``).
+        project name, returns the last gate commit dict (or ``None``).
         Used by the TUI to inject the live gate manager's ``last_commit``
         lookup without reaching for it from inside the helper.
         """
         from .project_state import get_project_state
 
         return get_project_state(
-            self._config.id, gate_commit_provider=gate_commit_provider, project=self._config
+            self._config.name, gate_commit_provider=gate_commit_provider, project=self._config
         )
 
     def storage_detail(self) -> ProjectDetail:
         """Return a detailed view of this project's on-disk footprint."""
         from .storage import get_project_storage_detail
 
-        return get_project_storage_detail(self._config.id)
+        return get_project_storage_detail(self._config.name)
 
     # --- Security setup ---
 
@@ -847,7 +847,7 @@ class Project:
     def register_ssh_key(self, key_id: int) -> None:
         """Bind an already-minted *key_id* to this project (idempotent)."""
         with vault_db() as db:
-            db.assign_ssh_key(self._config.id, key_id)
+            db.assign_ssh_key(self._config.name, key_id)
 
     @property
     def needs_ssh_key_registration(self) -> bool:
@@ -882,8 +882,8 @@ class Project:
 
     def list_presets(self) -> list[PresetInfo]:
         """Return available presets for this project."""
-        return list_presets(self._config.id)
+        return list_presets(self._config.name)
 
     def __repr__(self) -> str:
         """Return a developer-friendly string representation."""
-        return f"Project(id={self.id!r}, security={self.security_class!r})"
+        return f"Project(name={self.name!r}, security={self.security_class!r})"

@@ -10,6 +10,7 @@ is covered against real inotify in ``test_task_watcher``.
 
 from __future__ import annotations
 
+import asyncio
 import types
 from typing import Any
 from unittest import mock
@@ -75,7 +76,7 @@ def test_stop_cancels_pending_debounce() -> None:
 def _event_instance(app_class: type) -> Any:
     """App wired with debounce spies for the podman-event reaction."""
     instance = app_class()
-    instance.current_project_id = "p1"
+    instance.current_project_name = "p1"
     instance._watch_debounce = None
     instance._poll_container_status = mock.Mock()
     instance.set_timer = mock.Mock(return_value=mock.Mock())
@@ -132,12 +133,48 @@ def test_stop_event_stream_closes_and_clears() -> None:
     assert instance._container_event_stream is None
 
 
+def test_poll_container_status_queues_current_project() -> None:
+    _app_mod, app_class = import_app()
+    instance = app_class()
+    instance.current_project_name = "p1"
+    instance._queue_container_state_check = mock.Mock()
+    instance._poll_container_status()
+    instance._queue_container_state_check.assert_called_once_with("p1")
+
+
+def test_load_container_state_worker_sets_live_states() -> None:
+    _app_mod, app_class = import_app()
+    instance = app_class()
+    tasks = [types_ns(task_id="1", container_state=None), types_ns(task_id="2")]
+    states = {"1": "running", "2": "exited"}
+    with (
+        mock.patch("terok.lib.api.get_tasks", return_value=tasks),
+        mock.patch("terok.lib.api.get_all_task_states", return_value=states),
+    ):
+        project_name, refreshed = asyncio.run(instance._load_container_state_worker("p1"))
+    assert project_name == "p1"
+    assert refreshed == tasks
+    assert tasks[0].container_state == "running"
+    assert tasks[1].container_state == "exited"
+
+
+def test_load_container_state_worker_degrades_on_snapshot_error() -> None:
+    _app_mod, app_class = import_app()
+    instance = app_class()
+    instance._log_debug = mock.Mock()
+    with mock.patch("terok.lib.api.get_tasks", side_effect=RuntimeError("boom")):
+        project_name, refreshed = asyncio.run(instance._load_container_state_worker("p1"))
+    assert project_name == "p1"
+    assert refreshed == []
+    instance._log_debug.assert_called_once()
+
+
 class TestLifecycleWiring:
     """Start/stop orchestration: sources armed, resync honoured, paths computed."""
 
     def _app(self, app_class: type) -> Any:
         instance = app_class()
-        instance.current_project_id = "p1"
+        instance.current_project_name = "p1"
         instance._container_status_timer = None
         instance._task_watcher = None
         instance._container_event_stream = None
@@ -218,7 +255,7 @@ class TestLifecycleWiring:
     def test_resync_task_watches_syncs_to_current_paths(self) -> None:
         _app_mod, app_class = import_app()
         instance = app_class()
-        instance.current_project_id = "p1"
+        instance.current_project_name = "p1"
         instance._task_watcher = mock.Mock()
         instance._task_watch_paths = mock.Mock(return_value=["/meta", "/cfg/1"])
         instance._resync_task_watches()
@@ -227,7 +264,7 @@ class TestLifecycleWiring:
     def test_resync_task_watches_is_a_noop_without_a_watcher(self) -> None:
         _app_mod, app_class = import_app()
         instance = app_class()
-        instance.current_project_id = "p1"
+        instance.current_project_name = "p1"
         instance._task_watcher = None
         instance._resync_task_watches()  # must not raise
 

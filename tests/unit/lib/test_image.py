@@ -18,7 +18,7 @@ DEFAULT_BRANCH = "main"
 
 
 @contextmanager
-def image_project(project_id: str, *, security_class: str = "online") -> Iterator[object]:
+def image_project(project_name: str, *, security_class: str = "online") -> Iterator[object]:
     """Create a minimal project config suitable for Dockerfile generation tests.
 
     Pins ``image.base_image`` to ubuntu:24.04 so generated Dockerfiles
@@ -28,7 +28,7 @@ def image_project(project_id: str, *, security_class: str = "online") -> Iterato
     every time the upstream default moves (e.g. ubuntu→fedora).
     """
     lines = [
-        f"project:\n  id: {project_id}\n",
+        f"project:\n  id: {project_name}\n",
         f"  security_class: {security_class}\n",
         "git:\n",
     ]
@@ -36,7 +36,7 @@ def image_project(project_id: str, *, security_class: str = "online") -> Iterato
     lines.append(f"  default_branch: {DEFAULT_BRANCH}\n")
     lines.append("image:\n  base_image: ubuntu:24.04\n")
     yaml = "".join(lines)
-    with project_env(yaml, project_id=project_id) as env:
+    with project_env(yaml, project_name=project_name) as env:
         yield env
 
 
@@ -48,7 +48,7 @@ def _mock_base_images(base_image: str = "ubuntu:24.04") -> ImageSet:
 
 
 def build_commands(
-    project_id: str,
+    project_name: str,
     *,
     image_exists: bool = True,
     image_exists_side_effect: Callable[[str], bool] | None = None,
@@ -80,16 +80,16 @@ def build_commands(
         image_exists_patch,
         mock_git_config(),
     ):
-        build_images(project_id, **build_kwargs)
+        build_images(project_name, **build_kwargs)
     return commands
 
 
 def test_generate_dockerfiles_outputs_expected_files_and_content() -> None:
     """Dockerfile generation writes all expected layers and helper scripts."""
-    project_id = "proj4"
-    with image_project(project_id):
-        generate_dockerfiles(project_id)
-        out_dir = build_dir() / project_id
+    project_name = "proj4"
+    with image_project(project_name):
+        generate_dockerfiles(project_name)
+        out_dir = build_dir() / project_name
 
         assert all(
             (out_dir / name).is_file()
@@ -134,7 +134,7 @@ def test_l2_includes_user_snippet_inline() -> None:
         "git:\n  upstream_url: https://example.com/repo.git\n"
         "image:\n  user_snippet_inline: RUN apt-get install -y fortran-compiler\n"
     )
-    with project_env(yaml, project_id="proj_snippet"):
+    with project_env(yaml, project_name="proj_snippet"):
         generate_dockerfiles("proj_snippet")
         content = (build_dir() / "proj_snippet" / "L2.Dockerfile").read_text(encoding="utf-8")
         assert "RUN apt-get install -y fortran-compiler" in content
@@ -155,7 +155,7 @@ def test_l2_includes_user_snippet_from_file() -> None:
             "git:\n  upstream_url: https://example.com/repo.git\n"
             f"image:\n  user_snippet_file: {snippet_path}\n"
         )
-        with project_env(yaml, project_id="proj_snippet_file"):
+        with project_env(yaml, project_name="proj_snippet_file"):
             generate_dockerfiles("proj_snippet_file")
             content = (build_dir() / "proj_snippet_file" / "L2.Dockerfile").read_text(
                 encoding="utf-8"
@@ -181,7 +181,7 @@ def test_l2_combines_snippet_file_and_inline() -> None:
             f"image:\n  user_snippet_file: {snippet_path}\n"
             "  user_snippet_inline: RUN apt-get install -y fortran-compiler\n"
         )
-        with project_env(yaml, project_id="proj_both_snippets"):
+        with project_env(yaml, project_name="proj_both_snippets"):
             generate_dockerfiles("proj_both_snippets")
             content = (build_dir() / "proj_both_snippets" / "L2.Dockerfile").read_text(
                 encoding="utf-8"
@@ -203,7 +203,7 @@ def test_l2_missing_snippet_file_exits() -> None:
         "git:\n  upstream_url: https://example.com/repo.git\n"
         "image:\n  user_snippet_file: /nonexistent/snippet.dockerfile\n"
     )
-    with project_env(yaml, project_id="proj_bad_snippet"):
+    with project_env(yaml, project_name="proj_bad_snippet"):
         with pytest.raises(SystemExit, match="not found"):
             generate_dockerfiles("proj_bad_snippet")
 
@@ -361,14 +361,14 @@ class TestPerLayerHashes:
 
 @contextmanager
 def image_project_with(
-    project_id: str,
+    project_name: str,
     *,
     base_image: str = "ubuntu:24.04",
     family: str | None = None,
 ) -> Iterator[object]:
     """Variant of `image_project` that sets ``image.base_image`` (and ``image.family``)."""
     lines = [
-        f"project:\n  id: {project_id}\n",
+        f"project:\n  id: {project_name}\n",
         "git:\n",
         f"  upstream_url: {UPSTREAM_URL}\n",
         f"  default_branch: {DEFAULT_BRANCH}\n",
@@ -377,7 +377,7 @@ def image_project_with(
     ]
     if family is not None:
         lines.append(f"  family: {family}\n")
-    with project_env("".join(lines), project_id=project_id) as env:
+    with project_env("".join(lines), project_name=project_name) as env:
         yield env
 
 

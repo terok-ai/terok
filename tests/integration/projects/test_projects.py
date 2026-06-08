@@ -18,7 +18,7 @@ pytestmark = pytest.mark.needs_host_features
 
 SOURCE_PROJECT = f"""
 project:
-  id: alpha
+  name: alpha
   security_class: online
 git:
   upstream_url: {TEST_UPSTREAM_URL}
@@ -34,7 +34,7 @@ agent:
 COMMENTED_PROJECT = f"""
 # === Project identity ===
 project:
-  id: alpha
+  name: commented
   security_class: online  # keep this online for dev
 
 # --- Git configuration ---
@@ -60,7 +60,7 @@ class TestProjects:
         terok_env.write_project("alpha", SOURCE_PROJECT)
         terok_env.write_project(
             "sysalpha",
-            SOURCE_PROJECT.replace("id: alpha", "id: sysalpha"),
+            SOURCE_PROJECT.replace("name: alpha", "name: sysalpha"),
             scope="system",
         )
 
@@ -95,7 +95,7 @@ class TestProjects:
         assert target.is_file()
 
         derived = yaml_load(target.read_text(encoding="utf-8"))
-        assert derived["project"]["id"] == "beta"
+        assert derived["project"]["name"] == "beta"
         assert "agent" not in derived
         assert derived["git"]["upstream_url"] == TEST_UPSTREAM_URL
 
@@ -123,7 +123,7 @@ class TestProjects:
         assert derived_instructions.read_text(encoding="utf-8") == instructions
 
         # Sibling without source instructions.md stays clean.
-        terok_env.write_project("gamma", SOURCE_PROJECT.replace("id: alpha", "id: gamma"))
+        terok_env.write_project("gamma", SOURCE_PROJECT.replace("name: alpha", "name: gamma"))
         terok_env.run_cli("project", "derive", "gamma", "delta")
         assert not (terok_env.project_root("delta") / "instructions.md").exists()
 
@@ -143,7 +143,7 @@ class TestProjects:
         derived = yaml_load(raw)
 
         # ── Structural correctness (same as the non-commented test) ──
-        assert derived["project"]["id"] == "derived"
+        assert derived["project"]["name"] == "derived"
         assert derived["git"]["upstream_url"] == TEST_UPSTREAM_URL
         assert derived["ssh"]["use_personal"] is False
         assert "agent" not in derived  # cleared by derive

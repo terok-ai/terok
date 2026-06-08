@@ -20,53 +20,53 @@ from tests.test_utils import project_env, write_project
 EnvSetup = Callable[[SimpleNamespace, str], Path]
 
 
-def project_yaml(project_id: str, *, upstream_url: str = "https://example.com/repo.git") -> str:
+def project_yaml(project_name: str, *, upstream_url: str = "https://example.com/repo.git") -> str:
     """Build a minimal project config for deletion tests."""
-    return f"project:\n  id: {project_id}\ngit:\n  upstream_url: {upstream_url}\n"
+    return f"project:\n  id: {project_name}\ngit:\n  upstream_url: {upstream_url}\n"
 
 
-def project_root(_env: SimpleNamespace, project_id: str) -> Path:
+def project_root(_env: SimpleNamespace, project_name: str) -> Path:
     """Return the config-root directory for a loaded project."""
-    return load_project(project_id).root
+    return load_project(project_name).root
 
 
-def build_dir(_env: SimpleNamespace, project_id: str) -> Path:
+def build_dir(_env: SimpleNamespace, project_name: str) -> Path:
     """Create and return the project's build dir."""
-    target = cfg_build_dir() / project_id
+    target = cfg_build_dir() / project_name
     target.mkdir(parents=True, exist_ok=True)
     (target / "L2.Dockerfile").write_text("FROM scratch", encoding="utf-8")
     return target
 
 
-def task_state_dir(_env: SimpleNamespace, project_id: str) -> Path:
+def task_state_dir(_env: SimpleNamespace, project_name: str) -> Path:
     """Create and return the project's state metadata dir."""
-    target = cfg_state_dir() / "projects" / project_id
+    target = cfg_state_dir() / "projects" / project_name
     tasks_dir = target / "tasks"
     tasks_dir.mkdir(parents=True, exist_ok=True)
     (tasks_dir / "1.yml").write_text("task_id: '1'\n", encoding="utf-8")
     return target
 
 
-def gate_dir(env: SimpleNamespace, _project_id: str) -> Path:
+def gate_dir(env: SimpleNamespace, _project_name: str) -> Path:
     """Return the gate mirror directory from ``project_env``."""
     assert env.gate_dir is not None
     return env.gate_dir
 
 
-def task_archive_subdir(_env: SimpleNamespace, project_id: str) -> Path:
+def task_archive_subdir(_env: SimpleNamespace, project_name: str) -> Path:
     """Create and return the project's task archive dir (under namespace archive)."""
     from terok.lib.core.config import archive_dir as cfg_archive_dir
 
-    target = cfg_archive_dir() / project_id / "tasks"
+    target = cfg_archive_dir() / project_name / "tasks"
     target.mkdir(parents=True, exist_ok=True)
     entry = target / "20260101T000000Z_1_old-task"
     entry.mkdir()
     (entry / "task.yml").write_text("task_id: '1'\n", encoding="utf-8")
-    return target.parent  # archive/<project_id>/ — should be removed
+    return target.parent  # archive/<project_name>/ — should be removed
 
 
 @pytest.mark.parametrize(
-    ("project_id", "env_kwargs", "setup_target"),
+    ("project_name", "env_kwargs", "setup_target"),
     [
         ("del-proj", {"with_config_file": True}, project_root),
         ("del-build", {"with_config_file": True}, build_dir),
@@ -77,14 +77,14 @@ def task_archive_subdir(_env: SimpleNamespace, project_id: str) -> Path:
     ids=["config-dir", "build-dir", "task-metadata-dir", "gate-dir", "task-archive-dir"],
 )
 def test_delete_project_removes_managed_directories(
-    project_id: str,
+    project_name: str,
     env_kwargs: dict[str, bool],
     setup_target: EnvSetup,
 ) -> None:
-    with project_env(project_yaml(project_id), project_id=project_id, **env_kwargs) as env:
-        target = setup_target(env, project_id)
+    with project_env(project_yaml(project_name), project_name=project_name, **env_kwargs) as env:
+        target = setup_target(env, project_name)
         assert target.is_dir()
-        delete_project(project_id)
+        delete_project(project_name)
         assert not target.exists()
 
 
@@ -104,11 +104,11 @@ def test_delete_project_skips_shared_gate(monkeypatch: pytest.MonkeyPatch, tmp_p
         encoding="utf-8",
     )
 
-    for project_id, upstream in (("proj-a", "a"), ("proj-b", "b")):
+    for project_name, upstream in (("proj-a", "a"), ("proj-b", "b")):
         write_project(
             projects_root,
-            project_id,
-            project_yaml(project_id, upstream_url=f"https://example.com/{upstream}.git")
+            project_name,
+            project_yaml(project_name, upstream_url=f"https://example.com/{upstream}.git")
             + f"gate:\n  path: {gate_path}\n",
         )
 
@@ -124,14 +124,14 @@ def test_delete_project_skips_shared_gate(monkeypatch: pytest.MonkeyPatch, tmp_p
 
 
 def test_delete_project_returns_deleted_paths() -> None:
-    project_id = "del-ret"
-    with project_env(project_yaml(project_id), project_id=project_id):
-        result = delete_project(project_id)
+    project_name = "del-ret"
+    with project_env(project_yaml(project_name), project_name=project_name):
+        result = delete_project(project_name)
         assert isinstance(result["deleted"], list)
         assert isinstance(result["skipped"], list)
         assert result["archive"] is not None
         assert Path(result["archive"]).is_file()
-        assert any(project_id in path for path in result["deleted"])
+        assert any(project_name in path for path in result["deleted"])
 
 
 def test_delete_project_uses_task_task_id_not_id(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -145,7 +145,7 @@ def test_delete_project_uses_task_task_id_not_id(monkeypatch: pytest.MonkeyPatch
     """
     from terok.lib.orchestration.tasks import TaskMeta
 
-    project_id = "del-task-ids"
+    project_name = "del-task-ids"
     fake_tasks = [
         TaskMeta(task_id="42", mode="cli", workspace="", web_port=None, name="t42"),
         TaskMeta(task_id="7", mode="cli", workspace="", web_port=None, name="t7"),
@@ -155,12 +155,12 @@ def test_delete_project_uses_task_task_id_not_id(monkeypatch: pytest.MonkeyPatch
     def fake_task_delete(pid: str, tid: str) -> None:
         seen.append((pid, tid))
 
-    with project_env(project_yaml(project_id), project_id=project_id):
+    with project_env(project_yaml(project_name), project_name=project_name):
         monkeypatch.setattr("terok.lib.domain.project.get_tasks", lambda _pid: fake_tasks)
         monkeypatch.setattr("terok.lib.domain.project.task_delete", fake_task_delete)
-        delete_project(project_id)
+        delete_project(project_name)
 
-    assert seen == [(project_id, "42"), (project_id, "7")]
+    assert seen == [(project_name, "42"), (project_name, "7")]
 
 
 # ---------- _is_under_terok_root safety guard ----------

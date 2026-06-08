@@ -106,7 +106,7 @@ def _validate_task_id_prefix(prefix: str) -> None:
     )
 
 
-def resolve_task_id(project_id: str, prefix: str) -> str:
+def resolve_task_id(project_name: str, prefix: str) -> str:
     """Resolve a (possibly partial) task ID to its full form.
 
     The *prefix* is first run through [`normalize_task_id_input`][terok.lib.orchestration.tasks.normalize_task_id_input],
@@ -129,16 +129,16 @@ def resolve_task_id(project_id: str, prefix: str) -> str:
         )
     prefix = stripped.translate(_TASK_ID_INPUT_TRANSLATE)
     _validate_task_id_prefix(prefix)
-    meta_dir = tasks_meta_dir(project_id)
+    meta_dir = tasks_meta_dir(project_name)
     if not meta_dir.is_dir():
-        raise SystemExit(f"No tasks found for project {project_id}")
-    if task_exists(project_id, prefix):
+        raise SystemExit(f"No tasks found for project {project_name}")
+    if task_exists(project_name, prefix):
         return prefix
     matches = [tid for tid in iter_task_ids(meta_dir) if is_task_id(tid) and tid.startswith(prefix)]
     if len(matches) == 1:
         return matches[0]
     if not matches:
-        raise SystemExit(f"No task matching '{prefix}' in project {project_id}")
+        raise SystemExit(f"No task matching '{prefix}' in project {project_name}")
     raise SystemExit(f"Ambiguous task ID '{prefix}' — matches: {', '.join(sorted(matches))}")
 
 

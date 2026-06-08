@@ -20,12 +20,12 @@ from ..helpers import TerokIntegrationEnv, write_fake_podman
 
 pytestmark = pytest.mark.needs_host_features
 
-PROJECT_ID = "demo"
+PROJECT_NAME = "demo"
 TOAD_PORT = 8080
 
 PROJECT_CONFIG = f"""
 project:
-  id: {PROJECT_ID}
+  name: {PROJECT_NAME}
   security_class: online
 git:
   upstream_url: {EXAMPLE_UPSTREAM_URL}
@@ -93,13 +93,13 @@ class TestLaunchWorkflows:
         self, terok_env: TerokIntegrationEnv, tmp_path: Path
     ) -> None:
         """`task run` (default --mode cli) should create a task and launch the CLI container."""
-        terok_env.write_project(PROJECT_ID, PROJECT_CONFIG)
+        terok_env.write_project(PROJECT_NAME, PROJECT_CONFIG)
         state_path, extra_env = _configure_fake_runtime(terok_env, tmp_path)
 
         result = terok_env.run_cli(
             "task",
             "run",
-            PROJECT_ID,
+            PROJECT_NAME,
             "--name",
             "Fix Login Bug",
             extra_env=extra_env,
@@ -107,8 +107,8 @@ class TestLaunchWorkflows:
 
         tid = _extract_task_id(result.stdout)
         assert_task_id(tid)
-        cli_container = f"{PROJECT_ID}-cli-{tid}"
-        meta = terok_env.task_meta(PROJECT_ID, tid)
+        cli_container = f"{PROJECT_NAME}-cli-{tid}"
+        meta = terok_env.task_meta(PROJECT_NAME, tid)
         state = _load_fake_podman_state(state_path)
         args = _container_args(state, cli_container)
 
@@ -118,7 +118,7 @@ class TestLaunchWorkflows:
         assert state["containers"][cli_container]["status"] == "running"
         assert state["containers"][cli_container]["marker"] == "__CLI_READY__"
         assert "--name" in args and args[args.index("--name") + 1] == cli_container
-        assert f"{PROJECT_ID}:l2-cli" in args
+        assert f"{PROJECT_NAME}:l2-cli" in args
         assert "-p" not in args
         assert meta["mode"] == "cli"
         assert meta["name"] == "fix-login-bug"
@@ -128,13 +128,13 @@ class TestLaunchWorkflows:
         self, terok_env: TerokIntegrationEnv, tmp_path: Path
     ) -> None:
         """`task run --mode toad` should launch the served Toad workflow."""
-        terok_env.write_project(PROJECT_ID, PROJECT_CONFIG)
+        terok_env.write_project(PROJECT_NAME, PROJECT_CONFIG)
         state_path, extra_env = _configure_fake_runtime(terok_env, tmp_path)
 
         result = terok_env.run_cli(
             "task",
             "run",
-            PROJECT_ID,
+            PROJECT_NAME,
             "--mode",
             "toad",
             extra_env=extra_env,
@@ -142,15 +142,15 @@ class TestLaunchWorkflows:
 
         tid = _extract_task_id(result.stdout)
         web_port = _extract_web_port(result.stdout)
-        toad_container = f"{PROJECT_ID}-toad-{tid}"
-        meta = terok_env.task_meta(PROJECT_ID, tid)
+        toad_container = f"{PROJECT_NAME}-toad-{tid}"
+        meta = terok_env.task_meta(PROJECT_NAME, tid)
         state = _load_fake_podman_state(state_path)
         args = _container_args(state, toad_container)
 
         assert "Toad is serving." in result.stdout
         assert state["containers"][toad_container]["marker"] == "TEROK_READY"
         assert args[args.index("-p") + 1] == f"{LOCALHOST}:{web_port}:{TOAD_PORT}"
-        assert f"{PROJECT_ID}:l2-cli" in args
+        assert f"{PROJECT_NAME}:l2-cli" in args
         # terok-toad-entry (in-container supervisor) starts Caddy + toad;
         # terok only forwards the public URL now.
         assert "terok-toad-entry" in args[-1]
@@ -167,18 +167,18 @@ class TestLaunchWorkflows:
         self, terok_env: TerokIntegrationEnv, tmp_path: Path
     ) -> None:
         """`task restart` should use `podman start` for an existing stopped container."""
-        terok_env.write_project(PROJECT_ID, PROJECT_CONFIG)
+        terok_env.write_project(PROJECT_NAME, PROJECT_CONFIG)
         state_path, extra_env = _configure_fake_runtime(terok_env, tmp_path)
 
-        start_result = terok_env.run_cli("task", "run", PROJECT_ID, extra_env=extra_env)
+        start_result = terok_env.run_cli("task", "run", PROJECT_NAME, extra_env=extra_env)
         tid = _extract_task_id(start_result.stdout)
-        cli_container = f"{PROJECT_ID}-cli-{tid}"
+        cli_container = f"{PROJECT_NAME}-cli-{tid}"
 
         state = _load_fake_podman_state(state_path)
         state["containers"][cli_container]["status"] = "exited"
         state_path.write_text(json.dumps(state, indent=2, sort_keys=True), encoding="utf-8")
 
-        result = terok_env.run_cli("task", "restart", PROJECT_ID, tid, extra_env=extra_env)
+        result = terok_env.run_cli("task", "restart", PROJECT_NAME, tid, extra_env=extra_env)
         restarted = _load_fake_podman_state(state_path)
 
         assert f"Restarting task demo/{tid} (cli)..." in result.stdout

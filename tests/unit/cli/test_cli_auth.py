@@ -7,7 +7,7 @@ Three invocation shapes to verify:
 
 - ``terok auth``                           → interactive menu (no provider).
 - ``terok auth <p>``                       → host-wide auth.
-- ``terok auth <p> --project <id>``        → project-scoped auth.
+- ``terok auth <p> --project <name>``      → project-scoped auth.
 """
 
 from __future__ import annotations
@@ -109,8 +109,8 @@ def test_dispatch_host_wide_skips_project_loading() -> None:
 
 
 def test_dispatch_project_flag_runs_install_check() -> None:
-    """``auth <p> --project <id>`` loads the project and verifies the agent."""
-    fake_project = SimpleNamespace(id="p1")
+    """``auth <p> --project <name>`` loads the project and verifies the agent."""
+    fake_project = SimpleNamespace(name="p1")
     args = argparse.Namespace(cmd="auth", provider="claude", project_flag="p1")
     with (
         patch("terok.cli.commands.auth.load_project", return_value=fake_project),
@@ -170,7 +170,7 @@ def test_run_interactive_cancels_on_empty_answer(capsys: pytest.CaptureFixture[s
         patch("sys.stdin", new=StringIO("\n")),
         patch("terok.cli.commands.auth._run_one") as mock_run,
     ):
-        _run_interactive(project_id=None)
+        _run_interactive(project_name=None)
     mock_run.assert_not_called()
 
 
@@ -181,7 +181,7 @@ def test_run_interactive_runs_each_selected_provider() -> None:
         patch("terok.cli.commands.auth.require_project_exists"),
         patch("terok.cli.commands.auth._run_one") as mock_run,
     ):
-        _run_interactive(project_id="myproj")
+        _run_interactive(project_name="myproj")
     assert [call.args for call in mock_run.call_args_list] == [
         ("claude", "myproj"),
         ("codex", "myproj"),
@@ -195,7 +195,7 @@ def test_run_interactive_hides_oauth_when_disabled(capsys: pytest.CaptureFixture
         patch("terok.cli.commands.auth.is_oauth_enabled_for", return_value=False),
         patch("terok.cli.commands.auth._run_one"),
     ):
-        _run_interactive(project_id=None)
+        _run_interactive(project_name=None)
     out = capsys.readouterr().out
     assert "oauth" not in out
     assert "api-key" in out
@@ -208,7 +208,7 @@ def test_run_interactive_shows_oauth_when_enabled(capsys: pytest.CaptureFixture[
         patch("terok.cli.commands.auth.is_oauth_enabled_for", return_value=True),
         patch("terok.cli.commands.auth._run_one"),
     ):
-        _run_interactive(project_id=None)
+        _run_interactive(project_name=None)
     out = capsys.readouterr().out
     assert "oauth" in out
 
@@ -222,20 +222,20 @@ def test_run_one_skips_install_check_when_host_wide() -> None:
         patch("terok.cli.commands.auth.load_project") as mock_load,
         patch("terok.cli.commands.auth.authenticate") as mock_auth,
     ):
-        _run_one("claude", project_id=None)
+        _run_one("claude", project_name=None)
     mock_load.assert_not_called()
     mock_auth.assert_called_once_with("claude", None)
 
 
 def test_run_one_resolves_alias_for_install_check() -> None:
     """``_run_one("openai", project)`` checks the *codex* agent is installed."""
-    fake_project = SimpleNamespace(id="p1")
+    fake_project = SimpleNamespace(name="p1")
     with (
         patch("terok.cli.commands.auth.load_project", return_value=fake_project),
         patch("terok.cli.commands.auth.require_agent_installed") as mock_check,
         patch("terok.cli.commands.auth.authenticate") as mock_auth,
     ):
-        _run_one("openai", project_id="p1")
+        _run_one("openai", project_name="p1")
     # the baked-agent lookup uses the resolved agent name, not the provider alias
     mock_check.assert_called_once_with(fake_project, "codex", noun="Provider")
     # authenticate gets the original token; it resolves the alias itself

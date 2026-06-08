@@ -44,14 +44,14 @@ def _stub_resolve_task_id() -> object:
         pytest.param(["shield", "status"], {"shield_cmd": "status"}, id="status-no-task"),
         pytest.param(
             ["shield", "status", "proj", "1"],
-            {"shield_cmd": "status", "project_id": "proj", "task_id": "1"},
+            {"shield_cmd": "status", "project_name": "proj", "task_id": "1"},
             id="status-with-task",
         ),
         pytest.param(
             ["shield", "allow", "proj", "task1", "example.com"],
             {
                 "shield_cmd": "allow",
-                "project_id": "proj",
+                "project_name": "proj",
                 "task_id": "task1",
                 "target": "example.com",
             },
@@ -61,7 +61,7 @@ def _stub_resolve_task_id() -> object:
             ["shield", "deny", "proj", "task1", "example.com"],
             {
                 "shield_cmd": "deny",
-                "project_id": "proj",
+                "project_name": "proj",
                 "task_id": "task1",
                 "target": "example.com",
             },
@@ -71,7 +71,7 @@ def _stub_resolve_task_id() -> object:
             ["shield", "down", "proj", "task1", "--all"],
             {
                 "shield_cmd": "down",
-                "project_id": "proj",
+                "project_name": "proj",
                 "task_id": "task1",
                 "allow_all": True,
             },
@@ -79,17 +79,17 @@ def _stub_resolve_task_id() -> object:
         ),
         pytest.param(
             ["shield", "up", "proj", "task1"],
-            {"shield_cmd": "up", "project_id": "proj", "task_id": "task1"},
+            {"shield_cmd": "up", "project_name": "proj", "task_id": "task1"},
             id="up",
         ),
         pytest.param(
             ["shield", "rules", "proj", "task1"],
-            {"shield_cmd": "rules", "project_id": "proj", "task_id": "task1"},
+            {"shield_cmd": "rules", "project_name": "proj", "task_id": "task1"},
             id="rules",
         ),
         pytest.param(
             ["shield", "profiles"],
-            {"shield_cmd": "profiles", "project_id": MISSING},
+            {"shield_cmd": "profiles", "project_name": MISSING},
             id="profiles",
         ),
         pytest.param(
@@ -99,22 +99,22 @@ def _stub_resolve_task_id() -> object:
         ),
         pytest.param(
             ["shield", "watch", "proj", "task1"],
-            {"shield_cmd": "watch", "project_id": "proj", "task_id": "task1"},
+            {"shield_cmd": "watch", "project_name": "proj", "task_id": "task1"},
             id="watch",
         ),
         pytest.param(
             ["shield", "simple-clearance", "proj", "task1"],
-            {"shield_cmd": "simple-clearance", "project_id": "proj", "task_id": "task1"},
+            {"shield_cmd": "simple-clearance", "project_name": "proj", "task_id": "task1"},
             id="simple-clearance",
         ),
         pytest.param(
             ["shield", "logs", "proj", "task1"],
-            {"shield_cmd": "logs", "project_id": "proj", "task_id": "task1", "n": 50},
+            {"shield_cmd": "logs", "project_name": "proj", "task_id": "task1", "n": 50},
             id="logs",
         ),
         pytest.param(
             ["shield", "logs", "proj", "task1", "-n", "10"],
-            {"shield_cmd": "logs", "project_id": "proj", "task_id": "task1", "n": 10},
+            {"shield_cmd": "logs", "project_name": "proj", "task_id": "task1", "n": 10},
             id="logs-custom-n",
         ),
     ],
@@ -169,7 +169,7 @@ def test_dispatch_status_without_task(mock_mgr_cls: MagicMock) -> None:
 
 def test_dispatch_partial_task_selector_exits() -> None:
     """Providing only one half of the project/task selector exits cleanly."""
-    args = argparse.Namespace(cmd="shield", shield_cmd="status", project_id="proj", task_id=None)
+    args = argparse.Namespace(cmd="shield", shield_cmd="status", project_name="proj", task_id=None)
     with (
         patch("sys.stderr", new_callable=StringIO) as err,
         pytest.raises(SystemExit) as exc_info,
@@ -201,7 +201,7 @@ def test_dispatch_task_scoped_commands(
     getattr(mock_shield, shield_method).return_value = shield_result
     mock_mgr_cls.return_value.shield = mock_shield
 
-    args = argparse.Namespace(cmd="shield", shield_cmd=shield_cmd, project_id="proj", task_id="1")
+    args = argparse.Namespace(cmd="shield", shield_cmd=shield_cmd, project_name="proj", task_id="1")
     with patch("sys.stdout", new_callable=StringIO) as out:
         assert dispatch(args)
 
@@ -238,7 +238,7 @@ def test_dispatch_exec_error_surfaces_details(
     mock_shield.state.side_effect = ExecError(["nft", "list"], 1, "no such process")
     mock_mgr_cls.return_value.shield = mock_shield
 
-    args = argparse.Namespace(cmd="shield", shield_cmd="status", project_id="proj", task_id="1")
+    args = argparse.Namespace(cmd="shield", shield_cmd="status", project_name="proj", task_id="1")
     with (
         patch("sys.stderr", new_callable=StringIO) as err,
         pytest.raises(SystemExit) as exc_info,
@@ -264,7 +264,7 @@ def test_dispatch_runtime_error_prints_message(
     args = argparse.Namespace(
         cmd="shield",
         shield_cmd="allow",
-        project_id="proj",
+        project_name="proj",
         task_id="1",
         target="example.com",
     )
@@ -299,7 +299,7 @@ def test_dispatch_simple_clearance(
     mock_mgr_cls.return_value.shield = mock_shield
 
     args = argparse.Namespace(
-        cmd="shield", shield_cmd="simple-clearance", project_id="proj", task_id="1"
+        cmd="shield", shield_cmd="simple-clearance", project_name="proj", task_id="1"
     )
     assert dispatch(args)
     mock_run.assert_called_once_with(mock_shield.config.state_dir, "proj-cli-1")
@@ -318,7 +318,7 @@ def test_dispatch_watch(
     mock_shield.config.state_dir = MOCK_TASK_DIR_1 / "shield"
     mock_mgr_cls.return_value.shield = mock_shield
 
-    args = argparse.Namespace(cmd="shield", shield_cmd="watch", project_id="proj", task_id="1")
+    args = argparse.Namespace(cmd="shield", shield_cmd="watch", project_name="proj", task_id="1")
     assert dispatch(args)
     mock_run.assert_called_once_with(mock_shield.config.state_dir, "proj-cli-1")
 
@@ -330,7 +330,8 @@ def test_resolve_task_errors(
     _meta: MagicMock,
 ) -> None:
     """Task resolution rejects tasks that have never been run."""
-    mock_project.return_value = MagicMock(id="proj")
+    mock_project.return_value = MagicMock()
+    mock_project.return_value.name = "proj"
     with pytest.raises(ValueError, match="has never been run"):
         _resolve_task("proj", "1")
 
@@ -395,7 +396,7 @@ class TestPersistDesiredState:
         mock_shield = MagicMock()
         mock_mgr_cls.return_value.shield = mock_shield
 
-        args = argparse.Namespace(cmd="shield", shield_cmd="up", project_id="proj", task_id="1")
+        args = argparse.Namespace(cmd="shield", shield_cmd="up", project_name="proj", task_id="1")
         assert dispatch(args)
         mock_shield.up.assert_called_once()
         assert (tmp_path / "shield_desired_state").read_text().strip() == "up"
@@ -419,7 +420,7 @@ class TestPersistDesiredState:
         mock_mgr_cls.return_value.shield = mock_shield
 
         args = argparse.Namespace(
-            cmd="shield", shield_cmd="down", project_id="proj", task_id="1", allow_all=False
+            cmd="shield", shield_cmd="down", project_name="proj", task_id="1", allow_all=False
         )
         assert dispatch(args)
         mock_shield.down.assert_called_once()

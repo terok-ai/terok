@@ -118,7 +118,7 @@ def main(prog: str = "terok") -> None:
             f"  1. Bootstrap:  {prog} setup                       (install host services)\n"
             f"  2. Auth:       {prog} auth claude                 (host-wide auth — no project needed)\n"
             f"  3. Project:    {prog} project wizard              (create a project)\n"
-            f"  4. Work:       {prog} task run <project_id>       (attach into a new CLI task)\n"
+            f"  4. Work:       {prog} task run <project_name>       (attach into a new CLI task)\n"
             "\n"
             f"Bare {prog} auth opens an interactive menu for multiple providers.\n"
             "\n"

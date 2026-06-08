@@ -113,7 +113,7 @@ def cmd_overview(*, json_output: bool = False) -> None:
     # ── Projects section ──
     if overview.projects:
         print(_section("Projects", c))
-        pid_w = max(len(p.project_id) for p in overview.projects)
+        pid_w = max(len(p.project_name) for p in overview.projects)
         img_sizes = [format_bytes(p.image_bytes) for p in overview.projects]
         ws_sizes = [format_bytes(p.workspace_bytes) for p in overview.projects]
         img_w = max(len(s) for s in img_sizes + ["IMAGES"])
@@ -129,7 +129,7 @@ def cmd_overview(*, json_output: bool = False) -> None:
         )
         for p, img_s, ws_s in zip(overview.projects, img_sizes, ws_sizes, strict=True):
             print(
-                f"  {p.project_id:<{pid_w}}  "
+                f"  {p.project_name:<{pid_w}}  "
                 f"{_size(f'{img_s:>{img_w}}', c)}  "
                 f"{_size(f'{ws_s:>{ws_w}}', c)}  "
                 f"{p.task_count:>{task_w}}"
@@ -158,18 +158,18 @@ def cmd_overview(*, json_output: bool = False) -> None:
 # ---------------------------------------------------------------------------
 
 
-def cmd_detail(project_id: str, *, json_output: bool = False) -> None:
+def cmd_detail(project_name: str, *, json_output: bool = False) -> None:
     """Print per-task storage detail for one project."""
     from ...lib.domain.storage import format_bytes, get_project_storage_detail
 
-    detail = get_project_storage_detail(project_id)
+    detail = get_project_storage_detail(project_name)
 
     if json_output:
         _json_detail(detail)
         return
 
     c = _c(supports_color())
-    print(_section(project_id, c))
+    print(_section(project_name, c))
 
     # Images
     if detail.images:
@@ -239,7 +239,7 @@ def _json_overview(overview: StorageOverview) -> None:
         },
         "projects": [
             {
-                "id": p.project_id,
+                "project_name": p.project_name,
                 "image_bytes": p.image_bytes,
                 "workspace_bytes": p.workspace_bytes,
                 "task_count": p.task_count,
@@ -259,7 +259,7 @@ def _json_detail(detail: ProjectDetail) -> None:
     from ...lib.domain.storage import parse_image_size
 
     data = {
-        "project_id": detail.project_id,
+        "project_name": detail.project_name,
         "images": [
             {"name": img.full_name, "size": img.size, "bytes": parse_image_size(img.size)}
             for img in detail.images

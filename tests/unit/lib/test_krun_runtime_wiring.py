@@ -26,7 +26,7 @@ def _krun_project(**overrides):  # type: ignore[no-untyped-def]
     from terok.lib.core.project_model import ProjectConfig
 
     defaults: dict[str, object] = {
-        "id": "p",
+        "name": "p",
         "security_class": "online",
         "upstream_url": None,
         "default_branch": None,
@@ -45,7 +45,7 @@ def _project(**overrides):  # type: ignore[no-untyped-def]
     from terok.lib.core.project_model import ProjectConfig
 
     defaults: dict[str, object] = {
-        "id": "demoproj",
+        "name": "demoproj",
         "security_class": "online",
         "upstream_url": None,
         "default_branch": None,

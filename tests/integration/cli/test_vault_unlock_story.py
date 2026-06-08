@@ -35,7 +35,7 @@ pytestmark = pytest.mark.needs_host_features
 
 _SOURCE_PROJECT = f"""
 project:
-  id: alpha
+  name: alpha
   security_class: online
 git:
   upstream_url: {TEST_UPSTREAM_URL}

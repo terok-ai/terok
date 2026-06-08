@@ -12,10 +12,10 @@ from unittest.mock import patch
 import pytest
 
 from terok.cli.commands._completers import (
-    add_project_id,
+    add_project_name,
     add_task_id,
     complete_preset_names,
-    complete_project_ids,
+    complete_project_names,
     complete_task_ids,
     set_completer,
 )
@@ -26,22 +26,22 @@ from terok.cli.commands._completers import (
 
 
 class TestCompleteProjectIds:
-    """``complete_project_ids`` returns project IDs matching the prefix."""
+    """``complete_project_names`` returns project names matching the prefix."""
 
     def test_lists_all_ids_for_empty_prefix(self) -> None:
         with patch(
             "terok.cli.commands._completers.list_projects",
-            return_value=[SimpleNamespace(id="alpha"), SimpleNamespace(id="beta")],
+            return_value=[SimpleNamespace(name="alpha"), SimpleNamespace(name="beta")],
         ):
-            result = complete_project_ids("", argparse.Namespace())
+            result = complete_project_names("", argparse.Namespace())
         assert sorted(result) == ["alpha", "beta"]
 
     def test_filters_by_prefix(self) -> None:
         with patch(
             "terok.cli.commands._completers.list_projects",
-            return_value=[SimpleNamespace(id="alpha"), SimpleNamespace(id="ally")],
+            return_value=[SimpleNamespace(name="alpha"), SimpleNamespace(name="ally")],
         ):
-            result = complete_project_ids("al", argparse.Namespace())
+            result = complete_project_names("al", argparse.Namespace())
         assert sorted(result) == ["ally", "alpha"]
 
     def test_returns_empty_on_failure(self) -> None:
@@ -50,31 +50,31 @@ class TestCompleteProjectIds:
             "terok.cli.commands._completers.list_projects",
             side_effect=RuntimeError("boom"),
         ):
-            assert complete_project_ids("", argparse.Namespace()) == []
+            assert complete_project_names("", argparse.Namespace()) == []
 
 
 # ---------------------------------------------------------------------------
 
 
 class TestCompleteTaskIds:
-    """``complete_task_ids`` scopes to ``parsed_args.project_id``."""
+    """``complete_task_ids`` scopes to ``parsed_args.project_name``."""
 
     def test_empty_when_no_project_typed_yet(self) -> None:
-        """Without a project_id on parsed_args, no task suggestions."""
+        """Without a project_name on parsed_args, no task suggestions."""
         assert complete_task_ids("", argparse.Namespace()) == []
-        assert complete_task_ids("", argparse.Namespace(project_id=None)) == []
+        assert complete_task_ids("", argparse.Namespace(project_name=None)) == []
 
     def test_lists_tasks_for_project(self) -> None:
         tasks = [SimpleNamespace(task_id="k3v8h"), SimpleNamespace(task_id="p7fmn")]
         with patch("terok.cli.commands._completers.get_tasks", return_value=tasks) as mock:
-            result = complete_task_ids("", argparse.Namespace(project_id="myproj"))
+            result = complete_task_ids("", argparse.Namespace(project_name="myproj"))
         mock.assert_called_once_with("myproj")
         assert sorted(result) == ["k3v8h", "p7fmn"]
 
     def test_filters_by_prefix(self) -> None:
         tasks = [SimpleNamespace(task_id="k3v8h"), SimpleNamespace(task_id="p7fmn")]
         with patch("terok.cli.commands._completers.get_tasks", return_value=tasks):
-            result = complete_task_ids("k", argparse.Namespace(project_id="p"))
+            result = complete_task_ids("k", argparse.Namespace(project_name="p"))
         assert result == ["k3v8h"]
 
     @pytest.mark.parametrize(
@@ -96,14 +96,14 @@ class TestCompleteTaskIds:
             SimpleNamespace(task_id="p7fmn"),
         ]
         with patch("terok.cli.commands._completers.get_tasks", return_value=tasks):
-            result = complete_task_ids(typed, argparse.Namespace(project_id="p"))
+            result = complete_task_ids(typed, argparse.Namespace(project_name="p"))
         assert result == expected
 
     def test_skips_tasks_without_ids(self) -> None:
         """Tasks with a falsy ``task_id`` (defensive: shouldn't happen) are skipped."""
         tasks = [SimpleNamespace(task_id="k3v8h"), SimpleNamespace(task_id="")]
         with patch("terok.cli.commands._completers.get_tasks", return_value=tasks):
-            result = complete_task_ids("", argparse.Namespace(project_id="p"))
+            result = complete_task_ids("", argparse.Namespace(project_name="p"))
         assert result == ["k3v8h"]
 
     def test_returns_empty_on_failure(self) -> None:
@@ -111,19 +111,19 @@ class TestCompleteTaskIds:
             "terok.cli.commands._completers.get_tasks",
             side_effect=RuntimeError("boom"),
         ):
-            assert complete_task_ids("", argparse.Namespace(project_id="p")) == []
+            assert complete_task_ids("", argparse.Namespace(project_name="p")) == []
 
 
 # ---------------------------------------------------------------------------
 
 
 class TestCompletePresetNames:
-    """``complete_preset_names`` scopes to ``parsed_args.project_id``."""
+    """``complete_preset_names`` scopes to ``parsed_args.project_name``."""
 
     def test_empty_when_no_project(self) -> None:
-        """list_presets requires a project — silent when project_id absent."""
+        """list_presets requires a project — silent when project_name absent."""
         assert complete_preset_names("", argparse.Namespace()) == []
-        assert complete_preset_names("", argparse.Namespace(project_id=None)) == []
+        assert complete_preset_names("", argparse.Namespace(project_name=None)) == []
 
     def test_lists_presets_for_project(self) -> None:
         presets = [
@@ -132,14 +132,14 @@ class TestCompletePresetNames:
             SimpleNamespace(name="review"),
         ]
         with patch("terok.cli.commands._completers.list_presets", return_value=presets) as mock:
-            result = complete_preset_names("", argparse.Namespace(project_id="myproj"))
+            result = complete_preset_names("", argparse.Namespace(project_name="myproj"))
         mock.assert_called_once_with("myproj")
         assert sorted(result) == ["review", "solo", "team"]
 
     def test_filters_by_prefix(self) -> None:
         presets = [SimpleNamespace(name="solo"), SimpleNamespace(name="team")]
         with patch("terok.cli.commands._completers.list_presets", return_value=presets):
-            result = complete_preset_names("s", argparse.Namespace(project_id="p"))
+            result = complete_preset_names("s", argparse.Namespace(project_name="p"))
         assert result == ["solo"]
 
     def test_returns_empty_on_failure(self) -> None:
@@ -147,7 +147,7 @@ class TestCompletePresetNames:
             "terok.cli.commands._completers.list_presets",
             side_effect=RuntimeError("boom"),
         ):
-            assert complete_preset_names("", argparse.Namespace(project_id="p")) == []
+            assert complete_preset_names("", argparse.Namespace(project_name="p")) == []
 
 
 # ---------------------------------------------------------------------------
@@ -156,15 +156,15 @@ class TestCompletePresetNames:
 
 
 class TestParserAttachment:
-    """``add_project_id`` / ``add_task_id`` attach the right completer."""
+    """``add_project_name`` / ``add_task_id`` attach the right completer."""
 
-    def test_add_project_id_attaches_completer(self) -> None:
+    def test_add_project_name_attaches_completer(self) -> None:
         parser = argparse.ArgumentParser()
-        action = add_project_id(parser)
-        assert action.dest == "project_id"
+        action = add_project_name(parser)
+        assert action.dest == "project_name"
         # argcomplete reads the ``completer`` attribute — verify it's bound
         # to the right function (not just "something callable").
-        assert action.completer is complete_project_ids
+        assert action.completer is complete_project_names
 
     def test_add_task_id_attaches_completer(self) -> None:
         parser = argparse.ArgumentParser()
@@ -172,16 +172,16 @@ class TestParserAttachment:
         assert action.dest == "task_id"
         assert action.completer is complete_task_ids
 
-    def test_add_project_id_forwards_kwargs(self) -> None:
+    def test_add_project_name_forwards_kwargs(self) -> None:
         """Custom nargs / metavar / help must flow through to argparse."""
         parser = argparse.ArgumentParser()
-        action = add_project_id(parser, nargs="?", metavar="project", help="...")
+        action = add_project_name(parser, nargs="?", metavar="project", help="...")
         assert action.nargs == "?"
         assert action.metavar == "project"
 
 
 # ---------------------------------------------------------------------------
-# Coverage sweep — every parser that takes project_id/task_id has a completer
+# Coverage sweep — every parser that takes project_name/task_id has a completer
 # ---------------------------------------------------------------------------
 
 
@@ -204,11 +204,11 @@ def _walk_actions(parser: argparse.ArgumentParser, seen: set[int] | None = None)
 
 
 @pytest.mark.parametrize("prog", ["terok", "terokctl"])
-def test_every_project_id_and_task_id_has_completer(prog: str) -> None:
-    """Sweep the full parser tree — no ``project_id``/``task_id`` without a completer.
+def test_every_project_name_and_task_id_has_completer(prog: str) -> None:
+    """Sweep the full parser tree — no ``project_name``/``task_id`` without a completer.
 
-    Catches regressions where someone adds a new ``project_id`` positional
-    but forgets ``add_project_id`` / ``add_task_id``.
+    Catches regressions where someone adds a new ``project_name`` positional
+    but forgets ``add_project_name`` / ``add_task_id``.
     """
     import argparse as _ap
 
@@ -246,7 +246,7 @@ def test_every_project_id_and_task_id_has_completer(prog: str) -> None:
 
     missing: list[str] = []
     for action in _walk_actions(parser):
-        if action.dest in ("project_id", "task_id"):
+        if action.dest in ("project_name", "task_id"):
             if not hasattr(action, "completer") or action.completer is None:
                 missing.append(f"{action.dest} (option_strings={action.option_strings})")
 

@@ -37,7 +37,7 @@ def test_staleness_checked_for_online_and_gatekeeping(security_class: str) -> No
         result = app.TerokTUI._load_project_state(mock.Mock(), "proj1")
 
     mock_gate.compare_vs_upstream.assert_called_once()
-    assert result.project_id == "proj1"
+    assert result.project_name == "proj1"
     assert result.project == project
     assert result.state == state
     assert result.staleness == staleness

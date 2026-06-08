@@ -17,7 +17,7 @@ filename says "meta" and its audience is terok-internal; ruamel keeps
 comments and round-trip ergonomics cheap.
 
 The split is reconciled at the I/O boundary: ``read_task_meta``
-returns one merged dict in internal-storage shape (``project_id``,
+returns one merged dict in internal-storage shape (``project_name``,
 ``task_id``, …), ``write_task_meta`` splits a single dict back to
 both files atomically.
 """
@@ -43,8 +43,8 @@ _META_SUFFIX = "_meta.yml"
 # Subset of in-memory meta keys that belong on the wire (and thus in
 # the JSON dossier file).  Stored under internal names — translated
 # at the I/O boundary by ``_DOSSIER_TO_WIRE`` / ``_DOSSIER_FROM_WIRE``.
-_DOSSIER_INTERNAL_KEYS = ("project_id", "task_id", "name")
-_DOSSIER_TO_WIRE = {"project_id": "project", "task_id": "task", "name": "name"}
+_DOSSIER_INTERNAL_KEYS = ("project_name", "task_id", "name")
+_DOSSIER_TO_WIRE = {"project_name": "project", "task_id": "task", "name": "name"}
 _DOSSIER_FROM_WIRE = {v: k for k, v in _DOSSIER_TO_WIRE.items()}
 
 CONTAINER_TEROK_CONFIG = "/home/dev/.terok"
@@ -236,46 +236,46 @@ def _task_id_from_filename(name: str) -> str:
     return ""
 
 
-def task_exists(project_id: str, task_id: str) -> bool:
-    """Return ``True`` if any task-meta file exists for ``(project_id, task_id)``."""
-    meta_dir = tasks_meta_dir(project_id)
+def task_exists(project_name: str, task_id: str) -> bool:
+    """Return ``True`` if any task-meta file exists for ``(project_name, task_id)``."""
+    meta_dir = tasks_meta_dir(project_name)
     return dossier_path(meta_dir, task_id).is_file() or meta_path(meta_dir, task_id).is_file()
 
 
-def tasks_meta_dir(project_id: str) -> Path:
-    """Return the directory containing task metadata files for *project_id*."""
-    _reject_unsafe_id(project_id, "project_id")
-    return core_state_dir() / "projects" / project_id / "tasks"
+def tasks_meta_dir(project_name: str) -> Path:
+    """Return the directory containing task metadata files for *project_name*."""
+    _reject_unsafe_id(project_name, "project_name")
+    return core_state_dir() / "projects" / project_name / "tasks"
 
 
-def agent_config_dir(project_id: str, task_id: str) -> Path:
+def agent_config_dir(project_name: str, task_id: str) -> Path:
     """Host path of the agent-config dir bind-mounted at `CONTAINER_TEROK_CONFIG`."""
-    _reject_unsafe_id(project_id, "project_id")
+    _reject_unsafe_id(project_name, "project_name")
     _reject_unsafe_id(task_id, "task_id")
-    return load_project(project_id).tasks_root / str(task_id) / "agent-config"
+    return load_project(project_name).tasks_root / str(task_id) / "agent-config"
 
 
-def tasks_archive_dir(project_id: str) -> Path:
-    """Return the directory containing archived task data for *project_id*.
+def tasks_archive_dir(project_name: str) -> Path:
+    """Return the directory containing archived task data for *project_name*.
 
     Lives under the namespace archive tree (``archive/<pid>/tasks/``) so
     operators can find all archived data in one location.  On project
     deletion the entire ``archive/<pid>/`` subtree is bundled into the
     project snapshot and removed.
     """
-    _reject_unsafe_id(project_id, "project_id")
-    return archive_dir() / project_id / "tasks"
+    _reject_unsafe_id(project_name, "project_name")
+    return archive_dir() / project_name / "tasks"
 
 
-def update_task_exit_code(project_id: str, task_id: str, exit_code: int | None) -> None:
+def update_task_exit_code(project_name: str, task_id: str, exit_code: int | None) -> None:
     """Update task metadata with exit code and final status.
 
     Args:
-        project_id: The project ID
+        project_name: The project name
         task_id: The task ID
         exit_code: The exit code from the task, or None if unknown/failed
     """
-    meta_dir = tasks_meta_dir(project_id)
+    meta_dir = tasks_meta_dir(project_name)
     meta = read_task_meta(meta_dir, task_id)
     if meta is None:
         return
@@ -291,17 +291,17 @@ def _check_mode(meta: dict, expected: str) -> None:
 
 
 def load_task_meta(
-    project_id: str, task_id: str, expected_mode: str | None = None
+    project_name: str, task_id: str, expected_mode: str | None = None
 ) -> tuple[dict, Path]:
     """Load task metadata and optionally validate mode.
 
     Returns ``(meta, dossier_path)``: the merged in-memory dict (in
-    its internal storage shape — ``project_id`` / ``task_id`` / …)
+    its internal storage shape — ``project_name`` / ``task_id`` / …)
     plus the canonical dossier-file handle for write-back via
     ``write_task_meta(dossier_path, meta)``.  Raises SystemExit if
     the task is unknown or its mode conflicts with *expected_mode*.
     """
-    meta_dir = tasks_meta_dir(project_id)
+    meta_dir = tasks_meta_dir(project_name)
     meta = read_task_meta(meta_dir, task_id)
     if meta is None:
         raise SystemExit(f"Unknown task {task_id}")
@@ -310,17 +310,17 @@ def load_task_meta(
     return meta, dossier_path(meta_dir, task_id)
 
 
-def mark_task_deleting(project_id: str, task_id: str) -> None:
+def mark_task_deleting(project_name: str, task_id: str) -> None:
     """Persist ``deleting: true`` to the task's metadata file."""
     try:
-        meta_dir = tasks_meta_dir(project_id)
+        meta_dir = tasks_meta_dir(project_name)
         meta = read_task_meta(meta_dir, task_id)
         if meta is None:
             return
         meta["deleting"] = True
         write_task_meta(dossier_path(meta_dir, task_id), meta)
     except Exception as e:
-        _log_debug(f"mark_task_deleting: failed project_id={project_id} task_id={task_id}: {e}")
+        _log_debug(f"mark_task_deleting: failed project_name={project_name} task_id={task_id}: {e}")
 
 
 __all__ = [

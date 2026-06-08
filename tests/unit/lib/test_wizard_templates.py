@@ -29,7 +29,7 @@ def _render_template(path: Path, variables: dict) -> str:
 TEMPLATE_DIR: Traversable = resources.files("terok") / "resources" / "templates" / "projects"
 TEMPLATE_NAME = "project.yml.template"
 REQUIRED_PLACEHOLDERS: list[str] = [
-    "{{PROJECT_ID}}",
+    "{{PROJECT_NAME}}",
     "{{UPSTREAM_URL}}",
     "{{DEFAULT_BRANCH}}",
     "{{USER_SNIPPET | indent(4)}}",
@@ -42,7 +42,7 @@ REQUIRED_PLACEHOLDERS: list[str] = [
 def _full_variables(*, security_class: str, base: str, **overrides: str) -> dict[str, str]:
     """Build a complete variables dict for the unified template."""
     return {
-        "PROJECT_ID": overrides.get("project_id", "my-project"),
+        "PROJECT_NAME": overrides.get("project_name", "my-project"),
         "UPSTREAM_URL": overrides.get("upstream_url", "https://example.test/repo.git"),
         "DEFAULT_BRANCH": overrides.get("default_branch", "main"),
         "USER_SNIPPET": overrides.get("user_snippet", ""),
@@ -76,7 +76,7 @@ class TestProjectTemplate:
     @pytest.mark.parametrize("security_class", [c.slug for c in SECURITY_CLASSES])
     @pytest.mark.parametrize("base", [c.slug for c in BASES])
     def test_renders_for_every_combination(self, security_class: str, base: str) -> None:
-        rendered = _render(security_class, base, project_id=f"proj-{security_class}-{base}")
+        rendered = _render(security_class, base, project_name=f"proj-{security_class}-{base}")
         # Every placeholder must be substituted away.
         assert "{{" not in rendered
         assert "{%" not in rendered
@@ -140,8 +140,8 @@ class TestProjectTemplate:
     def test_raises_on_missing_variable(self) -> None:
         """A typo or forgotten variable surfaces at render time, not silently."""
         traversable = TEMPLATE_DIR / TEMPLATE_NAME
-        # Drop PROJECT_ID to trigger the StrictUndefined guard.
+        # Drop PROJECT_NAME to trigger the StrictUndefined guard.
         variables = _full_variables(security_class="online", base="ubuntu")
-        del variables["PROJECT_ID"]
+        del variables["PROJECT_NAME"]
         with resources.as_file(traversable) as path, pytest.raises(jinja2.UndefinedError):
             _render_template(path, variables)

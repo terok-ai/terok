@@ -11,4 +11,4 @@
 #     post_ready: /path/to/task-notify.sh
 #     post_stop: /path/to/task-notify.sh
 
-echo "[hook] $TEROK_HOOK: project=$TEROK_PROJECT_ID task=$TEROK_TASK_ID mode=$TEROK_TASK_MODE container=$TEROK_CONTAINER_NAME${TEROK_WEB_PORT:+ port=$TEROK_WEB_PORT}" >&2
+echo "[hook] $TEROK_HOOK: project=$TEROK_PROJECT_NAME task=$TEROK_TASK_ID mode=$TEROK_TASK_MODE container=$TEROK_CONTAINER_NAME${TEROK_WEB_PORT:+ port=$TEROK_WEB_PORT}" >&2

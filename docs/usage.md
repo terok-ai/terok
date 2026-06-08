@@ -167,7 +167,7 @@ Every project needs these fields in its `project.yml`:
 
 ```yaml
 project:
-  id: myproj
+  name: myproj
   security_class: gatekeeping   # default — or "online" for direct push
 
 image:
@@ -217,7 +217,7 @@ mode is incoherent.
 # Host blocks outbound SSH to github, but the container's network
 # allowlist reaches github via its own rules.
 project:
-  id: cp2k
+  name: cp2k
   security_class: online
 git:
   upstream_url: git@github.com:user/cp2k.git
@@ -256,7 +256,7 @@ mkdir -p ~/.config/terok/projects/myproj
 ```yaml
 # ~/.config/terok/projects/myproj/project.yml
 project:
-  id: myproj
+  name: myproj
   security_class: gatekeeping   # default — or "online" for direct push
 
 image:
@@ -973,7 +973,7 @@ Hook commands receive task context via environment variables:
 | Variable | Description | Example |
 |----------|-------------|---------|
 | `TEROK_HOOK` | Hook name | `post_ready` |
-| `TEROK_PROJECT_ID` | Project ID | `myproject` |
+| `TEROK_PROJECT_NAME` | Project name | `myproject` |
 | `TEROK_TASK_ID` | Task number | `3` |
 | `TEROK_TASK_MODE` | Task mode | `cli`, `toad`, `run` |
 | `TEROK_CONTAINER_NAME` | Podman container name | `myproject-toad-3` |

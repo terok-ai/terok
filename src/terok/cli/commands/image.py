@@ -9,7 +9,7 @@ import argparse
 
 from ...lib.api import find_orphaned_images, list_images, remove_images, require_project_exists
 from . import _storage_view
-from ._completers import complete_project_ids as _complete_project_ids, set_completer
+from ._completers import complete_project_names as _complete_project_names, set_completer
 
 
 def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
@@ -33,12 +33,12 @@ def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) ->
     )
     set_completer(
         p_build.add_argument(
-            "project_id",
+            "project_name",
             nargs="?",
             default=None,
             help="Project whose base + agents to build for (optional)",
         ),
-        _complete_project_ids,
+        _complete_project_names,
     )
     p_build.add_argument(
         "--base",
@@ -74,8 +74,8 @@ def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) ->
     # image list
     p_list = image_sub.add_parser("list", help="List terok images with sizes")
     set_completer(
-        p_list.add_argument("project_id", nargs="?", default=None, help="Filter by project"),
-        _complete_project_ids,
+        p_list.add_argument("project_name", nargs="?", default=None, help="Filter by project"),
+        _complete_project_names,
     )
 
     # image cleanup
@@ -104,7 +104,7 @@ def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) ->
             default=None,
             help="Show detailed per-task breakdown for one project",
         ),
-        _complete_project_ids,
+        _complete_project_names,
     )
     p_usage.add_argument(
         "--json",
@@ -122,7 +122,7 @@ def dispatch(args: argparse.Namespace) -> bool:
     match args.image_cmd:
         case "build":
             _cmd_build(
-                project_id=getattr(args, "project_id", None),
+                project_name=getattr(args, "project_name", None),
                 base=getattr(args, "base", None),
                 agents=getattr(args, "agents", None),
                 family=getattr(args, "family", None),
@@ -131,7 +131,7 @@ def dispatch(args: argparse.Namespace) -> bool:
                 sidecar=getattr(args, "sidecar", False),
             )
         case "list":
-            _cmd_list(getattr(args, "project_id", None))
+            _cmd_list(getattr(args, "project_name", None))
         case "cleanup":
             _cmd_cleanup(
                 dry_run=getattr(args, "dry_run", False),
@@ -139,7 +139,7 @@ def dispatch(args: argparse.Namespace) -> bool:
             )
         case "usage":
             _cmd_usage(
-                project_id=getattr(args, "project", None),
+                project_name=getattr(args, "project", None),
                 json_output=getattr(args, "json_output", False),
             )
         case _:  # pragma: no cover — required=True makes argparse enforce this
@@ -149,7 +149,7 @@ def dispatch(args: argparse.Namespace) -> bool:
 
 def _cmd_build(
     *,
-    project_id: str | None,
+    project_name: str | None,
     base: str | None,
     agents: str | None,
     family: str | None,
@@ -159,7 +159,7 @@ def _cmd_build(
 ) -> None:
     """Build the L0+L1 images via the executor primitive.
 
-    With *project_id* set, derives the base image, family, and agent roster
+    With *project_name* set, derives the base image, family, and agent roster
     from the project's config (CLI overrides still win for any of the three).
     Without it, falls back to the user's global ``image.*`` defaults.
     """
@@ -173,7 +173,7 @@ def _cmd_build(
 
     from ...lib.core.projects import load_project
 
-    project = load_project(project_id) if project_id else None
+    project = load_project(project_name) if project_name else None
 
     try:
         if project is not None:
@@ -209,21 +209,21 @@ def _cmd_build(
         print(f"L1 (sidecar): {sidecar_tag}")
 
 
-def _cmd_usage(*, project_id: str | None, json_output: bool) -> None:
+def _cmd_usage(*, project_name: str | None, json_output: bool) -> None:
     """Dispatch usage display to the appropriate render mode."""
-    if project_id:
-        _storage_view.cmd_detail(project_id, json_output=json_output)
+    if project_name:
+        _storage_view.cmd_detail(project_name, json_output=json_output)
     else:
         _storage_view.cmd_overview(json_output=json_output)
 
 
-def _cmd_list(project_id: str | None) -> None:
+def _cmd_list(project_name: str | None) -> None:
     """List terok-managed images with sizes."""
-    if project_id is not None:
-        require_project_exists(project_id)
-    images = list_images(project_id)
+    if project_name is not None:
+        require_project_exists(project_name)
+    images = list_images(project_name)
     if not images:
-        scope = f" for project '{project_id}'" if project_id else ""
+        scope = f" for project '{project_name}'" if project_name else ""
         print(f"No terok images found{scope}.")
         return
 

@@ -11,15 +11,15 @@ users on shared hosts.
 from terok.lib.integrations.sandbox import claim_port, release_port
 
 
-def assign_web_port(project_id: str, task_id: str, preferred: int | None = None) -> int:
+def assign_web_port(project_name: str, task_id: str, preferred: int | None = None) -> int:
     """Claim a web port for a task via the shared registry.
 
     When *preferred* is set (e.g. from persisted task metadata), tries
     that port first before scanning.
     """
-    return claim_port(f"web:{project_id}/{task_id}", preferred=preferred)
+    return claim_port(f"web:{project_name}/{task_id}", preferred=preferred)
 
 
-def release_web_port(project_id: str, task_id: str) -> None:
+def release_web_port(project_name: str, task_id: str) -> None:
     """Release a previously claimed web port for a task."""
-    release_port(f"web:{project_id}/{task_id}")
+    release_port(f"web:{project_name}/{task_id}")

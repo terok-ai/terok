@@ -38,7 +38,7 @@ from terok.lib.integrations.sandbox import check_gpu_available
 from terok.ui_utils.editor import open_in_editor
 
 from ...core.config import user_projects_dir
-from ...core.project_model import validate_project_id
+from ...core.project_model import validate_project_name
 
 # ── Vocabulary ────────────────────────────────────────────────────────
 
@@ -178,12 +178,12 @@ class Question:
         return self.choices_loader() if self.choices_loader is not None else self.choices
 
 
-def _validate_project_id(project_id: str) -> str | None:
-    """Return an error message if *project_id* is invalid, else ``None``."""
-    if not project_id:
-        return "Project ID cannot be empty."
+def _validate_project_name(project_name: str) -> str | None:
+    """Return an error message if *project_name* is invalid, else ``None``."""
+    if not project_name:
+        return "Project name cannot be empty."
     try:
-        validate_project_id(project_id)
+        validate_project_name(project_name)
     except SystemExit as exc:
         return str(exc)
     return None
@@ -193,12 +193,12 @@ _SLUG_ALLOWED = re.compile(r"[a-z0-9_-]+")
 _SLUG_RUNS = re.compile(r"-{2,}")
 
 
-def _slugify_project_id(raw: str) -> str:
-    """Best-effort-normalise *raw* into a valid project ID.
+def _slugify_project_name(raw: str) -> str:
+    """Best-effort-normalise *raw* into a valid project name.
 
     Meets users halfway: ``"terok pages"`` → ``"terok-pages"`` rather than
     bouncing them back with a regex error.  Drops characters outside the
-    project-ID alphabet (``[a-z0-9_-]``), collapses runs of hyphens, and
+    project name alphabet (``[a-z0-9_-]``), collapses runs of hyphens, and
     strips leading/trailing punctuation.  When the input is already
     hopeless (e.g. ``"!!!"``) the result is empty and validation gives
     the user the usual "must start with a lowercase letter…" message.
@@ -282,12 +282,12 @@ QUESTIONS: tuple[Question, ...] = (
         required=True,
     ),
     Question(
-        key="project_id",
+        key="project_name",
         kind="text",
-        prompt="Project ID",
+        prompt="Project name",
         required=True,
-        transform=_slugify_project_id,
-        validate=_validate_project_id,
+        transform=_slugify_project_name,
+        validate=_validate_project_name,
         placeholder="lowercase; letters, digits, hyphens, underscores",
     ),
     Question(
@@ -326,7 +326,7 @@ QUESTIONS: tuple[Question, ...] = (
             "creates an isolated set: agent logins, OAuth tokens, and shared "
             "config files live under this project's own state directory and "
             "have to be authenticated from scratch via "
-            "``terok auth --project <id>``."
+            "``terok auth --project <name>``."
         ),
         choices=(
             Choice("shared", "Use shared host-wide credentials (recommended)"),
@@ -587,7 +587,7 @@ def generate_config(values: dict) -> Path:
     """
     rendered = render_project_yaml(values)
 
-    project_dir = user_projects_dir() / values["project_id"]
+    project_dir = user_projects_dir() / values["project_name"]
     ensure_dir_writable(project_dir, "Project")
 
     config_path = project_dir / "project.yml"
@@ -597,7 +597,7 @@ def generate_config(values: dict) -> Path:
             while True:
                 answer = (
                     input(
-                        f"Configuration for project '{values['project_id']}' already exists "
+                        f"Configuration for project '{values['project_name']}' already exists "
                         f"at {config_path}. Overwrite? [y/N]: "
                     )
                     .strip()
@@ -620,7 +620,7 @@ def generate_config(values: dict) -> Path:
 def render_project_yaml(values: dict) -> str:
     """Render ``project.yml`` without writing it — used by the TUI review screen."""
     variables = {
-        "PROJECT_ID": values["project_id"],
+        "PROJECT_NAME": values["project_name"],
         "UPSTREAM_URL": values["upstream_url"],
         "DEFAULT_BRANCH": values["default_branch"],
         "USER_SNIPPET": values["user_snippet"],
@@ -651,14 +651,14 @@ def render_project_yaml(values: dict) -> str:
         return env.get_template(template_path.name).render(**variables)
 
 
-def write_project_yaml(project_id: str, rendered: str, *, overwrite: bool = False) -> Path:
-    """Write *rendered* YAML to ``<user_projects_dir>/<project_id>/project.yml``.
+def write_project_yaml(project_name: str, rendered: str, *, overwrite: bool = False) -> Path:
+    """Write *rendered* YAML to ``<user_projects_dir>/<project_name>/project.yml``.
 
     The TUI reviews YAML in a ``TextArea`` before writing, so this is the
     write half of [`generate_config`][terok.lib.domain.wizards.new_project.generate_config] — kept separate so the TUI can
     pass tweaked content without re-rendering the template.
     """
-    project_dir = user_projects_dir() / project_id
+    project_dir = user_projects_dir() / project_name
     ensure_dir_writable(project_dir, "Project")
     config_path = project_dir / "project.yml"
     if config_path.exists() and not overwrite:
@@ -672,7 +672,7 @@ def write_project_yaml(project_id: str, rendered: str, *, overwrite: bool = Fals
 
 def offer_edit_then_init(
     config_path: Path,
-    project_id: str,
+    project_name: str,
     init_fn: Callable[[str], None] | None,
 ) -> None:
     """Interactively review and commission a newly-created project configuration.
@@ -693,19 +693,19 @@ def offer_edit_then_init(
         if init_fn is not None:
             init_answer = input("Run project initialization? [Y/n]: ").strip().lower()
             if init_answer not in ("n", "no"):
-                init_fn(project_id)
-                print(f"\nProject '{project_id}' is ready.")
+                init_fn(project_name)
+                print(f"\nProject '{project_name}' is ready.")
                 return
 
-        print(f"Next step: terok project init {project_id}")
+        print(f"Next step: terok project init {project_name}")
     except (KeyboardInterrupt, EOFError):
-        print(f"\nSkipped. Run manually: terok project init {project_id}")
+        print(f"\nSkipped. Run manually: terok project init {project_name}")
 
 
 def run_wizard(init_fn: Callable[[str], None] | None = None) -> Path | None:
     """Top-level wizard entry point called by the CLI.
 
-    *init_fn* is an optional callable accepting a project ID string that
+    *init_fn* is an optional callable accepting a project name string that
     performs project initialisation (ssh-init, generate, build, gate-sync).
     When ``None`` (the default), no automatic initialisation is offered.
 
@@ -717,11 +717,11 @@ def run_wizard(init_fn: Callable[[str], None] | None = None) -> Path | None:
         return None
 
     config_path = generate_config(values)
-    project_id = values["project_id"]
+    project_name = values["project_name"]
     print(f"\nProject configuration created: {config_path}")
 
     _maybe_print_global_agents_hint(values)
-    offer_edit_then_init(config_path, project_id, init_fn)
+    offer_edit_then_init(config_path, project_name, init_fn)
     return config_path
 
 

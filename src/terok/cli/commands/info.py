@@ -46,7 +46,7 @@ from ...ui_utils.terminal import (
     violet as _violet,
     yes_no as _yes_no,
 )
-from ._completers import complete_project_ids as _complete_project_ids, set_completer
+from ._completers import complete_project_names as _complete_project_names, set_completer
 from .completions import is_completion_installed as _is_completion_installed
 
 
@@ -69,7 +69,9 @@ def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) ->
         "resolved",
         help="Show resolved agent config for a project (with provenance per level)",
     )
-    set_completer(p_resolved.add_argument("project_id", help="Project ID"), _complete_project_ids)
+    set_completer(
+        p_resolved.add_argument("project_name", help="Project name"), _complete_project_names
+    )
     from ._completers import complete_preset_names
 
     set_completer(
@@ -112,7 +114,7 @@ def dispatch(args: argparse.Namespace) -> bool:
         case "get-root":
             _cmd_get_root()
         case "resolved":
-            _cmd_config_resolved(args.project_id, getattr(args, "preset", None))
+            _cmd_config_resolved(args.project_name, getattr(args, "preset", None))
         case "schema":
             _cmd_config_schema(args.scope, args.as_json)
         case "import-opencode":
@@ -191,7 +193,7 @@ def _print_read_paths(color: bool) -> None:
         print("- Project configs:")
         for proj in projs:
             print(
-                f"  • {_violet(str(proj.id), color)}: "
+                f"  • {_violet(str(proj.name), color)}: "
                 f"{_gray(str(proj.root / 'project.yml'), color)}"
             )
     else:
@@ -229,7 +231,7 @@ def _print_writable_paths(color: bool) -> None:
         return
     print("- Expected generated files per project:")
     for p in projs:
-        base = bdir / p.id
+        base = bdir / p.name
         for fname in (
             "L0.Dockerfile",
             "L1.cli.Dockerfile",
@@ -238,7 +240,7 @@ def _print_writable_paths(color: bool) -> None:
         ):
             path = base / fname
             print(
-                f"  • {_violet(str(p.id), color)}: "
+                f"  • {_violet(str(p.name), color)}: "
                 f"{_gray(str(path), color)} "
                 f"(exists: {_yes_no(path.is_file(), color)})"
             )
@@ -300,16 +302,16 @@ def _list_resource_names(pkg: Any, *, suffix: str | None, warn_label: str) -> li
 # ── config resolved ────────────────────────────────────────────────────
 
 
-def _cmd_config_resolved(project_id: str, preset: str | None) -> None:
+def _cmd_config_resolved(project_name: str, preset: str | None) -> None:
     """Show resolved agent config with provenance annotations."""
     from ...lib.core.projects import load_project
     from ...lib.orchestration.agent_config import build_agent_config_stack
 
     color = _supports_color()
 
-    project = load_project(project_id)
+    project = load_project(project_name)
     stack = build_agent_config_stack(
-        project_id,
+        project_name,
         agent_config=project.agent_config,
         project_root=project.root,
         preset=preset,
@@ -318,10 +320,10 @@ def _cmd_config_resolved(project_id: str, preset: str | None) -> None:
     scopes = stack.scopes
 
     if not scopes and not resolved:
-        print(f"No agent config defined for project '{project_id}'")
+        print(f"No agent config defined for project '{project_name}'")
         return
 
-    print(f"Resolved agent config for '{project_id}':")
+    print(f"Resolved agent config for '{project_name}':")
     if preset:
         print(f"  (with preset: {preset})")
     print()

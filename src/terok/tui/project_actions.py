@@ -54,7 +54,7 @@ class ProjectActionsMixin(_MixinBase):
 
     if TYPE_CHECKING:
         # TerokTUI-specific state and helpers (not on textual.App).
-        current_project_id: str | None
+        current_project_name: str | None
 
         async def refresh_projects(self) -> None: ...
         async def refresh_tasks(self) -> None: ...
@@ -158,10 +158,10 @@ class ProjectActionsMixin(_MixinBase):
 
     async def action_generate_dockerfiles(self) -> None:
         """Generate Dockerfiles for the current project."""
-        if not self.current_project_id:
+        if not self.current_project_name:
             self.notify("No project selected.")
             return
-        pid = self.current_project_id
+        pid = self.current_project_name
         self._run_console_action(
             "terok.tui.worker_actions:generate",
             pid,
@@ -170,10 +170,10 @@ class ProjectActionsMixin(_MixinBase):
 
     async def action_build_images(self) -> None:
         """Build only L2 project images (reuses existing L0/L1)."""
-        if not self.current_project_id:
+        if not self.current_project_name:
             self.notify("No project selected.")
             return
-        pid = self.current_project_id
+        pid = self.current_project_name
         self._run_console_action(
             "terok.tui.worker_actions:build",
             pid,
@@ -183,10 +183,10 @@ class ProjectActionsMixin(_MixinBase):
 
     async def action_init_ssh(self) -> None:
         """Mint a fresh vault-backed SSH keypair for the current project."""
-        if not self.current_project_id:
+        if not self.current_project_name:
             self.notify("No project selected.")
             return
-        pid = self.current_project_id
+        pid = self.current_project_name
         self._run_console_action(
             "terok.tui.worker_actions:init_ssh",
             pid,
@@ -195,10 +195,10 @@ class ProjectActionsMixin(_MixinBase):
 
     async def _action_build_agents(self) -> None:
         """Rebuild from L0 with fresh agents."""
-        if not self.current_project_id:
+        if not self.current_project_name:
             self.notify("No project selected.")
             return
-        pid = self.current_project_id
+        pid = self.current_project_name
         self._run_console_action(
             "terok.tui.worker_actions:build_agents",
             pid,
@@ -208,10 +208,10 @@ class ProjectActionsMixin(_MixinBase):
 
     async def _action_build_full(self) -> None:
         """Rebuild from L0 (no cache)."""
-        if not self.current_project_id:
+        if not self.current_project_name:
             self.notify("No project selected.")
             return
-        pid = self.current_project_id
+        pid = self.current_project_name
         self._run_console_action(
             "terok.tui.worker_actions:build_full",
             pid,
@@ -243,7 +243,7 @@ class ProjectActionsMixin(_MixinBase):
         registered upstream and hang on a long timeout — so a single
         captured child process is the wrong shape for this action.
         """
-        if not self.current_project_id:
+        if not self.current_project_name:
             self.notify("No project selected.")
             return
         from .wizard_screens import InitProgressScreen
@@ -252,7 +252,7 @@ class ProjectActionsMixin(_MixinBase):
             self._invalidate_image_caches()
             self._refresh_project_state()
 
-        await self.push_screen(InitProgressScreen(self.current_project_id), _on_init_done)
+        await self.push_screen(InitProgressScreen(self.current_project_name), _on_init_done)
 
     # ---------- Authentication actions ----------
 
@@ -262,13 +262,13 @@ class ProjectActionsMixin(_MixinBase):
         Reached from the project-details screen, where a project is
         always selected.  The top-level "Authenticate agents and tools"
         entry uses ``_action_auth_host_wide`` instead — it bypasses
-        ``current_project_id`` so a stray selection in the main pane
+        ``current_project_name`` so a stray selection in the main pane
         doesn't silently scope a host-wide intent to one project.
         """
-        if not self.current_project_id:
+        if not self.current_project_name:
             self.notify("No project selected.")
             return
-        self._run_auth_flow(provider, self.current_project_id)
+        self._run_auth_flow(provider, self.current_project_name)
 
     async def _action_auth_host_wide(self, provider: str) -> None:
         """Run the host-wide auth flow for *provider* — no project context.
@@ -280,7 +280,7 @@ class ProjectActionsMixin(_MixinBase):
         self._run_auth_flow(provider, None)
 
     @work(exclusive=False, group="auth-flow", exit_on_error=False)
-    async def _run_auth_flow(self, provider: str, project_id: str | None) -> None:
+    async def _run_auth_flow(self, provider: str, project_name: str | None) -> None:
         """Drive the Textual-native auth flow in a worker.
 
         Thin ``@work`` wrapper around
@@ -290,9 +290,9 @@ class ProjectActionsMixin(_MixinBase):
         is unit-testable without a running worker (mirrors the wizard's
         ``_run_wizard_flow`` / ``_run_wizard_flow_body`` pair).
         """
-        await self._run_auth_flow_body(provider, project_id)
+        await self._run_auth_flow_body(provider, project_name)
 
-    async def _run_auth_flow_body(self, provider: str, project_id: str | None) -> None:
+    async def _run_auth_flow_body(self, provider: str, project_name: str | None) -> None:
         """Pick the auth mode for *provider* and dispatch to the matching flow.
 
         Replaces the previous ``worker_actions:auth`` subprocess dispatch,
@@ -331,11 +331,11 @@ class ProjectActionsMixin(_MixinBase):
             return
 
         if mode == "api_key":
-            await self._auth_via_api_key(provider, project_id=project_id)
+            await self._auth_via_api_key(provider, project_name=project_name)
         else:
-            await self._auth_via_oauth(provider, project_id=project_id)
+            await self._auth_via_oauth(provider, project_name=project_name)
 
-    async def _auth_via_api_key(self, provider: str, *, project_id: str | None) -> None:
+    async def _auth_via_api_key(self, provider: str, *, project_name: str | None) -> None:
         """Collect an API key via a Textual modal and store it in the vault."""
         from ..lib.api import resolve_credential_routing, store_api_key
         from .screens import ApiKeyEntryScreen
@@ -345,7 +345,7 @@ class ProjectActionsMixin(_MixinBase):
             return
         # Per-project projects store under their own vault set; shared/host-wide
         # land in "default".  Same routing the CLI uses (see domain.auth).
-        _mounts_dir, credential_set = resolve_credential_routing(project_id)
+        _mounts_dir, credential_set = resolve_credential_routing(project_name)
         try:
             store_api_key(provider, key, credential_set=credential_set)
         except Exception as exc:  # noqa: BLE001 — surface every storage failure
@@ -357,7 +357,7 @@ class ProjectActionsMixin(_MixinBase):
             return
         self.notify(f"API key stored for {provider}.")
 
-    async def _auth_via_oauth(self, provider: str, *, project_id: str | None) -> None:
+    async def _auth_via_oauth(self, provider: str, *, project_name: str | None) -> None:
         """Prepare an OAuth auth container session and hand it to the launcher."""
         from ..lib.api import Authenticator, find_host_auth_image, resolve_credential_routing
         from ..lib.core.config import (
@@ -366,7 +366,7 @@ class ProjectActionsMixin(_MixinBase):
         )
         from ..lib.core.images import project_cli_image
 
-        if project_id is None:
+        if project_name is None:
             image = find_host_auth_image(provider)
             if image is None:
                 self.notify(
@@ -377,7 +377,7 @@ class ProjectActionsMixin(_MixinBase):
                 )
                 return
         else:
-            image = project_cli_image(project_id)
+            image = project_cli_image(project_name)
 
         expose = (provider == "claude" and is_claude_oauth_exposed()) or (
             provider == "codex" and is_codex_oauth_exposed()
@@ -385,14 +385,14 @@ class ProjectActionsMixin(_MixinBase):
         # Per-project projects capture into their own mount tree + vault set;
         # shared/host-wide use the global tree + "default" (same routing the
         # CLI uses, see domain.auth.resolve_credential_routing).
-        mounts_dir, credential_set = resolve_credential_routing(project_id)
+        mounts_dir, credential_set = resolve_credential_routing(project_name)
         # ``prepare_oauth`` raises ``SystemExit`` only for an unknown or
         # non-OAuth provider — both already excluded by ``_run_auth_flow``
         # before we get here, so no defensive catch is needed.  An
         # unexpected raise surfaces through the ``@work`` harness instead
         # of tearing down the app.
         session = Authenticator(provider).prepare_oauth(
-            project_id,
+            project_name,
             mounts_dir=mounts_dir,
             image=image,
             expose_token=expose,
@@ -516,10 +516,10 @@ class ProjectActionsMixin(_MixinBase):
 
     async def _action_sync_gate(self) -> None:
         """Sync gate (init if doesn't exist, sync if exists)."""
-        if not self.current_project_id:
+        if not self.current_project_name:
             self.notify("No project selected.")
             return
-        pid = self.current_project_id
+        pid = self.current_project_name
         self._run_console_action(
             "terok.tui.worker_actions:sync_gate",
             pid,
@@ -583,10 +583,10 @@ class ProjectActionsMixin(_MixinBase):
 
     async def _action_edit_instructions(self) -> None:
         """Edit the current project's instructions.md in ``$EDITOR`` or the integrated editor."""
-        if not self.current_project_id:
+        if not self.current_project_name:
             self.notify("No project selected.")
             return
-        pid = self.current_project_id
+        pid = self.current_project_name
         instr_path = load_project(pid).root / "instructions.md"
         await self._edit_instructions_file(
             instr_path,
@@ -596,10 +596,10 @@ class ProjectActionsMixin(_MixinBase):
 
     async def _action_toggle_instructions_inherit(self) -> None:
         """Toggle YAML instructions between inherit and override mode."""
-        if not self.current_project_id:
+        if not self.current_project_name:
             self.notify("No project selected.")
             return
-        pid = self.current_project_id
+        pid = self.current_project_name
 
         try:
             from ..lib.util.yaml import dump as _yaml_dump, load as _yaml_load
@@ -645,10 +645,10 @@ class ProjectActionsMixin(_MixinBase):
 
     async def _action_show_resolved_instructions(self) -> None:
         """Display fully resolved instructions as a task would receive them."""
-        if not self.current_project_id:
+        if not self.current_project_name:
             self.notify("No project selected.")
             return
-        pid = self.current_project_id
+        pid = self.current_project_name
 
         from terok.lib.api.agents import get_agent, resolve_instructions
 
@@ -753,7 +753,7 @@ class ProjectActionsMixin(_MixinBase):
 
             rendered = render_project_yaml(values)
             review_result = await self.push_screen_wait(
-                ProjectReviewScreen(values["project_id"], rendered)
+                ProjectReviewScreen(values["project_name"], rendered)
             )
             if review_result is None:
                 return  # Escape on the review screen — abandon
@@ -767,12 +767,12 @@ class ProjectActionsMixin(_MixinBase):
             final_yaml = review_result
             break
 
-        project_id = str(values["project_id"])
-        outcome = await self.push_screen_wait(InitProgressScreen(project_id, final_yaml))
+        project_name = str(values["project_name"])
+        outcome = await self.push_screen_wait(InitProgressScreen(project_name, final_yaml))
 
         match outcome:
             case InitOutcome.SUCCESS:
-                self.notify(f"Project '{project_id}' is ready.")
+                self.notify(f"Project '{project_name}' is ready.")
                 self._maybe_nudge_global_agents(values)
             case InitOutcome.DECLINED:
                 # User chose to keep the existing project.yml — benign
@@ -784,14 +784,14 @@ class ProjectActionsMixin(_MixinBase):
                 # written and early steps may have partially run; point
                 # them at the CLI to resume rather than guessing.
                 self.notify(
-                    f"Wizard cancelled. If '{values['project_id']}' was partially "
+                    f"Wizard cancelled. If '{values['project_name']}' was partially "
                     "initialized, finish it with `terok project init` from the CLI.",
                     severity="warning",
                     timeout=10,
                 )
             case InitOutcome.FAILED:
                 self.notify(
-                    f"Project '{values['project_id']}' created but init did not complete. "
+                    f"Project '{values['project_name']}' created but init did not complete. "
                     "Fix any issues and run `terok project init` from the CLI.",
                     severity="warning",
                     timeout=10,
@@ -827,11 +827,11 @@ class ProjectActionsMixin(_MixinBase):
 
     async def _action_delete_project(self) -> None:
         """Delete the current project after confirmation."""
-        if not self.current_project_id:
+        if not self.current_project_name:
             self.notify("No project selected.")
             return
 
-        pid = self.current_project_id
+        pid = self.current_project_name
         try:
             project = load_project(pid)
         except (SystemExit, Exception) as e:
@@ -871,10 +871,10 @@ class ProjectActionsMixin(_MixinBase):
 
     async def _on_delete_project_confirmed(self, confirmed: bool | None) -> None:
         """Handle the result of the delete confirmation dialog."""
-        if not confirmed or not self.current_project_id:
+        if not confirmed or not self.current_project_name:
             return
 
-        pid = self.current_project_id
+        pid = self.current_project_name
         try:
             result = delete_project(pid)
         except (SystemExit, Exception) as e:
@@ -888,7 +888,7 @@ class ProjectActionsMixin(_MixinBase):
             msg += f" ({len(result['skipped'])} item(s) skipped)"
         self.notify(msg)
 
-        self.current_project_id = None
+        self.current_project_name = None
         await self.refresh_projects()
 
     # ---------- Shield actions ----------

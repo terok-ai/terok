@@ -34,7 +34,7 @@ def _get_css_variables(widget: Static) -> dict[str, str]:
 
 def render_task_details(
     task: TaskMeta | None,
-    project_id: str | None = None,
+    project_name: str | None = None,
     image_old: bool | None = None,
     empty_message: str | None = None,
     css_variables: dict[str, str] | None = None,
@@ -104,11 +104,11 @@ def render_task_details(
         if not is_web:
             click_style = click_style + Style(link=link_url)
         lines.append(Text.assemble("Web URL:   ", Text(link_url, style=click_style)))
-    if task.mode == "cli" and project_id:
+    if task.mode == "cli" and project_name:
         lines.append(
             Text.assemble(
                 "Log in:    ",
-                Text(f"terok login {project_id} {task.task_id}", style=accent_style),
+                Text(f"terok login {project_name} {task.task_id}", style=accent_style),
             )
         )
     if task.unrestricted is not None:
@@ -163,12 +163,12 @@ def render_task_details(
     if task.mode == "run":
         if task.exit_code is not None:
             lines.append(Text(f"Exit code: {task.exit_code}"))
-        if project_id:
+        if project_name:
             lines.append(
                 Text.assemble(
                     "Logs:      ",
                     Text(
-                        f"terok task logs {project_id} {task.task_id} -f",
+                        f"terok task logs {project_name} {task.task_id} -f",
                         style=accent_style,
                     ),
                 )
@@ -183,7 +183,7 @@ class TaskDetails(Static):
     def __init__(self, **kwargs: Any) -> None:
         """Initialize the task details panel."""
         super().__init__(**kwargs)
-        self.current_project_id: str | None = None
+        self.current_project_name: str | None = None
         self._current_task: TaskMeta | None = None
         self._current_empty_message: str | None = None
         self._current_image_old: bool | None = None
@@ -201,11 +201,11 @@ class TaskDetails(Static):
     ) -> None:
         """Render and display details for the given task (or clear if None)."""
         if task is None:
-            self.current_project_id = None
+            self.current_project_name = None
         else:
-            # current_project_id lives on TerokTUI, not the base App[Any] type.
-            self.current_project_id = (
-                getattr(self.app, "current_project_id", None) if self.app else None
+            # current_project_name lives on TerokTUI, not the base App[Any] type.
+            self.current_project_name = (
+                getattr(self.app, "current_project_name", None) if self.app else None
             )
 
         self._current_task = task
@@ -246,7 +246,7 @@ class TaskDetails(Static):
 
         rendered = render_task_details(
             self._current_task,
-            self.current_project_id,
+            self.current_project_name,
             self._current_image_old,
             self._current_empty_message,
             _get_css_variables(self),

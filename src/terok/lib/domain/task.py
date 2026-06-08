@@ -58,7 +58,7 @@ class Task:
     """Rich task entity — DDD Entity with identity and lifecycle behavior.
 
     Each task has a unique identity within its project, defined by the tuple
-    ``(project_id, task_id)``.  Two ``Task`` instances are equal iff they
+    ``(project_name, task_id)``.  Two ``Task`` instances are equal iff they
     share this identity, regardless of metadata differences.
 
     Obtained via [`get_task`][terok.lib.domain.project.Project.get_task],
@@ -116,56 +116,58 @@ class Task:
     def __eq__(self, other: object) -> bool:
         """Two tasks are equal iff they belong to the same project and share the same ID."""
         return (
-            isinstance(other, Task) and self._config.id == other._config.id and self.id == other.id
+            isinstance(other, Task)
+            and self._config.name == other._config.name
+            and self.id == other.id
         )
 
     def __hash__(self) -> int:
-        """Hash by (project_id, task_id) for use in sets and dicts."""
-        return hash((self._config.id, self.id))
+        """Hash by (project_name, task_id) for use in sets and dicts."""
+        return hash((self._config.name, self.id))
 
     # --- Lifecycle ---
 
     def run_cli(self, *, preset: str | None = None) -> None:
         """Launch a CLI-mode task container."""
-        task_run_cli(self._config.id, self.id, preset=preset)
+        task_run_cli(self._config.name, self.id, preset=preset)
 
     def stop(self, *, timeout: int | None = None) -> None:
         """Gracefully stop the task container."""
-        task_stop(self._config.id, self.id, timeout=timeout)
+        task_stop(self._config.name, self.id, timeout=timeout)
 
     def restart(self) -> None:
         """Restart the task container."""
-        task_restart(self._config.id, self.id)
+        task_restart(self._config.name, self.id)
 
     def delete(self) -> None:
         """Delete the task (workspace, metadata, containers)."""
-        task_delete(self._config.id, self.id)
+        task_delete(self._config.name, self.id)
 
     def rename(self, new_name: str) -> None:
         """Rename the task."""
-        task_rename(self._config.id, self.id, new_name)
+        task_rename(self._config.name, self.id, new_name)
 
     def followup(self, prompt: str, follow: bool = True) -> None:
         """Send a follow-up prompt to a completed headless task."""
-        task_followup_headless(self._config.id, self.id, prompt, follow=follow)
+        task_followup_headless(self._config.name, self.id, prompt, follow=follow)
 
     # --- Observation ---
 
     def logs(self, options: LogViewOptions | None = None) -> None:
         """View task logs."""
-        task_logs(self._config.id, self.id, options or LogViewOptions())
+        task_logs(self._config.name, self.id, options or LogViewOptions())
 
     def login(self) -> None:
         """Open an interactive shell in the task container."""
-        task_login(self._config.id, self.id)
+        task_login(self._config.name, self.id)
 
     def get_login_command(self) -> list[str]:
         """Return the podman exec command for login."""
-        return get_login_command(self._config.id, self.id)
+        return get_login_command(self._config.name, self.id)
 
     def get_workspace_diff(self, against: str = "HEAD") -> str | None:
         """Get git diff from the task's workspace."""
-        return get_workspace_git_diff(self._config.id, self.id, against=against)
+        return get_workspace_git_diff(self._config.name, self.id, against=against)
 
     def show_status(self) -> None:
         """Print live task status with container state diagnostics.
@@ -175,7 +177,7 @@ class Task:
         """
         from ..orchestration.tasks import task_status
 
-        task_status(self._config.id, self.id)
+        task_status(self._config.name, self.id)
 
     def wait_for_exit(self, *, timeout: int = 7200) -> tuple[int | None, str | None]:
         """Wait for this task's container to exit; record exit code in metadata.
@@ -189,8 +191,8 @@ class Task:
 
         if not self._meta.mode:
             raise RuntimeError(f"Task {self.id} has no mode — never started")
-        cname = container_name(self._config.id, self._meta.mode, self.id)
-        return wait_for_container_exit(cname, self._config.id, self.id, timeout=timeout)
+        cname = container_name(self._config.name, self._meta.mode, self.id)
+        return wait_for_container_exit(cname, self._config.name, self.id, timeout=timeout)
 
     def capture_logs(self) -> Path | None:
         """Capture this task's container logs to disk; return the log path.
@@ -215,7 +217,7 @@ class Task:
         """
         from .project_state import is_task_image_old
 
-        return is_task_image_old(self._config.id, self._meta)
+        return is_task_image_old(self._config.name, self._meta)
 
     # --- Diagnostics ---
 
@@ -235,7 +237,7 @@ class Task:
         """
         from ..orchestration.container_doctor import ContainerDoctor
 
-        return ContainerDoctor(self._config.id, self.id).run(
+        return ContainerDoctor(self._config.name, self.id).run(
             fix=fix,
             reporter=reporter,  # type: ignore[arg-type]
             label_prefix=label_prefix,

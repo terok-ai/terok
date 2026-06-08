@@ -70,7 +70,7 @@ def test_run_dispatches_to_task_run_headless() -> None:
         "3600",
     )
 
-    assert request.project_id == "myproject"
+    assert request.project_name == "myproject"
     assert request.prompt == "Fix the auth bug"
     assert request.config_path is None
     assert request.model == "opus"

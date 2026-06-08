@@ -141,13 +141,13 @@ def _resume_toad_container(
     saved_port = meta.get("web_port")
     if not isinstance(saved_port, int):
         raise SystemExit(f"Existing toad container {cname} has no saved web_port in metadata.")
-    actual = assign_web_port(project.id, task_id, preferred=saved_port)
+    actual = assign_web_port(project.name, task_id, preferred=saved_port)
     if actual != saved_port:
         # The registry handed us a fallback port — release it so the task
         # doesn't leak a claim we'll never publish.
-        release_web_port(project.id, task_id)
+        release_web_port(project.name, task_id)
         raise SystemExit(
-            f"Port {saved_port} for {project.id}/{task_id} is no longer available "
+            f"Port {saved_port} for {project.name}/{task_id} is no longer available "
             f"(got {actual}).  Re-create the task to use the new port."
         )
     saved_token = _rehydrate_toad_token(project, task_id, meta, cname)
@@ -164,7 +164,7 @@ def _resume_toad_container(
     run_hook(
         "post_start",
         project.hook_post_start,
-        project_id=project.id,
+        project_name=project.name,
         task_id=task_id,
         mode="toad",
         cname=cname,
@@ -178,7 +178,7 @@ def _resume_toad_container(
 
 
 def task_run_toad(
-    project_id: str,
+    project_name: str,
     task_id: str,
     preset: str | None = None,
     unrestricted: bool | None = None,
@@ -191,10 +191,10 @@ def task_run_toad(
     listening.  Caddy enforces the per-task token (see
     `_ensure_toad_token`) on every request.
     """
-    project = load_project(project_id)
-    meta, meta_path = load_task_meta(project.id, task_id, "toad")
+    project = load_project(project_name)
+    meta, meta_path = load_task_meta(project.name, task_id, "toad")
 
-    cname = container_name(project.id, "toad", task_id)
+    cname = container_name(project.name, "toad", task_id)
     container_state = _rt.resolve_runtime(project).container(cname).state
 
     pub_host = get_public_host()
@@ -212,12 +212,12 @@ def task_run_toad(
         return
 
     # New container — allocate a fresh port.
-    port = assign_web_port(project.id, task_id)
+    port = assign_web_port(project.name, task_id)
     meta["web_port"] = port
 
     env, volumes = build_task_env_and_volumes(project, task_id)
 
-    agent_config_dir = _prepare_agent_config(project, project_id, task_id, preset)
+    agent_config_dir = _prepare_agent_config(project, project_name, task_id, preset)
     volumes.append(VolumeSpec(agent_config_dir, CONTAINER_TEROK_CONFIG, sharing=Sharing.PRIVATE))
 
     token = _ensure_toad_token(agent_config_dir)
@@ -229,7 +229,7 @@ def task_run_toad(
     # Resolve unrestricted mode: CLI flag → config → default (True)
     if unrestricted is None:
         _effective = resolve_agent_config(
-            project_id,
+            project_name,
             agent_config=project.agent_config,
             project_root=project.root,
             preset=preset,
@@ -266,7 +266,7 @@ def task_run_toad(
     run_hook(
         "pre_start",
         project.hook_pre_start,
-        project_id=project.id,
+        project_name=project.name,
         task_id=task_id,
         mode="toad",
         cname=cname,
@@ -276,7 +276,7 @@ def task_run_toad(
     )
     _run_container(
         cname=cname,
-        image=project_cli_image(project.id),
+        image=project_cli_image(project.name),
         env=env,
         volumes=volumes,
         project=project,
@@ -289,7 +289,7 @@ def task_run_toad(
     run_hook(
         "post_start",
         project.hook_post_start,
-        project_id=project.id,
+        project_name=project.name,
         task_id=task_id,
         mode="toad",
         cname=cname,
@@ -315,7 +315,7 @@ def task_run_toad(
     run_hook(
         "post_ready",
         project.hook_post_ready,
-        project_id=project.id,
+        project_name=project.name,
         task_id=task_id,
         mode="toad",
         cname=cname,

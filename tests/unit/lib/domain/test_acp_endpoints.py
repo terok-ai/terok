@@ -122,13 +122,13 @@ class TestACPEndpointDataclass:
     def test_construction_minimal(self, tmp_path: Path) -> None:
         """All fields are positional/keyword and survive equality."""
         ep1 = ACPEndpoint(
-            project_id="p",
+            project_name="p",
             task_id="t",
             socket_path=tmp_path / "x.sock",
             status=ACPEndpointStatus.READY,
         )
         ep2 = ACPEndpoint(
-            project_id="p",
+            project_name="p",
             task_id="t",
             socket_path=tmp_path / "x.sock",
             status=ACPEndpointStatus.READY,
@@ -139,7 +139,7 @@ class TestACPEndpointDataclass:
     def test_with_bound_agent(self, tmp_path: Path) -> None:
         """``bound_agent`` is set only when the daemon has bound a session."""
         ep = ACPEndpoint(
-            project_id="p",
+            project_name="p",
             task_id="t",
             socket_path=tmp_path / "x.sock",
             status=ACPEndpointStatus.ACTIVE,

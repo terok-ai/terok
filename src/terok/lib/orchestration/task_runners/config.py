@@ -61,7 +61,7 @@ def _apply_unrestricted_env(env: dict[str, str]) -> None:
 
 def _prepare_agent_config(
     project: ProjectConfig,
-    project_id: str,
+    project_name: str,
     task_id: str,
     preset: str | None,
     *,
@@ -74,7 +74,7 @@ def _prepare_agent_config(
     (e.g. explicit agent selection).
     """
     effective = resolve_agent_config(
-        project_id,
+        project_name,
         agent_config=project.agent_config,
         project_root=project.root,
         preset=preset,

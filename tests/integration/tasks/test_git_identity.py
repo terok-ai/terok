@@ -37,7 +37,7 @@ pytestmark = pytest.mark.needs_host_features
 
 _BASE_PROJECT = f"""\
 project:
-  id: git-id-test
+  name: git-id-test
   security_class: online
 git:
   upstream_url: {EXAMPLE_UPSTREAM_URL}
@@ -76,7 +76,7 @@ _GIT_ENV_KEYS = (
 
 def _build_runner_env(
     terok_env: TerokIntegrationEnv,
-    project_id: str = "git-id-test",
+    project_name: str = "git-id-test",
 ) -> dict[str, str]:
     """Build the container env through the same path the production runners use.
 
@@ -88,7 +88,7 @@ def _build_runner_env(
     from terok.lib.core.projects import load_project
     from terok.lib.orchestration.environment import build_task_env_and_volumes
 
-    project = load_project(project_id)
+    project = load_project(project_name)
 
     from terok_executor.paths import mounts_dir
 

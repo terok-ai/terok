@@ -15,12 +15,12 @@ def _patch_vault_db(db):
     return patch_vault_db(db, module="project")
 
 
-def _make_project(project_id: str) -> object:
-    """Build a minimal ``Project`` whose only requirement is ``self._config.id``."""
+def _make_project(project_name: str) -> object:
+    """Build a minimal ``Project`` whose only requirement is ``self._config.name``."""
     from terok.lib.domain.project import Project
 
     config = MagicMock()
-    config.id = project_id
+    config.name = project_name
     return Project(config)
 
 

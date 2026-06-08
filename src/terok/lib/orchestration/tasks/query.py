@@ -11,7 +11,7 @@ from collections.abc import Iterator
 from dataclasses import dataclass
 from typing import Any, Protocol
 
-from ...core.project_model import is_valid_project_id
+from ...core.project_model import is_valid_project_name
 from ...core.projects import load_project
 from ...core.task_state import TaskState, container_name, effective_status
 from ...core.work_status import read_work_status
@@ -20,7 +20,7 @@ from .identity import is_task_id
 from .meta import _is_safe_id_segment, iter_task_ids, read_task_meta, tasks_meta_dir
 
 
-def get_task_container_state(project_id: str, task_id: str, mode: str | None) -> str | None:
+def get_task_container_state(project_name: str, task_id: str, mode: str | None) -> str | None:
     """Get actual container state for a task (TUI helper).
 
     Container state queries are runtime-agnostic — ``podman inspect``
@@ -33,11 +33,11 @@ def get_task_container_state(project_id: str, task_id: str, mode: str | None) ->
         return None
     from terok.lib.integrations.sandbox import PodmanRuntime
 
-    cname = container_name(project_id, mode, task_id)
+    cname = container_name(project_name, mode, task_id)
     return PodmanRuntime().container(cname).state
 
 
-def lookup_container_by_pt(project_id: str, task_id: str) -> str | None:
+def lookup_container_by_pt(project_name: str, task_id: str) -> str | None:
     """Resolve a `project/task` pair to the current container name, or `None`.
 
     Powers the slash-form identity acceptance on per-container
@@ -50,16 +50,16 @@ def lookup_container_by_pt(project_id: str, task_id: str) -> str | None:
     verbatim" (raw container id) or "fail with an actionable error"
     (unknown project/task).
     """
-    if not is_valid_project_id(project_id) or not _is_safe_id_segment(task_id):
+    if not is_valid_project_name(project_name) or not _is_safe_id_segment(task_id):
         return None
-    meta_dir = tasks_meta_dir(project_id)
+    meta_dir = tasks_meta_dir(project_name)
     raw = read_task_meta(meta_dir, task_id)
     if raw is None:
         return None
     mode = raw.get("mode")
     if not mode:
         return None
-    return container_name(project_id, mode, task_id)
+    return container_name(project_name, mode, task_id)
 
 
 @dataclass(kw_only=True)
@@ -71,7 +71,7 @@ class TaskMeta(TaskState):
     """
 
     task_id: str
-    project_id: str = ""
+    project_name: str = ""
     """Project the task belongs to.
 
     Carried in the meta JSON so consumers that don't already know the
@@ -120,7 +120,7 @@ class TaskMeta(TaskState):
         self.web_port = fresh.web_port
 
     @classmethod
-    def load(cls, project_id: str, task_id: str) -> TaskMeta:
+    def load(cls, project_name: str, task_id: str) -> TaskMeta:
         """Load a TaskMeta from disk, with live container state hydrated.
 
         Raises ``SystemExit`` if the task metadata file is not found.
@@ -129,7 +129,7 @@ class TaskMeta(TaskState):
         kept as the canonical entry point so callers reach the class
         through its own factory.
         """
-        return get_task_meta(project_id, task_id)
+        return get_task_meta(project_name, task_id)
 
 
 def _is_initialized(meta: dict) -> bool:
@@ -137,14 +137,14 @@ def _is_initialized(meta: dict) -> bool:
     return "ready_at" in meta
 
 
-def get_task_meta(project_id: str, task_id: str) -> TaskMeta:
+def get_task_meta(project_name: str, task_id: str) -> TaskMeta:
     """Return metadata for a single task with live container state.
 
     Hydrates ``container_state`` from the running container so that
     ``TaskMeta.status`` reflects current reality rather than stale YAML.
     Raises ``SystemExit`` if the task metadata file is not found.
     """
-    meta_dir = tasks_meta_dir(project_id)
+    meta_dir = tasks_meta_dir(project_name)
     raw = read_task_meta(meta_dir, task_id)
     if raw is None:
         raise SystemExit(f"Unknown task {task_id}")
@@ -159,7 +159,7 @@ def get_task_meta(project_id: str, task_id: str) -> TaskMeta:
         try:
             from terok.lib.integrations.sandbox import PodmanRuntime
 
-            cname = container_name(project_id, mode, task_id)
+            cname = container_name(project_name, mode, task_id)
             live_state = PodmanRuntime().container(cname).state
         except Exception:
             pass
@@ -167,7 +167,7 @@ def get_task_meta(project_id: str, task_id: str) -> TaskMeta:
     ws_status: str | None = None
     ws_message: str | None = None
     if tid:
-        project = load_project(project_id)
+        project = load_project(project_name)
         try:
             agent_cfg = project.tasks_root / tid / "agent-config"
             ws = read_work_status(agent_cfg)
@@ -178,8 +178,8 @@ def get_task_meta(project_id: str, task_id: str) -> TaskMeta:
     return TaskMeta(
         task_id=tid,
         # ``or`` (not the dict default) so a migrated record carrying an
-        # empty string still falls back to the path-derived project_id.
-        project_id=raw.get("project_id") or project_id,
+        # empty string still falls back to the path-derived project_name.
+        project_name=raw.get("project_name") or project_name,
         mode=mode,
         workspace=raw.get("workspace", ""),
         web_port=raw.get("web_port"),
@@ -199,14 +199,14 @@ def get_task_meta(project_id: str, task_id: str) -> TaskMeta:
     )
 
 
-def get_workspace_git_diff(project_id: str, task_id: str, against: str = "HEAD") -> str | None:
+def get_workspace_git_diff(project_name: str, task_id: str, against: str = "HEAD") -> str | None:
     """Get git diff from a task's workspace via container exec.
 
     Runs ``git diff`` **inside** the task container rather than on the host,
     so that even poisoned git hooks only execute within the container sandbox.
 
     Args:
-        project_id: The project ID
+        project_name: The project name
         task_id: The task ID
         against: What to diff against (``"HEAD"`` or ``"PREV"``)
 
@@ -214,8 +214,8 @@ def get_workspace_git_diff(project_id: str, task_id: str, against: str = "HEAD")
         The git diff output as a string, or ``None`` if failed
     """
     try:
-        load_project(project_id)  # validate project exists
-        meta_dir = tasks_meta_dir(project_id)
+        load_project(project_name)  # validate project exists
+        meta_dir = tasks_meta_dir(project_name)
         meta = read_task_meta(meta_dir, task_id)
         if meta is None:
             return None
@@ -224,21 +224,21 @@ def get_workspace_git_diff(project_id: str, task_id: str, against: str = "HEAD")
             return None
 
         if against == "PREV":
-            return container_git_diff(project_id, task_id, mode, "HEAD~1", "HEAD")
-        return container_git_diff(project_id, task_id, mode, "HEAD")
+            return container_git_diff(project_name, task_id, mode, "HEAD~1", "HEAD")
+        return container_git_diff(project_name, task_id, mode, "HEAD")
 
     except (Exception, SystemExit):
         return None
 
 
-def _get_tasks(project_id: str, reverse: bool = False) -> list[TaskMeta]:
-    """Return all task metadata for *project_id*, sorted by task ID."""
-    meta_dir = tasks_meta_dir(project_id)
+def _get_tasks(project_name: str, reverse: bool = False) -> list[TaskMeta]:
+    """Return all task metadata for *project_name*, sorted by task ID."""
+    meta_dir = tasks_meta_dir(project_name)
     tasks: list[TaskMeta] = []
     if not meta_dir.is_dir():
         return tasks
     try:
-        project = load_project(project_id)
+        project = load_project(project_name)
         tasks_root = project.tasks_root
     except SystemExit:
         tasks_root = None
@@ -263,7 +263,7 @@ def _get_tasks(project_id: str, reverse: bool = False) -> list[TaskMeta]:
             tasks.append(
                 TaskMeta(
                     task_id=tid,
-                    project_id=meta.get("project_id") or project_id,
+                    project_name=meta.get("project_name") or project_name,
                     mode=mode,
                     workspace=meta.get("workspace", ""),
                     web_port=meta.get("web_port"),
@@ -291,19 +291,19 @@ def _get_tasks(project_id: str, reverse: bool = False) -> list[TaskMeta]:
     return tasks
 
 
-def get_tasks(project_id: str, reverse: bool = False) -> list[TaskMeta]:
-    """Return all task metadata for *project_id*, sorted by task ID."""
-    return _get_tasks(project_id, reverse=reverse)
+def get_tasks(project_name: str, reverse: bool = False) -> list[TaskMeta]:
+    """Return all task metadata for *project_name*, sorted by task ID."""
+    return _get_tasks(project_name, reverse=reverse)
 
 
 def get_all_task_states(
-    project_id: str,
+    project_name: str,
     tasks: list[TaskMeta],
 ) -> dict[str, str | None]:
     """Map each task to its live container state via a single batch query.
 
     Args:
-        project_id: The project whose containers to query.
+        project_name: The project whose containers to query.
         tasks: List of ``TaskMeta`` instances (must have ``task_id`` and ``mode``).
 
     Returns:
@@ -313,11 +313,11 @@ def get_all_task_states(
     # doesn't differ across OCI runtimes.
     from terok.lib.integrations.sandbox import PodmanRuntime
 
-    container_states = PodmanRuntime().container_states(project_id)
+    container_states = PodmanRuntime().container_states(project_name)
     result: dict[str, str | None] = {}
     for t in tasks:
         if t.mode:
-            cname = container_name(project_id, t.mode, str(t.task_id))
+            cname = container_name(project_name, t.mode, str(t.task_id))
             result[str(t.task_id)] = container_states.get(cname)
         else:
             result[str(t.task_id)] = None
@@ -342,8 +342,8 @@ class ContainerEventStream(Protocol):
         ...
 
 
-def container_event_stream(project_id: str) -> ContainerEventStream | None:
-    """Subscribe to live podman container events for *project_id*, or ``None``.
+def container_event_stream(project_name: str) -> ContainerEventStream | None:
+    """Subscribe to live podman container events for *project_name*, or ``None``.
 
     The push-based companion to
     [`get_all_task_states`][terok.lib.orchestration.tasks.query.get_all_task_states]:
@@ -356,13 +356,14 @@ def container_event_stream(project_id: str) -> ContainerEventStream | None:
     from terok.lib.integrations.sandbox import PodmanRuntime
 
     try:
-        return PodmanRuntime().events(project_id)
+        events = getattr(PodmanRuntime(), "events", None)
+        return events(project_name) if callable(events) else None
     except Exception:  # noqa: BLE001 — podman absent / subscribe failed; resync covers it
         return None
 
 
 def task_list(
-    project_id: str,
+    project_name: str,
     *,
     status: str | None = None,
     mode: str | None = None,
@@ -372,7 +373,7 @@ def task_list(
 
     Status is computed live from podman container state + task metadata.
     """
-    tasks = get_tasks(project_id)
+    tasks = get_tasks(project_name)
 
     # Pre-filter by mode/agent before the podman query to reduce work
     if mode:
@@ -385,7 +386,7 @@ def task_list(
         return
 
     # Batch-query podman for all container states in one call
-    live_states = get_all_task_states(project_id, tasks)
+    live_states = get_all_task_states(project_name, tasks)
     for t in tasks:
         t.container_state = live_states.get(t.task_id)
 

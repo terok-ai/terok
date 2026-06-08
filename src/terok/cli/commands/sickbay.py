@@ -34,7 +34,7 @@ from terok.lib.api.vault import VaultStatusSnapshot
 
 from ...lib.core import runtime as _rt
 from ...lib.core.config import get_services_mode, global_config_path
-from ...lib.core.project_model import ProjectConfig, is_valid_project_id
+from ...lib.core.project_model import ProjectConfig, is_valid_project_name
 from ...lib.core.projects import list_projects, load_project
 from ...lib.orchestration.container_doctor import ContainerDoctor
 from ...lib.orchestration.hooks import run_hook
@@ -56,11 +56,11 @@ _CheckResult = tuple[str, str, str]
 def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
     """Register the ``sickbay`` subcommand."""
     p = subparsers.add_parser("sickbay", help="Run health checks and reconciliation")
-    # dest=project_id / task_id matches the rest of the CLI so the shared
+    # dest=project_name / task_id matches the rest of the CLI so the shared
     # completers work; metavar keeps the display ``<project>``/``<task>``.
-    from ._completers import add_project_id, add_task_id
+    from ._completers import add_project_name, add_task_id
 
-    add_project_id(p, nargs="?", metavar="project", help="Scope to a single project")
+    add_project_name(p, nargs="?", metavar="project", help="Scope to a single project")
     add_task_id(p, nargs="?", metavar="task", help="Scope to a single task")
     p.add_argument("--fix", action="store_true", help="Auto-remediate issues")
 
@@ -69,12 +69,12 @@ def dispatch(args: argparse.Namespace) -> bool:
     """Handle the sickbay command.  Returns True if handled."""
     if args.cmd != "sickbay":
         return False
-    project_id = getattr(args, "project_id", None)
+    project_name = getattr(args, "project_name", None)
     task_id = getattr(args, "task_id", None)
-    if project_id and task_id:
-        task_id = resolve_task_id(project_id, task_id)
+    if project_name and task_id:
+        task_id = resolve_task_id(project_name, task_id)
     _cmd_sickbay(
-        project_id=project_id,
+        project_name=project_name,
         task_id=task_id,
         fix=getattr(args, "fix", False),
     )
@@ -191,7 +191,7 @@ def _task_meta_path(pid: str, tid: str) -> Path | None:
     files from earlier installs are migrated by ``read_task_meta`` on
     the read path.
     """
-    if not is_valid_project_id(pid) or not is_task_id(tid):
+    if not is_valid_project_name(pid) or not is_task_id(tid):
         return None
     return meta_path(tasks_meta_dir(pid), tid)
 
@@ -200,7 +200,7 @@ def _check_task_hook(
     pid: str, tid: str, project: ProjectConfig, *, fix: bool
 ) -> _CheckResult | None:
     """Check a single task for unfired post_stop hook.  Returns None if ok."""
-    if not is_valid_project_id(pid) or not is_task_id(tid):
+    if not is_valid_project_name(pid) or not is_task_id(tid):
         return None
     meta_dir = tasks_meta_dir(pid)
     try:
@@ -244,7 +244,7 @@ def _reconcile_post_stop(
         run_hook(
             "post_stop",
             project.hook_post_stop,
-            project_id=pid,
+            project_name=pid,
             task_id=tid,
             mode=mode,
             cname=cname,
@@ -265,7 +265,7 @@ def _check_task_shield_annotation(
     TUI (which only know the container name) to the wrong state dir, or to
     nothing at all.  Non-shielded containers and stopped ones are skipped.
     """
-    if not is_valid_project_id(pid) or not is_task_id(tid):
+    if not is_valid_project_name(pid) or not is_task_id(tid):
         return None
     meta_dir = tasks_meta_dir(pid)
     try:
@@ -305,15 +305,15 @@ def _check_task_shield_annotation(
 
 
 def _check_unfired_hooks(
-    project_id: str | None, task_id: str | None, *, fix: bool
+    project_name: str | None, task_id: str | None, *, fix: bool
 ) -> list[_CheckResult]:
     """Check for stopped tasks with unfired post_stop hooks."""
     results: list[_CheckResult] = []
 
-    if project_id:
-        projects = [(project_id, load_project(project_id))]
+    if project_name:
+        projects = [(project_name, load_project(project_name))]
     else:
-        projects = [(p.id, p) for p in list_projects()]
+        projects = [(p.name, p) for p in list_projects()]
 
     for pid, project in projects:
         if not project.hook_post_stop:
@@ -331,14 +331,14 @@ def _check_unfired_hooks(
     return results
 
 
-def _check_shield_annotations(project_id: str | None, task_id: str | None) -> list[_CheckResult]:
+def _check_shield_annotations(project_name: str | None, task_id: str | None) -> list[_CheckResult]:
     """Check that every running task's container carries the expected shield annotation."""
     results: list[_CheckResult] = []
 
-    if project_id:
-        projects = [(project_id, load_project(project_id))]
+    if project_name:
+        projects = [(project_name, load_project(project_name))]
     else:
-        projects = [(p.id, p) for p in list_projects()]
+        projects = [(p.name, p) for p in list_projects()]
 
     for pid, project in projects:
         meta_dir = tasks_meta_dir(pid)
@@ -354,7 +354,7 @@ def _check_shield_annotations(project_id: str | None, task_id: str | None) -> li
 
 
 def _sanitize_id(value: str) -> str:
-    """Strip C0/C1 control characters from a project ID for safe terminal output."""
+    """Strip C0/C1 control characters from a project name for safe terminal output."""
     import unicodedata
 
     return "".join(
@@ -364,7 +364,7 @@ def _sanitize_id(value: str) -> str:
 
 
 def _abbreviate(ids: list[str], limit: int = 3) -> str:
-    """Join project IDs with a '+N more' suffix when the list is long."""
+    """Join project names with a '+N more' suffix when the list is long."""
     suffix = f" (+{len(ids) - limit} more)" if len(ids) > limit else ""
     return ", ".join(_sanitize_id(i) for i in ids[:limit]) + suffix
 
@@ -384,7 +384,7 @@ def _check_ssh_signer() -> _CheckResult:
     except Exception as exc:  # noqa: BLE001
         return ("warn", label, f"vault unreachable — {exc}")
 
-    unregistered = [p.id for p in projects if p.id not in assigned_scopes]
+    unregistered = [p.name for p in projects if p.name not in assigned_scopes]
     registered = len(projects) - len(unregistered)
     total = len(projects)
 
@@ -399,7 +399,7 @@ def _check_ssh_signer() -> _CheckResult:
 
 
 def _stream_containers(
-    project_id: str | None,
+    project_name: str | None,
     task_id: str | None,
     *,
     fix: bool,
@@ -412,19 +412,19 @@ def _stream_containers(
     — it emits an informational line for non-running containers, so we
     simply forward all tasks and let the orchestrator decide.
     """
-    if project_id and task_id:
-        ContainerDoctor(project_id, task_id).run(
+    if project_name and task_id:
+        ContainerDoctor(project_name, task_id).run(
             fix=fix,
             reporter=reporter,
-            label_prefix=f"Task {project_id}/{task_id}: ",
+            label_prefix=f"Task {project_name}/{task_id}: ",
         )
         return
 
     # Project or global scope — iterate all known tasks
-    if project_id:
-        projects = [(project_id, load_project(project_id))]
+    if project_name:
+        projects = [(project_name, load_project(project_name))]
     else:
-        projects = [(p.id, p) for p in list_projects()]
+        projects = [(p.name, p) for p in list_projects()]
 
     for pid, _project in projects:
         meta_dir = tasks_meta_dir(pid)
@@ -598,7 +598,7 @@ rows and the output looks broken.
 
 
 def _cmd_sickbay(
-    project_id: str | None = None,
+    project_name: str | None = None,
     task_id: str | None = None,
     fix: bool = False,
 ) -> None:
@@ -615,19 +615,19 @@ def _cmd_sickbay(
         # blank line between stage groups.
         print()
 
-    for status, label, detail in _check_unfired_hooks(project_id, task_id, fix=fix):
+    for status, label, detail in _check_unfired_hooks(project_name, task_id, fix=fix):
         reporter.emit(status, label, detail)
-    for status, label, detail in _check_shield_annotations(project_id, task_id):
+    for status, label, detail in _check_shield_annotations(project_name, task_id):
         reporter.emit(status, label, detail)
 
-    _stream_containers(project_id, task_id, fix=fix, reporter=reporter)
+    _stream_containers(project_name, task_id, fix=fix, reporter=reporter)
 
     # Single-task summary: ``ok (consistent)`` iff every check for this
     # task came back clean.  Globals aren't run in the ``task_id`` scope,
     # so the reporter's worst-status at this point covers exactly the
     # three task-scoped check sets.
     if task_id and reporter.worst_status == "ok":
-        reporter.emit("ok", f"Task {project_id}/{task_id}", "consistent")
+        reporter.emit("ok", f"Task {project_name}/{task_id}", "consistent")
 
     if reporter.worst_status == "error":
         sys.exit(2)

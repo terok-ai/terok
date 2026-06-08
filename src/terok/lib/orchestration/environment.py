@@ -75,7 +75,7 @@ def _check_project_credentials_present(project: ProjectConfig) -> None:
     a project that opted into ``credentials_scope: project`` has just
     explicitly *isolated* its bucket: silent fallback would defeat the
     isolation, and an empty bucket is almost always a user oversight
-    (they edited project.yml but forgot ``terok auth --project <id>``).
+    (they edited project.yml but forgot ``terok auth --project <name>``).
     Surface it before the container starts so the error message names
     the recovery command instead of bubbling up from inside the agent.
     """
@@ -89,10 +89,10 @@ def _check_project_credentials_present(project: ProjectConfig) -> None:
 
     agent = project.default_agent or "claude"
     raise SystemExit(
-        f"Project '{project.id}' is configured for per-project credentials "
+        f"Project '{project.name}' is configured for per-project credentials "
         f"(credentials.scope: project) but its vault bucket is empty.\n"
         f"Authenticate before launching tasks:\n\n"
-        f"  terok auth {agent} --project {project.id}\n"
+        f"  terok auth {agent} --project {project.name}\n"
     )
 
 
@@ -157,9 +157,9 @@ def _gatekeeping_repo_env(
     gate_repo = project.gate_path
     if not gate_repo.exists():
         raise SystemExit(
-            f"Git gate missing for project '{project.id}'.\n"
+            f"Git gate missing for project '{project.name}'.\n"
             f"Expected at: {gate_repo}\n"
-            f"Run 'terok project gate-sync {project.id}' to create/update the local mirror."
+            f"Run 'terok project gate-sync {project.name}' to create/update the local mirror."
         )
     token = mint_gate_token()
     gate_url = _gate_url(gate_repo, gate_base, gate_port, token)
@@ -437,7 +437,7 @@ def _warn_leaked_credentials(mounts_dir: Path) -> None:
 # ---------- Clone-cache workspace seeding ----------
 
 
-def _seed_workspace_cache(repo_dir: Path, project_id: str, code_repo: str | None) -> None:
+def _seed_workspace_cache(repo_dir: Path, project_name: str, code_repo: str | None) -> None:
     """Pre-populate *repo_dir* from the clone cache (best-effort).
 
     Only acts when the workspace has a ``.new-task-marker`` (new task)
@@ -454,12 +454,12 @@ def _seed_workspace_cache(repo_dir: Path, project_id: str, code_repo: str | None
 
     try:
         seed_workspace_from_clone_cache(
-            repo_dir, project_id, origin_url=code_repo, cfg=make_sandbox_config()
+            repo_dir, project_name, origin_url=code_repo, cfg=make_sandbox_config()
         )
     except Exception:
         _logger.warning(
             "seed_workspace_from_clone_cache failed for project %s at %s",
-            project_id,
+            project_name,
             repo_dir,
             exc_info=True,
         )
@@ -504,7 +504,7 @@ class TaskEnvironment:
         Delegates shared config mounts, base env vars, workspace volume,
         git identity, and OpenCode provider env to
         [`terok_executor.assemble_container_env`][terok_executor.assemble_container_env],
-        then layers terok-specific concerns: ``PROJECT_ID``, gate
+        then layers terok-specific concerns: ``PROJECT_NAME``, gate
         server URLs, and the full vault (OAuth, socket transport, SSH
         agent).
         """
@@ -531,7 +531,7 @@ class TaskEnvironment:
         # Only for new tasks (marker present, no .git yet).  The in-container
         # init script then does fetch+reset instead of a full git clone.
         # In sealed mode the seeded dir is podman-cp'd into the container.
-        _seed_workspace_cache(repo_dir, project.id, sec_env.get("CODE_REPO"))
+        _seed_workspace_cache(repo_dir, project.name, sec_env.get("CODE_REPO"))
 
         # Pre-resolve git identity using terok's authorship logic so the
         # container has correct GIT_AUTHOR_*/GIT_COMMITTER_* from launch.
@@ -578,7 +578,7 @@ class TaskEnvironment:
                 authorship=project.git_authorship,
                 human_name=project.human_name or "Nobody",
                 human_email=project.human_email or "nobody@localhost",
-                credential_scope=project.id,
+                credential_scope=project.name,
                 credential_set=project.credential_set,
                 vault_transport=vault_transport,
                 vault_required=not vault_bypass,
@@ -599,7 +599,7 @@ class TaskEnvironment:
         volumes: list[VolumeSpec] = [*result.volumes, *sec_volumes]
 
         # terok-specific env vars not covered by the shared assembly
-        env["PROJECT_ID"] = project.id
+        env["PROJECT_NAME"] = project.name
         env["GIT_RESET_MODE"] = os.environ.get("TEROK_GIT_RESET_MODE", "none")
         # Forward every sec_env key the spec didn't already consume.  Inverted
         # from a closed allowlist after a leak: each new gate env var added

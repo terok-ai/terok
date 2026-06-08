@@ -48,8 +48,10 @@ def render_project_loading(
         Text("Tasks:     loading") if task_count is None else Text(f"Tasks:     {task_count}")
     )
 
-    lines = [
-        Text(f"Project:   {project.id} {badges}"),
+    lines = [Text(f"Project:   {project.name} {badges}")]
+    if project.description:
+        lines.append(Text(f"Desc:      {project.description}", style=Style(dim=True)))
+    lines += [
         Text(upstream),
         Text(""),
         Text("Loading details..."),
@@ -68,7 +70,7 @@ def render_broken_project(bp: BrokenProject, css_variables: dict[str, str] | Non
     variables = css_variables or {}
     error_color = variables.get("error", "red")
     dim = Style(dim=True)
-    header = Text(f"Project:   {bp.id} ", style=Style(color=error_color, bold=True))
+    header = Text(f"Project:   {bp.name} ", style=Style(color=error_color, bold=True))
     header.append("(broken)", style=Style(color=error_color))
     lines = [
         header,
@@ -186,8 +188,10 @@ def render_project_details(
     else:
         shield_s = Text("unknown", style=Style(dim=True))
 
-    lines = [
-        Text(f"Project:   {project.id} {badges}"),
+    lines = [Text(f"Project:   {project.name} {badges}")]
+    if project.description:
+        lines.append(Text(f"Desc:      {project.description}", style=Style(dim=True)))
+    lines += [
         Text(upstream),
         Text(""),
         Text.assemble("Dockerfiles: ", docker_s),

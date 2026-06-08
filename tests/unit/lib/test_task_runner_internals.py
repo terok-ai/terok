@@ -526,7 +526,7 @@ class TestRunContainer:
         from terok.lib.core.project_model import ProjectConfig
 
         p = MagicMock(spec=ProjectConfig)
-        p.id = "p1"
+        p.name = "p1"
         p.gpu_enabled = False
         p.root = MOCK_TASK_DIR
         p.isolation = "shared"
@@ -1071,7 +1071,7 @@ class TestLaunchPreparedIdentity:
     """``_run_container`` threads project/task identity into the sidecar.
 
     The supervisor reads the sidecar JSON at OCI prestart hook time, so
-    every ``podman run`` issued by terok must carry ``project_id`` /
+    every ``podman run`` issued by terok must carry ``project_name`` /
     ``task_id`` / ``dossier_path`` for the supervisor to scope its
     state correctly.
     """
@@ -1080,7 +1080,7 @@ class TestLaunchPreparedIdentity:
         from terok.lib.core.project_model import ProjectConfig
 
         p = MagicMock(spec=ProjectConfig)
-        p.id = "proj-id-x"
+        p.name = "proj-id-x"
         p.gpu_enabled = False
         p.root = MOCK_TASK_DIR
         p.isolation = "shared"
@@ -1092,7 +1092,7 @@ class TestLaunchPreparedIdentity:
         return p
 
     def test_identity_kwargs_passed_through(self) -> None:
-        """``launch_prepared`` receives ``project_id``, ``task_id``, ``dossier_path``."""
+        """``launch_prepared`` receives ``project_name``, ``task_id``, ``dossier_path``."""
         from terok.lib.orchestration.tasks import dossier_path, tasks_meta_dir
 
         project = self._make_project()
@@ -1114,7 +1114,9 @@ class TestLaunchPreparedIdentity:
             )
 
         kwargs = sandbox_factory.return_value.launch_prepared.call_args.kwargs
-        assert kwargs["project_id"] == "proj-id-x"
+        assert (
+            kwargs["project_id"] == "proj-id-x"
+        )  # executor API kwarg name (value is the project name)
         assert kwargs["task_id"] == "task-id-y"
         expected_dossier = dossier_path(tasks_meta_dir("proj-id-x"), "task-id-y")
         assert kwargs["dossier_path"] == expected_dossier

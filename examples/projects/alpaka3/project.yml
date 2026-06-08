@@ -1,6 +1,6 @@
 project:
-  id: "alpaka3"
-  name: "Alpaka3"
+  name: "alpaka3"
+  description: "Alpaka3"
   # Gatekept: tasks can only push to a host-side staging repo, not upstream
   security_class: "gatekeeping"
 

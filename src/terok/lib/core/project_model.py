@@ -30,7 +30,9 @@ class ProjectConfig(BaseModel):
 
     model_config = ConfigDict(frozen=True)
 
-    id: str
+    name: str
+    description: str | None = None
+    """Free-text, human-readable project description (optional; display only)."""
     security_class: str  # "online" | "gatekeeping"
     isolation: str = "shared"  # "shared" | "sealed"
     upstream_url: str | None
@@ -59,7 +61,7 @@ class ProjectConfig(BaseModel):
     credentials_scope: Literal["shared", "project"] = "shared"
     """Credentials isolation: ``shared`` reuses the host-wide bucket;
     ``project`` carves out a private set under ``<root>/mounts`` and
-    reads/writes the vault DB under set ``<id>`` instead of
+    reads/writes the vault DB under set ``<name>`` instead of
     ``"default"``.  Computed via ``credential_set`` and
     ``project_mounts_dir`` on this class."""
     shutdown_timeout: int = 10
@@ -135,11 +137,11 @@ class ProjectConfig(BaseModel):
 
         ``"default"`` for shared-credential projects (the host-wide bucket
         every project sees by default).  When ``credentials_scope`` is
-        ``"project"``, the project's id is used as the set name so its
-        logins live in their own row keyed by ``(project.id, provider)``
+        ``"project"``, the project's name is used as the set name so its
+        logins live in their own row keyed by ``(project.name, provider)``
         and never collide with another project's tokens.
         """
-        return self.id if self.credentials_scope == "project" else "default"
+        return self.name if self.credentials_scope == "project" else "default"
 
     @property
     def project_mounts_dir(self) -> Path:
@@ -163,45 +165,45 @@ class PresetInfo:
     path: Path
 
 
-_PROJECT_ID_RE = re.compile(r"[a-z0-9][a-z0-9_-]*")
+_PROJECT_NAME_RE = re.compile(r"[a-z0-9][a-z0-9_-]*")
 
-#: Reserved IDs that would collide with vault namespace conventions.
+#: Reserved names that would collide with vault namespace conventions.
 #: ``"default"`` is the shared credential bucket every project starts on;
 #: a project literally named ``default`` with ``credentials_scope: project``
 #: would silently overwrite the host-wide row.
-_RESERVED_PROJECT_IDS: frozenset[str] = frozenset({"default"})
+_RESERVED_PROJECT_NAMES: frozenset[str] = frozenset({"default"})
 
 
-def is_valid_project_id(project_id: str) -> bool:
-    """Return whether *project_id* matches the ``[a-z0-9][a-z0-9_-]*`` contract.
+def is_valid_project_name(project_name: str) -> bool:
+    """Return whether *project_name* matches the ``[a-z0-9][a-z0-9_-]*`` contract.
 
     Pattern-only — this is the structural/path-safety predicate used by
     discovery and task-path guards.  Reserved-name policy (e.g.
-    ``"default"``) lives in [`validate_project_id`][terok.lib.core.project_model.validate_project_id]
+    ``"default"``) lives in [`validate_project_name`][terok.lib.core.project_model.validate_project_name]
     instead: a legacy on-disk project named ``default`` must still be
     *discoverable* so [`discover_projects`][terok.lib.core.projects.discover_projects]
     can surface it as broken (with a rename hint) rather than silently
     dropping it from the listing.
     """
-    return bool(project_id) and _PROJECT_ID_RE.fullmatch(project_id) is not None
+    return bool(project_name) and _PROJECT_NAME_RE.fullmatch(project_name) is not None
 
 
-def validate_project_id(project_id: str) -> None:
-    """Ensure a project ID is safe for use as a directory and OCI image name.
+def validate_project_name(project_name: str) -> None:
+    """Ensure a project name is safe for use as a directory and OCI image name.
 
-    Raises SystemExit if the ID is empty, contains uppercase letters, path
+    Raises SystemExit if the name is empty, contains uppercase letters, path
     separators or traversal sequences, uses characters outside
     ``[a-z0-9_-]``, or collides with a reserved name (currently only
     ``"default"`` — the shared vault credential bucket).
     """
-    if not project_id or _PROJECT_ID_RE.fullmatch(project_id) is None:
+    if not project_name or _PROJECT_NAME_RE.fullmatch(project_name) is None:
         raise SystemExit(
-            f"Invalid project ID '{project_id}': "
+            f"Invalid project name '{project_name}': "
             "must start with a lowercase letter or digit, followed by lowercase letters, "
             "digits, hyphens, or underscores"
         )
-    if project_id in _RESERVED_PROJECT_IDS:
+    if project_name in _RESERVED_PROJECT_NAMES:
         raise SystemExit(
-            f"Project ID '{project_id}' is reserved (it collides with the shared "
+            f"Project name '{project_name}' is reserved (it collides with the shared "
             "credential bucket).  Pick a different name."
         )

@@ -90,7 +90,7 @@ def inject_pt_resolver(
 
     For each ``(path, kwarg)`` entry, wraps the handler at *path* so
     that, if the named keyword argument is a string containing ``/``,
-    it's split on the first slash, treated as ``(project_id,
+    it's split on the first slash, treated as ``(project_name,
     task_id)``, and resolved to the task's current container name via
     [`lookup_container_by_pt`][terok.lib.orchestration.tasks.query.lookup_container_by_pt].
     Inputs without ``/`` (raw container ids) pass through untouched —

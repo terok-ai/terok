@@ -659,8 +659,8 @@ depends_on = []
 expose = [
     "ProjectConfig",
     "PresetInfo",
-    "is_valid_project_id",
-    "validate_project_id",
+    "is_valid_project_name",
+    "validate_project_name",
 ]
 from = ["terok.lib.core.project_model"]
 
@@ -675,10 +675,11 @@ expose = [
     "load_project",
     "load_preset",
     "list_presets",
+    "normalize_project_name",
     "derive_project",
     "require_project_exists",
     "set_project_image_agents",
-    "validate_project_id",
+    "validate_project_name",
 ]
 from = ["terok.lib.core.projects"]
 
@@ -815,7 +816,7 @@ expose = ["list_images", "find_orphaned_images", "cleanup_images", "remove_image
 from = ["terok.lib.domain.image_cleanup"]
 
 [[interfaces]]
-expose = ["StorageOverview", "ProjectDetail", "ProjectSummary", "get_storage_overview", "get_project_storage_detail", "format_bytes", "parse_image_size", "ORPHAN_PROJECT_ID"]
+expose = ["StorageOverview", "ProjectDetail", "ProjectSummary", "get_storage_overview", "get_project_storage_detail", "format_bytes", "parse_image_size", "ORPHAN_PROJECT_NAME"]
 from = ["terok.lib.domain.storage"]
 
 [[interfaces]]

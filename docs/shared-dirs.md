@@ -9,7 +9,7 @@ When a task starts, terok mounts host directories into the container for workspa
 
 ## Per-Task Workspace
 
-- Host path: `<state_dir>/tasks/<project_id>/<task_id>/workspace-dangerous`
+- Host path: `<state_dir>/tasks/<project_name>/<task_id>/workspace-dangerous`
 - Mounted as: `<host_dir>:/workspace:Z`
 - Created automatically when the task runs (permissions `700`).
 - The project repository is cloned or synced here by `init-ssh-and-repo.sh`.
@@ -59,7 +59,7 @@ authenticated).  Public HTTPS repos don't need SSH setup at all.
 ### Setup
 
 ```bash
-terok project ssh-init <project_id> [--key-type ed25519|rsa] [--comment STRING] [--force]
+terok project ssh-init <project_name> [--key-type ed25519|rsa] [--comment STRING] [--force]
 ```
 
 Mints a keypair directly into the vault credential database; no on-disk

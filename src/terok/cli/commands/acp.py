@@ -12,7 +12,7 @@ This module owns only the orchestration glue terok adds on top of
 ``terok-executor``'s host-proxy daemon:
 
 - ``acp list`` walks projects → tasks → endpoints,
-- ``acp connect`` translates ``(project_id, task_id)`` to a container
+- ``acp connect`` translates ``(project_name, task_id)`` to a container
   name and per-task socket path, lazy-spawns the executor daemon
   (``python -m terok_executor.acp.daemon``), and bridges the caller's
   stdio to that socket so an ACP client (Zed, Toad, …) launching us
@@ -45,7 +45,7 @@ from ...lib.core.config import is_experimental
 from ...lib.core.paths import acp_log_path, acp_socket_path
 from ...lib.orchestration.tasks import resolve_task_id
 from ...lib.util.subprocess_env import child_process_env
-from ._completers import add_project_id, add_task_id
+from ._completers import add_project_name, add_task_id
 
 if TYPE_CHECKING:
     from terok.lib.api.agents import ACPEndpointStatus
@@ -67,13 +67,13 @@ def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) ->
     sub = p.add_subparsers(dest="acp_cmd", required=True)
 
     p_list = sub.add_parser("list", help="List ACP endpoints across running tasks")
-    add_project_id(p_list, nargs="?", default=None)
+    add_project_name(p_list, nargs="?", default=None)
 
     p_connect = sub.add_parser(
         "connect",
         help="Connect stdio to a task's ACP socket (spawning the daemon if needed)",
     )
-    add_project_id(p_connect)
+    add_project_name(p_connect)
     add_task_id(p_connect)
 
 
@@ -82,25 +82,25 @@ def dispatch(args: argparse.Namespace) -> bool:
     if args.cmd != "acp":
         return False
     if args.acp_cmd == "list":
-        _cmd_list(getattr(args, "project_id", None))
+        _cmd_list(getattr(args, "project_name", None))
     elif args.acp_cmd == "connect":
-        _cmd_connect(args.project_id, args.task_id)
+        _cmd_connect(args.project_name, args.task_id)
     return True
 
 
 # ── list ─────────────────────────────────────────────────────────────────
 
 
-def _cmd_list(project_id_filter: str | None) -> None:
+def _cmd_list(project_name_filter: str | None) -> None:
     """Print one row per ACP endpoint, grouped by project."""
-    projects = _projects_to_show(project_id_filter)
+    projects = _projects_to_show(project_name_filter)
     # ``from __future__ import annotations`` (top of module) makes the
     # ACPEndpointStatus reference below a deferred string — no runtime
     # import needed, so the executor stays out of the cold-start path.
     rows: list[tuple[str, str, ACPEndpointStatus, str | None, Path]] = []
     for project in projects:
         for ep in project.acp_endpoints():
-            rows.append((ep.project_id, ep.task_id, ep.status, ep.bound_agent, ep.socket_path))
+            rows.append((ep.project_name, ep.task_id, ep.status, ep.bound_agent, ep.socket_path))
 
     if not rows:
         print("No ACP endpoints found (no running tasks).")
@@ -121,14 +121,14 @@ def _cmd_list(project_id_filter: str | None) -> None:
         )
 
 
-def _projects_to_show(project_id_filter: str | None) -> list[Project]:
+def _projects_to_show(project_name_filter: str | None) -> list[Project]:
     """Resolve project filter to the list of project objects to walk."""
     from ...lib.api import get_project
 
-    if project_id_filter:
-        return [get_project(project_id_filter)]
+    if project_name_filter:
+        return [get_project(project_name_filter)]
     project_infos = list_projects()
-    return [get_project(info.id) for info in project_infos]
+    return [get_project(info.name) for info in project_infos]
 
 
 # ── connect ──────────────────────────────────────────────────────────────
@@ -167,7 +167,7 @@ def _check_experimental_ack() -> None:
     raise SystemExit(2)
 
 
-def _cmd_connect(project_id: str, task_id: str) -> None:
+def _cmd_connect(project_name: str, task_id: str) -> None:
     """Bridge the caller's stdio to a task's ACP socket.
 
     Refuses to run unless [`_check_experimental_ack`][terok.cli.commands.acp._check_experimental_ack] passes.
@@ -177,11 +177,11 @@ def _cmd_connect(project_id: str, task_id: str) -> None:
     either side reaches EOF.
     """
     _check_experimental_ack()
-    task_id = resolve_task_id(project_id, task_id)
-    sock_path = acp_socket_path(project_id, task_id)
-    log_path = acp_log_path(project_id, task_id)
+    task_id = resolve_task_id(project_name, task_id)
+    sock_path = acp_socket_path(project_name, task_id)
+    log_path = acp_log_path(project_name, task_id)
     if not acp_socket_is_live(sock_path):
-        daemon = _spawn_daemon(project_id, task_id, sock_path, log_path)
+        daemon = _spawn_daemon(project_name, task_id, sock_path, log_path)
         _wait_for_socket(
             sock_path, timeout=_DAEMON_BIND_TIMEOUT_SEC, daemon=daemon, log_path=log_path
         )
@@ -189,7 +189,7 @@ def _cmd_connect(project_id: str, task_id: str) -> None:
 
 
 def _spawn_daemon(
-    project_id: str, task_id: str, sock_path: Path, log_path: Path
+    project_name: str, task_id: str, sock_path: Path, log_path: Path
 ) -> subprocess.Popen:
     """Resolve project+task → container name and spawn the executor daemon.
 
@@ -207,10 +207,10 @@ def _spawn_daemon(
         get_task_meta,
     )
 
-    task_meta = get_task_meta(project_id, task_id)
+    task_meta = get_task_meta(project_name, task_id)
     if task_meta.mode is None:
         raise SystemExit(f"task {task_id} has no mode set; cannot resolve container name")
-    cname = resolve_container_name(project_id, task_meta.mode, task_id)
+    cname = resolve_container_name(project_name, task_meta.mode, task_id)
     log_path.parent.mkdir(parents=True, exist_ok=True)
     log_fd = open(log_path, "ab", buffering=0)  # noqa: SIM115 — handed to Popen
     try:

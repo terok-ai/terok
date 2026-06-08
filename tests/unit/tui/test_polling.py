@@ -35,22 +35,22 @@ def reset_notification_after_sync(staleness: GateStalenessInfo, *, notified: boo
     return False if not staleness.is_stale and not staleness.error else notified
 
 
-def maybe_auto_sync(project_id: str, cooldowns: dict[str, float], sync_calls: list[str]) -> None:
+def maybe_auto_sync(project_name: str, cooldowns: dict[str, float], sync_calls: list[str]) -> None:
     """Schedule auto-sync once per project per cooldown window."""
     now = time.time()
-    if now < cooldowns.get(project_id, 0):
+    if now < cooldowns.get(project_name, 0):
         return
-    cooldowns[project_id] = now + 300
-    sync_calls.append(project_id)
+    cooldowns[project_name] = now + 300
+    sync_calls.append(project_name)
 
 
 def apply_poll_result(
-    poll_project_id: str,
-    current_project_id: str,
+    poll_project_name: str,
+    current_project_name: str,
     staleness: GateStalenessInfo,
 ) -> GateStalenessInfo | None:
     """Return the poll result only when it still matches the currently selected project."""
-    return staleness if poll_project_id == current_project_id else None
+    return staleness if poll_project_name == current_project_name else None
 
 
 def test_staleness_notification_only_once() -> None:

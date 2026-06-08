@@ -330,7 +330,7 @@ class _PlainTextTuiFormatter:
 class TaskContainerRef:
     """Identifies a task's container for log viewing."""
 
-    project_id: str
+    project_name: str
     task_id: str
     mode: str
     container_name: str
@@ -384,7 +384,7 @@ class LogViewerScreen(screen.Screen[None]):
             follow: If True, stream logs in real-time with auto-scroll.
         """
         super().__init__()
-        self.project_id = ref.project_id
+        self.project_name = ref.project_name
         self.task_id = ref.task_id
         self.mode = ref.mode
         self.container_name = ref.container_name

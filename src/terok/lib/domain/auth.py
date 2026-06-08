@@ -53,17 +53,17 @@ def resolve_auth_provider(name: str) -> str:
     return auth_provider_aliases().get(name, name)
 
 
-def resolve_credential_routing(project_id: str | None) -> tuple[Path, str]:
+def resolve_credential_routing(project_name: str | None) -> tuple[Path, str]:
     """Resolve ``(mounts_dir, credential_set)`` for an auth flow.
 
     The single source of truth for credential routing, shared by the CLI
     [`authenticate`][terok.lib.domain.auth.authenticate] flow and the
     TUI's native auth path so the two can't drift.
 
-    Host-wide auth (``project_id is None``) and ``shared``-scope projects
+    Host-wide auth (``project_name is None``) and ``shared``-scope projects
     land in the host-wide mount tree + the ``"default"`` vault set.  A
     ``project``-scoped project gets its private subtree + a vault set
-    keyed by the project id.
+    keyed by the project name.
 
     Side effect: for a ``project``-scoped project the per-project mount
     tree is created (mode ``0o700``) if absent — the OAuth post-capture
@@ -75,10 +75,10 @@ def resolve_credential_routing(project_id: str | None) -> tuple[Path, str]:
     from ..core.projects import load_project
     from ..orchestration.environment import project_mounts_dir
 
-    if project_id is None:
+    if project_name is None:
         return sandbox_live_mounts_dir(), "default"
 
-    project = load_project(project_id)
+    project = load_project(project_name)
     mounts_dir = project_mounts_dir(project)
     if project.credentials_scope == "project":
         mounts_dir.mkdir(parents=True, exist_ok=True, mode=0o700)
@@ -86,10 +86,10 @@ def resolve_credential_routing(project_id: str | None) -> tuple[Path, str]:
     return mounts_dir, project.credential_set
 
 
-def authenticate(provider: str, project_id: str | None = None) -> None:
+def authenticate(provider: str, project_name: str | None = None) -> None:
     """Run the auth flow for *provider*, host-wide by default.
 
-    When *project_id* is given, the project's L2 CLI image is reused — the
+    When *project_name* is given, the project's L2 CLI image is reused — the
     escape hatch for users who want project-scoped credentials or happen to
     have a project image handy.  When omitted, terok resolves an L1 image
     (shared across projects that build on the same base) and offers to
@@ -103,9 +103,9 @@ def authenticate(provider: str, project_id: str | None = None) -> None:
     Credential routing follows the named project's
     [`credentials_scope`][terok.lib.core.project_model.ProjectConfig.credentials_scope]:
     ``"shared"`` (default) writes to the host-wide bucket every project
-    sees, ``"project"`` carves out a private set under the project's id
+    sees, ``"project"`` carves out a private set under the project's name
     and stores the agent-config files under the project's own mount
-    tree.  When *project_id* is ``None``, both default to the host-wide
+    tree.  When *project_name* is ``None``, both default to the host-wide
     bucket — no project context exists to override them.
 
     Providers that declare a headless device-code login (``device_auth`` in
@@ -128,12 +128,12 @@ def authenticate(provider: str, project_id: str | None = None) -> None:
     )
 
     image: str | Callable[[], str]
-    if project_id is None:
+    if project_name is None:
         image = lambda: _resolve_host_auth_image(provider)  # noqa: E731 — lazy by design
     else:
-        image = project_cli_image(project_id)
+        image = project_cli_image(project_name)
 
-    mounts_dir, credential_set = resolve_credential_routing(project_id)
+    mounts_dir, credential_set = resolve_credential_routing(project_name)
 
     # The roster declares which auth modes a provider supports; terok's
     # config can disable the OAuth path (experimental flag + per-provider
@@ -141,7 +141,7 @@ def authenticate(provider: str, project_id: str | None = None) -> None:
     # the same gate into the executor's auth flow so the per-provider
     # prompt agrees.
     Authenticator(provider).run(
-        project_id,
+        project_name,
         mounts_dir=mounts_dir,
         image=image,
         expose_token=expose,
@@ -233,7 +233,7 @@ def _resolve_host_auth_image(provider: str) -> str:
     hint = (
         "No agent image present.  Build one with: terok image build "
         "(or terok project build <project>), "
-        "or pass --project <id> to reuse an existing project's image."
+        "or pass --project <name> to reuse an existing project's image."
     )
     if not (sys.stdin.isatty() and sys.stdout.isatty()):
         raise SystemExit(hint)

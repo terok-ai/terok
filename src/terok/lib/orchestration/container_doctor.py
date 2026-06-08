@@ -4,7 +4,7 @@
 """In-container health checks via the layered doctor protocol.
 
 Entry point: [`ContainerDoctor`][terok.lib.orchestration.container_doctor.ContainerDoctor].
-``ContainerDoctor(project_id, task_id).run(...)`` collects checks from
+``ContainerDoctor(project_name, task_id).run(...)`` collects checks from
 ``terok_sandbox.doctor`` (network, shield),
 ``terok_executor.doctor`` (bridges, credentials, env), and adds
 terok-level checks (git identity, remote URL).  It executes probes
@@ -233,7 +233,7 @@ def _port_drift_check(env_var: str, label: str, expected: int) -> DoctorCheck:
 
 
 def _terok_doctor_checks(
-    project_id: str,
+    project_name: str,
     token_broker_port: int | None,
     ssh_signer_port: int | None,
 ) -> list[DoctorCheck]:
@@ -244,7 +244,7 @@ def _terok_doctor_checks(
     doesn't bake a ``TEROK_*_PORT`` env into the container in that mode,
     so there is no value to drift from.
     """
-    project = load_project(project_id)
+    project = load_project(project_name)
 
     checks: list[DoctorCheck] = []
 
@@ -401,7 +401,7 @@ def _check_per_container_services(cname: str) -> list[_CheckResult]:
 
 
 def _collect_all_checks(
-    project_id: str,
+    project_name: str,
     task_dir: Path,
 ) -> list[DoctorCheck]:
     """Gather health checks from sandbox, agent, and terok layers.
@@ -441,7 +441,7 @@ def _collect_all_checks(
         )
     )
     checks.extend(AgentRoster.shared().doctor_checks(token_broker_port=token_broker_port))
-    checks.extend(_terok_doctor_checks(project_id, token_broker_port, ssh_signer_port))
+    checks.extend(_terok_doctor_checks(project_name, token_broker_port, ssh_signer_port))
     return checks
 
 
@@ -478,23 +478,23 @@ def _apply_fix(runtime: ContainerRuntime, cname: str, check: DoctorCheck) -> _Ch
 
 
 def _resolve_running_container(
-    project_id: str, task_id: str
+    project_name: str, task_id: str
 ) -> tuple[str, Path, list[_CheckResult]]:
     """Resolve a task to its running container name and task directory.
 
     Returns ``(cname, task_dir, [])`` on success.  If the task cannot be
     checked, *cname* is empty and the list holds the skip/warning result.
     """
-    label = f"Task {project_id}/{task_id}"
-    if not task_exists(project_id, task_id):
+    label = f"Task {project_name}/{task_id}"
+    if not task_exists(project_name, task_id):
         return ("", Path(), [("warn", label, "metadata not found")])
 
-    meta, _ = load_task_meta(project_id, task_id)
+    meta, _ = load_task_meta(project_name, task_id)
     mode = meta.get("mode")
     if not mode:
         return ("", Path(), [("warn", label, "never started (no mode)")])
 
-    cname = container_name(project_id, mode, task_id)
+    cname = container_name(project_name, mode, task_id)
     # State probe is runtime-agnostic — ``podman inspect`` returns
     # the same shape whether the container booted under crun or krun
     # — so the early reachability check goes through PodmanRuntime
@@ -506,7 +506,7 @@ def _resolve_running_container(
     if state != "running":
         return ("", Path(), [("info", label, f"not running ({state}) — skipped")])
 
-    task_dir = load_project(project_id).tasks_root / str(task_id)
+    task_dir = load_project(project_name).tasks_root / str(task_id)
     return (cname, task_dir, [])
 
 
@@ -535,16 +535,16 @@ def _dispatch_host_side(check: DoctorCheck, task_dir: Path, cname: str) -> _Chec
 class ContainerDoctor:
     """Layered in-container health-check orchestrator for one task.
 
-    Construct with ``ContainerDoctor(project_id, task_id)`` and call
+    Construct with ``ContainerDoctor(project_name, task_id)`` and call
     :meth:`run` to execute every probe in sandbox / agent / terok
     layers against the running container.
 
-    The instance carries the ``(project_id, task_id)`` pair that names
+    The instance carries the ``(project_name, task_id)`` pair that names
     the target task; runtime resolution happens inside :meth:`run` so
     the cheap construction is free of subprocess work.
     """
 
-    project_id: str
+    project_name: str
     """Project the task belongs to."""
 
     task_id: str
@@ -573,7 +573,7 @@ class ContainerDoctor:
         the sickbay command to tag multi-task runs with ``"Task
         pid/tid: "``.
         """
-        cname, task_dir, early = _resolve_running_container(self.project_id, self.task_id)
+        cname, task_dir, early = _resolve_running_container(self.project_name, self.task_id)
         if early:
             if reporter is not None:
                 for status, label, detail in early:
@@ -585,8 +585,8 @@ class ContainerDoctor:
         # reaches the container through the same backend that booted it
         # (under krun: SSH over a passt-forwarded TCP port; under crun:
         # podman exec).
-        runtime = _rt.resolve_runtime(load_project(self.project_id))
-        checks = list(_collect_all_checks(self.project_id, task_dir))
+        runtime = _rt.resolve_runtime(load_project(self.project_name))
+        checks = list(_collect_all_checks(self.project_name, task_dir))
 
         # Per-container vault + gate reachability — host-side, best-effort.
         # Emitted after the layered probes so they read as a closing
@@ -617,7 +617,7 @@ class ContainerDoctor:
 
 
 def run_container_doctor(
-    project_id: str,
+    project_name: str,
     task_id: str,
     *,
     fix: bool = False,
@@ -625,7 +625,7 @@ def run_container_doctor(
     label_prefix: str = "",
 ) -> list[_CheckResult]:
     """Shim around :meth:`ContainerDoctor.run` for back-compat callers."""
-    return ContainerDoctor(project_id, task_id).run(
+    return ContainerDoctor(project_name, task_id).run(
         fix=fix, reporter=reporter, label_prefix=label_prefix
     )
 

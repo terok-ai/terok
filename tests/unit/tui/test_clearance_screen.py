@@ -352,7 +352,7 @@ class TestClearanceTUIIntegration:
         task = widgets.TaskMeta(
             task_id="1", mode="cli", workspace="/w", web_port=None, container_state="running"
         )
-        screen = screens.TaskDetailsScreen(task=task, has_tasks=True, project_id="p")
+        screen = screens.TaskDetailsScreen(task=task, has_tasks=True, project_name="p")
         screen.dismiss = mock.Mock()
         screen.on_key(make_key_event("C"))
         screen.dismiss.assert_called_once_with("show_clearance")
@@ -360,7 +360,7 @@ class TestClearanceTUIIntegration:
     def test_task_details_shift_c_noop_without_tasks(self) -> None:
         """Pressing C without tasks does nothing."""
         screens, _ = import_screens()
-        screen = screens.TaskDetailsScreen(task=None, has_tasks=False, project_id="p")
+        screen = screens.TaskDetailsScreen(task=None, has_tasks=False, project_name="p")
         screen.dismiss = mock.Mock()
         screen.on_key(make_key_event("C"))
         screen.dismiss.assert_not_called()

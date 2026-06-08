@@ -191,7 +191,7 @@ class TestCliSshInit:
         args = argparse.Namespace(
             cmd="project",
             project_cmd="ssh-init",
-            project_id="proj",
+            project_name="proj",
             key_type="ed25519",
             comment=None,
             force=False,
@@ -288,9 +288,9 @@ class TestTaskRunInteractive:
             unittest.mock.patch(runner_path) as mock_runner,
         ):
             run_main(argv)
-        project_id, expected_task_id, kwargs = expected_call
-        mock_new.assert_called_once_with(project_id, name=None)
-        mock_runner.assert_called_once_with(project_id, expected_task_id, **kwargs)
+        project_name, expected_task_id, kwargs = expected_call
+        mock_new.assert_called_once_with(project_name, name=None)
+        mock_runner.assert_called_once_with(project_name, expected_task_id, **kwargs)
         # --no-attach must suppress the login exec in every interactive mode.
         mock_task_login.assert_not_called()
 

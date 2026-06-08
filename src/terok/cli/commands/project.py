@@ -18,16 +18,16 @@ from ...lib.api import (
     set_project_image_agents,
     summarize_ssh_init,
 )
-from ...lib.core.projects import list_presets, list_projects, load_project
+from ...lib.core.projects import list_presets, list_projects, load_project, normalize_project_name
 from ...lib.domain.project import make_git_gate
 from ...lib.domain.wizards.new_project import offer_edit_then_init, run_wizard
-from ._completers import complete_project_ids as _complete_project_ids, set_completer
+from ._completers import complete_project_names as _complete_project_names, set_completer
 from .setup import cmd_project_init
 
 
 def _add_project_arg(parser: argparse.ArgumentParser, **kwargs: Any) -> None:
-    """Add a ``project_id`` positional with project-ID completion."""
-    set_completer(parser.add_argument("project_id", **kwargs), _complete_project_ids)
+    """Add a ``project_name`` positional with project name completion."""
+    set_completer(parser.add_argument("project_name", **kwargs), _complete_project_names)
 
 
 def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
@@ -50,17 +50,30 @@ def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) ->
         help="Create a new project derived from an existing one (shared infra, fresh agent config)",
     )
     set_completer(
-        p_derive.add_argument("source_id", help="Source project ID to derive from"),
-        _complete_project_ids,
+        p_derive.add_argument("source_id", help="Source project name to derive from"),
+        _complete_project_names,
     )
-    p_derive.add_argument("new_id", help="New project ID")
+    p_derive.add_argument("new_id", help="New project name")
+
+    # normalize-name
+    p_normalize = sub.add_parser(
+        "normalize-name",
+        help="Repair project.yml so project.name matches the project directory name",
+    )
+    _add_project_arg(
+        p_normalize,
+        help=(
+            "Project directory name to write into project.yml "
+            "(works even when that project is currently broken)"
+        ),
+    )
 
     # delete
     p_delete = sub.add_parser(
         "delete",
         help="Delete a project and all its associated data (non-recoverable)",
     )
-    _add_project_arg(p_delete, help="Project ID to delete")
+    _add_project_arg(p_delete, help="Project name to delete")
     p_delete.add_argument("--force", action="store_true", help="Skip confirmation prompt")
 
     # init — full setup
@@ -210,15 +223,17 @@ def dispatch(args: argparse.Namespace) -> bool:
             run_wizard(init_fn=cmd_project_init)
         case "derive":
             _cmd_project_derive(args.source_id, args.new_id)
+        case "normalize-name":
+            _cmd_project_normalize_name(args.project_name)
         case "delete":
-            _cmd_project_delete(args.project_id, force=args.force)
+            _cmd_project_delete(args.project_name, force=args.force)
         case "init":
-            cmd_project_init(args.project_id)
+            cmd_project_init(args.project_name)
         case "generate":
-            generate_dockerfiles(args.project_id)
+            generate_dockerfiles(args.project_name)
         case "build":
             build_images(
-                args.project_id,
+                args.project_name,
                 include_dev=getattr(args, "dev", False),
                 refresh_agents=getattr(args, "refresh_agents", False),
                 full_rebuild=getattr(args, "full_rebuild", False),
@@ -227,15 +242,15 @@ def dispatch(args: argparse.Namespace) -> bool:
         case "ssh-init":
             _cmd_ssh_init(args)
         case "gate-path":
-            _cmd_gate_path(args.project_id)
+            _cmd_gate_path(args.project_name)
         case "gate-sync":
             _cmd_gate_sync(args)
         case "presets":
             if args.presets_cmd == "list":
-                _cmd_presets(args.project_id)
+                _cmd_presets(args.project_name)
         case "agents":
             if args.agents_cmd == "set":
-                _cmd_agents_set(args.project_id, getattr(args, "selection", None))
+                _cmd_agents_set(args.project_name, getattr(args, "selection", None))
         case _:  # pragma: no cover — required=True makes argparse enforce this
             return False
     return True
@@ -254,7 +269,9 @@ def _cmd_project_list() -> None:
     for p in projs:
         upstream = p.upstream_url or "-"
         shared = f" shared={p.shared_dir}" if p.shared_dir else ""
-        print(f"- {p.id} [{p.security_class}] upstream={upstream}{shared} config_root={p.root}")
+        print(f"- {p.name} [{p.security_class}] upstream={upstream}{shared} config_root={p.root}")
+        if p.description:
+            print(f"    {p.description}")
 
 
 def _cmd_project_derive(source_id: str, new_id: str) -> None:
@@ -269,10 +286,16 @@ def _cmd_project_derive(source_id: str, new_id: str) -> None:
     offer_edit_then_init(config_path, new_id, init_fn=cmd_project_init)
 
 
-def _cmd_project_delete(project_id: str, *, force: bool = False) -> None:
+def _cmd_project_normalize_name(project_name: str) -> None:
+    """Rewrite project.yml so ``project.name`` matches *project_name*."""
+    path = normalize_project_name(project_name)
+    print(f"Updated {path}: project.name = {project_name!r}")
+
+
+def _cmd_project_delete(project_name: str, *, force: bool = False) -> None:
     """Delete a project after confirmation (unless --force)."""
-    project = load_project(project_id)
-    pid = project.id
+    project = load_project(project_name)
+    pid = project.name
 
     print(f"Project: {pid}")
     print(f"  Config root: {project.root}")
@@ -319,7 +342,7 @@ def _cmd_project_delete(project_id: str, *, force: bool = False) -> None:
 
 def _cmd_ssh_init(args: argparse.Namespace) -> None:
     """Provision a vault-managed SSH keypair for the project."""
-    result = get_project(args.project_id).provision_ssh_key(
+    result = get_project(args.project_name).provision_ssh_key(
         key_type=getattr(args, "key_type", "ed25519"),
         comment=getattr(args, "comment", None),
         force=getattr(args, "force", False),
@@ -327,7 +350,7 @@ def _cmd_ssh_init(args: argparse.Namespace) -> None:
     summarize_ssh_init(result)
 
 
-def _cmd_gate_path(project_id: str) -> None:
+def _cmd_gate_path(project_name: str) -> None:
     """Print the project's host-side git gate mirror as a ``file://`` URL.
 
     Plain stdout so callers can paste the URL into an IDE or a host-side
@@ -345,17 +368,17 @@ def _cmd_gate_path(project_id: str) -> None:
     is printed even if the bare repo doesn't exist yet (run ``gate-sync``
     to create it).
     """
-    print(load_project(project_id).gate_path.as_uri())
+    print(load_project(project_name).gate_path.as_uri())
 
 
 def _cmd_gate_sync(args: argparse.Namespace) -> None:
     """Sync the host-side git gate for a project."""
     from terok.lib.api.gate import GateAuthNotConfigured
 
-    project = load_project(args.project_id)
+    project = load_project(args.project_name)
     if not project.gate_enabled:
         raise SystemExit(
-            f"Project {project.id!r} has gate.enabled: false — refusing to sync.\n"
+            f"Project {project.name!r} has gate.enabled: false — refusing to sync.\n"
             "Either set gate.enabled: true in project.yml, or drop the "
             "gate-sync step entirely (the container clones directly from "
             "upstream, if any)."
@@ -369,7 +392,7 @@ def _cmd_gate_sync(args: argparse.Namespace) -> None:
     except GateAuthNotConfigured as exc:
         raise SystemExit(
             f"{exc}\n\nEither:\n"
-            f"  * terok project ssh-init {args.project_id}  "
+            f"  * terok project ssh-init {args.project_name}  "
             "(generate a key, then register it with the remote), or\n"
             "  * pass --use-personal-ssh to fall through to ~/.ssh."
         ) from exc
@@ -383,23 +406,23 @@ def _cmd_gate_sync(args: argparse.Namespace) -> None:
     )
 
 
-def _cmd_presets(project_id: str) -> None:
+def _cmd_presets(project_name: str) -> None:
     """List available agent-config presets for a project."""
-    presets = list_presets(project_id)
+    presets = list_presets(project_name)
     if not presets:
-        print(f"No presets found for project '{project_id}'")
+        print(f"No presets found for project '{project_name}'")
         return
-    print(f"Presets for '{project_id}':")
+    print(f"Presets for '{project_name}':")
     for info in presets:
         print(f"  - {info.name} ({info.source})")
 
 
-def _cmd_agents_set(project_id: str, selection: str | None) -> None:
+def _cmd_agents_set(project_name: str, selection: str | None) -> None:
     """Validate *selection* and write it to the project's ``image.agents``."""
     from terok.lib.api.agents import AgentRoster
 
     roster = AgentRoster.shared()
     raw = selection if selection is not None else roster.prompt_selection()
     roster.validate_selection(raw)
-    path = set_project_image_agents(project_id, raw)
+    path = set_project_image_agents(project_name, raw)
     print(f"Wrote image.agents = {raw!r} to {path}")

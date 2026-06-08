@@ -18,8 +18,8 @@ from terok.lib.domain.wizards.new_project import (
     SECURITY_CLASSES,
     Question,
     _load_base_choices,
-    _slugify_project_id,
-    _validate_project_id,
+    _slugify_project_name,
+    _validate_project_name,
     collect_wizard_inputs,
     generate_config,
     prompt_agent_override,
@@ -47,7 +47,7 @@ def wizard_values(
     *,
     security_class: str = "online",
     base: str = "fedora",
-    project_id: str = "test-proj",
+    project_name: str = "test-proj",
     upstream_url: str = "https://github.com/user/repo.git",
     default_branch: str = "main",
     agents: str | None = None,
@@ -58,7 +58,7 @@ def wizard_values(
     values: dict[str, object] = {
         "security_class": security_class,
         "base": base,
-        "project_id": project_id,
+        "project_name": project_name,
         "upstream_url": upstream_url,
         "default_branch": default_branch,
         "user_snippet": user_snippet,
@@ -70,7 +70,7 @@ def wizard_values(
 
 
 @pytest.mark.parametrize(
-    ("project_id", "valid"),
+    ("project_name", "valid"),
     [
         pytest.param("myproject", True, id="simple"),
         pytest.param("my-project", True, id="hyphen"),
@@ -86,9 +86,9 @@ def wizard_values(
         pytest.param("default", False, id="reserved-default"),
     ],
 )
-def test_validate_project_id(project_id: str, valid: bool) -> None:
-    """Project ID validation accepts only the supported slug-like IDs."""
-    error = _validate_project_id(project_id)
+def test_validate_project_name(project_name: str, valid: bool) -> None:
+    """Project name validation accepts only the supported slug-like IDs."""
+    error = _validate_project_name(project_name)
     assert (error is None) is valid
 
 
@@ -98,14 +98,14 @@ def test_validate_project_id(project_id: str, valid: bool) -> None:
         pytest.param(
             # sec, base, pid, upstream, branch, snippet-y/N, creds-scope, override-agents-y/N
             ["1", "1", "myproj", "https://example.com/r.git", "main", "n", "1", "n"],
-            wizard_values(project_id="myproj", upstream_url="https://example.com/r.git"),
+            wizard_values(project_name="myproj", upstream_url="https://example.com/r.git"),
             id="collect-all-values-no-override",
         ),
         pytest.param(
             ["2", "1", "gkproj", "git@host:r.git", "", "n", "1", "n"],
             wizard_values(
                 security_class="gatekeeping",
-                project_id="gkproj",
+                project_name="gkproj",
                 upstream_url="git@host:r.git",
                 default_branch="",
             ),
@@ -115,7 +115,7 @@ def test_validate_project_id(project_id: str, valid: bool) -> None:
             ["1", "2", "proj", "https://example.com/r.git", "", "n", "1", "n"],
             wizard_values(
                 base="nvidia",
-                project_id="proj",
+                project_name="proj",
                 upstream_url="https://example.com/r.git",
                 default_branch="",
             ),
@@ -136,7 +136,7 @@ def test_validate_project_id(project_id: str, valid: bool) -> None:
             ],
             wizard_values(
                 base="nvidia",
-                project_id="proj",
+                project_name="proj",
                 upstream_url="https://example.com/r.git",
                 default_branch="dev",
                 agents="claude,vibe",
@@ -146,12 +146,12 @@ def test_validate_project_id(project_id: str, valid: bool) -> None:
         ),
         pytest.param(
             ["1", "1", "!!!", "good-id", "https://example.com/r.git", "main", "n", "1", "n"],
-            wizard_values(project_id="good-id", upstream_url="https://example.com/r.git"),
-            id="retry-invalid-project-id",
+            wizard_values(project_name="good-id", upstream_url="https://example.com/r.git"),
+            id="retry-invalid-project-name",
         ),
         pytest.param(
             ["1", "1", "proj", "", "main", "n", "1", "n"],
-            wizard_values(project_id="proj", upstream_url=""),
+            wizard_values(project_name="proj", upstream_url=""),
             id="empty-upstream-url-accepted",
         ),
     ],
@@ -185,8 +185,8 @@ def test_collect_wizard_inputs_cancellation_paths(
         assert collect_wizard_inputs() is None
 
 
-def test_collect_wizard_inputs_lowercases_project_id() -> None:
-    """Uppercase project IDs are normalised with a friendly note."""
+def test_collect_wizard_inputs_lowercases_project_name() -> None:
+    """Uppercase project names are normalised with a friendly note."""
     with (
         patch(
             "builtins.input",
@@ -196,7 +196,9 @@ def test_collect_wizard_inputs_lowercases_project_id() -> None:
     ):
         result = collect_wizard_inputs()
 
-    assert result == wizard_values(project_id="myproject", upstream_url="https://example.com/r.git")
+    assert result == wizard_values(
+        project_name="myproject", upstream_url="https://example.com/r.git"
+    )
     printed = [" ".join(str(arg) for arg in call.args) for call in mock_print.call_args_list]
     assert any("normalised to 'myproject'" in line for line in printed)
 
@@ -215,9 +217,9 @@ def test_collect_wizard_inputs_lowercases_project_id() -> None:
         pytest.param("terok pages", "terok-pages", id="the-field-report-case"),
     ],
 )
-def test_slugify_project_id(raw: str, expected: str) -> None:
-    """``_slugify_project_id`` meets users halfway without silently mangling intent."""
-    assert _slugify_project_id(raw) == expected
+def test_slugify_project_name(raw: str, expected: str) -> None:
+    """``_slugify_project_name`` meets users halfway without silently mangling intent."""
+    assert _slugify_project_name(raw) == expected
 
 
 def generate_into_tmp(values: dict[str, object]) -> tuple[str, str, str]:
@@ -238,7 +240,7 @@ def generate_into_tmp(values: dict[str, object]) -> tuple[str, str, str]:
         pytest.param(
             wizard_values(),
             [
-                'id: "test-proj"',
+                'name: "test-proj"',
                 "https://github.com/user/repo.git",
                 'default_branch: "main"',
                 'security_class: "online"',
@@ -248,7 +250,7 @@ def generate_into_tmp(values: dict[str, object]) -> tuple[str, str, str]:
         pytest.param(
             wizard_values(
                 security_class="gatekeeping",
-                project_id="gk-proj",
+                project_name="gk-proj",
                 upstream_url="git@github.com:user/repo.git",
                 default_branch="dev",
                 user_snippet="RUN apt-get update",
@@ -264,7 +266,7 @@ def generate_into_tmp(values: dict[str, object]) -> tuple[str, str, str]:
         pytest.param(
             wizard_values(
                 base="nvidia",
-                project_id="gpu-proj",
+                project_name="gpu-proj",
                 upstream_url="https://example.com/r.git",
             ),
             ["gpus: all", "nvcr.io/nvidia/"],
@@ -273,7 +275,7 @@ def generate_into_tmp(values: dict[str, object]) -> tuple[str, str, str]:
         pytest.param(
             wizard_values(
                 base="fedora",
-                project_id="fedora-proj",
+                project_name="fedora-proj",
                 upstream_url="https://example.com/r.git",
             ),
             ['base_image: "fedora:44"', 'security_class: "online"'],
@@ -282,7 +284,7 @@ def generate_into_tmp(values: dict[str, object]) -> tuple[str, str, str]:
         pytest.param(
             wizard_values(
                 base="podman",
-                project_id="podman-proj",
+                project_name="podman-proj",
                 upstream_url="https://example.com/r.git",
             ),
             ['base_image: "quay.io/podman/stable:latest"'],
@@ -294,7 +296,7 @@ def test_generate_config_templates(values: dict[str, object], expected_snippets:
     """Generated configs include the expected template-specific content."""
     config_name, project_dir_name, content = generate_into_tmp(values)
     assert config_name == "project.yml"
-    assert project_dir_name == values["project_id"]
+    assert project_dir_name == values["project_name"]
     for snippet in expected_snippets:
         assert snippet in content
 
@@ -307,13 +309,13 @@ def test_generate_config_replaces_all_placeholders() -> None:
                 wizard_values(
                     security_class=sec.slug,
                     base=base.slug,
-                    project_id=f"proj-{sec.slug}-{base.slug}",
+                    project_name=f"proj-{sec.slug}-{base.slug}",
                     upstream_url="https://example.com/r.git",
                     user_snippet="RUN echo hi",
                 )
             )
             for placeholder in (
-                "{{PROJECT_ID}}",
+                "{{PROJECT_NAME}}",
                 "{{UPSTREAM_URL}}",
                 "{{DEFAULT_BRANCH}}",
                 "{{USER_SNIPPET}}",
@@ -333,7 +335,7 @@ def test_generate_config_replaces_all_placeholders() -> None:
     ),
     [
         pytest.param(
-            wizard_values(project_id="proj1", upstream_url="https://example.com/r.git"),
+            wizard_values(project_name="proj1", upstream_url="https://example.com/r.git"),
             ["y", "y"],
             True,
             True,
@@ -342,7 +344,7 @@ def test_generate_config_replaces_all_placeholders() -> None:
             id="edit-and-init",
         ),
         pytest.param(
-            wizard_values(project_id="proj2", upstream_url="https://example.com/r.git"),
+            wizard_values(project_name="proj2", upstream_url="https://example.com/r.git"),
             ["n", "n"],
             True,
             True,
@@ -351,7 +353,7 @@ def test_generate_config_replaces_all_placeholders() -> None:
             id="skip-edit-and-init",
         ),
         pytest.param(
-            wizard_values(project_id="proj3", upstream_url="https://example.com/r.git"),
+            wizard_values(project_name="proj3", upstream_url="https://example.com/r.git"),
             ["n"],
             False,
             True,
@@ -360,7 +362,7 @@ def test_generate_config_replaces_all_placeholders() -> None:
             id="no-init-fn",
         ),
         pytest.param(
-            wizard_values(project_id="proj4", upstream_url="https://example.com/r.git"),
+            wizard_values(project_name="proj4", upstream_url="https://example.com/r.git"),
             KeyboardInterrupt,
             False,
             True,
@@ -411,7 +413,7 @@ def test_run_wizard(
             0 if user_answers and user_answers[0] in {"n", "no"} else 1
         )
     if expect_init:
-        init_fn.assert_called_once_with(collect_result["project_id"])
+        init_fn.assert_called_once_with(collect_result["project_name"])
     elif init_fn is not None:
         init_fn.assert_not_called()
 
@@ -444,7 +446,7 @@ class TestValidateAnswer:
 
     def test_required_rejects_empty(self) -> None:
         """A required question refuses empty input with the standard message."""
-        value, err = validate_answer(_q("project_id"), "")
+        value, err = validate_answer(_q("project_name"), "")
         assert err is not None
         assert "required" in err
 
@@ -455,29 +457,29 @@ class TestValidateAnswer:
         assert err is None
 
     def test_transform_runs_before_validation(self) -> None:
-        """Slugify + lowercase on project_id normalises before the regex check fires."""
-        value, err = validate_answer(_q("project_id"), "MyProject")
+        """Slugify + lowercase on project_name normalises before the regex check fires."""
+        value, err = validate_answer(_q("project_name"), "MyProject")
         assert value == "myproject"
         assert err is None
 
     def test_transform_slugifies_spaces_and_specials(self) -> None:
         """Whitespace turns into hyphens and stray punctuation is dropped."""
-        value, err = validate_answer(_q("project_id"), "My Fancy Project!!")
+        value, err = validate_answer(_q("project_name"), "My Fancy Project!!")
         assert value == "my-fancy-project"
         assert err is None
 
     def test_transform_collapses_hyphen_runs(self) -> None:
         """Consecutive delimiters collapse into one hyphen."""
-        value, err = validate_answer(_q("project_id"), "foo   ---   bar")
+        value, err = validate_answer(_q("project_name"), "foo   ---   bar")
         assert value == "foo-bar"
         assert err is None
 
     def test_validator_surfaces_error(self) -> None:
         """A slug that can't be salvaged by slugification surfaces the regex error."""
         # Only punctuation — nothing in the allowed alphabet survives.
-        value, err = validate_answer(_q("project_id"), "!!!")
+        value, err = validate_answer(_q("project_name"), "!!!")
         assert err is not None
-        assert "Invalid project ID" in err or "required" in err
+        assert "Invalid project name" in err or "required" in err
 
     def test_editor_kind_accepts_arbitrary_text(self) -> None:
         """Editor-style questions have no validator; any string goes through."""
@@ -488,13 +490,13 @@ class TestValidateAnswer:
 
     def test_surrounding_whitespace_is_stripped(self) -> None:
         """Leading/trailing whitespace is removed before validation and transform."""
-        value, err = validate_answer(_q("project_id"), "  MyProj  ")
+        value, err = validate_answer(_q("project_name"), "  MyProj  ")
         assert value == "myproj"
         assert err is None
 
     def test_all_whitespace_answer_counts_as_empty_for_required(self) -> None:
         """``'   '`` → required field rejected the same way an empty string is."""
-        value, err = validate_answer(_q("project_id"), "   ")
+        value, err = validate_answer(_q("project_name"), "   ")
         assert value == ""
         assert err is not None
         assert "required" in err
@@ -559,7 +561,7 @@ class TestRenderAndWrite:
 
     def test_render_project_yaml_matches_generate_output(self) -> None:
         """In-memory render must equal the file generate_config writes."""
-        values = wizard_values(project_id="renderp", upstream_url="https://example.com/r.git")
+        values = wizard_values(project_name="renderp", upstream_url="https://example.com/r.git")
         rendered = render_project_yaml(values)
         with tempfile.TemporaryDirectory() as td:
             with patch(

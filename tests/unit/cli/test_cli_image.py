@@ -161,7 +161,7 @@ class TestImageDispatch:
 
         from terok.cli.commands.image import dispatch
 
-        args = argparse.Namespace(cmd="image", image_cmd="list", project_id="myproj")
+        args = argparse.Namespace(cmd="image", image_cmd="list", project_name="myproj")
         with patch("terok.cli.commands.image._cmd_list") as mock:
             assert dispatch(args) is True
         mock.assert_called_once_with("myproj")
@@ -199,7 +199,7 @@ class TestImageDispatch:
         )
         with patch("terok.cli.commands.image._cmd_usage") as mock:
             assert dispatch(args) is True
-        mock.assert_called_once_with(project_id="myproj", json_output=True)
+        mock.assert_called_once_with(project_name="myproj", json_output=True)
 
     def test_build_dispatch_forwards_flags(self) -> None:
         """``image build --rebuild --sidecar`` routes to the build helper."""
@@ -210,7 +210,7 @@ class TestImageDispatch:
         args = argparse.Namespace(
             cmd="image",
             image_cmd="build",
-            project_id=None,
+            project_name=None,
             base=None,
             agents=None,
             family=None,
@@ -221,7 +221,7 @@ class TestImageDispatch:
         with patch("terok.cli.commands.image._cmd_build") as mock:
             assert dispatch(args) is True
         mock.assert_called_once_with(
-            project_id=None,
+            project_name=None,
             base=None,
             agents=None,
             family=None,
@@ -264,7 +264,7 @@ class TestCmdBuild:
             patch("terok_executor.container.build.build_sidecar_image"),
         ):
             _cmd_build(
-                project_id=None,
+                project_name=None,
                 base=None,
                 agents=None,
                 family=None,
@@ -307,7 +307,7 @@ class TestCmdBuild:
             patch("terok_executor.container.build.build_sidecar_image"),
         ):
             _cmd_build(
-                project_id=None,
+                project_name=None,
                 base="ubuntu:24.04",
                 agents="claude,codex",
                 family="deb",
@@ -351,7 +351,7 @@ class TestCmdBuild:
             ) as mock_sidecar,
         ):
             _cmd_build(
-                project_id=None,
+                project_name=None,
                 base=None,
                 agents=None,
                 family=None,
@@ -363,7 +363,7 @@ class TestCmdBuild:
         mock_sidecar.assert_called_once()
         assert "terok-l1-sidecar:ubuntu-24.04" in capsys.readouterr().out
 
-    def test_project_id_drives_base_and_agents_from_project_config(self) -> None:
+    def test_project_name_drives_base_and_agents_from_project_config(self) -> None:
         """``image build <project>`` derives base + agents from the project, not globals."""
         from unittest.mock import MagicMock, sentinel
 
@@ -386,7 +386,7 @@ class TestCmdBuild:
             ) as mock_build,
         ):
             _cmd_build(
-                project_id="myproj",
+                project_name="myproj",
                 base=None,
                 agents=None,
                 family=None,
@@ -428,7 +428,7 @@ class TestCmdBuild:
         ):
             with pytest.raises(SystemExit, match="podman missing"):
                 _cmd_build(
-                    project_id=None,
+                    project_name=None,
                     base=None,
                     agents=None,
                     family=None,

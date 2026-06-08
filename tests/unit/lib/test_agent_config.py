@@ -60,32 +60,34 @@ def make_layout(base: Path) -> AgentConfigLayout:
     )
 
 
-def write_test_project(layout: AgentConfigLayout, project_id: str, body: str | None = None) -> None:
+def write_test_project(
+    layout: AgentConfigLayout, project_name: str, body: str | None = None
+) -> None:
     """Write a test project config, defaulting to a minimal project definition."""
     write_project(
         layout.config_root / "projects",
-        project_id,
-        body or f"project:\n  id: {project_id}\n",
+        project_name,
+        body or f"project:\n  id: {project_name}\n",
     )
 
 
-def project_presets_dir(layout: AgentConfigLayout, project_id: str) -> Path:
+def project_presets_dir(layout: AgentConfigLayout, project_name: str) -> Path:
     """Return the per-project presets directory."""
-    presets_dir = layout.config_root / "projects" / project_id / "presets"
+    presets_dir = layout.config_root / "projects" / project_name / "presets"
     presets_dir.mkdir(parents=True, exist_ok=True)
     return presets_dir
 
 
 def write_project_preset(
     layout: AgentConfigLayout,
-    project_id: str,
+    project_name: str,
     name: str,
     content: str,
     *,
     suffix: str = ".yml",
 ) -> Path:
     """Create a project-scoped preset file."""
-    preset_path = project_presets_dir(layout, project_id) / f"{name}{suffix}"
+    preset_path = project_presets_dir(layout, project_name) / f"{name}{suffix}"
     preset_path.write_text(content, encoding="utf-8")
     return preset_path
 
@@ -130,7 +132,7 @@ def _patched_env(
 
 def resolve_test_agent_config(
     layout: AgentConfigLayout,
-    project_id: str,
+    project_name: str,
     *,
     global_config: Path | None = None,
     preset: str | None = None,
@@ -139,9 +141,9 @@ def resolve_test_agent_config(
     """Resolve agent config inside the isolated test environment."""
     with _patched_env(layout, global_config=global_config):
         with mock_git_config():
-            project = load_project(project_id)
+            project = load_project(project_name)
             return resolve_agent_config(
-                project_id,
+                project_name,
                 agent_config=project.agent_config,
                 project_root=project.root,
                 preset=preset,
@@ -151,19 +153,19 @@ def resolve_test_agent_config(
 
 def list_test_presets(
     layout: AgentConfigLayout,
-    project_id: str,
+    project_name: str,
     *,
     xdg_config_home: Path | None = None,
 ) -> list[object]:
     """List presets inside the isolated test environment."""
     with _patched_env(layout, xdg_config_home=xdg_config_home):
         with mock_git_config():
-            return list_presets(project_id)
+            return list_presets(project_name)
 
 
 def load_test_preset(
     layout: AgentConfigLayout,
-    project_id: str,
+    project_name: str,
     preset_name: str,
     *,
     xdg_config_home: Path | None = None,
@@ -171,19 +173,19 @@ def load_test_preset(
     """Load a preset inside the isolated test environment."""
     with _patched_env(layout, xdg_config_home=xdg_config_home):
         with mock_git_config():
-            return load_preset(project_id, preset_name)
+            return load_preset(project_name, preset_name)
 
 
-def load_test_project(layout: AgentConfigLayout, project_id: str) -> ProjectConfig:
+def load_test_project(layout: AgentConfigLayout, project_name: str) -> ProjectConfig:
     """Load a project inside the isolated test environment."""
     with _patched_env(layout):
         with mock_git_config():
-            return load_project(project_id)
+            return load_project(project_name)
 
 
 def build_test_agent_stack(
     layout: AgentConfigLayout,
-    project_id: str,
+    project_name: str,
     *,
     preset: str,
     xdg_config_home: Path | None = None,
@@ -191,9 +193,9 @@ def build_test_agent_stack(
     """Build an agent config stack inside the isolated test environment."""
     with _patched_env(layout, xdg_config_home=xdg_config_home):
         with mock_git_config():
-            project = load_project(project_id)
+            project = load_project(project_name)
             return build_agent_config_stack(
-                project_id,
+                project_name,
                 agent_config=project.agent_config,
                 project_root=project.root,
                 preset=preset,
@@ -571,21 +573,21 @@ class TestBundledPreset:
 
 
 class TestValidateProjectId:
-    """Tests for validate_project_id error messages."""
+    """Tests for validate_project_name error messages."""
 
     def test_error_message_mentions_first_char(self) -> None:
         """Error message describes the first-character requirement."""
-        from terok.lib.core.project_model import validate_project_id
+        from terok.lib.core.project_model import validate_project_name
 
         with pytest.raises(SystemExit) as ctx:
-            validate_project_id("-bad")
+            validate_project_name("-bad")
         msg = str(ctx.value)
         assert "must start with a lowercase letter or digit" in msg
 
     def test_uppercase_rejected(self) -> None:
-        """Uppercase letters in project ID are rejected."""
-        from terok.lib.core.project_model import validate_project_id
+        """Uppercase letters in project name are rejected."""
+        from terok.lib.core.project_model import validate_project_name
 
         with pytest.raises(SystemExit) as ctx:
-            validate_project_id("MyProject")
-        assert "Invalid project ID" in str(ctx.value)
+            validate_project_name("MyProject")
+        assert "Invalid project name" in str(ctx.value)

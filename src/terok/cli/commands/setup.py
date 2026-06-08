@@ -336,7 +336,7 @@ def _ensure_shell_completions() -> None:
 # ── Per-project setup ──────────────────────────────────────────────────
 
 
-def cmd_project_init(project_id: str) -> None:
+def cmd_project_init(project_name: str) -> None:
     """Full project setup: ssh-init, generate, build, gate-sync.
 
     The final gate-sync step is skipped when ``gate.enabled`` is false in
@@ -346,18 +346,18 @@ def cmd_project_init(project_id: str) -> None:
     blocking SSH, corporate proxy, offline laptop) while the container's
     network path still works.
     """
-    require_project_exists(project_id)
+    require_project_exists(project_name)
 
-    project = get_project(project_id)
+    project = get_project(project_name)
     print("==> Initializing SSH...")
     summarize_ssh_init(project.provision_ssh_key())
     project.pause_for_ssh_key_registration_if_needed()
 
     print("==> Generating Dockerfiles...")
-    generate_dockerfiles(project_id)
+    generate_dockerfiles(project_name)
 
     print("==> Building images...")
-    build_images(project_id)
+    build_images(project_name)
 
     if not project.config.gate_enabled:
         print("==> Gate disabled by project.yml — skipping gate-sync.")

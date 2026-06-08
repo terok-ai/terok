@@ -110,10 +110,10 @@ class TestNormalizeTaskIdInput:
 class TestResolveTaskId:
     """Tests for CLI prefix-matching task ID resolution."""
 
-    def _write_meta(self, project_id: str, task_id: str) -> None:
+    def _write_meta(self, project_name: str, task_id: str) -> None:
         """Write a minimal task metadata file."""
         meta = {"task_id": task_id, "name": "test-task", "mode": None, "workspace": "/tmp/ws"}
-        write_task_meta(dossier_path(tasks_meta_dir(project_id), task_id), meta)
+        write_task_meta(dossier_path(tasks_meta_dir(project_name), task_id), meta)
 
     def test_exact_match(self) -> None:
         """Full task ID should resolve immediately."""

@@ -63,16 +63,16 @@ def _assert_running(project: ProjectConfig, cname: str) -> None:
         )
 
 
-def _print_login_instructions(project_id: str, task_id: str, cname: str, color: bool) -> None:
+def _print_login_instructions(project_name: str, task_id: str, cname: str, color: bool) -> None:
     """Print how to log into a CLI container; warn if the vault recovery key is unconfirmed.
 
-    Resolves the runtime per *project_id* so the printed raw-command
+    Resolves the runtime per *project_name* so the printed raw-command
     line matches what the operator's about to invoke — under crun
     that's ``podman exec``; under krun it's
     ``ssh -p <host_port> -i <key> … dev@127.0.0.1``.
     """
-    project = load_project(project_id)
-    login_cmd = f"terok login {project_id} {task_id}"
+    project = load_project(project_name)
+    login_cmd = f"terok login {project_name} {task_id}"
     raw_cmd = shlex.join(
         _rt.resolve_runtime(project).container(cname).login_command(command=("bash",))
     )
@@ -179,7 +179,7 @@ def _run_container(
     # the pointed-at JSON file as ``ClearanceEvent.dossier`` on every
     # event.  The JSON file IS the wire dossier — wire-shape keys, no
     # projection, no snapshot — so one annotation is enough.
-    task_dossier_path = dossier_path(tasks_meta_dir(project.id), task_id)
+    task_dossier_path = dossier_path(tasks_meta_dir(project.name), task_id)
     annotations = {"dossier.meta_path": str(task_dossier_path)}
     merged_args = list(extra_args or ()) + _project_runtime_flags(project, cname=cname)
     if project.runtime == "krun":
@@ -212,7 +212,7 @@ def _run_container(
             runtime=project.runtime,
             hostname=cname,
             annotations=annotations,
-            project_id=project.id,
+            project_id=project.name,  # executor API kwarg is ``project_id``; value is the project name
             task_id=task_id,
             dossier_path=task_dossier_path,
         )

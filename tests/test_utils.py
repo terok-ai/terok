@@ -21,8 +21,8 @@ def mock_git_config():
     return unittest.mock.patch("terok.lib.core.projects._get_global_git_config", return_value=None)
 
 
-def write_project(root: Path, project_id: str, yaml_text: str) -> Path:
-    proj_dir = root / project_id
+def write_project(root: Path, project_name: str, yaml_text: str) -> Path:
+    proj_dir = root / project_name
     proj_dir.mkdir(parents=True, exist_ok=True)
     (proj_dir / "project.yml").write_text(yaml_text, encoding="utf-8")
     return proj_dir
@@ -40,7 +40,7 @@ def parse_meta_value(meta_text: str, key: str) -> str | None:
 def project_env(
     yaml_text: str,
     *,
-    project_id: str = "test-proj",
+    project_name: str = "test-proj",
     with_config_file: bool = False,
     with_gate: bool = False,
     extra_env: dict[str, str] | None = None,
@@ -58,7 +58,7 @@ def project_env(
         vault_dir = base / "vault"
         config_root.mkdir(parents=True, exist_ok=True)
 
-        write_project(config_root, project_id, yaml_text)
+        write_project(config_root, project_name, yaml_text)
 
         agent_state_dir = base / "agent"
         sandbox_live = base / "sandbox-live"
@@ -81,7 +81,7 @@ def project_env(
 
         gate_dir = None
         if with_gate:
-            gate_dir = sandbox_state / "gate" / f"{project_id}.git"
+            gate_dir = sandbox_state / "gate" / f"{project_name}.git"
             gate_dir.mkdir(parents=True, exist_ok=True)
 
         if extra_env:

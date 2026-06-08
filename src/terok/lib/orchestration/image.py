@@ -4,7 +4,7 @@
 """Dockerfile generation, image building, and build-context hashing.
 
 [`ProjectImage`][terok.lib.orchestration.image.ProjectImage] is the
-entry point: instantiate from a project id or
+entry point: instantiate from a project name or
 [`ProjectConfig`][terok.lib.core.project_model.ProjectConfig] and call
 [`build`][terok.lib.orchestration.image.ProjectImage.build] /
 [`generate_dockerfiles`][terok.lib.orchestration.image.ProjectImage.generate_dockerfiles].
@@ -66,9 +66,9 @@ class ProjectImage:
     """Resolved project configuration."""
 
     @classmethod
-    def load(cls, project_id: str) -> ProjectImage:
-        """Construct from *project_id* via [`load_project`][terok.lib.core.projects.load_project]."""
-        return cls(load_project(project_id))
+    def load(cls, project_name: str) -> ProjectImage:
+        """Construct from *project_name* via [`load_project`][terok.lib.core.projects.load_project]."""
+        return cls(load_project(project_name))
 
     # ── Family + rendered Dockerfiles ────────────────
 
@@ -119,7 +119,7 @@ class ProjectImage:
     @property
     def stage_dir(self) -> Path:
         """Build-context directory for this project (``build_dir()/<id>``)."""
-        return build_dir() / self.project.id
+        return build_dir() / self.project.name
 
     def generate_dockerfiles(self) -> None:
         """Render and write Dockerfiles and auxiliary scripts to the stage dir.
@@ -151,7 +151,7 @@ class ProjectImage:
     @property
     def manifest_path(self) -> Path:
         """Path to the on-disk build manifest for this project."""
-        return build_dir() / self.project.id / "build_manifest.json"
+        return build_dir() / self.project.name / "build_manifest.json"
 
     def read_manifest(self) -> dict[str, Any] | None:
         """Load the build manifest, or ``None`` if absent/corrupt."""
@@ -211,8 +211,8 @@ class ProjectImage:
 
         l1_cli_image = base_images.l1
         l0_image = base_images.l0
-        l2_cli_image = project_cli_image(self.project.id)
-        l2_dev_image = project_dev_image(self.project.id)
+        l2_cli_image = project_cli_image(self.project.name)
+        l2_dev_image = project_dev_image(self.project.name)
 
         # Generate L2 build context (Dockerfile + staged resources).
         self.generate_dockerfiles()
@@ -313,7 +313,7 @@ class ProjectImage:
             if not us_path.is_file():
                 raise SystemExit(
                     f"image.user_snippet_file not found: {us_path}\n"
-                    f"  (configured in project '{self.project.id}')"
+                    f"  (configured in project '{self.project.name}')"
                 )
             try:
                 parts.append(us_path.read_text(encoding="utf-8"))
@@ -431,43 +431,43 @@ def build_context_hash_from_rendered(project: ProjectConfig, rendered: dict[str,
     )
 
 
-def build_context_hash(project_id: str) -> str:
+def build_context_hash(project_name: str) -> str:
     """Shim around [`ProjectImage.context_hash`][terok.lib.orchestration.image.ProjectImage.context_hash]."""
-    return ProjectImage.load(project_id).context_hash
+    return ProjectImage.load(project_name).context_hash
 
 
-def _write_build_manifest(project_id: str, manifest: dict[str, Any]) -> None:
+def _write_build_manifest(project_name: str, manifest: dict[str, Any]) -> None:
     """Shim around [`ProjectImage._write_manifest`][terok.lib.orchestration.image.ProjectImage._write_manifest]."""
-    ProjectImage.load(project_id)._write_manifest(manifest)
+    ProjectImage.load(project_name)._write_manifest(manifest)
 
 
-def _manifest_path(project_id: str) -> Path:
+def _manifest_path(project_name: str) -> Path:
     """Shim around [`ProjectImage.manifest_path`][terok.lib.orchestration.image.ProjectImage.manifest_path]."""
-    return ProjectImage.load(project_id).manifest_path
+    return ProjectImage.load(project_name).manifest_path
 
 
-def read_build_manifest(project_id: str) -> dict[str, Any] | None:
+def read_build_manifest(project_name: str) -> dict[str, Any] | None:
     """Shim around [`ProjectImage.read_manifest`][terok.lib.orchestration.image.ProjectImage.read_manifest]."""
-    return ProjectImage.load(project_id).read_manifest()
+    return ProjectImage.load(project_name).read_manifest()
 
 
-def generate_dockerfiles(project_id: str, *, family: str | None = None) -> None:
+def generate_dockerfiles(project_name: str, *, family: str | None = None) -> None:
     """Shim around [`ProjectImage.generate_dockerfiles`][terok.lib.orchestration.image.ProjectImage.generate_dockerfiles]."""
-    image = ProjectImage.load(project_id)
+    image = ProjectImage.load(project_name)
     if family is not None:
         object.__setattr__(image, "family", family)
     image.generate_dockerfiles()
 
 
 def build_images(
-    project_id: str,
+    project_name: str,
     include_dev: bool = False,
     refresh_agents: bool = False,
     full_rebuild: bool = False,
     agents: str | None = None,
 ) -> None:
     """Shim around [`ProjectImage.build`][terok.lib.orchestration.image.ProjectImage.build]."""
-    ProjectImage.load(project_id).build(
+    ProjectImage.load(project_name).build(
         include_dev=include_dev,
         refresh_agents=refresh_agents,
         full_rebuild=full_rebuild,

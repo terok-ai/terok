@@ -93,7 +93,7 @@ All three persist independently and survive:
 ### Container Naming
 
 ```text
-<project-id>-<mode>-<task-id>
+<project-name>-<mode>-<task-id>
 
 Examples:
   myproject-cli-v9krt   # CLI container for task v9krt

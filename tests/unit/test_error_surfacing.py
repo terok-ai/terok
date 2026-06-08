@@ -320,7 +320,7 @@ class TestProjectStateWarnings:
         from terok.lib.domain.project_state import get_project_state
 
         mock_project = MagicMock()
-        mock_project.id = "test-proj"
+        mock_project.name = "test-proj"
         mock_project.security_class = "online"
         mock_project.ssh_host_dir = None
         mock_project.gate_path = tmp_path / "nonexistent-gate"
@@ -351,7 +351,7 @@ class TestProjectStateWarnings:
         from terok.lib.domain.project_state import get_project_state
 
         mock_project = MagicMock()
-        mock_project.id = "test-proj"
+        mock_project.name = "test-proj"
         mock_project.security_class = "online"
         mock_project.ssh_host_dir = None
         gate_dir = tmp_path / "gate"
@@ -379,7 +379,7 @@ class TestProjectStateWarnings:
 
 
 class TestImageCleanupWarning:
-    """Cover _known_project_ids() exception logging."""
+    """Cover _known_project_names() exception logging."""
 
     @pytest.fixture(autouse=True)
     def _isolate_log(self, tmp_path: Path) -> None:
@@ -388,7 +388,7 @@ class TestImageCleanupWarning:
 
     def test_project_discovery_failure_logged(self) -> None:
         """Exception in list_projects() is caught and logged."""
-        from terok.lib.domain.image_cleanup import _known_project_ids
+        from terok.lib.domain.image_cleanup import _known_project_names
 
         with (
             patch(
@@ -397,7 +397,7 @@ class TestImageCleanupWarning:
             ),
             patch("terok.lib.util.logging_utils.log_warning") as mock_warn,
         ):
-            result = _known_project_ids()
+            result = _known_project_names()
 
         assert result is None
         mock_warn.assert_called_once()
@@ -430,7 +430,7 @@ class TestEnvironmentWarnings:
 
         mock_project = MagicMock()
         mock_project.security_class = "online"
-        mock_project.id = "test-proj"
+        mock_project.name = "test-proj"
         mock_project.gate_enabled = True
         mock_project.upstream_url = "https://example.com/repo.git"
         mock_project.default_branch = "main"

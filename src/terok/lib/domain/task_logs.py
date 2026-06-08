@@ -60,7 +60,7 @@ class LogViewOptions:
 
 
 def task_logs(
-    project_id: str,
+    project_name: str,
     task_id: str,
     options: LogViewOptions | None = None,
 ) -> None:
@@ -69,7 +69,7 @@ def task_logs(
     Works on both running and exited containers (podman logs supports both).
 
     Args:
-        project_id: The project ID.
+        project_name: The project name.
         task_id: The task ID.
         options: Display options (follow, raw, tail, streaming).
     """
@@ -78,8 +78,8 @@ def task_logs(
     import select
     import signal
 
-    project = load_project(project_id)
-    meta_dir = tasks_meta_dir(project.id)
+    project = load_project(project_name)
+    meta_dir = tasks_meta_dir(project.name)
     meta = read_task_meta(meta_dir, task_id)
     if meta is None:
         raise SystemExit(f"Unknown task {task_id}")
@@ -88,15 +88,15 @@ def task_logs(
     if not mode:
         raise SystemExit(
             f"Task {task_id} has never been run (no mode set).\n"
-            f"  Start a fresh task: terok task run {project_id}\n"
-            f"  Or run this stub:   terokctl task attach {project_id} {task_id} --mode cli"
+            f"  Start a fresh task: terok task run {project_name}\n"
+            f"  Or run this stub:   terokctl task attach {project_name} {task_id} --mode cli"
         )
 
     # Validate --tail early so both live and persisted paths behave consistently
     if options.tail is not None and options.tail < 0:
         raise SystemExit("--tail must be >= 0")
 
-    cname = container_name(project.id, mode, task_id)
+    cname = container_name(project.name, mode, task_id)
 
     # Verify container exists (running or exited)
     state = _rt.resolve_runtime(project).container(cname).state
@@ -115,7 +115,7 @@ def task_logs(
             return
         raise SystemExit(
             f"Container {cname} does not exist and no persisted logs found. "
-            f"Run 'terok task restart {project_id} {task_id}' first."
+            f"Run 'terok task restart {project_name} {task_id}' first."
         )
 
     runner = AgentRunner()

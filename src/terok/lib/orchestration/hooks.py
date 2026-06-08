@@ -27,7 +27,7 @@ HOOK_NAMES = ("pre_start", "post_start", "post_ready", "post_stop")
 
 
 def _build_hook_env(
-    project_id: str,
+    project_name: str,
     task_id: str,
     mode: str,
     cname: str,
@@ -40,7 +40,7 @@ def _build_hook_env(
     env = {
         **os.environ,
         "TEROK_HOOK": hook_name,
-        "TEROK_PROJECT_ID": project_id,
+        "TEROK_PROJECT_NAME": project_name,
         "TEROK_TASK_ID": str(task_id),
         "TEROK_TASK_MODE": mode,
         "TEROK_CONTAINER_NAME": cname,
@@ -127,7 +127,7 @@ def run_hook(
     hook_name: str,
     command: str | None,
     *,
-    project_id: str,
+    project_name: str,
     task_id: str,
     mode: str,
     cname: str,
@@ -153,7 +153,7 @@ def run_hook(
         return
 
     env = _build_hook_env(
-        project_id,
+        project_name,
         task_id,
         mode,
         cname,

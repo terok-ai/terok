@@ -42,9 +42,9 @@ facade.get_project("myproj")  →  Project          (Aggregate Root)
 
 **Lazy Initialization.** `Project` subsystems (`gate`, `ssh`, `agents`) are created on first access, not at construction. This avoids I/O when only a subset of functionality is needed. Since `Project` uses `__slots__`, `cached_property` is not available — the manual pattern (`if self._gate is None: ...`) is used instead.
 
-**Identity-Based Equality.** `Project.__eq__` compares by project ID; `Task.__eq__` compares by `(project_id, task_id)`. Both are hashable, so they work correctly in sets and dicts.
+**Identity-Based Equality.** `Project.__eq__` compares by project name; `Task.__eq__` compares by `(project_name, task_id)`. Both are hashable, so they work correctly in sets and dicts.
 
-**Facade Pattern.** `lib.facade` provides factory functions (`get_project`, `list_projects`, `derive_project`) as the stable entry point. It also re-exports low-level service functions for CLI commands that operate on raw `project_id` strings.
+**Facade Pattern.** `lib.facade` provides factory functions (`get_project`, `list_projects`, `derive_project`) as the stable entry point. It also re-exports low-level service functions for CLI commands that operate on raw `project_name` strings.
 
 ### Module Boundaries
 
@@ -146,7 +146,7 @@ See [shared-dirs.md](shared-dirs.md) for detailed documentation.
 
 | Variable | Value | Purpose |
 |----------|-------|---------|
-| `PROJECT_ID` | Project ID from config | Identify current project |
+| `PROJECT_NAME` | Project name from config | Identify current project |
 | `TASK_ID` | Numeric task ID | Identify current task |
 | `REPO_ROOT` | `/workspace` | Init script clone target |
 | `CLAUDE_CONFIG_DIR` | `/home/dev/.claude` | Claude Code config location |
@@ -228,7 +228,7 @@ sockets appear when supervisors come up and disappear when they exit.
 
 Third-party host tools (IDEs, scripts) that need the gate's repository
 do **not** go through the supervisor at all: they read the mirror
-clone directly over `file://` (`terok project gate-path <id>` prints
+clone directly over `file://` (`terok project gate-path <name>` prints
 the path).  The in-supervisor HTTP gate exists only to serve confined
 containers, whose egress shield otherwise blocks.
 

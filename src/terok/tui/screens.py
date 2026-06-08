@@ -171,7 +171,7 @@ class ProjectDetailsScreen(screen.Screen[str | None]):
     def compose(self) -> ComposeResult:
         """Build the detail pane and categorized action list for a project."""
         detail_pane = Static(id="detail-content")
-        detail_pane.border_title = f"Project: {self._project.id}"
+        detail_pane.border_title = f"Project: {self._project.name}"
         detail_pane.border_subtitle = "Esc to close"
         yield detail_pane
 
@@ -238,7 +238,7 @@ class ProjectDetailsScreen(screen.Screen[str | None]):
         self.app.push_screen(
             AgentsSelectScreen(
                 initial=self._project.agents,
-                title=f"Agents for {self._project.id}",
+                title=f"Agents for {self._project.name}",
             ),
             self._on_agents_modal_result,
         )
@@ -249,7 +249,7 @@ class ProjectDetailsScreen(screen.Screen[str | None]):
             return
         from terok.lib.api import set_project_image_agents
 
-        path = set_project_image_agents(self._project.id, selection)
+        path = set_project_image_agents(self._project.name, selection)
         # Keep the cached config in sync so a re-open of the modal in
         # this same screen instance seeds from the freshly-saved value.
         # ``ProjectConfig`` is frozen, hence the model_copy.
@@ -1246,7 +1246,7 @@ else:  # pragma: no cover - stub TextArea in test envs
 class TaskLaunchScreen(screen.ModalScreen["tuple[str, str, str, str, str, str | None] | None"]):
     """Post-creation modal for CLI tasks: agent selection + optional prompt.
 
-    Dismisses with ``(project_id, task_id, task_name, container_name,
+    Dismisses with ``(project_name, task_id, task_name, container_name,
     agent, prompt)`` on Login, or ``None`` on Dismiss.  The full launch
     context is captured at creation time so the callback is immune to
     selection changes.
@@ -1298,7 +1298,7 @@ class TaskLaunchScreen(screen.ModalScreen["tuple[str, str, str, str, str, str | 
     def __init__(
         self,
         container_name: str,
-        project_id: str,
+        project_name: str,
         task_id: str,
         task_name: str | None = "",
         default_shell: str = "bash",
@@ -1318,7 +1318,7 @@ class TaskLaunchScreen(screen.ModalScreen["tuple[str, str, str, str, str, str | 
         """
         super().__init__()
         self._container_name = container_name
-        self._project_id = project_id
+        self._project_name = project_name
         self._task_id = task_id
         self._task_name = task_name or task_id
         self._default_shell = default_shell
@@ -1447,11 +1447,13 @@ class TaskLaunchScreen(screen.ModalScreen["tuple[str, str, str, str, str, str | 
         has_mode = False
         if state == "running":
             try:
-                has_mode = get_task_meta(self._project_id, self._task_id).mode is not None
+                has_mode = get_task_meta(self._project_name, self._task_id).mode is not None
             except (SystemExit, Exception) as exc:
                 from ..lib.util.logging_utils import _log_debug
 
-                _log_debug(f"Task meta fetch failed for {self._project_id}/{self._task_id}: {exc}")
+                _log_debug(
+                    f"Task meta fetch failed for {self._project_name}/{self._task_id}: {exc}"
+                )
                 has_mode = False
         return state, has_mode
 
@@ -1531,7 +1533,7 @@ class TaskLaunchScreen(screen.ModalScreen["tuple[str, str, str, str, str, str | 
         prompt = prompt_input.text.strip() or None
         self.dismiss(
             (
-                self._project_id,
+                self._project_name,
                 self._task_id,
                 self._task_name,
                 self._container_name,
@@ -1659,14 +1661,14 @@ class TaskDetailsScreen(screen.Screen[str | None]):
         self,
         task: TaskMeta | None,
         has_tasks: bool,
-        project_id: str,
+        project_name: str,
         image_old: bool | None = None,
     ) -> None:
         """Store task data and context for rendering when the screen mounts."""
         super().__init__()
         self._task_meta = task
         self._has_tasks = has_tasks
-        self._project_id = project_id
+        self._project_name = project_name
         self._image_old = image_old
 
     def compose(self) -> ComposeResult:
@@ -1744,7 +1746,7 @@ class TaskDetailsScreen(screen.Screen[str | None]):
         self._last_render_width = width
         rendered = render_task_details(
             self._task_meta,
-            project_id=self._project_id,
+            project_name=self._project_name,
             image_old=self._image_old,
             empty_message="No task selected.",
             width=width,

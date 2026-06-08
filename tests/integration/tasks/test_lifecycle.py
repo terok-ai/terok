@@ -18,7 +18,7 @@ pytestmark = pytest.mark.needs_host_features
 
 PROJECT_CONFIG = f"""
 project:
-  id: demo
+  name: demo
   security_class: online
 git:
   upstream_url: {EXAMPLE_UPSTREAM_URL}

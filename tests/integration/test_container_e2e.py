@@ -117,17 +117,17 @@ def _find_free_port() -> int:
 def gate_env(tmp_path: Path) -> dict:
     """Set up a gate server with a test repo and return connection info."""
     # Create a bare repo
-    project_id = "e2e-test"
+    project_name = "e2e-test"
     base_path = tmp_path / "gate"
     base_path.mkdir()
-    repo_path = base_path / f"{project_id}.git"
+    repo_path = base_path / f"{project_name}.git"
     create_bare_repo_with_branches(repo_path, default_branch="main", other_branches=[])
 
     # Write token file
     token = uuid.uuid4().hex
     token_file = tmp_path / "tokens.json"
     token_file.write_text(
-        json.dumps({token: {"scope": project_id, "task": "1"}}),
+        json.dumps({token: {"scope": project_name, "task": "1"}}),
         encoding="utf-8",
     )
 
@@ -136,10 +136,10 @@ def gate_env(tmp_path: Path) -> dict:
     _start_gate_server(base_path, token_file, port)
 
     return {
-        "project_id": project_id,
+        "project_name": project_name,
         "token": token,
         "port": port,
-        "clone_url": f"http://{token}@host.containers.internal:{port}/{project_id}.git",
+        "clone_url": f"http://{token}@host.containers.internal:{port}/{project_name}.git",
     }
 
 

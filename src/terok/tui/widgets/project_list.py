@@ -28,11 +28,11 @@ class ProjectListItem(ListItem):
     """List item that carries project metadata."""
 
     def __init__(
-        self, project_id: str, label: str, generation: int, *, is_broken: bool = False
+        self, project_name: str, label: str, generation: int, *, is_broken: bool = False
     ) -> None:
         """Create a project list item with its ID, label, and broken flag."""
         super().__init__(Static(label, markup=False))
-        self.project_id = project_id
+        self.project_name = project_name
         self.generation = generation
         self.is_broken = is_broken
 
@@ -52,10 +52,10 @@ class ProjectList(ListView):
     class ProjectSelected(Message):
         """Posted when a project is highlighted in the list."""
 
-        def __init__(self, project_id: str, *, is_broken: bool = False) -> None:
+        def __init__(self, project_name: str, *, is_broken: bool = False) -> None:
             """Create the message with the selected project's ID and broken flag."""
             super().__init__()
-            self.project_id = project_id
+            self.project_name = project_name
             self.is_broken = is_broken
 
     def __init__(self, **kwargs: Any) -> None:
@@ -85,26 +85,26 @@ class ProjectList(ListView):
         # attention, so putting it at the top makes the error indicator the
         # first thing the user sees.
         for bp in self.broken:
-            label = f"{render_emoji(_BROKEN_BADGE)} {bp.id} (broken)"
-            self.append(ProjectListItem(bp.id, label, self._generation, is_broken=True))
+            label = f"{render_emoji(_BROKEN_BADGE)} {bp.name} (broken)"
+            self.append(ProjectListItem(bp.name, label, self._generation, is_broken=True))
 
         for proj in projects:
             sec = SECURITY_CLASS_DISPLAY.get(proj.security_class, SECURITY_CLASS_DISPLAY["online"])
             gpu = GPU_DISPLAY[has_gpu(proj)]
-            label = f"{render_emoji(sec)}{render_emoji(gpu)} {proj.id}"
-            self.append(ProjectListItem(proj.id, label, self._generation))
+            label = f"{render_emoji(sec)}{render_emoji(gpu)} {proj.name}"
+            self.append(ProjectListItem(proj.name, label, self._generation))
 
-    def select_project(self, project_id: str) -> None:
+    def select_project(self, project_name: str) -> None:
         """Select a project by id (healthy or broken)."""
         # Broken rows are inserted before healthy ones; walk the combined
         # sequence in the same order they were appended.
         for idx, bp in enumerate(self.broken):
-            if bp.id == project_id:
+            if bp.name == project_name:
                 self.index = idx
                 return
         offset = len(self.broken)
         for idx, proj in enumerate(self.projects):
-            if proj.id == project_id:
+            if proj.name == project_name:
                 self.index = offset + idx
                 return
 
@@ -124,4 +124,4 @@ class ProjectList(ListView):
             return
         if item.generation != self._generation:
             return
-        self.post_message(self.ProjectSelected(item.project_id, is_broken=item.is_broken))
+        self.post_message(self.ProjectSelected(item.project_name, is_broken=item.is_broken))

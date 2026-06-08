@@ -36,16 +36,16 @@ from ...lib.api import (
 )
 from ...lib.core.config import get_logs_partial_streaming as _get_logs_partial_streaming
 from ...lib.orchestration.tasks import resolve_task_id
-from ._completers import add_project_id, add_task_id, complete_preset_names, set_completer
+from ._completers import add_project_name, add_task_id, complete_preset_names, set_completer
 
 
 def _add_project_arg(parser: argparse.ArgumentParser, **kwargs: object) -> None:
-    """Add a ``project_id`` positional with project-ID completion."""
-    add_project_id(parser, **kwargs)
+    """Add a ``project_name`` positional with project name completion."""
+    add_project_name(parser, **kwargs)
 
 
 def _add_project_task_args(parser: argparse.ArgumentParser) -> None:
-    """Add ``project_id`` and ``task_id`` positionals with completers.
+    """Add ``project_name`` and ``task_id`` positionals with completers.
 
     The ``task_id`` positional is ``nargs="?"`` so the same parser
     accepts both forms — ``terok task <verb> proj task`` (two
@@ -57,12 +57,12 @@ def _add_project_task_args(parser: argparse.ArgumentParser) -> None:
     the slash form into the canonical pair before any verb-specific
     handling.
     """
-    add_project_id(parser)
+    add_project_name(parser)
     add_task_id(parser, nargs="?", default=None)
 
 
 def _normalize_pt(args: argparse.Namespace) -> None:
-    """If ``project_id`` is ``"<p>/<t>"`` and ``task_id`` is unset, split it.
+    """If ``project_name`` is ``"<p>/<t>"`` and ``task_id`` is unset, split it.
 
     Idempotent — calling twice has the same effect.  Inputs without
     ``/`` or with ``task_id`` already set pass through untouched.
@@ -77,13 +77,13 @@ def _normalize_pt(args: argparse.Namespace) -> None:
     ``/`` (covers nested segments like ``"proj/a/b"`` where the tail
     ``"a/b"`` would otherwise reach the filesystem helpers verbatim).
     """
-    pid = getattr(args, "project_id", None)
+    pid = getattr(args, "project_name", None)
     if isinstance(pid, str) and "/" in pid and getattr(args, "task_id", None) is None:
         project, _, task = pid.partition("/")
-        for part, label in ((project, "project_id"), (task, "task_id")):
+        for part, label in ((project, "project_name"), (task, "task_id")):
             if not part or part in (".", "..") or part.startswith("..") or "/" in part:
                 raise SystemExit(f"Invalid slash-form {label}: {part!r}")
-        args.project_id = project
+        args.project_name = project
         args.task_id = task or None
 
 
@@ -143,7 +143,7 @@ def register(
         "run",
         help="Create a new task and run it (mode selects the runtime)",
     )
-    _add_project_arg(t_run, help="Project ID")
+    _add_project_arg(t_run, help="Project name")
     t_run.add_argument(
         "--mode",
         choices=("cli", "toad", "headless"),
@@ -381,8 +381,8 @@ def dispatch(args: argparse.Namespace) -> bool:
     """Handle task-related commands.  Returns True if handled."""
     _normalize_pt(args)
     if args.cmd == "login":
-        tid = resolve_task_id(args.project_id, args.task_id)
-        task_login(args.project_id, tid)
+        tid = resolve_task_id(args.project_name, args.task_id)
+        task_login(args.project_name, tid)
         return True
     if args.cmd == "task":
         return _dispatch_task_sub(args)
@@ -494,7 +494,7 @@ def _cmd_task_run_interactive(args: argparse.Namespace, *, runner: Any, attach: 
     URL + token and returns; CLI under *attach* execs into ``task_login``
     once the container reports ready.
     """
-    pid = args.project_id
+    pid = args.project_name
     _ensure_project_image(pid)
     tid = task_new(pid, name=getattr(args, "name", None))
     runner(
@@ -521,11 +521,11 @@ def _cmd_task_run_headless(args: argparse.Namespace) -> None:
 
     instructions_text = _read_instructions(getattr(args, "instructions", None))
 
-    _ensure_project_image(args.project_id)
+    _ensure_project_image(args.project_name)
 
     task_run_headless(
         HeadlessRunRequest(
-            project_id=args.project_id,
+            project_name=args.project_name,
             prompt=prompt,
             config_path=getattr(args, "agent_config", None),
             model=getattr(args, "model", None),
@@ -554,27 +554,27 @@ def _resolve_attach(args: argparse.Namespace) -> bool:
     return sys.stdin.isatty() and sys.stdout.isatty()
 
 
-def _ensure_project_image(project_id: str) -> None:
+def _ensure_project_image(project_name: str) -> None:
     """Ensure the project's L2 image exists, offering to build it when missing.
 
     TTY → interactive ``Build now? [Y/n]`` prompt, then ``build_images()``
     inline.  Non-TTY → exit with a hint so scripts stay deterministic.
     """
-    require_project_exists(project_id)
+    require_project_exists(project_name)
 
-    if project_image_exists(project_id):
+    if project_image_exists(project_name):
         return
 
     hint = (
-        f"Image for project {project_id!r} is not present. "
-        f"Build it first: terok project build {project_id}"
+        f"Image for project {project_name!r} is not present. "
+        f"Build it first: terok project build {project_name}"
     )
     if not (sys.stdin.isatty() and sys.stdout.isatty()):
         raise SystemExit(hint)
 
     try:
         answer = (
-            input(f"Image for project {project_id!r} is missing. Build now? [Y/n]: ")
+            input(f"Image for project {project_name!r} is missing. Build now? [Y/n]: ")
             .strip()
             .lower()
         )
@@ -590,7 +590,7 @@ def _ensure_project_image(project_id: str) -> None:
     if answer in ("n", "no"):
         raise SystemExit(hint)
 
-    build_images(project_id)
+    build_images(project_name)
 
 
 def _read_instructions(instructions_path: str | None) -> str | None:
@@ -610,7 +610,7 @@ def _read_instructions(instructions_path: str | None) -> str | None:
         raise SystemExit(f"Failed to read instructions file {instructions_path}: {exc}") from exc
 
 
-def _cmd_task_revoke_credentials(project_id: str, task_id: str) -> None:
+def _cmd_task_revoke_credentials(project_name: str, task_id: str) -> None:
     """Run ``terok task revoke-credentials`` — DB-side phantom-token nuke.
 
     Leaves the container alive so the operator can inspect forensic
@@ -624,15 +624,15 @@ def _cmd_task_revoke_credentials(project_id: str, task_id: str) -> None:
     """
     from ...lib.domain.task_credentials import revoke_credentials
 
-    count = revoke_credentials(project_id, task_id)
+    count = revoke_credentials(project_name, task_id)
     if count == 0:
-        print(f"No phantom tokens found for {project_id}/{task_id}.")
+        print(f"No phantom tokens found for {project_name}/{task_id}.")
     else:
         suffix = "" if count == 1 else "s"
-        print(f"Revoked {count} phantom token{suffix} for {project_id}/{task_id}.")
+        print(f"Revoked {count} phantom token{suffix} for {project_name}/{task_id}.")
 
 
-def _cmd_task_audit_credentials(project_id: str, task_id: str, args: argparse.Namespace) -> None:
+def _cmd_task_audit_credentials(project_name: str, task_id: str, args: argparse.Namespace) -> None:
     """Run ``terok task audit-credentials`` — filtered tail of the broker's audit JSONL."""
     from datetime import datetime
 
@@ -652,7 +652,7 @@ def _cmd_task_audit_credentials(project_id: str, task_id: str, args: argparse.Na
             )
 
     entries = audit_credentials(
-        project_id,
+        project_name,
         task_id,
         provider=getattr(args, "provider", None),
         since=since,
@@ -666,7 +666,7 @@ def _cmd_task_audit_credentials(project_id: str, task_id: str, args: argparse.Na
 
     rows = list(entries)
     if not rows:
-        print(f"No credential-audit entries for {project_id}/{task_id}.")
+        print(f"No credential-audit entries for {project_name}/{task_id}.")
         return
     for row in rows:
         ts = row.get("ts", "?")
@@ -688,10 +688,10 @@ def _dispatch_task_sub(args: argparse.Namespace) -> bool:
 
     # ``task new`` (terokctl scripting surface) — same: no task_id yet.
     if args.task_cmd == "new":
-        task_new(args.project_id, name=getattr(args, "name", None))
+        task_new(args.project_name, name=getattr(args, "name", None))
         return True
 
-    pid = args.project_id
+    pid = args.project_name
     require_project_exists(pid)
     tid = resolve_task_id(pid, args.task_id) if hasattr(args, "task_id") else ""
     if args.task_cmd == "list":
@@ -767,13 +767,13 @@ def _dispatch_task_sub(args: argparse.Namespace) -> bool:
 def _dispatch_archive_sub(args: argparse.Namespace) -> bool:
     """Dispatch ``task archive <subcommand>``."""
     if args.archive_cmd == "list":
-        task_archive_list(args.project_id)
+        task_archive_list(args.project_name)
     elif args.archive_cmd == "logs":
-        log_file = task_archive_logs(args.project_id, args.archive_id)
+        log_file = task_archive_logs(args.project_name, args.archive_id)
         if log_file is None:
             raise SystemExit(
                 f"No archived logs found for prefix {args.archive_id!r}. "
-                f"Use 'terok task archive list {args.project_id}' to see available archives."
+                f"Use 'terok task archive list {args.project_name}' to see available archives."
             )
         with log_file.open("r", encoding="utf-8", errors="replace") as f:
             for line in f:

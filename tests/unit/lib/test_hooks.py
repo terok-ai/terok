@@ -22,7 +22,7 @@ class TestBuildHookEnv:
         """Verify core environment variables are set."""
         env = _build_hook_env("proj", "1", "toad", "proj-toad-1", "post_ready")
         assert env["TEROK_HOOK"] == "post_ready"
-        assert env["TEROK_PROJECT_ID"] == "proj"
+        assert env["TEROK_PROJECT_NAME"] == "proj"
         assert env["TEROK_TASK_ID"] == "1"
         assert env["TEROK_TASK_MODE"] == "toad"
         assert env["TEROK_CONTAINER_NAME"] == "proj-toad-1"
@@ -155,7 +155,7 @@ class TestRunHook:
         run_hook(
             "post_start",
             None,
-            project_id="p",
+            project_name="p",
             task_id="1",
             mode="cli",
             cname="c",
@@ -166,7 +166,7 @@ class TestRunHook:
         run_hook(
             "post_start",
             "",
-            project_id="p",
+            project_name="p",
             task_id="1",
             mode="cli",
             cname="c",
@@ -178,7 +178,7 @@ class TestRunHook:
             run_hook(
                 "post_start",
                 "echo hello",
-                project_id="proj",
+                project_name="proj",
                 task_id="1",
                 mode="cli",
                 cname="proj-cli-1",
@@ -189,7 +189,7 @@ class TestRunHook:
             assert args[0][0] == ["sh", "-c", "echo hello"]
             env = args[1]["env"]
             assert env["TEROK_HOOK"] == "post_start"
-            assert env["TEROK_PROJECT_ID"] == "proj"
+            assert env["TEROK_PROJECT_NAME"] == "proj"
 
     def test_post_stop_has_timeout(self) -> None:
         """Verify post_stop hooks have a 30s timeout."""
@@ -197,7 +197,7 @@ class TestRunHook:
             run_hook(
                 "post_stop",
                 "cleanup.sh",
-                project_id="p",
+                project_name="p",
                 task_id="1",
                 mode="cli",
                 cname="c",
@@ -210,7 +210,7 @@ class TestRunHook:
             run_hook(
                 "pre_start",
                 "setup.sh",
-                project_id="p",
+                project_name="p",
                 task_id="1",
                 mode="cli",
                 cname="c",
@@ -223,7 +223,7 @@ class TestRunHook:
             run_hook(
                 "post_start",
                 "setup.sh",
-                project_id="p",
+                project_name="p",
                 task_id="1",
                 mode="cli",
                 cname="c",
@@ -236,7 +236,7 @@ class TestRunHook:
             run_hook(
                 "post_ready",
                 "fwd.sh",
-                project_id="p",
+                project_name="p",
                 task_id="1",
                 mode="toad",
                 cname="c",
@@ -254,7 +254,7 @@ class TestRunHook:
             run_hook(
                 "post_start",
                 "fail.sh",
-                project_id="p",
+                project_name="p",
                 task_id="1",
                 mode="cli",
                 cname="c",
@@ -269,7 +269,7 @@ class TestRunHook:
             run_hook(
                 "post_stop",
                 "slow.sh",
-                project_id="p",
+                project_name="p",
                 task_id="1",
                 mode="cli",
                 cname="c",
@@ -288,7 +288,7 @@ class TestRunHook:
             run_hook(
                 "post_start",
                 "echo hi",
-                project_id="p",
+                project_name="p",
                 task_id="1",
                 mode="cli",
                 cname="c",
@@ -309,7 +309,7 @@ class TestRunHook:
         run_hook(
             "post_ready",
             None,
-            project_id="p",
+            project_name="p",
             task_id="1",
             mode="cli",
             cname="c",

@@ -38,7 +38,7 @@ from .shield import _apply_shield_policy
 
 
 def task_run_cli(
-    project_id: str,
+    project_name: str,
     task_id: str,
     preset: str | None = None,
     unrestricted: bool | None = None,
@@ -49,10 +49,10 @@ def task_run_cli(
     CLI access.  After the container reports ready the task metadata is
     marked ``running`` and the user is shown login instructions.
     """
-    project = load_project(project_id)
-    meta, meta_path = load_task_meta(project.id, task_id, "cli")
+    project = load_project(project_name)
+    meta, meta_path = load_task_meta(project.name, task_id, "cli")
 
-    cname = container_name(project.id, "cli", task_id)
+    cname = container_name(project.name, "cli", task_id)
     container_state = _rt.resolve_runtime(project).container(cname).state
 
     # If container already exists, handle it
@@ -60,7 +60,7 @@ def task_run_cli(
         color_enabled = _supports_color()
         if container_state == "running":
             print(f"Container {_green(cname, color_enabled)} is already running.")
-            _print_login_instructions(project.id, task_id, cname, color_enabled)
+            _print_login_instructions(project.name, task_id, cname, color_enabled)
             return
         # Container exists but is stopped/exited - start it
         print(f"Starting existing container {_green(cname, color_enabled)}...")
@@ -70,7 +70,7 @@ def task_run_cli(
         run_hook(
             "post_start",
             project.hook_post_start,
-            project_id=project.id,
+            project_name=project.name,
             task_id=task_id,
             mode="cli",
             cname=cname,
@@ -82,19 +82,19 @@ def task_run_cli(
         meta["ready_at"] = datetime.now(UTC).isoformat()
         write_task_meta(meta_path, meta)
         print("Container started.")
-        _print_login_instructions(project.id, task_id, cname, color_enabled)
+        _print_login_instructions(project.name, task_id, cname, color_enabled)
         return
 
     env, volumes = build_task_env_and_volumes(project, task_id)
 
     # Resolve layered agent config (global → project → preset → CLI overrides)
-    agent_config_dir = _prepare_agent_config(project, project_id, task_id, preset)
+    agent_config_dir = _prepare_agent_config(project, project_name, task_id, preset)
     volumes.append(VolumeSpec(agent_config_dir, CONTAINER_TEROK_CONFIG, sharing=Sharing.PRIVATE))
 
     # Resolve unrestricted mode: CLI flag → config → default (True)
     if unrestricted is None:
         _effective = resolve_agent_config(
-            project_id,
+            project_name,
             agent_config=project.agent_config,
             project_root=project.root,
             preset=preset,
@@ -113,7 +113,7 @@ def task_run_cli(
     run_hook(
         "pre_start",
         project.hook_pre_start,
-        project_id=project.id,
+        project_name=project.name,
         task_id=task_id,
         mode="cli",
         cname=cname,
@@ -122,7 +122,7 @@ def task_run_cli(
     )
     _run_container(
         cname=cname,
-        image=project_cli_image(project.id),
+        image=project_cli_image(project.name),
         env=env,
         volumes=volumes,
         project=project,
@@ -136,7 +136,7 @@ def task_run_cli(
     run_hook(
         "post_start",
         project.hook_post_start,
-        project_id=project.id,
+        project_name=project.name,
         task_id=task_id,
         mode="cli",
         cname=cname,
@@ -155,7 +155,7 @@ def task_run_cli(
     run_hook(
         "post_ready",
         project.hook_post_ready,
-        project_id=project.id,
+        project_name=project.name,
         task_id=task_id,
         mode="cli",
         cname=cname,
@@ -174,7 +174,7 @@ def task_run_cli(
     print(
         f"\nCLI container is running in the background.\n- Name:     {_green(cname, color_enabled)}"
     )
-    _print_login_instructions(project.id, task_id, cname, color_enabled)
+    _print_login_instructions(project.name, task_id, cname, color_enabled)
     print(f"- To stop:  {_red(f'podman stop {cname}', color_enabled)}\n")
 
 

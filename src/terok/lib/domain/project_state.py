@@ -41,7 +41,7 @@ if TYPE_CHECKING:
 
 
 def get_project_state(
-    project_id: str,
+    project_name: str,
     gate_commit_provider: Callable[[str], dict | None] | None = None,
     *,
     project: "ProjectConfig | None" = None,
@@ -60,15 +60,15 @@ def get_project_state(
     - ``gate_last_commit`` - Dict with commit info if gate exists, None otherwise.
 
     Args:
-        project_id: The project to inspect.
+        project_name: The project to inspect.
         gate_commit_provider: Optional callback to retrieve the last gate commit.
         project: Pre-loaded project config; avoids redundant ``load_project``.
     """
 
-    project = project or load_project(project_id)
+    project = project or load_project(project_name)
 
     # Dockerfiles: look in the same location generate_dockerfiles writes to.
-    stage_dir = build_dir() / project.id
+    stage_dir = build_dir() / project.name
     dockerfiles = [
         stage_dir / "L0.Dockerfile",
         stage_dir / "L1.cli.Dockerfile",
@@ -80,7 +80,7 @@ def get_project_state(
     # existence is runtime-agnostic — podman's image store is the
     # same regardless of which OCI runtime ends up booting them — so
     # PodmanRuntime directly is the right cheap path here.
-    required_tags = [project_cli_image(project.id)]
+    required_tags = [project_cli_image(project.name)]
     runtime = PodmanRuntime()
     has_images = all(runtime.image(tag).exists() for tag in required_tags)
 
@@ -101,7 +101,7 @@ def get_project_state(
             except Exception as exc:
                 from ..util.logging_utils import log_warning
 
-                log_warning(f"Template comparison failed for {project_id}: {exc}")
+                log_warning(f"Template comparison failed for {project_name}: {exc}")
                 dockerfiles_old = False
 
     images_old = False
@@ -116,7 +116,7 @@ def get_project_state(
 
     # SSH: consider SSH "ready" when the scope has at least one assigned key
     # in the vault DB.  The old on-disk SSH directory no longer exists.
-    has_ssh = _scope_has_vault_key(project.id)
+    has_ssh = _scope_has_vault_key(project.name)
 
     # Gate: a mirror bare repo initialized by sync_project_gate(). We
     # treat existence of the directory as "gate present".
@@ -127,11 +127,11 @@ def get_project_state(
     gate_last_commit = None
     if has_gate and gate_commit_provider is not None:
         try:
-            gate_last_commit = gate_commit_provider(project_id)
+            gate_last_commit = gate_commit_provider(project_name)
         except Exception as exc:
             from ..util.logging_utils import log_warning
 
-            log_warning(f"Gate commit lookup failed for {project_id}: {exc}")
+            log_warning(f"Gate commit lookup failed for {project_name}: {exc}")
             gate_last_commit = None
 
     return {
@@ -168,7 +168,7 @@ def _detect_stale_layers(project: "ProjectConfig", rendered: dict[str, str] | No
             "l1": l1_content_hash(rendered),
             "l2": l2_content_hash(rendered),
         }
-        manifest = read_build_manifest(project.id)
+        manifest = read_build_manifest(project.name)
     except (ImportError, OSError, ValueError, KeyError):
         return ["l0", "l1", "l2"]
 
@@ -187,25 +187,25 @@ def _detect_stale_layers(project: "ProjectConfig", rendered: dict[str, str] | No
     return stale
 
 
-def is_task_image_old(project_id: str | None, task: Any) -> bool | None:
+def is_task_image_old(project_name: str | None, task: Any) -> bool | None:
     """Check if the image used by a task's container is outdated.
 
     Compares the build context hash label on the running container's image
     against the current build context hash for the project.
 
     Args:
-        project_id: The project ID, or None.
+        project_name: The project name, or None.
         task: A TaskMeta instance with task_id and mode attributes.
 
     Returns:
         True if the image is old, False if current, None if unable to determine.
     """
-    if project_id is None:
+    if project_name is None:
         return None
     if task.mode != "cli":
         return None
 
-    cname = _container_name(project_id, task.mode, task.task_id)
+    cname = _container_name(project_name, task.mode, task.task_id)
     # State + image probes are runtime-agnostic (``podman inspect``
     # returns the same shape regardless of OCI runtime), so reach for
     # ``PodmanRuntime`` directly — avoids a redundant ``load_project``
@@ -220,7 +220,7 @@ def is_task_image_old(project_id: str | None, task: Any) -> bool | None:
     try:
         from ..orchestration.image import render_all_dockerfiles
 
-        project = load_project(project_id)
+        project = load_project(project_name)
         rendered = render_all_dockerfiles(project)
         stale = _detect_stale_layers(project, rendered)
     except Exception:
@@ -228,7 +228,7 @@ def is_task_image_old(project_id: str | None, task: Any) -> bool | None:
         try:
             from ..orchestration.image import build_context_hash
 
-            current_hash = build_context_hash(project_id)
+            current_hash = build_context_hash(project_name)
         except Exception:
             return None
         label = image.labels().get("terok.build_context_hash")

@@ -50,7 +50,7 @@ def _meta(
 def _instance(app_class: type, displayed: list[Any]) -> Any:
     """App wired with a fake task list and an async ``refresh_tasks`` spy."""
     instance = app_class()
-    instance.current_project_id = "p1"
+    instance.current_project_name = "p1"
     instance.current_task = None
     instance.refresh_tasks = mock.AsyncMock()
     task_list = mock.Mock()

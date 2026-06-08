@@ -26,7 +26,8 @@ class TestDetectStaleLayers:
         """All layers current → empty stale list."""
         from terok.lib.domain.project_state import _detect_stale_layers
 
-        project = Mock(id="p1", base_image="ubuntu:24.04")
+        project = Mock(base_image="ubuntu:24.04")
+        project.name = "p1"
         rendered = {
             "L0.Dockerfile": "FROM ubuntu:24.04",
             "L1.cli.Dockerfile": "FROM l0",
@@ -48,7 +49,8 @@ class TestDetectStaleLayers:
         """L1 hash mismatch → ["l1"] returned."""
         from terok.lib.domain.project_state import _detect_stale_layers
 
-        project = Mock(id="p1", base_image="ubuntu:24.04")
+        project = Mock(base_image="ubuntu:24.04")
+        project.name = "p1"
         rendered = {
             "L0.Dockerfile": "FROM ubuntu:24.04",
             "L1.cli.Dockerfile": "FROM l0 CHANGED",
@@ -74,7 +76,8 @@ class TestDetectStaleLayers:
         """No manifest → all layers stale."""
         from terok.lib.domain.project_state import _detect_stale_layers
 
-        project = Mock(id="p1", base_image="ubuntu:24.04")
+        project = Mock(base_image="ubuntu:24.04")
+        project.name = "p1"
         rendered = {"L0.Dockerfile": "x", "L1.cli.Dockerfile": "y", "L2.Dockerfile": "z"}
 
         with (
@@ -92,14 +95,16 @@ class TestDetectStaleLayers:
         """None rendered dict → all layers stale."""
         from terok.lib.domain.project_state import _detect_stale_layers
 
-        project = Mock(id="p1", base_image="ubuntu:24.04")
+        project = Mock(base_image="ubuntu:24.04")
+        project.name = "p1"
         assert _detect_stale_layers(project, None) == ["l0", "l1", "l2"]
 
     def test_multiple_stale_layers(self) -> None:
         """L0 + L2 stale, L1 current → ["l0", "l2"]."""
         from terok.lib.domain.project_state import _detect_stale_layers
 
-        project = Mock(id="p1", base_image="ubuntu:24.04")
+        project = Mock(base_image="ubuntu:24.04")
+        project.name = "p1"
         rendered = {"L0.Dockerfile": "x", "L1.cli.Dockerfile": "y", "L2.Dockerfile": "z"}
 
         with (
@@ -124,7 +129,8 @@ class TestDetectStaleLayers:
         """Manifest with non-dict layer entry → that layer is stale."""
         from terok.lib.domain.project_state import _detect_stale_layers
 
-        project = Mock(id="p1", base_image="ubuntu:24.04")
+        project = Mock(base_image="ubuntu:24.04")
+        project.name = "p1"
         rendered = {"L0.Dockerfile": "x", "L1.cli.Dockerfile": "y", "L2.Dockerfile": "z"}
 
         # l1 entry is a string instead of a dict
@@ -148,7 +154,8 @@ class TestDetectStaleLayers:
         """Manifest missing a layer key entirely → that layer is stale."""
         from terok.lib.domain.project_state import _detect_stale_layers
 
-        project = Mock(id="p1", base_image="ubuntu:24.04")
+        project = Mock(base_image="ubuntu:24.04")
+        project.name = "p1"
         rendered = {"L0.Dockerfile": "x", "L1.cli.Dockerfile": "y", "L2.Dockerfile": "z"}
 
         manifest = self._make_manifest("h0", "h1", "h2")
@@ -170,7 +177,8 @@ class TestDetectStaleLayers:
         """ImportError during hash computation → all layers stale."""
         from terok.lib.domain.project_state import _detect_stale_layers
 
-        project = Mock(id="p1", base_image="ubuntu:24.04")
+        project = Mock(base_image="ubuntu:24.04")
+        project.name = "p1"
         rendered = {"L0.Dockerfile": "x", "L1.cli.Dockerfile": "y", "L2.Dockerfile": "z"}
 
         with patch(
@@ -247,7 +255,7 @@ class TestIsTaskImageOld:
         assert is_task_image_old("proj1", task) is None
 
     def test_returns_none_for_none_project(self) -> None:
-        """None project_id → None."""
+        """None project_name → None."""
         from terok.lib.domain.project_state import is_task_image_old
 
         task = Mock(mode="cli", task_id="42")

@@ -15,17 +15,21 @@ import pytest
 from terok.lib.core.config import build_dir, make_sandbox_config, sandbox_live_dir
 from terok.lib.core.projects import (
     BrokenProject,
+    derive_project,
     discover_projects,
     list_projects,
     load_project,
+    normalize_project_name,
+    require_project_exists,
     set_project_image_agents,
 )
 from terok.lib.domain.project_state import get_project_state
+from terok.lib.util.yaml import load as yaml_load
 from tests.test_utils import project_env, write_project
 
 
 def project_yaml(
-    project_id: str,
+    project_name: str,
     *,
     security_class: str | None = None,
     authorship: str | None = None,
@@ -36,7 +40,7 @@ def project_yaml(
     credentials_scope: str | None = None,
 ) -> str:
     """Build project YAML for tests with optional sections."""
-    lines = ["project:", f"  id: {project_id}"]
+    lines = ["project:", f"  id: {project_name}"]
     if security_class is not None:
         lines.append(f"  security_class: {security_class}")
     lines += ["git:", "  upstream_url: https://example.com/repo.git"]
@@ -62,20 +66,20 @@ class TestProject:
     """Tests for project loading/listing."""
 
     def test_load_project_gatekeeping_defaults(self) -> None:
-        project_id = "proj1"
+        project_name = "proj1"
         with project_env(
-            project_yaml(project_id, security_class="gatekeeping"),
-            project_id=project_id,
+            project_yaml(project_name, security_class="gatekeeping"),
+            project_name=project_name,
         ):
-            project = load_project(project_id)
-            assert project.id == project_id
+            project = load_project(project_name)
+            assert project.name == project_name
             assert project.security_class == "gatekeeping"
-            assert project.tasks_root == (sandbox_live_dir() / "tasks" / project_id).resolve()
+            assert project.tasks_root == (sandbox_live_dir() / "tasks" / project_name).resolve()
             assert (
                 project.gate_path
-                == (make_sandbox_config().gate_base_path / f"{project_id}.git").resolve()
+                == (make_sandbox_config().gate_base_path / f"{project_name}.git").resolve()
             )
-            assert project.staging_root == (build_dir() / project_id).resolve()
+            assert project.staging_root == (build_dir() / project_name).resolve()
             assert project.git_authorship == "agent-human"
             # Default credentials.scope: shared bucket, no per-project carve-out.
             assert project.credentials_scope == "shared"
@@ -83,18 +87,18 @@ class TestProject:
 
     def test_load_project_with_per_project_credentials(self) -> None:
         """``credentials.scope: project`` flips credential_set + project_mounts_dir."""
-        project_id = "proj-creds"
+        project_name = "proj-creds"
         with project_env(
-            project_yaml(project_id, credentials_scope="project"),
-            project_id=project_id,
+            project_yaml(project_name, credentials_scope="project"),
+            project_name=project_name,
         ):
-            project = load_project(project_id)
+            project = load_project(project_name)
             assert project.credentials_scope == "project"
-            assert project.credential_set == project_id
+            assert project.credential_set == project_name
             assert project.project_mounts_dir == project.root / "mounts"
 
     @pytest.mark.parametrize(
-        ("project_id", "yaml_text", "config_text", "expected"),
+        ("project_name", "yaml_text", "config_text", "expected"),
         [
             (
                 "proj-authorship",
@@ -113,23 +117,23 @@ class TestProject:
     )
     def test_git_authorship_resolution(
         self,
-        project_id: str,
+        project_name: str,
         yaml_text: str,
         config_text: str | None,
         expected: str,
     ) -> None:
-        with project_env(yaml_text, project_id=project_id) as ctx:
+        with project_env(yaml_text, project_name=project_name) as ctx:
             if config_text is None:
-                project = load_project(project_id)
+                project = load_project(project_name)
             else:
                 config_file = ctx.base / "config.yml"
                 config_file.write_text(config_text, encoding="utf-8")
                 with unittest.mock.patch.dict(os.environ, {"TEROK_CONFIG_FILE": str(config_file)}):
-                    project = load_project(project_id)
+                    project = load_project(project_name)
         assert project.git_authorship == expected
 
     @pytest.mark.parametrize(
-        ("project_id", "yaml_text", "config_text", "expected"),
+        ("project_name", "yaml_text", "config_text", "expected"),
         [
             pytest.param(
                 "ssh-default", project_yaml("ssh-default"), None, False, id="default-false"
@@ -159,7 +163,7 @@ class TestProject:
     )
     def test_ssh_use_personal_resolution(
         self,
-        project_id: str,
+        project_name: str,
         yaml_text: str,
         config_text: str | None,
         expected: bool,
@@ -175,20 +179,20 @@ class TestProject:
         global-tier reader (``gate_use_personal_ssh_default``); terok
         composes the project layer via ``_build_project_config``.
         """
-        with project_env(yaml_text, project_id=project_id) as ctx:
+        with project_env(yaml_text, project_name=project_name) as ctx:
             if config_text is None:
-                project = load_project(project_id)
+                project = load_project(project_name)
             else:
                 config_file = ctx.base / "config.yml"
                 config_file.write_text(config_text, encoding="utf-8")
                 with unittest.mock.patch.dict(os.environ, {"TEROK_CONFIG_FILE": str(config_file)}):
-                    project = load_project(project_id)
+                    project = load_project(project_name)
         assert project.ssh_use_personal is expected
 
     def test_load_project_invalid_git_authorship_raises(self) -> None:
         with project_env(
             project_yaml("proj-bad-authorship", authorship="mystery-mode"),
-            project_id="proj-bad-authorship",
+            project_name="proj-bad-authorship",
         ):
             with pytest.raises(SystemExit, match="git.authorship"):
                 load_project("proj-bad-authorship")
@@ -234,14 +238,14 @@ class TestProject:
             "gate:\n"
             "  enabled: false\n"
         )
-        with project_env(yaml, project_id="bad"):
+        with project_env(yaml, project_name="bad"):
             with pytest.raises(SystemExit, match="gatekeeping"):
                 load_project("bad")
 
     def test_gate_enabled_defaults_true(self) -> None:
         """Projects without an explicit gate section keep the old default (enabled)."""
         yaml = "project:\n  id: p\ngit:\n  upstream_url: https://example.com/r.git\n"
-        with project_env(yaml, project_id="p"):
+        with project_env(yaml, project_name="p"):
             project = load_project("p")
         assert project.gate_enabled is True
 
@@ -256,10 +260,155 @@ class TestProject:
             "gate:\n"
             "  enabled: false\n"
         )
-        with project_env(yaml, project_id="hostless"):
+        with project_env(yaml, project_name="hostless"):
             project = load_project("hostless")
         assert project.gate_enabled is False
         assert project.upstream_url == "git@github.com:user/repo.git"
+
+    def test_load_project_rejects_new_name_mismatching_directory(self) -> None:
+        """``project.name`` and the project directory must be the same identity."""
+        yaml = "project:\n  name: other\n"
+        with project_env(yaml, project_name="actual"):
+            with pytest.raises(SystemExit) as exc_info:
+                load_project("actual")
+        message = str(exc_info.value)
+        assert "Project name mismatch" in message
+        assert "directory name: 'actual'" in message
+        assert "project.yml name: 'other'" in message
+        assert "terok project normalize-name actual" in message
+
+    def test_load_project_rejects_legacy_id_mismatching_directory(self) -> None:
+        """Legacy ``project.id`` is normalised first, then compared to the directory."""
+        yaml = "project:\n  id: old-slug\n  name: Pretty Project\n"
+        with project_env(yaml, project_name="actual"):
+            with pytest.raises(SystemExit) as exc_info:
+                load_project("actual")
+        message = str(exc_info.value)
+        assert "Project name mismatch" in message
+        assert "project.yml name: 'old-slug'" in message
+
+    def test_discover_projects_surfaces_name_mismatch_as_broken(self) -> None:
+        """Mismatch errors flow through discovery so the TUI can render the broken row."""
+        with tempfile.TemporaryDirectory() as td:
+            base = Path(td)
+            config_base = base / "config"
+            projects_root = config_base / "projects"
+            write_project(projects_root, "actual", "project:\n  name: other\n")
+            with unittest.mock.patch.dict(
+                os.environ,
+                {"TEROK_CONFIG_DIR": str(config_base), "XDG_CONFIG_HOME": str(base / "empty")},
+            ):
+                valid, broken = discover_projects()
+
+        assert valid == []
+        assert [bp.name for bp in broken] == ["actual"]
+        assert "normalize-name actual" in broken[0].error
+
+    def test_normalize_project_name_rewrites_mismatching_new_name(self) -> None:
+        """Quick fix makes the config identity match the directory name."""
+        yaml = "project:\n  name: other\n  description: Kept\n"
+        with project_env(yaml, project_name="actual") as ctx:
+            path = normalize_project_name("actual")
+            assert path == ctx.config_root / "actual" / "project.yml"
+            project = load_project("actual")
+            content = path.read_text(encoding="utf-8")
+
+        assert project.name == "actual"
+        assert project.description == "Kept"
+        assert "name: actual" in content
+        assert "description: Kept" in content
+        assert "id:" not in content
+
+    def test_normalize_project_name_preserves_legacy_display_name(self) -> None:
+        """Legacy ``id`` + display ``name`` becomes new ``name`` + ``description``."""
+        yaml = "project:\n  id: old-slug\n  name: Pretty Project\n"
+        with project_env(yaml, project_name="actual") as ctx:
+            path = normalize_project_name("actual")
+            project = load_project("actual")
+            content = path.read_text(encoding="utf-8")
+
+        assert path == ctx.config_root / "actual" / "project.yml"
+        assert project.name == "actual"
+        assert project.description == "Pretty Project"
+        assert "name: actual" in content
+        assert "description: Pretty Project" in content
+        assert "id:" not in content
+
+    def test_normalize_project_name_preserves_no_id_display_name(self) -> None:
+        """Old display-only ``name`` without ``id`` is retained as description."""
+        yaml = "project:\n  name: Pretty Project\n"
+        with project_env(yaml, project_name="actual"):
+            path = normalize_project_name("actual")
+            project = load_project("actual")
+            content = path.read_text(encoding="utf-8")
+
+        assert project.name == "actual"
+        assert project.description == "Pretty Project"
+        assert "name: actual" in content
+        assert "description: Pretty Project" in content
+
+    def test_normalize_project_name_replaces_invalid_project_section(self) -> None:
+        """The quick fix repairs an invalid ``project:`` scalar section."""
+        yaml = "project: Pretty Project\n"
+        with project_env(yaml, project_name="actual"):
+            path = normalize_project_name("actual")
+            project = load_project("actual")
+            raw = yaml_load(path.read_text(encoding="utf-8"))
+
+        assert project.name == "actual"
+        assert raw["project"]["name"] == "actual"
+
+    def test_normalize_project_name_rejects_malformed_yaml(self) -> None:
+        """Malformed ``project.yml`` still reports an explicit read/parse failure."""
+        with project_env(project_yaml("actual"), project_name="actual") as ctx:
+            path = ctx.config_root / "actual" / "project.yml"
+            path.write_text("project:\n  name: [unterminated\n", encoding="utf-8")
+            with pytest.raises(SystemExit, match="Failed to read"):
+                normalize_project_name("actual")
+
+    def test_normalize_project_name_rejects_non_mapping_yaml(self) -> None:
+        """The quick fix requires the top-level YAML document to be a mapping."""
+        with project_env(project_yaml("actual"), project_name="actual") as ctx:
+            path = ctx.config_root / "actual" / "project.yml"
+            path.write_text("- not-a-mapping\n", encoding="utf-8")
+            with pytest.raises(SystemExit, match="expected a mapping"):
+                normalize_project_name("actual")
+
+    def test_require_project_exists_accepts_existing_project(self) -> None:
+        """The stat-only project existence guard accepts a known project."""
+        with project_env(project_yaml("actual"), project_name="actual"):
+            require_project_exists("actual")
+
+    def test_derive_project_preserves_legacy_display_name_as_description(self) -> None:
+        """Deriving a legacy config does not discard the old display label."""
+        source = (
+            "project:\n"
+            "  id: source\n"
+            "  name: Pretty Source\n"
+            "git:\n"
+            "  upstream_url: https://example.com/repo.git\n"
+        )
+        with project_env(source, project_name="source") as ctx:
+            derived_root = derive_project("source", "derived")
+            content = (derived_root / "project.yml").read_text(encoding="utf-8")
+            derived = load_project("derived")
+
+        assert derived_root.name == "derived"
+        assert derived_root != ctx.config_root / "derived"  # derive writes to the user project root
+        assert derived.name == "derived"
+        assert derived.description == "Pretty Source"
+        assert "name: derived" in content
+        assert "description: Pretty Source" in content
+        assert "id:" not in content
+
+    def test_derive_project_rejects_target_path_escape(self) -> None:
+        """The derive target stays under the user projects directory."""
+        with project_env(project_yaml("source"), project_name="source"):
+            with (
+                unittest.mock.patch("terok.lib.core.projects.validate_project_name"),
+                pytest.raises(SystemExit, match="path escapes projects directory"),
+            ):
+                derive_project("source", "../escape")
 
     def test_discover_projects_splits_valid_and_broken(
         self, capsys: pytest.CaptureFixture[str]
@@ -281,8 +430,8 @@ class TestProject:
             ):
                 valid, broken = discover_projects()
 
-        assert [p.id for p in valid] == ["good"]
-        assert [bp.id for bp in broken] == ["bad"]
+        assert [p.name for p in valid] == ["good"]
+        assert [bp.name for bp in broken] == ["bad"]
         bp = broken[0]
         assert isinstance(bp, BrokenProject)
         assert bp.config_path == (projects_root / "bad" / "project.yml")
@@ -317,8 +466,8 @@ class TestProject:
             ):
                 valid, broken = discover_projects()
 
-        assert [p.id for p in valid] == []
-        assert [bp.id for bp in broken] == ["default"]
+        assert [p.name for p in valid] == []
+        assert [bp.name for bp in broken] == ["default"]
         assert "reserved" in broken[0].error
 
     def test_list_projects_skips_malformed_yaml(self) -> None:
@@ -338,7 +487,7 @@ class TestProject:
             ):
                 projects = list_projects()
         assert len(projects) == 1
-        assert projects[0].id == "good"
+        assert projects[0].name == "good"
 
     def test_list_projects_sanitizes_control_chars_in_stderr(
         self, capsys: pytest.CaptureFixture[str]
@@ -369,7 +518,7 @@ class TestProject:
             ):
                 result = list_projects()
         # Skip-and-continue: 'evil' is dropped, 'good' survives.
-        ids = {p.id for p in result}
+        ids = {p.name for p in result}
         assert ids == {"good"}
         err = capsys.readouterr().err
         assert "warning: skipping broken project 'evil'" in err
@@ -378,7 +527,7 @@ class TestProject:
 
     def test_load_project_malformed_yaml(self) -> None:
         malformed = "project:\n  id: bad-yaml\n  foo: [invalid yaml\n"
-        with project_env(malformed, project_id="bad-yaml"):
+        with project_env(malformed, project_name="bad-yaml"):
             with pytest.raises(SystemExit, match="Failed to read"):
                 load_project("bad-yaml")
 
@@ -401,7 +550,7 @@ class TestProject:
         def _raise_index_error(text: str) -> object:
             raise IndexError("string index out of range")
 
-        with project_env(project_yaml("weird"), project_id="weird"):
+        with project_env(project_yaml("weird"), project_name="weird"):
             with unittest.mock.patch.object(
                 projects_mod, "_yaml_load", side_effect=_raise_index_error
             ):
@@ -416,7 +565,7 @@ class TestProject:
         assert isinstance(exc_info.value.__cause__, IndexError)
 
     @pytest.mark.parametrize(
-        ("project_id", "yaml_text", "expected"),
+        ("project_name", "yaml_text", "expected"),
         [
             ("proj-shield-default", project_yaml("proj-shield-default"), True),
             (
@@ -434,16 +583,16 @@ class TestProject:
     )
     def test_shield_drop_on_task_run(
         self,
-        project_id: str,
+        project_name: str,
         yaml_text: str,
         expected: bool,
     ) -> None:
         """Project-level drop_on_task_run overrides global default."""
-        with project_env(yaml_text, project_id=project_id):
-            assert load_project(project_id).shield_drop_on_task_run is expected
+        with project_env(yaml_text, project_name=project_name):
+            assert load_project(project_name).shield_drop_on_task_run is expected
 
     @pytest.mark.parametrize(
-        ("project_id", "yaml_text", "expected"),
+        ("project_name", "yaml_text", "expected"),
         [
             ("proj-restart-default", project_yaml("proj-restart-default"), "retain"),
             (
@@ -456,18 +605,18 @@ class TestProject:
     )
     def test_shield_on_task_restart(
         self,
-        project_id: str,
+        project_name: str,
         yaml_text: str,
         expected: str,
     ) -> None:
         """Project-level on_task_restart overrides global default."""
-        with project_env(yaml_text, project_id=project_id):
-            assert load_project(project_id).shield_on_task_restart == expected
+        with project_env(yaml_text, project_name=project_name):
+            assert load_project(project_name).shield_on_task_restart == expected
 
     def test_shared_dir_true_resolves_to_tasks_root(self) -> None:
         """``shared_dir: true`` resolves to tasks_root/_shared."""
         yaml_text = project_yaml("proj-shared") + "shared_dir: true\n"
-        with project_env(yaml_text, project_id="proj-shared"):
+        with project_env(yaml_text, project_name="proj-shared"):
             project = load_project("proj-shared")
         assert project.shared_dir is not None
         assert project.shared_dir.name == "_shared"
@@ -476,20 +625,20 @@ class TestProject:
     def test_shared_dir_path_resolves_absolute(self) -> None:
         """``shared_dir: /path`` resolves to an absolute Path."""
         yaml_text = project_yaml("proj-shared-path") + "shared_dir: /tmp/terok-testing/custom\n"
-        with project_env(yaml_text, project_id="proj-shared-path"):
+        with project_env(yaml_text, project_name="proj-shared-path"):
             project = load_project("proj-shared-path")
         assert project.shared_dir == Path("/tmp/terok-testing/custom")
 
     def test_shared_dir_relative_path_rejected(self) -> None:
         """Relative path in shared_dir raises SystemExit."""
         yaml_text = project_yaml("proj-shared-rel") + "shared_dir: relative/path\n"
-        with project_env(yaml_text, project_id="proj-shared-rel"):
+        with project_env(yaml_text, project_name="proj-shared-rel"):
             with pytest.raises(SystemExit, match="absolute path"):
                 load_project("proj-shared-rel")
 
     def test_shared_dir_omitted_is_none(self) -> None:
         """Omitting ``shared_dir`` leaves it None (disabled)."""
-        with project_env(project_yaml("proj-no-shared"), project_id="proj-no-shared"):
+        with project_env(project_yaml("proj-no-shared"), project_name="proj-no-shared"):
             project = load_project("proj-no-shared")
         assert project.shared_dir is None
 
@@ -497,26 +646,26 @@ class TestProject:
         """``run.timezone`` in project.yml surfaces on ``ProjectConfig.timezone``."""
         with project_env(
             project_yaml("proj-tz", timezone="Europe/Prague"),
-            project_id="proj-tz",
+            project_name="proj-tz",
         ):
             assert load_project("proj-tz").timezone == "Europe/Prague"
 
     def test_timezone_omitted_is_none(self) -> None:
         """Without ``run.timezone`` the field is ``None`` — terok-executor will follow the host."""
-        with project_env(project_yaml("proj-no-tz"), project_id="proj-no-tz"):
+        with project_env(project_yaml("proj-no-tz"), project_name="proj-no-tz"):
             assert load_project("proj-no-tz").timezone is None
 
     def test_get_project_state(self, mock_runtime) -> None:
-        project_id = "proj3"
+        project_name = "proj3"
         with project_env(
-            project_yaml(project_id), project_id=project_id, with_config_file=True
+            project_yaml(project_name), project_name=project_name, with_config_file=True
         ) as env:
-            stage_dir = build_dir() / project_id
+            stage_dir = build_dir() / project_name
             stage_dir.mkdir(parents=True, exist_ok=True)
             for name in ("L0.Dockerfile", "L1.cli.Dockerfile", "L1.ui.Dockerfile", "L2.Dockerfile"):
                 (stage_dir / name).write_text("", encoding="utf-8")
 
-            gate_dir = make_sandbox_config().gate_base_path / f"{project_id}.git"
+            gate_dir = make_sandbox_config().gate_base_path / f"{project_name}.git"
             gate_dir.mkdir(parents=True, exist_ok=True)
 
             mock_runtime.image.return_value.exists.return_value = True
@@ -530,7 +679,7 @@ class TestProject:
                     return_value=True,
                 ),
             ):
-                state = get_project_state(project_id, gate_commit_provider=lambda _pid: None)
+                state = get_project_state(project_name, gate_commit_provider=lambda _pid: None)
             _ = env  # silence unused; tmp-env drives config resolution
 
         assert state == {
@@ -586,54 +735,101 @@ class TestSetProjectImageAgents:
 
     def test_writes_into_existing_image_section(self) -> None:
         """Updating ``image.agents`` keeps unrelated keys in the same section."""
-        project_id = "proj-set-agents"
+        project_name = "proj-set-agents"
         yaml_text = (
             "project:\n"
-            f"  id: {project_id}\n"
+            f"  id: {project_name}\n"
             "git:\n"
             "  upstream_url: https://example.com/repo.git\n"
             "image:\n"
             "  base_image: ubuntu:24.04\n"
             "  agents: claude\n"
         )
-        with project_env(yaml_text, project_id=project_id) as env:
-            written = set_project_image_agents(project_id, "all,-vibe")
+        with project_env(yaml_text, project_name=project_name) as env:
+            written = set_project_image_agents(project_name, "all,-vibe")
             content = written.read_text(encoding="utf-8")
             assert "agents: all,-vibe" in content
             assert "base_image: ubuntu:24.04" in content
             # Sanity-check the path landed where the loader expects it.
-            assert written == env.config_root / project_id / "project.yml"
+            assert written == env.config_root / project_name / "project.yml"
 
     def test_creates_image_section_when_missing(self) -> None:
         """A project.yml without ``image:`` gets the section minted on write."""
-        project_id = "proj-no-image"
+        project_name = "proj-no-image"
         yaml_text = (
-            f"project:\n  id: {project_id}\ngit:\n  upstream_url: https://example.com/repo.git\n"
+            f"project:\n  id: {project_name}\ngit:\n  upstream_url: https://example.com/repo.git\n"
         )
-        with project_env(yaml_text, project_id=project_id):
-            written = set_project_image_agents(project_id, "claude")
+        with project_env(yaml_text, project_name=project_name):
+            written = set_project_image_agents(project_name, "claude")
             content = written.read_text(encoding="utf-8")
             assert "image:" in content
             assert "agents: claude" in content
 
     def test_preserves_comments_on_write(self) -> None:
         """ruamel round-trip keeps inline comments around the edited section."""
-        project_id = "proj-comments"
+        project_name = "proj-comments"
         yaml_text = (
-            f"project:\n  id: {project_id}\n"
+            f"project:\n  id: {project_name}\n"
             "git:\n  upstream_url: https://example.com/repo.git\n"
             "image:\n"
             "  # base image pin\n"
             "  base_image: ubuntu:24.04\n"
             "  agents: claude\n"
         )
-        with project_env(yaml_text, project_id=project_id):
-            written = set_project_image_agents(project_id, "vibe")
+        with project_env(yaml_text, project_name=project_name):
+            written = set_project_image_agents(project_name, "vibe")
             content = written.read_text(encoding="utf-8")
             assert "# base image pin" in content
             assert "agents: vibe" in content
 
     def test_missing_project_raises(self) -> None:
-        """An unknown project ID raises ``SystemExit`` with a not-found message."""
+        """An unknown project name raises ``SystemExit`` with a not-found message."""
         with pytest.raises(SystemExit, match="not found"):
             set_project_image_agents("nonexistent-project", "all")
+
+
+class TestDeriveProject:
+    """``derive_project`` clones a project's config onto a fresh slug."""
+
+    def test_renames_slug_drops_legacy_id_and_clears_agent(self) -> None:
+        """Derive writes ``name``, drops a legacy ``id`` key, and clears ``agent``."""
+        source = (
+            "project:\n"
+            "  id: src\n"  # legacy slug key — must be read, then dropped on write
+            "  description: My source project\n"
+            "  security_class: online\n"
+            "git:\n  upstream_url: https://example.com/repo.git\n"
+            "agent:\n  provider: codex\n"
+        )
+        with project_env(source, project_name="src"):
+            target = derive_project("src", "derived")
+            out = yaml_load((target / "project.yml").read_text(encoding="utf-8"))
+            assert out["project"]["name"] == "derived"
+            assert "id" not in out["project"]  # stale slug can't shadow name on reload
+            assert out["project"]["description"] == "My source project"
+            assert "agent" not in out  # agent section cleared
+            assert out["gate"]["path"]  # gate pinned to the shared source mirror
+            # The derived project re-loads cleanly under its new name.
+            assert load_project("derived").name == "derived"
+
+    def test_copies_instructions_md_when_present(self) -> None:
+        """A source ``instructions.md`` is carried into the derived project."""
+        source = (
+            "project:\n  name: src\n  security_class: online\n"
+            "git:\n  upstream_url: https://example.com/repo.git\n"
+        )
+        with project_env(source, project_name="src") as env:
+            (env.config_root / "src" / "instructions.md").write_text("house rules\n")
+            target = derive_project("src", "derived")
+            assert (target / "instructions.md").read_text() == "house rules\n"
+
+    def test_rejects_existing_target(self) -> None:
+        """Deriving onto an existing project name aborts rather than overwriting."""
+        source = (
+            "project:\n  name: src\n  security_class: online\n"
+            "git:\n  upstream_url: https://example.com/repo.git\n"
+        )
+        with project_env(source, project_name="src"):
+            derive_project("src", "derived")
+            with pytest.raises(SystemExit, match="already exists"):
+                derive_project("src", "derived")

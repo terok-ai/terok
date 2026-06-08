@@ -3,9 +3,9 @@
 
 """Shared argcomplete completers and helpers for CLI commands.
 
-All completers assume the standard ``project_id`` / ``task_id`` dest
+All completers assume the standard ``project_name`` / ``task_id`` dest
 names.  Parsers whose positionals display as ``<project>`` / ``<task>``
-(e.g. ``sickbay``) should set ``dest="project_id"`` / ``dest="task_id"``
+(e.g. ``sickbay``) should set ``dest="project_name"`` / ``dest="task_id"``
 with a custom ``metavar=`` for display, so completers and argparse help
 stay decoupled.
 """
@@ -21,12 +21,12 @@ from ...lib.core.projects import list_presets, list_projects
 from ...lib.orchestration.tasks import normalize_task_id_input
 
 
-def complete_project_ids(
+def complete_project_names(
     prefix: str, parsed_args: argparse.Namespace, **kwargs: object
 ) -> list[str]:  # pragma: no cover
-    """Return project IDs matching *prefix* for argcomplete."""
+    """Return project names matching *prefix* for argcomplete."""
     try:
-        ids = [p.id for p in list_projects()]
+        ids = [p.name for p in list_projects()]
     except Exception:
         return []
     if prefix:
@@ -37,7 +37,7 @@ def complete_project_ids(
 def complete_task_ids(
     prefix: str, parsed_args: argparse.Namespace, **kwargs: object
 ) -> list[str]:  # pragma: no cover
-    """Return task IDs matching *prefix* within ``parsed_args.project_id``.
+    """Return task IDs matching *prefix* within ``parsed_args.project_name``.
 
     Returns an empty list when the project arg hasn't been typed yet —
     argcomplete uses the partially-parsed namespace, which is exactly
@@ -48,11 +48,11 @@ def complete_task_ids(
     form — the same surface-form tolerance ``resolve_task_id`` gives
     at dispatch time.
     """
-    project_id = getattr(parsed_args, "project_id", None)
-    if not project_id:
+    project_name = getattr(parsed_args, "project_name", None)
+    if not project_name:
         return []
     try:
-        tids = [t.task_id for t in get_tasks(project_id) if t.task_id]
+        tids = [t.task_id for t in get_tasks(project_name) if t.task_id]
     except Exception:
         return []
     normalized = normalize_task_id_input(prefix)
@@ -66,16 +66,16 @@ def complete_preset_names(
 ) -> list[str]:  # pragma: no cover
     """Return preset names matching *prefix* for the scoped project.
 
-    ``list_presets`` requires a project ID to resolve the full tier
+    ``list_presets`` requires a project name to resolve the full tier
     (bundled → global → project), so we only suggest presets once the
     user has typed the project arg.  No project typed yet → empty list,
     which leaves argcomplete silent rather than misleading.
     """
-    project_id = getattr(parsed_args, "project_id", None)
-    if not project_id:
+    project_name = getattr(parsed_args, "project_name", None)
+    if not project_name:
         return []
     try:
-        names = [p.name for p in list_presets(project_id)]
+        names = [p.name for p in list_presets(project_name)]
     except Exception:
         return []
     if prefix:
@@ -88,14 +88,14 @@ def set_completer(action: argparse.Action, fn: Callable[..., Any]) -> None:
     action.completer = fn  # type: ignore[attr-defined]
 
 
-def add_project_id(parser: argparse.ArgumentParser, **kwargs: Any) -> argparse.Action:
-    """Add a ``project_id`` positional with the project-ID completer attached.
+def add_project_name(parser: argparse.ArgumentParser, **kwargs: Any) -> argparse.Action:
+    """Add a ``project_name`` positional with the project name completer attached.
 
     Returns the argparse action so callers can further customise it.
     Accepts any argparse kwargs (``nargs``, ``metavar``, ``help``, etc.).
     """
-    action = parser.add_argument("project_id", **kwargs)
-    set_completer(action, complete_project_ids)
+    action = parser.add_argument("project_name", **kwargs)
+    set_completer(action, complete_project_names)
     return action
 
 
@@ -103,7 +103,7 @@ def add_task_id(parser: argparse.ArgumentParser, **kwargs: Any) -> argparse.Acti
     """Add a ``task_id`` positional with the task-ID completer attached.
 
     Returns the argparse action.  Callers should typically precede this
-    with `add_project_id` so argcomplete has a project scope to
+    with `add_project_name` so argcomplete has a project scope to
     look up tasks under.
     """
     action = parser.add_argument("task_id", **kwargs)

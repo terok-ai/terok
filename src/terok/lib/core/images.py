@@ -41,14 +41,14 @@ def agent_cli_image(base_image: str) -> str:
     return f"terok-l1-cli:{_base_tag(base_image)}"
 
 
-def project_cli_image(project_id: str) -> str:
-    """Return the L2 CLI project image tag for *project_id*."""
-    return f"{project_id}:l2-cli"
+def project_cli_image(project_name: str) -> str:
+    """Return the L2 CLI project image tag for *project_name*."""
+    return f"{project_name}:l2-cli"
 
 
-def project_dev_image(project_id: str) -> str:
-    """Return the L2 dev project image tag for *project_id*."""
-    return f"{project_id}:l2-dev"
+def project_dev_image(project_name: str) -> str:
+    """Return the L2 dev project image tag for *project_name*."""
+    return f"{project_name}:l2-dev"
 
 
 @lru_cache(maxsize=64)
@@ -106,8 +106,8 @@ def require_agent_installed(project: ProjectConfig, name: str, *, noun: str = "A
     available = ", ".join(sorted(installed_agents(image))) or "(none)"
     raise SystemExit(
         f"{noun} {name!r} is not installed in the L1 image for "
-        f"project {project.id!r} ({image}).\n"
+        f"project {project.name!r} ({image}).\n"
         f"Installed: {available}\n"
         f"Add it to image.agents and rebuild: "
-        f"terok project build --agents {name} {project.id}"
+        f"terok project build --agents {name} {project.name}"
     )

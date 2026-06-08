@@ -79,7 +79,7 @@ class TestListImages:
     """Tests for ``list_images()``."""
 
     @pytest.mark.parametrize(
-        ("images_spec", "project_id", "expected_names"),
+        ("images_spec", "project_name", "expected_names"),
         [
             (
                 [
@@ -112,18 +112,18 @@ class TestListImages:
         self,
         mock_runtime: unittest.mock.Mock,
         images_spec: list[tuple[str, str, str]],
-        project_id: str | None,
+        project_name: str | None,
         expected_names: set[str],
     ) -> None:
         """Runtime enumeration is filtered to terok images (optionally by project)."""
         mock_runtime.images.return_value = [
             _mock_image(ref=ref, repository=repo, tag=tag) for ref, repo, tag in images_spec
         ]
-        images = list_images(project_id)
+        images = list_images(project_name)
         assert {image.full_name for image in images} == expected_names
 
     @pytest.mark.parametrize(
-        ("project_id", "expected_names"),
+        ("project_name", "expected_names"),
         [
             (
                 None,
@@ -143,7 +143,7 @@ class TestListImages:
     def test_list_images_handles_localhost_prefix(
         self,
         mock_runtime: unittest.mock.Mock,
-        project_id: str | None,
+        project_name: str | None,
         expected_names: set[str],
     ) -> None:
         """Podman's ``localhost/`` prefix on the repo must not hide terok images."""
@@ -152,7 +152,7 @@ class TestListImages:
             _mock_image(ref="sha256:aa", repository="localhost/proj-a", tag="l2-cli"),
             _mock_image(ref="sha256:bb", repository="localhost/proj-b", tag="l2-cli"),
         ]
-        images = list_images(project_id)
+        images = list_images(project_name)
         assert {image.full_name for image in images} == expected_names
 
     # removed — mock_runtime fixture handles it
@@ -210,7 +210,7 @@ class TestFindOrphanedImages:
     @unittest.mock.patch("terok.lib.domain.image_cleanup._is_terok_built_image")
     @unittest.mock.patch("terok.lib.domain.image_cleanup._find_dangling_terok_images")
     @unittest.mock.patch("terok.lib.domain.image_cleanup.list_images")
-    @unittest.mock.patch("terok.lib.domain.image_cleanup._known_project_ids")
+    @unittest.mock.patch("terok.lib.domain.image_cleanup._known_project_names")
     def test_find_orphaned_images(
         self,
         mock_known: unittest.mock.Mock,
@@ -238,8 +238,8 @@ class TestFindOrphanedImages:
         "terok.lib.domain.image_cleanup._find_dangling_terok_images", return_value=[]
     )
     @unittest.mock.patch("terok.lib.domain.image_cleanup.list_images")
-    @unittest.mock.patch("terok.lib.domain.image_cleanup._known_project_ids")
-    def test_localhost_prefixed_image_matches_bare_project_id(
+    @unittest.mock.patch("terok.lib.domain.image_cleanup._known_project_names")
+    def test_localhost_prefixed_image_matches_bare_project_name(
         self,
         mock_known: unittest.mock.Mock,
         mock_list: unittest.mock.Mock,

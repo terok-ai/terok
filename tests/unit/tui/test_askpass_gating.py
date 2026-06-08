@@ -56,7 +56,7 @@ class _FakeApp:
 def _new_screen() -> InitProgressScreen:
     """Construct a bare [`InitProgressScreen`][terok.tui.wizard_screens.InitProgressScreen] without Textual's setup machinery."""
     screen = InitProgressScreen.__new__(InitProgressScreen)
-    screen._project_id = "demo"
+    screen._project_name = "demo"
     return screen
 
 

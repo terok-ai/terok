@@ -25,39 +25,39 @@ from __future__ import annotations
 # ── Project infrastructure ────────────────────────────────────────────
 
 
-def generate(project_id: str) -> None:
-    """Generate Dockerfiles for *project_id*."""
+def generate(project_name: str) -> None:
+    """Generate Dockerfiles for *project_name*."""
     from terok.lib.api import generate_dockerfiles
 
-    generate_dockerfiles(project_id)
+    generate_dockerfiles(project_name)
 
 
-def build(project_id: str) -> None:
-    """Build the L2 project images for *project_id* (reuses cached L0/L1)."""
+def build(project_name: str) -> None:
+    """Build the L2 project images for *project_name* (reuses cached L0/L1)."""
     from terok.lib.api import build_images
 
-    build_images(project_id)
+    build_images(project_name)
 
 
-def build_agents(project_id: str) -> None:
-    """Rebuild *project_id* from L0 with a fresh agent set."""
+def build_agents(project_name: str) -> None:
+    """Rebuild *project_name* from L0 with a fresh agent set."""
     from terok.lib.api import build_images
 
-    build_images(project_id, refresh_agents=True)
+    build_images(project_name, refresh_agents=True)
 
 
-def build_full(project_id: str) -> None:
-    """Rebuild *project_id* from L0 with no cache."""
+def build_full(project_name: str) -> None:
+    """Rebuild *project_name* from L0 with no cache."""
     from terok.lib.api import build_images
 
-    build_images(project_id, full_rebuild=True)
+    build_images(project_name, full_rebuild=True)
 
 
-def init_ssh(project_id: str) -> None:
-    """Mint a vault-backed SSH keypair for *project_id* and print its summary."""
+def init_ssh(project_name: str) -> None:
+    """Mint a vault-backed SSH keypair for *project_name* and print its summary."""
     from terok.lib.api import get_project, summarize_ssh_init
 
-    summarize_ssh_init(get_project(project_id).provision_ssh_key())
+    summarize_ssh_init(get_project(project_name).provision_ssh_key())
 
 
 # Full project setup ("Full setup" project-screen action) is *not* a
@@ -80,7 +80,7 @@ def _lookup_vault_pub_line(scope: str) -> str | None:
     return public_line_of(records[-1]) if records else None
 
 
-def _print_sync_gate_ssh_help(project_id: str) -> None:
+def _print_sync_gate_ssh_help(project_name: str) -> None:
     """Print SSH-specific troubleshooting for a gate-sync failure.
 
     Best-effort: a project that cannot be loaded just means no hint —
@@ -92,7 +92,7 @@ def _print_sync_gate_ssh_help(project_id: str) -> None:
     from terok.lib.api.setup import is_ssh_url
 
     try:
-        project = load_project(project_id)
+        project = load_project(project_name)
     except Exception:
         return
     if not is_ssh_url(project.upstream_url):
@@ -100,25 +100,25 @@ def _print_sync_gate_ssh_help(project_id: str) -> None:
 
     print("\nHint: this project uses an SSH upstream.")
     print("Gate sync failures are often a missing SSH key registration on the remote.")
-    pub_line = _lookup_vault_pub_line(project.id)
+    pub_line = _lookup_vault_pub_line(project.name)
     if pub_line is not None:
         print("Public key (register as a deploy key on the remote):")
         print(f"  {pub_line}")
     else:
-        print(f"No SSH key assigned to project (scope) {project.id!r} in the vault.")
-        print(f"Run 'terok project ssh-init {project_id}' to generate one,")
+        print(f"No SSH key assigned to project (scope) {project.name!r} in the vault.")
+        print(f"Run 'terok project ssh-init {project_name}' to generate one,")
         print("then register the printed public key as a deploy key upstream.")
 
 
-def sync_gate(project_id: str) -> None:
-    """Sync (creating if absent) the git gate for *project_id* from upstream."""
+def sync_gate(project_name: str) -> None:
+    """Sync (creating if absent) the git gate for *project_name* from upstream."""
     from terok.lib.api import load_project, make_git_gate
 
-    print(f"Syncing gate for {project_id}...")
+    print(f"Syncing gate for {project_name}...")
     try:
-        result = make_git_gate(load_project(project_id)).sync()
+        result = make_git_gate(load_project(project_name)).sync()
     except SystemExit as exc:
-        _print_sync_gate_ssh_help(project_id)
+        _print_sync_gate_ssh_help(project_name)
         raise SystemExit(f"Gate sync failed: {exc}") from exc
     if result["success"]:
         print(
@@ -127,7 +127,7 @@ def sync_gate(project_id: str) -> None:
             else "Gate synced from upstream."
         )
         return
-    _print_sync_gate_ssh_help(project_id)
+    _print_sync_gate_ssh_help(project_name)
     raise SystemExit(f"Gate sync failed: {', '.join(result['errors'])}")
 
 
@@ -234,29 +234,29 @@ def selinux_switch_to_tcp() -> None:
 # ── Task lifecycle ────────────────────────────────────────────────────
 
 
-def task_restart(project_id: str, task_id: str) -> None:
+def task_restart(project_name: str, task_id: str) -> None:
     """Restart *task_id*'s container (stopping it first if running)."""
     from terok.lib.api import task_restart as _task_restart
 
-    _task_restart(project_id, task_id)
+    _task_restart(project_name, task_id)
 
 
-def task_stop(project_id: str, task_id: str) -> None:
+def task_stop(project_name: str, task_id: str) -> None:
     """Stop *task_id*'s running container."""
     from terok.lib.api import task_stop as _task_stop
 
-    _task_stop(project_id, task_id)
+    _task_stop(project_name, task_id)
 
 
-def start_cli_container(project_id: str, task_id: str) -> None:
+def start_cli_container(project_name: str, task_id: str) -> None:
     """Start the CLI container for the already-created task *task_id*."""
     from terok.lib.api import task_run_cli
 
-    task_run_cli(project_id, task_id)
+    task_run_cli(project_name, task_id)
 
 
-def start_toad_container(project_id: str, task_id: str) -> None:
+def start_toad_container(project_name: str, task_id: str) -> None:
     """Start the Toad container for the already-created task *task_id*."""
     from terok.lib.api import task_run_toad
 
-    task_run_toad(project_id, task_id)
+    task_run_toad(project_name, task_id)

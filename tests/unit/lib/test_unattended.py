@@ -53,7 +53,7 @@ class TaskRunnerResult:
 
 def make_project_config(
     *,
-    project_id: str,
+    project_name: str,
     root: Path,
     tasks_root: Path,
     gate_path: Path,
@@ -63,7 +63,7 @@ def make_project_config(
     from terok.lib.core.projects import ProjectConfig
 
     return ProjectConfig(
-        id=project_id,
+        name=project_name,
         security_class="online",
         upstream_url=None,
         default_branch="main",
@@ -91,7 +91,7 @@ def runner_env_vars(base: Path, config_file: Path) -> dict[str, str]:
     }
 
 
-def task_paths(base: Path, project_id: str, task_id: str = "1") -> tuple[Path, Path]:
+def task_paths(base: Path, project_name: str, task_id: str = "1") -> tuple[Path, Path]:
     """Return ``(agent_config_dir, meta_path)`` for a task.
 
     agent_config_dir lives under sandbox-live (container-writable),
@@ -100,12 +100,12 @@ def task_paths(base: Path, project_id: str, task_id: str = "1") -> tuple[Path, P
     sandbox_live = base / "sandbox-live"
     state = base / "state"
     return (
-        sandbox_live / "tasks" / project_id / task_id / "agent-config",
-        state / "projects" / project_id / "tasks" / f"{task_id}_dossier.json",
+        sandbox_live / "tasks" / project_name / task_id / "agent-config",
+        state / "projects" / project_name / "tasks" / f"{task_id}_dossier.json",
     )
 
 
-def write_runner_project(base: Path, project_id: str, extra_yml: str = "") -> Path:
+def write_runner_project(base: Path, project_name: str, extra_yml: str = "") -> Path:
     """Write a minimal project config and matching global config file for task runners."""
     config_base = base / "config"
     projects_root = config_base / "projects"
@@ -115,13 +115,13 @@ def write_runner_project(base: Path, project_id: str, extra_yml: str = "") -> Pa
     config_file.write_text(f"credentials:\n  dir: {envs_dir}\n", encoding="utf-8")
     write_project(
         projects_root,
-        project_id,
-        f"project:\n  id: {project_id}\n  security_class: online\n{extra_yml}",
+        project_name,
+        f"project:\n  id: {project_name}\n  security_class: online\n{extra_yml}",
     )
     return config_file
 
 
-def read_task_meta(base: Path, project_id: str, task_id: str = "1") -> dict[str, object]:
+def read_task_meta(base: Path, project_name: str, task_id: str = "1") -> dict[str, object]:
     """Load merged task metadata for a task — wire-dossier + bookkeeping.
 
     Live tasks store the wire-dossier triple in JSON (the file shield
@@ -130,7 +130,7 @@ def read_task_meta(base: Path, project_id: str, task_id: str = "1") -> dict[str,
     """
     from terok.lib.orchestration.tasks import read_task_meta
 
-    meta_dir = task_paths(base, project_id, task_id)[1].parent
+    meta_dir = task_paths(base, project_name, task_id)[1].parent
     return read_task_meta(meta_dir, task_id) or {}
 
 
@@ -190,7 +190,7 @@ def run_headless_request(
 
 def run_followup_request(
     base: Path,
-    project_id: str,
+    project_name: str,
     task_id: str,
     prompt: str,
     *,
@@ -229,7 +229,7 @@ def run_followup_request(
     ):
         buffer = StringIO()
         with redirect_stdout(buffer):
-            task_followup_headless(project_id, task_id, prompt, follow=follow)
+            task_followup_headless(project_name, task_id, prompt, follow=follow)
     return TaskRunnerResult(output=buffer.getvalue(), run_mock=start_mock, wait_mock=wait_mock)
 
 
@@ -492,12 +492,12 @@ class TestTaskRunHeadless:
 class TestTaskFollowupHeadless:
     """Tests for task_followup_headless."""
 
-    def _create_completed_task(self, base: Path, project_id: str) -> str:
+    def _create_completed_task(self, base: Path, project_name: str) -> str:
         """Create a task via task_run_headless and return the task_id."""
         result = run_headless_request(
             base,
-            write_runner_project(base, project_id),
-            HeadlessRunRequest(project_id, "initial prompt"),
+            write_runner_project(base, project_name),
+            HeadlessRunRequest(project_name, "initial prompt"),
         )
         assert result.task_id is not None
         return result.task_id

@@ -28,33 +28,33 @@ from terok.lib.orchestration.tasks import (
 from tests.test_utils import mock_git_config, project_env
 
 
-def project_config(project_id: str, *, shutdown_timeout: int | None = None) -> str:
+def project_config(project_name: str, *, shutdown_timeout: int | None = None) -> str:
     """Build a minimal project config, optionally overriding shutdown timeout."""
-    lines = [f"project:\n  id: {project_id}"]
+    lines = [f"project:\n  id: {project_name}"]
     if shutdown_timeout is not None:
         lines.append(f"run:\n  shutdown_timeout: {shutdown_timeout}")
     return "\n".join(lines) + "\n"
 
 
-def task_meta_path(ctx: SimpleNamespace, project_id: str, task_id: str) -> Path:
+def task_meta_path(ctx: SimpleNamespace, project_name: str, task_id: str) -> Path:
     """Return the metadata path for *task_id* inside the temporary project env."""
-    return ctx.state_dir / "projects" / project_id / "tasks" / f"{task_id}_dossier.json"
+    return ctx.state_dir / "projects" / project_name / "tasks" / f"{task_id}_dossier.json"
 
 
 def update_task_meta(
-    ctx: SimpleNamespace, project_id: str, task_id: str, **changes: object
+    ctx: SimpleNamespace, project_name: str, task_id: str, **changes: object
 ) -> None:
     """Patch selected metadata keys for a generated task."""
-    dossier_handle = task_meta_path(ctx, project_id, task_id)
+    dossier_handle = task_meta_path(ctx, project_name, task_id)
     meta = read_task_meta(dossier_handle.parent, task_id) or {}
     meta.update(changes)
     write_task_meta(dossier_handle, meta)
 
 
-def create_task_with_mode(ctx: SimpleNamespace, project_id: str, *, mode: str = "cli") -> str:
+def create_task_with_mode(ctx: SimpleNamespace, project_name: str, *, mode: str = "cli") -> str:
     """Create a new task and persist the requested mode in its metadata."""
-    task_id = task_new(project_id)
-    update_task_meta(ctx, project_id, task_id, mode=mode)
+    task_id = task_new(project_name)
+    update_task_meta(ctx, project_name, task_id, mode=mode)
     return task_id
 
 
@@ -102,7 +102,7 @@ def test_container_state_handles_success_and_errors(
 
 
 @pytest.mark.parametrize(
-    ("project_id", "shutdown_timeout", "timeout_override", "expected_timeout"),
+    ("project_name", "shutdown_timeout", "timeout_override", "expected_timeout"),
     [
         pytest.param("proj_stop", None, None, 10, id="default-timeout"),
         pytest.param("proj_stop_cfg", 30, None, 30, id="config-timeout"),
@@ -110,17 +110,17 @@ def test_container_state_handles_success_and_errors(
     ],
 )
 def test_task_stop_uses_expected_timeout(
-    project_id: str,
+    project_name: str,
     shutdown_timeout: int | None,
     timeout_override: int | None,
     expected_timeout: int,
 ) -> None:
     """Stopping a task uses the default, configured, or explicit timeout."""
     with project_env(
-        project_config(project_id, shutdown_timeout=shutdown_timeout),
-        project_id=project_id,
+        project_config(project_name, shutdown_timeout=shutdown_timeout),
+        project_name=project_name,
     ) as ctx:
-        task_id = create_task_with_mode(ctx, project_id)
+        task_id = create_task_with_mode(ctx, project_name)
 
         container = _mock_container(state="running")
         runtime_mock = Mock(spec=PodmanRuntime)
@@ -131,30 +131,30 @@ def test_task_stop_uses_expected_timeout(
         ):
             capture_stdout(
                 task_stop,
-                project_id,
+                project_name,
                 task_id,
                 **({"timeout": timeout_override} if timeout_override is not None else {}),
             )
 
         # One call for state lookup, one call for stop
-        runtime_mock.container.assert_any_call(f"{project_id}-cli-{task_id}")
+        runtime_mock.container.assert_any_call(f"{project_name}-cli-{task_id}")
         container.stop.assert_called_once_with(timeout=expected_timeout)
 
 
 def test_task_stop_unknown_task_raises_system_exit() -> None:
     """Stopping a missing task raises a user-facing ``SystemExit``."""
-    project_id = "proj_stop_missing"
-    with project_env(project_config(project_id), project_id=project_id):
+    project_name = "proj_stop_missing"
+    with project_env(project_config(project_name), project_name=project_name):
         with mock_git_config(), pytest.raises(SystemExit, match="Unknown task"):
-            task_stop(project_id, "999")
+            task_stop(project_name, "999")
 
 
 def test_task_restart_starts_exited_container() -> None:
     """Restarting an exited task uses ``Container.start``."""
-    project_id = "proj_restart"
-    with project_env(project_config(project_id), project_id=project_id) as ctx:
-        task_id = create_task_with_mode(ctx, project_id)
-        container_name = f"{project_id}-cli-{task_id}"
+    project_name = "proj_restart"
+    with project_env(project_config(project_name), project_name=project_name) as ctx:
+        task_id = create_task_with_mode(ctx, project_name)
+        container_name = f"{project_name}-cli-{task_id}"
 
         # First state query → "exited"; subsequent queries (after start) → "running"
         container_states = iter(["exited", "running"])
@@ -180,7 +180,7 @@ def test_task_restart_starts_exited_container() -> None:
             mock_git_config(),
             patch("terok.lib.core.runtime.resolve_runtime", return_value=runtime_mock),
         ):
-            capture_stdout(task_restart, project_id, task_id)
+            capture_stdout(task_restart, project_name, task_id)
 
         runtime_mock.container.assert_any_call(container_name)
         assert container_name in cache, "runtime.container should have been queried for the task"
@@ -189,10 +189,10 @@ def test_task_restart_starts_exited_container() -> None:
 
 def test_task_restart_running_container_stops_then_starts() -> None:
     """Restarting a running task stops it first and then starts it again."""
-    project_id = "proj_restart_running"
-    with project_env(project_config(project_id), project_id=project_id) as ctx:
-        task_id = create_task_with_mode(ctx, project_id)
-        container_name = f"{project_id}-cli-{task_id}"
+    project_name = "proj_restart_running"
+    with project_env(project_config(project_name), project_name=project_name) as ctx:
+        task_id = create_task_with_mode(ctx, project_name)
+        container_name = f"{project_name}-cli-{task_id}"
 
         # Every state query returns "running"
         shared_container = _mock_container(state="running")
@@ -209,7 +209,7 @@ def test_task_restart_running_container_stops_then_starts() -> None:
             mock_git_config(),
             patch("terok.lib.core.runtime.resolve_runtime", return_value=runtime_mock),
         ):
-            output = capture_stdout(task_restart, project_id, task_id)
+            output = capture_stdout(task_restart, project_name, task_id)
 
         runtime_mock.container.assert_any_call(container_name)
         shared_container.stop.assert_called_once_with(timeout=10)
@@ -219,9 +219,9 @@ def test_task_restart_running_container_stops_then_starts() -> None:
 
 def test_task_status_reports_live_container_state() -> None:
     """Task status shows both live container state and derived effective status."""
-    project_id = "proj_status"
-    with project_env(project_config(project_id), project_id=project_id) as ctx:
-        task_id = create_task_with_mode(ctx, project_id)
+    project_name = "proj_status"
+    with project_env(project_config(project_name), project_name=project_name) as ctx:
+        task_id = create_task_with_mode(ctx, project_name)
 
         runtime_mock = Mock(spec=PodmanRuntime)
         runtime_mock.container.return_value = _mock_container(state="exited")
@@ -229,7 +229,7 @@ def test_task_status_reports_live_container_state() -> None:
             mock_git_config(),
             patch("terok.lib.core.runtime.resolve_runtime", return_value=runtime_mock),
         ):
-            output = capture_stdout(task_status, project_id, task_id)
+            output = capture_stdout(task_status, project_name, task_id)
 
     assert "exited" in output
     assert "stopped" in output
@@ -240,7 +240,7 @@ def test_get_task_container_state_returns_none_without_mode() -> None:
     assert get_task_container_state("proj", "1", None) is None
 
 
-def test_get_task_container_state_uses_project_id_and_mode() -> None:
+def test_get_task_container_state_uses_project_name_and_mode() -> None:
     """Task container lookup resolves the canonical container name.
 
     State queries are runtime-agnostic — ``podman inspect`` is the same
@@ -257,19 +257,19 @@ def test_get_task_container_state_uses_project_id_and_mode() -> None:
 
 def test_task_restart_no_mode_raises() -> None:
     """Restarting a task that never ran (no mode set) raises a user-facing SystemExit."""
-    project_id = "proj_restart_nomode"
-    with project_env(project_config(project_id), project_id=project_id):
+    project_name = "proj_restart_nomode"
+    with project_env(project_config(project_name), project_name=project_name):
         with mock_git_config():
-            task_id = task_new(project_id)  # fresh task — mode is None
+            task_id = task_new(project_name)  # fresh task — mode is None
             with pytest.raises(SystemExit, match="never been run"):
-                task_restart(project_id, task_id)
+                task_restart(project_name, task_id)
 
 
 def test_task_restart_missing_container_raises() -> None:
     """Restarting a task whose container is gone raises, pointing at ``task run``."""
-    project_id = "proj_restart_gone"
-    with project_env(project_config(project_id), project_id=project_id) as ctx:
-        task_id = create_task_with_mode(ctx, project_id)
+    project_name = "proj_restart_gone"
+    with project_env(project_config(project_name), project_name=project_name) as ctx:
+        task_id = create_task_with_mode(ctx, project_name)
 
         runtime_mock = Mock(spec=PodmanRuntime)
         runtime_mock.container.return_value = _mock_container(state=None)
@@ -278,14 +278,14 @@ def test_task_restart_missing_container_raises() -> None:
             patch("terok.lib.core.runtime.resolve_runtime", return_value=runtime_mock),
         ):
             with pytest.raises(SystemExit, match="no longer exists"):
-                task_restart(project_id, task_id)
+                task_restart(project_name, task_id)
 
 
 def test_task_restart_stop_failure_raises() -> None:
     """A RuntimeError from Container.stop surfaces as a user-facing SystemExit."""
-    project_id = "proj_restart_stopfail"
-    with project_env(project_config(project_id), project_id=project_id) as ctx:
-        task_id = create_task_with_mode(ctx, project_id)
+    project_name = "proj_restart_stopfail"
+    with project_env(project_config(project_name), project_name=project_name) as ctx:
+        task_id = create_task_with_mode(ctx, project_name)
 
         container = _mock_container(state="running")
         container.stop.side_effect = RuntimeError("container locked")
@@ -296,7 +296,7 @@ def test_task_restart_stop_failure_raises() -> None:
             patch("terok.lib.core.runtime.resolve_runtime", return_value=runtime_mock),
         ):
             with pytest.raises(SystemExit, match="Failed to stop container"):
-                task_restart(project_id, task_id)
+                task_restart(project_name, task_id)
 
 
 def test_task_restart_port_unavailable_aborts_before_stopping() -> None:
@@ -306,10 +306,10 @@ def test_task_restart_port_unavailable_aborts_before_stopping() -> None:
     safety property: a restart that would fail anyway must not first take
     down a working service.
     """
-    project_id = "proj_restart_port"
-    with project_env(project_config(project_id), project_id=project_id) as ctx:
-        task_id = create_task_with_mode(ctx, project_id, mode="toad")
-        update_task_meta(ctx, project_id, task_id, web_port=8080, web_token="tok")
+    project_name = "proj_restart_port"
+    with project_env(project_config(project_name), project_name=project_name) as ctx:
+        task_id = create_task_with_mode(ctx, project_name, mode="toad")
+        update_task_meta(ctx, project_name, task_id, web_port=8080, web_token="tok")
 
         container = _mock_container(state="running")
         runtime_mock = Mock(spec=PodmanRuntime)
@@ -324,18 +324,18 @@ def test_task_restart_port_unavailable_aborts_before_stopping() -> None:
             patch("terok.lib.orchestration.task_runners.restart.release_web_port") as release,
         ):
             with pytest.raises(SystemExit, match="no longer available"):
-                task_restart(project_id, task_id)
+                task_restart(project_name, task_id)
 
-        release.assert_called_once_with(project_id, task_id)
+        release.assert_called_once_with(project_name, task_id)
         container.stop.assert_not_called()
 
 
 def test_task_restart_toad_rehydrates_token_and_prints_url() -> None:
     """Restarting a running toad task rehydrates its token and prints the browser URL."""
-    project_id = "proj_restart_toad"
-    with project_env(project_config(project_id), project_id=project_id) as ctx:
-        task_id = create_task_with_mode(ctx, project_id, mode="toad")
-        update_task_meta(ctx, project_id, task_id, web_port=8080, web_token="sekret")
+    project_name = "proj_restart_toad"
+    with project_env(project_config(project_name), project_name=project_name) as ctx:
+        task_id = create_task_with_mode(ctx, project_name, mode="toad")
+        update_task_meta(ctx, project_name, task_id, web_port=8080, web_token="sekret")
 
         container = _mock_container(state="running")
         runtime_mock = Mock(spec=PodmanRuntime)
@@ -351,7 +351,7 @@ def test_task_restart_toad_rehydrates_token_and_prints_url() -> None:
                 "terok.lib.orchestration.task_runners.restart._rehydrate_toad_token"
             ) as rehydrate,
         ):
-            output = capture_stdout(task_restart, project_id, task_id)
+            output = capture_stdout(task_restart, project_name, task_id)
 
         rehydrate.assert_called_once()
         container.stop.assert_called_once()

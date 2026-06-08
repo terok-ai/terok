@@ -62,7 +62,7 @@ _PROMPT_HISTORY_FILENAME = "prompt-history.txt"
 class HeadlessRunRequest:
     """Groups all parameters for a headless (unattended) agent run."""
 
-    project_id: str
+    project_name: str
     prompt: str
     config_path: str | None = None
     model: str | None = None
@@ -103,13 +103,13 @@ def _print_detached_summary(summary: DetachedSummary) -> None:
     )
 
 
-def _print_run_summary(project_id: str, task_id: str, mode: str, workspace: Path) -> None:
+def _print_run_summary(project_name: str, task_id: str, mode: str, workspace: Path) -> None:
     """Print a summary of changes made by the headless agent.
 
     Runs ``git diff --stat`` **inside** the task container to avoid executing
     potentially poisoned git hooks on the host.
     """
-    diff_stat = container_git_diff(project_id, task_id, mode, "--stat", "HEAD@{1}..HEAD")
+    diff_stat = container_git_diff(project_name, task_id, mode, "--stat", "HEAD@{1}..HEAD")
     if diff_stat is not None:
         stripped = diff_stat.strip()
         if stripped:
@@ -136,7 +136,7 @@ def _build_cli_overrides(config_path: str | None) -> dict:
 
 def _report_headless_result(
     *,
-    project_id: str,
+    project_name: str,
     task_id: str,
     cname: str,
     task_dir: Path,
@@ -151,9 +151,9 @@ def _report_headless_result(
     """
     color_enabled = _supports_color()
     if follow:
-        exit_code = _rt.resolve_runtime(load_project(project_id)).container(cname).wait()
-        _print_run_summary(project_id, task_id, "run", task_dir / WORKSPACE_DANGEROUS_DIRNAME)
-        update_task_exit_code(project_id, task_id, exit_code)
+        exit_code = _rt.resolve_runtime(load_project(project_name)).container(cname).wait()
+        _print_run_summary(project_name, task_id, "run", task_dir / WORKSPACE_DANGEROUS_DIRNAME)
+        update_task_exit_code(project_name, task_id, exit_code)
         if exit_code != 0:
             print(f"\n{label} exited with code {_red(str(exit_code), color_enabled)}")
     else:
@@ -186,14 +186,14 @@ def task_run_headless(request: HeadlessRunRequest) -> str:
         get_agent,
     )
 
-    project = load_project(request.project_id)
+    project = load_project(request.project_name)
     resolved = get_agent(request.agent, default_agent=project.default_agent)
     require_agent_installed(project, resolved.name)
 
     # Resolve layered agent config (global → project → preset → CLI overrides)
     cli_overrides = _build_cli_overrides(request.config_path)
     effective = resolve_agent_config(
-        request.project_id,
+        request.project_name,
         agent_config=project.agent_config,
         project_root=project.root,
         preset=request.preset,
@@ -230,7 +230,7 @@ def task_run_headless(request: HeadlessRunRequest) -> str:
         effective_prompt = f"{request.prompt}\n\n{pcfg.prompt_extra}"
 
     # Create a new task
-    task_id = task_new(request.project_id, name=request.name)
+    task_id = task_new(request.project_name, name=request.name)
 
     # Prepare agent-config dir with wrapper, prompt.txt, instructions.md
     task_dir = project.tasks_root / str(task_id)
@@ -270,13 +270,13 @@ def task_run_headless(request: HeadlessRunRequest) -> str:
     )
 
     # Build podman command (DETACHED)
-    cname = container_name(project.id, "run", task_id)
+    cname = container_name(project.name, "run", task_id)
 
-    meta, meta_path = load_task_meta(project.id, task_id)
+    meta, meta_path = load_task_meta(project.name, task_id)
     run_hook(
         "pre_start",
         project.hook_pre_start,
-        project_id=project.id,
+        project_name=project.name,
         task_id=task_id,
         mode="run",
         cname=cname,
@@ -285,7 +285,7 @@ def task_run_headless(request: HeadlessRunRequest) -> str:
     )
     _run_container(
         cname=cname,
-        image=project_cli_image(project.id),
+        image=project_cli_image(project.name),
         env=env,
         volumes=volumes,
         project=project,
@@ -297,7 +297,7 @@ def task_run_headless(request: HeadlessRunRequest) -> str:
     run_hook(
         "post_start",
         project.hook_post_start,
-        project_id=project.id,
+        project_name=project.name,
         task_id=task_id,
         mode="run",
         cname=cname,
@@ -317,7 +317,7 @@ def task_run_headless(request: HeadlessRunRequest) -> str:
     write_task_meta(meta_path, meta)
 
     _report_headless_result(
-        project_id=project.id,
+        project_name=project.name,
         task_id=task_id,
         cname=cname,
         task_dir=task_dir,
@@ -355,7 +355,7 @@ def _inject_followup_prompt(
 
 
 def task_followup_headless(
-    project_id: str,
+    project_name: str,
     task_id: str,
     prompt: str,
     follow: bool = True,
@@ -384,8 +384,8 @@ def task_followup_headless(
     """
     from terok.lib.integrations.executor import AGENTS
 
-    project = load_project(project_id)
-    meta, meta_path = load_task_meta(project.id, task_id)
+    project = load_project(project_name)
+    meta, meta_path = load_task_meta(project.name, task_id)
 
     mode = meta.get("mode")
     if mode != "run":
@@ -394,7 +394,7 @@ def task_followup_headless(
             f"Follow-up is only supported for unattended (mode='run') tasks."
         )
 
-    cname = container_name(project.id, "run", task_id)
+    cname = container_name(project.name, "run", task_id)
     container_state = _rt.resolve_runtime(project).container(cname).state
     if container_state == "running":
         raise SystemExit(
@@ -439,7 +439,7 @@ def task_followup_headless(
     run_hook(
         "post_start",
         project.hook_post_start,
-        project_id=project.id,
+        project_name=project.name,
         task_id=task_id,
         mode="run",
         cname=cname,
@@ -453,7 +453,7 @@ def task_followup_headless(
     write_task_meta(meta_path, meta)
 
     _report_headless_result(
-        project_id=project.id,
+        project_name=project.name,
         task_id=task_id,
         cname=cname,
         task_dir=task_dir,

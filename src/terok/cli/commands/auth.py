@@ -7,13 +7,13 @@ Three invocation shapes, in increasing specificity:
 
 - ``terok auth``                         — interactive chained menu.
 - ``terok auth <provider>``              — host-wide auth for one provider.
-- ``terok auth <provider> --project ID`` — project-scoped auth.
+- ``terok auth <provider> --project name`` — project-scoped auth.
 
 Where credentials land depends on the named project's
 [`credentials_scope`][terok.lib.core.project_model.ProjectConfig.credentials_scope]:
 ``"shared"`` (default) writes to the host-wide bucket every project
 sees, ``"project"`` carves out a private vault row and agent-config
-mount tree keyed by the project id.  Host-wide ``terok auth`` (no
+mount tree keyed by the project name.  Host-wide ``terok auth`` (no
 ``--project``) always writes to the shared bucket — there's no project
 context to override it.
 """
@@ -29,7 +29,7 @@ from ...lib.api import authenticate
 from ...lib.core.config import is_oauth_enabled_for
 from ...lib.core.images import require_agent_installed
 from ...lib.core.projects import load_project, require_project_exists
-from ._completers import complete_project_ids as _complete_project_ids, set_completer
+from ._completers import complete_project_names as _complete_project_names, set_completer
 
 
 def _provider_of() -> dict[str, str]:
@@ -60,7 +60,7 @@ def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) ->
             "Without arguments, opens an interactive menu to authenticate one "
             "or more providers in sequence.  ``terok auth <provider>`` "
             "authenticates host-wide — credentials are shared across every "
-            "project that uses the same agent.  Pass ``--project <id>`` to "
+            "project that uses the same agent.  Pass ``--project <name>`` to "
             "scope the auth to a specific project: the project's image is "
             "reused, and if the project opted into per-project credentials "
             "(``credentials.scope: project`` in project.yml) the captured "
@@ -83,7 +83,7 @@ def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) ->
             default=None,
             help="Scope auth to a project (image + project.yml credentials.scope)",
         ),
-        _complete_project_ids,
+        _complete_project_names,
     )
 
 
@@ -91,38 +91,38 @@ def dispatch(args: argparse.Namespace) -> bool:
     """Handle ``terok auth``.  Returns True if handled."""
     if args.cmd != "auth":
         return False
-    project_id = args.project_flag
+    project_name = args.project_flag
     if args.provider is None:
-        _run_interactive(project_id)
+        _run_interactive(project_name)
     else:
-        _run_one(args.provider, project_id)
+        _run_one(args.provider, project_name)
     return True
 
 
 # ── Implementation helpers ────────────────────────────────────────────
 
 
-def _run_one(provider: str, project_id: str | None) -> None:
+def _run_one(provider: str, project_name: str | None) -> None:
     """Authenticate a single provider, optionally scoped to a project.
 
     *provider* may be an auth-entry name or an LLM-provider alias of one;
     ``authenticate`` resolves it, and the install check resolves it too so the
     baked-agent lookup uses the agent name, not the provider alias.
     """
-    if project_id is not None:
+    if project_name is not None:
         # Project-scoped: verify the L2 image actually has the agent baked
         # in before launching.  Host-wide auth resolves the image in the
         # facade and does its own checks there.
         require_agent_installed(
-            load_project(project_id), resolve_auth_provider(provider), noun="Provider"
+            load_project(project_name), resolve_auth_provider(provider), noun="Provider"
         )
-    authenticate(provider, project_id)
+    authenticate(provider, project_name)
 
 
-def _run_interactive(project_id: str | None) -> None:
+def _run_interactive(project_name: str | None) -> None:
     """Interactively pick one or more providers and authenticate each in turn."""
-    if project_id is not None:
-        require_project_exists(project_id)
+    if project_name is not None:
+        require_project_exists(project_name)
 
     provider_names = list(AUTH_PROVIDERS)
     provider_of = _provider_of()
@@ -154,7 +154,7 @@ def _run_interactive(project_id: str | None) -> None:
 
     for provider in selected:
         print(f"\n── {provider} ─────────────────────")
-        _run_one(provider, project_id)
+        _run_one(provider, project_name)
 
 
 def _parse_provider_selection(raw: str, provider_names: list[str]) -> list[str]:

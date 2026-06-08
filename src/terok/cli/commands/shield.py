@@ -4,7 +4,7 @@
 """Shield egress firewall management commands.
 
 Uses the ``terok_shield`` command registry to build subcommands.
-Commands that need a container take positional ``project_id task_id``
+Commands that need a container take positional ``project_name task_id``
 (same convention as ``terok task …``), which are resolved to a
 container name + task directory for the registry handler.
 """
@@ -42,7 +42,7 @@ def _add_arg(parser: argparse.ArgumentParser, arg: ArgDef) -> None:
     parser.add_argument(arg.name, **kwargs)
 
 
-def _resolve_task(project_id: str, task_id: str) -> tuple[str, Path]:
+def _resolve_task(project_name: str, task_id: str) -> tuple[str, Path]:
     """Resolve project+task to (container_name, task_dir).
 
     Returns:
@@ -54,14 +54,14 @@ def _resolve_task(project_id: str, task_id: str) -> tuple[str, Path]:
     from ...lib.core.projects import load_project
     from ...lib.orchestration.tasks import container_name, load_task_meta
 
-    project = load_project(project_id)
-    meta, _ = load_task_meta(project.id, task_id)
+    project = load_project(project_name)
+    meta, _ = load_task_meta(project.name, task_id)
     mode = meta.get("mode")
     if mode is None:
         raise ValueError(
-            f"Task {task_id} in project {project_id!r} has never been run — no container exists"
+            f"Task {task_id} in project {project_name!r} has never been run — no container exists"
         )
-    cname = container_name(project.id, mode, task_id)
+    cname = container_name(project.name, mode, task_id)
     task_dir = project.tasks_root / str(task_id)
     return cname, task_dir
 
@@ -70,7 +70,7 @@ def _extract_handler_kwargs(args: argparse.Namespace, cmd_def: CommandDef) -> di
     """Extract keyword arguments for a registry handler from parsed args.
 
     Skips the positional ``container`` arg (the CLI resolves it from
-    ``project_id`` + ``task_id``) and ``--container-id``
+    ``project_name`` + ``task_id``) and ``--container-id``
     (the orchestrator resolves it from the container's UUID — see
     [`resolve_container_uuid`][terok.lib.orchestration.task_runners.shield.resolve_container_uuid]).
     """
@@ -121,18 +121,18 @@ def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) ->
 
         sp = sub.add_parser(cmd.name, help=cmd.help)
 
-        # Commands that need a container get positional project_id + task_id,
+        # Commands that need a container get positional project_name + task_id,
         # matching the ``terok task …`` convention.  Commands with an
         # *optional* container arg (like ``status``) get nargs="?" so they
         # work both with and without a task target.  Completers attach
         # either way so tab-complete works in both forms.
-        from ._completers import add_project_id, add_task_id
+        from ._completers import add_project_name, add_task_id
 
         if shield_needs_container(cmd):
-            add_project_id(sp, help="Project ID")
+            add_project_name(sp, help="Project name")
             add_task_id(sp, help="Task ID")
         elif any(a.name == "container" for a in cmd.args):
-            add_project_id(sp, nargs="?", help="Project ID")
+            add_project_name(sp, nargs="?", help="Project name")
             add_task_id(sp, nargs="?", help="Task ID")
 
         # ``--container-id`` is the per-container hub socket routing
@@ -174,19 +174,19 @@ def dispatch(args: argparse.Namespace) -> bool:
     if cmd_def is None or cmd_def.handler is None:
         return False
 
-    project_id = getattr(args, "project_id", None)
+    project_name = getattr(args, "project_name", None)
     task_id = getattr(args, "task_id", None)
-    if (project_id is None) != (task_id is None):
-        print("Error: provide both <project_id> and <task_id>, or neither", file=sys.stderr)
+    if (project_name is None) != (task_id is None):
+        print("Error: provide both <project_name> and <task_id>, or neither", file=sys.stderr)
         sys.exit(1)
-    has_task = project_id is not None and task_id is not None
+    has_task = project_name is not None and task_id is not None
 
     try:
         # mypy narrows the inner pair via the explicit check; ``has_task``
         # is kept around for the except branch's error wording below.
-        if project_id is not None and task_id is not None:
-            task_id = resolve_task_id(project_id, task_id)
-            cname, task_dir = _resolve_task(project_id, task_id)
+        if project_name is not None and task_id is not None:
+            task_id = resolve_task_id(project_name, task_id)
+            cname, task_dir = _resolve_task(project_name, task_id)
             shield = ShieldManager(task_dir, make_sandbox_config()).shield
             kwargs = _extract_handler_kwargs(args, cmd_def)
             if cmd_name in {"up", "down"}:

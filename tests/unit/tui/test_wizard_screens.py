@@ -71,16 +71,16 @@ async def test_wizard_form_cancel_dismisses_with_none() -> None:
 
 @pytest.mark.asyncio
 async def test_wizard_form_submit_blocks_on_validation_error() -> None:
-    """Empty required project_id surfaces the shared ``validate_answer`` message."""
+    """Empty required project_name surfaces the shared ``validate_answer`` message."""
     app = _WizardHost(WizardFormScreen())
     async with app.run_test() as pilot:
         await pilot.pause()
-        # Leave project_id empty and click Create — should NOT dismiss.
+        # Leave project_name empty and click Create — should NOT dismiss.
         await pilot.click("#wizard-form-create")
         await pilot.pause()
         screen = app.screen
         assert isinstance(screen, WizardFormScreen)
-        error_label = screen.query_one("#wizard-error-project_id", Label)
+        error_label = screen.query_one("#wizard-error-project_name", Label)
         rendered = error_label.render()
         assert "required" in str(rendered).lower()
     # Still showing the form when the test exited — no dismissal.
@@ -93,14 +93,14 @@ async def test_wizard_form_submit_returns_collected_dict() -> None:
     app = _WizardHost(WizardFormScreen())
     async with app.run_test() as pilot:
         await pilot.pause()
-        # Fill project_id so validation passes.
-        pid_input = app.screen.query_one("#wizard-field-project_id", Input)
+        # Fill project_name so validation passes.
+        pid_input = app.screen.query_one("#wizard-field-project_name", Input)
         pid_input.value = "demo-proj"
         # Leave upstream + branch + snippet empty (all optional).
         await pilot.click("#wizard-form-create")
         await pilot.pause()
     assert isinstance(app.result, dict)
-    assert app.result["project_id"] == "demo-proj"
+    assert app.result["project_name"] == "demo-proj"
     # First radio button is pre-selected on each choice; confirm it mapped
     # through to the slug, not the label.
     assert app.result["security_class"] == _question("security_class").resolve_choices()[0].slug
@@ -116,16 +116,16 @@ async def test_wizard_form_submit_returns_collected_dict() -> None:
 
 
 @pytest.mark.asyncio
-async def test_wizard_form_lowercases_project_id() -> None:
+async def test_wizard_form_lowercases_project_name() -> None:
     """``str.lower`` transform runs before validation on submit."""
     app = _WizardHost(WizardFormScreen())
     async with app.run_test() as pilot:
         await pilot.pause()
-        app.screen.query_one("#wizard-field-project_id", Input).value = "MixedCaseID"
+        app.screen.query_one("#wizard-field-project_name", Input).value = "MixedCaseID"
         await pilot.click("#wizard-form-create")
         await pilot.pause()
     assert isinstance(app.result, dict)
-    assert app.result["project_id"] == "mixedcaseid"
+    assert app.result["project_name"] == "mixedcaseid"
 
 
 @pytest.mark.asyncio
@@ -160,7 +160,7 @@ async def test_wizard_submit_includes_agents_only_when_overridden() -> None:
     app = _WizardHost(WizardFormScreen(initial={"agents": "claude"}))
     async with app.run_test() as pilot:
         await pilot.pause()
-        app.screen.query_one("#wizard-field-project_id", Input).value = "demo"
+        app.screen.query_one("#wizard-field-project_name", Input).value = "demo"
         await pilot.click("#wizard-form-create")
         await pilot.pause()
     assert isinstance(app.result, dict)
@@ -194,7 +194,7 @@ async def test_wizard_form_radio_selection_picks_other_option() -> None:
         sec_radioset = app.screen.query_one("#wizard-field-security_class", RadioSet)
         buttons = list(sec_radioset.query(RadioButton))
         buttons[1].value = True
-        app.screen.query_one("#wizard-field-project_id", Input).value = "p1"
+        app.screen.query_one("#wizard-field-project_name", Input).value = "p1"
         await pilot.click("#wizard-form-create")
         await pilot.pause()
     assert isinstance(app.result, dict)
@@ -310,7 +310,7 @@ def test_touched_wizard_yaml_survives_roundtrip() -> None:
     values = {
         "security_class": "online",
         "base": "ubuntu",
-        "project_id": "roundtrip",
+        "project_name": "roundtrip",
         "upstream_url": "",
         "default_branch": "main",
         "agents": "all",
@@ -405,7 +405,7 @@ async def test_form_prefill_populates_widgets() -> None:
     initial = {
         "security_class": _question("security_class").resolve_choices()[1].slug,  # second choice
         "base": _question("base").resolve_choices()[2].slug,
-        "project_id": "kept-from-back",
+        "project_name": "kept-from-back",
         "upstream_url": "https://example.com/r.git",
         "default_branch": "dev",
         "user_snippet": "RUN echo hi",
@@ -414,7 +414,7 @@ async def test_form_prefill_populates_widgets() -> None:
     async with app.run_test() as pilot:
         await pilot.pause()
         # Text and editor fields carry the prefill verbatim.
-        assert app.screen.query_one("#wizard-field-project_id", Input).value == "kept-from-back"
+        assert app.screen.query_one("#wizard-field-project_name", Input).value == "kept-from-back"
         assert (
             app.screen.query_one("#wizard-field-upstream_url", Input).value
             == "https://example.com/r.git"

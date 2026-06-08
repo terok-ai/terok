@@ -27,7 +27,7 @@ def make_log_viewer_screen(
     """Build a LogViewerScreen with captured posted output."""
     mod = import_log_viewer()
     ref = mod.TaskContainerRef(
-        project_id="p",
+        project_name="p",
         task_id="1",
         mode=mode,
         container_name="p-cli-1",
@@ -372,13 +372,13 @@ class TestLogViewerScreenConstruction:
     def test_construction_follow_mode(self) -> None:
         mod = import_log_viewer()
         ref = mod.TaskContainerRef(
-            project_id="proj1",
+            project_name="proj1",
             task_id="42",
             mode="run",
             container_name="proj1-run-42",
         )
         screen = mod.LogViewerScreen(ref, follow=True)
-        assert screen.project_id == "proj1"
+        assert screen.project_name == "proj1"
         assert screen.task_id == "42"
         assert screen.mode == "run"
         assert screen.container_name == "proj1-run-42"
@@ -387,7 +387,7 @@ class TestLogViewerScreenConstruction:
     def test_construction_static_mode(self) -> None:
         mod = import_log_viewer()
         ref = mod.TaskContainerRef(
-            project_id="proj1",
+            project_name="proj1",
             task_id="7",
             mode="cli",
             container_name="proj1-cli-7",
@@ -399,7 +399,7 @@ class TestLogViewerScreenConstruction:
     def test_construction_default_follow(self) -> None:
         mod = import_log_viewer()
         ref = mod.TaskContainerRef(
-            project_id="p",
+            project_name="p",
             task_id="1",
             mode="run",
             container_name="p-run-1",
@@ -410,7 +410,7 @@ class TestLogViewerScreenConstruction:
     def test_stop_event_initialized(self) -> None:
         mod = import_log_viewer()
         ref = mod.TaskContainerRef(
-            project_id="p",
+            project_name="p",
             task_id="1",
             mode="run",
             container_name="p-run-1",

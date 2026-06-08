@@ -111,7 +111,7 @@ gatekeeping:
 
 ```yaml
 project:
-  id: "myproject"
+  name: "myproject"
   security_class: "gatekeeping"
 
 git:
@@ -161,7 +161,7 @@ local mirror.
 
 ```yaml
 project:
-  id: cp2k
+  name: cp2k
   security_class: online
 git:
   upstream_url: git@github.com:user/cp2k.git
