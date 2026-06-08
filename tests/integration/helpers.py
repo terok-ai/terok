@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import json
 import os
+import pwd
 import shlex
 import subprocess
 import sys
@@ -26,6 +27,29 @@ PODMAN_CONTAINER_PREFIX = "terok-itest"
 PODMAN_SLEEP_COMMAND = ("sleep", "300")
 
 type ProjectScope = Literal["user", "system"]
+
+
+def podman_subprocess_env() -> dict[str, str]:
+    """Return a subprocess env with ``HOME`` pointing at the real user home.
+
+    The ``terok_env`` fixture monkeypatches ``HOME`` to a per-test tmp dir so
+    terok's own config-resolution paths land inside the sandbox.  Podman uses
+    ``$HOME/.local/share/containers/storage`` for its rootless image store, so
+    inheriting the patched HOME makes ``podman run`` consult an empty store —
+    even when ``_pull_image`` already built the image in the real one.
+
+    Read the real home from ``/etc/passwd`` (immune to ``os.environ`` edits)
+    and splice it back in just for podman.
+
+    Safety boundary: this re-exposes the operator's real container state to the
+    test.  Container stories that use it must scope every mutation to a single
+    ``terok-itest-<story>-<uuid4>`` container — created and removed in
+    ``finally`` — and pull with ``--pull=never`` so no registry traffic
+    occurs.  If a caller adds subprocess calls that mutate user state more
+    broadly, re-evaluate whether they belong in an integration test at all.
+    """
+    real_home = pwd.getpwuid(os.getuid()).pw_dir
+    return {**os.environ, "HOME": real_home}
 
 
 @dataclass(frozen=True)

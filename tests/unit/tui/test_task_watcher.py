@@ -26,6 +26,14 @@ def _started(paths: Iterable[Path]) -> TaskWatcher:
     return watcher
 
 
+class _UnavailableLibc:
+    """libc stand-in whose ``inotify_init1`` fails — inotify is unavailable."""
+
+    def inotify_init1(self, _flags: int) -> int:
+        """Report the failure the kernel would when no inotify fd can be opened."""
+        return -1
+
+
 class TestLifecycle:
     """Arming, fd exposure, and teardown."""
 
@@ -67,6 +75,23 @@ class TestLifecycle:
             assert watcher.drain() is True
         finally:
             watcher.stop()
+
+    def test_start_degrades_when_inotify_is_unavailable(self, tmp_path: Path) -> None:
+        """A failed ``inotify_init1`` returns False so the caller can fall back.
+
+        The one branch real inotify won't exercise: on a kernel without inotify
+        ``start`` must report failure and leave no fd, never raise — that is the
+        contract [`PollingMixin`][terok.tui.polling.PollingMixin] leans on to
+        degrade to the periodic resync.  Override the instance's libc rather than
+        the module-level ``_load_libc`` so the stub survives the fresh module
+        re-import other TUI tests perform — patching the global would miss the
+        stale class this test holds.
+        """
+        watcher = TaskWatcher()
+        watcher._libc = _UnavailableLibc()  # next inotify_init1 reports failure
+        assert watcher.start([tmp_path]) is False
+        assert watcher.fileno == -1
+        watcher.stop()  # idempotent with no fd to close
 
 
 class TestDetectsChanges:
@@ -122,6 +147,25 @@ class TestDetectsChanges:
         finally:
             watcher.stop()
 
+    def test_change_in_any_watched_dir_is_seen(self, tmp_path: Path) -> None:
+        """The whole point of the class: one fd, several dirs, each independent.
+
+        A task's metadata dir and its agent-config dir live in different trees;
+        a change in *either* must surface, so the metadata write and the later
+        ``work-status.yml`` write are each seen on their own.
+        """
+        meta, agent_cfg = tmp_path / "meta", tmp_path / "agent-config"
+        meta.mkdir()
+        agent_cfg.mkdir()
+        watcher = _started([meta, agent_cfg])
+        try:
+            (meta / "1.json").write_text("{}", encoding="utf-8")
+            assert watcher.drain() is True  # a write in the metadata dir fires
+            (agent_cfg / "work-status.yml").write_text("status: coding", encoding="utf-8")
+            assert watcher.drain() is True  # ...and so does one in the agent-config dir
+        finally:
+            watcher.stop()
+
 
 class TestSync:
     """The watched set follows the live tasks as they come and go."""
@@ -162,3 +206,20 @@ class TestSync:
         watcher = TaskWatcher()
         watcher.sync([tmp_path])  # must not raise
         assert watcher.fileno == -1
+
+    def test_partial_set_still_watches_the_reachable_dirs(self, tmp_path: Path) -> None:
+        """An unwatchable dir is skipped without disarming its watchable siblings.
+
+        A task's agent-config dir doesn't exist until its container starts, so a
+        sync routinely mixes present and absent paths; the present ones must
+        still fire while the absent one is simply picked up by a later sync.
+        """
+        present, absent = tmp_path / "present", tmp_path / "absent"
+        present.mkdir()  # `absent` is never created
+        watcher = _started([present, absent])
+        try:
+            assert watcher.fileno >= 0
+            (present / "x.json").write_text("{}", encoding="utf-8")
+            assert watcher.drain() is True
+        finally:
+            watcher.stop()

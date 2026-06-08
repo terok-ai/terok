@@ -30,47 +30,22 @@ to drive the request from a separate process / namespace.
 from __future__ import annotations
 
 import asyncio
-import os
-import pwd
 import shutil
 import subprocess
 import uuid
 
 import pytest
 
-from tests.integration.helpers import PODMAN_CONTAINER_PREFIX, PODMAN_TEST_IMAGE
+from tests.integration.helpers import (
+    PODMAN_CONTAINER_PREFIX,
+    PODMAN_TEST_IMAGE,
+    podman_subprocess_env as _podman_env,
+)
 from tests.integration.stories.conftest import (
     MockUpstreamState,
     VaultEnv,
     VaultSocketEnv,
 )
-
-
-def _podman_env() -> dict[str, str]:
-    """Return a subprocess env with ``HOME`` pointing at the real user home.
-
-    ``terok_env`` monkeypatches ``HOME`` to a per-test tmp dir so terok's
-    own config-resolution paths land inside the sandbox.  Podman uses
-    ``$HOME/.local/share/containers/storage`` for its rootless image
-    store, so inheriting the patched HOME makes ``podman run``
-    consult an empty store — even when ``_pull_image`` already built
-    the image in the real one.
-
-    Read the real home from ``/etc/passwd`` (immune to ``os.environ``
-    edits) and splice it back in just for podman.
-
-    Safety boundary: this re-exposes the operator's real container
-    state to the test.  The only mutations the test performs against
-    that state are scoped to a single ``terok-itest-phantom-<uuid4>``
-    container — created, exec'd into, and removed in ``finally``.
-    No image build, no commits, no config writes; the image is
-    pulled with ``--pull=never`` so no registry traffic either.  If
-    you add subprocess calls that mutate user state more broadly,
-    re-evaluate whether they belong here at all.
-    """
-    real_home = pwd.getpwuid(os.getuid()).pw_dir
-    return {**os.environ, "HOME": real_home}
-
 
 # All stories in this file talk to a real DB + broker.
 pytestmark = pytest.mark.needs_vault
