@@ -1,12 +1,11 @@
 # SPDX-FileCopyrightText: 2025 Jiri Vyskocil
 # SPDX-License-Identifier: Apache-2.0
 
-"""Global configuration, directory helpers, and preset/image path resolution."""
+"""Global configuration, directory helpers, and image path resolution."""
 
 import os
 import sys
 from collections.abc import Callable
-from importlib import resources as _pkg_resources
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal
 
@@ -286,29 +285,6 @@ def user_projects_dir() -> Path:
     return _resolve_path(
         None, ("paths", "user_projects_dir"), lambda: _xdg_config_subdir("projects")
     )
-
-
-def user_presets_dir() -> Path:
-    """User presets directory (shared across all projects).
-
-    Precedence:
-    - Global config: paths.user_presets_dir
-    - XDG_CONFIG_HOME/terok/core/presets
-    - ~/.config/terok/core/presets
-    """
-    return _resolve_path(
-        None, ("paths", "user_presets_dir"), lambda: _xdg_config_subdir("core") / "presets"
-    )
-
-
-def bundled_presets_dir() -> Path:
-    """Presets shipped with the terok package.
-
-    These serve as ready-to-use defaults that users can reference directly
-    (``--preset solo``) or copy to their global presets dir to customize.
-    Lowest priority in the search order: project > global > bundled.
-    """
-    return Path(str(_pkg_resources.files("terok") / "resources" / "presets"))
 
 
 def build_dir() -> Path:

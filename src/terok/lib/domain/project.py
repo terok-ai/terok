@@ -73,7 +73,6 @@ from ..core.paths import acp_bound_path, acp_socket_path, core_state_dir
 from ..core.project_model import ProjectConfig
 from ..core.projects import (
     derive_project as _derive_project,
-    list_presets,
     list_projects as _list_projects,
     load_project,
 )
@@ -98,7 +97,6 @@ if TYPE_CHECKING:
     from terok.lib.integrations.executor import Agent
     from terok.lib.integrations.sandbox import SSHInitResult
 
-    from ..core.project_model import PresetInfo
     from .storage import ProjectDetail
 
 _logger = logging.getLogger(__name__)
@@ -567,8 +565,8 @@ def delete_project(project_name: str) -> DeleteProjectResult:
 class AgentManager:
     """Project-scoped agent configuration manager (Strategy + Config Stack).
 
-    Resolves the layered agent configuration stack (global → project →
-    preset → CLI overrides) and selects the active headless provider for a
+    Resolves the layered agent configuration stack (global → project → CLI
+    overrides) and selects the active headless provider for a
     project.  Used by [`Project`][terok.lib.domain.project.Project] via ``project.agents``.
 
     The config stack is resolved lazily on each call — the manager holds no
@@ -583,7 +581,6 @@ class AgentManager:
 
     def resolve_config(
         self,
-        preset: str | None = None,
         cli_overrides: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         """Return the merged agent config dict."""
@@ -591,13 +588,12 @@ class AgentManager:
             self._config.name,
             agent_config=self._config.agent_config,
             project_root=self._config.root,
-            preset=preset,
             cli_overrides=cli_overrides,
         )
 
-    def resolve_instructions(self, provider_name: str, preset: str | None = None) -> str:
+    def resolve_instructions(self, provider_name: str) -> str:
         """Return resolved instructions text for the given provider."""
-        effective = self.resolve_config(preset=preset)
+        effective = self.resolve_config()
         return resolve_instructions(effective, provider_name, project_root=self._config.root)
 
     def get_agent(self, name: str | None = None) -> Agent:
@@ -879,10 +875,6 @@ class Project:
         if self._agents is None:
             self._agents = AgentManager(self._config)
         return self._agents
-
-    def list_presets(self) -> list[PresetInfo]:
-        """Return available presets for this project."""
-        return list_presets(self._config.name)
 
     def __repr__(self) -> str:
         """Return a developer-friendly string representation."""

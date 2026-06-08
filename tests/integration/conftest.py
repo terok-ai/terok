@@ -415,7 +415,6 @@ def terok_env(
         state_root=state_root,
     )
     env.user_projects_root.mkdir(parents=True, exist_ok=True)
-    env.global_presets_root.mkdir(parents=True, exist_ok=True)
     env.system_projects_root.mkdir(parents=True, exist_ok=True)
     env.vault_dir.mkdir(parents=True, exist_ok=True)
     monkeypatch.setenv("TEROK_VAULT_DIR", str(env.vault_dir))

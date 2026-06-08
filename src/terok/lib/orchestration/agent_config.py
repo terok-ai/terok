@@ -1,9 +1,9 @@
 # SPDX-FileCopyrightText: 2026 Jiri Vyskocil
 # SPDX-License-Identifier: Apache-2.0
 
-"""Agent config resolution: layered merging across global, project, preset, and CLI scopes.
+"""Agent config resolution: layered merging across global, project, and CLI scopes.
 
-Builds a `ConfigStack` from up to four
+Builds a `ConfigStack` from up to three
 layers and returns a single merged agent-config dict that can be fed directly
 into [`prepare_agent_config_dir`][terok_executor.prepare_agent_config_dir].
 """
@@ -16,22 +16,7 @@ from typing import Any
 from terok_util import ConfigStack
 from terok_util.config_stack import ConfigScope
 
-from terok.lib.core.config import bundled_presets_dir, get_global_agent_config, user_presets_dir
-
-
-def _preset_scope_label(preset_path: Path) -> str:
-    """Return a scope label based on where the preset was found."""
-    resolved = preset_path.resolve()
-    for directory, label in (
-        (bundled_presets_dir(), "preset (bundled)"),
-        (user_presets_dir(), "preset (user)"),
-    ):
-        try:
-            if resolved.is_relative_to(directory.resolve()):
-                return label
-        except (ValueError, OSError):
-            continue
-    return "preset (project)"
+from terok.lib.core.config import get_global_agent_config
 
 
 def build_agent_config_stack(
@@ -39,16 +24,14 @@ def build_agent_config_stack(
     *,
     agent_config: dict[str, Any] | None = None,
     project_root: Path | None = None,
-    preset: str | None = None,
     cli_overrides: dict[str, Any] | None = None,
 ) -> ConfigStack:
-    """Build config stack: global → project → preset → CLI overrides.
+    """Build config stack: global → project → CLI overrides.
 
     Args:
-        project_name: Project identifier (needed for preset resolution).
+        project_name: Project identifier (reserved for provenance display).
         agent_config: Project-level agent config dict (from ``project.agent_config``).
         project_root: Project root path (for provenance display).
-        preset: Optional preset name.
         cli_overrides: CLI-level overrides (highest priority).
 
     Returns the `ConfigStack` so callers can either ``.resolve()`` it
@@ -66,18 +49,7 @@ def build_agent_config_stack(
         source = (project_root / "project.yml") if project_root else None
         stack.push(ConfigScope("project", source, agent_config))
 
-    # 3. Preset (if requested)
-    if preset:
-        from terok.lib.core.projects import load_preset
-
-        preset_data, preset_path = load_preset(project_name, preset)
-        # Skip empty presets – they contribute nothing to the merge and would
-        # only add noise to provenance output from ``config resolved``.
-        if preset_data:
-            scope_label = _preset_scope_label(preset_path)
-            stack.push(ConfigScope(scope_label, preset_path, preset_data))
-
-    # 4. CLI overrides
+    # 3. CLI overrides
     if cli_overrides:
         stack.push(ConfigScope("cli", None, cli_overrides))
 
@@ -89,7 +61,6 @@ def resolve_agent_config(
     *,
     agent_config: dict[str, Any] | None = None,
     project_root: Path | None = None,
-    preset: str | None = None,
     cli_overrides: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Build config stack and return the merged agent config dict.
@@ -101,6 +72,5 @@ def resolve_agent_config(
         project_name,
         agent_config=agent_config,
         project_root=project_root,
-        preset=preset,
         cli_overrides=cli_overrides,
     ).resolve()

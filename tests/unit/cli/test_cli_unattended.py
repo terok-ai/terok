@@ -64,8 +64,6 @@ def test_run_dispatches_to_task_run_headless() -> None:
         "Fix the auth bug",
         "--model",
         "opus",
-        "--max-turns",
-        "50",
         "--timeout",
         "3600",
     )
@@ -74,10 +72,8 @@ def test_run_dispatches_to_task_run_headless() -> None:
     assert request.prompt == "Fix the auth bug"
     assert request.config_path is None
     assert request.model == "opus"
-    assert request.max_turns == 50
     assert request.timeout == 3600
     assert request.follow is True
-    assert request.preset is None
     assert request.name is None
     assert request.provider is None
     assert request.instructions is None
@@ -227,7 +223,7 @@ def test_run_interactive_mode_creates_and_runs(mode: str, runner_target: str) ->
         run_cli("task", "run", "myproj", "--mode", mode, "--no-attach")
 
     mock_new.assert_called_once_with("myproj", name=None)
-    mock_runner.assert_called_once_with("myproj", "42", preset=None, unrestricted=None)
+    mock_runner.assert_called_once_with("myproj", "42", unrestricted=None)
     mock_login.assert_not_called()
 
 
@@ -290,7 +286,7 @@ def test_task_attach_forwards_to_runner(mode: str, runner_target: str) -> None:
             prog="terokctl",
         )
 
-    mock_run.assert_called_once_with("myproject", "1", preset=None, unrestricted=None)
+    mock_run.assert_called_once_with("myproject", "1", unrestricted=None)
 
 
 def test_task_attach_not_in_terok() -> None:

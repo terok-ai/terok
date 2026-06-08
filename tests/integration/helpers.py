@@ -53,11 +53,6 @@ class TerokIntegrationEnv:
         return self.xdg_config_home / "terok" / "projects"
 
     @property
-    def global_presets_root(self) -> Path:
-        """Return the isolated global presets root."""
-        return self.xdg_config_home / "terok" / "presets"
-
-    @property
     def vault_dir(self) -> Path:
         """Return the isolated vault directory."""
         return self.base_dir / "credentials"

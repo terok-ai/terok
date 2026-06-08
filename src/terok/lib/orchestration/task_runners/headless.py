@@ -66,10 +66,8 @@ class HeadlessRunRequest:
     prompt: str
     config_path: str | None = None
     model: str | None = None
-    max_turns: int | None = None
     timeout: int | None = None
     follow: bool = True
-    preset: str | None = None
     name: str | None = None
     agent: str | None = None
     """Agent to run (``claude``, ``codex``, …); ``None`` → project/global default."""
@@ -190,13 +188,12 @@ def task_run_headless(request: HeadlessRunRequest) -> str:
     resolved = get_agent(request.agent, default_agent=project.default_agent)
     require_agent_installed(project, resolved.name)
 
-    # Resolve layered agent config (global → project → preset → CLI overrides)
+    # Resolve layered agent config (global → project → CLI overrides)
     cli_overrides = _build_cli_overrides(request.config_path)
     effective = resolve_agent_config(
         request.project_name,
         agent_config=project.agent_config,
         project_root=project.root,
-        preset=request.preset,
         cli_overrides=cli_overrides or None,
     )
 
@@ -214,7 +211,6 @@ def task_run_headless(request: HeadlessRunRequest) -> str:
         effective,
         CLIOverrides(
             model=request.model,
-            max_turns=request.max_turns,
             timeout=request.timeout,
             instructions=instr_text,
         ),
@@ -224,7 +220,7 @@ def task_run_headless(request: HeadlessRunRequest) -> str:
     for warning in pcfg.warnings:
         print(f"Warning: {warning}")
 
-    # Augment prompt with best-effort feature analogues (e.g. max-turns guidance)
+    # Augment prompt with best-effort feature analogues for unsupported flags
     effective_prompt = request.prompt
     if pcfg.prompt_extra:
         effective_prompt = f"{request.prompt}\n\n{pcfg.prompt_extra}"
@@ -266,7 +262,6 @@ def task_run_headless(request: HeadlessRunRequest) -> str:
     headless_cmd = resolved.build_headless_command(
         timeout=pcfg.timeout,
         model=pcfg.model,
-        max_turns=pcfg.max_turns,
     )
 
     # Build podman command (DETACHED)
@@ -312,8 +307,6 @@ def task_run_headless(request: HeadlessRunRequest) -> str:
     if request.provider:
         meta["provider"] = request.provider
     meta["unrestricted"] = unrestricted
-    if request.preset:
-        meta["preset"] = request.preset
     write_task_meta(meta_path, meta)
 
     _report_headless_result(
@@ -378,7 +371,7 @@ def task_followup_headless(
     - **Codex / Copilot**: no session resume support — follow-ups start a
       fresh session with the new prompt only.
 
-    Per-run flags (model, max_turns, timeout) carry forward from the
+    Per-run flags (model, timeout) carry forward from the
     original ``task_run_headless`` invocation since ``podman start``
     re-executes the same container command.
     """

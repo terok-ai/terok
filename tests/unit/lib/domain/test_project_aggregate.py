@@ -104,7 +104,6 @@ _NAME_DELEGATIONS = [
         "terok.lib.domain.project.generate_dockerfiles",
         mock.call(_PROJ),
     ),
-    (lambda p: p.list_presets(), "terok.lib.domain.project.list_presets", mock.call(_PROJ)),
     (
         lambda p: p.build_images(include_dev=True, refresh_agents=True, full=True),
         "terok.lib.domain.project.build_images",

@@ -205,28 +205,15 @@ class TestConfigDispatch:
         mock.assert_called_once()
 
     def test_resolved_invokes_config_resolved(self) -> None:
-        """``config resolved`` forwards project_name and preset to the handler."""
+        """``config resolved`` forwards project_name to the handler."""
         import argparse
 
         from terok.cli.commands.info import dispatch
 
-        args = argparse.Namespace(
-            cmd="config", config_cmd="resolved", project_name="myproj", preset="team"
-        )
+        args = argparse.Namespace(cmd="config", config_cmd="resolved", project_name="myproj")
         with patch("terok.cli.commands.info._cmd_config_resolved") as mock:
             assert dispatch(args) is True
-        mock.assert_called_once_with("myproj", "team")
-
-    def test_resolved_defaults_preset_to_none(self) -> None:
-        """``config resolved`` without --preset passes None through."""
-        import argparse
-
-        from terok.cli.commands.info import dispatch
-
-        args = argparse.Namespace(cmd="config", config_cmd="resolved", project_name="p")
-        with patch("terok.cli.commands.info._cmd_config_resolved") as mock:
-            assert dispatch(args) is True
-        mock.assert_called_once_with("p", None)
+        mock.assert_called_once_with("myproj")
 
     def test_import_opencode_invokes_importer(self) -> None:
         """``config import-opencode`` routes to the importer with the file path."""

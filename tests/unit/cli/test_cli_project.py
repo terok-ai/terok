@@ -14,7 +14,6 @@ import pytest
 from terok.cli.commands.project import (
     _cmd_gate_path,
     _cmd_gate_sync,
-    _cmd_presets,
     _cmd_project_delete,
     _cmd_project_derive,
     _cmd_project_list,
@@ -115,13 +114,6 @@ from terok.cli.commands.project import (
             "terok.cli.commands.project._cmd_gate_sync",
             {"positional_is_args": True},
             id="gate-sync",
-        ),
-        pytest.param(
-            "presets",
-            {"presets_cmd": "list", "project_name": "p1"},
-            "terok.cli.commands.project._cmd_presets",
-            {"positional": ("p1",)},
-            id="presets-list",
         ),
         pytest.param(
             "agents",
@@ -499,32 +491,6 @@ def test_gate_sync_refuses_when_gate_disabled() -> None:
     ):
         _cmd_gate_sync(args)
     mock_make.assert_not_called()
-
-
-# ---------------------------------------------------------------------------
-# _cmd_presets — empty and populated
-# ---------------------------------------------------------------------------
-
-
-def test_presets_empty_prints_placeholder(capsys: pytest.CaptureFixture[str]) -> None:
-    """No presets found → placeholder message."""
-    with patch("terok.cli.commands.project.list_presets", return_value=[]):
-        _cmd_presets("p1")
-    assert "No presets found" in capsys.readouterr().out
-
-
-def test_presets_populated_prints_each(capsys: pytest.CaptureFixture[str]) -> None:
-    """Each preset renders with its name and source."""
-    presets = [
-        SimpleNamespace(name="solo", source="bundled"),
-        SimpleNamespace(name="team", source="user"),
-    ]
-    with patch("terok.cli.commands.project.list_presets", return_value=presets):
-        _cmd_presets("p1")
-    out = capsys.readouterr().out
-    assert "Presets for 'p1':" in out
-    assert "solo (bundled)" in out
-    assert "team (user)" in out
 
 
 # ---------------------------------------------------------------------------

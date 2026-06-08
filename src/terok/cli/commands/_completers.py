@@ -17,7 +17,7 @@ from collections.abc import Callable
 from typing import Any
 
 from ...lib.api import get_tasks
-from ...lib.core.projects import list_presets, list_projects
+from ...lib.core.projects import list_projects
 from ...lib.orchestration.tasks import normalize_task_id_input
 
 
@@ -59,28 +59,6 @@ def complete_task_ids(
     if normalized:
         tids = [t for t in tids if t.startswith(normalized)]
     return tids
-
-
-def complete_preset_names(
-    prefix: str, parsed_args: argparse.Namespace, **kwargs: object
-) -> list[str]:  # pragma: no cover
-    """Return preset names matching *prefix* for the scoped project.
-
-    ``list_presets`` requires a project name to resolve the full tier
-    (bundled → global → project), so we only suggest presets once the
-    user has typed the project arg.  No project typed yet → empty list,
-    which leaves argcomplete silent rather than misleading.
-    """
-    project_name = getattr(parsed_args, "project_name", None)
-    if not project_name:
-        return []
-    try:
-        names = [p.name for p in list_presets(project_name)]
-    except Exception:
-        return []
-    if prefix:
-        names = [n for n in names if n.startswith(prefix)]
-    return names
 
 
 def set_completer(action: argparse.Action, fn: Callable[..., Any]) -> None:

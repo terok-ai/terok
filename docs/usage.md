@@ -15,7 +15,6 @@ Complete guide to installing, configuring, and using terok.
 - [From Zero to First Run](#from-zero-to-first-run)
 - [Authentication](#authentication)
 - [Headless Agent Runs (Unattended)](#headless-agent-runs-unattended)
-- [Presets](#presets)
 - [Task Lifecycle Hooks](#task-lifecycle-hooks)
 - [Image Management](#image-management)
 - [Project Management](#project-management)
@@ -555,7 +554,7 @@ Supported providers: `claude`, `codex`, `copilot`, `vibe`, `blablador`, `opencod
 terok task run myproj "Fix the authentication bug in login.py"
 
 # Override model and set a timeout
-terok task run myproj "Add unit tests for utils.py" --model opus --max-turns 50 --timeout 3600
+terok task run myproj "Add unit tests for utils.py" --model opus --timeout 3600
 
 # Detach immediately (don't stream output)
 terok task run myproj "Refactor the database layer" --no-follow
@@ -590,19 +589,17 @@ default_agent: claude
 | Feature | claude | codex | copilot | vibe | blablador | opencode |
 |---------|--------|-------|---------|------|-----------|----------|
 | `--model` | Yes | Yes | Yes | Yes (`--agent`) | No | Yes |
-| `--max-turns` | Yes | No | No | Yes | No | No |
 | Session resume | Yes | No | No | Yes | Yes | Yes |
 | Structured log output | Yes | No | No | No | No | No |
 
 ### Per-Provider Config Values
 
-Config keys like `model`, `max_turns`, and `timeout` can be set per-provider
-using a dict syntax.  A flat value applies to all providers (backward compatible):
+Config keys like `model` and `timeout` can be set per-provider
+using a dict syntax.  A flat value applies to all providers:
 
 ```yaml
 # Flat value — same for all providers
 model: sonnet
-max_turns: 25
 ```
 
 A dict maps each provider to its own value, with `_default` as fallback:
@@ -614,21 +611,12 @@ model:
   codex: codex-mini
   vibe: mistral-small
   _default: fast
-max_turns:
-  claude: 50
-  vibe: 30
-  _default: 25
 timeout: 1800  # flat values still work
 ```
 
 Providers not listed in the dict (and without `_default`) use their own built-in
-default.  CLI flags (`--model`, `--max-turns`, `--timeout`) always override
-config values.
-
-**Best-effort feature mapping**: When a provider doesn't support a configured
-feature, terok applies an analogue where possible.  For example, `max_turns`
-for providers without `--max-turns` support is injected as guidance text in the
-prompt.  Features with no analogue produce a warning but don't block the run.
+default.  CLI flags (`--model`, `--timeout`) always override config values.
+Features a provider doesn't support produce a warning but don't block the run.
 
 ### Permission Mode (Unrestricted / Restricted)
 
@@ -655,7 +643,7 @@ config (see below), defaulting to unrestricted.
 
 Like other config keys, `unrestricted` lives inside the `agent:` section
 and follows the resolution stack:
-global config → project config → preset → CLI flag.
+global config → project config → CLI flag.
 
 ```yaml
 # In project.yml or global config
@@ -761,7 +749,7 @@ This project uses Poetry. Run `make check` before committing.
 
 #### Option 2: YAML config
 
-Set the `instructions` key in your project's `agent:` config or in a preset:
+Set the `instructions` key in your project's `agent:` config:
 
 ```yaml
 # project.yml — flat string (replaces default)
@@ -834,101 +822,6 @@ Command palette (`Ctrl+P`) actions:
 ### Debugging
 
 Resolved instructions are always written to `<tasks_root>/<task_id>/agent-config/instructions.md` on the host for inspection.
-
----
-
-## Presets
-
-Presets are reusable agent configurations you apply with `--preset <name>`.
-Three are bundled and work immediately — no setup needed.
-
-### Bundled Presets
-
-The current bundled set is a starting point — run `terok project presets <project>`
-to see what's available. The names and contents may change in future versions;
-global presets you create will shadow them automatically.
-
-| Preset | What it does | When to use |
-|--------|-------------|-------------|
-| `solo` | Single Sonnet agent, 25 turns | Quick fixes, small features |
-| `review` | Read-only Opus reviewer | Code review, architecture analysis |
-
-```bash
-# Quick fix — single fast agent
-terok task run myproj "Fix the typo in login.py" --preset solo
-
-# Code review — read-only analysis
-terok task run myproj "Review the auth module for security issues" --preset review
-```
-
-Presets work with all task modes:
-
-```bash
-terok task run myproj --preset review
-```
-
-### See What's Available
-
-```bash
-# List all presets (bundled + global + project)
-terok project presets myproj
-
-# Show what a preset resolves to
-terok config resolved myproj --preset review
-```
-
-### Customize: Global Presets
-
-To tweak a bundled preset or create your own, put a YAML file in the
-global presets directory. It's shared across all projects.
-
-```bash
-# Create the directory (first time only)
-mkdir -p ~/.config/terok/core/presets
-
-# Copy a bundled preset and customize it
-terok config | grep "Bundled presets"   # find the path
-cp <bundled-path>/solo.yml ~/.config/terok/core/presets/solo.yml
-# Edit to taste — your version now shadows the bundled one
-```
-
-Or create one from scratch:
-
-```bash
-cat > ~/.config/terok/core/presets/quick-review.yml << 'EOF'
-model: sonnet
-max_turns: 10
-timeout: 900
-EOF
-```
-
-Now use it anywhere: `terok task run anyproject "Review PR #42" --preset quick-review`
-
-### Preset Search Order
-
-When you use `--preset fast`, terok searches:
-
-1. **Project** — `<project>/presets/fast.yml` (per-project override)
-2. **Global** — `~/.config/terok/core/presets/fast.yml` (shared across projects)
-3. **Bundled** — shipped with terok (always available)
-
-First match wins. This means a global preset shadows a bundled one with the
-same name, and a project preset shadows both.
-
-### Task Teams
-
-Run multiple tasks in the same project, each with a different preset:
-
-```bash
-# Task 1: reviewer analyzes the codebase
-terok task run myproj --preset review
-# Task 2: solo agent implements the feature
-terok task run myproj --preset solo
-# Task 3: another solo agent writes docs
-terok task run myproj "Document the new endpoint" --preset solo
-```
-
-Each task remembers its preset — `terok task restart` reuses it automatically.
 
 ---
 

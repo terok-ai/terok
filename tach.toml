@@ -507,7 +507,7 @@ path = "terok.lib.core.config"
 layer = "core"
 depends_on = ["terok.lib.core.paths", "terok.lib.core.yaml_schema", "terok.lib.util.yaml"]
 
-# Project and preset data models (pure types, no I/O)
+# Project data models (pure types, no I/O)
 [[modules]]
 path = "terok.lib.core.project_model"
 layer = "core"
@@ -519,7 +519,7 @@ path = "terok.lib.core.yaml_schema"
 layer = "core"
 depends_on = []
 
-# Project discovery, loading, and preset management
+# Project discovery and loading
 [[modules]]
 path = "terok.lib.core.projects"
 layer = "core"
@@ -658,7 +658,6 @@ depends_on = []
 [[interfaces]]
 expose = [
     "ProjectConfig",
-    "PresetInfo",
     "is_valid_project_name",
     "validate_project_name",
 ]
@@ -668,13 +667,9 @@ from = ["terok.lib.core.project_model"]
 expose = [
     "BrokenProject",
     "ProjectConfig",
-    "PresetInfo",
     "discover_projects",
-    "find_preset_path",
     "list_projects",
     "load_project",
-    "load_preset",
-    "list_presets",
     "normalize_project_name",
     "derive_project",
     "require_project_exists",
@@ -834,8 +829,6 @@ expose = [
     "build_dir",
     "archive_dir",
     "user_projects_dir",
-    "user_presets_dir",
-    "bundled_presets_dir",
     "vault_dir",
     "get_logs_partial_streaming",
     "get_tui_default_tmux",

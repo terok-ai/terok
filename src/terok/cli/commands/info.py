@@ -8,7 +8,7 @@ Exposes the ``terok config`` subcommand group:
 - ``config paths`` — list every directory terok reads from or writes to,
   with existence flags and any active environment-variable overrides.
 - ``config resolved`` — render the per-project agent config with the
-  scope provenance that produced each key (optionally under a preset).
+  scope provenance that produced each key.
 - ``config schema`` — render every available key for ``global`` (config.yml)
   or ``project`` (project.yml), introspected directly from the Pydantic
   models, with types/defaults/descriptions.  ``--json`` emits raw JSON Schema.
@@ -29,12 +29,10 @@ from typing import Any
 
 from ...lib.core.config import (
     build_dir as _build_dir,
-    bundled_presets_dir as _bundled_presets_dir,
     gate_repos_dir as _gate_repos_dir,
     global_config_path as _global_config_path,
     global_config_search_paths as _global_config_search_paths,
     projects_dir as _projects_dir,
-    user_presets_dir as _user_presets_dir,
     user_projects_dir as _user_projects_dir,
     vault_dir as _vault_dir,
 )
@@ -72,12 +70,6 @@ def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) ->
     set_completer(
         p_resolved.add_argument("project_name", help="Project name"), _complete_project_names
     )
-    from ._completers import complete_preset_names
-
-    set_completer(
-        p_resolved.add_argument("--preset", help="Apply a preset before showing resolved config"),
-        complete_preset_names,
-    )
 
     # config schema — available keys for global / project YAML
     p_schema = config_sub.add_parser(
@@ -114,7 +106,7 @@ def dispatch(args: argparse.Namespace) -> bool:
         case "get-root":
             _cmd_get_root()
         case "resolved":
-            _cmd_config_resolved(args.project_name, getattr(args, "preset", None))
+            _cmd_config_resolved(args.project_name)
         case "schema":
             _cmd_config_schema(args.scope, args.as_json)
         case "import-opencode":
@@ -148,7 +140,7 @@ def _print_config() -> None:
 
 
 def _print_read_paths(color: bool) -> None:
-    """Configuration sources: global config search order, vault, projects, presets."""
+    """Configuration sources: global config search order, vault, projects."""
     print("Configuration (read):")
 
     gcfg = _global_config_path()
@@ -177,16 +169,6 @@ def _print_read_paths(color: bool) -> None:
         f"- Projects (system): {_gray(str(sproj), color)} "
         f"(exists: {_yes_no(Path(sproj).is_dir(), color)})"
     )
-
-    gpresets = _user_presets_dir()
-    print(
-        f"- Presets (user): {_gray(str(gpresets), color)} "
-        f"(exists: {_yes_no(Path(gpresets).is_dir(), color)})"
-    )
-    bpresets = _bundled_presets_dir()
-    print(f"- Presets (bundled): {_gray(str(bpresets), color)}")
-    for name in _list_bundled_preset_names(bpresets):
-        print(f"  • {name}")
 
     projs = list_projects()
     if projs:
@@ -270,19 +252,6 @@ def _print_completion_status(color: bool) -> None:
     print(f"Shell completions: {_yes_no(installed, color)}{suffix}")
 
 
-def _list_bundled_preset_names(bpresets: Path) -> list[str]:
-    """YAML file stems under the bundled presets directory."""
-    try:
-        return sorted(
-            p.stem for p in bpresets.iterdir() if p.is_file() and p.suffix in (".yml", ".yaml")
-        )
-    except FileNotFoundError:
-        return []
-    except OSError as e:
-        print(f"  Warning: could not list bundled presets: {e}")
-        return []
-
-
 def _list_resource_names(pkg: Any, *, suffix: str | None, warn_label: str) -> list[str]:
     """Sorted file names under a package resource directory, filtered by *suffix*."""
     try:
@@ -302,7 +271,7 @@ def _list_resource_names(pkg: Any, *, suffix: str | None, warn_label: str) -> li
 # ── config resolved ────────────────────────────────────────────────────
 
 
-def _cmd_config_resolved(project_name: str, preset: str | None) -> None:
+def _cmd_config_resolved(project_name: str) -> None:
     """Show resolved agent config with provenance annotations."""
     from ...lib.core.projects import load_project
     from ...lib.orchestration.agent_config import build_agent_config_stack
@@ -314,7 +283,6 @@ def _cmd_config_resolved(project_name: str, preset: str | None) -> None:
         project_name,
         agent_config=project.agent_config,
         project_root=project.root,
-        preset=preset,
     )
     resolved = stack.resolve()
     scopes = stack.scopes
@@ -324,8 +292,6 @@ def _cmd_config_resolved(project_name: str, preset: str | None) -> None:
         return
 
     print(f"Resolved agent config for '{project_name}':")
-    if preset:
-        print(f"  (with preset: {preset})")
     print()
 
     for scope in scopes:

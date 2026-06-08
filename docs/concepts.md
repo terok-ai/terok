@@ -61,7 +61,7 @@ options to tune the exact trade-off within each.
 terok is split into two packages:
 
 - **terok** — orchestration and instrumentation: agent configuration,
-  task lifecycle, image building, instructions, presets, CLI and TUI.
+  task lifecycle, image building, instructions, CLI and TUI.
 - **[terok-sandbox](https://github.com/terok-ai/terok-sandbox)** — hardened
   container runtime: Podman lifecycle, egress firewall (via
   [terok-shield](https://github.com/terok-ai/terok-shield)), gated git

@@ -295,23 +295,6 @@ class TestTask:
             assert not self._task_row_pattern(tid1).search(output)
             assert self._task_row_pattern(tid2).search(output)
 
-    def test_task_list_filter_by_agent(self) -> None:
-        """task_list --agent filters tasks by their preset field."""
-        project_name = "proj_filt_agent"
-        with project_env(
-            f"project:\n  id: {project_name}\n",
-            project_name=project_name,
-        ) as ctx:
-            tid1 = task_new(project_name)
-            tid2 = task_new(project_name)
-
-            self._patch_task_meta(ctx, project_name, tid1, preset="claude")
-            self._patch_task_meta(ctx, project_name, tid2, preset="codex")
-
-            output = self._task_list_output(project_name, {tid1: None, tid2: None}, agent="claude")
-            assert self._task_row_pattern(tid1).search(output)
-            assert not self._task_row_pattern(tid2).search(output)
-
     def test_task_list_combined_filters(self) -> None:
         """task_list with multiple filters applies all of them (AND logic)."""
         project_name = "proj_filt_combo"

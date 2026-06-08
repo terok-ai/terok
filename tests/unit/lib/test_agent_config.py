@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: 2026 Jiri Vyskocil
 # SPDX-License-Identifier: Apache-2.0
 
-"""Tests for layered agent config resolution and presets."""
+"""Tests for layered agent config resolution."""
 
 import os
 import tempfile
@@ -11,10 +11,9 @@ from dataclasses import dataclass
 from pathlib import Path
 
 import pytest
-from terok_util import ConfigStack
 
-from terok.lib.core.projects import ProjectConfig, list_presets, load_preset, load_project
-from terok.lib.orchestration.agent_config import build_agent_config_stack, resolve_agent_config
+from terok.lib.core.projects import load_project
+from terok.lib.orchestration.agent_config import resolve_agent_config
 from tests.test_utils import mock_git_config, write_project
 
 
@@ -27,7 +26,7 @@ def _env(
     """Build env dict for test isolation.
 
     Always sets XDG_CONFIG_HOME to prevent leaking the host value
-    (which would let real user presets pollute test results).
+    (which would let real user config pollute test results).
     """
     env: dict[str, str] = {
         "TEROK_CONFIG_DIR": str(config_root),
@@ -71,47 +70,6 @@ def write_test_project(
     )
 
 
-def project_presets_dir(layout: AgentConfigLayout, project_name: str) -> Path:
-    """Return the per-project presets directory."""
-    presets_dir = layout.config_root / "projects" / project_name / "presets"
-    presets_dir.mkdir(parents=True, exist_ok=True)
-    return presets_dir
-
-
-def write_project_preset(
-    layout: AgentConfigLayout,
-    project_name: str,
-    name: str,
-    content: str,
-    *,
-    suffix: str = ".yml",
-) -> Path:
-    """Create a project-scoped preset file."""
-    preset_path = project_presets_dir(layout, project_name) / f"{name}{suffix}"
-    preset_path.write_text(content, encoding="utf-8")
-    return preset_path
-
-
-def user_presets_dir(layout: AgentConfigLayout) -> Path:
-    """Return the global XDG presets directory."""
-    presets_dir = layout.xdg_config_home / "terok" / "core" / "presets"
-    presets_dir.mkdir(parents=True, exist_ok=True)
-    return presets_dir
-
-
-def write_global_preset(
-    layout: AgentConfigLayout,
-    name: str,
-    content: str,
-    *,
-    suffix: str = ".yml",
-) -> Path:
-    """Create a global XDG preset file."""
-    preset_path = user_presets_dir(layout) / f"{name}{suffix}"
-    preset_path.write_text(content, encoding="utf-8")
-    return preset_path
-
-
 def _patched_env(
     layout: AgentConfigLayout,
     *,
@@ -135,7 +93,6 @@ def resolve_test_agent_config(
     project_name: str,
     *,
     global_config: Path | None = None,
-    preset: str | None = None,
     cli_overrides: dict[str, object] | None = None,
 ) -> dict[str, object]:
     """Resolve agent config inside the isolated test environment."""
@@ -146,59 +103,7 @@ def resolve_test_agent_config(
                 project_name,
                 agent_config=project.agent_config,
                 project_root=project.root,
-                preset=preset,
                 cli_overrides=cli_overrides,
-            )
-
-
-def list_test_presets(
-    layout: AgentConfigLayout,
-    project_name: str,
-    *,
-    xdg_config_home: Path | None = None,
-) -> list[object]:
-    """List presets inside the isolated test environment."""
-    with _patched_env(layout, xdg_config_home=xdg_config_home):
-        with mock_git_config():
-            return list_presets(project_name)
-
-
-def load_test_preset(
-    layout: AgentConfigLayout,
-    project_name: str,
-    preset_name: str,
-    *,
-    xdg_config_home: Path | None = None,
-) -> tuple[dict[str, object], Path]:
-    """Load a preset inside the isolated test environment."""
-    with _patched_env(layout, xdg_config_home=xdg_config_home):
-        with mock_git_config():
-            return load_preset(project_name, preset_name)
-
-
-def load_test_project(layout: AgentConfigLayout, project_name: str) -> ProjectConfig:
-    """Load a project inside the isolated test environment."""
-    with _patched_env(layout):
-        with mock_git_config():
-            return load_project(project_name)
-
-
-def build_test_agent_stack(
-    layout: AgentConfigLayout,
-    project_name: str,
-    *,
-    preset: str,
-    xdg_config_home: Path | None = None,
-) -> ConfigStack:
-    """Build an agent config stack inside the isolated test environment."""
-    with _patched_env(layout, xdg_config_home=xdg_config_home):
-        with mock_git_config():
-            project = load_project(project_name)
-            return build_agent_config_stack(
-                project_name,
-                agent_config=project.agent_config,
-                project_root=project.root,
-                preset=preset,
             )
 
 
@@ -236,14 +141,14 @@ class TestResolveAgentConfig:
             write_test_project(layout, "proj")
 
             global_cfg = layout.base / "global.yml"
-            global_cfg.write_text("agent:\n  model: haiku\n  max_turns: 5\n", encoding="utf-8")
+            global_cfg.write_text("agent:\n  model: haiku\n  temperature: 0.5\n", encoding="utf-8")
 
             result = resolve_test_agent_config(layout, "proj", global_config=global_cfg)
             assert result["model"] == "haiku"
-            assert result["max_turns"] == 5
+            assert result["temperature"] == 0.5
 
     def test_project_overrides_global(self) -> None:
-        """Project-level config overrides global defaults."""
+        """Project-level config overrides global defaults; other global keys persist."""
         with tempfile.TemporaryDirectory() as td:
             layout = make_layout(Path(td))
             write_test_project(
@@ -253,27 +158,11 @@ class TestResolveAgentConfig:
             )
 
             global_cfg = layout.base / "global.yml"
-            global_cfg.write_text("agent:\n  model: haiku\n  max_turns: 5\n", encoding="utf-8")
+            global_cfg.write_text("agent:\n  model: haiku\n  temperature: 0.5\n", encoding="utf-8")
 
             result = resolve_test_agent_config(layout, "proj", global_config=global_cfg)
             assert result["model"] == "opus"
-            assert result["max_turns"] == 5
-
-    def test_preset_override(self) -> None:
-        """Preset overrides project config."""
-        with tempfile.TemporaryDirectory() as td:
-            layout = make_layout(Path(td))
-            write_test_project(
-                layout,
-                "proj",
-                "project:\n  id: proj\nagent:\n  model: sonnet\n",
-            )
-
-            write_project_preset(layout, "proj", "fast", "model: haiku\nmax_turns: 3\n")
-
-            result = resolve_test_agent_config(layout, "proj", preset="fast")
-            assert result["model"] == "haiku"
-            assert result["max_turns"] == 3
+            assert result["temperature"] == 0.5
 
     def test_cli_overrides_all(self) -> None:
         """CLI overrides take highest priority."""
@@ -286,13 +175,13 @@ class TestResolveAgentConfig:
             )
 
             result = resolve_test_agent_config(
-                layout, "proj", cli_overrides={"model": "opus", "max_turns": 99}
+                layout, "proj", cli_overrides={"model": "opus", "temperature": 0.1}
             )
             assert result["model"] == "opus"
-            assert result["max_turns"] == 99
+            assert result["temperature"] == 0.1
 
     def test_inherit_extends_list(self) -> None:
-        """Preset with _inherit extends a project list value."""
+        """A higher-priority scope with _inherit extends a project list value."""
         with tempfile.TemporaryDirectory() as td:
             layout = make_layout(Path(td))
             write_test_project(
@@ -301,275 +190,26 @@ class TestResolveAgentConfig:
                 "project:\n  id: proj\nagent:\n  instructions:\n    - base rule\n",
             )
 
-            write_project_preset(
+            result = resolve_test_agent_config(
                 layout,
                 "proj",
-                "extend",
-                "instructions:\n  - _inherit\n  - extra rule\n",
+                cli_overrides={"instructions": ["_inherit", "extra rule"]},
             )
-
-            result = resolve_test_agent_config(layout, "proj", preset="extend")
             assert result["instructions"] == ["base rule", "extra rule"]
 
-    def test_project_config_without_preset(self) -> None:
-        """Project agent config resolves correctly without a preset."""
+    def test_project_config_multiple_keys(self) -> None:
+        """Project agent config resolves multiple keys correctly."""
         with tempfile.TemporaryDirectory() as td:
             layout = make_layout(Path(td))
             write_test_project(
                 layout,
                 "proj2",
-                "project:\n  id: proj2\nagent:\n  model: sonnet\n  max_turns: 7\n",
+                "project:\n  id: proj2\nagent:\n  model: sonnet\n  temperature: 0.3\n",
             )
 
             result = resolve_test_agent_config(layout, "proj2")
             assert result["model"] == "sonnet"
-            assert result["max_turns"] == 7
-
-
-class TestPreset:
-    """Tests for list_presets() and load_preset()."""
-
-    def test_list_presets_no_project_or_global(self) -> None:
-        """No project/global presets — only bundled presets are returned."""
-        with tempfile.TemporaryDirectory() as td:
-            layout = make_layout(Path(td))
-            write_test_project(layout, "proj")
-
-            result = list_test_presets(layout, "proj")
-            non_bundled = [info for info in result if info.source != "bundled"]
-            assert non_bundled == []
-            bundled = [info for info in result if info.source == "bundled"]
-            assert len(bundled) > 0
-
-    def test_list_presets_found(self) -> None:
-        with tempfile.TemporaryDirectory() as td:
-            layout = make_layout(Path(td))
-            write_test_project(layout, "proj")
-
-            presets_dir = project_presets_dir(layout, "proj")
-            write_project_preset(layout, "proj", "alpha", "model: haiku\n")
-            write_project_preset(layout, "proj", "beta", "model: sonnet\n", suffix=".yaml")
-            (presets_dir / "ignore.txt").write_text("not a preset\n", encoding="utf-8")
-
-            result = list_test_presets(layout, "proj")
-            project_presets = [info for info in result if info.source == "project"]
-            assert [info.name for info in project_presets] == ["alpha", "beta"]
-
-    def test_load_preset_not_found(self) -> None:
-        with tempfile.TemporaryDirectory() as td:
-            layout = make_layout(Path(td))
-            write_test_project(layout, "proj")
-
-            with pytest.raises(SystemExit):
-                load_test_preset(layout, "proj", "nonexistent")
-
-    def test_load_preset_found(self) -> None:
-        with tempfile.TemporaryDirectory() as td:
-            layout = make_layout(Path(td))
-            write_test_project(layout, "proj")
-
-            preset_path = write_project_preset(
-                layout,
-                "proj",
-                "reviewer",
-                "model: sonnet\nmax_turns: 10\n",
-            )
-            data, path = load_test_preset(layout, "proj", "reviewer")
-            assert data["model"] == "sonnet"
-            assert data["max_turns"] == 10
-            assert path == preset_path
-
-    def test_load_preset_yaml_extension(self) -> None:
-        """Preset with .yaml extension is also found."""
-        with tempfile.TemporaryDirectory() as td:
-            layout = make_layout(Path(td))
-            write_test_project(layout, "proj")
-
-            preset_path = write_project_preset(
-                layout,
-                "proj",
-                "alt",
-                "model: opus\n",
-                suffix=".yaml",
-            )
-
-            data, path = load_test_preset(layout, "proj", "alt")
-            assert data["model"] == "opus"
-            assert path == preset_path
-
-    def test_presets_dir_property(self) -> None:
-        """Project.presets_dir points to presets/ under project root."""
-        with tempfile.TemporaryDirectory() as td:
-            layout = make_layout(Path(td))
-            write_test_project(layout, "proj")
-            p = load_test_project(layout, "proj")
-            assert p.presets_dir == p.root / "presets"
-
-
-class TestPresetFileRef:
-    """Tests for file references within presets."""
-
-    def test_global_preset_fallback(self) -> None:
-        """load_preset finds a preset in the global presets dir when not in project."""
-        with tempfile.TemporaryDirectory() as td:
-            layout = make_layout(Path(td))
-            write_test_project(layout, "proj")
-            preset_path = write_global_preset(layout, "shared", "model: haiku\nmax_turns: 2\n")
-            data, path = load_test_preset(layout, "proj", "shared")
-            assert data["model"] == "haiku"
-            assert path == preset_path
-
-    def test_project_preset_shadows_global(self) -> None:
-        """Project preset shadows a global preset with the same name."""
-        with tempfile.TemporaryDirectory() as td:
-            layout = make_layout(Path(td))
-            write_test_project(layout, "proj")
-            write_global_preset(layout, "fast", "model: haiku\n")
-            preset_path = write_project_preset(layout, "proj", "fast", "model: opus\n")
-            data, path = load_test_preset(layout, "proj", "fast")
-            assert data["model"] == "opus"
-            assert path == preset_path
-
-
-class TestGlobalPresetList:
-    """Tests for list_presets() with global presets."""
-
-    def test_list_presets_includes_global(self) -> None:
-        """list_presets returns global and project presets with source labels."""
-        with tempfile.TemporaryDirectory() as td:
-            layout = make_layout(Path(td))
-            write_test_project(layout, "proj")
-            write_global_preset(layout, "shared", "model: haiku\n")
-            write_project_preset(layout, "proj", "local", "model: opus\n")
-            result = list_test_presets(layout, "proj")
-            non_bundled = {info.name: info.source for info in result if info.source != "bundled"}
-            assert non_bundled == {"local": "project", "shared": "global"}
-
-    def test_list_presets_project_shadows_global(self) -> None:
-        """Project preset with same name replaces global in listing."""
-        with tempfile.TemporaryDirectory() as td:
-            layout = make_layout(Path(td))
-            write_test_project(layout, "proj")
-            write_global_preset(layout, "fast", "model: haiku\n")
-            write_project_preset(layout, "proj", "fast", "model: opus\n")
-            result = list_test_presets(layout, "proj")
-            non_bundled = [info for info in result if info.source != "bundled"]
-            assert len(non_bundled) == 1
-            assert non_bundled[0].name == "fast"
-            assert non_bundled[0].source == "project"
-
-
-class TestGlobalPresetProvenance:
-    """Tests for global preset provenance in config stack."""
-
-    def test_global_preset_scope_label(self) -> None:
-        """Config stack labels user-wide presets as 'preset (user)'."""
-        with tempfile.TemporaryDirectory() as td:
-            layout = make_layout(Path(td))
-            write_test_project(layout, "proj")
-            write_global_preset(layout, "shared", "model: haiku\n")
-            stack = build_test_agent_stack(layout, "proj", preset="shared")
-            levels = [s.level for s in stack.scopes]
-            assert "preset (user)" in levels
-
-    def test_project_preset_scope_label(self) -> None:
-        """Config stack labels project presets as 'preset (project)'."""
-        with tempfile.TemporaryDirectory() as td:
-            layout = make_layout(Path(td))
-            write_test_project(layout, "proj")
-            write_project_preset(layout, "proj", "fast", "model: haiku\n")
-            stack = build_test_agent_stack(layout, "proj", preset="fast")
-            levels = [s.level for s in stack.scopes]
-            assert "preset (project)" in levels
-
-
-def _any_bundled_name() -> str:
-    """Return the name of any bundled preset (for tests that need a concrete name)."""
-    from terok.lib.core.config import bundled_presets_dir
-
-    bdir = bundled_presets_dir()
-    for p in bdir.iterdir():
-        if p.is_file() and p.suffix in (".yml", ".yaml"):
-            return p.stem
-    raise RuntimeError("No bundled presets found — cannot run bundled preset tests")
-
-
-class TestBundledPreset:
-    """Tests for bundled (shipped) presets.
-
-    These tests are name-agnostic: they discover whatever presets happen to
-    be shipped in ``resources/presets/`` rather than hardcoding specific names.
-    Swap the bundled YAML files freely — only the infrastructure is tested here.
-    """
-
-    def test_bundled_presets_discoverable(self) -> None:
-        """At least one bundled preset appears in list_presets."""
-        with tempfile.TemporaryDirectory() as td:
-            layout = make_layout(Path(td))
-            write_test_project(layout, "proj")
-            result = list_test_presets(layout, "proj")
-            bundled = [info for info in result if info.source == "bundled"]
-            assert len(bundled) > 0, "Expected at least one bundled preset"
-
-    def test_bundled_preset_loadable(self) -> None:
-        """Any bundled preset can be loaded via load_preset."""
-        name = _any_bundled_name()
-        with tempfile.TemporaryDirectory() as td:
-            layout = make_layout(Path(td))
-            write_test_project(layout, "proj")
-            data, path = load_test_preset(layout, "proj", name)
-            assert isinstance(data, dict)
-            assert path.is_file()
-
-    def test_global_shadows_bundled(self) -> None:
-        """A global preset with the same name as a bundled preset wins."""
-        name = _any_bundled_name()
-        with tempfile.TemporaryDirectory() as td:
-            layout = make_layout(Path(td))
-            write_test_project(layout, "proj")
-            preset_path = write_global_preset(
-                layout,
-                name,
-                "model: opus\nmax_turns: 99\n",
-            )
-            data, path = load_test_preset(layout, "proj", name)
-            assert data["model"] == "opus"
-            assert data["max_turns"] == 99
-            assert path == preset_path
-
-    def test_project_shadows_bundled(self) -> None:
-        """A project preset with the same name as a bundled preset wins."""
-        name = _any_bundled_name()
-        with tempfile.TemporaryDirectory() as td:
-            layout = make_layout(Path(td))
-            write_test_project(layout, "proj")
-            preset_path = write_project_preset(layout, "proj", name, "model: haiku\n")
-            data, path = load_test_preset(layout, "proj", name)
-            assert data["model"] == "haiku"
-            assert path == preset_path
-
-    def test_bundled_preset_scope_label(self) -> None:
-        """Config stack labels bundled presets as 'preset (bundled)'."""
-        name = _any_bundled_name()
-        with tempfile.TemporaryDirectory() as td:
-            layout = make_layout(Path(td))
-            write_test_project(layout, "proj")
-            stack = build_test_agent_stack(layout, "proj", preset=name)
-            levels = [s.level for s in stack.scopes]
-            assert "preset (bundled)" in levels
-
-    def test_shadowed_bundled_gets_correct_source(self) -> None:
-        """Shadowing one bundled preset changes its source; others stay bundled."""
-        name = _any_bundled_name()
-        with tempfile.TemporaryDirectory() as td:
-            layout = make_layout(Path(td))
-            write_test_project(layout, "proj")
-            write_global_preset(layout, name, "model: opus\n")
-            result = list_test_presets(layout, "proj")
-            by_name = {info.name: info.source for info in result}
-            assert by_name[name] == "global"
-            remaining_bundled = [n for n, s in by_name.items() if s == "bundled"]
-            assert len(remaining_bundled) > 0
+            assert result["temperature"] == 0.3
 
 
 class TestValidateProjectId:

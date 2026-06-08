@@ -355,7 +355,7 @@ accept permission flags — behave consistently.
 ```text
 CLI flag (--unrestricted / --restricted)
   │  ↓ if not given
-Config stack: global → project → preset  (resolve_provider_value)
+Config stack: global → project  (resolve_provider_value)
   │  ↓ if not configured
 Default: unrestricted (True)
   │
@@ -400,7 +400,7 @@ provider-agnostic: it doesn't need to know *which* flags each agent needs.
 
 | Concern | Where | How |
 |---------|-------|-----|
-| Config resolution | `agent_config.py` → `resolve_provider_value()` | Walks global → project → preset; supports flat values and per-provider dicts |
+| Config resolution | `agent_config.py` → `resolve_provider_value()` | Walks global → project; supports flat values and per-provider dicts |
 | Host-side env injection | `task_runners.py` → `_apply_unrestricted_env()` | Sets `TEROK_UNRESTRICTED=1` + all `auto_approve_env` vars from `collect_all_auto_approve_env()` |
 | Meta persistence | `task_runners.py` | `meta["unrestricted"]` written to `meta.yml` (headless: always; CLI: on start) |
 | CLI flag wiring | `cli/commands/task.py` | Mutually exclusive `--unrestricted` / `--restricted` mapped to tri-state `bool \| None` |
