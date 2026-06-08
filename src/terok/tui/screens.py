@@ -118,6 +118,17 @@ def _visible_agents(installed: frozenset[str] | None) -> list[str]:
     return [name for name in AGENTS if name in installed]
 
 
+# A border subtitle is assembled from independent hint segments; the
+# focus- and readiness-dependent ones evaluate to ``None`` and drop out, so the
+# rendered hint never promises a key that wouldn't do what it says right now.
+_HINT_SEP = " · "
+
+
+def _join_hints(*segments: str | None) -> str:
+    """Join the present hint segments with the standard separator, dropping blanks."""
+    return _HINT_SEP.join(segment for segment in segments if segment)
+
+
 # ---------------------------------------------------------------------------
 # Project Details Screen
 # ---------------------------------------------------------------------------
@@ -775,12 +786,26 @@ class UnattendedPromptScreen(screen.ModalScreen[str | None]):
                 yield Button("Cancel", id="btn-cancel", variant="default")
                 yield Button("Run ▶", id="btn-run", variant="primary")
         dialog.border_title = "Unattended Prompt"
-        dialog.border_subtitle = "Enter to run · Ctrl+J newline · Esc cancel"
 
     def on_mount(self) -> None:
         """Focus the text area for immediate typing."""
         area = self.query_one("#prompt-area", TextArea)
         area.focus()
+        self._refresh_hint()
+
+    def on_descendant_focus(self, event: events.DescendantFocus) -> None:
+        """Refresh the Enter hint whenever focus moves between the dialog's controls."""
+        self._refresh_hint()
+
+    def _refresh_hint(self) -> None:
+        """Rebuild the border subtitle to match what Enter does for the focused control."""
+        prompt_focused = self.focused is not None and self.focused.id == "prompt-area"
+        subtitle = _join_hints(
+            "Ctrl+J newline" if prompt_focused else None,
+            "Esc cancel",
+            "Enter to run" if prompt_focused else None,
+        )
+        self.query_one("#unattended-dialog", Vertical).border_subtitle = subtitle
 
     def on_key(self, event: events.Key) -> None:
         """Submit on Enter (bubbled from the prompt area); modifiers add newlines.
@@ -1363,7 +1388,6 @@ class TaskLaunchScreen(screen.ModalScreen["tuple[str, str, str, str, str, str | 
                 yield Button("Dismiss", id="btn-dismiss", variant="default")
                 yield Button("Login", id="btn-login", variant="primary", disabled=True)
         dialog.border_title = f"CLI Task {self._task_id} ({self._task_name})"
-        dialog.border_subtitle = "Enter to login · Ctrl+J newline · Esc dismiss"
 
     def _build_agent_choices(self) -> list[tuple[str, str]]:
         """Build the (label, value) list for the agent Select.
@@ -1412,8 +1436,41 @@ class TaskLaunchScreen(screen.ModalScreen["tuple[str, str, str, str, str, str | 
 
         prompt = self.query_one("#launch-prompt", TextArea)
         prompt.focus()
+        self._refresh_hint()
         self._start_time = time.monotonic()
         self._poll_timer = self.set_interval(1.5, self._poll_status)
+
+    def on_descendant_focus(self, event: events.DescendantFocus) -> None:
+        """Refresh the Enter hint whenever focus moves between the dialog's controls."""
+        self._refresh_hint()
+
+    def _enter_hint(self) -> str | None:
+        """What Enter does for the focused control right now, or ``None`` when nothing.
+
+        Enter reaches login only from the prompt, and only once the container is
+        ready — until then it's a dimmed, hourglassed promise that brightens in
+        place the moment login goes live. On the agent ``Select`` Enter expands the
+        dropdown; on the action buttons it activates the focused one, whose own
+        caption already says what that is — so those drop the segment rather than
+        echo the label.
+        """
+        focused = self.focused
+        focused_id = focused.id if focused else None
+        if focused_id == "launch-prompt":
+            return "Enter login" if self._container_ready else "[dim]Enter login ⌛[/dim]"
+        if focused_id == "login-agent":
+            return "Enter shows agent list"
+        return None
+
+    def _refresh_hint(self) -> None:
+        """Rebuild the border subtitle for the current focus and readiness state."""
+        prompt_focused = self.focused is not None and self.focused.id == "launch-prompt"
+        subtitle = _join_hints(
+            "Ctrl+J newline" if prompt_focused else None,
+            "Esc dismiss",
+            self._enter_hint(),
+        )
+        self.query_one("#launch-dialog", Vertical).border_subtitle = subtitle
 
     def on_key(self, event: events.Key) -> None:
         """Submit on Enter (bubbled from the prompt) once the container is ready.
@@ -1494,6 +1551,7 @@ class TaskLaunchScreen(screen.ModalScreen["tuple[str, str, str, str, str, str | 
             status_widget.update("Status: Container ready")
             self._container_ready = True
             self.query_one("#btn-login", Button).disabled = False
+            self._refresh_hint()
             if self._poll_timer:
                 self._poll_timer.stop()
                 self._poll_timer = None

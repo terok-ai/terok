@@ -431,6 +431,73 @@ class TestUnattendedPromptOnKey:
 
 
 # ---------------------------------------------------------------------------
+# Focus-/readiness-aware Enter hint
+# ---------------------------------------------------------------------------
+
+
+class TestTaskLaunchScreenHint:
+    """The border subtitle promises only what Enter actually does right now."""
+
+    @staticmethod
+    def _screen(focused_id: str | None, *, ready: bool):
+        screens, _ = import_screens()
+        screen = screens.TaskLaunchScreen(container_name="c", project_name="p", task_id="1")
+        screen._container_ready = ready
+        screen.focused = None if focused_id is None else types.SimpleNamespace(id=focused_id)
+        return screen
+
+    def test_enter_hint_prompt_ready_logs_in(self) -> None:
+        assert self._screen("launch-prompt", ready=True)._enter_hint() == "Enter login"
+
+    def test_enter_hint_prompt_pending_is_dimmed_with_hourglass(self) -> None:
+        hint = self._screen("launch-prompt", ready=False)._enter_hint()
+        assert "[dim]" in hint and "Enter login" in hint and "⌛" in hint
+
+    def test_enter_hint_agent_select_describes_the_dropdown(self) -> None:
+        assert self._screen("login-agent", ready=True)._enter_hint() == "Enter shows agent list"
+
+    def test_enter_hint_button_is_omitted(self) -> None:
+        assert self._screen("btn-dismiss", ready=True)._enter_hint() is None
+
+    def test_refresh_hint_prompt_ready_subtitle(self) -> None:
+        screen = self._screen("launch-prompt", ready=True)
+        dialog = mock.Mock()
+        screen.query_one = lambda *a, **k: dialog
+        screen._refresh_hint()
+        assert dialog.border_subtitle == "Ctrl+J newline · Esc dismiss · Enter login"
+
+    def test_refresh_hint_on_button_drops_newline_and_enter(self) -> None:
+        screen = self._screen("btn-login", ready=True)
+        dialog = mock.Mock()
+        screen.query_one = lambda *a, **k: dialog
+        screen._refresh_hint()
+        assert dialog.border_subtitle == "Esc dismiss"
+
+
+class TestUnattendedPromptHint:
+    """Unattended-prompt subtitle shows Enter only while the prompt holds focus."""
+
+    @staticmethod
+    def _screen(focused_id: str | None):
+        screens, _ = import_screens()
+        screen = screens.UnattendedPromptScreen()
+        screen.focused = None if focused_id is None else types.SimpleNamespace(id=focused_id)
+        dialog = mock.Mock()
+        screen.query_one = lambda *a, **k: dialog
+        return screen, dialog
+
+    def test_prompt_focus_shows_enter_to_run(self) -> None:
+        screen, dialog = self._screen("prompt-area")
+        screen._refresh_hint()
+        assert dialog.border_subtitle == "Ctrl+J newline · Esc cancel · Enter to run"
+
+    def test_button_focus_omits_enter(self) -> None:
+        screen, dialog = self._screen("btn-cancel")
+        screen._refresh_hint()
+        assert dialog.border_subtitle == "Esc cancel"
+
+
+# ---------------------------------------------------------------------------
 # TaskLaunchScreen — lazy agent dropdown
 # ---------------------------------------------------------------------------
 
