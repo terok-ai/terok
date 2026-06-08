@@ -746,14 +746,57 @@ class TestSickbayDispatch:
 
         from terok.cli.commands import sickbay as sb
 
-        args = argparse.Namespace(cmd="sickbay", project_name="alpha", task_id="1", fix=True)
+        args = argparse.Namespace(
+            cmd="sickbay", project_name="alpha", task_id="1", fix=True, system=False
+        )
         with (
             unittest.mock.patch.object(sb, "resolve_task_id", return_value="full-id") as resolve,
             unittest.mock.patch.object(sb, "_cmd_sickbay") as run,
         ):
             assert sb.dispatch(args) is True
         resolve.assert_called_once_with("alpha", "1")
-        run.assert_called_once_with(project_name="alpha", task_id="full-id", fix=True)
+        run.assert_called_once_with(
+            project_name="alpha", task_id="full-id", fix=True, system_only=False
+        )
+
+    def test_system_flag_skips_scope_and_walk(self) -> None:
+        import argparse
+
+        from terok.cli.commands import sickbay as sb
+
+        args = argparse.Namespace(
+            cmd="sickbay", project_name=None, task_id=None, fix=False, system=True
+        )
+        with unittest.mock.patch.object(sb, "_cmd_sickbay") as run:
+            assert sb.dispatch(args) is True
+        run.assert_called_once_with(project_name=None, task_id=None, fix=False, system_only=True)
+
+    def test_system_with_scope_is_rejected(self) -> None:
+        import argparse
+
+        from terok.cli.commands import sickbay as sb
+
+        args = argparse.Namespace(
+            cmd="sickbay", project_name="alpha", task_id=None, fix=False, system=True
+        )
+        with pytest.raises(SystemExit):
+            sb.dispatch(args)
+
+    def test_system_only_runs_globals_and_skips_container_walk(self) -> None:
+        from terok.cli.commands import sickbay as sb
+
+        with (
+            unittest.mock.patch.object(
+                sb, "_GLOBAL_CHECKS", [("Fake", lambda: ("ok", "Fake", "fine"))]
+            ),
+            unittest.mock.patch.object(sb, "_check_unfired_hooks") as hooks,
+            unittest.mock.patch.object(sb, "_check_shield_annotations") as annotations,
+            unittest.mock.patch.object(sb, "_stream_containers") as containers,
+        ):
+            sb._cmd_sickbay(system_only=True)
+        hooks.assert_not_called()
+        annotations.assert_not_called()
+        containers.assert_not_called()
 
 
 class TestCheckUnfiredHooks:

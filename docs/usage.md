@@ -884,6 +884,7 @@ terok sickbay                    # check all projects
 terok sickbay myproject          # check one project
 terok sickbay myproject 3        # check one task
 terok sickbay --fix              # auto-reconcile (run missed hooks)
+terok sickbay --system           # host-wide checks only; skip the per-container walk (fast)
 ```
 
 ### Example: task lifecycle logging

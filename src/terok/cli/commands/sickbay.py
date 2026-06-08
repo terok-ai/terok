@@ -63,6 +63,11 @@ def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) ->
     add_project_name(p, nargs="?", metavar="project", help="Scope to a single project")
     add_task_id(p, nargs="?", metavar="task", help="Scope to a single task")
     p.add_argument("--fix", action="store_true", help="Auto-remediate issues")
+    p.add_argument(
+        "--system",
+        action="store_true",
+        help="Only host-wide checks; skip the per-container walk (fast)",
+    )
 
 
 def dispatch(args: argparse.Namespace) -> bool:
@@ -71,12 +76,18 @@ def dispatch(args: argparse.Namespace) -> bool:
         return False
     project_name = getattr(args, "project_name", None)
     task_id = getattr(args, "task_id", None)
+    system_only = getattr(args, "system", False)
+    # --system runs only the host-wide checks, so a project/task scope is a
+    # contradiction in terms — reject it rather than silently ignoring one.
+    if system_only and (project_name or task_id):
+        sys.exit("error: --system runs host-wide checks only; drop the project/task argument")
     if project_name and task_id:
         task_id = resolve_task_id(project_name, task_id)
     _cmd_sickbay(
         project_name=project_name,
         task_id=task_id,
         fix=getattr(args, "fix", False),
+        system_only=system_only,
     )
     return True
 
@@ -601,6 +612,7 @@ def _cmd_sickbay(
     project_name: str | None = None,
     task_id: str | None = None,
     fix: bool = False,
+    system_only: bool = False,
 ) -> None:
     """Run health checks and report results, streaming progress line-by-line."""
     reporter = CheckReporter()
@@ -612,22 +624,28 @@ def _cmd_sickbay(
             reporter.end(status, detail)
         # Visual separator between host-wide checks and per-project /
         # per-task rows that follow — same intent as ``terok setup``'s
-        # blank line between stage groups.
-        print()
+        # blank line between stage groups.  ``--system`` prints no such
+        # rows, so the separator would just dangle.
+        if not system_only:
+            print()
 
-    for status, label, detail in _check_unfired_hooks(project_name, task_id, fix=fix):
-        reporter.emit(status, label, detail)
-    for status, label, detail in _check_shield_annotations(project_name, task_id):
-        reporter.emit(status, label, detail)
+    # The per-container walk resolves podman state for every task — the slow
+    # part sickbay is known for.  ``--system`` runs only the host-wide checks
+    # above and falls straight through to the exit-code summary.
+    if not system_only:
+        for status, label, detail in _check_unfired_hooks(project_name, task_id, fix=fix):
+            reporter.emit(status, label, detail)
+        for status, label, detail in _check_shield_annotations(project_name, task_id):
+            reporter.emit(status, label, detail)
 
-    _stream_containers(project_name, task_id, fix=fix, reporter=reporter)
+        _stream_containers(project_name, task_id, fix=fix, reporter=reporter)
 
-    # Single-task summary: ``ok (consistent)`` iff every check for this
-    # task came back clean.  Globals aren't run in the ``task_id`` scope,
-    # so the reporter's worst-status at this point covers exactly the
-    # three task-scoped check sets.
-    if task_id and reporter.worst_status == "ok":
-        reporter.emit("ok", f"Task {project_name}/{task_id}", "consistent")
+        # Single-task summary: ``ok (consistent)`` iff every check for this
+        # task came back clean.  Globals aren't run in the ``task_id`` scope,
+        # so the reporter's worst-status at this point covers exactly the
+        # three task-scoped check sets.
+        if task_id and reporter.worst_status == "ok":
+            reporter.emit("ok", f"Task {project_name}/{task_id}", "consistent")
 
     if reporter.worst_status == "error":
         sys.exit(2)
