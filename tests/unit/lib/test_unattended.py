@@ -354,26 +354,24 @@ class TestTaskRunHeadless:
             assert settings.is_file()
             assert "SessionStart" in json.loads(settings.read_text())["hooks"]
 
-    def test_headless_cli_model_max_turns_in_command(self) -> None:
-        """CLI model/max_turns appear in headless bash command, not in wrapper."""
+    def test_headless_cli_model_in_command(self) -> None:
+        """CLI model appears in headless bash command, not in wrapper."""
         with tempfile.TemporaryDirectory() as td:
             base = Path(td)
 
             result = run_headless_request(
                 base,
                 write_runner_project(base, "proj_flags"),
-                HeadlessRunRequest("proj_flags", "test", model="opus", max_turns=100),
+                HeadlessRunRequest("proj_flags", "test", model="opus"),
             )
 
             bash_cmd = result.last_spec.command[-1]
             assert "--model opus" in bash_cmd
-            assert "--max-turns 100" in bash_cmd
             assert "--terok-timeout" in bash_cmd
 
             wrapper = task_paths(base, "proj_flags", result.task_id)[0] / "terok-executor.sh"
             content = wrapper.read_text()
             assert "--model" not in content
-            assert "--max-turns" not in content
             assert "--terok-timeout" in content
 
     def test_headless_container_name_uses_run_prefix(self) -> None:
@@ -476,7 +474,7 @@ class TestTaskRunHeadless:
             base = Path(td)
 
             agent_config = base / "my-agent-config.yml"
-            agent_config.write_text("model: opus\nmax_turns: 42\n", encoding="utf-8")
+            agent_config.write_text("model: opus\n", encoding="utf-8")
 
             result = run_headless_request(
                 base,
@@ -486,7 +484,6 @@ class TestTaskRunHeadless:
 
             bash_cmd = result.last_spec.command[-1]
             assert "--model opus" in bash_cmd
-            assert "--max-turns 42" in bash_cmd
 
 
 class TestTaskFollowupHeadless:

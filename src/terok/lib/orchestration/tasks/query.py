@@ -86,7 +86,6 @@ class TaskMeta(TaskState):
     web_port: int | None
     web_token: str | None = None
     backend: str | None = None
-    preset: str | None = None
     name: str = ""
     agent: str | None = None
     unrestricted: bool | None = None
@@ -189,7 +188,6 @@ def get_task_meta(project_name: str, task_id: str) -> TaskMeta:
         exit_code=raw.get("exit_code"),
         deleting=bool(raw.get("deleting")),
         initialized=_is_initialized(raw),
-        preset=raw.get("preset"),
         name=raw["name"],
         agent=raw.get("agent"),
         unrestricted=raw.get("unrestricted"),
@@ -272,7 +270,6 @@ def _get_tasks(project_name: str, reverse: bool = False) -> list[TaskMeta]:
                     exit_code=meta.get("exit_code"),
                     deleting=bool(meta.get("deleting")),
                     initialized=_is_initialized(meta),
-                    preset=meta.get("preset"),
                     name=meta["name"],
                     agent=meta.get("agent"),
                     unrestricted=meta.get("unrestricted"),
@@ -367,19 +364,16 @@ def task_list(
     *,
     status: str | None = None,
     mode: str | None = None,
-    agent: str | None = None,
 ) -> None:
-    """List tasks for a project, optionally filtered by status, mode, or agent preset.
+    """List tasks for a project, optionally filtered by status or mode.
 
     Status is computed live from podman container state + task metadata.
     """
     tasks = get_tasks(project_name)
 
-    # Pre-filter by mode/agent before the podman query to reduce work
+    # Pre-filter by mode before the podman query to reduce work
     if mode:
         tasks = [t for t in tasks if t.mode == mode]
-    if agent:
-        tasks = [t for t in tasks if t.preset == agent]
 
     if not tasks:
         print("No tasks found")

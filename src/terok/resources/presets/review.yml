@@ -1,7 +1,0 @@
-# Code review — read-only analysis and recommendations.
-#
-# Good for: architecture review, refactoring advice, pre-merge checks.
-# Usage: terok task run <project> "<prompt>" --preset review
-
-model: opus
-max_turns: 15

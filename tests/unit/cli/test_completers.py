@@ -14,7 +14,6 @@ import pytest
 from terok.cli.commands._completers import (
     add_project_name,
     add_task_id,
-    complete_preset_names,
     complete_project_names,
     complete_task_ids,
     set_completer,
@@ -115,39 +114,6 @@ class TestCompleteTaskIds:
 
 
 # ---------------------------------------------------------------------------
-
-
-class TestCompletePresetNames:
-    """``complete_preset_names`` scopes to ``parsed_args.project_name``."""
-
-    def test_empty_when_no_project(self) -> None:
-        """list_presets requires a project — silent when project_name absent."""
-        assert complete_preset_names("", argparse.Namespace()) == []
-        assert complete_preset_names("", argparse.Namespace(project_name=None)) == []
-
-    def test_lists_presets_for_project(self) -> None:
-        presets = [
-            SimpleNamespace(name="solo"),
-            SimpleNamespace(name="team"),
-            SimpleNamespace(name="review"),
-        ]
-        with patch("terok.cli.commands._completers.list_presets", return_value=presets) as mock:
-            result = complete_preset_names("", argparse.Namespace(project_name="myproj"))
-        mock.assert_called_once_with("myproj")
-        assert sorted(result) == ["review", "solo", "team"]
-
-    def test_filters_by_prefix(self) -> None:
-        presets = [SimpleNamespace(name="solo"), SimpleNamespace(name="team")]
-        with patch("terok.cli.commands._completers.list_presets", return_value=presets):
-            result = complete_preset_names("s", argparse.Namespace(project_name="p"))
-        assert result == ["solo"]
-
-    def test_returns_empty_on_failure(self) -> None:
-        with patch(
-            "terok.cli.commands._completers.list_presets",
-            side_effect=RuntimeError("boom"),
-        ):
-            assert complete_preset_names("", argparse.Namespace(project_name="p")) == []
 
 
 # ---------------------------------------------------------------------------

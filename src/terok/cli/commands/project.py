@@ -18,7 +18,7 @@ from ...lib.api import (
     set_project_image_agents,
     summarize_ssh_init,
 )
-from ...lib.core.projects import list_presets, list_projects, load_project, normalize_project_name
+from ...lib.core.projects import list_projects, load_project, normalize_project_name
 from ...lib.domain.project import make_git_gate
 from ...lib.domain.wizards.new_project import offer_edit_then_init, run_wizard
 from ._completers import complete_project_names as _complete_project_names, set_completer
@@ -178,12 +178,6 @@ def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) ->
         help="Fall through to the user's ~/.ssh keys instead of the vault",
     )
 
-    # presets — subgroup so future preset ops (add/remove/edit) have a home
-    p_presets = sub.add_parser("presets", help="Manage agent-config presets for a project")
-    presets_sub = p_presets.add_subparsers(dest="presets_cmd", required=True)
-    p_presets_list = presets_sub.add_parser("list", help="List available presets for a project")
-    _add_project_arg(p_presets_list)
-
     # agents — subgroup mirroring `terok agents` but scoped per-project
     p_agents = sub.add_parser(
         "agents",
@@ -245,9 +239,6 @@ def dispatch(args: argparse.Namespace) -> bool:
             _cmd_gate_path(args.project_name)
         case "gate-sync":
             _cmd_gate_sync(args)
-        case "presets":
-            if args.presets_cmd == "list":
-                _cmd_presets(args.project_name)
         case "agents":
             if args.agents_cmd == "set":
                 _cmd_agents_set(args.project_name, getattr(args, "selection", None))
@@ -404,17 +395,6 @@ def _cmd_gate_sync(args: argparse.Namespace) -> None:
         f"Gate ready at {res['path']} "
         f"(upstream: {upstream_label}; created: {res['created']}){cache_note}"
     )
-
-
-def _cmd_presets(project_name: str) -> None:
-    """List available agent-config presets for a project."""
-    presets = list_presets(project_name)
-    if not presets:
-        print(f"No presets found for project '{project_name}'")
-        return
-    print(f"Presets for '{project_name}':")
-    for info in presets:
-        print(f"  - {info.name} ({info.source})")
 
 
 def _cmd_agents_set(project_name: str, selection: str | None) -> None:

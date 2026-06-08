@@ -127,9 +127,9 @@ class Task:
 
     # --- Lifecycle ---
 
-    def run_cli(self, *, preset: str | None = None) -> None:
+    def run_cli(self) -> None:
         """Launch a CLI-mode task container."""
-        task_run_cli(self._config.name, self.id, preset=preset)
+        task_run_cli(self._config.name, self.id)
 
     def stop(self, *, timeout: int | None = None) -> None:
         """Gracefully stop the task container."""

@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: 2025 Jiri Vyskocil
 # SPDX-License-Identifier: Apache-2.0
 
-"""Project discovery, loading, and preset management."""
+"""Project discovery and loading."""
 
 import logging
 import re
@@ -22,7 +22,6 @@ from ..integrations.executor import ExecutorConfigView
 from ..util.yaml import YAMLError, dump as _yaml_dump, load as _yaml_load
 from .config import (
     build_dir,
-    bundled_presets_dir,
     gate_repos_dir,
     get_global_default_agent,
     get_global_default_provider,
@@ -33,11 +32,9 @@ from .config import (
     get_shield_on_task_restart,
     projects_dir,
     sandbox_live_dir,
-    user_presets_dir,
     user_projects_dir,
 )
 from .project_model import (  # noqa: F401 — re-exported public API
-    PresetInfo,
     ProjectConfig,
     is_valid_project_name,
     validate_project_name,
@@ -290,61 +287,6 @@ def _build_project_config(
         snippet_file=raw.image.user_snippet_file,
         shared_dir=shared_dir,
     )
-
-
-def find_preset_path(project: ProjectConfig, preset_name: str) -> Path | None:
-    """Return the path of a preset file, or ``None`` if not found.
-
-    Search order: project presets → global presets → bundled presets.
-    """
-    for search_dir in (project.presets_dir, user_presets_dir(), bundled_presets_dir()):
-        for ext in (".yml", ".yaml"):
-            path = search_dir / f"{preset_name}{ext}"
-            if path.is_file():
-                return path
-    return None
-
-
-def list_presets(project_name: str) -> list[PresetInfo]:
-    """Return sorted preset info for a project.
-
-    Search tiers (higher priority overwrites lower):
-    bundled (shipped with terok) → global (user-wide) → project.
-    """
-    project = load_project(project_name)
-
-    seen: dict[str, PresetInfo] = {}
-    # Higher-priority tiers overwrite lower ones
-    for source, search_dir in [
-        ("bundled", bundled_presets_dir()),
-        ("global", user_presets_dir()),
-        ("project", project.presets_dir),
-    ]:
-        if search_dir.is_dir():
-            for p in search_dir.iterdir():
-                if p.is_file() and p.suffix in (".yml", ".yaml"):
-                    seen[p.stem] = PresetInfo(name=p.stem, source=source, path=p)
-    return sorted(seen.values(), key=lambda info: info.name)
-
-
-def load_preset(project_name: str, preset_name: str) -> tuple[dict[str, Any], Path]:
-    """Load a preset file and return ``(data, path)``.
-
-    Search order: project → global → bundled.
-    Raises SystemExit if the preset is not found.
-    """
-    project = load_project(project_name)
-    path = find_preset_path(project, preset_name)
-    if path is None:
-        available = list_presets(project_name)
-        names = ", ".join(info.name for info in available)
-        hint = f"  Available: {names}" if available else "  No presets found."
-        raise SystemExit(f"Preset '{preset_name}' not found.\n{hint}")
-    try:
-        data = _yaml_load(path.read_text(encoding="utf-8")) or {}
-    except YAMLError as exc:
-        raise SystemExit(f"Failed to parse preset '{preset_name}' ({path}): {exc}")
-    return data, path
 
 
 def derive_project(source_id: str, new_id: str) -> Path:

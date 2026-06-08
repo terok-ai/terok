@@ -57,7 +57,7 @@ docker run -d --privileged --network host \
 
 | Mount | Persists |
 |-------|----------|
-| `.config/terok` | Projects, presets, global config |
+| `.config/terok` | Projects, global config |
 | `.local/share/terok` | Task metadata, gate state, workspaces |
 | `.local/share/containers` | Podman images and containers (avoids re-pulling/rebuilding) |
 

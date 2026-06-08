@@ -63,7 +63,6 @@ def _prepare_agent_config(
     project: ProjectConfig,
     project_name: str,
     task_id: str,
-    preset: str | None,
     *,
     agent_name: str | None = None,
 ) -> Path:
@@ -77,7 +76,6 @@ def _prepare_agent_config(
         project_name,
         agent_config=project.agent_config,
         project_root=project.root,
-        preset=preset,
     )
     from terok.lib.integrations.executor import get_agent as _get_agent
 

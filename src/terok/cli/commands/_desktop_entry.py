@@ -103,11 +103,10 @@ class DesktopBackend(StrEnum):
 def _resource_dir() -> Traversable:
     """Return a ``Traversable`` rooted at the passive ``resources/desktop/`` assets.
 
-    Uses the namespace-package idiom already used by
-    [`terok.lib.core.config.bundled_presets_dir`][terok.lib.core.config.bundled_presets_dir]: walk the top-level
-    ``terok`` package into the ``resources`` + ``desktop`` subdirs (no
-    ``__init__.py`` anywhere under ``resources/``, matching the project's
-    "resources hold only data files" convention).
+    Uses the namespace-package idiom: walk the top-level ``terok`` package
+    into the ``resources`` + ``desktop`` subdirs (no ``__init__.py`` anywhere
+    under ``resources/``, matching the project's "resources hold only data
+    files" convention).
     """
     return importlib_resources.files("terok").joinpath("resources", "desktop")
 

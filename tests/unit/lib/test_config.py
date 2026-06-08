@@ -349,16 +349,6 @@ def test_gate_repos_dir_custom(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) 
     assert cfg.gate_repos_dir() == target.resolve()
 
 
-def test_user_presets_dir_via_config(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    """``user_presets_dir()`` reads ``paths.user_presets_dir`` from config."""
-    target = tmp_path / "presets"
-    monkeypatch.setenv(
-        "TEROK_CONFIG_FILE",
-        str(write_config(tmp_path, f"paths:\n  user_presets_dir: {target}\n")),
-    )
-    assert cfg.user_presets_dir() == target.resolve()
-
-
 def test_user_projects_dir_via_config(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     """``user_projects_dir()`` reads ``paths.user_projects_dir`` from config."""
     target = tmp_path / "projects"

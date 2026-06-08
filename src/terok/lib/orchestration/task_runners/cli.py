@@ -40,7 +40,6 @@ from .shield import _apply_shield_policy
 def task_run_cli(
     project_name: str,
     task_id: str,
-    preset: str | None = None,
     unrestricted: bool | None = None,
 ) -> None:
     """Launch a CLI-mode task container and wait for its readiness marker.
@@ -87,8 +86,8 @@ def task_run_cli(
 
     env, volumes = build_task_env_and_volumes(project, task_id)
 
-    # Resolve layered agent config (global → project → preset → CLI overrides)
-    agent_config_dir = _prepare_agent_config(project, project_name, task_id, preset)
+    # Resolve layered agent config (global → project → CLI overrides)
+    agent_config_dir = _prepare_agent_config(project, project_name, task_id)
     volumes.append(VolumeSpec(agent_config_dir, CONTAINER_TEROK_CONFIG, sharing=Sharing.PRIVATE))
 
     # Resolve unrestricted mode: CLI flag → config → default (True)
@@ -97,7 +96,6 @@ def task_run_cli(
             project_name,
             agent_config=project.agent_config,
             project_root=project.root,
-            preset=preset,
         )
         _cfg_val = resolve_agent_value(
             "unrestricted", _effective, project.default_agent or "claude"
@@ -166,8 +164,6 @@ def task_run_cli(
     meta["mode"] = "cli"
     meta["ready_at"] = datetime.now(UTC).isoformat()
     meta["unrestricted"] = unrestricted
-    if preset:
-        meta["preset"] = preset
     write_task_meta(meta_path, meta)
 
     color_enabled = _supports_color()

@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: 2026 Jiri Vyskocil
 # SPDX-License-Identifier: Apache-2.0
 
-"""Project and preset data models — DDD Value Objects.
+"""Project data models — DDD Value Objects.
 
 Pure data types with no filesystem or subprocess I/O.  These are the
 **value objects** in the domain model: they carry configuration data but
@@ -13,7 +13,6 @@ have no behavior beyond computed paths.
 """
 
 import re
-from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Literal
 
@@ -122,12 +121,6 @@ class ProjectConfig(BaseModel):
         """Whether this project uses sealed isolation (zero bind mounts)."""
         return self.isolation == "sealed"
 
-    @computed_field  # type: ignore[prop-decorator]
-    @property
-    def presets_dir(self) -> Path:
-        """Directory for preset config files for this project."""
-        return self.root / "presets"
-
     # Plain ``@property`` (not ``@computed_field``) so model_dump() does NOT
     # serialise these derived values back into project.yml — round-tripping
     # them would fail validation under ``extra="forbid"``.
@@ -154,15 +147,6 @@ class ProjectConfig(BaseModel):
         config import cycle.
         """
         return self.root / "mounts"
-
-
-@dataclass
-class PresetInfo:
-    """Metadata about a discovered preset."""
-
-    name: str
-    source: str  # "project" | "global" | "bundled"
-    path: Path
 
 
 _PROJECT_NAME_RE = re.compile(r"[a-z0-9][a-z0-9_-]*")

@@ -10,7 +10,7 @@ deployment shift only has to be made here.
 
 The four families:
 
-- **Configuration** — read by terok at startup (project files, presets).
+- **Configuration** — read by terok at startup (project files).
 - **State** — long-lived data terok writes (build artefacts, task
   metadata, panic lock, log).
 - **Vault** — long-lived sensitive data (token broker DB, signer keys,

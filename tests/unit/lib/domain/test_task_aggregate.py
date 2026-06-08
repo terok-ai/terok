@@ -68,7 +68,7 @@ class TestTaskIdentity:
 
 # Each entry: (call, patched-symbol, expected positional/keyword call)
 _DELEGATIONS = [
-    (lambda t: t.run_cli(preset="p"), "task_run_cli", mock.call(_PROJ, _TID, preset="p")),
+    (lambda t: t.run_cli(), "task_run_cli", mock.call(_PROJ, _TID)),
     (lambda t: t.stop(timeout=5), "task_stop", mock.call(_PROJ, _TID, timeout=5)),
     (lambda t: t.restart(), "task_restart", mock.call(_PROJ, _TID)),
     (lambda t: t.delete(), "task_delete", mock.call(_PROJ, _TID)),

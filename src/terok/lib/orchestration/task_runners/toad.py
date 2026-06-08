@@ -180,7 +180,6 @@ def _resume_toad_container(
 def task_run_toad(
     project_name: str,
     task_id: str,
-    preset: str | None = None,
     unrestricted: bool | None = None,
 ) -> None:
     """Launch the Toad multi-agent TUI behind Caddy for token-gated browser access.
@@ -217,7 +216,7 @@ def task_run_toad(
 
     env, volumes = build_task_env_and_volumes(project, task_id)
 
-    agent_config_dir = _prepare_agent_config(project, project_name, task_id, preset)
+    agent_config_dir = _prepare_agent_config(project, project_name, task_id)
     volumes.append(VolumeSpec(agent_config_dir, CONTAINER_TEROK_CONFIG, sharing=Sharing.PRIVATE))
 
     token = _ensure_toad_token(agent_config_dir)
@@ -232,7 +231,6 @@ def task_run_toad(
             project_name,
             agent_config=project.agent_config,
             project_root=project.root,
-            preset=preset,
         )
         _cfg_val = resolve_agent_value(
             "unrestricted", _effective, project.default_agent or "claude"
@@ -243,8 +241,6 @@ def task_run_toad(
 
     meta["mode"] = "toad"
     meta["unrestricted"] = unrestricted
-    if preset:
-        meta["preset"] = preset
     write_task_meta(meta_path, meta)
 
     # Preserve the address family when the public host is a loopback — binding

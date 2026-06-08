@@ -36,7 +36,7 @@ from ...lib.api import (
 )
 from ...lib.core.config import get_logs_partial_streaming as _get_logs_partial_streaming
 from ...lib.orchestration.tasks import resolve_task_id
-from ._completers import add_project_name, add_task_id, complete_preset_names, set_completer
+from ._completers import add_project_name, add_task_id
 
 
 def _add_project_arg(parser: argparse.ArgumentParser, **kwargs: object) -> None:
@@ -155,10 +155,6 @@ def register(
         default=None,
         help="Agent prompt — required when --mode=headless, ignored otherwise",
     )
-    set_completer(
-        t_run.add_argument("--preset", help="Name of a preset to apply (global or project-level)"),
-        complete_preset_names,
-    )
     t_run.add_argument("--name", help="Human-readable task name (slug-style, e.g. fix-auth-bug)")
     _add_restriction_flags(t_run)
     # CLI-mode attach (default: attach when stdout is a TTY).  Headless
@@ -197,7 +193,6 @@ def register(
         help="Path to agent config YAML file (headless only)",
     )
     t_run.add_argument("--model", help="Model override (headless only; provider-specific)")
-    t_run.add_argument("--max-turns", type=int, help="Maximum agent turns (headless only)")
     t_run.add_argument("--timeout", type=int, help="Maximum runtime in seconds (headless only)")
     t_run.add_argument(
         "--no-follow",
@@ -236,12 +231,6 @@ def register(
             default="cli",
             help="Runtime mode: cli (default) or toad",
         )
-        set_completer(
-            t_attach.add_argument(
-                "--preset", help="Name of a preset to apply (global or project-level)"
-            ),
-            complete_preset_names,
-        )
         _add_restriction_flags(t_attach)
 
     t_list = tsub.add_parser("list", help="List tasks")
@@ -255,11 +244,6 @@ def register(
         "--mode",
         dest="filter_mode",
         help="Filter by task mode (e.g. cli, web, run)",
-    )
-    t_list.add_argument(
-        "--agent",
-        dest="filter_agent",
-        help="Filter by agent preset name",
     )
 
     t_delete = tsub.add_parser("delete", help="Delete a task and its containers")
@@ -500,7 +484,6 @@ def _cmd_task_run_interactive(args: argparse.Namespace, *, runner: Any, attach: 
     runner(
         pid,
         tid,
-        preset=getattr(args, "preset", None),
         unrestricted=_resolve_unrestricted(args),
     )
     if attach:
@@ -529,10 +512,8 @@ def _cmd_task_run_headless(args: argparse.Namespace) -> None:
             prompt=prompt,
             config_path=getattr(args, "agent_config", None),
             model=getattr(args, "model", None),
-            max_turns=getattr(args, "max_turns", None),
             timeout=getattr(args, "timeout", None),
             follow=not getattr(args, "no_follow", False),
-            preset=getattr(args, "preset", None),
             name=getattr(args, "name", None),
             agent=getattr(args, "agent", None),
             provider=getattr(args, "provider", None),
@@ -699,7 +680,6 @@ def _dispatch_task_sub(args: argparse.Namespace) -> bool:
             pid,
             status=getattr(args, "filter_status", None),
             mode=getattr(args, "filter_mode", None),
-            agent=getattr(args, "filter_agent", None),
         )
     elif args.task_cmd == "attach":
         # terokctl-only: run an existing task in the chosen interactive mode.
@@ -707,7 +687,6 @@ def _dispatch_task_sub(args: argparse.Namespace) -> bool:
         runner(
             pid,
             tid,
-            preset=getattr(args, "preset", None),
             unrestricted=_resolve_unrestricted(args),
         )
     elif args.task_cmd == "delete":
