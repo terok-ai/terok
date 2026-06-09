@@ -1,5 +1,8 @@
 # terok User Guide
 
+> [!WARNING]
+> This documentation was written by an AI agent and might be inaccurate.
+
 Complete guide to installing, configuring, and using terok.
 
 > [!WARNING]
@@ -23,9 +26,6 @@ Complete guide to installing, configuring, and using terok.
 - [FAQ](#faq)
 
 ---
-
-> [!WARNING]
-> This documentation was written by an AI agent and is inaccurate. 
 
 ## Installation
 
@@ -668,12 +668,12 @@ unrestricted (`true`).
 
 #### What each mode does per agent
 
-| Provider | Unrestricted | Restricted (vendor default) |
-|----------|-------------|---------------------------|
-| claude | `--dangerously-skip-permissions` | Normal interactive prompts |
-| codex | `--dangerously-bypass-approvals-and-sandbox` | Sandboxed with approval prompts |
-| copilot | `--allow-all-tools` | Tool confirmation prompts |
-| vibe | `--auto-approve` | Approval prompts |
+| Provider | Unrestricted mechanism | Restricted (vendor default) |
+|----------|-----------------------|---------------------------|
+| claude | `/etc/claude-code/managed-settings.json` → `"defaultMode": "bypassPermissions"` | Normal interactive prompts |
+| codex | `--yolo` (injected by the shell wrapper) | Sandboxed with approval prompts |
+| copilot | `COPILOT_ALLOW_ALL=true` | Tool confirmation prompts |
+| vibe | `VIBE_BYPASS_TOOL_PERMISSIONS=true` | Approval prompts |
 | opencode / blablador | `OPENCODE_PERMISSION='{"*":"allow"}'` | Default permission policy |
 
 #### Checking the current mode

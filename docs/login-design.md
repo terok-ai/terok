@@ -1,7 +1,7 @@
 # Login Feature — Design
 
 > [!WARNING]
-> This documentation was written by an AI agent and is inaccurate. 
+> This documentation was written by an AI agent and might be inaccurate.
 
 ## Problem
 

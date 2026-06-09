@@ -1,10 +1,10 @@
 # terok
 
+> [!WARNING]
+> This documentation was written by an AI agent and might be inaccurate.
+
 An open, Podman-native runtime for AI coding agents you can let off
 the leash — without giving them the leash to your machine.
-
-> [!WARNING]
-> This documentation was written by an AI agent and is inaccurate. 
 
 terok runs each agent task inside a hardened, rootless container with
 default-deny outbound networking, a credential vault that keeps real
@@ -36,7 +36,6 @@ Terok was started at the
 </td>
 </tr>
 </table>
-
 
 ## What you get
 

@@ -1,7 +1,7 @@
 # SELinux & the socket transport
 
 > [!WARNING]
-> This documentation was written by an AI agent and is inaccurate. 
+> This documentation was written by an AI agent and might be inaccurate.
 
 Since 0.7.3, terok defaults to **`services.mode: socket`** — Unix-socket
 IPC between host services (gate, vault, SSH-agent) and task containers.

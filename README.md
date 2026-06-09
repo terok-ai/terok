@@ -77,7 +77,7 @@ Terok was started at the
 - **Multi-vendor agents** — Claude Code, Codex, Copilot, Vibe, plus
   custom LLM endpoints via OpenCode.
 
-## The five-package stack
+## The six-package stack
 
 | Package | Role |
 |---------|------|
@@ -86,6 +86,7 @@ Terok was started at the
 | [terok-sandbox](https://github.com/terok-ai/terok-sandbox) | Hardened Podman runtime, credential vault, git gate |
 | [terok-shield](https://github.com/terok-ai/terok-shield) | nftables egress firewall + audit |
 | [terok-clearance](https://github.com/terok-ai/terok-clearance) | Live allow/deny prompts via D-Bus + varlink |
+| [terok-util](https://github.com/terok-ai/terok-util) | Shared foundations: CLI registry types, XDG paths, config stack |
 
 ## Quick Start
 
@@ -100,7 +101,9 @@ Hard dependencies:
 
 Optional but recommended:
 
-- **systemd** user session — runs the gate / vault / clearance daemons
+- **systemd** user session — enables the `systemd-creds` vault
+  passphrase tier (TPM2-sealed on systemd ≥ 257); the gate / vault /
+  clearance services themselves run per container, no systemd units
 - **`dnsmasq`** and **`dig`** — DNS plumbing the egress firewall uses
 - A desktop **notification daemon** — for the Allow / Deny popups path
 

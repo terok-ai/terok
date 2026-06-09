@@ -1,11 +1,11 @@
 # Container Layers
 
 > [!WARNING]
-> This documentation was written by an AI agent and is inaccurate. 
+> This documentation was written by an AI agent and might be inaccurate.
 
 ## Overview
 
-terok builds project containers in three logical layers. L0 (dev) and L1 (agent) are project-agnostic and cache well; L2 is project-specific.
+terok builds project containers in three logical layers. L0 (dev) and L1 (agent) are project-agnostic and cache well; L2 is project-specific. L0 and L1 are rendered and owned by terok-executor; terok renders the L2 layer (`l2.project.Dockerfile.template`) and drives the builds.
 
 ## Layers
 
@@ -28,11 +28,12 @@ image:
   family: rpm
 ```
 
-### L1 — Agent Image (`terok-l1-cli:<base-tag>`)
+### L1 — Agent Image (`terok-l1-cli:<base-tag>[-<agents>]`)
 
 Built `FROM` L0.
 
-- Installs Codex, Claude Code, GitHub Copilot, Mistral Vibe, OpenCode, and supporting tools.
+- Installs the agent CLIs and supporting tools selected from the roster (`terok agents` lists what is available; defaults come from `image.agents`).
+- The unsuffixed tag (`terok-l1-cli:<base-tag>`) is a **default alias**: it points at whichever L1 was last built with the user's configured default agent selection, so host-wide flows (`terok auth <provider>`) can rely on it containing every configured agent. Explicit selections get only their suffixed tag.
 
 ### L2 — Project Image (`<project>:l2-cli`)
 
@@ -60,7 +61,7 @@ Built `FROM` the L1 image.
 
 `--agents <list>\|all` selects which roster entries get baked into L1 for this build only. Defaults come from `image.agents` in `project.yml` (or the global `config.yml`). Different selections produce different L1 tag suffixes (`…-claude-codex`, `…-gh-glab`) and coexist in the local image store.
 
-`<base-tag>` is derived from `image.base_image` (sanitized), e.g. `ubuntu:24.04` becomes `ubuntu-24.04`. When the selection suffix would push the tag past the OCI 128-char limit, the agent portion is replaced with a SHA1 digest of the sorted selection.
+`<base-tag>` is derived from `image.base_image` (sanitized), e.g. `ubuntu:24.04` becomes `ubuntu-24.04`. Tags are capped at 120 characters (headroom under the OCI 128 limit); when a selection suffix would exceed the cap, the agent portion is replaced with a digest of the sorted selection.
 
 ## Runtime Behavior
 

@@ -1,439 +1,383 @@
 # Developer Guide
 
 > [!WARNING]
-> This documentation was written by an AI agent and is inaccurate. 
+> This documentation was written by an AI agent and might be inaccurate.
 
-This document covers internal architecture and implementation details for contributors and maintainers of terok.
+This document covers internal architecture and implementation details for
+contributors and maintainers of terok.  For the container/host service
+topology it is the authoritative page; user-facing behaviour lives in
+[usage.md](usage.md).
 
 ## Domain Model Architecture
 
-terok's library layer (`src/terok/lib/`) follows Domain-Driven Design (DDD) conventions with a clear separation between **value objects** (pure data), **entities** (identity + behavior), and **services** (stateful helpers).
+terok's library layer (`src/terok/lib/`) separates **value objects** (pure
+data), **entities** (identity + behavior), and **service functions**
+(stateless helpers).
 
 ### Object Graph
 
 ```text
-facade.get_project("myproj")  →  Project          (Aggregate Root)
-    .config                    →  ProjectConfig    (Value Object — dataclass)
-    .gate                      →  GitGate          (Repository + Gateway)
-    .ssh                       →  SSHManager       (Service)
-    .agents                    →  AgentManager     (Strategy + Config Stack)
-    .create_task(name="x")     →  Task             (Entity)
-    .get_task("1")             →  Task             (Entity)
-        .meta                  →  TaskMeta         (Value Object)
+api.get_project("myproj")  →  Project          (Aggregate Root)
+    .config                →  ProjectConfig    (Value Object — dataclass)
+    .gate                  →  GitGate          (terok-sandbox)
+    .ssh                   →  SSHManager       (terok-sandbox)
+    .agents                →  AgentManager     (config-stack resolution)
+    .get_task("1")         →  Task             (Entity)
+        .meta              →  TaskMeta         (Value Object)
 ```
 
 ### Key Types
 
-| Type | Module | DDD Role | Description |
-|------|--------|----------|-------------|
-| `Project` | `lib.project` | Aggregate Root | Entry point for all project-scoped operations. Wraps `ProjectConfig` with behavior. |
-| `Task` | `lib.task` | Entity | Wraps `TaskMeta` with lifecycle methods (run, stop, delete, rename, logs). |
-| `ProjectConfig` | `lib.core.project_model` | Value Object | Configuration dataclass loaded from `project.yml`. No behavior. |
-| `TaskMeta` | `lib.containers.tasks` | Value Object | Task metadata snapshot (ID, mode, status, workspace path). |
-| `GitGate` | `terok_sandbox.git_gate` | Repository + Gateway | Manages the bare git mirror; wraps git CLI. |
-| `SSHManager` | `terok_sandbox.ssh` | Service | Generates SSH keypairs and config; keys served via vault SSH signer. |
-| `AgentManager` | `lib.project` | Strategy + Config Stack | Resolves layered agent configuration and provider selection. |
+| Type | Module | Role |
+|------|--------|------|
+| `Project` | `lib/domain/project.py` | Aggregate root; entry point for all project-scoped operations.  Wraps `ProjectConfig` with behavior. |
+| `Task` | `lib/domain/task.py` | Entity; wraps `TaskMeta` with lifecycle methods (run, stop, delete, rename, logs). |
+| `ProjectConfig` | `lib/core/project_model.py` | Value object loaded from `project.yml`.  No I/O. |
+| `TaskMeta` | `lib/orchestration/tasks/` | Task metadata snapshot, persisted as a dossier + meta file pair (see below). |
+| `GitGate` | `terok_sandbox` (via `lib/integrations/sandbox.py`) | Manages the bare git mirror; wraps the git CLI. |
+| `SSHManager` | `terok_sandbox` (via `lib/integrations/sandbox.py`) | Generates SSH keypairs; private keys are served by the vault SSH signer, never mounted. |
+| `AgentManager` | `lib/domain/project.py` | Resolves layered agent configuration and provider selection. |
 
 ### Design Principles
 
-**Value Objects vs Rich Objects.** `ProjectConfig` and `TaskMeta` are dataclass data holders — they carry configuration and metadata but have no behavior beyond computed properties. The rich `Project` and `Task` objects wrap these and delegate to service functions, providing a natural OOP interface.
+**Snapshot semantics.** `Task` captures a point-in-time snapshot of
+`TaskMeta`.  Mutations (`rename()`, `stop()`) update persistent storage but
+do *not* refresh the in-memory snapshot — obtain a fresh `Task` via
+`project.get_task(id)` to observe new state.  This keeps entities free of
+implicit I/O.
 
-**Snapshot Semantics.** `Task` captures a point-in-time snapshot of `TaskMeta`. Mutations (`rename()`, `stop()`) update persistent storage but do *not* refresh the in-memory snapshot. To observe new state, obtain a fresh `Task` via `project.get_task(id)`. This keeps entities free of implicit I/O.
+**Lazy initialization.** `Project` subsystems (`gate`, `ssh`, `agents`) are
+created on first access, not at construction.  `Project` uses `__slots__`,
+so `cached_property` is unavailable; the manual pattern
+(`if self._gate is None: ...`) is used instead.
 
-**Lazy Initialization.** `Project` subsystems (`gate`, `ssh`, `agents`) are created on first access, not at construction. This avoids I/O when only a subset of functionality is needed. Since `Project` uses `__slots__`, `cached_property` is not available — the manual pattern (`if self._gate is None: ...`) is used instead.
+**Identity-based equality.** `Project.__eq__` compares by project name;
+`Task.__eq__` by `(project_name, task_id)`.  Both are hashable.
 
-**Identity-Based Equality.** `Project.__eq__` compares by project name; `Task.__eq__` compares by `(project_name, task_id)`. Both are hashable, so they work correctly in sets and dicts.
-
-**Facade Pattern.** `lib.facade` provides factory functions (`get_project`, `list_projects`, `derive_project`) as the stable entry point. It also re-exports low-level service functions for CLI commands that operate on raw `project_name` strings.
+**Atomic persistence.** Every on-disk state write (task meta, build
+manifest, work status) goes through a temp-file + `os.replace()` rename so
+interrupted writes leave parseable state.  Task metadata is split into
+`<task>_dossier.json` (the wire shape other packages consume: project,
+task, name) and `<task>_meta.yml` (terok bookkeeping: mode, workspace,
+ports, exit code) — see `lib/orchestration/tasks/meta.py`.
 
 ### Module Boundaries
 
-Module dependencies are enforced by [tach](https://github.com/gauge-sh/tach) via `tach.toml`. The key constraints:
-
-- **Presentation** (CLI, TUI) depends on the facade — never reaches into orchestration or the sandbox directly.
-- **Orchestration** imports directly from the external `terok_sandbox` package for container lifecycle, shield, gate server, and SSH.
-- **Domain** (facade) re-exports sandbox APIs for presentation consumption and adapts them to the project model.
+Layers, top to bottom: `presentation` → `domain` → `orchestration` →
+`core` → `integrations` (tach-enforced via `tach.toml`).
 
 ```text
-Presentation (CLI, TUI)
-    └── depends on → domain.facade (stable API boundary)
-
-Domain (facade, Project, Task)
-    └── depends on → orchestration, terok_sandbox (re-exported for presentation)
-
-Orchestration (task_runners, tasks, environment)
-    └── depends on → terok_sandbox.* (external package — runtime, shield, gate, SSH)
-
-terok_sandbox (external)
-    └── depends on → terok_shield (external)
+presentation (terok.cli, terok.tui)
+    └── terok.lib.api — the single stable import boundary
+          ├── terok.lib.domain.*          Project/Task aggregates, ssh/auth, panic, vault access
+          ├── terok.lib.orchestration.*   tasks, task_runners, image, environment, ports
+          ├── terok.lib.core.*            config, paths, project model, task state
+          └── terok.lib.integrations.*    the only modules allowed to import sibling wheels
 ```
+
+`terok.lib.api` is a pure re-export front door split into focused
+submodules (`api.task`, `api.project`, `api.vault`, `api.gate`,
+`api.shield`, `api.agents`, `api.clearance`, `api.setup`) plus a
+process-wide `Config` snapshot.  Presentation code imports from `api`
+only; new TUI/CLI features that need internal modules should extend `api`
+first.  Sibling-wheel imports outside `lib/integrations/` fail CI
+(`.importlinter` `*-boundary` contracts); `terok_util` is the exception —
+a foundation library imported directly.
 
 ---
 
 ## Container Readiness and Log Streaming
 
-terok shows the initial container logs to the user when starting task containers and then automatically detaches once a "ready" condition is met. This improves UX but introduces dependencies that developers must be aware of when changing entry scripts or server behavior.
+terok streams a starting container's logs to the user and detaches once a
+readiness condition is met.
 
-### CLI Mode (task run --mode cli)
+### CLI mode (`task run --mode cli`)
 
-Readiness is determined from log output. The container initialization script emits marker lines:
-- `">> init complete"` (from `resources/scripts/init-ssh-and-repo.sh`)
-- `"__CLI_READY__"` (echoed by the run command just before keeping the container alive)
+The container command is
+(`lib/orchestration/task_runners/cli.py`):
 
-The host follows logs and detaches when either of these markers appears, or after 60 seconds timeout.
+```bash
+bash -lc 'init-ssh-and-repo.sh && echo __CLI_READY__; tail -f /dev/null'
+```
 
-**If you modify the init script**, ensure a stable readiness line is preserved, or update the detection in `src/terok/lib/containers/task_runners.py` (`task_run_cli`) and `src/terok/lib/containers/runtime.py` (`stream_initial_logs`).
+Readiness markers, in order of appearance:
 
-### Timeout Behavior
+- `">> init complete"` — emitted by `init-ssh-and-repo.sh`
+  (terok-executor, `resources/scripts/`); terok-sandbox exports the same
+  string as `READY_MARKER`.
+- `"__CLI_READY__"` — echoed after the init script succeeds.
 
-- **CLI**: detaches after readiness marker or 60s timeout
-- Even on timeout, containers remain running in the background. Users can continue watching logs with `podman logs -f <container>`.
+The host follows logs via the runtime's `stream_initial_logs()`
+([`ContainerRuntime`][terok_sandbox.runtime.protocol.ContainerRuntime]
+protocol) and detaches when either marker appears or after a 60 s timeout.
+On timeout the container keeps running; `podman logs -f <container>`
+continues to work.
 
-### Key Source Files
-
-| File | Purpose |
-|------|---------|
-| `src/terok/lib/orchestration/task_runners.py` | Host-side logic: `task_run_cli`, `task_run_headless` |
-| `terok_sandbox.runtime` (external) | Container state, log streaming: `stream_initial_logs`, `wait_for_exit` |
-| `src/terok/resources/scripts/init-ssh-and-repo.sh` | CLI init marker, SSH setup, repo sync |
-
-**Important**: Changes to startup output or listening ports can affect readiness detection. Keep the readiness semantics stable or adjust terok's detection accordingly.
+**If you modify the init script**, preserve a stable readiness line or
+update the detection in `lib/orchestration/task_runners/cli.py`.
 
 ---
 
 ## Container Layer Architecture
 
-terok builds project containers in three logical layers:
+terok builds project containers in three layers:
 
-| Layer | Image Name | Purpose |
-|-------|------------|---------|
-| L0 | `terok-l0:<base-tag>` | Development base (Ubuntu 24.04, git, ssh, dev user) |
-| L1 | `terok-l1-cli:<base-tag>` | Agent tools (Claude Code, Codex, GitHub Copilot, OpenCode, Mistral Vibe) |
-| L2 | `<project>:l2-cli` | Project-specific config and user snippets |
+| Layer | Image tag | Built by | Purpose |
+|-------|-----------|----------|---------|
+| L0 | `terok-l0:<base-tag>` | terok-executor | Development base (distro, git, ssh, `dev` user) |
+| L1 | `terok-l1-cli:<base-tag>[-<agents>]` | terok-executor | Agent CLIs per roster selection |
+| L2 | `<project>:l2-cli` | terok | Project-specific config and user snippet |
 
-L0 and L1 are project-agnostic and cache well; L2 is project-specific.
+L0/L1 are project-agnostic and cache well; L2 is the thin per-project
+layer.  The unsuffixed L1 tag is a *default alias* pointing at the last
+build of the user's configured default agent selection; explicit
+selections get a sorted `-a-b-c` suffix so they coexist in the image
+store.  Dockerfile templates live in terok-executor
+(`l0.dev.Dockerfile.template`, `l1.agent-cli.Dockerfile.template`) and
+terok (`l2.project.Dockerfile.template`); rebuild staleness is detected
+via per-layer content hashes recorded in `build_manifest.json`
+(`lib/orchestration/image.py`).
 
-See [container-layers.md](container-layers.md) for detailed documentation.
-
----
-
-## Volume Mounts at Runtime
-
-When a task container starts, terok mounts:
-
-| Container Path | Host Source | Purpose |
-|----------------|-------------|---------|
-| `/workspace` | `<state_dir>/tasks/<project>/<task>/workspace-dangerous` | Per-task workspace |
-| `/home/dev/.codex` | `<mounts_dir>/_codex-config` | Codex credentials |
-| `/home/dev/.claude` | `<mounts_dir>/_claude-config` | Claude Code credentials |
-| `/home/dev/.vibe` | `<mounts_dir>/_vibe-config` | Mistral Vibe credentials |
-| `/home/dev/.blablador` | `<mounts_dir>/_blablador-config` | Blablador credentials + isolated OpenCode config (via `OPENCODE_CONFIG`) |
-| `/home/dev/.config/opencode` | `<mounts_dir>/_opencode-config` | Plain OpenCode config (use `terok config import-opencode`) |
-| `/home/dev/.local/share/opencode` | `<mounts_dir>/_opencode-data` | OpenCode data (shared by Blablador and plain OpenCode) |
-| `/home/dev/.local/state` | `<mounts_dir>/_opencode-state` | OpenCode/Bun state (shared by both) |
-| `/home/dev/.config/gh` | `<mounts_dir>/_gh-config` | GitHub CLI config |
-| `/home/dev/.config/glab-cli` | `<mounts_dir>/_glab-config` | GitLab CLI config |
-
-SSH keys are **not** mounted — the vault's SSH signer serves them over TCP.
-
-See [shared-dirs.md](shared-dirs.md) for detailed documentation.
+See [container-layers.md](container-layers.md) for build commands and
+cache-busting flags.
 
 ---
 
-## Environment Variables Set by terok
+## Volume Mounts and Environment Variables
 
-### Core Variables (always set)
+Mount and env assembly is shared with headless/standalone launches:
+terok-executor's `assemble_container_env()` builds the base environment
+and the per-agent shared config mounts (definitions come from the agent
+roster), and terok layers project concerns on top
+(`lib/orchestration/environment.py`).  The full mount table is documented
+in [shared-dirs.md](shared-dirs.md).  SSH keys are **not** mounted — the
+vault's SSH signer serves them (see below).
 
-| Variable | Value | Purpose |
-|----------|-------|---------|
-| `PROJECT_NAME` | Project name from config | Identify current project |
-| `TASK_ID` | Numeric task ID | Identify current task |
-| `REPO_ROOT` | `/workspace` | Init script clone target |
-| `CLAUDE_CONFIG_DIR` | `/home/dev/.claude` | Claude Code config location |
-| `GIT_RESET_MODE` | `none` (default) | Controls workspace reset behavior |
-| `TEROK_GIT_AUTHORSHIP` | `agent-human` (default) | Maps human/agent identities onto author/committer |
-| `HUMAN_GIT_NAME` | From config or "Nobody" | Human Git identity name |
-| `HUMAN_GIT_EMAIL` | From config or "nobody@localhost" | Human Git identity email |
-| `TEROK_UNRESTRICTED` | `1` when unrestricted | Tells shell wrappers to inject auto-approve flags |
+### Core variables (always set)
 
-### Conditional Variables (based on security mode)
+| Variable | Set by | Value / purpose |
+|----------|--------|-----------------|
+| `PROJECT_NAME` | terok | Project name from config |
+| `TASK_ID` | executor | Task identifier |
+| `REPO_ROOT` | executor | `/workspace` — init script clone target |
+| `CLAUDE_CONFIG_DIR` | executor | `/home/dev/.claude` |
+| `GIT_RESET_MODE` | executor (terok can override via host `TEROK_GIT_RESET_MODE`) | Workspace reset behavior, default `none` |
+| `TEROK_GIT_AUTHORSHIP` | executor | Maps human/agent identities onto git author/committer (default `agent-human`) |
+| `HUMAN_GIT_NAME` / `HUMAN_GIT_EMAIL` | executor | Human git identity (from terok config or host git config) |
+| `TEROK_UNRESTRICTED` | executor | `1` when the task runs unrestricted (see permission modes) |
 
-| Variable | When Set | Purpose |
+### Conditional variables (security mode)
+
+| Variable | When set | Purpose |
 |----------|----------|---------|
-| `CODE_REPO` | When the project has an upstream or an active gate | Git URL (upstream in online mode, gate in gatekeeping mode) |
-| `GIT_BRANCH` | Alongside `CODE_REPO` when a default branch is configured | Target branch name |
-| `CLONE_FROM` | Online mode with `gate.enabled: true` and a reachable gate server | Alternate clone source for faster init |
-| `EXTERNAL_REMOTE_URL` | Relaxed gatekeeping | Upstream URL for "external" remote |
+| `CODE_REPO` | Project has an upstream or an active gate | Clone/origin URL — gate URL in gatekeeping mode, upstream in online mode |
+| `GIT_BRANCH` | Alongside `CODE_REPO` when a default branch is configured | Target branch |
+| `CLONE_FROM` | Online mode with a usable gate | Gate URL as a faster initial clone source |
+| `EXTERNAL_REMOTE_URL` | Relaxed gatekeeping (`gatekeeping.expose_external_remote`) | Upstream URL added as the `external` remote |
+| `TEROK_GATE_TOKEN` | Gate wired | Per-task token the gate server validates |
 
-When the project has no `upstream_url` and `gate.enabled: false`,
-`CODE_REPO` is unset and the container starts with an empty workspace.
-
----
+With no `upstream_url` and `gate.enabled: false`, `CODE_REPO` is unset and
+the workspace starts empty.
 
 ## Security Modes
 
-### Online Mode
-- `CODE_REPO` points to upstream URL
-- Container can push directly to upstream
-- Git gate (if present) is used as read-only clone accelerator
+- **Online** — `CODE_REPO` points at upstream; the gate (if present) only
+  seeds the initial clone.
+- **Gatekeeping** — `CODE_REPO` points at the gate; pushes land in the
+  host-side mirror for human review.
 
-### Gatekeeping Mode
-- `CODE_REPO` points to the gate server's HTTP endpoint
-- Container's default `origin` is the gate, not upstream
-- Human review required before changes are promoted to upstream
-
-See [git-gate-and-security-modes.md](git-gate-and-security-modes.md) for detailed documentation.
+See [git-gate-and-security-modes.md](git-gate-and-security-modes.md).
 
 ---
 
 ## Host-Side Service Architecture
 
-terok's host-side services — the vault token broker, the clearance
-hub + verdict helper, and the git gate — all run inside a single
-**per-container supervisor** process.  There are no long-running
-user-session daemons and no systemd socket-activated services: when no
-containers are active, `pgrep terok` and
-`systemctl --user list-units 'terok-*'` both return empty.
+All host-side services — vault token broker, SSH signer, clearance hub,
+verdict helper, git gate — run inside a single **per-container
+supervisor** process.  There are no persistent daemons and no systemd
+units: when no containers run, `pgrep terok` is empty.  (`terok-sandbox
+setup` sweeps systemd units left behind by pre-supervisor releases.)
 
 ### Per-container supervisor
 
-Each running container has its own supervisor, spawned by
-terok-sandbox's OCI prestart hook and reaped by the poststop hook, so
-its lifetime is bound to the container's.  The supervisor:
+terok-sandbox installs an OCI hook pair (`createRuntime` + `poststop`)
+that matches on the `terok.sandbox.sidecar` annotation.  The annotation
+carries the absolute path of a **sidecar JSON** the launch path writes
+before `podman run`; the hook spawns `terok-sandbox supervisor
+<container-id>`, which reads its entire identity (project, task, vault DB
+path, gate mirror path + token, transport mode, ports) from that file —
+no environment guessing.  The supervisor awaits `podman wait
+<container-id>` and tears everything down when the container exits; the
+`poststop` hook reaps stragglers.
 
-* Embeds the **vault token-broker + SSH signer** proxies on
-  per-container endpoints under `$XDG_RUNTIME_DIR/terok/`, scoped by
-  container UUID.
-* Embeds the **clearance hub** varlink server (one per container) so
-  the shield reader emits events to the right operator UI without
-  sharing state across tasks, plus the **verdict helper** that routes
-  allow / deny decisions back to `terok-shield`.
-* Embeds the **git gate**: a threaded `http.server` shim
-  ([`terok_sandbox.gate.server`][terok_sandbox.gate.server]) that
-  serves the git smart-HTTP protocol against the host mirror clones.
-  Each request carries the per-container `TEROK_GATE_TOKEN`, which the
-  shim validates before handing the request to `git http-backend`.
-  The gate is purely in-process — no host daemon, no socket activation.
-* Reads its identity (project / task / dossier and gate path + token)
-  from the sidecar JSON file the orchestrator writes before
-  `podman run` — see
-  [`AgentRunner.launch_prepared`][terok_executor.AgentRunner.launch_prepared].
+Services come up in dependency order
+(`terok_sandbox/supervisor/main.py`):
 
-Host setup just installs the OCI hook and the supervisor entrypoint
-(`terok-sandbox supervisor <container-id>`).  Operator UIs (the
-embedded TUI clearance screen and the standalone `terok clearance`
-CLI) multiplex events across every per-container hub socket via
+1. **Verdict helper** — [`VerdictServer`][terok_clearance.VerdictServer],
+   a varlink wrapper that execs `terok-shield allow|deny`.
+2. **Clearance hub** — [`ClearanceHub`][terok_clearance.ClearanceHub],
+   fan-out point for shield events; holds a client to the verdict helper.
+3. **Git gate** (when wired) — [`GateServer`][terok_sandbox.gate.server.GateServer]
+   serving git smart-HTTP against `<gate_base_path>/<project>.git`,
+   validating the per-task `TEROK_GATE_TOKEN`.  Started before the vault
+   because the container's entrypoint clones immediately.
+4. **Vault token broker** — [`VaultProxy`][terok_sandbox.vault.daemon.token_broker.VaultProxy],
+   substitutes real credentials for phantom tokens.
+5. **Vault SSH signer** — ssh-agent protocol backed by the vault DB.
+6. **Desktop notifier** — an [`EventSubscriber`][terok_clearance.EventSubscriber]
+   turning `connection_blocked` events into D-Bus popups; degrades to a
+   no-op when no session bus exists.
+
+### Socket layout
+
+Per-container endpoints, all on the host:
+
+| Path | Keyed by | Contents |
+|------|----------|----------|
+| `$XDG_RUNTIME_DIR/terok/sandbox/run/<container-name>/` | container name | `vault.sock`, `ssh-agent.sock`, `gate-server.sock` — **bind-mounted into the container at `/run/terok/`** |
+| `$XDG_RUNTIME_DIR/terok/clearance/<short-id>.sock` | 12-char container ID | varlink socket operator UIs subscribe to |
+| `$XDG_RUNTIME_DIR/terok/events/<short-id>.sock` | 12-char container ID | line-JSON ingest socket the shield NFLOG reader pushes to |
+| `$XDG_RUNTIME_DIR/terok/verdict/<short-id>.sock` | 12-char container ID | varlink verdict helper |
+| `$XDG_RUNTIME_DIR/terok/control/<short-id>.sock` | 12-char container ID | reserved |
+
+The name-keyed directory exists because the launch path must pre-create
+and bind-mount it before podman assigns a container ID; the cross-package
+sockets use the short ID because the shield reader keys on it.  Operator
+UIs (the TUI clearance screen, standalone `terok clearance`) multiplex
+all containers via
 [`MultiSocketSubscriber`][terok_clearance.MultiSocketSubscriber] —
-sockets appear when supervisors come up and disappear when they exit.
+sockets appear and disappear with their supervisors.
 
-Third-party host tools (IDEs, scripts) that need the gate's repository
-do **not** go through the supervisor at all: they read the mirror
-clone directly over `file://` (`terok project gate-path <name>` prints
-the path).  The in-supervisor HTTP gate exists only to serve confined
-containers, whose egress shield otherwise blocks.
+Host tools that need the gate repository don't go through the supervisor:
+they read the mirror clone directly (`terok project gate-path <name>`
+prints it).  The in-supervisor HTTP gate exists to serve confined
+containers, whose egress shield blocks everything else.
 
-### Socket vs TCP transport — the `services.mode` switch
-
-A single config key controls the transport boundary between the
-host-side supervisor and the container:
+### Socket vs TCP transport — `services.mode`
 
 ```yaml
 # config.yml
 services:
-  mode: socket   # default, recommended; alternative: tcp
+  mode: socket   # default; alternative: tcp
 ```
 
 Read by [`SandboxConfig.services_mode`][terok_sandbox.config.SandboxConfig.services_mode].
-In `socket` mode each container-facing service (vault broker, SSH
-signer, git gate) binds a Unix socket under `$XDG_RUNTIME_DIR/terok/`
-keyed by container UUID, reached through a bind-mounted socket fronted
-by an in-container `socat` bridge.  In `tcp` mode those services bind
-loopback TCP ports — allocated via `terok_sandbox.port_registry` and
-recorded in the sidecar JSON — reached over
-`host.containers.internal`.  Either way the in-container client sees a
-uniform endpoint (see the bridge section below); only the host-side
-listening file descriptor differs (`AF_UNIX` vs `AF_INET`).  The
-host-only services (clearance hub, verdict helper) have no container
-consumer and always bind Unix sockets regardless of mode.
+In `socket` mode the container-facing services (vault broker, SSH signer,
+gate) bind Unix sockets in the per-container directory above.  In `tcp`
+mode they bind per-container host loopback ports (allocated via the
+sandbox port registry, recorded in the sidecar) reached over
+`host.containers.internal`.  Host-only services (clearance hub, verdict
+helper) always use Unix sockets.
 
-Sockets are the preferred mode.  TCP exists for the SELinux case: on
-distros with SELinux enforcing, a host socket bind-mounted into a
-container is unreachable from the container's domain without a custom
-policy that lets the container side `connectto` the host service's
-type.  When you have root, terok's setup installs that policy and
-socket mode works transparently; without root the policy can't be
-installed, so the alternative is to fall back to TCP, accepting the
-trade-off that the loopback ports are visible to every other local
-user on the host.
-
-### Shield (no socket service)
-
-`terok-shield` does not run a host-side service.  It operates entirely
-via OCI hooks (`prestart`/`poststop`) that configure firewall rules when
-containers start and stop.  No socket activation, no daemon, no TCP port.
+Socket mode is preferred.  TCP exists for SELinux-enforcing hosts without
+root: a bind-mounted host socket is unreachable from `container_t` until
+the bundled policy (which labels the sockets `terok_socket_t`) is
+installed; with root, `terok setup` prints the install command and socket
+mode works.  TCP's trade-off: loopback ports are visible to every local
+user.
 
 ### The container-side bridge
 
-The in-container side of the wire is set up by
-`terok_sandbox/resources/bridges/ensure-bridges.sh`, sourced from the
-container entrypoint and from per-shell init.  It reads the env vars
-the executor injected at create time and spins up `socat` processes so
-the in-container client sees a uniform transport regardless of the
-host-side mode:
+`terok_sandbox/resources/bridges/ensure-bridges.sh` is sourced by the
+container entrypoint and per-shell init (so bridges self-heal after a
+restart).  It reads env vars injected at create time and starts up to
+four `socat` bridges so agents see uniform endpoints in both modes:
 
-- Always exposes `/tmp/ssh-agent.sock` for the SSH signer (Unix socket).
-- Always exposes `http://localhost:${TEROK_VAULT_LOOPBACK_PORT}` for
-  the vault token broker (HTTP-over-TCP).
-- Always exposes `/tmp/terok-vault.sock` for the vault token broker
-  (HTTP-over-Unix) — for clients that demand a socket (`gh`, `claude`).
-- For the gate server: always exposes `http://localhost:9418` for
-  git.  In socket mode the bridge forwards to the per-container gate
-  socket; in TCP mode it forwards to
-  `host.containers.internal:<gate_port>`.  Either way the agent's
-  `git` only ever sees `localhost:9418`.
+| Endpoint (in container) | Socket mode | TCP mode |
+|---|---|---|
+| `$SSH_AUTH_SOCK` = `/tmp/ssh-agent.sock` | socat → mounted signer socket (token handshake via `ssh-agent-bridge.sh`) | socat → signer loopback port |
+| `http://localhost:$TEROK_VAULT_LOOPBACK_PORT` (vault HTTP) | socat → `/run/terok/vault.sock` | socat → `host.containers.internal:$TEROK_TOKEN_BROKER_PORT` |
+| vault Unix socket | `/run/terok/vault.sock` (the mount itself) | `/tmp/terok-vault.sock` (socat → broker port) |
+| `http://localhost:9418` (git) | socat → `/run/terok/gate-server.sock` | socat → `host.containers.internal:$TEROK_GATE_PORT` |
 
-### Connector inventory
+The gate bridge uses `socat … retry=30,interval=1` so a clone racing the
+supervisor's gate bind waits instead of failing.  Bridge liveness is
+tracked via PID files under `/tmp/.terok/` — stale socket files are not
+trusted as liveness sentinels.
 
-Per-container endpoints are keyed on the full podman UUID (`<id>`) so
-multiple supervisors coexist without aliasing.  Identity flows in
-through the sidecar JSON written by the orchestrator before
-`podman run`.
+### Shield (no host service)
 
-| Service | Host activation | Host endpoint | What it does host-side | Container consumer | Container endpoint | Bridge |
-|---|---|---|---|---|---|---|
-| **Vault broker (supervisor)** | OCI prestart hook spawns `terok-sandbox supervisor <id>`; embedded token-broker proxy | Per-container endpoint listed in the sidecar JSON | Reverse-proxies HTTP requests carrying phantom tokens to upstream APIs; substitutes the phantom for the real OAuth / API-key from the encrypted SQLite vault | Agent HTTP clients (`gh`, `claude`, `curl`) | `http://localhost:${TEROK_VAULT_LOOPBACK_PORT}` and `/tmp/terok-vault.sock` (both exposed) | Bidirectional `socat` set up by `ensure-bridges.sh` from sidecar-derived env |
-| **Vault SSH signer (supervisor)** | Same supervisor process, separate socket | Per-container ssh-agent socket | Implements the `ssh-agent` protocol; signs with private keys from the vault DB after validating the per-task phantom token | `ssh`, `git over ssh` via `$SSH_AUTH_SOCK` | `/tmp/ssh-agent.sock` (always — single endpoint regardless of host mode) | `socat UNIX-LISTEN:/tmp/ssh-agent.sock,fork SYSTEM:ssh-agent-bridge.sh` |
-| **Clearance hub (supervisor)** | Same supervisor process; per-container varlink server | `$XDG_RUNTIME_DIR/terok/clearance/<id>.sock` | Receives shield `connection_blocked` events, dispatches them to subscribed operator UIs, accepts allow / deny verdicts back | **None** — host-only | n/a | Host-only Unix socket; multiplexed across containers by [`MultiSocketSubscriber`][terok_clearance.MultiSocketSubscriber] |
-| **Verdict helper (supervisor)** | Same supervisor process; per-container varlink server | `$XDG_RUNTIME_DIR/terok/verdict/<id>.sock` | Receives operator allow / deny decisions and shells to `terok-shield` to update nftables sets for the keyed container | **None** — host-only | n/a | Host-only Unix socket |
-| **Supervisor control** | Reserved — not yet bound | `$XDG_RUNTIME_DIR/terok/control/<id>.sock` | Reserved for future supervisor-control RPCs (drain, reload-routes, etc.) | n/a | n/a | n/a |
-| **Gate server (git)** | Same supervisor process; threaded `http.server` shim in [`terok_sandbox.gate.server`][terok_sandbox.gate.server] | `${XDG_RUNTIME_DIR}/terok/gate-server.sock` (socket) or `127.0.0.1:<gate_port>` (tcp) | HTTP backend for `git-upload-pack` / `git-receive-pack`; validates `TEROK_GATE_TOKEN`, then shells to the real `git http-backend` against the host mirror clones | `git clone/fetch/push` from inside the container | `http://<token>@localhost:9418/<repo>` (both modes) | `socat TCP-LISTEN:9418` → per-container gate socket (socket) or `host.containers.internal:<gate_port>` (tcp) |
-| **ACP host proxy** | Started per-task by the orchestrator; not systemd | `<state_dir>/acp.sock` (always Unix socket, per-task) | Aggregates several in-container ACP agents (`terok-claude-acp`, `terok-codex-acp`, …) behind one endpoint; relays JSON-RPC to the host TUI | The in-container `terok-*-acp` wrappers | Inherited fd or path passed at spawn | Direct mount; single-protocol on both sides |
-| **Shield NFLOG reader → clearance hub** | Spawned per-shielded-container by the shield OCI hook | The container's per-supervisor hub socket above | Translates kernel `REJECT`s into `connection_blocked` events; the supervisor's hub notifies subscribed operator UIs and routes operator verdicts back through the verdict helper | **None** — host-side end-to-end | n/a | Host-only Unix socket |
-| **Workspace bind mount** | Plain `podman -v` at container create | `<task_dir>/workspace/` (host fs) | The task's git checkout | The agent's working dir | `/workspace` | Direct bind mount, no proxy |
+`terok-shield` runs no host-side service.  Its own OCI hook pair
+(`createRuntime` / `poststop`) applies the pre-generated nftables ruleset
+inside the container's network namespace and starts/reaps the
+per-container dnsmasq; the hook also forks the NFLOG reader that
+translates kernel rejects into `connection_blocked` events on the
+supervisor's events socket.  Shield hooks are **fail-closed**: a hook
+failure prevents the container from starting.  The supervisor hook is
+deliberately **soft-fail** (a container without vault/gate still starts —
+the shield independently denies its egress).
 
-### Is the normalization complete?
+### Other per-task plumbing
 
-Yes.  The container-side convention — "the agent's protocol
-expectation always works regardless of host mode" — holds for
-every bidirectional service:
-
-- **Vault token broker** — ✅ full bidirectional normalization.
-  Container always has both `http://localhost:<port>` and
-  `/tmp/terok-vault.sock`.
-- **Vault SSH signer** — ✅ always `/tmp/ssh-agent.sock`.  The
-  ssh-agent protocol is socket-only by convention, so there's no TCP
-  in-container endpoint to maintain.
-- **Gate server** — ✅ full normalization.  The container always sees
-  `http://localhost:9418/` in both modes; the in-container `socat`
-  bridge forwards to the per-container gate socket (socket mode) or
-  `host.containers.internal:<gate_port>` (tcp mode).
-- **ACP / workspace** — ✅ single-protocol on both sides; no
-  transport mismatch to normalize.
-
-### Gaps
-
-None outstanding for the container transport.  The gate rides the same
-in-container `socat` bridge as the vault, so the agent reaches a uniform
-`http://localhost:9418/` endpoint in both modes rather than addressing
-`host.containers.internal` directly.
+| Service | Activation | Endpoint |
+|---|---|---|
+| ACP host proxy | bound on first `terok acp connect` | per-task Unix socket (`acp_socket_path()` in `lib/core/paths.py`); aggregates the in-container `terok-*-acp` wrappers behind one JSON-RPC endpoint |
+| Workspace | plain `podman -v` bind mount | `<task workspace dir>` ↔ `/workspace` |
 
 ---
 
 ## Agent Permission Mode Architecture
 
 > **See also:** [Agent Configuration Compatibility Matrix](agent-compat-matrix.md)
-> for a per-agent reference of CLI flags, env vars, config files, and ACP
-> adapter behaviour — including the ACP permission gap and recommended solutions.
+> for the per-agent reference of CLI flags, env vars, config files, and
+> ACP adapter behaviour.
 
-Agents can run in **unrestricted** (fully autonomous) or **restricted**
-(vendor-default permissions) mode.  The design goal is a single unified code
-path: the host makes one decision and all agents — regardless of how they
-accept permission flags — behave consistently.
-
-### Decision flow
+Agents run **unrestricted** (auto-approve) or **restricted**
+(vendor-default permissions).  One decision, one carrier, per-agent
+translation at the edge:
 
 ```text
 CLI flag (--unrestricted / --restricted)
   │  ↓ if not given
-Config stack: global → project  (resolve_provider_value)
+Config stack: global → project   (agent-config resolution)
   │  ↓ if not configured
-Default: unrestricted (True)
+Default: unrestricted
   │
   ▼
-TEROK_UNRESTRICTED=1 env var  ← single decision carrier
+TEROK_UNRESTRICTED=1   ← single decision carrier in the container env
   │
-  ▼  (per-container, all launch paths — immutable after creation)
-Agent-native env vars and config files:
-  ├─ VIBE_AUTO_APPROVE=true           (container env)
-  ├─ OPENCODE_PERMISSION='{"*":"allow"}'  (container env)
-  ├─ COPILOT_ALLOW_ALL=true           (container env)
-  └─ /etc/claude-code/managed-settings.json  (init script)
-  │
-  ▼  (Codex only — no env var or managed config available)
-Shell wrapper injects --yolo when TEROK_UNRESTRICTED=1
+  ▼  per-agent translation, defined in the roster YAML (auto_approve:)
+  ├─ env vars   (e.g. VIBE_BYPASS_TOOL_PERMISSIONS=true, OPENCODE_PERMISSION='{"*":"allow"}')
+  ├─ CLI flags  (e.g. Codex --yolo) injected by the generated shell wrappers
+  └─ config files (Claude: /etc/claude-code/managed-settings.json, written by init-ssh-and-repo.sh)
 ```
 
-### Key decision points
+The host never injects flags into agent command lines directly — agents
+are launched through bash wrappers generated from terok-executor's
+`agent-wrappers.sh.j2` at image build time, and the wrappers check
+`$TEROK_UNRESTRICTED` at runtime.  The resolved boolean is persisted to
+task meta so `task status` can display it.
 
-1. **Host-side resolution** (`task_runners.py`): Each task runner
-   (`task_run_headless`, `task_run_cli`) resolves the unrestricted flag via
-   `resolve_provider_value("unrestricted", ...)` against the effective
-   agent/backend.  The resolved boolean is persisted to `meta.yml` and — if
-   `True` — `TEROK_UNRESTRICTED=1` is added to the container's environment.
-
-2. **In-container application** (`headless_providers.py`, `agents.py`): The
-   shell wrapper functions generated by `_generate_generic_wrapper()` and
-   `_generate_claude_wrapper()` check `$TEROK_UNRESTRICTED` at runtime.  When
-   set to `"1"`, provider-specific flags are injected into the agent's command
-   line (or env vars are exported for env-based agents like OpenCode).  When
-   unset, the agent starts with its vendor defaults.
-
-### Why `TEROK_UNRESTRICTED` and not direct flag injection?
-
-The host cannot inject CLI flags directly into the agent invocation — it only
-controls the container's environment.  The actual agent binary is launched by a
-bash wrapper function inside the container (generated at image build time).
-Using a single env var as the decision carrier keeps the host logic
-provider-agnostic: it doesn't need to know *which* flags each agent needs.
-
-### Implementation details
-
-| Concern | Where | How |
-|---------|-------|-----|
-| Config resolution | `agent_config.py` → `resolve_provider_value()` | Walks global → project; supports flat values and per-provider dicts |
-| Host-side env injection | `task_runners.py` → `_apply_unrestricted_env()` | Sets `TEROK_UNRESTRICTED=1` + all `auto_approve_env` vars from `collect_all_auto_approve_env()` |
-| Meta persistence | `task_runners.py` | `meta["unrestricted"]` written to `meta.yml` (headless: always; CLI: on start) |
-| CLI flag wiring | `cli/commands/task.py` | Mutually exclusive `--unrestricted` / `--restricted` mapped to tri-state `bool \| None` |
-| Per-container config files | `init-ssh-and-repo.sh` | Writes `/etc/claude-code/managed-settings.json` when `TEROK_UNRESTRICTED=1` |
-| Codex CLI flag | `headless_providers.py` → `_generate_generic_wrapper()` | Wrapper injects `--yolo` when `TEROK_UNRESTRICTED=1` (no env var or managed config in Codex v0.114.0) |
-| Provider env registry | `headless_providers.py` → `HeadlessProvider` dataclass | `auto_approve_env: dict[str, str]` per provider |
-| Status display | `tasks.py` → `task_status()`, `task_detail.py` | Reads `meta["unrestricted"]` and shows "unrestricted" / "restricted" |
+**Adding a new agent:** declare an `auto_approve:` block (env vars and/or
+flags) in the agent's roster YAML in terok-executor.  Nothing in terok
+changes.
 
 ### In-container `hilfe`
 
-The in-container `hilfe` command is shipped from
-`src/terok/resources/scripts/hilfe`. The CLI login banner in
-`l1.agent-cli.Dockerfile.template` intentionally calls
-`_TEROK_LOGIN=1 hilfe --kurz`, so the short and full help stay centralized.
+The in-container `hilfe` command ships from terok-executor
+(`resources/scripts/hilfe`); the L1 login banner calls
+`_TEROK_LOGIN=1 hilfe --kurz`.  When changing agent availability, mount
+behavior, or rebuild terminology, keep in sync: `hilfe`, the welcome hook
+in `l1.agent-cli.Dockerfile.template` (terok-executor), and
+[usage.md](usage.md).
 
-When you change agent availability, `/workspace` or `/home/dev` mount behavior,
-update flows, or rebuild terminology, keep these in sync:
+---
 
-- `src/terok/resources/scripts/hilfe`
-- `l1.agent-cli.Dockerfile.template` welcome hook
-- user docs (`docs/usage.md`, and related container docs if terminology changed)
+## Agent Instructions Architecture
 
-### Adding a new agent
+Two-layer pattern, resolved by terok-executor
+(`provider/instructions.py`, `resolve_instructions()`):
 
-To add permission-mode support for a new agent:
+1. **YAML `instructions` key** — selects the base (bundled default,
+   custom string, or a list).  Absent = bundled default.
+2. **Standalone `instructions.md`** in the project root — always appended
+   after the YAML chain.  Purely additive.
 
-1. Set `auto_approve_env` (for env-var-based approval) on the
-   `HeadlessProvider` definition, add a config-file block to
-   `init-ssh-and-repo.sh` (for file-based agents like Claude), or set
-   `auto_approve_flags` as a last resort (for agents with no env var
-   or managed config, like Codex).
-2. No other changes needed — `_apply_unrestricted_env()` collects all
-   providers' env vars automatically via `collect_all_auto_approve_env()`.
+In list form, the `_inherit` sentinel is *spliced* — replaced with the
+bundled default content at that position — so projects can compose
+default + overrides + addenda.  Task runners pass the project root so the
+standalone file is picked up.  The TUI badge distinguishes `default`,
+`custom + inherited`, and `custom only`.
 
 ---
 
@@ -442,116 +386,43 @@ To add permission-mode support for a new agent:
 ### Initial Setup
 
 ```bash
-# Clone the repository
 git clone git@github.com:terok-ai/terok.git
 cd terok
-
-# Install all development dependencies
 make install-dev
 ```
 
-### Before You Commit
-
-**Always run the linter before committing:**
+### Before you commit / push
 
 ```bash
-make lint      # Check for issues (fast, ~1 second)
+make lint      # before every commit; make format auto-fixes
+make test      # alias for make test-unit (fast suite with coverage)
+make tach      # after changing cross-module imports
+make check     # everything CI runs: lint + test + tach + security + docstrings + deadcode + reuse
 ```
 
-If linting fails, auto-fix with:
+Integration tests live under `tests/integration/`:
 
 ```bash
-make format    # Auto-fix lint issues and format code
+make test-integration-host     # filesystem/process workflows, no podman/network
+make test-integration-network  # network-dependent
+make test-integration-podman   # podman-dependent
+make test-integration          # all of the above
+make test-integration-map      # regenerate docs/test_map.md
+make test-matrix               # cross-distro matrix (needs nested podman; BUILD_ONLY=1 to just build)
+make ci-map                    # regenerate docs/ci_map.md
 ```
 
-Tests are written with `pytest`. The suite is split into `tests/unit/` and
-`tests/integration/`, with shared test-only helpers under `tests/`.
-
-**Run tests before pushing** (or at least before opening a PR):
-
-```bash
-make test       # Alias for make test-unit
-make test-unit  # Run the fast suite with coverage (excludes integration tests)
-```
-
-Integration tests live under `tests/integration/` and have dedicated targets:
-
-```bash
-make test-integration-host     # Filesystem/process workflows, no podman/network
-make test-integration-network  # Network-dependent integration tests
-make test-integration-podman   # Podman-dependent integration tests
-make test-integration          # All integration tests
-make test-integration-map      # Generate docs/test_map.md from pytest collection
-make test-matrix               # Run the cross-distro integration matrix locally
-make test-matrix BUILD_ONLY=1  # Build the matrix container images without running tests
-make ci-map                    # Generate docs/ci_map.md from workflow YAML
-```
-
-`make test-matrix` requires a host that can run nested Podman containers
-(`--privileged` inside the outer container/VM). It is mainly for manual
-verification on capable developer machines or dedicated CI runners.
-
-**Check module boundaries** if you changed cross-module imports:
-
-```bash
-make tach      # Verify tach.toml boundary rules
-```
-
-To run all checks (equivalent to CI):
-
-```bash
-make check     # Runs lint + test + tach + security + docstrings + deadcode + reuse
-```
-
-Security scanning and Sonar report generation also have dedicated targets:
-
-```bash
-make security      # Run Bandit with CI-equivalent settings
-make sonar-inputs  # Generate coverage + Ruff + Bandit reports under reports/
-```
-
-### Available Make Targets
-
-| Command | Description | When to Use |
-|---------|-------------|-------------|
-| `make lint` | Check linting and formatting | Before every commit |
-| `make format` | Auto-fix lint issues and format | When lint fails |
-| `make test` | Alias for `make test-unit` | Before pushing |
-| `make test-unit` | Run the fast suite with coverage (excludes integration) | Before pushing |
-| `make test-integration-host` | Run host-only integration tests | During integration test development |
-| `make test-integration-network` | Run network integration tests | When touching network-dependent flows |
-| `make test-integration-podman` | Run podman integration tests | When touching container-dependent flows |
-| `make test-integration` | Run all integration tests | Before opening a PR that changes integration flows |
-| `make test-integration-map` | Generate the integration test map page | After reorganizing integration tests |
-| `make test-matrix` | Run the multi-distro integration matrix locally | Before changing matrix/container compatibility |
-| `make test-matrix BUILD_ONLY=1` | Build the multi-distro matrix images without running tests | When iterating on matrix containerfiles |
-| `make test-matrix NO_CACHE=1` | Rebuild matrix images from scratch, then run tests | After changing Containerfiles |
-| `make ci-map` | Generate the CI workflow map page | After changing GitHub workflows |
-| `make tach` | Check module boundary rules | After changing imports |
-| `make security` | Run the Bandit SAST scan | Before opening a PR that changes CI/security-sensitive code |
-| `make sonar-inputs` | Generate Sonar-imported reports under `reports/` | When validating Sonar inputs locally |
-| `make docstrings` | Check docstring coverage (95% min) | After adding public APIs |
-| `make deadcode` | Detect unused code | Before opening a PR |
-| `make reuse` | Check REUSE/SPDX license compliance | Before opening a PR |
-| `make check` | Run all checks (lint + test + tach + security + docstrings + deadcode + reuse) | Before opening a PR |
-| `make docs` | Serve documentation locally | When editing docs |
-| `make install-dev` | Install all dependencies | Initial setup |
-| `make clean` | Remove build artifacts | When needed |
+Security/quality extras: `make security` (bandit), `make sonar-inputs`,
+`make docstrings`, `make deadcode`, `make typecheck`, `make complexity`,
+`make reuse`.
 
 ### Running from Source
 
 ```bash
-# Set up environment to use example projects
 export TEROK_CONFIG_DIR=$PWD/examples
 export TEROK_STATE_DIR=$PWD/tmp/dev-runtime/var-lib-terok
 
-# Run CLI commands
 python -m terok.cli projects
-python -m terok.cli task new uc
-python -m terok.cli generate uc
-python -m terok.cli build uc
-
-# Run TUI
 python -m terok.tui
 ```
 
@@ -559,119 +430,51 @@ python -m terok.tui
 
 #### Emoji width constraints
 
-Terminal emulators and Rich/Textual disagree on the width of emojis that use
-Variation Selector-16 (U+FE0F).  Rich reports 2 cells (per Unicode spec); most
-terminals render 1 cell.  This breaks Textual's layout engine — columns shift,
-panel edges misalign — and **cannot be fixed by padding alone**.
+Rich/Textual and terminal emulators disagree on the width of emojis using
+Variation Selector-16 (U+FE0F): Rich counts 2 cells, most terminals render
+1, which breaks Textual layout.  Rules:
 
-**Rules:**
+1. Only **natively wide** emojis (`East_Asian_Width=W`,
+   `Emoji_Presentation=Yes`); no VS16 sequences.
+2. Never use emoji literals in code — define them in the central display
+   dicts (`STATUS_DISPLAY`, `MODE_DISPLAY`, `SECURITY_CLASS_DISPLAY`,
+   `GPU_DISPLAY` in `lib/core/task_display.py`; `WORK_STATUS_DISPLAY` in
+   `lib/core/work_status.py`) and render via `render_emoji()` from
+   `lib/util/emoji.py`.
+3. Guard tests in `tests/unit/lib/test_emoji.py` fail CI on VS16 emojis
+   and on missing labels for `--no-emoji` mode.
 
-1. All emojis must be **natively wide** (`East_Asian_Width=W`,
-   `Emoji_Presentation=Yes`).  No VS16 (U+FE0F) sequences.
-2. Verify candidates: `python3 -c "import unicodedata; print(unicodedata.east_asian_width('🟢'))"` → must print `W`.
-3. **Never use emoji literals directly in code.** Always define emojis in a
-   central dict whose values carry both `emoji` and `label` attributes (e.g.
-   `StatusInfo`, `ModeInfo`, `ProjectBadge`, `WorkStatusInfo`).
-4. Always render via `render_emoji(info)` from `terok.lib.util.emoji`.
-   Pass the dict entry directly — the function reads `.emoji` and `.label`
-   itself.  No `width` or `label` parameter needed at the call site.
-5. Emoji definitions live in `terok.lib.core.task_display`
-   (`STATUS_DISPLAY`, `MODE_DISPLAY`, `SECURITY_CLASS_DISPLAY`,
-   `GPU_DISPLAY`) and
-   `terok.lib.core.work_status` (`WORK_STATUS_DISPLAY`).
-6. Guard tests in `tests/lib/test_emoji.py` verify all project emojis are
-   natively 2 cells wide — adding a VS16 emoji will fail CI.  Tests also
-   verify that all emoji dicts have non-empty labels for `--no-emoji` mode.
-7. Emojis are **on by default**.  Pass `--no-emoji` to `terok` to replace
-   all emojis with `[label]` text badges.
-
-See `src/terok/lib/util/emoji.py` module docstring for full background,
-references, and future terminal developments to watch (Kitty text sizing
-protocol, Mode 2027, terminal convergence).
+See the `lib/util/emoji.py` module docstring for background and the
+terminal developments to watch.
 
 #### Web-compatible workflows (no suspended terminal)
 
-The TUI must work identically when served over the web via `terok-web` /
-`textual serve`, where there is **no terminal to suspend to**.  `app.suspend()`
-and the `_run_suspended()` helper have been retired (issue #473); a dispatched
-action that used to print to a suspended terminal now runs as a captured child
-process:
+The TUI must work served over the web (`terok-web`), where there is no
+terminal to suspend to.  Actions that used to print to a suspended
+terminal run as captured child processes instead:
 
-- **`console_log.py`** — `ConsoleLogRegistry` holds in-memory `ConsoleLogEntry`
-  objects.  `ConsoleLogMixin.dispatch_console_action(ref, *args, …)` runs a
-  referenced callable in a child process (via the `_worker_entry` module) and
-  pumps its merged stdout/stderr into the entry.  The pump worker is
-  *app-scoped*, so the action survives a viewer being hidden.  `dispatch_*` is
-  **UI-free** — it never pushes a screen.
-- **`worker_actions.py`** — one thin child-process entrypoint per TUI action
-  (`build`, `gate_install`, `vault_seal`, `start_cli_container`, …).  Each is a
-  single importable, JSON-positional-args-able call — keep new dispatched
-  actions here rather than threading facade kwargs through `dispatch_*`.
-- **`WorkerLogScreen`** — a *view* over a `ConsoleLogEntry` (live tail + Hide
-  to background).  **`ConsoleOutputScreen`** (command palette → "Console
-  output") lists every entry.
-- **Interactive workflows** become native widgets: `TextEditorScreen` /
-  `TextViewScreen` (`text_screens.py`) for instructions; `ClearanceScreen`
-  for shield verdicts.
-- **Web detection:** prefer `App.is_web` (Textual 0.86+).  `shell_launch.is_web_mode()`
-  is an env-var probe kept only for the pre-app check in `main()`.  CLI container
-  login is hard-gated off under `App.is_web`.
-
-### IDE Setup (PyCharm/VSCode)
-
-1. Open the repo and set up a Python 3.12+ interpreter
-2. Set environment variables:
-   - `TEROK_CONFIG_DIR` = `/path/to/this/repo/examples`
-   - Optional: `TEROK_STATE_DIR` = writable path
-3. For PyCharm Run/Debug configuration:
-   - CLI: Module name = `terok.cli`, Parameters = `projects` (or other subcommands)
-   - TUI: Module name = `terok.tui` (no args)
-
-### Building Wheels
-
-```bash
-# Build wheel
-python -m pip install --upgrade build
-python -m build
-
-# Install in development mode (editable)
-pip install -e .
-```
-
----
-
-## Agent Instructions Architecture
-
-Agent instructions use a "YAML config + standalone file" two-layer pattern:
-
-1. **YAML `instructions` key** — controls what base to use (bundled default, global, custom, or a mix via `_inherit`). Absent = bundled default.
-2. **Standalone `instructions.md` file** in the project root — always appended at the end of whatever the YAML chain resolved. Purely additive.
-
-The `_inherit` sentinel in a YAML list is replaced with the bundled default content at that position (splicing), rather than being stripped. This lets projects compose instructions as: default + project-specific YAML + file addendum.
-
-Key implementation details:
-- `resolve_instructions()` in `instructions.py` accepts `project_root` to locate the standalone file
-- `has_custom_instructions()` checks both YAML key and file existence
-- The TUI badge shows three states: `default`, `custom + inherited`, `custom only`
-- Task runners pass `project_root=project.root` to ensure file content is included
-
-This pattern (config key for inheritance control + file for additive content) is recommended for future similar functionality where users need both structured overrides and free-form additions. See PR #272 for the design discussion.
+- **`tui/console_log.py`** — `ConsoleLogRegistry` holds in-memory log
+  entries; `dispatch_console_action()` runs a referenced callable in a
+  child process and pumps its merged output into the entry (app-scoped,
+  survives hidden viewers, never pushes a screen).
+- **`tui/worker_actions.py`** — one thin child-process entrypoint per
+  dispatched TUI action; add new actions here.
+- **`WorkerLogScreen`** — live tail view over an entry;
+  `ConsoleOutputScreen` lists all entries.
+- Interactive workflows are native widgets (`tui/text_screens.py` for
+  instructions, `tui/clearance_screen.py` for shield verdicts).
+- Web detection: prefer `App.is_web`; CLI container login is hard-gated
+  off in web mode.
 
 ---
 
 ## Making a Release
 
-### Steps
+1. Update `version` in `pyproject.toml`
+2. Commit `release: bump version to X.Y.Z` and merge to `master`
+3. Create tag `vX.Y.Z` on GitHub (Releases → New release → Generate notes)
 
-1. Update `version` in `pyproject.toml` to the new version (e.g. `0.5.0`)
-2. Commit: `release: bump version to 0.5.0`
-3. Merge the version bump to `master`
-4. Go to **Releases → New release** on GitHub
-5. Create a new tag `v0.5.0` targeting `master`
-6. Click **Generate release notes**, review, and publish
-
-The release workflow triggers on `v*` tags automatically — it builds the wheel/sdist and attaches them to the GitHub Release.
-
-### Version Display
-
-Between releases, `poetry-dynamic-versioning` generates PEP 440 versions from git tags automatically (e.g. `0.4.0.post3.dev0+gabcdef`). The TUI title bar shows a shortened form: `v0.4.0+` when past a release, `v0.4.0` at a tagged release.
+The release workflow on `v*` tags builds the wheel/sdist and attaches
+them.  Between releases, `poetry-dynamic-versioning` derives PEP 440
+versions from git; the TUI title bar shows `vX.Y.Z+` past a release and
+`vX.Y.Z` at the tag.

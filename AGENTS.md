@@ -117,26 +117,29 @@ make spdx NAME="Real Human Name" FILES="src/terok/new_file.py"  # Add SPDX heade
 
 ## External Package Dependencies
 
-terok depends on four sibling packages, each pinned to a GitHub release wheel:
+terok depends on five sibling packages, each pinned to a GitHub release wheel:
 
 ```text
 terok ──┬─> terok-executor ──> terok-sandbox ─┬─> terok-shield     (egress firewall)
         ├─> terok-sandbox     (also direct)   └─> terok-clearance  (operator prompts)
-        └─> terok-clearance   (also direct)
+        ├─> terok-clearance   (also direct)
+        ├─> terok-shield      (also direct — CLI registry bridge only)
+        └─> terok-util        (shared foundation)
 ```
 
-`terok-shield` and `terok-clearance` are leaf packages with no terok-* dependencies of their own.
+`terok-util` sits below the whole stack — executor, sandbox, shield, and clearance all depend on it. `terok-shield` and `terok-clearance` have no terok-* dependencies besides `terok-util`.
 
-All three of `terok-executor`, `terok-sandbox`, and `terok-clearance` are listed as **explicit** dependencies in `pyproject.toml` — even though sandbox is pulled transitively via executor, and clearance is also pulled by sandbox. This is intentional: terok imports directly from each, so the dependency must be declared, not just inherited.
+All five siblings are **explicit** dependencies in `pyproject.toml` — even though sandbox is pulled transitively via executor, and clearance is also pulled by sandbox. This is intentional: terok imports (or, for shield, CLI-bridges) directly from each, so the dependency must be declared, not just inherited.
 
 **Version sync rules:**
 
 - When bumping `terok-sandbox` in terok, the same version must be pinned in `terok-executor`. Otherwise Poetry will reject conflicting URL pins. Bump terok-executor first, release it, then bump both in terok.
 - When bumping `terok-clearance` in terok, the same version must be pinned in `terok-sandbox` (for the same reason). Bump terok-sandbox first, release it, then bump both in terok.
-- When bumping `terok-shield` in terok-sandbox, no direct impact on terok (transitive). But if terok-sandbox re-exports shield types that terok uses, the shield version must be compatible.
+- When bumping `terok-shield`: terok pins the wheel URL directly (for the `terok shield` CLI bridge), while terok-sandbox uses a version range — update terok's pin, and terok-sandbox only when the new version falls outside its range.
+- `terok-util` is range-pinned by all four siblings but URL-pinned in terok; bump terok's pin directly, and touch the siblings only when util's compatible range changes.
 - After any version bump: run `poetry lock` and commit both `pyproject.toml` and `poetry.lock`.
 
-**Import convention:** never import a sibling wheel directly. Every `terok_executor` / `terok_sandbox` / `terok_clearance` symbol is re-exported through a thin adapter in `src/terok/lib/integrations/` (`executor.py`, `sandbox.py`, `clearance.py`) — import from there (`from terok.lib.integrations.executor import X`). This is enforced by `.importlinter`'s `*-boundary` contracts: a direct `from terok_sandbox import …` outside `lib/integrations/` fails CI. When a sibling release adds a symbol terok needs, extend the adapter's re-export surface rather than reaching past it. terok-shield is the one exception — terok never imports it from the library; only the `terok shield` CLI command bridges to shield's own CLI registry.
+**Import convention:** never import a sibling wheel directly. Every `terok_executor` / `terok_sandbox` / `terok_clearance` symbol is re-exported through a thin adapter in `src/terok/lib/integrations/` (`executor.py`, `sandbox.py`, `clearance.py`) — import from there (`from terok.lib.integrations.executor import X`). This is enforced by `.importlinter`'s `*-boundary` contracts: a direct `from terok_sandbox import …` outside `lib/integrations/` fails CI. When a sibling release adds a symbol terok needs, extend the adapter's re-export surface rather than reaching past it. Two exceptions: terok-shield is never imported from the library — only the `terok shield` CLI command bridges to shield's own CLI registry (via `lib/integrations/shield.py`); and terok-util is a foundation library meant for direct import (`from terok_util import …`) with no adapter and no import-linter contract.
 
 When a sibling exposes a needed symbol only from an internal submodule (e.g. `terok_sandbox.commands._handle_vault_seal`), the adapter is still the single place that reach is allowed to live — but the proper fix is to get the sibling to promote it to public API.
 

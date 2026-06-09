@@ -1,7 +1,7 @@
 # Agent Configuration Compatibility Matrix
 
 > [!WARNING]
-> This documentation was written by an AI agent and is inaccurate. 
+> This documentation was written by an AI agent and might be inaccurate.
 
 Last verified: 2026-05-07. Re-verify quarterly and whenever an agent version
 update breaks the existing integration.

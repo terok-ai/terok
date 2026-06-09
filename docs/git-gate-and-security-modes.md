@@ -1,7 +1,7 @@
 # Git Gate and Security Modes
 
 > [!WARNING]
-> This documentation was written by an AI agent and is inaccurate. 
+> This documentation was written by an AI agent and might be inaccurate.
 
 The **git gate** is a host-side bare git repository managed by
 [terok-sandbox](https://github.com/terok-ai/terok-sandbox).  When a
@@ -22,11 +22,17 @@ Both modes can be paired with the `gate.enabled` knob; see
 Upstream (GitHub, GitLab, etc.)
        │
        ▼
-Local gate (host-side mirror: STATE_ROOT/gate/<project>.git)
+Local gate (host-side bare mirror; `terok project gate-path <project>` prints it)
        │
        ▼
 Task working copy (/workspace inside container)
 ```
+
+Containers reach the gate as `http://localhost:9418/<project>.git`: a
+per-container gate server runs inside the host-side supervisor, validates
+the per-task `TEROK_GATE_TOKEN`, and an in-container `socat` bridge
+forwards `localhost:9418` to it.  Host tools skip the HTTP gate entirely
+and read the mirror clone directly from the printed path.
 
 Each task gets its own isolated repo, seeded from either the upstream (online) or the gate (gatekeeping).
 
@@ -45,7 +51,7 @@ The agent behaves like a normal developer:
 
 Agent pushes are **directed to the gate** rather than upstream:
 
-- `CODE_REPO` = the gate server's HTTP endpoint (e.g., `http://host:port/project.git`)
+- `CODE_REPO` = the gate's in-container endpoint (`http://localhost:9418/<project>.git`, token-authenticated)
 - The container's default `origin` points to the gate, not upstream
 - Humans review and promote changes from the gate to upstream
 

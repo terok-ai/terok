@@ -1,7 +1,7 @@
 # Shield Security Guide
 
 > [!WARNING]
-> This documentation was written by an AI agent and is inaccurate. 
+> This documentation was written by an AI agent and might be inaccurate.
 
 The **shield** is an egress firewall that restricts outbound network access
 from task containers using nftables OCI hooks.  It is provided by
