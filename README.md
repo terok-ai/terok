@@ -35,9 +35,9 @@ Python packages.
 <table border="0" style="border: none;">
 <tr style="border: none;">
 <td valign="top" style="border: none;">
-<a href="https://www.casus.science"><img src="docs/casus-logo.svg" alt="CASUS" width="120"></a>
+<a href="https://www.casus.science"><img src="https://terok-ai.github.io/terok/casus-logo.svg" alt="CASUS" width="120"></a>
 <br>
-<a href="https://www.hzdr.de"><img src="docs/hzdr-logo.svg" alt="HZDR" width="120"></a>
+<a href="https://www.hzdr.de"><img src="https://terok-ai.github.io/terok/hzdr-logo.svg" alt="HZDR" width="120"></a>
 </td>
 <td valign="top" style="border: none;">
 Terok was started at the
