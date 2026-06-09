@@ -15,21 +15,27 @@ Python packages.
 
 ![terok ecosystem at a glance](img/architecture.svg)
 
-## Origin
+## Acknowledgements
 
-<p>
-Terok was started at the <a href="https://www.casus.science/">Center for Advanced Systems Understanding (CASUS)</a>,
-an institute of <a href="https://www.hzdr.de/">Helmholtz-Zentrum Dresden-Rossendorf (HZDR)</a> in the end of 2025.
-</p>
-
-<a href="https://www.casus.science"><img src="casus-logo.svg" alt="CASUS" width="120"></a> &nbsp; &nbsp;
-<a href="https://www.hzdr.de"><img src="hzdr-logo.svg" alt="HZDR" width="120"></a> <br>
-
-<p>
-See also <a href="https://helmholtz.software/software/terok">Terok at HELMHOLTZ.software</a> and 
-the <a href="https://www.casus.science/scientific-computing-core-agentic-ai-for-coding/">topic page</a> at the 
-<a href="https://www.casus.science/scientific-computing-core/">Scientific Computing Core (SCC) group</s> of CASUS.
-</p>
+<table border="0" style="border: none;">
+<tr style="border: none;">
+<td valign="top" style="border: none;">
+<a href="https://www.casus.science"><img src="casus-logo.svg" alt="CASUS" width="120"></a>
+<br>
+<a href="https://www.hzdr.de"><img src="hzdr-logo.svg" alt="HZDR" width="120"></a>
+</td>
+<td valign="top" style="border: none;">
+Terok was started at the
+<br><a href="https://www.casus.science/">Center for Advanced Systems Understanding (CASUS)</a>, an institute of
+<br><a href="https://www.hzdr.de/">Helmholtz-Zentrum Dresden-Rossendorf (HZDR)</a> at the end of 2025.
+<br>
+<br>See also
+<br><a href="https://helmholtz.software/software/terok">Terok at HELMHOLTZ.software</a> and the
+<br><a href="https://www.casus.science/scientific-computing-core-agentic-ai-for-coding/">topic page</a> at the
+<br><a href="https://www.casus.science/scientific-computing-core/">Scientific Computing Core (SCC) group</a> of CASUS.
+</td>
+</tr>
+</table>
 
 
 ## What you get
