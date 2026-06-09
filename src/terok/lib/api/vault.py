@@ -66,8 +66,8 @@ class VaultStatusSnapshot:
     or ``None`` when the DB could not be read (locked or errored)."""
 
     ssh_keys_stored: int | None
-    """Count of SSH key rows across every scope, or ``None`` when the DB
-    could not be read."""
+    """Count of distinct keypairs stored in the vault, or ``None`` when the
+    DB could not be read."""
 
     plaintext_passphrase_path: str | None
     """Filesystem path of the plaintext-passphrase file when present, else ``None``."""
@@ -138,12 +138,7 @@ class VaultStatusSnapshot:
                                 row.get("type", "unknown") if row else "unknown",
                             )
                     credentials = tuple(sorted(types))
-                    # Metadata-only probe avoids materialising plaintext
-                    # private keys just to take ``len()``.
-                    ssh_count = sum(
-                        len(db.list_ssh_keys_for_scope(scope))
-                        for scope in db.list_scopes_with_ssh_keys()
-                    )
+                    ssh_count = db.count_ssh_keys()
         except Exception as exc:  # noqa: BLE001 — surface every DB-open failure to the operator
             db_error = str(exc)
 

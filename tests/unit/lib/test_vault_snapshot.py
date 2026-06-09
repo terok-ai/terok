@@ -47,8 +47,7 @@ class TestVaultStatusSnapshotLoad:
             ["claude", "openai"] if cs == "default" else ["openai", "anthropic"]
         )
         db.load_credential.side_effect = lambda _cs, name: {"type": f"{name}-type"}
-        db.list_scopes_with_ssh_keys.return_value = ["proj-a", "proj-b"]
-        db.list_ssh_keys_for_scope.side_effect = lambda _scope: [MagicMock(), MagicMock()]
+        db.count_ssh_keys.return_value = 3
         recovery = MagicMock(acknowledged=True, source="keyring")
 
         patches = _patches(db=db, recovery=recovery, plaintext=None)
@@ -69,8 +68,8 @@ class TestVaultStatusSnapshotLoad:
             "claude": "claude-type",
             "openai": "openai-type",
         }
-        # two scopes, two keys each → four total
-        assert snap.ssh_keys_stored == 4
+        # distinct keypairs stored in the vault
+        assert snap.ssh_keys_stored == 3
         assert snap.plaintext_passphrase_path is None
         assert snap.recovery_acknowledged is True
         assert snap.db_error is None
