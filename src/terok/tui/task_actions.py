@@ -62,11 +62,17 @@ _INITIAL_PROMPT_FILENAME = "initial-prompt.txt"
 
 
 def _save_initial_prompt(project_name: str, task_id: str, prompt: str | None) -> None:
-    """Persist the user's initial prompt to the task's mounted agent-config dir."""
+    """Persist the user's initial prompt to the task's mounted agent-config dir.
+
+    Saved on Login *and* on Dismiss — and Dismiss can land before the
+    background container start has populated the agent-config dir, so create
+    it here rather than assume the runner got there first.
+    """
     if not prompt:
         return
-    path = agent_config_dir(project_name, task_id) / _INITIAL_PROMPT_FILENAME
-    path.write_text(prompt + "\n", encoding="utf-8")
+    config_dir = agent_config_dir(project_name, task_id)
+    config_dir.mkdir(parents=True, exist_ok=True)
+    (config_dir / _INITIAL_PROMPT_FILENAME).write_text(prompt + "\n", encoding="utf-8")
 
 
 def _login_title(project_name: str, task_id: str, task_name: str) -> str:
@@ -283,18 +289,35 @@ class TaskActionsMixin(_MixinBase):
         launch_screen.set_installed(installed)
 
     async def _on_launch_screen_result(
-        self, result: "tuple[str, str, str, str, str, str | None] | None"
+        self, result: "tuple[str, str, str, str, str | None, str | None] | None"
     ) -> None:
         """Handle the result from TaskLaunchScreen.
 
         The result carries the full launch context captured at creation time
         so it is immune to ``self.current_task`` changes while the modal is open.
+        A ``None`` *agent* means the user dismissed the modal: the prompt is
+        still persisted (so it greets them on the next ``login``) but no
+        terminal is launched.
         """
         if result is None:
             await self.refresh_tasks()
             return
 
         pid, tid, task_name, cname, agent, prompt = result
+
+        # Stash the prompt where the agent wrappers (terok-executor) and the
+        # interactive bash banner can pick it up — on Login *and* on Dismiss,
+        # since the container is already starting either way.  Bash displays it
+        # after `hilfe --kurz`; the per-provider wrapper consumes it one-shot on
+        # bare invocation and renames the file so subsequent runs --resume the
+        # saved session instead of replaying the prompt.
+        _save_initial_prompt(pid, tid, prompt)
+
+        # Dismissed without choosing an agent: the prompt is saved for the next
+        # manual login, and there is no terminal session to open.
+        if agent is None:
+            await self.refresh_tasks()
+            return
 
         # All agents (including bash) launch interactively inside tmux so the
         # user can re-attach later with 'login'.  The base command is always
@@ -304,13 +327,6 @@ class TaskActionsMixin(_MixinBase):
         except SystemExit as e:
             self.notify(str(e))
             return
-
-        # Stash the prompt where the agent wrappers (terok-executor) and the
-        # interactive bash banner can pick it up.  Bash displays it after
-        # `hilfe --kurz`; the per-provider wrapper consumes it one-shot on
-        # bare invocation and renames the file so subsequent runs --resume
-        # the saved session instead of replaying the prompt.
-        _save_initial_prompt(pid, tid, prompt)
 
         if agent == "bash":
             cmd = base_cmd

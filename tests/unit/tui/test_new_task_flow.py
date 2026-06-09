@@ -144,22 +144,53 @@ class TestTaskLaunchScreen:
         assert screen._default_shell == "bash"
         assert screen._task_name == "1"  # falls back to task_id
 
-    def test_dismiss_returns_none(self) -> None:
+    def test_dismiss_keeps_prompt_with_null_agent(self) -> None:
+        """Dismiss hands back the typed prompt with a ``None`` agent — not lost."""
         screens, _ = import_screens()
-        screen = screens.TaskLaunchScreen(container_name="c", project_name="p", task_id="1")
+        screen = screens.TaskLaunchScreen(
+            container_name="c", project_name="p", task_id="1", task_name="fix-bug"
+        )
         screen.dismiss = mock.Mock()
-        screen.action_dismiss_screen()
-        screen.dismiss.assert_called_once_with(None)
+        mock_textarea = mock.Mock()
+        mock_textarea.text = "half-typed thought"
+        screen.query_one = lambda selector, cls=None: mock_textarea
 
-    def test_dismiss_via_button(self) -> None:
+        screen.action_dismiss_screen()
+        screen.dismiss.assert_called_once_with(
+            ("p", "1", "fix-bug", "c", None, "half-typed thought")
+        )
+
+    def test_dismiss_via_button_keeps_prompt(self) -> None:
         screens, _ = import_screens()
-        screen = screens.TaskLaunchScreen(container_name="c", project_name="p", task_id="1")
+        screen = screens.TaskLaunchScreen(
+            container_name="c", project_name="p", task_id="1", task_name="fix-bug"
+        )
         screen.dismiss = mock.Mock()
+        mock_textarea = mock.Mock()
+        mock_textarea.text = "half-typed thought"
+        screen.query_one = lambda selector, cls=None: mock_textarea
+
         event = mock.Mock()
         event.button = mock.Mock()
         event.button.id = "btn-dismiss"
         screen.on_button_pressed(event)
-        screen.dismiss.assert_called_once_with(None)
+        screen.dismiss.assert_called_once_with(
+            ("p", "1", "fix-bug", "c", None, "half-typed thought")
+        )
+
+    def test_dismiss_blank_prompt_is_none(self) -> None:
+        """A blank prompt still dismisses cleanly — agent and prompt both None."""
+        screens, _ = import_screens()
+        screen = screens.TaskLaunchScreen(
+            container_name="c", project_name="p", task_id="1", task_name="fix-bug"
+        )
+        screen.dismiss = mock.Mock()
+        mock_textarea = mock.Mock()
+        mock_textarea.text = "   "
+        screen.query_one = lambda selector, cls=None: mock_textarea
+
+        screen.action_dismiss_screen()
+        screen.dismiss.assert_called_once_with(("p", "1", "fix-bug", "c", None, None))
 
     def test_console_entry_stored_when_provided(self) -> None:
         """The background-container-start entry is held for the Show-log button."""
@@ -594,7 +625,7 @@ class TestTaskLaunchScreenLazyAgents:
 # ---------------------------------------------------------------------------
 
 
-def _run_launch_with_prompt(agent: str, prompt: str | None) -> tuple[mock.Mock, mock.Mock]:
+def _run_launch_with_prompt(agent: str | None, prompt: str | None) -> tuple[mock.Mock, mock.Mock]:
     """Drive _on_launch_screen_result for *agent*/*prompt* and return mocks."""
     _, app_class = import_app()
     instance = app_class()
@@ -650,6 +681,36 @@ class TestLaunchCmdShape:
         cmd = launch.call_args[0][0]
         assert cmd == ["podman", "exec", "-it", "c"]
         save.assert_called_once_with("proj1", "5", "first message")
+
+    def test_dismiss_saves_prompt_without_launching(self) -> None:
+        # A None agent means the user dismissed: the prompt is still persisted
+        # for the next manual login, but no terminal session is opened.
+        launch, save = _run_launch_with_prompt(None, "saved for later")
+        save.assert_called_once_with("proj1", "5", "saved for later")
+        launch.assert_not_called()
+
+
+class TestSaveInitialPrompt:
+    """The real _save_initial_prompt — file contract for the agent wrappers."""
+
+    def _save_fn(self) -> Any:
+        _, app_class = import_app()
+        return app_class._on_launch_screen_result.__globals__
+
+    def test_creates_missing_config_dir(self, tmp_path: Any) -> None:
+        # Dismiss can fire before the background runner has made the dir.
+        g = self._save_fn()
+        config_dir = tmp_path / "p" / "1" / "agent-config"
+        with mock.patch.dict(g, {"agent_config_dir": mock.Mock(return_value=config_dir)}):
+            g["_save_initial_prompt"]("p", "1", "remember this")
+        assert (config_dir / "initial-prompt.txt").read_text() == "remember this\n"
+
+    def test_blank_prompt_writes_nothing(self, tmp_path: Any) -> None:
+        g = self._save_fn()
+        config_dir = tmp_path / "p" / "1" / "agent-config"
+        with mock.patch.dict(g, {"agent_config_dir": mock.Mock(return_value=config_dir)}):
+            g["_save_initial_prompt"]("p", "1", None)
+        assert not config_dir.exists()
 
 
 # ---------------------------------------------------------------------------
