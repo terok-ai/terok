@@ -1268,13 +1268,17 @@ else:  # pragma: no cover - stub TextArea in test envs
     _SubmittablePromptArea = TextArea  # type: ignore[assignment,misc]
 
 
-class TaskLaunchScreen(screen.ModalScreen["tuple[str, str, str, str, str, str | None] | None"]):
+class TaskLaunchScreen(
+    screen.ModalScreen["tuple[str, str, str, str, str | None, str | None] | None"]
+):
     """Post-creation modal for CLI tasks: agent selection + optional prompt.
 
     Dismisses with ``(project_name, task_id, task_name, container_name,
-    agent, prompt)`` on Login, or ``None`` on Dismiss.  The full launch
-    context is captured at creation time so the callback is immune to
-    selection changes.
+    agent, prompt)``.  ``agent`` is the chosen shell/agent on Login and
+    ``None`` on Dismiss — but the *prompt* travels either way, so a prompt
+    typed before dismissing is preserved for the next manual ``login``
+    rather than lost.  The full launch context is captured at creation time
+    so the callback is immune to selection changes.
     """
 
     BINDINGS = [
@@ -1572,11 +1576,29 @@ class TaskLaunchScreen(screen.ModalScreen["tuple[str, str, str, str, str, str | 
         if event.button.id == "btn-login":
             self._do_login()
         elif event.button.id == "btn-dismiss":
-            self.dismiss(None)
+            self._dismiss_keeping_prompt()
         elif event.button.id == "btn-show-log" and self._console_entry is not None:
             from .worker_log_screen import WorkerLogScreen
 
             self.app.push_screen(WorkerLogScreen(self._console_entry))
+
+    def _build_result(
+        self, agent: str | None
+    ) -> "tuple[str, str, str, str, str | None, str | None]":
+        """Bundle the launch context with *agent* and the prompt typed so far.
+
+        *agent* is the chosen shell/agent on Login, or ``None`` on Dismiss;
+        the prompt travels either way (stripped, or ``None`` when blank).
+        """
+        prompt = self.query_one("#launch-prompt", TextArea).text.strip() or None
+        return (
+            self._project_name,
+            self._task_id,
+            self._task_name,
+            self._container_name,
+            agent,
+            prompt,
+        )
 
     def _do_login(self) -> None:
         """Dismiss with launch context + selected agent and optional prompt."""
@@ -1587,22 +1609,21 @@ class TaskLaunchScreen(screen.ModalScreen["tuple[str, str, str, str, str, str | 
         if isinstance(agent, NoSelection):
             self.app.notify("Pick an agent first.")
             return
-        prompt_input = self.query_one("#launch-prompt", TextArea)
-        prompt = prompt_input.text.strip() or None
-        self.dismiss(
-            (
-                self._project_name,
-                self._task_id,
-                self._task_name,
-                self._container_name,
-                str(agent),
-                prompt,
-            )
-        )
+        self.dismiss(self._build_result(str(agent)))
+
+    def _dismiss_keeping_prompt(self) -> None:
+        """Dismiss without logging in, but hand back the prompt typed so far.
+
+        The container is already starting in the background, so a ``None``
+        agent tells the callback to persist the prompt (where the agent
+        wrapper and login banner read it) and refresh — rather than launch a
+        terminal.  The prompt then greets the user on their next ``login``.
+        """
+        self.dismiss(self._build_result(None))
 
     def action_dismiss_screen(self) -> None:
-        """Dismiss the launch screen without logging in."""
-        self.dismiss(None)
+        """Dismiss the launch screen without logging in (prompt is preserved)."""
+        self._dismiss_keeping_prompt()
 
     def on_unmount(self) -> None:
         """Clean up the polling timer."""
