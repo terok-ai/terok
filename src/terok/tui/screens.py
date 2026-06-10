@@ -2216,8 +2216,13 @@ def render_vault_status(status: VaultStatusSnapshot | None) -> Text:
     err = Style(color="red")
     dim = Style(dim=True)
 
+    # Name the lock state: "no passphrase" / "wrong passphrase" /
+    # "broken tier" call for three different remedies, and the bare
+    # word "locked" hides which one the operator is facing.
     locked_label = (
-        Text("yes — no tier resolved", style=err) if status.locked else Text("no", style=ok)
+        Text(f"yes — {status.lock_reason or 'no tier resolved'}", style=err)
+        if status.locked
+        else Text("no", style=ok)
     )
 
     lines: list[Text] = [

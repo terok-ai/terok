@@ -1658,6 +1658,7 @@ def make_vault_status(
     db_path: object = MOCK_VAULT_DB,
     recovery_acknowledged: bool = True,
     db_error: str | None = None,
+    lock_reason: str | None = None,
 ) -> mock.Mock:
     """Build a vault status snapshot mock.
 
@@ -1676,6 +1677,7 @@ def make_vault_status(
     status.db_path = db_path
     status.recovery_acknowledged = recovery_acknowledged
     status.db_error = db_error
+    status.lock_reason = lock_reason
     return status
 
 
@@ -1772,6 +1774,18 @@ class TestRenderVaultStatus:
         assert "Locked:" in text_str
         assert "yes" in text_str
         assert "no tier resolved" in text_str
+
+    def test_render_vault_status_names_the_lock_reason(self) -> None:
+        """A classified lock renders its reason instead of the generic fallback."""
+        screens, _ = import_screens()
+        status = make_vault_status(
+            locked=True,
+            passphrase_source="session-file",
+            lock_reason="the passphrase via session-file does not open the DB",
+        )
+        text_str = str(screens.render_vault_status(status))
+        assert "via session-file does not open the DB" in text_str
+        assert "no tier resolved" not in text_str
         # And when locked, the Passphrase: line is suppressed (no tier to name).
         assert "resolved via" not in text_str
 

@@ -48,6 +48,7 @@ if _HAS_TEXTUAL:
     from textual.binding import Binding
     from textual.containers import Horizontal, Vertical
     from textual.css.query import NoMatches
+    from textual.timer import Timer
     from textual.widgets import Footer, Header
     from textual.worker import Worker, WorkerState
 
@@ -315,6 +316,8 @@ if _HAS_TEXTUAL:
             self._watch_debounce = None
             self._last_shield_env: EnvironmentCheck | None = None
             self._last_vault_status: VaultStatusSnapshot | None = None
+            self._vault_watcher: TaskWatcher | None = None
+            self._vault_watch_debounce: Timer | None = None
             # Cached state for detail screens
             self._last_project_state: dict | None = None
             self._last_image_old: bool | None = None
@@ -466,6 +469,9 @@ if _HAS_TEXTUAL:
             # the ``maybe_vault_db`` graceful-degradation state and the
             # operator sees a silent empty SSH tile with no remediation.
             await self._refresh_vault_status(push_modal_if_locked=True)
+            # Keep the pill live: external `vault unlock` / `lock` runs
+            # surface without restarting the TUI.
+            self._start_vault_watcher()
 
             # Once per session, surface the unconfirmed-recovery warning
             # as a notification — the pill catches the operator's eye
@@ -1448,6 +1454,7 @@ if _HAS_TEXTUAL:
             """
             self._stop_upstream_polling()
             self._stop_container_status_polling()
+            self._stop_vault_watcher()
             if self._askpass_service is not None:
                 await self._askpass_service.stop()
 
@@ -1769,6 +1776,73 @@ if _HAS_TEXTUAL:
                 timeout=20,
             )
 
+        def _start_vault_watcher(self) -> None:
+            """Arm an inotify watch on the session-unlock file's directory.
+
+            A `terok vault unlock` / `lock` in another terminal changes
+            the pill's truth, but the pill only re-probed on mount and
+            after TUI-initiated actions — the operator stared at a stale
+            "LOCKED" until restart (issue #1070's first symptom).  Reuses
+            [`TaskWatcher`][terok.tui.task_watcher.TaskWatcher] on the
+            *runtime* dir only: every chain-mutating verb touches the
+            session file, while the vault/DB dir is deliberately NOT
+            watched — the refresh itself opens the DB, whose WAL writes
+            would fire the watch and self-trigger a refresh loop.
+            Best-effort: without inotify the existing mount/action
+            refreshes still apply.
+            """
+            import asyncio
+
+            from .task_watcher import TaskWatcher
+
+            try:
+                watcher = TaskWatcher()
+                session_dir = SandboxConfig().vault_passphrase_file.parent
+                # The dir may not exist before the first unlock; create it
+                # so the watch can arm now rather than never.
+                session_dir.mkdir(parents=True, exist_ok=True)
+                if not watcher.start([session_dir]):
+                    return
+            except Exception:  # noqa: BLE001 — watch is best-effort enrichment
+                return
+            try:
+                asyncio.get_running_loop().add_reader(
+                    watcher.fileno, self._on_vault_session_dir_changed
+                )
+            except (RuntimeError, ValueError, OSError, NotImplementedError):
+                watcher.stop()
+                return
+            self._vault_watcher = watcher
+
+        def _on_vault_session_dir_changed(self) -> None:
+            """Drain inotify events, then debounce a single pill refresh."""
+            if self._vault_watcher is None or not self._vault_watcher.drain():
+                return
+            if self._vault_watch_debounce is not None:
+                self._vault_watch_debounce.stop()
+            self._vault_watch_debounce = self.set_timer(0.5, self._on_vault_watch_fired)
+
+        async def _on_vault_watch_fired(self) -> None:
+            """Debounce landing point: re-probe the vault and repaint the pill."""
+            self._vault_watch_debounce = None
+            await self._refresh_vault_status()
+
+        def _stop_vault_watcher(self) -> None:
+            """Detach and close the vault inotify watch and any pending debounce."""
+            if self._vault_watch_debounce is not None:
+                self._vault_watch_debounce.stop()
+                self._vault_watch_debounce = None
+            if self._vault_watcher is None:
+                return
+            import asyncio
+
+            try:
+                asyncio.get_running_loop().remove_reader(self._vault_watcher.fileno)
+            except (RuntimeError, ValueError, OSError):
+                pass
+            self._vault_watcher.stop()
+            self._vault_watcher = None
+
         async def _refresh_vault_status(self, *, push_modal_if_locked: bool = False) -> None:
             """Read a fresh snapshot, update the pill, optionally push the unlock modal."""
             try:
@@ -1798,7 +1872,13 @@ if _HAS_TEXTUAL:
                 return
             plaintext = status.plaintext_passphrase_path
             if status.locked:
-                bar.set_message("Vault: LOCKED — open Vault from the command palette to unlock")
+                # The reason distinguishes "no passphrase" from "wrong
+                # passphrase" from "broken tier" — without it the operator
+                # can't tell whether to type harder or fix a seal.
+                reason = f" ({status.lock_reason})" if status.lock_reason else ""
+                bar.set_message(
+                    f"Vault: LOCKED{reason} — open Vault from the command palette to unlock"
+                )
                 return
             if status.passphrase_source is None:
                 bar.set_message("")
@@ -1827,28 +1907,41 @@ if _HAS_TEXTUAL:
             bar.set_message(f"Vault: unlocked ({status.passphrase_source}){suffix}")
 
         async def _on_vault_unlock_result(self, passphrase: "str | None") -> None:
-            """Write the typed passphrase to the session-unlock tmpfs file.
+            """Validate the typed passphrase and land it on the session-unlock tier.
 
-            Always lands in the session-file tier — the highest-priority
-            resolver tier — so it wins regardless of what stale state
-            sits in keyring / systemd-creds / config.  After the write,
-            re-probe so the pill reflects the new source and the locked
-            state clears.
+            Funnels through sandbox's ``provision_session_passphrase`` —
+            the same validated writer the CLI uses — so a wrong entry is
+            rejected with a clear message instead of being written,
+            reported as success, and leaving the pill on "locked" with
+            no explanation (the failure mode behind issue #1070).  After
+            a successful write, re-probe so the pill reflects the new
+            source and the locked state clears.
             """
             if not passphrase:
                 return
 
+            from terok.lib.api.vault import WrongPassphraseError, provision_session_passphrase
+
             cfg = SandboxConfig()
             try:
-                cfg.vault_passphrase_file.parent.mkdir(parents=True, exist_ok=True)
-                cfg.vault_passphrase_file.write_text(passphrase + "\n", encoding="utf-8")
-                cfg.vault_passphrase_file.chmod(0o600)
+                provision_session_passphrase(cfg, passphrase)
+            except WrongPassphraseError:
+                self.notify(
+                    "That passphrase does not open the credentials DB — nothing was"
+                    " written.  Wrong key, or a DB from another install.",
+                    severity="error",
+                    timeout=10,
+                )
+                return
             except OSError as exc:
                 self.notify(
                     f"Failed to write session-unlock file: {exc}",
                     severity="error",
                     timeout=10,
                 )
+                return
+            except Exception as exc:  # noqa: BLE001 — e.g. legacy plaintext DB; surface verbatim
+                self.notify(str(exc), severity="error", timeout=10)
                 return
             self.notify("Vault unlocked for this session.", severity="information", timeout=5)
             await self._refresh_vault_status()

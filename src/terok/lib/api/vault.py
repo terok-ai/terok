@@ -33,6 +33,7 @@ from terok.lib.integrations.sandbox import (  # noqa: F401 — re-exported publi
     WrongPassphraseError,
     handle_vault_seal,
     handle_vault_to_keyring,
+    provision_session_passphrase,
     purge_passphrase_tiers,
 )
 
@@ -83,6 +84,18 @@ class VaultStatusSnapshot:
     than 'locked' (schema drift, permission denied, plaintext-DB found, …).
     Renderers should surface this verbatim — it's the actionable signal."""
 
+    lock_reason: str | None = None
+    """Why ``locked`` is ``True`` — ``None`` when unlocked.
+
+    "Locked" hides three different operator problems with three
+    different remedies: *no passphrase in any tier* (provision one),
+    *the resolved value doesn't open the DB* (typo / DB from another
+    install — re-enter the right one), and *a configured tier is
+    unreadable* (broken systemd-creds seal after a machine change,
+    dead ``passphrase_command`` — fix or purge the tier).  Renderers
+    append this to the bare "locked" so the operator isn't left
+    guessing which of the three they're in."""
+
     credential_types: Mapping[str, str] = field(default_factory=dict)
     """Mapping ``provider → type`` (``api_key`` / ``oauth_token`` / …),
     populated by the same DB pass that built ``credentials_stored`` so
@@ -101,13 +114,13 @@ class VaultStatusSnapshot:
         """Open the DB if unlockable and assemble the snapshot.
 
         The single ``cfg`` is shared between ``RecoveryStatus.load`` and
-        ``maybe_vault_db`` so the passphrase tier is resolved exactly
-        once — preventing snapshots that report contradictory
+        ``vault_db`` so the passphrase tier is resolved exactly once —
+        preventing snapshots that report contradictory
         ``(locked, passphrase_source)`` pairs when host state changes
         mid-load.
         """
         from terok.lib.core.config import make_sandbox_config
-        from terok.lib.domain.vault import maybe_vault_db
+        from terok.lib.domain.vault import vault_db
         from terok.lib.integrations.sandbox import plaintext_passphrase_config_path
 
         cfg = make_sandbox_config()
@@ -118,18 +131,22 @@ class VaultStatusSnapshot:
         credentials: tuple[str, ...] | None = None
         types: dict[str, str] = {}
         ssh_count: int | None = None
-        # ``locked`` reflects the absence of any unlock source — only the
-        # ``db is None`` branch can prove that.  Other DB-open failures
-        # (schema drift, permission denied, corruption) go to ``db_error``;
-        # conflating them with "locked" misclassifies the failure for
-        # renderers that gate behaviour on ``locked``.
-        locked = recovery.source is None
+        # Classify rather than conflate: ``lock_reason`` separates the
+        # three passphrase problems "locked" used to hide, while DB-open
+        # failures for non-passphrase reasons (schema drift, permission
+        # denied, corruption) stay on ``db_error`` — renderers gate
+        # behaviour on ``locked`` and must not misread a broken DB as a
+        # locked one (or vice versa).  Wording mirrors sandbox's
+        # ``vault status`` classifier so both surfaces tell one story.
+        lock_reason: str | None = None
         db_error: str | None = None
-        try:
-            with maybe_vault_db(cfg=cfg) as db:
-                if db is None:
-                    locked = True
-                else:
+        if recovery.resolve_error is not None:
+            lock_reason = f"a configured tier is unreadable — {recovery.resolve_error}"
+        elif recovery.source is None:
+            lock_reason = "no passphrase in any tier"
+        else:
+            try:
+                with vault_db(cfg=cfg) as db:
                     for cs in db.list_credential_sets():
                         for provider in db.list_credentials(cs):
                             row = db.load_credential(cs, provider)
@@ -139,11 +156,20 @@ class VaultStatusSnapshot:
                             )
                     credentials = tuple(sorted(types))
                     ssh_count = db.count_ssh_keys()
-        except Exception as exc:  # noqa: BLE001 — surface every DB-open failure to the operator
-            db_error = str(exc)
+            except NoPassphraseError:
+                # Tier vanished between the resolve and the open — plain lock.
+                lock_reason = "no passphrase in any tier"
+            except WrongPassphraseError:
+                lock_reason = (
+                    f"the passphrase via {recovery.source} does not open the DB"
+                    " — wrong key, or a DB from another install"
+                )
+            except Exception as exc:  # noqa: BLE001 — surface every DB-open failure to the operator
+                db_error = str(exc)
 
         return cls(
-            locked=locked,
+            locked=lock_reason is not None,
+            lock_reason=lock_reason,
             passphrase_source=recovery.source,
             credentials_stored=credentials,
             credential_types=MappingProxyType(types),
@@ -162,6 +188,7 @@ __all__ = [
     "WrongPassphraseError",
     "handle_vault_seal",
     "handle_vault_to_keyring",
+    "provision_session_passphrase",
     "purge_passphrase_tiers",
     "vault_db",
 ]

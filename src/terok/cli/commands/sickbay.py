@@ -177,10 +177,13 @@ def _check_vault() -> _CheckResult:
         return ("warn", label, f"DB error — {status.db_error}")
 
     if status.locked:
+        # The reason separates "no passphrase" / "wrong passphrase" /
+        # "broken tier" — three different remedies behind one word.
+        reason = f" ({status.lock_reason})" if status.lock_reason else ""
         return (
             "warn",
             label,
-            "locked — run 'terok vault unlock' to make stored credentials available",
+            f"locked{reason} — run 'terok vault unlock' to make stored credentials available",
         )
 
     creds = len(status.credentials_stored or ())
