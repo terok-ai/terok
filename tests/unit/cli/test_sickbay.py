@@ -255,6 +255,7 @@ class TestCheckVault:
             "credentials_stored": (),
             "plaintext_passphrase_path": None,
             "db_error": None,
+            "lock_reason": None,
         }
         defaults.update(overrides)
         return unittest.mock.MagicMock(**defaults)
@@ -279,6 +280,20 @@ class TestCheckVault:
             sev, _, detail = _check_vault()
         assert sev == "warn"
         assert "unlock" in detail
+
+    def test_locked_detail_carries_the_reason(self) -> None:
+        """The lock reason rides along — wrong key vs no key vs broken tier differ."""
+        snap = self._snapshot(
+            locked=True,
+            passphrase_source="keyring",
+            lock_reason="the passphrase via keyring does not open the DB",
+        )
+        with unittest.mock.patch(
+            "terok.cli.commands.sickbay.VaultStatusSnapshot.load", return_value=snap
+        ):
+            sev, _, detail = _check_vault()
+        assert sev == "warn"
+        assert "via keyring does not open the DB" in detail
 
     def test_plaintext_passphrase_warns(self) -> None:
         """Plaintext passphrase on disk → warn even when unlocked."""
