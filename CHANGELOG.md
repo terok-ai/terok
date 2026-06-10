@@ -1,4 +1,10 @@
 # Changelog
+## v0.8.2 — Locks and Hooks
+
+Hotfix for vault passphrase error modes [1083](https://github.com/terok-ai/terok/pull/1083) and supervisor restart [1085](https://github.com/terok-ai/terok/pull/1085)
+
+**Full Changelog**: https://github.com/terok-ai/terok/compare/v0.8.1...v0.8.2
+
 ## v0.8.1 — Emissary, Part II
 
 Agents and providers are now independent axes — the coding harness and the LLM endpoint it talks to 
