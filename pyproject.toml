@@ -84,14 +84,14 @@ include = [
 version = "0.8.2"
 
 [tool.poetry.group.dev.dependencies]
-pydevd-pycharm = "262.7132.31"
-ruff = ">=0.15.16"
+pydevd-pycharm = "262.7581.27"
+ruff = ">=0.15.17"
 markdown-it-py = ">=4.0.0"
 mdit-py-plugins = ">=0.5.0"
 tach = "^0.35.0"
 textual-dev = "^1.8.0"
 docstr-coverage = "^2.3.2"
-complexipy = ">=5.5.0"
+complexipy = ">=5.6.0"
 vulture = ">=2.12"
 reuse = "^6.2.0"
 bandit = ">=1.7"
@@ -100,7 +100,7 @@ import-linter = ">=2.1"
 mypy = ">=1.13,<3.0"
 
 [tool.poetry.group.test.dependencies]
-pytest = ">=7.0"
+pytest = ">=9.1.0"
 pytest-asyncio = ">=1.4.0"
 pytest-cov = ">=4.0"
 
