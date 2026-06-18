@@ -187,6 +187,54 @@ def _detect_stale_layers(project: "ProjectConfig", rendered: dict[str, str] | No
     return stale
 
 
+_STALE_AUTH_IMAGE_HINT = (
+    "Warning: the image for project {name!r} is out of date — the login "
+    "scripts baked into it may lag the current terok.  Rebuild with "
+    "`terok project build {name}` so auth (e.g. Codex device-code) runs the "
+    "latest."
+)
+
+
+def auth_image_is_stale(project_name: str | None) -> bool | None:
+    """Best-effort: would an auth container for *project_name* run a stale image?
+
+    Reuses the per-layer staleness check
+    ([`_detect_stale_layers`][terok.lib.domain.project_state._detect_stale_layers]):
+    a project-scoped auth reuses the project's L2 CLI image, so *any* stale
+    layer means the login scripts baked into it (e.g. ``setup-codex-auth.sh``)
+    may lag the current source.  Returns:
+
+    - ``True`` / ``False`` for a project-scoped auth.
+    - ``None`` for host-wide auth — the shared L1 alias carries no build
+      manifest, so staleness isn't yet knowable there.  This is the single
+      seam to extend when the L1-staleness machinery grows host-wide coverage.
+    """
+    if project_name is None:
+        return None
+    try:
+        from ..orchestration.image import render_all_dockerfiles
+
+        project = load_project(project_name)
+        rendered = render_all_dockerfiles(project)
+        return len(_detect_stale_layers(project, rendered)) > 0
+    except (Exception, SystemExit):
+        # Staleness is advisory — never let a probe failure (incl. a
+        # ``load_project`` SystemExit on a missing project) block auth.
+        return None
+
+
+def auth_image_staleness_warning(project_name: str | None) -> str | None:
+    """Ready-to-display heads-up when the auth image is stale, else ``None``.
+
+    The single source of truth for both the detection
+    ([`auth_image_is_stale`][terok.lib.domain.project_state.auth_image_is_stale])
+    and the message, so the CLI and TUI auth flows warn identically.
+    """
+    if auth_image_is_stale(project_name):
+        return _STALE_AUTH_IMAGE_HINT.format(name=project_name)
+    return None
+
+
 def is_task_image_old(project_name: str | None, task: Any) -> bool | None:
     """Check if the image used by a task's container is outdated.
 

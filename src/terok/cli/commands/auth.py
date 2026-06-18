@@ -30,7 +30,7 @@ from terok.lib.api.agents import (
     resolve_auth_provider,
 )
 
-from ...lib.api import authenticate
+from ...lib.api import auth_image_staleness_warning, authenticate
 from ...lib.core.images import require_agent_installed
 from ...lib.core.projects import load_project, require_project_exists
 from ._completers import complete_project_names as _complete_project_names, set_completer
@@ -136,6 +136,10 @@ def _run_one(provider: str, project_name: str | None, *, device_auth: bool = Fal
         require_agent_installed(
             load_project(project_name), resolve_auth_provider(provider), noun="Provider"
         )
+    # Heads-up before launching: a stale project image bakes outdated login
+    # scripts (host-wide auth returns None here — not yet detectable).
+    if (warning := auth_image_staleness_warning(project_name)) is not None:
+        print(warning, file=sys.stderr)
     authenticate(provider, project_name, device_auth=device_auth)
 
 

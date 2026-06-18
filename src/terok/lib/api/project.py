@@ -50,6 +50,9 @@ from terok.lib.domain.project import (  # noqa: F401 — re-exported public API
     list_projects,
     project_image_exists,
 )
+from terok.lib.domain.project_state import (  # noqa: F401 — re-exported public API
+    auth_image_staleness_warning,
+)
 from terok.lib.domain.ssh import (  # noqa: F401 — re-exported public API
     summarize_ssh_init,
 )
@@ -70,6 +73,7 @@ __all__ = [
     "ProjectConfig",
     "QUESTIONS",
     "Question",
+    "auth_image_staleness_warning",
     "cleanup_images",
     "delete_project",
     "derive_project",

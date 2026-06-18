@@ -263,6 +263,21 @@ def test_run_one_forwards_device_auth() -> None:
     mock_auth.assert_called_once_with("codex", None, device_auth=True)
 
 
+def test_run_one_warns_on_stale_image(capsys: pytest.CaptureFixture[str]) -> None:
+    """A stale project image surfaces a heads-up on stderr before launching."""
+    with (
+        patch("terok.cli.commands.auth.load_project"),
+        patch("terok.cli.commands.auth.require_agent_installed"),
+        patch(
+            "terok.cli.commands.auth.auth_image_staleness_warning",
+            return_value="Warning: stale image",
+        ),
+        patch("terok.cli.commands.auth.authenticate"),
+    ):
+        _run_one("codex", project_name="p1")
+    assert "Warning: stale image" in capsys.readouterr().err
+
+
 # ── available_auth_modes (shared CLI/TUI source of truth) ───────────────
 
 

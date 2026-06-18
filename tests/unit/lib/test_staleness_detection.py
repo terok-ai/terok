@@ -322,3 +322,52 @@ class TestStaleLayerHint:
         from terok.tui.widgets.project_state import _stale_layer_hint
 
         assert _stale_layer_hint([]) == ""
+
+
+class TestAuthImageStaleness:
+    """``auth_image_is_stale`` / ``auth_image_staleness_warning`` for auth flows."""
+
+    def test_host_wide_is_unknown(self) -> None:
+        """Host-wide auth (no project) can't be judged yet → None, no warning."""
+        from terok.lib.domain.project_state import (
+            auth_image_is_stale,
+            auth_image_staleness_warning,
+        )
+
+        assert auth_image_is_stale(None) is None
+        assert auth_image_staleness_warning(None) is None
+
+    def test_project_scoped_stale_warns(self) -> None:
+        """A stale project image is reported, and the warning names the project."""
+        from terok.lib.domain import project_state
+
+        with (
+            patch.object(project_state, "load_project", return_value=Mock(name="p1")),
+            patch("terok.lib.orchestration.image.render_all_dockerfiles", return_value={"x": "y"}),
+            patch.object(project_state, "_detect_stale_layers", return_value=["l1"]),
+        ):
+            assert project_state.auth_image_is_stale("p1") is True
+            warning = project_state.auth_image_staleness_warning("p1")
+        assert warning is not None
+        assert "p1" in warning
+        assert "terok project build" in warning
+
+    def test_project_scoped_fresh_is_quiet(self) -> None:
+        """A current project image yields False and no warning."""
+        from terok.lib.domain import project_state
+
+        with (
+            patch.object(project_state, "load_project", return_value=Mock(name="p1")),
+            patch("terok.lib.orchestration.image.render_all_dockerfiles", return_value={"x": "y"}),
+            patch.object(project_state, "_detect_stale_layers", return_value=[]),
+        ):
+            assert project_state.auth_image_is_stale("p1") is False
+            assert project_state.auth_image_staleness_warning("p1") is None
+
+    def test_probe_failure_degrades_to_none(self) -> None:
+        """A failing probe never blocks auth — it returns None."""
+        from terok.lib.domain import project_state
+
+        with patch.object(project_state, "load_project", side_effect=RuntimeError("boom")):
+            assert project_state.auth_image_is_stale("p1") is None
+            assert project_state.auth_image_staleness_warning("p1") is None

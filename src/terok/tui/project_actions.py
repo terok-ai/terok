@@ -364,7 +364,17 @@ class ProjectActionsMixin(_MixinBase):
         With *device_auth* the prepared session runs the provider's headless
         device-code login instead of the browser-callback flow.
         """
-        from ..lib.api import Authenticator, find_host_auth_image, resolve_credential_routing
+        from ..lib.api import (
+            Authenticator,
+            auth_image_staleness_warning,
+            find_host_auth_image,
+            resolve_credential_routing,
+        )
+
+        # Heads-up before launching the auth container: a stale project image
+        # bakes outdated login scripts (host-wide returns None — no warning).
+        if (warning := auth_image_staleness_warning(project_name)) is not None:
+            self.notify(warning, severity="warning", timeout=10)
         from ..lib.core.config import (
             is_claude_oauth_exposed,
             is_codex_oauth_exposed,
