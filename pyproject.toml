@@ -81,7 +81,7 @@ include = [
   { path = "docs/*.md" },
   { path = "examples/**" },
 ]
-version = "0.8.2"
+version = "0.8.3"
 
 [tool.poetry.group.dev.dependencies]
 pydevd-pycharm = "262.7581.27"

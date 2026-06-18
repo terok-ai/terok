@@ -1,4 +1,10 @@
 # Changelog
+## v0.8.3 — Start Again
+
+hotfix: restart a task container after host reboot in https://github.com/terok-ai/terok/pull/1092
+
+**Full Changelog**: https://github.com/terok-ai/terok/compare/v0.8.2...v0.8.3
+
 ## v0.8.2 — Locks and Hooks
 
 Hotfix for vault passphrase error modes [1083](https://github.com/terok-ai/terok/pull/1083) and supervisor restart [1085](https://github.com/terok-ai/terok/pull/1085)
