@@ -24,6 +24,7 @@ from terok.lib.core.images import (  # noqa: F401 — re-exported public API
 from terok.lib.domain.auth import (  # noqa: F401 — re-exported public API
     auth_provider_aliases,
     authenticate,
+    available_auth_modes,
     find_host_auth_image,
     resolve_auth_provider,
     resolve_credential_routing,
@@ -81,6 +82,7 @@ __all__ = [
     "acp_socket_is_live",
     "auth_provider_aliases",
     "authenticate",
+    "available_auth_modes",
     "build_images",
     "bundled_default_instructions",
     "ensure_sandbox_ready",

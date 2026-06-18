@@ -649,12 +649,22 @@ class ApiKeyEntryScreen(screen.ModalScreen[str | None]):
         self.dismiss(None)
 
 
-class AuthModeScreen(screen.ModalScreen["str | None"]):
-    """Modal for picking ``oauth`` vs ``api_key`` when a provider supports both.
+_AUTH_MODE_LABELS = {
+    "oauth": "OAuth / interactive login (launches container)",
+    "device_auth": "OAuth — device code (headless: shows URL + code)",
+    "api_key": "API key (paste key, no container needed)",
+}
 
-    Mirrors the executor CLI's ``Choose [1/2]:`` prompt but as a proper
-    Textual choice.  Dismisses with ``"oauth"``, ``"api_key"``, or
-    ``None`` on cancel.
+
+class AuthModeScreen(screen.ModalScreen["str | None"]):
+    """Modal for picking the login method when a provider offers more than one.
+
+    Mirrors the executor CLI's ``Choose [1-N]:`` prompt but as a proper
+    Textual choice.  The offered methods — ``"oauth"``, its headless
+    ``"device_auth"`` variant, and ``"api_key"`` — come from
+    [`available_auth_modes`][terok.lib.domain.auth.available_auth_modes], so
+    the modal stays in lockstep with the CLI listing and the OAuth gate.
+    Dismisses with the chosen mode id or ``None`` on cancel.
     """
 
     BINDINGS = [
@@ -684,19 +694,22 @@ class AuthModeScreen(screen.ModalScreen["str | None"]):
     """
 
     def __init__(self, provider_name: str) -> None:
-        """Build the screen for *provider_name*; provider must support both modes."""
+        """Build the screen for *provider_name*; the offered methods are derived from it."""
         super().__init__()
         self._provider_name = provider_name
+        from terok.lib.api import available_auth_modes
+
+        self._modes = available_auth_modes(provider_name)
 
     def compose(self) -> ComposeResult:
-        """Build the two-choice list (OAuth vs API key)."""
+        """Build one numbered choice per method the provider offers."""
         from terok.lib.api import AUTH_PROVIDERS
 
         info = AUTH_PROVIDERS.get(self._provider_name)
         label = info.label if info else self._provider_name
         options = [
-            Option("\\[1] OAuth / interactive login (launches container)", id="oauth"),
-            Option("\\[2] API key (paste key, no container needed)", id="api_key"),
+            Option(f"\\[{i}] {_AUTH_MODE_LABELS[mode]}", id=mode)
+            for i, mode in enumerate(self._modes, 1)
         ]
         with Vertical(id="auth-mode-dialog") as dialog:
             yield OptionList(*options, id="auth-mode-list")
@@ -714,13 +727,12 @@ class AuthModeScreen(screen.ModalScreen["str | None"]):
             self.dismiss(event.option_id)
 
     def on_key(self, event: events.Key) -> None:
-        """``1`` → oauth, ``2`` → api_key."""
-        if event.character == "1":
-            self.dismiss("oauth")
-            event.stop()
-        elif event.character == "2":
-            self.dismiss("api_key")
-            event.stop()
+        """Numeric keys select the method at that 1-based position."""
+        if event.character and event.character.isdigit():
+            idx = int(event.character) - 1
+            if 0 <= idx < len(self._modes):
+                self.dismiss(self._modes[idx])
+                event.stop()
 
     def action_cancel(self) -> None:
         """Dismiss without a result."""

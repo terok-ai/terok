@@ -58,6 +58,12 @@ def test_auth_parses_project_flag() -> None:
     assert args.project_flag == "p"
 
 
+def test_auth_parses_device_auth_flag() -> None:
+    """``--device-auth`` flips a store_true; it defaults off."""
+    assert _make_parser().parse_args(["auth", "codex"]).device_auth is False
+    assert _make_parser().parse_args(["auth", "codex", "--device-auth"]).device_auth is True
+
+
 def test_auth_accepts_provider_alias() -> None:
     """``auth openai`` is accepted — the LLM-provider alias of the codex entry."""
     args = _make_parser().parse_args(["auth", "openai"])
@@ -95,7 +101,7 @@ def test_dispatch_ignores_other_commands() -> None:
 
 def test_dispatch_host_wide_skips_project_loading() -> None:
     """``auth <provider>`` never touches ``load_project`` / ``require_agent_installed``."""
-    args = argparse.Namespace(cmd="auth", provider="claude", project_flag=None)
+    args = argparse.Namespace(cmd="auth", provider="claude", project_flag=None, device_auth=False)
     with (
         patch("terok.cli.commands.auth.load_project") as mock_load,
         patch("terok.cli.commands.auth.require_agent_installed") as mock_check,
@@ -105,13 +111,13 @@ def test_dispatch_host_wide_skips_project_loading() -> None:
 
     mock_load.assert_not_called()
     mock_check.assert_not_called()
-    mock_auth.assert_called_once_with("claude", None)
+    mock_auth.assert_called_once_with("claude", None, device_auth=False)
 
 
 def test_dispatch_project_flag_runs_install_check() -> None:
     """``auth <p> --project <name>`` loads the project and verifies the agent."""
     fake_project = SimpleNamespace(name="p1")
-    args = argparse.Namespace(cmd="auth", provider="claude", project_flag="p1")
+    args = argparse.Namespace(cmd="auth", provider="claude", project_flag="p1", device_auth=False)
     with (
         patch("terok.cli.commands.auth.load_project", return_value=fake_project),
         patch("terok.cli.commands.auth.require_agent_installed") as mock_check,
@@ -120,15 +126,23 @@ def test_dispatch_project_flag_runs_install_check() -> None:
         assert dispatch(args) is True
 
     mock_check.assert_called_once_with(fake_project, "claude", noun="Provider")
-    mock_auth.assert_called_once_with("claude", "p1")
+    mock_auth.assert_called_once_with("claude", "p1", device_auth=False)
 
 
 def test_dispatch_no_provider_runs_interactive() -> None:
     """``auth`` with no provider routes into the chained interactive flow."""
-    args = argparse.Namespace(cmd="auth", provider=None, project_flag=None)
+    args = argparse.Namespace(cmd="auth", provider=None, project_flag=None, device_auth=False)
     with patch("terok.cli.commands.auth._run_interactive") as mock_inter:
         dispatch(args)
-    mock_inter.assert_called_once_with(None)
+    mock_inter.assert_called_once_with(None, device_auth=False)
+
+
+def test_dispatch_forwards_device_auth_flag() -> None:
+    """``--device-auth`` rides through dispatch to the single-provider runner."""
+    args = argparse.Namespace(cmd="auth", provider="codex", project_flag=None, device_auth=True)
+    with patch("terok.cli.commands.auth._run_one") as mock_run:
+        assert dispatch(args) is True
+    mock_run.assert_called_once_with("codex", None, device_auth=True)
 
 
 # ── interactive helpers ────────────────────────────────────────────────
@@ -192,7 +206,7 @@ def test_run_interactive_hides_oauth_when_disabled(capsys: pytest.CaptureFixture
     """Without experimental + allow_oauth, the menu only advertises api-key."""
     with (
         patch("sys.stdin", new=StringIO("\n")),
-        patch("terok.cli.commands.auth.is_oauth_enabled_for", return_value=False),
+        patch("terok.lib.core.config.is_oauth_enabled_for", return_value=False),
         patch("terok.cli.commands.auth._run_one"),
     ):
         _run_interactive(project_name=None)
@@ -205,7 +219,7 @@ def test_run_interactive_shows_oauth_when_enabled(capsys: pytest.CaptureFixture[
     """With the gate open, OAuth is surfaced alongside any API-key support."""
     with (
         patch("sys.stdin", new=StringIO("\n")),
-        patch("terok.cli.commands.auth.is_oauth_enabled_for", return_value=True),
+        patch("terok.lib.core.config.is_oauth_enabled_for", return_value=True),
         patch("terok.cli.commands.auth._run_one"),
     ):
         _run_interactive(project_name=None)
@@ -224,7 +238,7 @@ def test_run_one_skips_install_check_when_host_wide() -> None:
     ):
         _run_one("claude", project_name=None)
     mock_load.assert_not_called()
-    mock_auth.assert_called_once_with("claude", None)
+    mock_auth.assert_called_once_with("claude", None, device_auth=False)
 
 
 def test_run_one_resolves_alias_for_install_check() -> None:
@@ -239,4 +253,40 @@ def test_run_one_resolves_alias_for_install_check() -> None:
     # the baked-agent lookup uses the resolved agent name, not the provider alias
     mock_check.assert_called_once_with(fake_project, "codex", noun="Provider")
     # authenticate gets the original token; it resolves the alias itself
-    mock_auth.assert_called_once_with("openai", "p1")
+    mock_auth.assert_called_once_with("openai", "p1", device_auth=False)
+
+
+def test_run_one_forwards_device_auth() -> None:
+    """``--device-auth`` rides through ``_run_one`` to ``authenticate``."""
+    with patch("terok.cli.commands.auth.authenticate") as mock_auth:
+        _run_one("codex", project_name=None, device_auth=True)
+    mock_auth.assert_called_once_with("codex", None, device_auth=True)
+
+
+# ── available_auth_modes (shared CLI/TUI source of truth) ───────────────
+
+
+def test_available_auth_modes_lists_device_code_for_codex() -> None:
+    """Codex (oauth + device + api_key) surfaces all three, device after oauth."""
+    from terok.lib.domain.auth import available_auth_modes
+
+    with patch("terok.lib.core.config.is_oauth_enabled_for", return_value=True):
+        assert available_auth_modes("codex") == ["oauth", "device_auth", "api_key"]
+    # alias resolves to the same entry
+    with patch("terok.lib.core.config.is_oauth_enabled_for", return_value=True):
+        assert available_auth_modes("openai") == ["oauth", "device_auth", "api_key"]
+
+
+def test_available_auth_modes_drops_oauth_when_gated() -> None:
+    """A closed OAuth gate removes oauth *and* its device-code variant."""
+    from terok.lib.domain.auth import available_auth_modes
+
+    with patch("terok.lib.core.config.is_oauth_enabled_for", return_value=False):
+        assert available_auth_modes("codex") == ["api_key"]
+
+
+def test_available_auth_modes_unknown_provider_is_empty() -> None:
+    """An unknown provider offers nothing."""
+    from terok.lib.domain.auth import available_auth_modes
+
+    assert available_auth_modes("not-a-provider") == []

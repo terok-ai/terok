@@ -488,13 +488,16 @@ terok auth claude --project myproj
 terok auth
 ```
 
-Each provider offers the modes its vendor supports — OAuth / interactive
-login (launches an auth container), API key (paste, no container needed),
-or both with a chooser prompt.
+Each provider offers the methods its vendor supports — OAuth / interactive
+login (launches an auth container), the OAuth **device-code** variant (for
+vendors that support it, e.g. Codex), and API key (paste, no container
+needed). When a provider offers more than one, `terok auth` shows a chooser;
+the TUI's auth flow presents the same choices.
 
 On a headless host (no local browser), Codex's OAuth login can't open the
-usual browser callback. Use the device-code flow instead — it shows a URL
-and a short code to enter on another device:
+usual browser callback. The device-code flow runs the same login headlessly —
+it shows a URL and a short code to enter on another device. Pick it from the
+chooser, or skip straight to it with the flag:
 
 ```bash
 terok auth codex --device-auth

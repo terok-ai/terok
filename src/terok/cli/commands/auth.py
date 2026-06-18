@@ -23,13 +23,21 @@ from __future__ import annotations
 import argparse
 import sys
 
-from terok.lib.api.agents import AUTH_PROVIDERS, auth_provider_aliases, resolve_auth_provider
+from terok.lib.api.agents import (
+    AUTH_PROVIDERS,
+    auth_provider_aliases,
+    available_auth_modes,
+    resolve_auth_provider,
+)
 
 from ...lib.api import authenticate
-from ...lib.core.config import is_oauth_enabled_for
 from ...lib.core.images import require_agent_installed
 from ...lib.core.projects import load_project, require_project_exists
 from ._completers import complete_project_names as _complete_project_names, set_completer
+
+# Display labels for the mode ids returned by ``available_auth_modes`` — the
+# hyphenated forms read better in the listing than the internal identifiers.
+_MODE_LABELS = {"oauth": "oauth", "device_auth": "device-code", "api_key": "api-key"}
 
 
 def _provider_of() -> dict[str, str]:
@@ -85,6 +93,15 @@ def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) ->
         ),
         _complete_project_names,
     )
+    p_auth.add_argument(
+        "--device-auth",
+        dest="device_auth",
+        action="store_true",
+        help=(
+            "Force the headless device-code login (skip the method chooser) — "
+            "for remote/headless hosts with no local browser"
+        ),
+    )
 
 
 def dispatch(args: argparse.Namespace) -> bool:
@@ -93,21 +110,24 @@ def dispatch(args: argparse.Namespace) -> bool:
         return False
     project_name = args.project_flag
     if args.provider is None:
-        _run_interactive(project_name)
+        _run_interactive(project_name, device_auth=args.device_auth)
     else:
-        _run_one(args.provider, project_name)
+        _run_one(args.provider, project_name, device_auth=args.device_auth)
     return True
 
 
 # ── Implementation helpers ────────────────────────────────────────────
 
 
-def _run_one(provider: str, project_name: str | None) -> None:
+def _run_one(provider: str, project_name: str | None, *, device_auth: bool = False) -> None:
     """Authenticate a single provider, optionally scoped to a project.
 
     *provider* may be an auth-entry name or an LLM-provider alias of one;
     ``authenticate`` resolves it, and the install check resolves it too so the
     baked-agent lookup uses the agent name, not the provider alias.
+
+    With *device_auth* the method chooser is skipped and the provider's
+    headless device-code login runs directly.
     """
     if project_name is not None:
         # Project-scoped: verify the L2 image actually has the agent baked
@@ -116,11 +136,15 @@ def _run_one(provider: str, project_name: str | None) -> None:
         require_agent_installed(
             load_project(project_name), resolve_auth_provider(provider), noun="Provider"
         )
-    authenticate(provider, project_name)
+    authenticate(provider, project_name, device_auth=device_auth)
 
 
-def _run_interactive(project_name: str | None) -> None:
-    """Interactively pick one or more providers and authenticate each in turn."""
+def _run_interactive(project_name: str | None, *, device_auth: bool = False) -> None:
+    """Interactively pick one or more providers and authenticate each in turn.
+
+    *device_auth* forces the device-code login for every selected provider —
+    the headless escape hatch when driving the menu on a remote host.
+    """
     if project_name is not None:
         require_project_exists(project_name)
 
@@ -129,13 +153,7 @@ def _run_interactive(project_name: str | None) -> None:
     print("Authenticate agents — pick one or more by number or name (agent or provider):")
     for i, name in enumerate(provider_names, 1):
         info = AUTH_PROVIDERS[name]
-        modes = []
-        if info.supports_oauth and is_oauth_enabled_for(name):
-            modes.append("oauth")
-            if info.supports_device_auth:
-                modes.append("device-code")
-        if info.supports_api_key:
-            modes.append("api-key")
+        modes = [_MODE_LABELS[m] for m in available_auth_modes(name)]
         label = f"{info.label} → {provider_of[name]}" if name in provider_of else info.label
         print(f"  {i:>2}. {name:<12} {label:<22} [{', '.join(modes)}]")
 
@@ -154,7 +172,7 @@ def _run_interactive(project_name: str | None) -> None:
 
     for provider in selected:
         print(f"\n── {provider} ─────────────────────")
-        _run_one(provider, project_name)
+        _run_one(provider, project_name, device_auth=device_auth)
 
 
 def _parse_provider_selection(raw: str, provider_names: list[str]) -> list[str]:

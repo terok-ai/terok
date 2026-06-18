@@ -962,6 +962,7 @@ from = ["terok.lib.domain.ssh"]
 expose = [
     "auth_provider_aliases",
     "authenticate",
+    "available_auth_modes",
     "find_host_auth_image",
     "resolve_auth_provider",
     "resolve_credential_routing",

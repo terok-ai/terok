@@ -301,27 +301,15 @@ class ProjectActionsMixin(_MixinBase):
         prompt always saw EOF.  The OAuth path reuses the same
         tmux/terminal/suspend cascade as project shell logins.
         """
-        from ..lib.api import AUTH_PROVIDERS
-        from ..lib.core.config import is_oauth_enabled_for
+        from ..lib.api import AUTH_PROVIDERS, available_auth_modes
         from .screens import AuthModeScreen
 
-        info = AUTH_PROVIDERS.get(provider)
-        if info is None:
+        if provider not in AUTH_PROVIDERS:
             self.notify(f"Unknown auth provider: {provider}", severity="error")
             return
 
-        has_oauth = info.supports_oauth and is_oauth_enabled_for(provider)
-        has_api_key = info.supports_api_key
-
-        if has_oauth and has_api_key:
-            mode = await self.push_screen_wait(AuthModeScreen(provider))
-            if mode is None:
-                return
-        elif has_oauth:
-            mode = "oauth"
-        elif has_api_key:
-            mode = "api_key"
-        else:
+        modes = available_auth_modes(provider)
+        if not modes:
             self.notify(
                 f"Auth for {provider!r} requires OAuth, but it is disabled "
                 "by the experimental / allow_oauth gates in config.yml.",
@@ -330,10 +318,21 @@ class ProjectActionsMixin(_MixinBase):
             )
             return
 
+        if len(modes) == 1:
+            mode = modes[0]
+        else:
+            mode = await self.push_screen_wait(AuthModeScreen(provider))
+            if mode is None:
+                return
+
         if mode == "api_key":
             await self._auth_via_api_key(provider, project_name=project_name)
         else:
-            await self._auth_via_oauth(provider, project_name=project_name)
+            # "oauth" launches the browser callback; "device_auth" runs the
+            # same login headlessly via a device code.
+            await self._auth_via_oauth(
+                provider, project_name=project_name, device_auth=(mode == "device_auth")
+            )
 
     async def _auth_via_api_key(self, provider: str, *, project_name: str | None) -> None:
         """Collect an API key via a Textual modal and store it in the vault."""
@@ -357,8 +356,14 @@ class ProjectActionsMixin(_MixinBase):
             return
         self.notify(f"API key stored for {provider}.")
 
-    async def _auth_via_oauth(self, provider: str, *, project_name: str | None) -> None:
-        """Prepare an OAuth auth container session and hand it to the launcher."""
+    async def _auth_via_oauth(
+        self, provider: str, *, project_name: str | None, device_auth: bool = False
+    ) -> None:
+        """Prepare an OAuth auth container session and hand it to the launcher.
+
+        With *device_auth* the prepared session runs the provider's headless
+        device-code login instead of the browser-callback flow.
+        """
         from ..lib.api import Authenticator, find_host_auth_image, resolve_credential_routing
         from ..lib.core.config import (
             is_claude_oauth_exposed,
@@ -397,6 +402,7 @@ class ProjectActionsMixin(_MixinBase):
             image=image,
             expose_token=expose,
             credential_set=credential_set,
+            device_auth=device_auth,
         )
         await self._launch_oauth_container(session)
 

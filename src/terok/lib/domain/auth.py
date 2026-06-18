@@ -53,6 +53,38 @@ def resolve_auth_provider(name: str) -> str:
     return auth_provider_aliases().get(name, name)
 
 
+def available_auth_modes(provider: str) -> list[str]:
+    """Ordered auth methods *provider* effectively offers.
+
+    The single source of truth for "which login methods does this provider
+    expose", honoring both the roster's declared capabilities and terok's
+    OAuth gate (the ``experimental`` flag plus the per-provider
+    ``allow_oauth``).  Returns mode ids drawn from ``"oauth"``,
+    ``"device_auth"``, and ``"api_key"``: the device-code variant appears
+    only alongside ``"oauth"`` — it is the same credential obtained
+    headlessly — and only for providers that declare it.  Shared by the CLI
+    listing, the CLI/TUI method choosers, and the TUI's direct-vs-chooser
+    gating so the two frontends can't drift.
+
+    *provider* is resolved from its LLM-provider alias (``openai`` → ``codex``)
+    first.  An unknown provider yields an empty list.
+    """
+    from ..core.config import is_oauth_enabled_for
+
+    provider = resolve_auth_provider(provider)
+    info = AUTH_PROVIDERS.get(provider)
+    if info is None:
+        return []
+    modes: list[str] = []
+    if info.supports_oauth and is_oauth_enabled_for(provider):
+        modes.append("oauth")
+        if info.supports_device_auth:
+            modes.append("device_auth")
+    if info.supports_api_key:
+        modes.append("api_key")
+    return modes
+
+
 def resolve_credential_routing(project_name: str | None) -> tuple[Path, str]:
     """Resolve ``(mounts_dir, credential_set)`` for an auth flow.
 
@@ -86,7 +118,9 @@ def resolve_credential_routing(project_name: str | None) -> tuple[Path, str]:
     return mounts_dir, project.credential_set
 
 
-def authenticate(provider: str, project_name: str | None = None) -> None:
+def authenticate(
+    provider: str, project_name: str | None = None, *, device_auth: bool = False
+) -> None:
     """Run the auth flow for *provider*, host-wide by default.
 
     When *project_name* is given, the project's L2 CLI image is reused — the
@@ -109,8 +143,10 @@ def authenticate(provider: str, project_name: str | None = None) -> None:
     bucket — no project context exists to override them.
 
     Providers that declare a headless device-code login (``device_auth`` in
-    the roster, e.g. codex) offer it as a method in the auth flow's prompt —
-    no separate flag here.
+    the roster, e.g. codex) offer it as a method in the auth flow's prompt.
+    Pass *device_auth* to force that variant non-interactively — the
+    ``terok auth <provider> --device-auth`` path for remote or headless hosts
+    where the browser callback can't open.
 
     *provider* accepts either an auth-entry name (``codex``) or the LLM provider
     it authenticates (``openai``); the latter is resolved to the former.
@@ -147,6 +183,7 @@ def authenticate(provider: str, project_name: str | None = None) -> None:
         expose_token=expose,
         oauth_enabled=is_oauth_enabled_for(provider),
         credential_set=credential_set,
+        device_auth=device_auth,
     )
 
 
@@ -273,6 +310,7 @@ def _resolve_host_auth_image(provider: str) -> str:
 __all__ = [
     "auth_provider_aliases",
     "authenticate",
+    "available_auth_modes",
     "find_host_auth_image",
     "resolve_auth_provider",
     "resolve_credential_routing",
