@@ -31,7 +31,10 @@ dependencies = [
     # writer; sandbox 0.3.0 ships it plus remove_container_state /
     # make_stray_sidecar_check.
     "terok-executor>=0.2.1,<0.3.0",
-    "terok-sandbox>=0.3.0,<0.4.0",
+    # PR-chain pin: needs terok-sandbox's ensure_container_runtime_dir
+    # (terok-ai/terok-sandbox#396) to rebuild the /run/terok bind source on
+    # restart.  Unreleased — re-pin to its 0.3.x release range once it ships.
+    "terok-sandbox @ git+https://github.com/sliwowitz/terok-sandbox.git@fix/restart-runtime-dir-after-reboot",
     "terok-shield>=0.7.1,<0.8.0",
     "terok-clearance>=0.7.1,<0.8.0",
     "terok-util>=0.2.0,<0.3.0",
