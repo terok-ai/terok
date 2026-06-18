@@ -1924,7 +1924,7 @@ if _HAS_TEXTUAL:
 
             cfg = SandboxConfig()
             try:
-                provision_session_passphrase(cfg, passphrase)
+                result = provision_session_passphrase(cfg, passphrase)
             except WrongPassphraseError:
                 self.notify(
                     "That passphrase does not open the credentials DB — nothing was"
@@ -1942,6 +1942,17 @@ if _HAS_TEXTUAL:
                 return
             except Exception as exc:  # noqa: BLE001 — e.g. legacy plaintext DB; surface verbatim
                 self.notify(str(exc), severity="error", timeout=10)
+                return
+            if not result.written:
+                # A durable tier (systemd-creds / keyring / config) already
+                # unlocks the vault, so a session file would only shadow it —
+                # exactly the residue this guard prevents.  Inform, don't write.
+                self.notify(
+                    f"Vault already auto-unlocks via {result.shadowed_durable} — no session"
+                    " passphrase needed.",
+                    severity="information",
+                    timeout=8,
+                )
                 return
             self.notify("Vault unlocked for this session.", severity="information", timeout=5)
             await self._refresh_vault_status()

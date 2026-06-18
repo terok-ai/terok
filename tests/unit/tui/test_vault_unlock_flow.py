@@ -35,11 +35,16 @@ def unlock_stub() -> SimpleNamespace:
 class TestOnVaultUnlockResult:
     """The modal's result lands via the validated writer."""
 
+    @staticmethod
+    def _result(*, written: bool = True, shadowed_durable: str | None = None) -> SimpleNamespace:
+        """A ``SessionProvisionResult`` stand-in (duck-typed: handler reads two fields)."""
+        return SimpleNamespace(written=written, validated=True, shadowed_durable=shadowed_durable)
+
     async def test_valid_passphrase_provisions_and_refreshes(
         self, unlock_stub: SimpleNamespace
     ) -> None:
         with patch(
-            "terok.lib.api.vault.provision_session_passphrase", return_value=True
+            "terok.lib.api.vault.provision_session_passphrase", return_value=self._result()
         ) as provision:
             await TerokTUI._on_vault_unlock_result(unlock_stub, "correct-horse")
         provision.assert_called_once()
@@ -47,6 +52,24 @@ class TestOnVaultUnlockResult:
         # Success notify + pill re-probe.
         assert any("unlocked" in str(c.args[0]) for c in unlock_stub.notify.call_args_list)
         unlock_stub._refresh_vault_status.assert_awaited_once()
+
+    async def test_durable_shadow_refused_informs_no_write(
+        self, unlock_stub: SimpleNamespace
+    ) -> None:
+        """When a durable tier already resolves, the writer refuses → info notify, no refresh.
+
+        This is the exact TUI vector that used to create the #1070 shadow:
+        the modal calling the writer directly on an already-unlocked box.
+        """
+        with patch(
+            "terok.lib.api.vault.provision_session_passphrase",
+            return_value=self._result(written=False, shadowed_durable="systemd-creds"),
+        ):
+            await TerokTUI._on_vault_unlock_result(unlock_stub, "redundant")
+        messages = [str(c.args[0]) for c in unlock_stub.notify.call_args_list]
+        assert any("already auto-unlocks via systemd-creds" in m for m in messages)
+        assert not any("unlocked for this session" in m for m in messages)
+        unlock_stub._refresh_vault_status.assert_not_awaited()
 
     async def test_wrong_passphrase_notifies_and_writes_nothing(
         self, unlock_stub: SimpleNamespace

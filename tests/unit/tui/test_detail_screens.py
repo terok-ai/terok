@@ -2810,6 +2810,16 @@ class TestOnVaultUnlockResult:
         instance.notify = mock.Mock()
         cfg = mock.Mock()
         cfg.vault_passphrase_file = passphrase_file
+        # Present NO durable tier and NO DB so the real (guarded, validating)
+        # provision_session_passphrase neither refuses-as-shadow nor opens a
+        # DB — it just writes, which is the path these tests exercise.  Real
+        # absent paths, not Mock attrs, so ``.is_file()`` / ``.exists()`` are
+        # honest ``False`` rather than truthy Mocks.
+        cfg.vault_systemd_creds_file = passphrase_file.parent / "absent.cred"
+        cfg.db_path = passphrase_file.parent / "absent.db"
+        cfg.credentials_use_keyring = False
+        cfg.credentials_passphrase = None
+        cfg.credentials_passphrase_command = None
         instance._test_sandbox_cfg = cfg
         return instance
 

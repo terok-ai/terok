@@ -30,11 +30,15 @@ from terok.lib.domain.vault import vault_db  # noqa: F401 — re-exported public
 from terok.lib.integrations.sandbox import (  # noqa: F401 — re-exported public API
     NoPassphraseError,
     RecoveryStatus,
+    SessionProvisionResult,
+    SessionShadow,
     WrongPassphraseError,
+    clear_redundant_session_file,
     handle_vault_seal,
     handle_vault_to_keyring,
     provision_session_passphrase,
     purge_passphrase_tiers,
+    session_shadow_state,
 )
 
 
@@ -188,7 +192,11 @@ __all__ = [
     "WrongPassphraseError",
     "handle_vault_seal",
     "handle_vault_to_keyring",
+    "SessionProvisionResult",
+    "SessionShadow",
+    "clear_redundant_session_file",
     "provision_session_passphrase",
+    "session_shadow_state",
     "purge_passphrase_tiers",
     "vault_db",
 ]
