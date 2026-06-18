@@ -97,6 +97,29 @@ class TestPodmanStart:
         with pytest.raises(SystemExit):
             _podman_start(Mock(), "test-ctr")
 
+    def test_ensures_runtime_dir_before_start(self, mock_runtime) -> None:
+        """The /run/terok bind source is rebuilt (mode 0700) before start.
+
+        After a host reboot the per-container runtime dir is wiped; without
+        recreating it ``podman start`` fails on the missing mount source.
+        The dir must exist *at* start time, so the check rides the mocked
+        start call.
+        """
+        from terok.lib.core.config import make_sandbox_config
+        from terok.lib.orchestration.task_runners.container import _podman_start
+
+        cname = "terok-cli-reboot"
+        run_dir = make_sandbox_config().runtime_dir / "run" / cname
+        assert not run_dir.exists()
+
+        def _check_dir_ready() -> None:
+            assert run_dir.is_dir(), "runtime dir must exist before podman start"
+            assert (run_dir.stat().st_mode & 0o777) == 0o700
+
+        mock_runtime.container.return_value.start.side_effect = _check_dir_ready
+        _podman_start(Mock(), cname)
+        mock_runtime.container.return_value.start.assert_called_once()
+
 
 # ── _apply_shield_policy ─────────────────────────────────
 

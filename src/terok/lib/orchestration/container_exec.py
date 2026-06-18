@@ -10,7 +10,10 @@ poisoned git hooks or scripts executing with host privileges.
 
 from subprocess import TimeoutExpired
 
+from terok.lib.integrations.sandbox import Sandbox
+
 from ..core import runtime as _rt
+from ..core.config import make_sandbox_config
 from ..core.projects import load_project
 from ..core.task_state import container_name as _container_name
 from ..util.logging_utils import _log_debug
@@ -59,8 +62,12 @@ def container_git_diff(
             # commits, network calls, and other side effects.
             _log_debug(f"container_git_diff: refusing to restart exited headless container {cname}")
             return None
+        # Start through the sandbox facade so it rebuilds the /run/terok
+        # bind-mount source (wiped by a reboot, removed by the supervisor
+        # on every stop) — this temporary restart need not know that
+        # host-side precondition.
         try:
-            container.start()
+            Sandbox(make_sandbox_config(), runtime=runtime).start(cname)
         except (FileNotFoundError, RuntimeError) as exc:
             _log_debug(f"container_git_diff: temporary start({cname}) failed: {exc}")
             return None

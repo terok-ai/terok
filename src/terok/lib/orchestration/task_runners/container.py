@@ -44,9 +44,16 @@ if TYPE_CHECKING:
 
 
 def _podman_start(project: ProjectConfig, cname: str) -> None:
-    """Start an existing container, raising SystemExit on failure."""
+    """Start an existing container, raising SystemExit on failure.
+
+    Routes through [`Sandbox.start`][terok_sandbox.Sandbox.start] so the
+    sandbox re-establishes the container's host-side scaffolding — the
+    ``/run/terok`` bind-mount source that a reboot wipes — as part of the
+    start.  terok stays ignorant of that precondition; "start an existing
+    container" is one sandbox call.
+    """
     try:
-        _rt.resolve_runtime(project).container(cname).start()
+        _sandbox(project).start(cname)
     except FileNotFoundError:
         raise SystemExit("podman not found; please install podman")
     except RuntimeError as exc:
@@ -222,17 +229,22 @@ def _run_container(
         raise SystemExit(str(exc)) from exc
 
 
-def _agent_runner(project: ProjectConfig) -> AgentRunner:
-    """Return an `AgentRunner` whose `Sandbox` is bound to *project*'s runtime.
+def _sandbox(project: ProjectConfig) -> Sandbox:
+    """Return a `Sandbox` bound to *project*'s resolved runtime.
 
-    Resolving the runtime here (rather than letting `Sandbox` default
-    to crun) is what makes ``run.runtime: krun`` actually take effect
-    on launch — `AgentRunner` then routes every podman invocation
-    through the matching backend.
+    Resolving the runtime here (rather than letting `Sandbox` default to
+    crun) is what makes ``run.runtime: krun`` take effect — the facade
+    then routes every podman invocation through the matching backend.
+    Shared by [`_agent_runner`][terok.lib.orchestration.task_runners.container._agent_runner]
+    (launch) and [`_podman_start`][terok.lib.orchestration.task_runners.container._podman_start]
+    (restart) so both speak to the same backend the same way.
     """
-    cfg = make_sandbox_config()
-    runtime = _rt.resolve_runtime(project)
-    return AgentRunner(sandbox=Sandbox(cfg, runtime=runtime))
+    return Sandbox(make_sandbox_config(), runtime=_rt.resolve_runtime(project))
+
+
+def _agent_runner(project: ProjectConfig) -> AgentRunner:
+    """Return an `AgentRunner` whose `Sandbox` is bound to *project*'s runtime."""
+    return AgentRunner(sandbox=_sandbox(project))
 
 
 def _project_runtime_flags(project: ProjectConfig, *, cname: str) -> list[str]:

@@ -57,6 +57,25 @@ class TestContainerGitDiff:
         assert args[1] == ["git", "-C", "/workspace", "diff", "--stat", "HEAD@{1}..HEAD"]
         assert kwargs == {"timeout": 30}
 
+    def test_restart_rebuilds_runtime_dir(self, mock_runtime) -> None:
+        """The temporary restart rebuilds the /run/terok bind source first.
+
+        Mirrors the host-reboot case: the per-container runtime dir is gone,
+        so the temporary start would fail on the missing mount source unless
+        ``container_git_diff`` recreates it (mode 0700) before starting.
+        """
+        from terok.lib.core.config import make_sandbox_config
+
+        mock_runtime.container.return_value.state = "exited"
+        mock_runtime.exec.return_value = ExecResult(exit_code=0, stdout="d", stderr="")
+        run_dir = make_sandbox_config().runtime_dir / "run" / "proj-cli-7"
+        assert not run_dir.exists()
+
+        container_git_diff("proj", "7", "cli", "HEAD")
+
+        assert run_dir.is_dir()
+        assert (run_dir.stat().st_mode & 0o777) == 0o700
+
     def test_exited_headless_container_not_restarted(self, mock_runtime) -> None:
         """Exited headless (run mode) containers must not be restarted."""
         mock_runtime.container.return_value.state = "exited"
