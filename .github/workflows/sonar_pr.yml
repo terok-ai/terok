@@ -55,7 +55,7 @@ jobs:
 
       # Checkout happens after metadata is loaded so the workflow can analyze the PR's
       # exact head commit while still running under the trusted base-repo workflow context.
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
         with:
           repository: ${{ env.PR_REPO }}
           ref: ${{ env.PR_SHA }}
