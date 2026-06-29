@@ -81,19 +81,19 @@ include = [
 version = "0.8.3"
 
 [tool.poetry.group.dev.dependencies]
-pydevd-pycharm = "262.8117.23"
-ruff = ">=0.15.18"
+pydevd-pycharm = "262.8377.41"
+ruff = ">=0.15.20"
 markdown-it-py = ">=4.0.0"
 mdit-py-plugins = ">=0.5.0"
 tach = "^0.35.0"
 textual-dev = "^1.8.0"
 docstr-coverage = "^2.3.2"
-complexipy = ">=5.6.1"
+complexipy = ">=6.0.0"
 vulture = ">=2.12"
 reuse = "^6.2.0"
 bandit = ">=1.7"
 pre-commit = ">=4.0"
-import-linter = ">=2.1"
+import-linter = ">=2.12"
 mypy = ">=1.13,<3.0"
 
 [tool.poetry.group.test.dependencies]
