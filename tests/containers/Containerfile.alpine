@@ -1,0 +1,52 @@
+# SPDX-FileCopyrightText: 2026 Jiri Vyskocil
+# SPDX-License-Identifier: Apache-2.0
+
+# Alpine (OpenRC, musl) — the non-systemd matrix slot.
+#
+# Purpose: prove the full terok stack (per-container supervisor sidecar,
+# vault, git gate, clearance varlink hub) runs on a host with NO systemd
+# at all — the floor case for OpenRC servers (Gentoo/Alpine), runit/s6
+# images, and SLURM interactive jobs.  See terok-ai/terok#959 and #1113.
+#
+# Deliberately does NOT install systemd (the debian/fedora slots do).
+# The run-matrix.sh preflight asserts systemd is absent here, so the
+# slot can never silently regress into testing a systemd host.
+#
+# Alpine ships Python 3.12 natively; uv is used only for a fast,
+# ensurepip-independent venv (Alpine's stdlib venv ships no bundled
+# pip).  The uv binary in the official image is a static musl build.
+FROM docker.io/library/alpine:3.21
+
+# musl toolchain (build-base + *-dev) lets poetry build any dependency
+# without a musllinux wheel (notably dbus-python, built via meson
+# against dbus-dev + glib-dev).  bind-tools provides dig for the gate's
+# DNS probes; openssh-client for the SSH signer path; bash is required
+# by the harness (busybox sh is not bash).
+RUN apk add --no-cache \
+    podman slirp4netns nftables fuse-overlayfs crun \
+    shadow shadow-uidmap \
+    python3 \
+    git curl ca-certificates bind-tools bash openssh-client \
+    dbus \
+    build-base python3-dev dbus-dev glib-dev pkgconf meson libffi-dev
+
+COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
+
+# ── Rootless podman nesting setup (mirrors the debian/fedora slots) ──
+# Subordinate UID/GID ranges MUST stay within 0-65535 so they fit inside
+# the outer rootless-podman container's user-namespace mapping.
+RUN useradd -m -s /bin/bash testrunner \
+    && uid=$(id -u testrunner) \
+    && printf "testrunner:1:%d\ntestrunner:%d:%d\n" \
+        $((uid - 1)) $((uid + 1)) $((65535 - uid)) > /etc/subuid \
+    && cp /etc/subuid /etc/subgid \
+    && chmod 4755 /usr/bin/newuidmap /usr/bin/newgidmap \
+    && mkdir -p /etc/containers \
+    && printf '[storage]\ndriver = "overlay"\n\n[storage.options.overlay]\nmount_program = "/usr/bin/fuse-overlayfs"\nmountopt = "nodev,fsync=0"\n' \
+        > /etc/containers/storage.conf \
+    && printf '[engine]\ncgroup_manager = "cgroupfs"\nevents_logger = "file"\n\n# Disable per-container kernel keyring — prevents keyring leak / EDQUOT\n[containers]\nkeyring = false\n' \
+        > /etc/containers/containers.conf \
+    && mkdir -p /run/user/$uid \
+    && chown testrunner:testrunner /run/user/$uid
+
+WORKDIR /src

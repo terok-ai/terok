@@ -51,6 +51,8 @@ else
 fi
 
 # Target distros: name -> Containerfile suffix
+# ``alpine`` is the non-systemd slot (OpenRC/musl) — it proves the full
+# stack runs with no systemd at all.  See terok-ai/terok#959, #1113.
 declare -A DISTROS=(
     [debian12]="debian12"
     [ubuntu2404]="ubuntu2404"
@@ -60,6 +62,7 @@ declare -A DISTROS=(
     [fedora44]="fedora44"
     [podman]="podman"
     [nix]="nix"
+    [alpine]="alpine"
 )
 
 # The ``nix`` slot runs the same flavour the GitHub-Actions host CI
@@ -79,6 +82,7 @@ declare -A SLOT_KIND=(
     [fedora44]="podman"
     [podman]="podman"
     [nix]="nix"
+    [alpine]="podman"
 )
 
 # Expected podman versions — pinned to the exact distro-shipped point
@@ -95,6 +99,7 @@ declare -A EXPECTED_VERSIONS=(
     [fedora44]="5.8.2"
     [podman]="latest"
     [nix]="n/a"
+    [alpine]="5.3.1"
 )
 
 # Print "expected podman X.Y.Z" for distros with a version pin, or
@@ -141,6 +146,7 @@ declare -A TEST_USERS=(
     [fedora44]="testrunner"
     [podman]="podman"
     [nix]="testrunner"
+    [alpine]="testrunner"
 )
 
 usage() {
@@ -230,6 +236,21 @@ run_tests() {
             # ── Prepare workspace (as root) ──
             cp -a $SOURCE_MOUNT $WORKSPACE_DIR
             chown -R $test_user:$test_user $WORKSPACE_DIR
+
+            # ── Non-systemd proof ──
+            # The alpine slot must run on a genuinely systemd-free host;
+            # fail loudly if a future base image regresses that.  Other
+            # slots just record their init system in the log.
+            echo \"--- init system: PID1=\$(cat /proc/1/comm 2>/dev/null || echo unknown) ---\"
+            if command -v systemctl >/dev/null 2>&1 || [ -d /run/systemd/system ]; then
+                echo \"systemd: present\"
+                if [ \"$name\" = alpine ]; then
+                    echo \"FATAL: 'alpine' is the non-systemd slot but systemd was detected\" >&2
+                    exit 1
+                fi
+            else
+                echo \"systemd: absent — non-systemd host confirmed\"
+            fi
 
             # Strip IPv6 zone-ID nameservers — they reference host interfaces
             # (e.g. eno1) that don't exist inside the container, causing dig
