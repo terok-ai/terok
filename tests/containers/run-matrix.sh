@@ -96,10 +96,10 @@ declare -A EXPECTED_VERSIONS=(
     [ubuntu2604]="5.7.0"
     [debian13]="5.4.2"
     [fedora43]="5.8.2"
-    [fedora44]="5.8.2"
+    [fedora44]="5.8.3"
     [podman]="latest"
     [nix]="n/a"
-    [alpine]="5.3.1"
+    [alpine]="5.3.2"
 )
 
 # Print "expected podman X.Y.Z" for distros with a version pin, or
@@ -217,7 +217,7 @@ run_tests() {
 
     # Three-phase flow:
     #   Phase 1: tests that do NOT need hooks
-    #   Phase 2: install global hooks via terok shield install-hooks --user
+    #   Phase 2: install global hooks via terok shield install-hooks
     #   Phase 3: tests that need hooks
     #
     # Privileged mode gives the outer container the capabilities needed
@@ -316,7 +316,7 @@ run_tests() {
                 # ── Phase 2: install global hooks ──
                 echo \"\"
                 echo \"--- phase 2: installing shield hooks ---\"
-                poetry run terok shield install-hooks --user
+                poetry run terok shield install-hooks
 
                 # Verify hooks are detectable — fail fast if setup did not work
                 poetry run python3 -c \"
