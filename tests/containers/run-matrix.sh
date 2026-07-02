@@ -533,12 +533,19 @@ done
 warn_keyring
 
 SKIPPED=()
+# A slot whose image fails to build is recorded and reported as FAILED, but
+# does NOT abort the whole matrix — so one run surfaces every distro's issues
+# instead of stopping at the first bad build.
+declare -A BUILD_FAILED_MAP=()
 
 for target in "${TARGETS[@]}"; do
     if [[ -n "$(slot_skip_reason "$target")" ]]; then
         continue
     fi
-    build_image "$target"
+    if ! build_image "$target"; then
+        echo -e "${C_RED}==> Build FAILED for ${C_BOLD}$target${C_RED} — recording and continuing${C_RESET}" >&2
+        BUILD_FAILED_MAP[$target]=1
+    fi
 done
 
 if $BUILD_ONLY; then
@@ -554,6 +561,11 @@ for target in "${TARGETS[@]}"; do
     if [[ -n "$skip_reason" ]]; then
         echo -e "${C_YELLOW}==> Skipping ${C_BOLD}$target${C_YELLOW} on ${HOST_ARCH}: ${skip_reason}${C_RESET}"
         SKIPPED+=("$target")
+        continue
+    fi
+    if [[ -n "${BUILD_FAILED_MAP[$target]:-}" ]]; then
+        echo -e "${C_RED}==> $target: FAIL (image build failed)${C_RESET}" >&2
+        FAILED+=("$target")
         continue
     fi
     case "${SLOT_KIND[$target]}" in

@@ -13,8 +13,12 @@
 # names differ from Fedora).
 FROM docker.io/mageia:9
 
+# Mageia 9 has no fuse-overlayfs package (only mga10/cauldron do), so the
+# inner rootless podman uses the vfs storage driver — reliable when nested
+# (no overlay-on-overlay), just slower.
+
 RUN dnf install -y \
-        podman slirp4netns nftables fuse-overlayfs crun \
+        podman slirp4netns nftables crun \
         shadow-utils \
         python3 \
         git curl ca-certificates bind-utils bash openssh-clients \
@@ -34,7 +38,7 @@ RUN useradd -m testrunner \
     && cp /etc/subuid /etc/subgid \
     && chmod 4755 /usr/bin/newuidmap /usr/bin/newgidmap \
     && mkdir -p /etc/containers \
-    && printf '[storage]\ndriver = "overlay"\n\n[storage.options.overlay]\nmount_program = "/usr/bin/fuse-overlayfs"\nmountopt = "nodev,fsync=0"\n' \
+    && printf '[storage]\ndriver = "vfs"\n' \
         > /etc/containers/storage.conf \
     && printf '[engine]\ncgroup_manager = "cgroupfs"\nevents_logger = "file"\n\n# Disable per-container kernel keyring — prevents keyring leak / EDQUOT\n[containers]\nkeyring = false\n' \
         > /etc/containers/containers.conf \
