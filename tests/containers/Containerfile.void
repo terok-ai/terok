@@ -1,0 +1,49 @@
+# SPDX-FileCopyrightText: 2026 Jiri Vyskocil
+# SPDX-License-Identifier: Apache-2.0
+
+# Void Linux (runit, glibc) — a non-systemd glibc matrix slot.
+#
+# Purpose: prove the full terok stack runs on a non-systemd host that is
+# *glibc* (unlike the musl Alpine slot) — the shape of the real
+# non-systemd targets (Gentoo/OpenRC, SLURM nodes).  Being glibc, the
+# textual[syntax] tree-sitter grammars install from manylinux wheels, so
+# terok is exercised full-featured here.  See terok-ai/terok#959, #1113.
+#
+# Deliberately non-systemd (runit).  The run-matrix.sh preflight asserts
+# systemd is absent for this slot.
+#
+# NOTE: Void package names are best-effort and may need adjustment on the
+# first matrix run (Void uses xbps; -devel suffixes; base-devel for the
+# toolchain).
+FROM ghcr.io/void-linux/void-glibc:latest
+
+# Sync + self-update xbps first (rolling release), then install deps.  The
+# musl toolchain equivalents here are glibc; build tooling (base-devel +
+# *-devel) covers dbus-python (built via meson against dbus/glib) and any
+# other sdist.  bind-utils provides dig; openssh the ssh client.
+RUN xbps-install -Suy xbps \
+    && xbps-install -Sy \
+        podman slirp4netns nftables fuse-overlayfs crun \
+        shadow \
+        python3 python3-devel \
+        git curl ca-certificates bind-utils bash openssh \
+        dbus dbus-devel glib-devel pkgconf meson base-devel libffi-devel
+
+COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
+
+# ── Rootless podman nesting setup (mirrors the debian/fedora slots) ──
+RUN useradd -m -s /bin/bash testrunner \
+    && uid=$(id -u testrunner) \
+    && printf "testrunner:1:%d\ntestrunner:%d:%d\n" \
+        $((uid - 1)) $((uid + 1)) $((65535 - uid)) > /etc/subuid \
+    && cp /etc/subuid /etc/subgid \
+    && chmod 4755 /usr/bin/newuidmap /usr/bin/newgidmap \
+    && mkdir -p /etc/containers \
+    && printf '[storage]\ndriver = "overlay"\n\n[storage.options.overlay]\nmount_program = "/usr/bin/fuse-overlayfs"\nmountopt = "nodev,fsync=0"\n' \
+        > /etc/containers/storage.conf \
+    && printf '[engine]\ncgroup_manager = "cgroupfs"\nevents_logger = "file"\n\n# Disable per-container kernel keyring — prevents keyring leak / EDQUOT\n[containers]\nkeyring = false\n' \
+        > /etc/containers/containers.conf \
+    && mkdir -p /run/user/$uid \
+    && chown testrunner:testrunner /run/user/$uid
+
+WORKDIR /src

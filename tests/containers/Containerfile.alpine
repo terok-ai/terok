@@ -30,19 +30,6 @@ RUN apk add --no-cache \
     dbus \
     build-base python3-dev dbus-dev glib-dev pkgconf meson libffi-dev
 
-# textual[syntax] pulls tree-sitter grammar packages.  On aarch64-musl no
-# grammar wheels are published, so pip builds them from sdist — but the
-# grammar sdists omit the generated-parser headers (upstream packaging bug:
-# src/parser.c #includes "tree_sitter/parser.h" which is not shipped).
-# Vendor those headers onto the system include path where the grammars'
-# quoted include will find them, so the sdist builds succeed.
-ARG TS_HEADERS_REF=v0.25.0
-RUN mkdir -p /usr/include/tree_sitter \
-    && for h in parser alloc array; do \
-        curl -fsSL "https://raw.githubusercontent.com/tree-sitter/tree-sitter/${TS_HEADERS_REF}/lib/src/${h}.h" \
-            -o "/usr/include/tree_sitter/${h}.h"; \
-    done
-
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
 
 # ── Rootless podman nesting setup (mirrors the debian/fedora slots) ──

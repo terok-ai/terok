@@ -63,7 +63,31 @@ declare -A DISTROS=(
     [podman]="podman"
     [nix]="nix"
     [alpine]="alpine"
+    [void]="void"
+    [mageia]="mageia"
 )
+
+# Host architecture — some slots can't run on every arch (see slot_skip_reason).
+HOST_ARCH="$(uname -m)"
+
+# Slots that are non-systemd (OpenRC/runit/musl): the run-time preflight
+# hard-fails these if systemd is unexpectedly present.
+declare -A NON_SYSTEMD_SLOTS=(
+    [alpine]=1
+    [void]=1
+)
+
+# Return a human reason if $1 cannot run on the current host, else nothing.
+# ``alpine`` is musl: textual[syntax]'s tree-sitter grammars have musllinux
+# wheels for x86_64 but NOT aarch64, and the sdists don't build against the
+# pinned core — so Alpine is x86_64-only for terok.  It is skipped (not
+# failed) on aarch64.  See terok-ai/terok#959 discussion.
+slot_skip_reason() {
+    local name="$1"
+    if [[ "$name" == "alpine" && ( "$HOST_ARCH" == "aarch64" || "$HOST_ARCH" == "arm64" ) ]]; then
+        printf 'musl+aarch64 has no tree-sitter grammar wheels (textual[syntax]); Alpine is x86_64-only for terok'
+    fi
+}
 
 # The ``nix`` slot runs the same flavour the GitHub-Actions host CI
 # does — full unit suite plus host-only integration tests — but under
@@ -83,6 +107,8 @@ declare -A SLOT_KIND=(
     [podman]="podman"
     [nix]="nix"
     [alpine]="podman"
+    [void]="podman"
+    [mageia]="podman"
 )
 
 # Expected podman versions — pinned to the exact distro-shipped point
@@ -100,6 +126,8 @@ declare -A EXPECTED_VERSIONS=(
     [podman]="latest"
     [nix]="n/a"
     [alpine]="5.3.2"
+    [void]="latest"
+    [mageia]="latest"
 )
 
 # Print "expected podman X.Y.Z" for distros with a version pin, or
@@ -147,6 +175,8 @@ declare -A TEST_USERS=(
     [podman]="podman"
     [nix]="testrunner"
     [alpine]="testrunner"
+    [void]="testrunner"
+    [mageia]="testrunner"
 )
 
 usage() {
@@ -238,14 +268,14 @@ run_tests() {
             chown -R $test_user:$test_user $WORKSPACE_DIR
 
             # ── Non-systemd proof ──
-            # The alpine slot must run on a genuinely systemd-free host;
-            # fail loudly if a future base image regresses that.  Other
-            # slots just record their init system in the log.
+            # Non-systemd slots (alpine/void) must run on a genuinely
+            # systemd-free host; fail loudly if a future base image regresses
+            # that.  Other slots just record their init system in the log.
             echo \"--- init system: PID1=\$(cat /proc/1/comm 2>/dev/null || echo unknown) ---\"
             if command -v systemctl >/dev/null 2>&1 || [ -d /run/systemd/system ]; then
                 echo \"systemd: present\"
-                if [ \"$name\" = alpine ]; then
-                    echo \"FATAL: 'alpine' is the non-systemd slot but systemd was detected\" >&2
+                if [ \"${NON_SYSTEMD_SLOTS[$name]:-}\" = 1 ]; then
+                    echo \"FATAL: '$name' is a non-systemd slot but systemd was detected\" >&2
                     exit 1
                 fi
             else
@@ -502,7 +532,12 @@ done
 
 warn_keyring
 
+SKIPPED=()
+
 for target in "${TARGETS[@]}"; do
+    if [[ -n "$(slot_skip_reason "$target")" ]]; then
+        continue
+    fi
     build_image "$target"
 done
 
@@ -515,6 +550,12 @@ PASSED=()
 FAILED=()
 
 for target in "${TARGETS[@]}"; do
+    skip_reason="$(slot_skip_reason "$target")"
+    if [[ -n "$skip_reason" ]]; then
+        echo -e "${C_YELLOW}==> Skipping ${C_BOLD}$target${C_YELLOW} on ${HOST_ARCH}: ${skip_reason}${C_RESET}"
+        SKIPPED+=("$target")
+        continue
+    fi
     case "${SLOT_KIND[$target]}" in
         nix) runner=run_nix_tests ;;
         *) runner=run_tests ;;
@@ -530,6 +571,9 @@ echo ""
 echo -e "${C_BOLD}===== Matrix Summary =====${C_RESET}"
 for target in "${PASSED[@]}"; do
     echo -e "  ${C_GREEN}PASS${C_RESET}: $target $(version_summary "$target")"
+done
+for target in "${SKIPPED[@]}"; do
+    echo -e "  ${C_YELLOW}SKIP${C_RESET}: $target ($(slot_skip_reason "$target"))"
 done
 for target in "${FAILED[@]}"; do
     echo -e "  ${C_RED}FAIL${C_RESET}: $target $(version_summary "$target")"

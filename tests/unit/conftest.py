@@ -149,32 +149,6 @@ def _mock_infrastructure() -> Iterator[None]:
 
 
 @pytest.fixture(autouse=True)
-def _stub_nft_binary(
-    tmp_path_factory: pytest.TempPathFactory, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    """Guarantee an ``nft`` binary is resolvable so shield construction never fails.
-
-    ``terok_shield``'s ``SubprocessRunner`` resolves ``nft`` at construction
-    and raises ``NftNotFoundError`` when it is absent, so any unit test that
-    builds a real ``ShieldManager(...).shield`` (e.g. via
-    ``_apply_auth_protect_denies``) fails on a host without nftables — such as
-    the ``nix`` matrix slot.  The unit suite never runs an actual nft command
-    (deny sets are empty or mocked), so a no-op stub on ``PATH`` suffices;
-    hosts that already ship a real ``nft`` are left untouched.
-    """
-    import os
-    import shutil
-
-    if shutil.which("nft"):
-        return
-    bindir = tmp_path_factory.mktemp("stub-bin")
-    nft = bindir / "nft"
-    nft.write_text("#!/bin/sh\nexit 0\n")
-    nft.chmod(0o755)
-    monkeypatch.setenv("PATH", f"{bindir}{os.pathsep}{os.environ['PATH']}")
-
-
-@pytest.fixture(autouse=True)
 def _stub_credential_db(tmp_path_factory: pytest.TempPathFactory) -> Iterator[None]:
     """Stub ``SandboxConfig.open_credential_db`` so tests never hit the resolution chain.
 

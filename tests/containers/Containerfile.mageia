@@ -1,0 +1,44 @@
+# SPDX-FileCopyrightText: 2026 Jiri Vyskocil
+# SPDX-License-Identifier: Apache-2.0
+
+# Mageia (systemd, glibc, rpm) — broadens rpm-distro coverage beyond
+# Fedora after a recently-reported Mageia issue.  Being glibc, terok is
+# exercised full-featured (tree-sitter grammars install from wheels).
+#
+# Mageia uses systemd — this is NOT a non-systemd slot; the run-matrix.sh
+# preflight only records the init system here.
+#
+# NOTE: Mageia package names / base tag are best-effort and may need
+# adjustment on the first matrix run (dnf is available on Mageia; some
+# names differ from Fedora).
+FROM docker.io/mageia:9
+
+RUN dnf install -y \
+        podman slirp4netns nftables fuse-overlayfs crun \
+        shadow-utils \
+        python3 \
+        git curl ca-certificates bind-utils bash openssh-clients \
+        dbus dbus-devel glib2-devel pkgconf meson gcc python3-devel libffi-devel \
+    && dnf clean all
+
+# Mageia 9 ships Python < 3.12 — use uv to get a 3.12 interpreter (mirrors
+# the debian12 slot).
+COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
+RUN uv python install 3.12
+
+# ── Rootless podman nesting setup (mirrors the debian/fedora slots) ──
+RUN useradd -m testrunner \
+    && uid=$(id -u testrunner) \
+    && printf "testrunner:1:%d\ntestrunner:%d:%d\n" \
+        $((uid - 1)) $((uid + 1)) $((65535 - uid)) > /etc/subuid \
+    && cp /etc/subuid /etc/subgid \
+    && chmod 4755 /usr/bin/newuidmap /usr/bin/newgidmap \
+    && mkdir -p /etc/containers \
+    && printf '[storage]\ndriver = "overlay"\n\n[storage.options.overlay]\nmount_program = "/usr/bin/fuse-overlayfs"\nmountopt = "nodev,fsync=0"\n' \
+        > /etc/containers/storage.conf \
+    && printf '[engine]\ncgroup_manager = "cgroupfs"\nevents_logger = "file"\n\n# Disable per-container kernel keyring — prevents keyring leak / EDQUOT\n[containers]\nkeyring = false\n' \
+        > /etc/containers/containers.conf \
+    && mkdir -p /run/user/$uid \
+    && chown testrunner:testrunner /run/user/$uid
+
+WORKDIR /src
