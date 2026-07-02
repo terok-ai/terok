@@ -5,7 +5,7 @@
 FROM registry.fedoraproject.org/fedora:44
 
 RUN dnf install -y \
-    podman passt nftables slirp4netns fuse-overlayfs crun \
+    podman passt nftables dnsmasq slirp4netns fuse-overlayfs crun \
     python3 python3-pip \
     git curl bind-utils \
     dbus-daemon gcc python3-devel dbus-devel glib2-devel pkgconf meson \

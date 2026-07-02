@@ -23,7 +23,7 @@ FROM docker.io/library/alpine:3.21
 # DNS probes; openssh-client for the SSH signer path; bash is required
 # by the harness (busybox sh is not bash).
 RUN apk add --no-cache \
-    podman slirp4netns nftables fuse-overlayfs crun \
+    podman slirp4netns nftables dnsmasq fuse-overlayfs crun \
     shadow shadow-uidmap \
     python3 \
     git curl ca-certificates bind-tools bash openssh-client \
