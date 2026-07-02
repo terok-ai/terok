@@ -17,6 +17,11 @@
 # toolchain).
 FROM ghcr.io/void-linux/void-glibc:latest
 
+# Ownership label: a Containerfile LABEL propagates into every
+# intermediate layer image, so the harness teardown can prune exactly
+# its own dangling generations (value = the harness IMAGE_PREFIX).
+LABEL "io.terok.matrix-test"="terok-test"
+
 # Sync + self-update xbps first (rolling release), then install deps.  The
 # musl toolchain equivalents here are glibc; build tooling (base-devel +
 # *-devel) covers dbus-python (built via meson against dbus/glib) and any

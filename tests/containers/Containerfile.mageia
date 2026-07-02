@@ -13,6 +13,11 @@
 # names differ from Fedora).
 FROM docker.io/mageia:9
 
+# Ownership label: a Containerfile LABEL propagates into every
+# intermediate layer image, so the harness teardown can prune exactly
+# its own dangling generations (value = the harness IMAGE_PREFIX).
+LABEL "io.terok.matrix-test"="terok-test"
+
 # Known 64K-page-kernel incompatibility: Mageia 9's aarch64 bind userland
 # (jemalloc built for 4K pages) SIGABRTs on 64K-page hosts (e.g. the
 # nvidia-64k DGX kernels) — dig dies before sending a query, so

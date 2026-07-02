@@ -6,6 +6,11 @@
 # (subuid/subgid, storage.conf, containers.conf, setuid newuidmap).
 FROM quay.io/podman/stable:latest
 
+# Ownership label: a Containerfile LABEL propagates into every
+# intermediate layer image, so the harness teardown can prune exactly
+# its own dangling generations (value = the harness IMAGE_PREFIX).
+LABEL "io.terok.matrix-test"="terok-test"
+
 RUN dnf install -y \
     nftables dnsmasq python3 python3-pip \
     git curl bind-utils openssh-clients \

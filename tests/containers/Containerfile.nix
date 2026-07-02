@@ -13,6 +13,11 @@
 
 FROM docker.io/nixos/nix:latest
 
+# Ownership label: a Containerfile LABEL propagates into every
+# intermediate layer image, so the harness teardown can prune exactly
+# its own dangling generations (value = the harness IMAGE_PREFIX).
+LABEL "io.terok.matrix-test"="terok-test"
+
 # Pre-populate the system profile with what the tests need at runtime:
 # wrapped python + pip and awk.  Bash and git-minimal already ship in
 # the base image's profile; adding ``nixpkgs#bash`` or ``nixpkgs#git``
