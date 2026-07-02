@@ -3605,9 +3605,8 @@ description = "Single-agent task runner for hardened Podman containers"
 optional = false
 python-versions = ">=3.12,<3.15"
 groups = ["main"]
-files = [
-    {file = "terok_executor-0.2.2a1-py3-none-any.whl", hash = "sha256:d6ee51401087e26656751c78d10b24f0b8cca1160083154461f46ec0cf087144"},
-]
+files = []
+develop = false
 
 [package.dependencies]
 agent-client-protocol = ">=0.10.1"
@@ -3616,13 +3615,15 @@ prompt-toolkit = ">=3.0"
 pydantic = ">=2.9"
 rich = ">=13.0"
 "ruamel.yaml" = ">=0.18"
-terok_sandbox = {url = "https://github.com/terok-ai/terok-sandbox/releases/download/v0.3.2a1/terok_sandbox-0.3.2a1-py3-none-any.whl"}
+terok-sandbox = {git = "https://github.com/sliwowitz/terok-sandbox.git", rev = "feat/lifecycle-verb-parity"}
 terok_util = {url = "https://github.com/terok-ai/terok-util/releases/download/v0.2.0/terok_util-0.2.0-py3-none-any.whl"}
 tomli-w = ">=1.0"
 
 [package.source]
-type = "url"
-url = "https://github.com/terok-ai/terok-executor/releases/download/v0.2.2a1/terok_executor-0.2.2a1-py3-none-any.whl"
+type = "git"
+url = "https://github.com/sliwowitz/terok-executor.git"
+reference = "feat/podman-parity-lifecycle"
+resolved_reference = "fd45c95ff6aada3534e49db398584e66eeae82dd"
 
 [[package]]
 name = "terok-sandbox"
@@ -3631,9 +3632,8 @@ description = "Hardened Podman container runner with gate server and shield inte
 optional = false
 python-versions = ">=3.12,<4.0"
 groups = ["main"]
-files = [
-    {file = "terok_sandbox-0.3.2a1-py3-none-any.whl", hash = "sha256:bff8c1bdf1d3e11babcd04ccfb7bd150ad7f353d29d87f59b863db59cbd35b36"},
-]
+files = []
+develop = false
 
 [package.dependencies]
 aiohttp = ">=3.14.1"
@@ -3651,8 +3651,10 @@ terok_shield = {url = "https://github.com/terok-ai/terok-shield/releases/downloa
 terok_util = {url = "https://github.com/terok-ai/terok-util/releases/download/v0.2.0/terok_util-0.2.0-py3-none-any.whl"}
 
 [package.source]
-type = "url"
-url = "https://github.com/terok-ai/terok-sandbox/releases/download/v0.3.2a1/terok_sandbox-0.3.2a1-py3-none-any.whl"
+type = "git"
+url = "https://github.com/sliwowitz/terok-sandbox.git"
+reference = "feat/lifecycle-verb-parity"
+resolved_reference = "57e31d871d88d95f8facce3067c540a7884eadc7"
 
 [[package]]
 name = "terok-shield"
@@ -4551,4 +4553,4 @@ propcache = ">=0.2.1"
 [metadata]
 lock-version = "2.1"
 python-versions = ">=3.12,<3.15"
-content-hash = "667c417c68592b3a77c3fdde50a28ce94060f5d9785fbc1525e5d1313aa0955a"
+content-hash = "139160513c7dd4a02c7d0bc7aaf1b47e97dc44fc28398db08026f49d1c47a1c7"

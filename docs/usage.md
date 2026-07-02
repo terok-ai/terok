@@ -388,7 +388,8 @@ terok task logs myproj v9krt --raw        # Raw podman output
 
 # Stop or restart a task
 terok task stop myproj v9krt
-terok task restart myproj v9krt
+terok task restart myproj v9krt           # Resume; recreates in place if it can't
+terok task restart myproj v9krt --fresh   # Force recreate (e.g. rebuilt image)
 
 # Delete a task
 terok task delete myproj v9krt
