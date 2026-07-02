@@ -41,7 +41,7 @@ RUN useradd -m -s /bin/bash testrunner \
     && mkdir -p /etc/containers \
     && printf '[storage]\ndriver = "overlay"\n\n[storage.options.overlay]\nmount_program = "/usr/bin/fuse-overlayfs"\nmountopt = "nodev,fsync=0"\n' \
         > /etc/containers/storage.conf \
-    && printf '[engine]\ncgroup_manager = "cgroupfs"\nevents_logger = "file"\n\n# Disable per-container kernel keyring — prevents keyring leak / EDQUOT\n[containers]\nkeyring = false\n' \
+    && printf '[engine]\ncgroup_manager = "cgroupfs"\nevents_logger = "file"\n\n# Disable per-container kernel keyring — prevents keyring leak / EDQUOT\n[containers]\nkeyring = false\n\n# Void ships an unpatched passt whose pasta cannot join the parent netns\n# inside this nested userns (build-time RUN dies with a Permission denied\n# on /proc/<pid>/ns/net); slirp4netns works, as on the older-podman slots.\n[network]\ndefault_rootless_network_cmd = "slirp4netns"\n' \
         > /etc/containers/containers.conf \
     && mkdir -p /run/user/$uid \
     && chown testrunner:testrunner /run/user/$uid
