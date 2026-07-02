@@ -13,6 +13,11 @@
 # names differ from Fedora).
 FROM docker.io/mageia:9
 
+# Known 64K-page-kernel incompatibility: Mageia 9's aarch64 bind userland
+# (jemalloc built for 4K pages) SIGABRTs on 64K-page hosts (e.g. the
+# nvidia-64k DGX kernels) — dig dies before sending a query, so
+# dig-dependent paths rely on shield's getent fallback there.
+
 # Mageia 9 has no fuse-overlayfs package (only mga10/cauldron do), so the
 # inner rootless podman uses the vfs storage driver — reliable when nested
 # (no overlay-on-overlay), just slower.
