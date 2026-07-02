@@ -253,6 +253,7 @@ run_tests() {
     # Privileged mode gives the outer container the capabilities needed
     # for nested podman, but tests run as uid 1000 (rootless podman).
     podman run --rm --name "$ctr_name" \
+        -e TERM=xterm \
         --privileged \
         --security-opt label=disable \
         --device /dev/fuse:rw \
@@ -404,6 +405,7 @@ run_nix_tests() {
     echo ""
 
     podman run --rm --name "$ctr_name" \
+        -e TERM=xterm \
         --security-opt label=disable \
         -v "$REPO_ROOT:$SOURCE_MOUNT:ro,Z" \
         -v "$RESULTS_DIR:/results:rw,Z" \
