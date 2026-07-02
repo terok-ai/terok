@@ -106,7 +106,10 @@ def shell_test_image(tmp_path_factory: pytest.TempPathFactory) -> Iterator[str]:
     # dies at `FROM {{` with "invalid reference format".
     from terok_executor.container.build import render_l0, stage_scripts, stage_tmux_config
 
-    (build_dir / "L0.Dockerfile").write_text(render_l0())
+    # Fully-qualified base image: nested rootless podman in the matrix images
+    # has no unqualified-search-registries, so a short name like ``fedora:44``
+    # (executor's default) fails to resolve.
+    (build_dir / "L0.Dockerfile").write_text(render_l0("registry.fedoraproject.org/fedora:44"))
 
     # Stage scripts (executor's own + sandbox bridge overlays) and tmux
     # config into the build context.  Using executor's `stage_scripts()`
