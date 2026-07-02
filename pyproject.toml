@@ -16,9 +16,19 @@ maintainers = [
 keywords = ["podman", "containers", "tasks", "developer-tools", "cli"]
 requires-python = ">=3.12,<3.15"
 dynamic = ["version", "classifiers"]
+# ── Dependency pinning policy (see AGENTS.md) ───────────────────────
+# Third-party runtime deps at major 0 (0.y.z) are pinned to an exact
+# patch: pre-1.0 packages guarantee nothing across minors OR patches.
+# Major >= 1 deps use ranges (semver).  Sibling terok-* deps are exempt
+# — we guarantee patch-level API stability, so they keep ranges (or a
+# release-wheel URL pin).  Dev/test/docs groups are exempt.  This is the
+# ONLY comment permitted in this file — never add dev-cycle notes here,
+# and never mention temporary git-branch pins or the multi-repo PR chain
+# (a merge script rewrites deps and would leak such comments into a
+# production release).
 dependencies = [
     "pydantic>=2.6",
-    "ruamel.yaml>=0.18",
+    "ruamel.yaml==0.19.1",
     "textual[syntax]==8.2.5",
     "argcomplete>=3.1",
     "requests>=2.31",
