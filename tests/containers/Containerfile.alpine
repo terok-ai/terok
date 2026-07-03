@@ -31,7 +31,7 @@ RUN apk add --no-cache \
     podman slirp4netns nftables dnsmasq fuse-overlayfs crun \
     shadow shadow-uidmap \
     python3 \
-    git curl ca-certificates bind-tools bash openssh-client \
+    git git-daemon curl ca-certificates bind-tools bash openssh-client \
     dbus \
     build-base python3-dev dbus-dev glib-dev pkgconf meson libffi-dev
 
