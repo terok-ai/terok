@@ -237,12 +237,13 @@ an unwarranted maintenance burden the developers can absorb. After changing
 any pin, run `poetry lock` and commit `pyproject.toml` and `poetry.lock`
 together.
 
-**No comments in `pyproject.toml`.** Do **not** add comments to
-`pyproject.toml`, with the single exception of the standing dependency-pinning
-policy note above the `dependencies` table. In particular **never** add a
-comment about a dependency that is temporarily pinned to a git branch during a
-multi-repo PR chain, and never mention the PR-chain workflow in
-`pyproject.toml` at all. Cross-repo merges are performed by a script that does
-not understand comments, so any stray dev-cycle comment is carried straight
-into a production release. Keep such rationale in commit messages, PR
-descriptions, or this file.
+**Comment discipline in `pyproject.toml`.** The dependency tables stay
+comment-free and self-documenting, apart from the standing policy pointer
+above them. **Never** comment on why a dependency -- especially a sibling
+`terok-*` package -- is pinned a certain way, and never mention dev-cycle
+state (temporary git-branch pins, the multi-repo PR chain): cross-repo
+merges are performed by a script that does not understand comments, so any
+such note is carried straight into a production release. Keep pin
+rationale in commit messages, PR descriptions, or this file. Ordinary
+explanatory comments in `[tool.*]` sections are fine. `pyproject.toml`
+stays ASCII-only.
