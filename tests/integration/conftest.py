@@ -157,14 +157,11 @@ def pytest_sessionstart(session: pytest.Session) -> None:
         return
     unknown = expected - _CAPABILITY_PROBES.keys()
     if unknown:
-        pytest.exit(
-            f"TEROK_EXPECT names unknown capabilities: {sorted(unknown)}", returncode=3
-        )
+        pytest.exit(f"TEROK_EXPECT names unknown capabilities: {sorted(unknown)}", returncode=3)
     missing = sorted(cap for cap in expected if not _CAPABILITY_PROBES[cap]())
     if missing:
         pytest.exit(
-            "matrix capability contract broken — expected but missing: "
-            + ", ".join(missing),
+            "matrix capability contract broken — expected but missing: " + ", ".join(missing),
             returncode=3,
         )
 
