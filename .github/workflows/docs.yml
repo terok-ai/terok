@@ -165,9 +165,10 @@ jobs:
         run: poetry run properdocs build --strict
 
       # Master pushes refresh /dev/; a release call (release.yml, on the
-      # tag ref) lands in /<minor>/ titled with the full version.  Only
-      # final releases take the `latest` alias — an alpha must not become
-      # the site default.
+      # tag ref) lands in /<minor>/ titled with the full version and moves
+      # the `latest` alias.  Only final vX.Y.Z tags qualify: alphas never
+      # reach pypi-publish, so a non-final ref here is a mis-dispatch and
+      # fails loudly rather than minting a docs version.
       - name: Compute versioned-docs target
         id: target
         env:
@@ -175,19 +176,15 @@ jobs:
         run: |
           set -euo pipefail
           if [[ "$RELEASE" == "true" ]]; then
-            if [[ ! "$GITHUB_REF_NAME" =~ ^v[0-9]+\.[0-9]+\.[0-9]+ ]]; then
-              echo "Release docs publish requires a v*.*.* tag ref (got: $GITHUB_REF_NAME)" >&2
+            if [[ ! "$GITHUB_REF_NAME" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+              echo "Release docs publish requires a final v*.*.* tag ref (got: $GITHUB_REF_NAME)" >&2
               exit 1
             fi
             full="${GITHUB_REF_NAME#v}"
-            aliases=""
-            if [[ "$full" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-              aliases="latest"
-            fi
             {
               echo "version=${full%.*}"
               echo "title=$full"
-              echo "aliases=$aliases"
+              echo "aliases=latest"
             } >> "$GITHUB_OUTPUT"
           else
             {
