@@ -218,13 +218,18 @@ version:
 - **Third-party, major 0 (`0.y.z`)** → pin to an **exact patch**
   (`pkg==0.y.z`). Pre-1.0 packages promise no compatibility across either
   minors *or* patches, so a floating range invites silent breakage.
-- **Third-party, major ≥ 1** → pin by **range** (e.g. `pkg>=2.6`), trusting
-  the package to honour semver. If a specific `>=1` dependency is known to
-  break semver, tighten it deliberately.
-- **Sibling `terok-*` deps** → **exempt**: keep ranges (or their
-  release-wheel URL pin). We guarantee patch-level API stability across the
-  sibling packages, so a `0.y` range there will not silently break — do
-  *not* exact-pin them (it would fight the multi-repo release/PR-chain flow).
+- **Third-party, major ≥ 1** → **compatible-release at the tested
+  baseline**: `pkg~=X.Y` where `X.Y` is the locked major.minor (floor =
+  what we test against, cap = next major). Use the patch-series form
+  `pkg~=X.Y.Z` only where a specific patch floor is required — note the
+  PEP 440 truncation rule: the cap is one level above the last written
+  component (`~=2.13` → `<3`, `~=8.2.5` → `<8.3`). Prefer `~=` over a
+  hand-rolled `>=,<` pair: it states the baseline as one fact with the
+  ceiling derived by construction, so the bounds cannot drift apart.
+- **Sibling `terok-*` deps** → `~=0.y.z` (or their release-wheel URL pin).
+  We guarantee patch-level API stability across the sibling packages, so
+  the patch-series form is exactly right — do *not* exact-pin them (it
+  would fight the multi-repo release/PR-chain flow).
 
 Dev / test / docs / tooling dependencies (the `[tool.poetry.group.*]` groups)
 are **exempt** — they are not shipped to installers and exact-pinning them is
