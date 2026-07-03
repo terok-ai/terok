@@ -120,6 +120,18 @@ jobs:
         with:
           attestations: true
 
+  # Versioned docs exist only for what users can `pip install`: publish
+  # the /<minor>/ snapshot (and move `latest`) strictly after the PyPI
+  # upload succeeded.  gh-only and testpypi targets deliberately skip this.
+  docs-version:
+    needs: pypi-publish
+    permissions:
+      contents: write
+      actions: read
+    uses: ./.github/workflows/docs.yml
+    with:
+      release: true
+
   testpypi-publish:
     needs: build
     if: github.event_name == 'workflow_dispatch' && inputs.target == 'testpypi'

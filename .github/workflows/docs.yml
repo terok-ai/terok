@@ -26,6 +26,15 @@ on:
   pull_request:
     branches: [master]
   workflow_dispatch:
+  # release.yml calls this after a successful PyPI publish: the same build
+  # runs on the tag ref and lands in the versioned tree as /<minor>/ with
+  # the `latest` alias (final releases only), instead of /dev/.
+  workflow_call:
+    inputs:
+      release:
+        description: "Publish as the release version derived from the tag ref (instead of dev)"
+        type: boolean
+        default: false
 
 # Allow only one concurrent deployment
 concurrency:
@@ -40,6 +49,10 @@ jobs:
   build:
     if: github.repository == 'terok-ai/terok'
     runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.target.outputs.version }}
+      title: ${{ steps.target.outputs.title }}
+      aliases: ${{ steps.target.outputs.aliases }}
     steps:
       - uses: actions/checkout@v7
 
@@ -151,27 +164,55 @@ jobs:
       - name: Build documentation
         run: poetry run properdocs build --strict
 
-      - name: Setup Pages
-        if: github.repository == 'terok-ai/terok' && github.ref == 'refs/heads/master'
-        uses: actions/configure-pages@v6
+      # Master pushes refresh /dev/; a release call (release.yml, on the
+      # tag ref) lands in /<minor>/ titled with the full version.  Only
+      # final releases take the `latest` alias — an alpha must not become
+      # the site default.
+      - name: Compute versioned-docs target
+        id: target
+        env:
+          RELEASE: ${{ inputs.release || false }}
+        run: |
+          set -euo pipefail
+          if [[ "$RELEASE" == "true" ]]; then
+            if [[ ! "$GITHUB_REF_NAME" =~ ^v[0-9]+\.[0-9]+\.[0-9]+ ]]; then
+              echo "Release docs publish requires a v*.*.* tag ref (got: $GITHUB_REF_NAME)" >&2
+              exit 1
+            fi
+            full="${GITHUB_REF_NAME#v}"
+            aliases=""
+            if [[ "$full" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+              aliases="latest"
+            fi
+            {
+              echo "version=${full%.*}"
+              echo "title=$full"
+              echo "aliases=$aliases"
+            } >> "$GITHUB_OUTPUT"
+          else
+            {
+              echo "version=dev"
+              echo "title="
+              echo "aliases="
+            } >> "$GITHUB_OUTPUT"
+          fi
 
-      - name: Upload artifact
-        if: github.ref == 'refs/heads/master'
-        uses: actions/upload-pages-artifact@v5
+      - name: Upload site for versioned publish
+        if: github.ref == 'refs/heads/master' || inputs.release
+        uses: actions/upload-artifact@v7
         with:
-          path: site
+          name: docs-site
+          path: site/
 
-  deploy:
-    if: github.repository == 'terok-ai/terok' && github.ref == 'refs/heads/master'
+  # TODO(repin): point at the mkdocs-terok release tag (@vX.Y.Z) once
+  # terok-ai/mkdocs-terok#95 ships in a release.
+  publish:
+    if: github.repository == 'terok-ai/terok' && (github.ref == 'refs/heads/master' || inputs.release)
     needs: build
-    runs-on: ubuntu-latest
     permissions:
-      pages: write
-      id-token: write
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
-    steps:
-      - name: Deploy to GitHub Pages
-        id: deployment
-        uses: actions/deploy-pages@v5
+      contents: write
+    uses: terok-ai/mkdocs-terok/.github/workflows/publish-versioned-docs.yml@master
+    with:
+      version: ${{ needs.build.outputs.version }}
+      title: ${{ needs.build.outputs.title }}
+      aliases: ${{ needs.build.outputs.aliases }}
