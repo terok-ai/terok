@@ -297,7 +297,9 @@ run_tests() {
                 set -e
                 export XDG_RUNTIME_DIR=/run/user/\$(id -u)
                 export TEROK_MATRIX=1
-                export TEROK_EXPECT=podman,nft,dnsmasq,dig,getent,git,ssh-keygen,internet,hooks
+                # Image-capability contract only: hooks are phase state,
+                # appended below once phase 2 has installed and verified them.
+                export TEROK_EXPECT=podman,nft,dnsmasq,dig,getent,git,ssh-keygen,internet
 
                 cd $WORKSPACE_DIR
 
@@ -360,6 +362,9 @@ print(\\\"Shield hooks verified.\\\")
 \"
 
                 # ── Phase 3: tests with hooks ──
+                # Hooks are installed and verified now — from here on their
+                # absence would be a real breakage, so the contract grows.
+                export TEROK_EXPECT=\${TEROK_EXPECT},hooks
                 echo \"\"
                 echo \"--- phase 3: tests with hooks ---\"
                 poetry run pytest tests/integration/ -v --tb=short -m \"needs_hooks\"

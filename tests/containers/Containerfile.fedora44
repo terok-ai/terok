@@ -12,7 +12,7 @@ LABEL "io.terok.matrix-test"="terok-test"
 RUN dnf install -y \
     podman passt nftables dnsmasq slirp4netns fuse-overlayfs crun \
     python3 python3-pip \
-    git curl bind-utils \
+    git curl bind-utils openssh-clients \
     dbus-daemon gcc python3-devel dbus-devel glib2-devel pkgconf meson \
     && dnf clean all
 
