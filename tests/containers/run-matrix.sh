@@ -296,6 +296,8 @@ run_tests() {
             su - $test_user -c '
                 set -e
                 export XDG_RUNTIME_DIR=/run/user/\$(id -u)
+                export TEROK_MATRIX=1
+                export TEROK_EXPECT=podman,nft,dnsmasq,dig,getent,git,ssh-keygen,internet,hooks
 
                 cd $WORKSPACE_DIR
 
