@@ -47,30 +47,83 @@ def test_tmux_configuration_integration(
 @pytest.mark.parametrize(
     ("force_new", "expected_session_args"),
     [
-        pytest.param(False, ["new-session", "-A", "-s", "terok"], id="attach-shared"),
+        pytest.param(
+            False, ["new-session", "-A", "-s", "terok", "-n", "terok"], id="create-shared"
+        ),
         pytest.param(True, ["new-session"], id="force-new"),
     ],
 )
-def test_launch_in_tmux_attaches_or_forks(
+def test_launch_in_tmux_creates_or_forks(
     monkeypatch: pytest.MonkeyPatch,
     force_new: bool,
     expected_session_args: list[str],
 ) -> None:
-    """Default launch attaches to the shared ``terok`` session; ``--new-session`` forks."""
+    """With no session running, launch creates the shared (or a forked) marked session."""
     import shutil
 
-    from terok.tui import app
+    from terok.tui import app, tmux_session
 
     monkeypatch.delenv("TMUX", raising=False)
     # ``_launch_in_tmux`` does a local ``import shutil``; patch the real module.
     monkeypatch.setattr(shutil, "which", lambda _cmd: "/usr/bin/tmux")
+    monkeypatch.setattr(tmux_session, "session_exists", lambda: False)
 
     captured: list[str] = []
     monkeypatch.setattr(app.os, "execvp", lambda _file, argv: captured.extend(argv))
 
     app._launch_in_tmux(force_new=force_new)
 
-    # argv is ["tmux", "-f", <conf>, *session_args, "terok-tui"]; the conf path
-    # is materialised at runtime so we assert around it rather than on it.
+    # argv is ["tmux", "-f", <conf>, *session_args, "-e", <marker>, "terok-tui"];
+    # the conf path is materialised at runtime so we assert around it.
     assert captured[:2] == ["tmux", "-f"]
-    assert captured[3:] == [*expected_session_args, "terok-tui"]
+    assert captured[3:] == [*expected_session_args, "-e", "TEROK_TMUX=1", "terok-tui"]
+
+
+@pytest.mark.parametrize(
+    ("main_window", "expected_argv"),
+    [
+        pytest.param(
+            "@3",
+            ["tmux", "select-window", "-t", "@3", ";", "attach-session", "-t", "=terok"],
+            id="land-on-stamped-window",
+        ),
+        pytest.param(
+            None,
+            [
+                "tmux",
+                "new-window",
+                "-t",
+                "=terok",
+                "-n",
+                "terok",
+                "terok-tui",
+                ";",
+                "attach-session",
+                "-t",
+                "=terok",
+            ],
+            id="revive-tui-window",
+        ),
+    ],
+)
+def test_launch_in_tmux_resumes_existing_session(
+    monkeypatch: pytest.MonkeyPatch,
+    main_window: str | None,
+    expected_argv: list[str],
+) -> None:
+    """Resume lands on the stamped TUI window, reviving the TUI when none is stamped."""
+    import shutil
+
+    from terok.tui import app, tmux_session
+
+    monkeypatch.delenv("TMUX", raising=False)
+    monkeypatch.setattr(shutil, "which", lambda _cmd: "/usr/bin/tmux")
+    monkeypatch.setattr(tmux_session, "session_exists", lambda: True)
+    monkeypatch.setattr(tmux_session, "find_main_window", lambda: main_window)
+
+    captured: list[str] = []
+    monkeypatch.setattr(app.os, "execvp", lambda _file, argv: captured.extend(argv))
+
+    app._launch_in_tmux(force_new=False)
+
+    assert captured == expected_argv

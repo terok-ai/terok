@@ -459,9 +459,21 @@ tui:
 
 When tmux mode is active, terok **attaches to the shared `terok` session** if
 one is already running, so a second `terok tui --tmux` reconnects to your
-existing TUI instead of failing on the duplicate session name. Pass
-`--new-session` to opt out and start a separate, tmux-named session alongside
-it.
+existing TUI instead of failing on the duplicate session name. Resuming lands
+you directly on the window running the TUI (even if you had killed and
+relaunched it in a different window), and revives the TUI in a new window if
+none is running anymore. Pass `--new-session` to opt out and start a separate,
+tmux-named session alongside it.
+
+Inside a terok-managed tmux, a few extra conveniences apply:
+
+- **Quitting the TUI** asks whether to return to your terminal (`q` again —
+  the session and its tasks keep running in the background) or hop to the
+  next tmux window (`n`). If the TUI window closes anyway, a brief status-bar
+  hint in the window you land on explains how to get back.
+- **Upgrades:** if a newer terok is installed on disk while the TUI is
+  running (e.g. `pipx upgrade terok`), the TUI offers to restart itself in
+  place to pick up the new version.
 
 #### tmux Quick Reference
 

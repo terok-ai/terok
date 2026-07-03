@@ -87,9 +87,11 @@ if _HAS_TEXTUAL:
     # Import version info function (shared with CLI --version)
     from ..lib.core.version import (
         get_version_info as _get_version_info,
+        installed_dist_version as _installed_dist_version,
         short_version as _short_version,
     )
     from ..lib.util.yaml import YAMLError
+    from . import tmux_session
 
     # Exit code 5 is the ``terok setup`` partial-success signal — every
     # install phase succeeded but a manual step (currently: SELinux
@@ -97,6 +99,16 @@ if _HAS_TEXTUAL:
     # value is owned by the sandbox setup CLI; the TUI mirrors it here
     # so the post-run dispatch can branch into ``_offer_selinux_fix``.
     _EXIT_MANUAL_STEP_NEEDED = 5
+
+    # ``App.run()`` result asking ``_run_tui`` to re-exec the process in
+    # place — used when the operator accepts the restart offer after a
+    # terok upgrade landed on disk.
+    _RESTART_EXIT_RESULT = "terok-restart"
+
+    # How often to compare the on-disk terok version against the running
+    # one.  A subprocess probe every five minutes is cheap, and upgrades
+    # under a live TUI are rare events.
+    _UPDATE_CHECK_INTERVAL_S = 300.0
 
     @dataclass(frozen=True)
     class ProjectStateResult:
@@ -120,6 +132,8 @@ if _HAS_TEXTUAL:
         QuitConfirmScreen,
         ShieldScreen,
         TaskDetailsScreen,
+        TmuxQuitScreen,
+        UpdateRestartScreen,
         VaultScreen,
         VaultUnlockModal,
     )
@@ -353,6 +367,9 @@ if _HAS_TEXTUAL:
             # delete guard can tell an active teardown apart from a stale flag
             # left by an interrupted session.
             self._deleting_tasks: set[tuple[str, str]] = set()
+            # On-disk version already offered as a restart; a dismissed
+            # offer is not repeated until yet another version lands.
+            self._update_offered_version: str | None = None
 
         def _update_title(self) -> None:
             """Update the TUI title with version and branch information.
@@ -452,6 +469,17 @@ if _HAS_TEXTUAL:
             # Apply the persisted theme choice before the first paint,
             # and keep ``tui.theme`` in sync with later palette picks.
             self._apply_saved_theme()
+
+            # In a terok-managed tmux, mark this window as the one running
+            # the TUI — self-healing across kill-and-relaunch (best-effort,
+            # a few local socket calls; quiet no-op everywhere else).
+            tmux_session.stamp_main_window()
+
+            # Watch for a terok upgrade landing on disk under the running
+            # TUI.  Restarting re-execs this process, which makes no sense
+            # for a web-served TUI — there the server owns the lifecycle.
+            if not self.is_web:
+                self.set_interval(_UPDATE_CHECK_INTERVAL_S, self._check_for_update)
 
             try:
                 clipboard_status = get_clipboard_helper_status()
@@ -1503,7 +1531,15 @@ if _HAS_TEXTUAL:
             only intercepts the top-level quit; the command-palette "Quit"
             still calls [`action_quit`][terok.tui.app.TerokTUI.action_quit]
             directly.
+
+            When quitting would close a terok-managed tmux window and drop
+            the user into one of the remaining task windows, the guard is
+            the tmux-aware [`TmuxQuitScreen`][terok.tui.screens.TmuxQuitScreen]
+            instead — ``qq`` then detaches back to the user's terminal.
             """
+            if other_windows := tmux_session.quit_lands_in_other_window():
+                self.push_screen(TmuxQuitScreen(other_windows), self._on_tmux_quit_choice)
+                return
             self.push_screen(QuitConfirmScreen(), self._on_quit_confirmed)
 
         async def _on_quit_confirmed(self, should_quit: bool | None) -> None:
@@ -1511,7 +1547,15 @@ if _HAS_TEXTUAL:
             if should_quit:
                 await self.action_quit()
 
-        async def action_quit(self) -> None:
+        async def _on_tmux_quit_choice(self, choice: str | None) -> None:
+            """Apply the tmux-aware quit choice: detach to the terminal or hop windows."""
+            if choice == "detach":
+                tmux_session.detach_client()
+                await self.action_quit()
+            elif choice == "next":
+                await self.action_quit()
+
+        async def action_quit(self, *, restart: bool = False) -> None:
             """Exit the TUI cleanly.
 
             If real-work workers (task delete, image build, etc.) are
@@ -1519,6 +1563,11 @@ if _HAS_TEXTUAL:
             them in Textual's exit message so the user knows the terminal
             isn't hung — the process is just waiting for the threads to
             drain before returning the prompt.
+
+            With ``restart=True`` the app exits with
+            ``_RESTART_EXIT_RESULT`` so ``_run_tui`` re-execs the process
+            in place (same terminal, same tmux window) to pick up a terok
+            version that was installed while the TUI was running.
             """
             self._stop_upstream_polling()
             self._stop_container_status_polling()
@@ -1526,6 +1575,13 @@ if _HAS_TEXTUAL:
             if self._askpass_service is not None:
                 await self._askpass_service.stop()
 
+            # When the window dies with us and the client lands in another
+            # tmux window, leave a status-line breadcrumb there.  A restart
+            # keeps the window alive, so no hint.
+            if not restart:
+                tmux_session.flash_exit_hint()
+
+            exit_kwargs: dict[str, Any] = {"result": _RESTART_EXIT_RESULT} if restart else {}
             pending = [
                 w for w in self.workers if w.state in (WorkerState.PENDING, WorkerState.RUNNING)
             ]
@@ -1533,12 +1589,51 @@ if _HAS_TEXTUAL:
                 groups = sorted({w.group for w in pending if w.group})
                 suffix = f" ({', '.join(groups)})" if groups else ""
                 self.exit(
+                    **exit_kwargs,
                     message=(
                         f"Exiting. Waiting for {len(pending)} background task(s) to finish{suffix}."
-                    )
+                    ),
                 )
             else:
-                self.exit()
+                self.exit(**exit_kwargs)
+
+        def _check_for_update(self) -> None:
+            """Kick off the on-disk version probe on a worker thread."""
+            self.run_worker(
+                self._probe_installed_version,
+                name="update-check",
+                group="update-check",
+                thread=True,
+                exclusive=True,
+                exit_on_error=False,
+            )
+
+        def _probe_installed_version(self) -> None:
+            """Compare the on-disk version with the running one (worker thread).
+
+            Any difference means the running code is stale — upgrades and
+            downgrades alike — so direction is deliberately not compared.
+            """
+            installed = _installed_dist_version()
+            running, _ = _get_version_info()
+            if not installed or installed in (running, self._update_offered_version):
+                return
+            self.call_from_thread(self._offer_update_restart, running, installed)
+
+        def _offer_update_restart(self, running: str, installed: str) -> None:
+            """Push the restart offer for a freshly installed terok version."""
+            self._update_offered_version = installed
+            self.push_screen(
+                UpdateRestartScreen(
+                    running=_short_version(running), installed=_short_version(installed)
+                ),
+                self._on_update_restart_choice,
+            )
+
+        async def _on_update_restart_choice(self, restart: bool | None) -> None:
+            """Restart the TUI in place when the operator accepted the offer."""
+            if restart:
+                await self.action_quit(restart=True)
 
         async def ensure_askpass_service(self) -> AskpassService:
             """Return the running [`AskpassService`][terok.tui.app.AskpassService], starting it on first use.
@@ -2035,6 +2130,20 @@ if _HAS_TEXTUAL:
             """Open the clearance screen from the main screen."""
             await self.action_show_clearance()
 
+    def _run_tui() -> None:
+        """Run the TUI; when it exits requesting a restart, re-exec in place.
+
+        The re-exec replaces this process with a freshly resolved
+        ``terok-tui`` entry point (new code, same terminal, same tmux
+        window when running under one), preserving any CLI flags.
+        """
+        import shutil
+
+        result = TerokTUI().run()
+        if result == _RESTART_EXIT_RESULT:
+            exe = shutil.which("terok-tui") or sys.argv[0]
+            os.execvp(exe, [exe, *sys.argv[1:]])
+
     def _launch_in_tmux(force_new: bool = False) -> None:
         """Launch the TUI inside a managed tmux session.
 
@@ -2043,15 +2152,20 @@ if _HAS_TEXTUAL:
         (blue status bar, usage hints).  Exits with an actionable error
         message if tmux is not found on ``$PATH``.
 
-        By default this attaches to the shared ``terok`` session if one is
-        already running (``new-session -A``), so a second ``terok --tmux``
-        reconnects rather than failing on the duplicate name.  Pass
-        ``force_new=True`` (``--new-session``) to spin up a fresh, tmux-named
-        session alongside the existing one instead.
+        By default a second ``terok --tmux`` resumes the shared ``terok``
+        session: the client lands on the window stamped ``@terok-main``,
+        and when no stamped window is left (the TUI was quit while task
+        windows kept the session alive) a fresh TUI window is spawned
+        first.  Pass ``force_new=True`` (``--new-session``) to spin up a
+        fresh, tmux-named session alongside the existing one instead.
+
+        Sessions are created with the ``TEROK_TMUX=1`` session environment
+        marker (``new-session -e``, tmux >= 3.2) so everything inside can
+        tell a terok-managed tmux apart from the user's own.
         """
         if os.environ.get("TMUX"):
             # Already inside tmux — no double-wrap
-            TerokTUI().run()
+            _run_tui()
             return
 
         import shutil
@@ -2065,6 +2179,22 @@ if _HAS_TEXTUAL:
             )
             sys.exit(1)
 
+        marker = f"{tmux_session.TEROK_TMUX_ENV}=1"
+
+        if not force_new and tmux_session.session_exists():
+            # Resume: land the client on the TUI's stamped window rather
+            # than wherever the session last was; revive the TUI in a new
+            # window when none is stamped (window ids are stable handles,
+            # indexes are not — the host config renumbers windows).
+            session = f"={tmux_session.SESSION_NAME}"
+            main_window = tmux_session.find_main_window()
+            if main_window:
+                land_args = ["select-window", "-t", main_window]
+            else:
+                land_args = ["new-window", "-t", session, "-n", "terok", "terok-tui"]
+            os.execvp("tmux", ["tmux", *land_args, ";", "attach-session", "-t", session])
+            return
+
         from importlib import resources as _res
 
         tmux_conf = _res.files("terok") / "resources" / "tmux" / "host-tmux.conf"
@@ -2072,15 +2202,19 @@ if _HAS_TEXTUAL:
         # Note: os.execvp replaces this process so the context manager's
         # __exit__ never runs.  This is fine — tmux reads the config file
         # at startup, and OS process cleanup handles any temp resources.
-        # ``-A -s terok`` attaches to the shared session if it exists and
-        # creates it otherwise; ``--new-session`` drops the name so tmux
-        # auto-assigns one for a parallel session.  ``terok-tui`` is only run
-        # when tmux actually creates the session — on attach it is ignored.
-        session_args = ["new-session"] if force_new else ["new-session", "-A", "-s", "terok"]
+        # ``-A -s terok`` still guards the race where another ``terok
+        # --tmux`` creates the session between the check above and this
+        # exec; ``--new-session`` drops the name so tmux auto-assigns one
+        # for a parallel session.
+        session_args = (
+            ["new-session"]
+            if force_new
+            else ["new-session", "-A", "-s", tmux_session.SESSION_NAME, "-n", "terok"]
+        )
         with _res.as_file(tmux_conf) as conf_path:
             os.execvp(
                 "tmux",
-                ["tmux", "-f", str(conf_path), *session_args, "terok-tui"],
+                ["tmux", "-f", str(conf_path), *session_args, "-e", marker, "terok-tui"],
             )
 
     import argparse
@@ -2173,7 +2307,7 @@ if _HAS_TEXTUAL:
         if use_tmux and not is_web_mode():
             _launch_in_tmux(force_new=args.new_session)
             return
-        TerokTUI().run()
+        _run_tui()
 
 else:
 

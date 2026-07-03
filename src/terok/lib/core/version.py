@@ -9,9 +9,36 @@ used by both the CLI (--version) and TUI (title bar).
 
 import json
 import subprocess
+import sys
 from importlib import metadata
 from pathlib import Path
 from typing import Any
+
+_INSTALLED_VERSION_PROBE = "from importlib.metadata import version; print(version('terok'))"
+
+
+def installed_dist_version(timeout: float = 5.0) -> str | None:
+    """Return the terok version currently installed on disk, or None.
+
+    The running process froze its version (``terok.__version__``) at
+    import time; a ``pip``/``pipx`` upgrade performed while the TUI is
+    open only changes what is on disk.  Asking a *fresh* interpreter
+    reads the current dist-info, so comparing the two detects a stale
+    running instance.  Returns None when the probe fails for any reason
+    (package not installed, interpreter gone mid-upgrade, timeout).
+    """
+    try:
+        result = subprocess.run(
+            [sys.executable, "-c", _INSTALLED_VERSION_PROBE],
+            capture_output=True,
+            text=True,
+            timeout=timeout,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return None
+    if result.returncode != 0:
+        return None
+    return result.stdout.strip() or None
 
 
 def get_version_info() -> tuple[str, str | None]:

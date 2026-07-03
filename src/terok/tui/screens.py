@@ -1791,6 +1791,98 @@ class QuitConfirmScreen(screen.ModalScreen[bool]):
         self.dismiss(event.key == "q")
 
 
+class TmuxQuitScreen(screen.ModalScreen[str | None]):
+    """tmux-aware second-``q`` guard: quitting would drop the user into another window.
+
+    Shown instead of [`QuitConfirmScreen`][terok.tui.screens.QuitConfirmScreen]
+    when the TUI is the root command of a window in a terok-managed tmux
+    and other windows (logins, tasks) remain.  ``q`` keeps the plain-quit
+    muscle memory but detaches tmux too, returning the user to their
+    normal terminal; ``n`` quits into the next tmux window for users who
+    want to look at the remaining windows; any other key cancels.
+
+    Dismisses with ``"detach"``, ``"next"``, or ``None`` (cancel).
+    """
+
+    CSS = """
+    TmuxQuitScreen {
+        align: center middle;
+    }
+    #tmux-quit-confirm {
+        width: auto;
+        height: auto;
+        border: round $primary;
+        background: $surface;
+        padding: 1 2;
+    }
+    """
+
+    def __init__(self, other_windows: int) -> None:
+        """Remember how many sibling tmux windows stay open after the quit."""
+        super().__init__()
+        self._other_windows = other_windows
+
+    def compose(self) -> ComposeResult:
+        """A centred prompt mapping each quit flavour to a single key."""
+        windows = f"{self._other_windows} window" + ("s" if self._other_windows != 1 else "")
+        yield Static(
+            f"Quitting closes this tmux window — {windows} (tasks, logins) stay open.\n\n"
+            "\\[[$footer-key-foreground]q[/]] quit and return to your terminal"
+            " (tasks keep running)\n"
+            "\\[[$footer-key-foreground]n[/]] quit into the next tmux window\n"
+            "any other key: go back to terok.",
+            id="tmux-quit-confirm",
+        )
+
+    def on_key(self, event: events.Key) -> None:
+        """Map ``q`` to detach-quit, ``n`` to next-window-quit, anything else to cancel."""
+        event.stop()
+        self.dismiss({"q": "detach", "n": "next"}.get(event.key))
+
+
+class UpdateRestartScreen(screen.ModalScreen[bool]):
+    """Offer a restart when a newer terok was installed under the running TUI.
+
+    Dismisses with ``True`` when the operator presses ``r`` (restart the
+    TUI in place, picking up the new version) and ``False`` on any other
+    key.  A dismissed offer is not repeated for the same on-disk version.
+    """
+
+    CSS = """
+    UpdateRestartScreen {
+        align: center middle;
+    }
+    #update-restart {
+        width: auto;
+        height: auto;
+        border: round $primary;
+        background: $surface;
+        padding: 1 2;
+    }
+    """
+
+    def __init__(self, running: str, installed: str) -> None:
+        """Remember the running and freshly installed version strings."""
+        super().__init__()
+        self._running = running
+        self._installed = installed
+
+    def compose(self) -> ComposeResult:
+        """A centred prompt naming both versions and the restart key."""
+        yield Static(
+            f"terok has been updated: {self._installed} is now installed\n"
+            f"(this TUI is still running {self._running}).\n\n"
+            "\\[[$footer-key-foreground]r[/]] restart terok now\n"
+            "any other key: keep running, restart later.",
+            id="update-restart",
+        )
+
+    def on_key(self, event: events.Key) -> None:
+        """Restart on ``r``; any other key dismisses the offer."""
+        event.stop()
+        self.dismiss(event.key == "r")
+
+
 class TaskDetailsScreen(screen.Screen[str | None]):
     """Full-page detail screen for a task with categorized actions."""
 

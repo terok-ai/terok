@@ -18,8 +18,9 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 from textual.worker import WorkerState
 
-from terok.tui.app import TerokTUI
-from terok.tui.screens import QuitConfirmScreen
+from terok.tui import tmux_session
+from terok.tui.app import _RESTART_EXIT_RESULT, TerokTUI
+from terok.tui.screens import QuitConfirmScreen, TmuxQuitScreen
 
 
 def _worker(state: WorkerState, group: str = "") -> SimpleNamespace:
@@ -91,17 +92,54 @@ class TestActionQuit:
         quit_stub._askpass_service.stop.assert_awaited_once()
         quit_stub.exit.assert_called_once()
 
+    @pytest.mark.asyncio
+    async def test_plain_quit_flashes_the_tmux_exit_hint(
+        self, quit_stub: SimpleNamespace, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A normal quit leaves the status-line breadcrumb (no-op outside terok tmux)."""
+        flash = MagicMock()
+        monkeypatch.setattr(tmux_session, "flash_exit_hint", flash)
+        await TerokTUI.action_quit(quit_stub)
+        flash.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_restart_exits_with_sentinel_and_no_hint(
+        self, quit_stub: SimpleNamespace, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """``restart=True`` skips the hint and exits with the re-exec sentinel."""
+        flash = MagicMock()
+        monkeypatch.setattr(tmux_session, "flash_exit_hint", flash)
+        await TerokTUI.action_quit(quit_stub, restart=True)
+        flash.assert_not_called()
+        quit_stub.exit.assert_called_once_with(result=_RESTART_EXIT_RESULT)
+
 
 class TestConfirmQuit:
     """The main-screen ``q`` asks for a second ``q`` before tearing down the TUI."""
 
-    def test_confirm_quit_opens_the_guard_modal(self) -> None:
+    def test_confirm_quit_opens_the_guard_modal(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """``q`` pushes a QuitConfirmScreen rather than quitting outright."""
+        monkeypatch.setattr(tmux_session, "quit_lands_in_other_window", lambda: 0)
         stub = SimpleNamespace(push_screen=MagicMock(), _on_quit_confirmed=object())
         TerokTUI.action_confirm_quit(stub)
         screen, callback = stub.push_screen.call_args[0]
         assert isinstance(screen, QuitConfirmScreen)
         assert callback is stub._on_quit_confirmed
+
+    def test_confirm_quit_uses_tmux_guard_when_landing_in_other_window(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Quitting into a sibling tmux window swaps in the tmux-aware guard."""
+        monkeypatch.setattr(tmux_session, "quit_lands_in_other_window", lambda: 2)
+        stub = SimpleNamespace(
+            push_screen=MagicMock(),
+            _on_quit_confirmed=object(),
+            _on_tmux_quit_choice=object(),
+        )
+        TerokTUI.action_confirm_quit(stub)
+        screen, callback = stub.push_screen.call_args[0]
+        assert isinstance(screen, TmuxQuitScreen)
+        assert callback is stub._on_tmux_quit_choice
 
     @pytest.mark.asyncio
     async def test_second_q_quits(self) -> None:
@@ -137,3 +175,59 @@ class TestQuitConfirmScreen:
         screen.dismiss = MagicMock()
         QuitConfirmScreen.on_key(screen, SimpleNamespace(key="x", stop=MagicMock()))
         screen.dismiss.assert_called_once_with(False)
+
+
+class TestTmuxQuitScreen:
+    """The tmux-aware guard maps q→detach, n→next window, anything else→cancel."""
+
+    @pytest.mark.parametrize(
+        ("key", "expected"),
+        [
+            pytest.param("q", "detach", id="qq-detaches"),
+            pytest.param("n", "next", id="qn-hops-windows"),
+            pytest.param("escape", None, id="escape-cancels"),
+            pytest.param("x", None, id="other-key-cancels"),
+        ],
+    )
+    def test_key_mapping(self, key: str, expected: str | None) -> None:
+        """Each quit flavour dismisses with its choice; the event never propagates."""
+        screen = TmuxQuitScreen.__new__(TmuxQuitScreen)
+        screen.dismiss = MagicMock()
+        event = SimpleNamespace(key=key, stop=MagicMock())
+        TmuxQuitScreen.on_key(screen, event)
+        event.stop.assert_called_once()
+        screen.dismiss.assert_called_once_with(expected)
+
+
+class TestTmuxQuitChoice:
+    """``_on_tmux_quit_choice`` wires each modal answer to the right teardown."""
+
+    @pytest.mark.asyncio
+    async def test_detach_detaches_then_quits(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """``detach`` returns the user to their terminal before the TUI exits."""
+        detach = MagicMock()
+        monkeypatch.setattr(tmux_session, "detach_client", detach)
+        stub = SimpleNamespace(action_quit=AsyncMock())
+        await TerokTUI._on_tmux_quit_choice(stub, "detach")
+        detach.assert_called_once()
+        stub.action_quit.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_next_quits_without_detaching(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """``next`` quits in place; the client falls through to the next window."""
+        detach = MagicMock()
+        monkeypatch.setattr(tmux_session, "detach_client", detach)
+        stub = SimpleNamespace(action_quit=AsyncMock())
+        await TerokTUI._on_tmux_quit_choice(stub, "next")
+        detach.assert_not_called()
+        stub.action_quit.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_cancel_keeps_the_tui_running(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """``None`` (any other key) neither detaches nor quits."""
+        detach = MagicMock()
+        monkeypatch.setattr(tmux_session, "detach_client", detach)
+        stub = SimpleNamespace(action_quit=AsyncMock())
+        await TerokTUI._on_tmux_quit_choice(stub, None)
+        detach.assert_not_called()
+        stub.action_quit.assert_not_awaited()

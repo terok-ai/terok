@@ -76,6 +76,11 @@ def _isolate_user_paths(
     # CLI ``--config`` / ``--raw`` mutate ``os.environ`` directly,
     # bypassing monkeypatch — clear per-test to avoid leakage.
     monkeypatch.delenv("TEROK_CONFIG_FILE", raising=False)
+    # Never let tests act on the operator's real tmux: with these set
+    # (e.g. pytest run inside ``terok tui --tmux``), tmux_session helpers
+    # would stamp windows and flash messages on the live session.
+    for var in ("TMUX", "TMUX_PANE", "TEROK_TMUX"):
+        monkeypatch.delenv(var, raising=False)
 
 
 @pytest.fixture(autouse=True)

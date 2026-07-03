@@ -1022,5 +1022,11 @@ expose = [
 from = ["terok.lib.core.paths"]
 
 [[interfaces]]
-expose = ["get_version_info", "format_version_string", "base_version", "short_version"]
+expose = [
+    "get_version_info",
+    "format_version_string",
+    "base_version",
+    "short_version",
+    "installed_dist_version",
+]
 from = ["terok.lib.core.version"]
