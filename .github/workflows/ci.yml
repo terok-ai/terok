@@ -37,6 +37,10 @@ jobs:
         with:
           args: format --check
 
+      - name: ASCII-only pyproject
+        run: |
+          ! LC_ALL=C grep -nP '[^\x00-\x7F]' pyproject.toml
+
   docstring-coverage:
     if: github.repository == 'terok-ai/terok'
     runs-on: ubuntu-latest

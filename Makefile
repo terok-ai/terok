@@ -15,6 +15,7 @@ all: check
 
 # Run linter and format checker (fast, run before commits)
 lint:
+	@if LC_ALL=C grep -nP '[^\x00-\x7F]' pyproject.toml; then echo "pyproject.toml must be ASCII-only"; exit 1; fi
 	mkdir -p $(REPORTS_DIR)
 	poetry run ruff check --exit-zero --output-format=json --output-file=$(RUFF_REPORT) .
 	poetry run ruff check .
