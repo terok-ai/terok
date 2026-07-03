@@ -3610,7 +3610,7 @@ tomli-w = ">=1.2,<2.0"
 type = "git"
 url = "https://github.com/sliwowitz/terok-executor.git"
 reference = "feat/podman-parity-lifecycle"
-resolved_reference = "ca859a51e5c3c9713eb87b151c4cafbcc00fbd99"
+resolved_reference = "1d69c58236881f993188a25487ae91158a203383"
 
 [[package]]
 name = "terok-sandbox"
