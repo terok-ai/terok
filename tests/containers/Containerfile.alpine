@@ -49,7 +49,7 @@ RUN useradd -m -s /bin/bash testrunner \
     && mkdir -p /etc/containers \
     && printf '[storage]\ndriver = "overlay"\n\n[storage.options.overlay]\nmount_program = "/usr/bin/fuse-overlayfs"\nmountopt = "nodev,fsync=0"\n' \
         > /etc/containers/storage.conf \
-    && printf '[engine]\ncgroup_manager = "cgroupfs"\nevents_logger = "file"\n\n# Disable per-container kernel keyring — prevents keyring leak / EDQUOT\n[containers]\nkeyring = false\n' \
+    && printf '[engine]\ncgroup_manager = "cgroupfs"\nevents_logger = "file"\n\n# Disable per-container kernel keyring — prevents keyring leak / EDQUOT\n[containers]\nkeyring = false\n\n# On AppArmor hosts the passt profile attaches to the container pasta by\n# pathname (profiles are not container-namespaced) and denies its netns\n# and sysctl reads (dmesg: profile="passt" DENIED); slirp4netns is\n# unaffected.\n[network]\ndefault_rootless_network_cmd = "slirp4netns"\n' \
         > /etc/containers/containers.conf \
     && mkdir -p /run/user/$uid \
     && chown testrunner:testrunner /run/user/$uid
