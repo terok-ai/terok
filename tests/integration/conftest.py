@@ -111,6 +111,61 @@ hooks_unavailable = pytest.mark.skipif(
 )
 
 
+# ── Matrix capability contract ───────────────────────────────────────
+# The skip guards above are for dev machines, where a missing binary is
+# a host limitation.  Inside the matrix the harness built the image, so
+# every capability it declares (TEROK_EXPECT, exported by run-matrix.sh)
+# is a contract: absence fails the whole session up front instead of
+# dissolving into skips that read as green.
+
+# sbin fallback mirrors shield's find_nft: Debian-family login shells
+# omit /usr/sbin from PATH.  Self-contained on purpose — the installed
+# terok_shield wheel may predate its own sbin-aware helper.
+_SBIN_DIRS = ("/usr/sbin", "/sbin")
+
+
+def _which_sbin_aware(name: str) -> bool:
+    return any(shutil.which(name, path=path) for path in (None, *_SBIN_DIRS))
+
+
+def _internet_reachable() -> bool:
+    host, port = _target_host_port(ALLOWED_TARGET_HTTP)
+    try:
+        with socket.create_connection((host, port), timeout=5):
+            return True
+    except OSError:
+        return False
+
+
+_CAPABILITY_PROBES = {
+    "podman": lambda: _has("podman"),
+    "nft": lambda: bool(_find_nft()),
+    "dnsmasq": lambda: _which_sbin_aware("dnsmasq"),
+    "dig": lambda: _has("dig"),
+    "getent": lambda: _has("getent"),
+    "git": lambda: _has("git"),
+    "ssh-keygen": lambda: _has("ssh-keygen"),
+    "hooks": _hooks_available,
+    "internet": _internet_reachable,
+}
+
+
+def pytest_sessionstart(session: pytest.Session) -> None:
+    """Fail the whole session when the matrix capability contract is broken."""
+    expected = {cap for cap in os.environ.get("TEROK_EXPECT", "").split(",") if cap}
+    if not expected:
+        return
+    unknown = expected - _CAPABILITY_PROBES.keys()
+    if unknown:
+        pytest.exit(f"TEROK_EXPECT names unknown capabilities: {sorted(unknown)}", returncode=3)
+    missing = sorted(cap for cap in expected if not _CAPABILITY_PROBES[cap]())
+    if missing:
+        pytest.exit(
+            "matrix capability contract broken — expected but missing: " + ", ".join(missing),
+            returncode=3,
+        )
+
+
 def _reset_layered_config_caches() -> None:
     """Clear terok/sandbox config caches after tests rewrite config files."""
     import terok_sandbox.config as _sandbox_config

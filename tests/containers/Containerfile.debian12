@@ -4,8 +4,13 @@
 # Debian 12 (Bookworm) — podman 4.3.1, slirp4netns only
 FROM docker.io/library/debian:12
 
+# Ownership label: a Containerfile LABEL propagates into every
+# intermediate layer image, so the harness teardown can prune exactly
+# its own dangling generations (value = the harness IMAGE_PREFIX).
+LABEL "io.terok.matrix-test"="terok-test"
+
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    podman slirp4netns nftables uidmap fuse-overlayfs crun \
+    podman slirp4netns nftables dnsmasq-base uidmap fuse-overlayfs crun \
     python3 python3-venv \
     git curl ca-certificates dnsutils openssh-client \
     dbus gcc python3-dev libdbus-1-dev libglib2.0-dev pkg-config meson \

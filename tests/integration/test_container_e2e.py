@@ -14,7 +14,6 @@ Outbound internet is needed for the egress checks.
 
 from __future__ import annotations
 
-import json
 import subprocess
 import threading
 import uuid
@@ -85,15 +84,15 @@ def _strip_zone_id_nameservers(container: str) -> None:
 # ── In-process gate server ────────────────────────────────
 
 
-def _start_gate_server(base_path: Path, token_file: Path, port: int) -> threading.Thread:
+def _start_gate_server(base_path: Path, token: str, scope: str, port: int) -> threading.Thread:
     """Start the gate HTTP server in a daemon thread on *port*."""
     from terok_sandbox.gate.server import (
-        TokenStore,
         _make_handler_class,
+        _SingleTokenStore,
         _ThreadingHTTPServer,
     )
 
-    token_store = TokenStore(token_file)
+    token_store = _SingleTokenStore(token, scope)
     handler_class = _make_handler_class(base_path, token_store)
     server = _ThreadingHTTPServer((LOCALHOST, port), handler_class)
     thread = threading.Thread(target=server.serve_forever, daemon=True)
@@ -123,17 +122,12 @@ def gate_env(tmp_path: Path) -> dict:
     repo_path = base_path / f"{project_name}.git"
     create_bare_repo_with_branches(repo_path, default_branch="main", other_branches=[])
 
-    # Write token file
+    # Mint the single token the per-container gate will accept (scope = project)
     token = uuid.uuid4().hex
-    token_file = tmp_path / "tokens.json"
-    token_file.write_text(
-        json.dumps({token: {"scope": project_name, "task": "1"}}),
-        encoding="utf-8",
-    )
 
     # Start gate server on a free port
     port = _find_free_port()
-    _start_gate_server(base_path, token_file, port)
+    _start_gate_server(base_path, token, project_name, port)
 
     return {
         "project_name": project_name,

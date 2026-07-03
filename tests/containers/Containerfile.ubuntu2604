@@ -4,10 +4,15 @@
 # Ubuntu 26.04 (Resolute) — next LTS, pulls in a newer podman than 24.04
 FROM docker.io/library/ubuntu:26.04
 
+# Ownership label: a Containerfile LABEL propagates into every
+# intermediate layer image, so the harness teardown can prune exactly
+# its own dangling generations (value = the harness IMAGE_PREFIX).
+LABEL "io.terok.matrix-test"="terok-test"
+
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    podman slirp4netns passt nftables uidmap fuse-overlayfs crun \
+    podman slirp4netns passt nftables dnsmasq-base uidmap fuse-overlayfs crun \
     python3 python3-pip python3-venv \
-    git curl ca-certificates dnsutils \
+    git curl ca-certificates dnsutils openssh-client \
     dbus gcc python3-dev libdbus-1-dev libglib2.0-dev pkg-config meson \
     && rm -rf /var/lib/apt/lists/*
 

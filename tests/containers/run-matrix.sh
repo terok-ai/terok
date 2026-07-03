@@ -51,6 +51,8 @@ else
 fi
 
 # Target distros: name -> Containerfile suffix
+# ``alpine`` is the non-systemd slot (OpenRC/musl) — it proves the full
+# stack runs with no systemd at all.  See terok-ai/terok#959, #1113.
 declare -A DISTROS=(
     [debian12]="debian12"
     [ubuntu2404]="ubuntu2404"
@@ -60,7 +62,32 @@ declare -A DISTROS=(
     [fedora44]="fedora44"
     [podman]="podman"
     [nix]="nix"
+    [alpine]="alpine"
+    [void]="void"
+    [mageia]="mageia"
 )
+
+# Host architecture — some slots can't run on every arch (see slot_skip_reason).
+HOST_ARCH="$(uname -m)"
+
+# Slots that are non-systemd (OpenRC/runit/musl): the run-time preflight
+# hard-fails these if systemd is unexpectedly present.
+declare -A NON_SYSTEMD_SLOTS=(
+    [alpine]=1
+    [void]=1
+)
+
+# Return a human reason if $1 cannot run on the current host, else nothing.
+# ``alpine`` is musl: textual[syntax]'s tree-sitter grammars have musllinux
+# wheels for x86_64 but NOT aarch64, and the sdists don't build against the
+# pinned core — so Alpine is x86_64-only for terok.  It is skipped (not
+# failed) on aarch64.  See terok-ai/terok#959 discussion.
+slot_skip_reason() {
+    local name="$1"
+    if [[ "$name" == "alpine" && ( "$HOST_ARCH" == "aarch64" || "$HOST_ARCH" == "arm64" ) ]]; then
+        printf 'musl+aarch64 has no tree-sitter grammar wheels (textual[syntax]); Alpine is x86_64-only for terok'
+    fi
+}
 
 # The ``nix`` slot runs the same flavour the GitHub-Actions host CI
 # does — full unit suite plus host-only integration tests — but under
@@ -79,6 +106,9 @@ declare -A SLOT_KIND=(
     [fedora44]="podman"
     [podman]="podman"
     [nix]="nix"
+    [alpine]="podman"
+    [void]="podman"
+    [mageia]="podman"
 )
 
 # Expected podman versions — pinned to the exact distro-shipped point
@@ -92,9 +122,12 @@ declare -A EXPECTED_VERSIONS=(
     [ubuntu2604]="5.7.0"
     [debian13]="5.4.2"
     [fedora43]="5.8.2"
-    [fedora44]="5.8.2"
+    [fedora44]="5.8.3"
     [podman]="latest"
     [nix]="n/a"
+    [alpine]="5.3.2"
+    [void]="latest"
+    [mageia]="latest"
 )
 
 # Print "expected podman X.Y.Z" for distros with a version pin, or
@@ -141,6 +174,9 @@ declare -A TEST_USERS=(
     [fedora44]="testrunner"
     [podman]="podman"
     [nix]="testrunner"
+    [alpine]="testrunner"
+    [void]="testrunner"
+    [mageia]="testrunner"
 )
 
 usage() {
@@ -150,6 +186,7 @@ usage() {
     echo "  --build-only   Build images without running tests"
     echo "  --no-cache     Rebuild images from scratch (ignore layer cache)"
     echo "  --list         List available distros"
+    echo "  --keep-dangling  Skip the teardown prune of this harness's dangling layers"
     echo "  -h, --help     Show this help"
     echo ""
     echo "Default: install full infrastructure, run all integration tests."
@@ -211,12 +248,13 @@ run_tests() {
 
     # Three-phase flow:
     #   Phase 1: tests that do NOT need hooks
-    #   Phase 2: install global hooks via terok shield install-hooks --user
+    #   Phase 2: install global hooks via terok shield install-hooks
     #   Phase 3: tests that need hooks
     #
     # Privileged mode gives the outer container the capabilities needed
     # for nested podman, but tests run as uid 1000 (rootless podman).
-    podman run --rm --name "$ctr_name" \
+    podman run --rm --replace --name "$ctr_name" \
+        -e TERM=xterm \
         --privileged \
         --security-opt label=disable \
         --device /dev/fuse:rw \
@@ -231,6 +269,21 @@ run_tests() {
             cp -a $SOURCE_MOUNT $WORKSPACE_DIR
             chown -R $test_user:$test_user $WORKSPACE_DIR
 
+            # ── Non-systemd proof ──
+            # Non-systemd slots (alpine/void) must run on a genuinely
+            # systemd-free host; fail loudly if a future base image regresses
+            # that.  Other slots just record their init system in the log.
+            echo \"--- init system: PID1=\$(cat /proc/1/comm 2>/dev/null || echo unknown) ---\"
+            if command -v systemctl >/dev/null 2>&1 || [ -d /run/systemd/system ]; then
+                echo \"systemd: present\"
+                if [ \"${NON_SYSTEMD_SLOTS[$name]:-}\" = 1 ]; then
+                    echo \"FATAL: '$name' is a non-systemd slot but systemd was detected\" >&2
+                    exit 1
+                fi
+            else
+                echo \"systemd: absent — non-systemd host confirmed\"
+            fi
+
             # Strip IPv6 zone-ID nameservers — they reference host interfaces
             # (e.g. eno1) that don't exist inside the container, causing dig
             # to reject the entire resolv.conf.  Fixed upstream in podman 5.4+
@@ -243,6 +296,10 @@ run_tests() {
             su - $test_user -c '
                 set -e
                 export XDG_RUNTIME_DIR=/run/user/\$(id -u)
+                export TEROK_MATRIX=1
+                # Image-capability contract only: hooks are phase state,
+                # appended below once phase 2 has installed and verified them.
+                export TEROK_EXPECT=podman,nft,dnsmasq,dig,getent,git,ssh-keygen,internet
 
                 cd $WORKSPACE_DIR
 
@@ -295,7 +352,7 @@ run_tests() {
                 # ── Phase 2: install global hooks ──
                 echo \"\"
                 echo \"--- phase 2: installing shield hooks ---\"
-                poetry run terok shield install-hooks --user
+                poetry run terok shield install-hooks
 
                 # Verify hooks are detectable — fail fast if setup did not work
                 poetry run python3 -c \"
@@ -305,6 +362,9 @@ print(\\\"Shield hooks verified.\\\")
 \"
 
                 # ── Phase 3: tests with hooks ──
+                # Hooks are installed and verified now — from here on their
+                # absence would be a real breakage, so the contract grows.
+                export TEROK_EXPECT=\${TEROK_EXPECT},hooks
                 echo \"\"
                 echo \"--- phase 3: tests with hooks ---\"
                 poetry run pytest tests/integration/ -v --tb=short -m \"needs_hooks\"
@@ -352,7 +412,8 @@ run_nix_tests() {
     echo -e "${C_CYAN}==> Testing ${C_BOLD}$name${C_CYAN} ($(version_expectation "$name"))${C_RESET}"
     echo ""
 
-    podman run --rm --name "$ctr_name" \
+    podman run --rm --replace --name "$ctr_name" \
+        -e TERM=xterm \
         --security-opt label=disable \
         -v "$REPO_ROOT:$SOURCE_MOUNT:ro,Z" \
         -v "$RESULTS_DIR:/results:rw,Z" \
@@ -448,6 +509,7 @@ os.execvp('/tmp/run-nix-tests.sh', ['/tmp/run-nix-tests.sh'])
 BUILD_ONLY=false
 LIST_ONLY=false
 NO_CACHE=false
+KEEP_DANGLING=false
 TARGETS=()
 
 while [[ $# -gt 0 ]]; do
@@ -455,6 +517,7 @@ while [[ $# -gt 0 ]]; do
         --build-only) BUILD_ONLY=true ;;
         --no-cache) NO_CACHE=true ;;
         --list) LIST_ONLY=true ;;
+        --keep-dangling) KEEP_DANGLING=true ;;
         -h|--help) usage; exit 0 ;;
         *) TARGETS+=("$1") ;;
     esac
@@ -481,8 +544,20 @@ done
 
 warn_keyring
 
+SKIPPED=()
+# A slot whose image fails to build is recorded and reported as FAILED, but
+# does NOT abort the whole matrix — so one run surfaces every distro's issues
+# instead of stopping at the first bad build.
+declare -A BUILD_FAILED_MAP=()
+
 for target in "${TARGETS[@]}"; do
-    build_image "$target"
+    if [[ -n "$(slot_skip_reason "$target")" ]]; then
+        continue
+    fi
+    if ! build_image "$target"; then
+        echo -e "${C_RED}==> Build FAILED for ${C_BOLD}$target${C_RED} — recording and continuing${C_RESET}" >&2
+        BUILD_FAILED_MAP[$target]=1
+    fi
 done
 
 if $BUILD_ONLY; then
@@ -494,6 +569,17 @@ PASSED=()
 FAILED=()
 
 for target in "${TARGETS[@]}"; do
+    skip_reason="$(slot_skip_reason "$target")"
+    if [[ -n "$skip_reason" ]]; then
+        echo -e "${C_YELLOW}==> Skipping ${C_BOLD}$target${C_YELLOW} on ${HOST_ARCH}: ${skip_reason}${C_RESET}"
+        SKIPPED+=("$target")
+        continue
+    fi
+    if [[ -n "${BUILD_FAILED_MAP[$target]:-}" ]]; then
+        echo -e "${C_RED}==> $target: FAIL (image build failed)${C_RESET}" >&2
+        FAILED+=("$target")
+        continue
+    fi
     case "${SLOT_KIND[$target]}" in
         nix) runner=run_nix_tests ;;
         *) runner=run_tests ;;
@@ -510,9 +596,27 @@ echo -e "${C_BOLD}===== Matrix Summary =====${C_RESET}"
 for target in "${PASSED[@]}"; do
     echo -e "  ${C_GREEN}PASS${C_RESET}: $target $(version_summary "$target")"
 done
+for target in "${SKIPPED[@]}"; do
+    echo -e "  ${C_YELLOW}SKIP${C_RESET}: $target ($(slot_skip_reason "$target"))"
+done
 for target in "${FAILED[@]}"; do
     echo -e "  ${C_RED}FAIL${C_RESET}: $target $(version_summary "$target")"
 done
+
+
+# Teardown hygiene: dangling generations of exactly THIS harness's images
+# (Containerfile LABEL ownership) are pruned at idle IO priority — small
+# per-run increments instead of an hours-long backlog.  Opt out with
+# --keep-dangling.
+if ! $KEEP_DANGLING; then
+    echo ""
+    echo -e "${C_DIM}Pruning this harness's dangling image generations (idle io)…${C_RESET}"
+    prune=(podman image prune -f --filter "label=io.terok.matrix-test=$IMAGE_PREFIX")
+    command -v nice >/dev/null && prune=(nice -n19 "${prune[@]}")
+    command -v ionice >/dev/null && prune=(ionice -c3 "${prune[@]}")
+    pruned=$("${prune[@]}" | wc -l) || true
+    echo -e "${C_DIM}pruned ${pruned:-0} image record(s)${C_RESET}"
+fi
 
 if [[ ${#FAILED[@]} -gt 0 ]]; then
     exit 1

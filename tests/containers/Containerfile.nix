@@ -13,6 +13,11 @@
 
 FROM docker.io/nixos/nix:latest
 
+# Ownership label: a Containerfile LABEL propagates into every
+# intermediate layer image, so the harness teardown can prune exactly
+# its own dangling generations (value = the harness IMAGE_PREFIX).
+LABEL "io.terok.matrix-test"="terok-test"
+
 # Pre-populate the system profile with what the tests need at runtime:
 # wrapped python + pip and awk.  Bash and git-minimal already ship in
 # the base image's profile; adding ``nixpkgs#bash`` or ``nixpkgs#git``
@@ -26,9 +31,16 @@ FROM docker.io/nixos/nix:latest
 #
 # ``--extra-experimental-features`` turns on flakes (off by default in
 # nix 2.18-).
+#
+# ``nftables`` provides the real ``nft`` binary.  terok's shield requires
+# nftables at runtime, so the unit suite (which constructs a real Shield
+# via the task-runner code path) needs it present — the same as the
+# podman matrix slots, which install nftables in their images.  Providing
+# the real tool keeps the tests honest instead of stubbing it out.
 RUN nix --extra-experimental-features 'nix-command flakes' \
         profile add \
-        nixpkgs#gawk
+        nixpkgs#gawk \
+        nixpkgs#nftables
 
 # ``python312`` and ``python312Packages.pip`` are *separate* derivations
 # that don't share a site-packages; installing them side-by-side leaves
