@@ -36,10 +36,14 @@ on:
         type: boolean
         default: false
 
-# Allow only one concurrent deployment
+# Concurrency is per ref: GitHub keeps only the newest *pending* run
+# per group, so a shared group let PR builds silently evict queued
+# master deploys. Superseded PR builds are cancelled outright; pushes
+# never are. Actual Pages deployments are serialized by the job-level
+# group inside publish-versioned-docs.yml.
 concurrency:
-  group: "pages"
-  cancel-in-progress: false
+  group: docs-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 permissions:
   contents: read
