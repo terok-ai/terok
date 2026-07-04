@@ -2079,20 +2079,20 @@ properdocs = ">=1.6.5"
 
 [[package]]
 name = "mkdocs-terok"
-version = "0.7.1"
+version = "0.7.4"
 description = "Shared ProperDocs documentation generators for terok projects"
 optional = false
 python-versions = "<4.0,>=3.12"
 groups = ["docs"]
 files = [
-    {file = "mkdocs_terok-0.7.1-py3-none-any.whl", hash = "sha256:71f51c8d2d241a808e527ede731983157e817864ab6065a7e74cf84021215e2e"},
-    {file = "mkdocs_terok-0.7.1.tar.gz", hash = "sha256:cdb5715dfa82395bcd61c005603091910924a7609178c6dca26eea814cdf6667"},
+    {file = "mkdocs_terok-0.7.4-py3-none-any.whl", hash = "sha256:5bf8624f49c2e7d7354d1ac92f91ce8d5a487e2c1d7bb022808ca31bac4c6d7f"},
+    {file = "mkdocs_terok-0.7.4.tar.gz", hash = "sha256:27b9bb0f7a09960083722bff8b2f9098be91c61824ac0ed22848fe94e553178d"},
 ]
 
 [package.dependencies]
-properdocs = ">=1.6.7"
-PyYAML = ">=6.0"
-squarify = ">=0.4"
+properdocs = ">=1.6.7,<1.7.0"
+PyYAML = ">=6.0,<7.0"
+squarify = "0.4.4"
 
 [[package]]
 name = "mkdocstrings"
