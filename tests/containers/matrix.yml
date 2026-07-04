@@ -70,5 +70,5 @@ phases:
     pytest: tests/integration/ -v --tb=short -m "needs_hooks"
   - name: terok config
     run:
-      - poetry run terok config 2>&1
+      - poetry run terok config paths 2>&1
     tolerate-failure: true
