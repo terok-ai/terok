@@ -63,6 +63,8 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
+    outputs:
+      prerelease: ${{ steps.classify.outputs.prerelease }}
     steps:
       # No triggering-actor check on github-release: tag creation is already
       # gated by the v*.*.* tag-creation ruleset on the org (release-officers
@@ -93,6 +95,19 @@ jobs:
         with:
           files: dist/*
           prerelease: ${{ steps.classify.outputs.prerelease }}
+
+  # A gh-only (prerelease) release still refreshes the dev docs — the
+  # branch push yielded its deploy to the release pipeline — while final
+  # tags leave the deployment to the pypi path's versioned publish.
+  docs-dev:
+    needs: github-release
+    if: needs.github-release.outputs.prerelease == 'true'
+    permissions:
+      contents: write
+      actions: read
+      pages: write
+      id-token: write
+    uses: ./.github/workflows/docs.yml
 
   pypi-publish:
     needs: build
