@@ -47,6 +47,7 @@ slots:
     extra-packages: [openssh-clients, dbus, dbus-devel, glib2-devel, pkgconf, meson]
   nix:
     poetry-groups: [test, docs]
+    expect: []
     phases:
       - name: unit tests
         scope: unit

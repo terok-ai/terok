@@ -31,6 +31,7 @@ from unittest.mock import patch
 from urllib.parse import urlsplit
 
 import pytest
+from terok_util.matrix import binary_on_path, check_capability_contract
 
 from tests.testfs import CONFIG_ROOT_NAME, HOME_DIR_NAME, STATE_ROOT_NAME, XDG_CONFIG_HOME_NAME
 from tests.testnet import ALLOWED_TARGET_DOMAIN, ALLOWED_TARGET_HTTP, GATE_PORT, TEST_IP
@@ -118,15 +119,6 @@ hooks_unavailable = pytest.mark.skipif(
 # is a contract: absence fails the whole session up front instead of
 # dissolving into skips that read as green.
 
-# sbin fallback mirrors shield's find_nft: Debian-family login shells
-# omit /usr/sbin from PATH.  Self-contained on purpose — the installed
-# terok_shield wheel may predate its own sbin-aware helper.
-_SBIN_DIRS = ("/usr/sbin", "/sbin")
-
-
-def _which_sbin_aware(name: str) -> bool:
-    return any(shutil.which(name, path=path) for path in (None, *_SBIN_DIRS))
-
 
 def _internet_reachable() -> bool:
     host, port = _target_host_port(ALLOWED_TARGET_HTTP)
@@ -140,7 +132,7 @@ def _internet_reachable() -> bool:
 _CAPABILITY_PROBES = {
     "podman": lambda: _has("podman"),
     "nft": lambda: bool(_find_nft()),
-    "dnsmasq": lambda: _which_sbin_aware("dnsmasq"),
+    "dnsmasq": lambda: binary_on_path("dnsmasq"),
     "dig": lambda: _has("dig"),
     "getent": lambda: _has("getent"),
     "git": lambda: _has("git"),
@@ -152,18 +144,8 @@ _CAPABILITY_PROBES = {
 
 def pytest_sessionstart(session: pytest.Session) -> None:
     """Fail the whole session when the matrix capability contract is broken."""
-    expected = {cap for cap in os.environ.get("TEROK_EXPECT", "").split(",") if cap}
-    if not expected:
-        return
-    unknown = expected - _CAPABILITY_PROBES.keys()
-    if unknown:
-        pytest.exit(f"TEROK_EXPECT names unknown capabilities: {sorted(unknown)}", returncode=3)
-    missing = sorted(cap for cap in expected if not _CAPABILITY_PROBES[cap]())
-    if missing:
-        pytest.exit(
-            "matrix capability contract broken — expected but missing: " + ", ".join(missing),
-            returncode=3,
-        )
+    if broken := check_capability_contract(_CAPABILITY_PROBES):
+        pytest.exit(broken, returncode=3)
 
 
 def _reset_layered_config_caches() -> None:

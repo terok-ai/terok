@@ -3695,7 +3695,7 @@ platformdirs = ">=4.10,<5.0"
 type = "git"
 url = "https://github.com/sliwowitz/terok-util.git"
 reference = "feat/matrix-engine"
-resolved_reference = "3eedac137a48d7ec58147eb8e33b36497d43295d"
+resolved_reference = "686fdbfc6131bab2c481486467df29d0854f99b3"
 
 [[package]]
 name = "textual"
