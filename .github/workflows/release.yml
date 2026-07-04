@@ -10,7 +10,7 @@ on:
       target:
         description: "What to publish"
         type: choice
-        options: [pypi, testpypi, gh-only]
+        options: [pypi, gh-only]
         default: pypi
 
 # Empty default; each job re-grants only what it needs.
@@ -67,8 +67,8 @@ jobs:
       # No triggering-actor check on github-release: tag creation is already
       # gated by the v*.*.* tag-creation ruleset on the org (release-officers
       # team only).  Anyone who succeeded in pushing the tag is authorised
-      # for the GH release.  The actor check stays on pypi-publish /
-      # testpypi-publish where the consequence is external publication.
+      # for the GH release.  The actor check stays on pypi-publish,
+      # where the consequence is external publication.
 
       # Alpha tags (vX.Y.ZaN, PEP 440 pre-release) get the GH prerelease
       # flag; final vX.Y.Z tags do not.  Belt-and-suspenders alongside
@@ -122,7 +122,7 @@ jobs:
 
   # Versioned docs exist only for what users can `pip install`: publish
   # the /<minor>/ snapshot (and move `latest`) strictly after the PyPI
-  # upload succeeded.  gh-only and testpypi targets deliberately skip this.
+  # upload succeeded.  the gh-only target deliberately skips this.
   docs-version:
     needs: pypi-publish
     permissions:
@@ -133,30 +133,3 @@ jobs:
     uses: ./.github/workflows/docs.yml
     with:
       release: true
-
-  testpypi-publish:
-    needs: build
-    if: github.event_name == 'workflow_dispatch' && inputs.target == 'testpypi'
-    runs-on: ubuntu-latest
-    environment: pypi   # same protection as real PyPI
-    permissions:
-      id-token: write
-    steps:
-      - name: Verify triggering actor
-        env:
-          ACTOR: ${{ github.triggering_actor }}
-        run: |
-          if [ "$ACTOR" != "terok-warden" ]; then
-            echo "Releases must be triggered by terok-warden (got: $ACTOR)" >&2
-            exit 1
-          fi
-
-      - uses: actions/download-artifact@v8
-        with:
-          name: dist
-          path: dist/
-
-      - uses: pypa/gh-action-pypi-publish@cef221092ed1bacb1cc03d23a2d87d1d172e277b # v1.14.0
-        with:
-          repository-url: https://test.pypi.org/legacy/
-          attestations: true
