@@ -3623,7 +3623,7 @@ tomli-w = ">=1.2,<2.0"
 type = "git"
 url = "https://github.com/sliwowitz/terok-executor.git"
 reference = "feat/shared-matrix-engine"
-resolved_reference = "bbab960e6252e78bb979f4a696ec4f60f4049408"
+resolved_reference = "41088177e4cdc97d1cff8973be65dc92ebb53091"
 
 [[package]]
 name = "terok-sandbox"
@@ -3654,7 +3654,7 @@ terok-util = {git = "https://github.com/sliwowitz/terok-util.git", rev = "feat/m
 type = "git"
 url = "https://github.com/sliwowitz/terok-sandbox.git"
 reference = "feat/shared-matrix-engine"
-resolved_reference = "3c9cba485b44dd850801edba098e31c1dad3c550"
+resolved_reference = "9d0fc99c459ada73d179d256735428a1ec81387c"
 
 [[package]]
 name = "terok-shield"
@@ -3695,7 +3695,7 @@ platformdirs = ">=4.10,<5.0"
 type = "git"
 url = "https://github.com/sliwowitz/terok-util.git"
 reference = "feat/matrix-engine"
-resolved_reference = "6068c4aed440a183955d30357982376ab81c765e"
+resolved_reference = "b0a7b79dfd4f7557592ea05f090b36ed017904da"
 
 [[package]]
 name = "textual"
