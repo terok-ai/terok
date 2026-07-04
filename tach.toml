@@ -884,6 +884,7 @@ expose = [
     "get_shield_on_task_restart",
     "get_public_host",
     "make_sandbox_config",
+    "declare_setup_invocation",
     "SHIELD_SECURITY_HINT",
 ]
 from = ["terok.lib.core.config"]

@@ -122,6 +122,10 @@ terok setup                             # idempotent; safe to re-run after upgra
 `setup` installs the shield OCI hooks, the XDG desktop entry for the TUI, and shell
 completions for your detected shell.
 
+Interactive runs prompt for where the credentials-DB passphrase is
+stored; non-interactive hosts without systemd-creds must choose with
+`terok setup --passphrase-tier <keyring|session-file|config>`.
+
 To remove everything later:
 
 ```bash

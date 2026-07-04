@@ -95,6 +95,10 @@ terok setup
 D-Bus clearance bridge, the XDG desktop entry for the TUI, and shell
 completions for your detected shell.  Idempotent — safe to re-run.
 
+Interactive runs prompt for where the credentials-DB passphrase is
+stored; non-interactive hosts without systemd-creds must choose with
+`terok setup --passphrase-tier <keyring|session-file|config>`.
+
 ### First project
 
 Launch the TUI:

@@ -57,6 +57,9 @@ _SCRYPT_PREFIX = "scrypt"
 
 def main() -> None:
     """Run the terok-web server, or update the stored password and exit."""
+    from terok.lib.core.config import declare_setup_invocation
+
+    declare_setup_invocation()
     args = _argparser().parse_args()
     path = _password_path()
 

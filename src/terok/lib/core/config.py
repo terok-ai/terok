@@ -31,6 +31,20 @@ namespace if they prefer."""
 # ---------- Prefix & roots ----------
 
 
+#: Declares, for the sandbox layer's re-run hints, the invocation under
+#: which sandbox setup is embedded in this front-end (protocol shared by
+#: string with terok-sandbox — only the front-end knows its own verbs).
+SETUP_INVOCATION_ENV = "TEROK_SETUP_INVOCATION"
+
+#: This front-end's spelling of the setup invocation.
+SETUP_INVOCATION = "terok setup"
+
+
+def declare_setup_invocation() -> None:
+    """Publish the setup spelling for sandbox-composed hints."""
+    os.environ.setdefault(SETUP_INVOCATION_ENV, SETUP_INVOCATION)
+
+
 def get_prefix() -> Path:
     """
     Minimal prefix helper used primarily for pip/venv installs.

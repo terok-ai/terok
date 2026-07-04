@@ -14,6 +14,7 @@ import argparse
 import sys
 
 from terok.lib.api.vault import NoPassphraseError as _NoPassphraseError
+from terok.lib.core.config import declare_setup_invocation
 
 from ..lib.core.config import set_experimental
 from ..lib.core.version import format_version_string, get_version_info
@@ -90,6 +91,7 @@ def main(prog: str = "terok") -> None:
       split exists so ``terok`` can evolve richer UX while ``terokctl``
       preserves backwards compatibility.
     """
+    declare_setup_invocation()
     # Fast-path: bare ``terok`` in a terminal launches the TUI.  Scripts
     # piping ``terok`` get the argparse usage error instead — the TTY
     # check keeps the convenience shortcut from surprising automation.

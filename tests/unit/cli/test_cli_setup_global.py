@@ -44,6 +44,7 @@ def test_dispatch_invokes_cmd_setup_with_flag() -> None:
         install_desktop_entry=False,
         with_images=None,
         family=None,
+        passphrase_tier=None,
     )
 
 
@@ -65,6 +66,7 @@ def test_dispatch_forwards_install_desktop_entry() -> None:
         install_desktop_entry=True,
         with_images=None,
         family=None,
+        passphrase_tier=None,
     )
 
 
@@ -86,6 +88,7 @@ def test_dispatch_forwards_with_images_and_family() -> None:
         install_desktop_entry=False,
         with_images="fedora:43",
         family="rpm",
+        passphrase_tier=None,
     )
 
 

@@ -2081,6 +2081,9 @@ if _HAS_TEXTUAL:
         is already running; ``--new-session`` opts out and starts a parallel,
         tmux-named session instead.
         """
+        from terok.lib.core.config import declare_setup_invocation
+
+        declare_setup_invocation()
         args = _build_arg_parser().parse_args()
         set_experimental(args.experimental)
 

@@ -97,6 +97,15 @@ def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) ->
             "``rpm``).  Auto-detected from the base image name otherwise."
         ),
     )
+    p_setup.add_argument(
+        "--passphrase-tier",
+        default=None,
+        help=(
+            "Force credentials-DB passphrase storage to a specific tier "
+            "(``systemd-creds`` | ``keyring`` | ``session-file`` | "
+            "``config``); required on a non-TTY host without systemd-creds."
+        ),
+    )
 
 
 def dispatch(args: argparse.Namespace) -> bool:
@@ -108,6 +117,7 @@ def dispatch(args: argparse.Namespace) -> bool:
         install_desktop_entry=getattr(args, "install_desktop_entry", False),
         with_images=getattr(args, "with_images", None),
         family=getattr(args, "family", None),
+        passphrase_tier=getattr(args, "passphrase_tier", None),
     )
     return True
 
@@ -121,6 +131,7 @@ def cmd_setup(
     install_desktop_entry: bool = False,
     with_images: str | None = None,
     family: str | None = None,
+    passphrase_tier: str | None = None,
 ) -> None:
     """Install the sandbox stack + desktop entry; optionally pre-build one L0/L1 pair.
 
@@ -148,7 +159,7 @@ def cmd_setup(
 
     sandbox_failed = False
     try:
-        ensure_sandbox_ready()
+        ensure_sandbox_ready(passphrase_tier=passphrase_tier)
     except SystemExit as exc:
         sandbox_failed = True
         if exc.code:
