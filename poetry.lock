@@ -2069,17 +2069,21 @@ name = "mkdocs-terok"
 version = "0.7.1"
 description = "Shared ProperDocs documentation generators for terok projects"
 optional = false
-python-versions = "<4.0,>=3.12"
+python-versions = ">=3.12,<4.0"
 groups = ["docs"]
-files = [
-    {file = "mkdocs_terok-0.7.1-py3-none-any.whl", hash = "sha256:71f51c8d2d241a808e527ede731983157e817864ab6065a7e74cf84021215e2e"},
-    {file = "mkdocs_terok-0.7.1.tar.gz", hash = "sha256:cdb5715dfa82395bcd61c005603091910924a7609178c6dca26eea814cdf6667"},
-]
+files = []
+develop = false
 
 [package.dependencies]
-properdocs = ">=1.6.7"
-PyYAML = ">=6.0"
-squarify = ">=0.4"
+properdocs = ">=1.6.7,<1.7.0"
+PyYAML = ">=6.0,<7.0"
+squarify = "0.4.4"
+
+[package.source]
+type = "git"
+url = "https://github.com/sliwowitz/mkdocs-terok.git"
+reference = "feat/versioned-docs"
+resolved_reference = "5d523291b6e24f1c572bbe135996a0d29d79dd07"
 
 [[package]]
 name = "mkdocstrings"
@@ -4538,4 +4542,4 @@ propcache = ">=0.2.1"
 [metadata]
 lock-version = "2.1"
 python-versions = ">=3.12,<3.15"
-content-hash = "5e27efd6cb9bf0012f90de2d39f51323c0290954442544f8c4ac0fc11181c061"
+content-hash = "0157e8472e612239283f93e0cee181d0285f51087f25a6a1ceacf8cc5153c409"

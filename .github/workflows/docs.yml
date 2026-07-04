@@ -201,14 +201,12 @@ jobs:
           name: docs-site
           path: site/
 
-  # TODO(repin): point at the mkdocs-terok release tag (@vX.Y.Z) once
-  # terok-ai/mkdocs-terok#95 ships in a release.
   publish:
     if: github.repository == 'terok-ai/terok' && (github.ref == 'refs/heads/master' || inputs.release)
     needs: build
     permissions:
       contents: write
-    uses: terok-ai/mkdocs-terok/.github/workflows/publish-versioned-docs.yml@master
+    uses: sliwowitz/mkdocs-terok/.github/workflows/publish-versioned-docs.yml@feat/versioned-docs
     with:
       version: ${{ needs.build.outputs.version }}
       title: ${{ needs.build.outputs.title }}

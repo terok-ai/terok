@@ -127,7 +127,7 @@ mkdocstrings = {extras = ["python"], version = ">=0.26"}
 mkdocs-gen-files = ">=0.5"
 mkdocs-literate-nav = ">=0.6"
 mkdocs-section-index = ">=0.3"
-mkdocs-terok = "^0.7"
+mkdocs-terok = {git = "https://github.com/sliwowitz/mkdocs-terok.git", branch = "feat/versioned-docs"}
 
 
 [tool.pytest.ini_options]
