@@ -1,4 +1,12 @@
 # Changelog
+## v0.8.4 — The Celestial Temple
+
+* Codex device-code auth login, https://github.com/terok-ai/terok/pull/1096
+* UI improvements https://github.com/terok-ai/terok/pull/1097, https://github.com/terok-ai/terok/pull/1099, https://github.com/terok-ai/terok/pull/1124 
+* Restart semantics changed to resume-or-recreate, https://github.com/terok-ai/terok/pull/1115
+
+**Full Changelog**: https://github.com/terok-ai/terok/compare/v0.8.3...v0.8.4
+
 ## v0.8.3 — Start Again
 
 hotfix: restart a task container after host reboot in https://github.com/terok-ai/terok/pull/1092
