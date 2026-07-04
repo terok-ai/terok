@@ -3600,13 +3600,14 @@ url = "https://github.com/terok-ai/terok-clearance/releases/download/v0.7.2/tero
 
 [[package]]
 name = "terok-executor"
-version = "0.2.2a1"
+version = "0.2.2a3"
 description = "Single-agent task runner for hardened Podman containers"
 optional = false
 python-versions = ">=3.12,<3.15"
 groups = ["main"]
-files = []
-develop = false
+files = [
+    {file = "terok_executor-0.2.2a3-py3-none-any.whl", hash = "sha256:dcace57b5e52a87eaade3485dc260b9eab72c10829b20e7659807893541e3559"},
+]
 
 [package.dependencies]
 agent-client-protocol = "0.10.1"
@@ -3615,25 +3616,24 @@ prompt-toolkit = ">=3.0,<4.0"
 pydantic = ">=2.13,<3.0"
 rich = ">=15.0,<16.0"
 "ruamel.yaml" = "0.19.1"
-terok-sandbox = {git = "https://github.com/sliwowitz/terok-sandbox.git", rev = "feat/shared-matrix-engine"}
-terok-util = ">=0.2.1,<0.3.0"
+terok_sandbox = {url = "https://github.com/terok-ai/terok-sandbox/releases/download/v0.3.2a3/terok_sandbox-0.3.2a3-py3-none-any.whl"}
+terok_util = {url = "https://github.com/terok-ai/terok-util/releases/download/v0.2.1/terok_util-0.2.1-py3-none-any.whl"}
 tomli-w = ">=1.2,<2.0"
 
 [package.source]
-type = "git"
-url = "https://github.com/sliwowitz/terok-executor.git"
-reference = "feat/shared-matrix-engine"
-resolved_reference = "196522d4ef4cd071110e8ad76469b5fc0f507ee7"
+type = "url"
+url = "https://github.com/terok-ai/terok-executor/releases/download/v0.2.2a3/terok_executor-0.2.2a3-py3-none-any.whl"
 
 [[package]]
 name = "terok-sandbox"
-version = "0.3.2a2"
+version = "0.3.2a3"
 description = "Hardened Podman container runner with gate server and shield integration"
 optional = false
 python-versions = ">=3.12,<4.0"
 groups = ["main"]
-files = []
-develop = false
+files = [
+    {file = "terok_sandbox-0.3.2a3-py3-none-any.whl", hash = "sha256:deb7a7b8d6dc823694e2d3b8bfdef70aae13df033e9fb8af7f0d35de91248693"},
+]
 
 [package.dependencies]
 aiohttp = ">=3.14.1,<3.15.0"
@@ -3648,13 +3648,11 @@ pydantic = ">=2.13,<3.0"
 sqlcipher3 = "0.6.2"
 terok_clearance = {url = "https://github.com/terok-ai/terok-clearance/releases/download/v0.7.2/terok_clearance-0.7.2-py3-none-any.whl"}
 terok_shield = {url = "https://github.com/terok-ai/terok-shield/releases/download/v0.7.1/terok_shield-0.7.1-py3-none-any.whl"}
-terok-util = ">=0.2.1,<0.3.0"
+terok_util = {url = "https://github.com/terok-ai/terok-util/releases/download/v0.2.1/terok_util-0.2.1-py3-none-any.whl"}
 
 [package.source]
-type = "git"
-url = "https://github.com/sliwowitz/terok-sandbox.git"
-reference = "feat/shared-matrix-engine"
-resolved_reference = "0282cfb3c9eb963d3b5c3619f731b856567d61ec"
+type = "url"
+url = "https://github.com/terok-ai/terok-sandbox/releases/download/v0.3.2a3/terok_sandbox-0.3.2a3-py3-none-any.whl"
 
 [[package]]
 name = "terok-shield"
@@ -3681,17 +3679,20 @@ name = "terok-util"
 version = "0.2.1"
 description = "Shared utility library for the terok-* sibling packages"
 optional = false
-python-versions = "<4.0,>=3.12"
+python-versions = ">=3.12,<4.0"
 groups = ["main"]
 files = [
     {file = "terok_util-0.2.1-py3-none-any.whl", hash = "sha256:51a2dd3e5d8de52cc349aa4d3fab46a05c02c190a005525bf5b21c753e421f2f"},
-    {file = "terok_util-0.2.1.tar.gz", hash = "sha256:7311147632b585c0e3764ba3092044f5d330e3515327a315866743ef90459e83"},
 ]
 
 [package.dependencies]
 jinja2 = ">=3.1,<4.0"
 platformdirs = ">=4.10,<5.0"
 "ruamel.yaml" = "0.19.1"
+
+[package.source]
+type = "url"
+url = "https://github.com/terok-ai/terok-util/releases/download/v0.2.1/terok_util-0.2.1-py3-none-any.whl"
 
 [[package]]
 name = "textual"
@@ -4551,4 +4552,4 @@ propcache = ">=0.2.1"
 [metadata]
 lock-version = "2.1"
 python-versions = ">=3.12,<3.15"
-content-hash = "e6e775132e25943ba57fab7f17061bc800ca2deadd61d0b28cfe1cb6e7aca89c"
+content-hash = "6cf74818b709c9e72aff6e9f0fe3b9f7af2835fd12fd3398445b69bf773cd4bd"
