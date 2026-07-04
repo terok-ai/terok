@@ -20,13 +20,10 @@ Phase 1 (always): in parallel,
     The gate runs inside each container's supervisor, so this
     same kill stops the gate too — there is no separate host gate
     daemon to stop.
-  * **Wipe the session-unlock tmpfs file** so a follow-up
-    ``task restart`` after panic cannot bring up a supervisor that
-    auto-unlocks from the same passphrase the operator just panic'd
-    over.  Persistent tiers (keyring, sealed systemd-creds,
-    ``credentials.passphrase``) are intentionally untouched —
-    clearing them is destructive and the operator opts in via
-    ``terok-sandbox vault lock --forget``.
+  * **Hard-lock the vault** by destroying every stored passphrase
+    tier — session file and persistent tiers alike — so nothing can
+    auto-unlock it afterwards.  Recovery is by re-supplying the
+    escrowed recovery passphrase (see ``_stop_vault``).
 
 Phase 2 (optional, ``stop_containers=True``): SIGKILL each container
 via ``podman stop --time 0``.  Containers are *not* removed.

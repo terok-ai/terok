@@ -11,7 +11,7 @@ project context in hand.
 Selection priority, highest first:
 
 1. ``TEROK_RUNTIME`` env var (``crun`` | ``krun`` | ``null``) — the
-   override path used by ``terok task start`` invocations that want
+   override path used by ``terok task run`` invocations that want
    to force a runtime without editing config.
 2. ``project.run.runtime`` from the project's ``project.yml`` — the
    per-project setting.

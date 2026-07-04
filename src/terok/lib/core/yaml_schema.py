@@ -212,9 +212,10 @@ class RawGateSection(BaseModel):
     - ``enabled=False`` + no upstream → no git plumbing; the container
       starts with an empty workspace.
 
-    When upstream is absent, ``security_class`` collapses: ``online`` and
-    ``gatekeeping`` describe the same act because there's nothing to push
-    to beyond the gate.  Both values are accepted and behave identically.
+    When upstream is absent the two classes still differ: ``gatekeeping``
+    clones the workspace from the gate's local mirror, while ``online`` —
+    whose purpose is exposing an upstream — has nothing to expose and the
+    container starts with an empty workspace.
     """
 
     model_config = ConfigDict(extra="forbid")
