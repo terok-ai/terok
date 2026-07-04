@@ -47,11 +47,11 @@ plugins:
           # at the docs-inventories bucket instead of the sibling Pages site.
           inventories:
             - https://docs.python.org/3/objects.inv
-            - { url: "https://raw.githubusercontent.com/terok-ai/docs-inventories/master/terok-executor/objects.inv", base_url: "https://terok-ai.github.io/terok-executor/" }
-            - { url: "https://raw.githubusercontent.com/terok-ai/docs-inventories/master/terok-sandbox/objects.inv", base_url: "https://terok-ai.github.io/terok-sandbox/" }
-            - { url: "https://raw.githubusercontent.com/terok-ai/docs-inventories/master/terok-shield/objects.inv", base_url: "https://terok-ai.github.io/terok-shield/" }
-            - { url: "https://raw.githubusercontent.com/terok-ai/docs-inventories/master/terok-clearance/objects.inv", base_url: "https://terok-ai.github.io/terok-clearance/" }
-            - { url: "https://raw.githubusercontent.com/terok-ai/docs-inventories/master/terok-util/objects.inv", base_url: "https://terok-ai.github.io/terok-util/" }
+            - { url: "https://raw.githubusercontent.com/terok-ai/docs-inventories/master/terok-executor/objects.inv", base_url: "https://terok-ai.github.io/terok-executor/dev/" }
+            - { url: "https://raw.githubusercontent.com/terok-ai/docs-inventories/master/terok-sandbox/objects.inv", base_url: "https://terok-ai.github.io/terok-sandbox/dev/" }
+            - { url: "https://raw.githubusercontent.com/terok-ai/docs-inventories/master/terok-shield/objects.inv", base_url: "https://terok-ai.github.io/terok-shield/dev/" }
+            - { url: "https://raw.githubusercontent.com/terok-ai/docs-inventories/master/terok-clearance/objects.inv", base_url: "https://terok-ai.github.io/terok-clearance/dev/" }
+            - { url: "https://raw.githubusercontent.com/terok-ai/docs-inventories/master/terok-util/objects.inv", base_url: "https://terok-ai.github.io/terok-util/dev/" }
           options:
             docstring_style: google
             show_source: true
