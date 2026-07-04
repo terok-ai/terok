@@ -33,7 +33,7 @@ dependencies = [
     "terok-sandbox @ git+https://github.com/sliwowitz/terok-sandbox.git@feat/shared-matrix-engine",
     "terok-shield~=0.7.1",
     "terok-clearance~=0.7.2",
-    "terok-util @ git+https://github.com/sliwowitz/terok-util.git@feat/matrix-engine",
+    "terok-util @ git+https://github.com/terok-ai/terok-util.git@879265e4808f1bdb8bdd7b21d71508021b9e90dd",
 ]
 
 [project.urls]
