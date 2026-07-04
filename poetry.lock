@@ -3623,7 +3623,7 @@ tomli-w = ">=1.2,<2.0"
 type = "git"
 url = "https://github.com/sliwowitz/terok-executor.git"
 reference = "feat/shared-matrix-engine"
-resolved_reference = "a97aa5aa76f2ea7db9ca5dc5f0ff32437f649c5d"
+resolved_reference = "6afa22d7387b07064e6a490e35efc49116bf17bd"
 
 [[package]]
 name = "terok-sandbox"
@@ -3654,7 +3654,7 @@ terok-util = {git = "https://github.com/sliwowitz/terok-util.git", rev = "feat/m
 type = "git"
 url = "https://github.com/sliwowitz/terok-sandbox.git"
 reference = "feat/shared-matrix-engine"
-resolved_reference = "0e26c376b8d20b18e15e3efa47edfff9d46aef13"
+resolved_reference = "734706ff3b06ebd1107a5bc1fa72de2d2e60c495"
 
 [[package]]
 name = "terok-shield"
