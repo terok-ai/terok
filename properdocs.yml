@@ -125,8 +125,8 @@ nav:
   - API Reference: reference/
 
 extra:
-  # "mike" names the versions.json contract, not the tool: the versioned
-  # tree on gh-pages is maintained by mkdocs_terok.versions via the
+  # "mike" names the versions.json contract, not the tool: the deployed
+  # versioned tree is assembled by mkdocs_terok.versions via the
   # publish-versioned-docs.yml reusable workflow.
   version:
     provider: mike

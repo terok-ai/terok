@@ -167,48 +167,13 @@ jobs:
           name: docs-site
           path: site/
 
-  # A release call ships the built site as an immutable snapshot asset on
-  # the tag's GitHub release; the assembler serves it as /<minor>/ from
-  # here on.  Final vX.Y.Z tags only: alphas never reach pypi-publish, so
-  # a non-final ref here is a mis-dispatch and fails loudly.
-  attach:
-    if: inputs.release
+  publish:
+    if: github.repository == 'terok-ai/terok' && (github.ref == 'refs/heads/master' || inputs.release)
     needs: build
-    runs-on: ubuntu-latest
     permissions:
       contents: write
-    steps:
-      - name: Require a final release tag
-        run: |
-          set -euo pipefail
-          if [[ ! "$GITHUB_REF_NAME" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-            echo "Release docs publish requires a final v*.*.* tag ref (got: $GITHUB_REF_NAME)" >&2
-            exit 1
-          fi
-
-      - uses: actions/download-artifact@v8
-        with:
-          name: docs-site
-          path: site
-
-      - name: Upload snapshot to the release
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          set -euo pipefail
-          tar -czf docs-site.tar.gz -C site .
-          gh release upload "$GITHUB_REF_NAME" docs-site.tar.gz --clobber --repo "$GITHUB_REPOSITORY"
-
-  # Runs after attach on the release path so the fresh snapshot is in the
-  # release list; attach is skipped on master pushes.
-  publish:
-    if: >-
-      !cancelled() && needs.build.result == 'success' &&
-      (needs.attach.result == 'success' || needs.attach.result == 'skipped') &&
-      github.repository == 'terok-ai/terok' && (github.ref == 'refs/heads/master' || inputs.release)
-    needs: [build, attach]
-    permissions:
-      contents: read
       pages: write
       id-token: write
     uses: sliwowitz/mkdocs-terok/.github/workflows/publish-versioned-docs.yml@feat/versioned-docs
+    with:
+      release: ${{ inputs.release == true }}
