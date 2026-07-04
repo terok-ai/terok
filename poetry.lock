@@ -3623,11 +3623,11 @@ tomli-w = ">=1.2,<2.0"
 type = "git"
 url = "https://github.com/sliwowitz/terok-executor.git"
 reference = "feat/shared-matrix-engine"
-resolved_reference = "3dc56e5f66b2ebbd1846bb9684d58cc55bc0bc54"
+resolved_reference = "e904257efc4bf27069a7889ed0e21398d292cafa"
 
 [[package]]
 name = "terok-sandbox"
-version = "0.3.2a1"
+version = "0.3.2a2"
 description = "Hardened Podman container runner with gate server and shield integration"
 optional = false
 python-versions = ">=3.12,<4.0"
@@ -3654,7 +3654,7 @@ terok-util = ">=0.2.1,<0.3.0"
 type = "git"
 url = "https://github.com/sliwowitz/terok-sandbox.git"
 reference = "feat/shared-matrix-engine"
-resolved_reference = "8768ac823940c515955fd0973057751b92ec4deb"
+resolved_reference = "f78fbd89f35583eb83121e374a23cac5fb755df6"
 
 [[package]]
 name = "terok-shield"
