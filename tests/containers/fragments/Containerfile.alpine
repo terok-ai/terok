@@ -1,9 +1,0 @@
-# SPDX-FileCopyrightText: 2026 Jiri Vyskocil
-# SPDX-License-Identifier: Apache-2.0
-
-# On AppArmor hosts the passt profile attaches to the container pasta by
-# pathname (profiles are not container-namespaced) and denies its netns
-# and sysctl reads (dmesg: profile="passt" DENIED); slirp4netns is
-# unaffected — force it as this slot's rootless network backend.
-RUN printf '\n[network]\ndefault_rootless_network_cmd = "slirp4netns"\n' \
-        >> /etc/containers/containers.conf

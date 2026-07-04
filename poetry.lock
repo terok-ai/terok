@@ -3654,7 +3654,7 @@ terok-util = {git = "https://github.com/sliwowitz/terok-util.git", rev = "feat/m
 type = "git"
 url = "https://github.com/sliwowitz/terok-sandbox.git"
 reference = "feat/shared-matrix-engine"
-resolved_reference = "a22724cf2048f3e653fb8aaf6a98e4406d639955"
+resolved_reference = "0e26c376b8d20b18e15e3efa47edfff9d46aef13"
 
 [[package]]
 name = "terok-shield"
@@ -3687,6 +3687,7 @@ files = []
 develop = false
 
 [package.dependencies]
+jinja2 = ">=3.1,<4.0"
 platformdirs = ">=4.10,<5.0"
 "ruamel.yaml" = "0.19.1"
 
@@ -3694,7 +3695,7 @@ platformdirs = ">=4.10,<5.0"
 type = "git"
 url = "https://github.com/sliwowitz/terok-util.git"
 reference = "feat/matrix-engine"
-resolved_reference = "60fa1229b238ab4941ea1f07a34cca0f4121db89"
+resolved_reference = "3eedac137a48d7ec58147eb8e33b36497d43295d"
 
 [[package]]
 name = "textual"
