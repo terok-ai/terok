@@ -3616,14 +3616,14 @@ pydantic = ">=2.13,<3.0"
 rich = ">=15.0,<16.0"
 "ruamel.yaml" = "0.19.1"
 terok-sandbox = {git = "https://github.com/sliwowitz/terok-sandbox.git", rev = "feat/shared-matrix-engine"}
-terok-util = {git = "https://github.com/terok-ai/terok-util.git", rev = "879265e4808f1bdb8bdd7b21d71508021b9e90dd"}
+terok-util = ">=0.2.1,<0.3.0"
 tomli-w = ">=1.2,<2.0"
 
 [package.source]
 type = "git"
 url = "https://github.com/sliwowitz/terok-executor.git"
 reference = "feat/shared-matrix-engine"
-resolved_reference = "abfc6e168167db92568a06278bfebb5d2f602d81"
+resolved_reference = "3dc56e5f66b2ebbd1846bb9684d58cc55bc0bc54"
 
 [[package]]
 name = "terok-sandbox"
@@ -3648,13 +3648,13 @@ pydantic = ">=2.13,<3.0"
 sqlcipher3 = "0.6.2"
 terok_clearance = {url = "https://github.com/terok-ai/terok-clearance/releases/download/v0.7.2/terok_clearance-0.7.2-py3-none-any.whl"}
 terok_shield = {url = "https://github.com/terok-ai/terok-shield/releases/download/v0.7.1/terok_shield-0.7.1-py3-none-any.whl"}
-terok-util = {git = "https://github.com/terok-ai/terok-util.git", rev = "879265e4808f1bdb8bdd7b21d71508021b9e90dd"}
+terok-util = ">=0.2.1,<0.3.0"
 
 [package.source]
 type = "git"
 url = "https://github.com/sliwowitz/terok-sandbox.git"
 reference = "feat/shared-matrix-engine"
-resolved_reference = "0cc871d5f5af0e88e65b93fdb7baa1dcb91db50a"
+resolved_reference = "8768ac823940c515955fd0973057751b92ec4deb"
 
 [[package]]
 name = "terok-shield"
@@ -3678,24 +3678,20 @@ url = "https://github.com/terok-ai/terok-shield/releases/download/v0.7.1/terok_s
 
 [[package]]
 name = "terok-util"
-version = "0.2.0"
+version = "0.2.1"
 description = "Shared utility library for the terok-* sibling packages"
 optional = false
-python-versions = ">=3.12,<4.0"
+python-versions = "<4.0,>=3.12"
 groups = ["main"]
-files = []
-develop = false
+files = [
+    {file = "terok_util-0.2.1-py3-none-any.whl", hash = "sha256:51a2dd3e5d8de52cc349aa4d3fab46a05c02c190a005525bf5b21c753e421f2f"},
+    {file = "terok_util-0.2.1.tar.gz", hash = "sha256:7311147632b585c0e3764ba3092044f5d330e3515327a315866743ef90459e83"},
+]
 
 [package.dependencies]
 jinja2 = ">=3.1,<4.0"
 platformdirs = ">=4.10,<5.0"
 "ruamel.yaml" = "0.19.1"
-
-[package.source]
-type = "git"
-url = "https://github.com/terok-ai/terok-util.git"
-reference = "879265e4808f1bdb8bdd7b21d71508021b9e90dd"
-resolved_reference = "879265e4808f1bdb8bdd7b21d71508021b9e90dd"
 
 [[package]]
 name = "textual"
@@ -4555,4 +4551,4 @@ propcache = ">=0.2.1"
 [metadata]
 lock-version = "2.1"
 python-versions = ">=3.12,<3.15"
-content-hash = "67f9be4cc7ed059307c1cc214b06ef0e038986bd71b7bc6bfe93ccb5bce0db18"
+content-hash = "e6e775132e25943ba57fab7f17061bc800ca2deadd61d0b28cfe1cb6e7aca89c"
