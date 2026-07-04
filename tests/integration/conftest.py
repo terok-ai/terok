@@ -114,7 +114,7 @@ hooks_unavailable = pytest.mark.skipif(
 # ── Matrix capability contract ───────────────────────────────────────
 # The skip guards above are for dev machines, where a missing binary is
 # a host limitation.  Inside the matrix the harness built the image, so
-# every capability it declares (TEROK_EXPECT, exported by run-matrix.sh)
+# every capability it declares (TEROK_EXPECT, exported by the matrix engine)
 # is a contract: absence fails the whole session up front instead of
 # dissolving into skips that read as green.
 
