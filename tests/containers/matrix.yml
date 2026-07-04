@@ -1,0 +1,74 @@
+# SPDX-FileCopyrightText: 2026 Jiri Vyskocil
+# SPDX-License-Identifier: Apache-2.0
+#
+# Multi-distro test matrix for terok — declarative input to the shared
+# engine in terok-util.  Run with `poetry run terok-matrix` from the repo
+# root (or `make test-matrix`).
+#
+# terok exercises the full stack (supervisor sidecar, vault, git gate,
+# clearance varlink hub) on the nested rootless-podman image family.
+# Extra packages per slot: openssh for the SSH signer path, dbus + the
+# meson/glib toolchain for dbus-python (the `stories` dependency group);
+# alpine additionally needs git-daemon for the gate's git:// tests.
+#
+# The nix slot is not a distro — it reproduces a wrapped-Python setup so
+# `[sys.executable, "-m", "terok…"]` re-entry keeps working (#717); it
+# runs the GitHub-Actions flavour of the suite (unit + host-only
+# integration) under its own phases.
+
+image-prefix: terok-test
+flavor: podman
+expect: [podman, nft, dnsmasq, dig, getent, git, ssh-keygen, internet]
+poetry-groups: [test, stories]
+
+slots:
+  debian12:
+    extra-packages: [python3-venv, openssh-client, dbus, gcc, python3-dev, libdbus-1-dev, libglib2.0-dev, pkg-config, meson]
+  ubuntu2404:
+    extra-packages: [openssh-client, dbus, gcc, python3-dev, libdbus-1-dev, libglib2.0-dev, pkg-config, meson]
+  ubuntu2604:
+    extra-packages: [openssh-client, dbus, gcc, python3-dev, libdbus-1-dev, libglib2.0-dev, pkg-config, meson]
+  debian13:
+    extra-packages: [openssh-client, dbus, gcc, python3-dev, libdbus-1-dev, libglib2.0-dev, pkg-config, meson]
+  fedora43:
+    extra-packages: [openssh-clients, dbus-daemon, gcc, python3-devel, dbus-devel, glib2-devel, pkgconf, meson]
+  fedora44:
+    extra-packages: [openssh-clients, dbus-daemon, gcc, python3-devel, dbus-devel, glib2-devel, pkgconf, meson]
+  podman:
+    extra-packages: [openssh-clients, dbus-daemon, gcc, python3-devel, dbus-devel, glib2-devel, pkgconf, meson]
+  alpine:
+    extra-packages: [git-daemon, openssh-client, dbus, dbus-dev, glib-dev, pkgconf, meson]
+    skip:
+      arches: [aarch64, arm64]
+      reason: musl+aarch64 has no tree-sitter grammar wheels (textual[syntax]); Alpine is x86_64-only for terok
+  void:
+    extra-packages: [openssh, dbus, dbus-devel, glib-devel, pkgconf, meson]
+  mageia:
+    extra-packages: [openssh-clients, dbus, dbus-devel, glib2-devel, pkgconf, meson]
+  nix:
+    poetry-groups: [test, docs]
+    expect: []
+    phases:
+      - name: unit tests
+        scope: unit
+        pytest: tests/unit -v --tb=short -p no:tach
+      - name: host-only integration tests
+        scope: integ
+        pytest: tests/integration -v --tb=short -p no:tach -m "needs_host_features and not needs_internet and not needs_podman"
+
+phases:
+  - name: "phase 1: tests without hooks"
+    scope: integ
+    pytest: tests/integration/ -v --tb=short -m "not needs_hooks"
+  - name: "phase 2: installing shield hooks"
+    run:
+      - poetry run terok shield install-hooks
+      - poetry run python3 -c "from terok_shield import has_global_hooks; assert has_global_hooks(), 'Shield hooks not detected after setup'; print('Shield hooks verified.')"
+    expect-add: [hooks]
+  - name: "phase 3: tests with hooks"
+    scope: integ
+    pytest: tests/integration/ -v --tb=short -m "needs_hooks"
+  - name: terok config
+    run:
+      - poetry run terok config paths 2>&1
+    tolerate-failure: true

@@ -53,7 +53,7 @@ test-integration:
 
 # Run host-only integration tests (filesystem/process workflows; no podman/network)
 # needs_hooks tests are skipped automatically when hooks are absent;
-# hook installation happens only inside disposable matrix containers (run-matrix.sh).
+# hook installation happens only inside disposable matrix containers (terok-matrix).
 test-integration-host:
 	mkdir -p $(REPORTS_DIR)
 	poetry run pytest tests/integration/ -m "needs_host_features and not needs_internet and not needs_podman" -v --junitxml=$(INTEGRATION_HOST_JUNIT_XML) -o junit_family=legacy
@@ -74,17 +74,16 @@ test-integration-podman:
 test-integration-map:
 	poetry run python docs/test_map.py
 
-# Multi-distro integration test matrix (Debian 12/13, Ubuntu 24.04/26.04, Fedora 43/44, Alpine (non-systemd), nix, podman:stable)
+# Multi-distro integration test matrix — slots declared in
+# tests/containers/matrix.yml, engine provided by terok-util (terok-matrix).
 #   NO_CACHE=1 make test-matrix           — force full image rebuild
 #   BUILD_ONLY=1 make test-matrix         — build images only
-#   SCOPE=host-only make test-matrix      — run only needs_host_features tests
-#   DISTROS="debian12 fedora43" make test-matrix — run specific distros
+#   SLOTS="debian12 fedora43" make test-matrix — run specific slots
 test-matrix:
-	./tests/containers/run-matrix.sh \
+	poetry run terok-matrix \
 		$(if $(NO_CACHE),--no-cache) \
 		$(if $(BUILD_ONLY),--build-only) \
-		$(if $(SCOPE),--$(SCOPE)) \
-		$(DISTROS)
+		$(SLOTS)
 
 # Generate CI workflow map (Markdown tables from .github/workflows/*.yml)
 ci-map:
