@@ -21,7 +21,7 @@ dynamic = ["version", "classifiers"]
 dependencies = [
     "pydantic~=2.13",
     "ruamel.yaml==0.19.1",
-    "textual[syntax]~=8.2.5",
+    "textual[syntax]~=8.2.8",
     "argcomplete~=3.7",
     "requests~=2.34",
     "rich~=15.0",
