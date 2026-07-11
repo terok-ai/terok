@@ -622,7 +622,12 @@ class TaskActionsMixin(_MixinBase):
         )
 
     async def _action_restart_task(self) -> None:
-        """Restart a task container (stops it first if running)."""
+        """Restart a task container in place (stops it first if running).
+
+        Keeps the container as-is even when the project image was
+        rebuilt; a stale image is warned about, not upgraded.  Use
+        ``_action_recreate_task`` to pick up a rebuilt image.
+        """
         if not self.current_project_name or not self.current_task:
             self.notify("No task selected.")
             return
@@ -633,6 +638,21 @@ class TaskActionsMixin(_MixinBase):
             pid,
             tid,
             title=f"Restarting task {tid}",
+            refresh="tasks",
+        )
+
+    async def _action_recreate_task(self) -> None:
+        """Recreate + restart a task container, picking up a rebuilt image."""
+        if not self.current_project_name or not self.current_task:
+            self.notify("No task selected.")
+            return
+        pid = self.current_project_name
+        tid = self.current_task.task_id
+        self._run_console_action(
+            "terok.tui.worker_actions:task_recreate",
+            pid,
+            tid,
+            title=f"Recreating task {tid}",
             refresh="tasks",
         )
 

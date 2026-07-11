@@ -86,15 +86,20 @@ All three persist independently and survive:
 |---------|---------------------------|---------------------------|------------------------|
 | `task run` | Always creates a fresh task + container (new ID) | Always creates a fresh task + container (new ID) | Always creates a fresh task + container (new ID) |
 | `task stop` | `podman stop` | Error: not running | Error: not running |
-| `task restart` | `podman stop`, then resume — or recreate in place on `--fresh` / image drift | Resume (`podman start`) — or recreate in place on `--fresh` / image drift | Recreates the container in place (same task ID, name, workspace) |
+| `task restart` | `podman stop`, then resume as-is (warns on image drift) — or recreate on `--recreate` | Resume (`podman start`) as-is (warns on image drift) — or recreate on `--recreate` | Recreates the container in place (same task ID, name, workspace) |
 | `task status`  | Shows state            | Shows state     | Shows "not found"      |
 | `task delete` | `podman rm -f` + cleanup | `podman rm -f` + cleanup | Cleanup only |
 
 `task restart` is a resume-or-recreate ladder: it resumes the existing
-container when it can, and otherwise warns and recreates it through the
-normal launch path (workspace kept, fresh tokens).  Headless tasks are the
-exception — recreating would replay their original prompt, so a missing
-container is an error there.
+container when it can — keeping it as-is even when the project image was
+rebuilt underneath it, so a long-running task keeps its in-container
+state.  A stale image is only *warned* about (pointing at recreate +
+restart), not upgraded.  When the resume rung is gone — the container no
+longer exists, or podman refuses to start it — it recreates through the
+normal launch path (workspace kept, fresh tokens).  `--recreate` skips
+straight to that rung, the explicit upgrade that picks up a rebuilt
+image.  Headless tasks are the exception — recreating would replay their
+original prompt, so a missing container is an error there.
 
 ### Container Naming
 
@@ -184,14 +189,16 @@ Container's build-context hash ≠ current build hash
         │
         ▼
   User should: terok project build <project>
-               then: terok task restart <project> <task>
+               then: terok task restart <project> <task> --recreate
 ```
 
 Staleness is detected by comparing per-layer build-context hashes
 (`build_manifest.json`, with the `terok.build_context_hash` image label
-as fallback) — not raw image IDs.  `task restart` probes for image drift
-and recreates the container in place automatically; `--fresh` forces it.
-The workspace is kept either way — no need to delete the task.
+as fallback) — not raw image IDs.  A plain `task restart` resumes the
+container as-is and *warns* when the image has drifted, leaving a
+long-running task on its existing image; `--recreate` picks up the
+rebuilt image by recreating the container in place.  The workspace is
+kept either way — no need to delete the task.
 
 ---
 

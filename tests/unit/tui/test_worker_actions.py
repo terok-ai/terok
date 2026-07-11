@@ -204,6 +204,13 @@ def test_task_restart_and_stop_delegate_to_facade() -> None:
     m_stop.assert_called_once_with("proj", "tid")
 
 
+def test_task_recreate_delegates_with_fresh() -> None:
+    """``task_recreate`` forwards to the facade with ``fresh=True`` (recreate rung)."""
+    with mock.patch("terok.lib.api.task_restart") as m_restart:
+        worker_actions.task_recreate("proj", "tid")
+    m_restart.assert_called_once_with("proj", "tid", fresh=True)
+
+
 def test_start_cli_container_delegates_to_task_run_cli() -> None:
     """``start_cli_container`` forwards ``(project_name, task_id)`` to ``task_run_cli``."""
     with mock.patch("terok.lib.api.task_run_cli") as m:

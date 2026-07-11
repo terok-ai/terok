@@ -261,14 +261,15 @@ def register(
 
     t_restart = tsub.add_parser(
         "restart",
-        help="Restart a task's container (stop if running, then start; "
-        "recreates in place when the container can't be resumed)",
+        help="Restart a task's container (stop if running, then resume in "
+        "place; the container is kept as-is even when the project image was "
+        "rebuilt — a stale image is warned about, not upgraded)",
     )
     t_restart.add_argument(
-        "--fresh",
+        "--recreate",
         action="store_true",
-        help="Skip the resume and recreate the container (e.g. after an image "
-        "rebuild); the workspace is kept as-is",
+        help="Recreate the container instead of resuming it, picking up a "
+        "rebuilt project image; the workspace is kept as-is",
     )
     _add_project_task_args(t_restart)
 
@@ -742,7 +743,7 @@ def _dispatch_task_sub(args: argparse.Namespace) -> bool:
         task_stop(pid, tid, timeout=getattr(args, "timeout", None))
     elif args.task_cmd == "restart":
         _setup_verdict_or_exit()
-        task_restart(pid, tid, fresh=args.fresh)
+        task_restart(pid, tid, fresh=args.recreate)
     elif args.task_cmd == "followup":
         _setup_verdict_or_exit()
         task_followup_headless(

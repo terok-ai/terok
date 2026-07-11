@@ -389,7 +389,7 @@ def test_ensure_task_running_launches_missing_container() -> None:
 
 
 def test_task_restart_fresh_skips_resume_and_recreates() -> None:
-    """``--fresh`` tears a healthy running container down and relaunches it."""
+    """``--recreate`` (fresh) tears a healthy running container down and relaunches it."""
     project_name = "proj_restart_fresh"
     with project_env(project_config(project_name), project_name=project_name) as ctx:
         task_id = create_task_with_mode(ctx, project_name)
@@ -412,13 +412,21 @@ def test_task_restart_fresh_skips_resume_and_recreates() -> None:
         run_cli.assert_called_once()
 
 
-def test_task_restart_image_drift_recreates() -> None:
-    """A container built from a superseded project image takes the recreate rung."""
+def test_task_restart_image_drift_warns_and_resumes() -> None:
+    """A container on a superseded image is resumed as-is, with a stale-image warning.
+
+    A plain restart keeps a long-running task's container rather than
+    upgrading it: it starts the existing container and only warns that
+    the image is out of date, pointing at recreate + restart.
+    """
     project_name = "proj_restart_drift"
     with project_env(project_config(project_name), project_name=project_name) as ctx:
         task_id = create_task_with_mode(ctx, project_name)
 
+        container_name = f"{project_name}-cli-{task_id}"
         container = _mock_container(state="exited")
+        container.login_command.return_value = ["podman", "exec", "-it", container_name, "bash"]
+        container.start.side_effect = lambda: setattr(container, "state", "running")
         runtime_mock = _mock_runtime(container)
         rebuilt = Mock()
         rebuilt.id = "img-rebuilt"
@@ -431,9 +439,38 @@ def test_task_restart_image_drift_recreates() -> None:
         ):
             output = capture_stdout(task_restart, project_name, task_id)
 
+        assert "OUTDATED image" in output
         assert "rebuilt" in output
+        assert "--recreate" in output
+        container.start.assert_called_once()
+        sandbox.return_value.rm.assert_not_called()
+        run_cli.assert_not_called()
+        assert "Restarted" in output
+
+
+def test_task_restart_recreate_on_image_drift_upgrades() -> None:
+    """``--recreate`` (fresh) tears the container down and relaunches on the new image."""
+    project_name = "proj_restart_drift_recreate"
+    with project_env(project_config(project_name), project_name=project_name) as ctx:
+        task_id = create_task_with_mode(ctx, project_name)
+        container_name = f"{project_name}-cli-{task_id}"
+
+        container = _mock_container(state="exited")
+        runtime_mock = _mock_runtime(container)
+        rebuilt = Mock()
+        rebuilt.id = "img-rebuilt"
+        runtime_mock.image.return_value = rebuilt
+        with (
+            mock_git_config(),
+            patch("terok.lib.core.runtime.resolve_runtime", return_value=runtime_mock),
+            patch("terok.lib.orchestration.task_runners.restart._sandbox") as sandbox,
+            patch("terok.lib.orchestration.task_runners.restart.task_run_cli") as run_cli,
+        ):
+            output = capture_stdout(task_restart, project_name, task_id, fresh=True)
+
+        assert "Recreating" in output
         container.start.assert_not_called()
-        sandbox.return_value.rm.assert_called_once()
+        sandbox.return_value.rm.assert_called_once_with([container_name])
         run_cli.assert_called_once()
 
 

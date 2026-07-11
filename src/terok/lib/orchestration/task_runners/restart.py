@@ -43,14 +43,19 @@ def task_restart(project_name: str, task_id: str, *, fresh: bool = False) -> Non
     """Bring a task's container back to running: stop if running, then start.
 
     The start is a best-effort ladder.  First rung: resume the existing
-    container in place.  When that rung is gone — the container no longer
-    exists, podman refuses to start it, or its image no longer matches
-    the current project image — warn and recreate the container through
-    the normal launch path: same task and container name, workspace
-    reused as-is (never re-seeded), project config re-read, tokens
-    minted fresh, per-task settings carried over from the saved
-    metadata.  *fresh* skips straight to the recreate rung (e.g. to pick
-    up a rebuilt image).
+    container in place — kept as-is even when the project image was
+    rebuilt underneath it, so a long-running task keeps its in-container
+    state.  A stale image is only *warned* about, not acted on (see
+    ``_warn_if_stale_image``).
+    When the resume rung is gone — the container no longer exists or
+    podman refuses to start it — recreate the container through the
+    normal launch path: same task and container name, workspace reused
+    as-is (never re-seeded), project config re-read, tokens minted fresh,
+    per-task settings carried over from the saved metadata.
+
+    *fresh* skips straight to the recreate rung — the explicit
+    "recreate + restart" that picks up a rebuilt image, upgrading a task
+    that a plain restart deliberately left on its old image.
 
     Headless tasks (mode ``run``) only ever take the resume rung:
     recreating one would replay its original prompt against the
@@ -120,7 +125,7 @@ def _make_running(
     if bounce:
         print(f"Restarting task {project_name}/{task_id} ({mode})...")
 
-    reason = _recreate_reason(project, mode, cname, container_state, fresh=fresh)
+    reason = _recreate_reason(container_state, fresh=fresh)
 
     if container_state is not None:
         _validate_restart_preconditions(project, task_id, mode, meta, cname)
@@ -144,23 +149,46 @@ def _make_running(
     )
 
 
-def _recreate_reason(
-    project: ProjectConfig, mode: str, cname: str, container_state: str | None, *, fresh: bool
-) -> str | None:
+def _recreate_reason(container_state: str | None, *, fresh: bool) -> str | None:
     """First reason the resume rung can't be taken, or ``None`` to resume.
 
-    Headless tasks skip the image-drift probe: they have no recreate
-    rung (the refusal in
-    [`_recreate_in_place`][terok.lib.orchestration.task_runners.restart._recreate_in_place]),
-    so flagging drift would only turn a working resume into an error.
+    Image drift is deliberately *not* a reason: a plain restart keeps a
+    long-running task's container as-is and only warns about the stale
+    image (see ``_warn_if_stale_image``).
+    Picking up a rebuilt image is the explicit job of *fresh* — the
+    "recreate + restart" the caller asked for.
     """
     if fresh:
-        return "--fresh requested"
+        return "recreate requested"
     if container_state is None:
         return "the container no longer exists"
+    return None
+
+
+def _warn_if_stale_image(project: ProjectConfig, task_id: str, mode: str, cname: str) -> None:
+    """Print a highlighted warning when a resumed container's image is stale.
+
+    A plain restart keeps the existing container even when the project
+    image was rebuilt underneath it — long-running tasks depend on their
+    in-container state and prefer stability over an upgrade.  This makes
+    the reuse a *visible* choice rather than silent staleness: it names
+    the drift and points at the recreate + restart that would pick up the
+    new image.  Headless tasks (mode ``run``) are skipped — they have no
+    recreate rung to point at.
+    """
     if mode == "run":
-        return None
-    return _image_drift(project, cname)
+        return
+    drift = _image_drift(project, cname)
+    if drift is None:
+        return
+    print(
+        _yellow(
+            f"Warning: task {task_id} restarted on an OUTDATED image ({drift}).\n"
+            f"  The container was reused as-is.  Recreate + restart to upgrade it "
+            f"to the rebuilt image (TUI: R;  CLI: terok task restart --recreate).",
+            _supports_color(),
+        )
+    )
 
 
 def _image_drift(project: ProjectConfig, cname: str) -> str | None:
@@ -248,6 +276,7 @@ def _start_and_report_restart(
     )
     _apply_shield_policy(project, cname, task_dir, is_restart=True)
 
+    _warn_if_stale_image(project, task_id, mode, cname)
     print(f"Restarted task {task_id}: {_green(cname, _supports_color())}")
     _print_reach_footer(project, task_id, mode, cname, meta)
 

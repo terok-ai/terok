@@ -161,14 +161,17 @@ Containers follow podman's own lifecycle, split across the three layers:
 - **terok** owns tasks (container + workspace + metadata).  The mode
   runners (`task_runners/cli.py`, `toad.py`) only ever *create*;
   everything that brings a container back goes through one ladder in
-  `task_runners/restart.py`: resume the existing container, else warn
-  and recreate it in place through the normal launch path (same names,
+  `task_runners/restart.py`: resume the existing container, else
+  recreate it in place through the normal launch path (same names,
   fresh tokens, config re-read, per-task settings from metadata).
-  `task_restart` is the ladder's bounce flavor (stop-if-running first,
-  `--fresh` forces recreate, an image-ID drift probe triggers it
-  automatically); `ensure_task_running` is the attach flavor (a running
-  container is reported, never disturbed).  Headless tasks never take
-  the recreate rung — that would replay their original prompt.
+  `task_restart` is the ladder's bounce flavor (stop-if-running first);
+  a plain restart resumes the container as-is and an image-ID drift
+  probe only *warns* that the image is stale (long-running tasks keep
+  their in-container state), while `--recreate` (`fresh=True`) forces
+  the recreate rung to pick up a rebuilt image.  `ensure_task_running`
+  is the attach flavor (a running container is reported, never
+  disturbed).  Headless tasks never take the recreate rung — that would
+  replay their original prompt.
 
 Invariants: the task workspace is never re-seeded on relaunch (the
 new-task-marker protocol decides), podman is the source of truth for

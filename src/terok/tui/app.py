@@ -176,6 +176,7 @@ if _HAS_TEXTUAL:
         "task_start_unattended": "_action_task_start_unattended",
         "delete": "action_delete_task",
         "restart": "_action_restart_task",
+        "recreate": "_action_recreate_task",
         "followup": "_action_task_followup",
         "diff_head": "action_copy_diff_head",
         "diff_prev": "action_copy_diff_prev",

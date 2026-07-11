@@ -238,10 +238,29 @@ def selinux_switch_to_tcp() -> None:
 
 
 def task_restart(project_name: str, task_id: str) -> None:
-    """Restart *task_id*'s container (stopping it first if running)."""
+    """Restart *task_id*'s container (stopping it first if running).
+
+    Resumes the container in place, keeping it as-is even when the
+    project image was rebuilt — a stale image is warned about, not
+    upgraded.  Use [`task_recreate`][terok.tui.worker_actions.task_recreate]
+    to pick up a rebuilt image.
+    """
     from terok.lib.api import task_restart as _task_restart
 
     _task_restart(project_name, task_id)
+
+
+def task_recreate(project_name: str, task_id: str) -> None:
+    """Recreate + restart *task_id*'s container, picking up a rebuilt image.
+
+    The recreate flavor of [`task_restart`][terok.tui.worker_actions.task_restart]:
+    tears the container down and relaunches it into the same name and
+    workspace, upgrading a task that a plain restart left on its old
+    image.
+    """
+    from terok.lib.api import task_restart as _task_restart
+
+    _task_restart(project_name, task_id, fresh=True)
 
 
 def task_stop(project_name: str, task_id: str) -> None:

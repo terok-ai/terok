@@ -1852,6 +1852,7 @@ class TaskDetailsScreen(screen.Screen[str | None]):
                 options.append(Option("view \\[f]ormatted logs", id="follow_logs"))
             options.append(None)
             options.append(Option("\\[r]estart container", id="restart"))
+            options.append(Option("\\[R]ecreate + restart  (pick up new image)", id="recreate"))
             options.append(Option("s\\[t]op container", id="stop"))
             if (
                 self._task_meta
@@ -1930,6 +1931,7 @@ class TaskDetailsScreen(screen.Screen[str | None]):
         # Shift keys (uppercase) — U always available, others require tasks
         shift_map: dict[str, str] = {
             "U": "task_start_unattended",
+            "R": "recreate",
             "H": "diff_head",
             "P": "diff_prev",
             "X": "delete",
@@ -1938,7 +1940,7 @@ class TaskDetailsScreen(screen.Screen[str | None]):
             "C": "show_clearance",
         }
         if key in shift_map:
-            if key in ("H", "P", "X", "D", "W", "C") and not self._has_tasks:
+            if key in ("R", "H", "P", "X", "D", "W", "C") and not self._has_tasks:
                 return
             self.dismiss(shift_map[key])
             event.stop()
