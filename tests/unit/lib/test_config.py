@@ -1147,3 +1147,71 @@ class TestLayeredConfig:
         labels = [label for label, _ in layers]
         assert labels[0] == "system"
         assert labels[-1] == "user"
+
+
+# ---------- TUI theme persistence (tui.theme) ----------
+
+
+class TestTuiThemePersistence:
+    """``save_tui_theme`` / ``get_tui_theme`` — the persisted TUI theme choice."""
+
+    def test_creates_missing_file_and_round_trips(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        """Saving into a nonexistent config file creates it, and reads see the value."""
+        path = tmp_path / "confdir" / "config.yml"
+        monkeypatch.setenv("TEROK_CONFIG_FILE", str(path))
+        assert cfg.get_tui_theme() is None
+        cfg.save_tui_theme("ansi-dark")
+        assert path.is_file()
+        # The write invalidated the config caches — no manual reset needed.
+        assert cfg.get_tui_theme() == "ansi-dark"
+
+    def test_surgical_update_preserves_keys_and_comments(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        """Only ``tui.theme`` changes; sibling keys and comments survive the rewrite."""
+        path = write_config(
+            tmp_path,
+            "# hand-written note\ngate_server:\n  port: 7000\ntui:\n  default_tmux: true\n",
+        )
+        monkeypatch.setenv("TEROK_CONFIG_FILE", str(path))
+        cfg.save_tui_theme("textual-light")
+        text = path.read_text(encoding="utf-8")
+        assert "# hand-written note" in text
+        assert cfg.get_tui_theme() == "textual-light"
+        assert cfg.get_tui_default_tmux() is True
+        assert cfg._load_validated().gate_server.port == 7000
+
+    def test_overwrites_previous_choice(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        """A second save replaces the stored theme."""
+        path = tmp_path / "config.yml"
+        monkeypatch.setenv("TEROK_CONFIG_FILE", str(path))
+        cfg.save_tui_theme("textual-light")
+        cfg.save_tui_theme("ansi-dark")
+        assert cfg.get_tui_theme() == "ansi-dark"
+        assert path.read_text(encoding="utf-8").count("theme:") == 1
+
+    def test_non_mapping_file_left_untouched(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        """A file whose top level isn't a mapping is refused, not clobbered."""
+        from terok.lib.util.yaml import YAMLError
+
+        path = write_config(tmp_path, "- not\n- a mapping\n")
+        monkeypatch.setenv("TEROK_CONFIG_FILE", str(path))
+        original = path.read_text(encoding="utf-8")
+        with pytest.raises(YAMLError):
+            cfg.save_tui_theme("ansi-dark")
+        assert path.read_text(encoding="utf-8") == original
+
+    def test_scalar_tui_section_is_replaced(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        """An invalid scalar ``tui:`` value (schema-rejected anyway) becomes a mapping."""
+        path = write_config(tmp_path, "tui: nonsense\n")
+        monkeypatch.setenv("TEROK_CONFIG_FILE", str(path))
+        cfg.save_tui_theme("ansi-dark")
+        assert cfg.get_tui_theme() == "ansi-dark"

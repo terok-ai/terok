@@ -845,6 +845,8 @@ expose = [
     "get_tui_default_tmux",
     "get_tui_container_resync_seconds",
     "get_tui_desktop_entry",
+    "get_tui_theme",
+    "save_tui_theme",
     "get_global_human_name",
     "get_global_human_email",
     "get_global_default_agent",

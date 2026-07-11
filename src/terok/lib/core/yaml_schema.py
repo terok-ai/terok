@@ -392,6 +392,16 @@ class RawTUISection(BaseModel):
     default_tmux: bool = Field(
         default=False, description="Default to tmux mode when launching the TUI"
     )
+    theme: str | None = Field(
+        default=None,
+        description=(
+            "Textual theme applied at TUI startup (e.g. ``textual-dark``, "
+            "``ansi-dark``).  Maintained automatically: picking a theme in "
+            "the TUI's command palette writes the choice here so it "
+            "persists across sessions.  Unset — or a name the installed "
+            "Textual doesn't know — keeps the default theme."
+        ),
+    )
     external_editor: bool = Field(
         default=True,
         description=(

@@ -842,6 +842,14 @@ Command palette (`Ctrl+P`) actions:
 - **Edit Global Instructions** — edit the global `instructions.md` in `$EDITOR`
 - **Show Default Instructions** — view the bundled default instructions (read-only)
 
+#### Theme
+
+Pick a theme from the command palette (`Ctrl+P` → "Change theme"); the choice
+is saved to `tui.theme` in your global `config.yml` and applied on the next
+launch. The built-in `ansi-dark` theme renders with your terminal's own
+palette and default background — console output (image builds, gate syncs)
+then looks exactly as it would running the command directly in your terminal.
+
 ### Debugging
 
 Resolved instructions are always written to `<tasks_root>/<task_id>/agent-config/instructions.md` on the host for inspection.

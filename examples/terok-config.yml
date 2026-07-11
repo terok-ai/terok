@@ -65,6 +65,13 @@ tui:
   # editor, even when $EDITOR is set. Default: true.
   # external_editor: false
 
+  # Textual theme applied at TUI startup (e.g. textual-dark, textual-light,
+  # ansi-dark — the latter uses your terminal's own colors and default
+  # background). Maintained automatically: picking a theme in the TUI's
+  # command palette (Ctrl+P → "Change theme") writes the choice here.
+  # Unset, or an unknown name, keeps the default theme.
+  # theme: ansi-dark
+
 # Agent configuration
 # -----------------------------------------------------------------
 # Native Claude handles sub-agents, skills, and MCPs — terok does not own a

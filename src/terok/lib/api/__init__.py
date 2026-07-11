@@ -217,6 +217,7 @@ from terok.lib.core import config as _config, paths as _paths
 # Side-effecting / factory helpers that don't fit on the frozen Config object.
 from terok.lib.core.config import (  # noqa: F401 — re-exported public API
     make_sandbox_config,
+    save_tui_theme,
     set_experimental,
 )
 from terok.lib.integrations.sandbox import (  # noqa: F401 — re-exported public API
@@ -261,6 +262,9 @@ class Config:
     tui_external_editor: bool
     # Presentation hints
     shield_security_hint: str
+    # Defaulted late additions — hand-built Config literals in tests
+    # predate them, so new fields land here with a default.
+    tui_theme: str | None = None
 
 
 def get_config() -> Config:
@@ -277,6 +281,7 @@ def get_config() -> Config:
         shield_bypass_firewall_no_protection=_config.get_shield_bypass_firewall_no_protection(),
         tui_default_tmux=_config.get_tui_default_tmux(),
         tui_external_editor=_config.get_tui_external_editor(),
+        tui_theme=_config.get_tui_theme(),
         shield_security_hint=_config.SHIELD_SECURITY_HINT,
     )
 
@@ -302,6 +307,7 @@ __all__ = [
     "get_config",
     # Side-effecting helpers
     "make_sandbox_config",
+    "save_tui_theme",
     "set_experimental",
     "get_container_state",
     # Shared sandbox types and ANSI helpers kept on __init__

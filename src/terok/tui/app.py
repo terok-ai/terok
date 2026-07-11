@@ -48,6 +48,7 @@ if _HAS_TEXTUAL:
     from textual.binding import Binding
     from textual.containers import Horizontal, Vertical
     from textual.css.query import NoMatches
+    from textual.theme import Theme
     from textual.timer import Timer
     from textual.widgets import Footer, Header
     from textual.worker import Worker, WorkerState
@@ -79,6 +80,7 @@ if _HAS_TEXTUAL:
         load_project,
         make_git_gate,
         panic_stop_containers,
+        save_tui_theme,
         set_experimental,
     )
 
@@ -87,6 +89,7 @@ if _HAS_TEXTUAL:
         get_version_info as _get_version_info,
         short_version as _short_version,
     )
+    from ..lib.util.yaml import YAMLError
 
     # Exit code 5 is the ``terok setup`` partial-success signal — every
     # install phase succeeded but a manual step (currently: SELinux
@@ -440,6 +443,10 @@ if _HAS_TEXTUAL:
 
         async def on_mount(self) -> None:
             """Load projects, restore selection state, and start polling on first mount."""
+            # Apply the persisted theme choice before the first paint,
+            # and keep ``tui.theme`` in sync with later palette picks.
+            self._apply_saved_theme()
+
             try:
                 clipboard_status = get_clipboard_helper_status()
                 if not clipboard_status.available:
@@ -493,6 +500,38 @@ if _HAS_TEXTUAL:
             # actionable feedback the user shouldn't be allowed to mute
             # indefinitely.
             await self._maybe_show_first_run_flow()
+
+        def _apply_saved_theme(self) -> None:
+            """Apply ``tui.theme`` from config, then track palette picks.
+
+            An unknown name — a theme from a different Textual version,
+            or a typo from hand-editing — falls back to the default
+            silently: the config value is a preference, not a contract.
+            The comparison seed is the theme *in effect after* the
+            apply, so the signal echo of our own set (and of Textual's
+            startup default when nothing is saved) never writes the
+            default back into the user's config file.
+            """
+            saved = self._config.tui_theme
+            if saved and saved in self.available_themes:
+                self.theme = saved
+            self._persisted_theme = self.theme
+            self.theme_changed_signal.subscribe(self, self._on_theme_picked)
+
+        def _on_theme_picked(self, theme: Theme) -> None:
+            """Write a genuine palette theme pick through to the user config file."""
+            if theme.name == self._persisted_theme:
+                return
+            try:
+                save_tui_theme(theme.name)
+            except (OSError, YAMLError) as exc:
+                self.notify(
+                    f"Theme applied for this session, but saving it failed: {exc}",
+                    severity="warning",
+                    timeout=10,
+                )
+                return
+            self._persisted_theme = theme.name
 
         async def _maybe_show_first_run_flow(self) -> None:
             """Probe the setup verdict and decide whether to drive the first-run flow."""

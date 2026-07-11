@@ -18,7 +18,7 @@ if TYPE_CHECKING:
 
     from terok.lib.integrations.sandbox import SandboxConfig
 
-from ..util.yaml import YAMLError, load as _yaml_load
+from ..util.yaml import YAMLError, dump as _yaml_dump, load as _yaml_load
 from .paths import config_root as _config_root_base
 from .yaml_schema import RawGlobalConfig
 
@@ -433,6 +433,46 @@ def get_tui_external_editor() -> bool:
     session — the web TUI always uses the integrated editor.
     """
     return _load_validated().tui.external_editor
+
+
+def get_tui_theme() -> str | None:
+    """Return the Textual theme name to apply at TUI startup, or ``None`` if not set."""
+    return _load_validated().tui.theme
+
+
+def save_tui_theme(theme: str) -> None:
+    """Persist *theme* as ``tui.theme`` in the user's global config file.
+
+    A surgical round-trip update of
+    [`global_config_path`][terok.lib.core.config.global_config_path]:
+    only the one key changes — everything else in the file, comments
+    included, survives via ruamel's round-trip mode.  Creates the file
+    (and its parent directory) when missing, and invalidates the
+    in-process config caches so subsequent reads observe the new value.
+
+    Raises:
+        OSError: The config file or its directory cannot be read or written.
+        YAMLError: The existing file is malformed, or its top level is
+            not a mapping — the file is left untouched rather than
+            clobbered with a theme-only stump.
+    """
+    global _validated_config_cache, _raw_config_cache  # noqa: PLW0603
+    path = global_config_path()
+    data: dict[str, Any] = {}
+    if path.is_file():
+        raw = _yaml_load(path.read_text(encoding="utf-8"))
+        if raw is not None and not isinstance(raw, dict):
+            raise YAMLError(f"{path}: expected a mapping at top level, got {type(raw).__name__}")
+        data = raw or {}
+    tui = data.get("tui")
+    if not isinstance(tui, dict):
+        tui = {}
+        data["tui"] = tui
+    tui["theme"] = theme
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(_yaml_dump(data), encoding="utf-8")
+    _validated_config_cache = None
+    _raw_config_cache = None
 
 
 def get_tui_desktop_entry() -> str:
