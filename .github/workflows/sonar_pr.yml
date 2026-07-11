@@ -61,6 +61,10 @@ jobs:
           ref: ${{ env.PR_SHA }}
           fetch-depth: 0
           persist-credentials: false
+          # Reviewed opt-in to checkout@v7's workflow_run pwn-request guard: this
+          # trusted-context checkout is the workflow's entire purpose; the header
+          # comment documents the mitigations.
+          allow-unsafe-pr-checkout: true
 
       - uses: actions/download-artifact@v8
         with:
