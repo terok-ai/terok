@@ -393,11 +393,13 @@ def _task_delete(project: ProjectConfig, task_id: str) -> TaskDeleteResult:
         _log_debug("task_delete: archiving task")
         _archive_task(project, task_id, meta)
 
-    # The gate token is a stateless pair-match between the container's
-    # env and the supervisor sidecar.  *Successful* removal below kills
-    # both live ends (env + supervisor); the sidecar's on-disk copy is
-    # swept right after — it must outlive mere stops so restarts come
-    # back supervised, so delete is where it actually goes.
+    # At request time the gate token is a stateless pair-match between
+    # the container's env and the supervisor sidecar.  *Successful*
+    # removal below kills both live ends (env + supervisor); the
+    # sidecar's on-disk copy is swept right after — it must outlive mere
+    # stops so restarts come back supervised, so delete is where it
+    # actually goes.  The task meta's ``gate_token`` (the durable mint
+    # record) leaves with the task metadata at the end of this delete.
     _log_debug("task_delete: removing task containers")
     containers_removed = _remove_task_containers(project.name, task_id, warnings)
     if containers_removed:
@@ -405,9 +407,10 @@ def _task_delete(project: ProjectConfig, task_id: str) -> TaskDeleteResult:
     else:
         # Removal failed, so the supervisor — and the in-memory gate token it
         # holds — may still be live even as the rest of the delete proceeds.
-        # There is no host-side store to revoke from, so surface it loudly:
-        # the operator must stop the container manually or run `terok panic`
-        # to invalidate the token.
+        # No host-side store can revoke it (the task meta only records the
+        # value for minting reuse; the gate consults the supervisor's copy),
+        # so surface it loudly: the operator must stop the container manually
+        # or run `terok panic` to invalidate the token.
         warnings.append(
             "Container removal failed — its supervisor may still be live and "
             "holding a valid gate token; stop the container manually or run "
