@@ -163,7 +163,8 @@ Containers follow podman's own lifecycle, split across the three layers:
   everything that brings a container back goes through one ladder in
   `task_runners/restart.py`: resume the existing container, else
   recreate it in place through the normal launch path (same names,
-  fresh tokens, config re-read, per-task settings from metadata).
+  same task-persistent gate token, config re-read, per-task settings
+  from metadata).
   `task_restart` is the ladder's bounce flavor (stop-if-running first);
   a plain restart resumes the container as-is and an image-ID drift
   probe only *warns* that the image is stale (long-running tasks keep

@@ -96,10 +96,10 @@ rebuilt underneath it, so a long-running task keeps its in-container
 state.  A stale image is only *warned* about (pointing at recreate +
 restart), not upgraded.  When the resume rung is gone — the container no
 longer exists, or podman refuses to start it — it recreates through the
-normal launch path (workspace kept, fresh tokens).  `--recreate` skips
-straight to that rung, the explicit upgrade that picks up a rebuilt
-image.  Headless tasks are the exception — recreating would replay their
-original prompt, so a missing container is an error there.
+normal launch path (workspace kept, gate token reused).  `--recreate`
+skips straight to that rung, the explicit upgrade that picks up a
+rebuilt image.  Headless tasks are the exception — recreating would
+replay their original prompt, so a missing container is an error there.
 
 ### Container Naming
 

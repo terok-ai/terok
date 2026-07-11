@@ -76,6 +76,30 @@ def test_sync_gate_success_does_not_raise() -> None:
     fake_gate.sync.assert_called_once()
 
 
+def test_sync_gate_reports_cache_refresh_failure(capsys: pytest.CaptureFixture[str]) -> None:
+    """A successful sync with a failed clone-cache refresh names the failure.
+
+    The sync itself stays green (the cache is an optimization), but the
+    summary must not read as an all-clear while the refresh silently
+    failed.
+    """
+    fake_gate = mock.Mock()
+    fake_gate.sync.return_value = {
+        "success": True,
+        "created": False,
+        "errors": [],
+        "cache_error": "exit status 128: fatal: bad ref",
+    }
+    with (
+        mock.patch("terok.lib.api.load_project"),
+        mock.patch("terok.lib.api.make_git_gate", return_value=fake_gate),
+    ):
+        worker_actions.sync_gate("proj")
+    out = capsys.readouterr().out
+    assert "Gate synced from upstream." in out
+    assert "clone cache refresh failed: exit status 128: fatal: bad ref" in out
+
+
 def test_sync_gate_failure_raises_systemexit() -> None:
     """A failed sync raises ``SystemExit`` so the child exits non-zero."""
     fake_gate = mock.Mock()

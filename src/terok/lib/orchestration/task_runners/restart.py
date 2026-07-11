@@ -50,8 +50,10 @@ def task_restart(project_name: str, task_id: str, *, fresh: bool = False) -> Non
     When the resume rung is gone — the container no longer exists or
     podman refuses to start it — recreate the container through the
     normal launch path: same task and container name, workspace reused
-    as-is (never re-seeded), project config re-read, tokens minted fresh,
-    per-task settings carried over from the saved metadata.
+    as-is (never re-seeded), project config re-read, the task's
+    persistent gate token reused (the workspace's origin URL embeds it,
+    so it must survive the recreate), per-task settings carried over
+    from the saved metadata.
 
     *fresh* skips straight to the recreate rung — the explicit
     "recreate + restart" that picks up a rebuilt image, upgrading a task
@@ -309,9 +311,9 @@ def _recreate_in_place(
 ) -> None:
     """Tear the old container down and relaunch the task into the same name.
 
-    The mode runner's launch path re-reads project config and mints
-    fresh tokens; the workspace is reused as-is — with no new-task
-    marker the init script fetches without resetting — and the task's
+    The mode runner's launch path re-reads project config and reuses the
+    task's persistent gate token; the workspace is reused as-is — with no
+    new-task marker the init script fetches without resetting — and the task's
     ``unrestricted`` choice (caller override, else saved metadata)
     overrides the runner's config resolution.
 

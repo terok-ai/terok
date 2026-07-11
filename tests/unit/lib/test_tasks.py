@@ -56,6 +56,19 @@ from tests.testfs import CONTAINER_SSH_DIR
 from tests.testnet import GATE_PORT
 
 
+def _seed_task_meta(project_name: str, task_id: str) -> None:
+    """Create the minimal on-disk task meta ``build_task_env_and_volumes`` expects.
+
+    The real runners load the task meta before materializing the env, and
+    the task-persistent gate token is stored in that same file — a
+    gate-wired env build without task meta fails loudly ("Unknown task").
+    """
+    write_task_meta(
+        dossier_path(tasks_meta_dir(project_name), task_id),
+        {"project_name": project_name, "task_id": task_id},
+    )
+
+
 def _set_state_sequence(mock_runtime, states: list[str | None]):
     """Patch ``runtime.container(...).state`` to yield ``states`` across calls.
 
@@ -363,6 +376,7 @@ class TestTask:
             with_config_file=True,
             with_gate=True,
         ):
+            _seed_task_meta(project_name, "7")
             env, volumes = build_task_env_and_volumes(
                 project=load_project(project_name),
                 task_id="7",
@@ -398,6 +412,7 @@ class TestTask:
                 f"project:\n  id: {project_name}\n  security_class: gatekeeping\ngit:\n  default_branch: main\n",
             )
 
+            _seed_task_meta(project_name, "9")
             env, volumes = build_task_env_and_volumes(
                 project=load_project(project_name),
                 task_id="9",
@@ -427,6 +442,7 @@ class TestTask:
                 f"project:\n  id: {project_name}\n  security_class: online\ngit:\n  upstream_url: https://example.com/repo.git\n  default_branch: main\n",
             )
 
+            _seed_task_meta(project_name, "8")
             env, volumes = build_task_env_and_volumes(load_project(project_name), task_id="8")
             assert env["CODE_REPO"] == "https://example.com/repo.git"
             assert env["GIT_BRANCH"] == "main"
@@ -882,6 +898,7 @@ class TestTask:
             with_config_file=True,
             with_gate=True,
         ):
+            _seed_task_meta(project_name, "10")
             env, _ = build_task_env_and_volumes(
                 project=load_project(project_name),
                 task_id="10",
@@ -906,6 +923,7 @@ class TestTask:
             with_config_file=True,
             with_gate=True,
         ):
+            _seed_task_meta(project_name, "11")
             env, _ = build_task_env_and_volumes(
                 project=load_project(project_name),
                 task_id="11",
@@ -929,6 +947,7 @@ class TestTask:
             with_config_file=True,
             with_gate=True,
         ):
+            _seed_task_meta(project_name, "12")
             env, _ = build_task_env_and_volumes(
                 project=load_project(project_name),
                 task_id="12",
@@ -959,6 +978,7 @@ class TestTask:
             with_config_file=True,
             with_gate=True,
         ):
+            _seed_task_meta(project_name, "13")
             env, _ = build_task_env_and_volumes(
                 project=load_project(project_name),
                 task_id="13",

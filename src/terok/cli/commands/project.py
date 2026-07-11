@@ -395,6 +395,9 @@ def _cmd_gate_sync(args: argparse.Namespace) -> None:
         f"Gate ready at {res['path']} "
         f"(upstream: {upstream_label}; created: {res['created']}){cache_note}"
     )
+    if res.get("cache_error"):
+        print(f"Warning: clone cache refresh failed: {res['cache_error']}")
+        print("New tasks fall back to a full clone until the next successful sync.")
 
 
 def _cmd_agents_set(project_name: str, selection: str | None) -> None:

@@ -126,6 +126,9 @@ def sync_gate(project_name: str) -> None:
             if result["created"]
             else "Gate synced from upstream."
         )
+        if result.get("cache_error"):
+            print(f"Warning: clone cache refresh failed: {result['cache_error']}")
+            print("New tasks fall back to a full clone until the next successful sync.")
         return
     _print_sync_gate_ssh_help(project_name)
     raise SystemExit(f"Gate sync failed: {', '.join(result['errors'])}")

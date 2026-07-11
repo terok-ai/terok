@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import logging
 import os
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -142,17 +143,42 @@ def _resolve_gate_port() -> int:
     return _CONTAINER_GATE_PORT
 
 
+def _task_gate_token(project_name: str, task_id: str) -> str:
+    """Return the task's gate token, minting and persisting it on first use.
+
+    Task-scoped, not container-scoped: the restart ladder's recreate rung
+    builds a fresh container while the workspace keeps the origin URL a
+    previous generation wrote into ``.git/config`` — a per-container
+    token would strand every recreated task on a dead credential (403
+    from the gate).  Persisting the token in the task meta (next to the
+    toad ``web_token``) keeps one token valid for the task's whole life;
+    it dies with the task's metadata.  The sidecar JSON already carries
+    the token in plaintext on the host, so this adds no new exposure.
+    """
+    from .tasks import load_task_meta, write_task_meta
+
+    meta, handle = load_task_meta(project_name, task_id)
+    token = meta.get("gate_token")
+    if not token:
+        token = mint_gate_token()
+        meta["gate_token"] = token
+        write_task_meta(handle, meta)
+    return str(token)
+
+
 def _gatekeeping_repo_env(
     project: ProjectConfig,
     gate_base: Path,
     gate_port: int,
+    token_source: Callable[[], str],
 ) -> dict[str, str]:
     """Repo-access env for a gatekeeping-class task — the gate *is* origin.
 
     The container clones and pushes through the gate, so a missing gate
-    mirror is fatal.  Mints a fresh per-task gate token, embeds it in the
-    gate URL, and exposes it via ``TEROK_GATE_TOKEN`` so the per-container
-    supervisor can validate the requests it receives.
+    mirror is fatal.  Resolves the task's persistent gate token via
+    *token_source*, embeds it in the gate URL, and exposes it via
+    ``TEROK_GATE_TOKEN`` so the per-container supervisor can validate
+    the requests it receives.
     """
     gate_repo = project.gate_path
     if not gate_repo.exists():
@@ -161,7 +187,7 @@ def _gatekeeping_repo_env(
             f"Expected at: {gate_repo}\n"
             f"Run 'terok project gate-sync {project.name}' to create/update the local mirror."
         )
-    token = mint_gate_token()
+    token = token_source()
     gate_url = _gate_url(gate_repo, gate_base, gate_port, token)
     env: dict[str, str] = {"CODE_REPO": gate_url, "TEROK_GATE_TOKEN": token}
     if project.default_branch:
@@ -175,20 +201,21 @@ def _online_repo_env(
     project: ProjectConfig,
     gate_base: Path,
     gate_port: int,
+    token_source: Callable[[], str],
 ) -> dict[str, str]:
     """Repo-access env for an online-class task — clones from upstream directly.
 
     The gate is used only as an opt-in clone accelerator
     (``gate.enabled``) when its mirror exists; ``gate.enabled: false``
     is the escape hatch for hosts that cannot use the gate.  When the
-    gate is in play it mints a fresh per-task token, embeds it in the
-    gate URL, and exposes it via ``TEROK_GATE_TOKEN`` for the
-    per-container supervisor to validate.
+    gate is in play it resolves the task's persistent token via
+    *token_source*, embeds it in the gate URL, and exposes it via
+    ``TEROK_GATE_TOKEN`` for the per-container supervisor to validate.
     """
     env: dict[str, str] = {}
     gate_repo = project.gate_path
     if project.gate_enabled and gate_repo.exists():
-        token = mint_gate_token()
+        token = token_source()
         gate_url = _gate_url(gate_repo, gate_base, gate_port, token)
         env["CLONE_FROM"] = gate_url
         env["TEROK_GATE_TOKEN"] = token
@@ -209,19 +236,25 @@ def _online_repo_env(
 def _security_mode_env_and_volumes(
     project: ProjectConfig,
     cfg: SandboxConfig,
+    token_source: Callable[[], str],
     *,
     use_socket: bool = False,
 ) -> tuple[dict[str, str], list[VolumeSpec]]:
-    """Return env vars and volumes for the project's security mode."""
+    """Return env vars and volumes for the project's security mode.
+
+    *token_source* supplies the gate token lazily — it is only called
+    (and thus only persisted into the task meta) when the mode actually
+    wires a gate URL.
+    """
     volumes: list[VolumeSpec] = []
     gate_repo = project.gate_path
     gate_base = cfg.gate_base_path
     gate_port = _resolve_gate_port()
 
     if project.security_class == "gatekeeping":
-        env = _gatekeeping_repo_env(project, gate_base, gate_port)
+        env = _gatekeeping_repo_env(project, gate_base, gate_port, token_source)
     else:
-        env = _online_repo_env(project, gate_base, gate_port)
+        env = _online_repo_env(project, gate_base, gate_port, token_source)
 
     # Gate socket path for the container-side socat bridge.  The gate now
     # runs inside the per-container supervisor, which binds
@@ -525,7 +558,12 @@ class TaskEnvironment:
 
         # Pre-resolve gate server URLs → CODE_REPO / CLONE_FROM / GIT_BRANCH,
         # plus any security-mode volumes (the gate socket sub-mount).
-        sec_env, sec_volumes = _security_mode_env_and_volumes(project, cfg, use_socket=use_socket)
+        sec_env, sec_volumes = _security_mode_env_and_volumes(
+            project,
+            cfg,
+            lambda: _task_gate_token(project.name, task_id),
+            use_socket=use_socket,
+        )
 
         # Seed workspace from clone cache (fast-start optimisation).
         # Only for new tasks (marker present, no .git yet).  The in-container

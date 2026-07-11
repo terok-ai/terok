@@ -443,20 +443,16 @@ class TestEnvironmentWarnings:
         gate_path.resolve.return_value.parent = Path("/fake/gate")
         mock_project.gate_path = gate_path
 
-        with (
-            patch(
-                "terok.lib.orchestration.environment.SandboxConfig.gate_base_path",
-                new_callable=PropertyMock,
-                return_value=Path("/fake/gate"),
-            ),
-            patch(
-                "terok.lib.orchestration.environment.mint_gate_token",
-                return_value="t" * 32,
-            ),
+        with patch(
+            "terok.lib.orchestration.environment.SandboxConfig.gate_base_path",
+            new_callable=PropertyMock,
+            return_value=Path("/fake/gate"),
         ):
             from terok.lib.integrations.sandbox import SandboxConfig
 
-            env, _vols = _security_mode_env_and_volumes(mock_project, SandboxConfig())
+            env, _vols = _security_mode_env_and_volumes(
+                mock_project, SandboxConfig(), lambda: "t" * 32
+            )
 
         err = capsys.readouterr().err
         assert "unreachable" not in err.lower()

@@ -52,17 +52,15 @@ def resolve_security_env(
 ) -> tuple[ProjectConfig, dict[str, str], list]:
     """Load a project and evaluate gate-related env/volume settings.
 
-    Patches ``mint_gate_token`` so the embedded token is deterministic;
-    the gate base path is read straight off ``cfg.gate_base_path`` (a
-    ``SandboxConfig`` property), so no manager patching is needed.
+    Supplies a deterministic token source (the callers of the real thing
+    resolve the task-persistent token); the gate base path is read
+    straight off ``cfg.gate_base_path`` (a ``SandboxConfig`` property),
+    so no manager patching is needed.
     """
+    token_value = token or "tok" * 10 + "ab"
     with (
         mock_git_config(),
         project_env(yaml_text, project_name=project_name, with_gate=with_gate) as ctx,
-        patch(
-            "terok.lib.orchestration.environment.mint_gate_token",
-            return_value=token or "tok" * 10 + "ab",
-        ),
         patch(
             "terok.lib.orchestration.environment.SandboxConfig.gate_base_path",
             new_callable=lambda: property(lambda self: ctx.base / "sandbox-state" / "gate"),
@@ -72,7 +70,7 @@ def resolve_security_env(
 
         project = load_project(project_name)
         env, volumes = _security_mode_env_and_volumes(
-            project, SandboxConfig(), use_socket=use_socket
+            project, SandboxConfig(), lambda: token_value, use_socket=use_socket
         )
     return project, env, volumes
 
@@ -110,12 +108,49 @@ def test_gate_projects_use_http_urls_with_tokens(
         assert env["CODE_REPO"] == "https://example.com/repo.git"
 
 
+def test_task_gate_token_is_minted_once_and_persisted() -> None:
+    """The gate token is task-scoped: minted on first use, then reused.
+
+    Regression: the recreate rung of the restart ladder builds a fresh
+    container env — a per-container token stranded the reused workspace
+    on the dead credential embedded in its origin URL (403 from the
+    gate).  The token must come back identical across env rebuilds.
+    """
+    from terok.lib.orchestration.environment import _task_gate_token
+    from terok.lib.orchestration.tasks import dossier_path, tasks_meta_dir, write_task_meta
+
+    with mock_git_config(), project_env(_ONLINE_YAML, project_name="online-proj"):
+        meta_dir = tasks_meta_dir("online-proj")
+        write_task_meta(
+            dossier_path(meta_dir, "t1"), {"project_name": "online-proj", "task_id": "t1"}
+        )
+
+        first = _task_gate_token("online-proj", "t1")
+        second = _task_gate_token("online-proj", "t1")
+
+        assert first == second
+        assert first.startswith("terok-g-")
+        # Persisted in the task meta, like the toad web_token.
+        from terok.lib.orchestration.tasks import read_task_meta
+
+        assert read_task_meta(meta_dir, "t1")["gate_token"] == first
+
+
+def test_task_gate_token_unknown_task_raises() -> None:
+    """Resolving a token for a task without metadata fails loudly."""
+    from terok.lib.orchestration.environment import _task_gate_token
+
+    with mock_git_config(), project_env(_ONLINE_YAML, project_name="online-proj"):
+        with pytest.raises(SystemExit, match="Unknown task"):
+            _task_gate_token("online-proj", "no-such-task")
+
+
 def test_gatekeeping_missing_gate_raises() -> None:
     """Gatekeeping mode requires a synced gate mirror before task startup."""
     with mock_git_config(), project_env(_GATEKEEPING_YAML, project_name="gk-proj", with_gate=False):
         project = load_project("gk-proj")
         with pytest.raises(SystemExit, match="gate-sync"):
-            _security_mode_env_and_volumes(project, MagicMock())
+            _security_mode_env_and_volumes(project, MagicMock(), lambda: "t" * 32)
 
 
 def test_online_gate_uses_clone_from_and_gate_remote() -> None:

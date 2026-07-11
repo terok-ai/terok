@@ -429,6 +429,7 @@ layer = "orchestration"
 depends_on = [
     "terok.lib.core.config",
     "terok.lib.core.projects",
+    "terok.lib.orchestration.tasks",
     "terok.lib.util.fs",
     "terok.lib.util.host_cmd",
 ]
