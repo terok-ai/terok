@@ -11,29 +11,10 @@ argcomplete integration, and top-level dispatch loop.
 """
 
 import argparse
+import os
 import sys
 
-from terok.lib.api.vault import NoPassphraseError as _NoPassphraseError
-from terok.lib.core.config import declare_setup_invocation
-
-from ..lib.core.config import set_experimental
 from ..lib.core.version import format_version_string, get_version_info
-from .commands import (
-    acp,
-    agents,
-    auth,
-    clearance,
-    completions,
-    image,
-    info,
-    panic,
-    project,
-    setup,
-    shield,
-    sickbay,
-    task,
-    uninstall,
-)
 from .tree import CommandDef, CommandTree, inject_cfg_factory, inject_pt_resolver
 
 # Optional: bash completion via argcomplete
@@ -41,6 +22,51 @@ try:
     import argcomplete
 except ImportError:  # pragma: no cover - optional dep
     argcomplete = None  # type: ignore[assignment]
+
+
+#: Top-level command groups contributed by the sibling-wired tree — the
+#: executor passthrough plus the ``sandbox`` / ``vault`` / ``gate`` / ``ssh``
+#: shortcuts and the clearance-backed ``dbus`` group.  Single source of truth
+#: for both [`_build_wired_tree`][terok.cli.main._build_wired_tree] (which
+#: asserts the tree it builds matches this set) and the gate predicate
+#: [`_invocation_needs_wired_tree`][terok.cli.main._invocation_needs_wired_tree].
+#: Building the tree imports the executor / sandbox / clearance wheels, so a
+#: terok-own verb (``info``, ``task``, …) skips it entirely.
+_WIRED_TREE_ROOTS = frozenset({"executor", "sandbox", "vault", "gate", "ssh", "dbus"})
+
+
+def _first_verb(argv: list[str]) -> str | None:
+    """Return the first positional token in *argv*, or a help/None sentinel.
+
+    Root options (``--experimental`` / ``--no-emoji``) are valueless flags,
+    so the first token that isn't an option *is* the subcommand.  A ``-h`` /
+    ``--help`` anywhere ahead of a verb is reported as ``"--help"`` so the
+    caller keeps the full command surface for the top-level listing.
+    """
+    for tok in argv:
+        if tok in ("-h", "--help"):
+            return "--help"
+        if not tok.startswith("-"):
+            return tok
+    return None
+
+
+def _invocation_needs_wired_tree(argv: list[str]) -> bool:
+    """Whether *argv* targets a sibling-wired group and must build the tree.
+
+    The wired tree is expensive — building it imports terok-executor,
+    terok-sandbox, and terok-clearance.  A terok-own verb never needs it,
+    so we skip it.  The full tree is still built for shell completion, the
+    no-verb case, and ``--help`` / ``-h``, where the complete command
+    listing must be visible.
+    """
+    # Shell completion lists every command, so it needs the whole tree.
+    if os.environ.get("_ARGCOMPLETE"):
+        return True
+    verb = _first_verb(argv)
+    if verb is None or verb == "--help":
+        return True
+    return verb in _WIRED_TREE_ROOTS
 
 
 def _commandtree_dispatch(args: argparse.Namespace) -> bool:
@@ -57,26 +83,6 @@ def _commandtree_dispatch(args: argparse.Namespace) -> bool:
     return True
 
 
-# Dispatch chain — tried in order; first True wins.
-_DISPATCHERS = [
-    panic.dispatch,
-    setup.dispatch,
-    uninstall.dispatch,
-    auth.dispatch,
-    project.dispatch,
-    task.dispatch,
-    image.dispatch,
-    _commandtree_dispatch,
-    shield.dispatch,
-    clearance.dispatch,
-    sickbay.dispatch,
-    info.dispatch,
-    acp.dispatch,
-    agents.dispatch,
-    completions.dispatch,
-]
-
-
 def main(prog: str = "terok") -> None:
     """Parse CLI arguments and dispatch to the appropriate command handler.
 
@@ -91,6 +97,31 @@ def main(prog: str = "terok") -> None:
       split exists so ``terok`` can evolve richer UX while ``terokctl``
       preserves backwards compatibility.
     """
+    # Command modules and the config helpers are imported here, at dispatch
+    # time, rather than at module scope: the command modules transitively
+    # pull ``core``/``domain``/``orchestration`` (and thus the executor /
+    # sandbox wheels), so importing them eagerly would make a bare
+    # ``import terok.cli`` pay for the whole stack.  Deferring keeps import
+    # cheap; the cost lands only when a command is actually run.
+    from terok.lib.core.config import declare_setup_invocation, set_experimental
+
+    from .commands import (
+        acp,
+        agents,
+        auth,
+        clearance,
+        completions,
+        image,
+        info,
+        panic,
+        project,
+        setup,
+        shield,
+        sickbay,
+        task,
+        uninstall,
+    )
+
     declare_setup_invocation()
     # Fast-path: bare ``terok`` in a terminal launches the TUI.  Scripts
     # piping ``terok`` get the argparse usage error instead — the TTY
@@ -176,7 +207,13 @@ def main(prog: str = "terok") -> None:
     # sibling subtree both deeply (terok executor sandbox vault X) and
     # as top-level shortcuts (terok vault X) that share CommandDef
     # identity with the deep path.
-    _build_wired_tree().wire(sub)
+    #
+    # Gated: building the tree imports the executor / sandbox / clearance
+    # wheels, so a terok-own verb (``info``, ``task``, …) skips it and its
+    # sibling-registration parsers.  ``--help``, the no-verb case, and shell
+    # completion still build it so the full command surface stays visible.
+    if _invocation_needs_wired_tree(sys.argv[1:]):
+        _build_wired_tree().wire(sub)
 
     # Dev / shell niceties at the bottom of the help listing.
     completions.register(sub)
@@ -220,11 +257,31 @@ def main(prog: str = "terok") -> None:
         os.execlp("terok-tui", "terok-tui", *sys.argv[sys.argv.index("tui") + 1 :])
         return  # type: ignore[unreachable]  # in tests os.execlp is mocked
 
+    from terok.lib.api.vault import NoPassphraseError
+
+    # Dispatch chain — tried in order; first True wins.
+    dispatchers = [
+        panic.dispatch,
+        setup.dispatch,
+        uninstall.dispatch,
+        auth.dispatch,
+        project.dispatch,
+        task.dispatch,
+        image.dispatch,
+        _commandtree_dispatch,
+        shield.dispatch,
+        clearance.dispatch,
+        sickbay.dispatch,
+        info.dispatch,
+        acp.dispatch,
+        agents.dispatch,
+        completions.dispatch,
+    ]
     try:
-        for dispatch in _DISPATCHERS:
+        for dispatch in dispatchers:
             if dispatch(args):
                 return
-    except _NoPassphraseError as exc:
+    except NoPassphraseError as exc:
         # sandbox#278 stripped CLI-hint text from the library raise sites so
         # they stay diagnostic-only.  We're the operator-facing surface, so
         # the actionable hint lives here.
@@ -307,7 +364,7 @@ def _build_wired_tree() -> CommandTree:
         children=CLEARANCE_COMMANDS,
     )
 
-    return CommandTree(
+    tree = CommandTree(
         (
             CommandDef(
                 name="executor",
@@ -325,6 +382,13 @@ def _build_wired_tree() -> CommandTree:
             dbus_node,
         )
     )
+    # Drift guard: the gate predicate keys off ``_WIRED_TREE_ROOTS``; keep it
+    # in lockstep with what we actually wire so a new sibling group can't
+    # silently become ungated (and unreachable for terok-own verbs).
+    assert {root.name for root in tree.roots} == set(_WIRED_TREE_ROOTS), (
+        "wired-tree roots drifted from _WIRED_TREE_ROOTS — update the gate set"
+    )
+    return tree
 
 
 def terokctl_main() -> None:

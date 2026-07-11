@@ -22,24 +22,46 @@ worker actions.
 
 from __future__ import annotations
 
+import importlib
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 from types import MappingProxyType
+from typing import TYPE_CHECKING
 
-from terok.lib.domain.vault import vault_db  # noqa: F401 — re-exported public API
-from terok.lib.integrations.sandbox import (  # noqa: F401 — re-exported public API
-    NoPassphraseError,
-    RecoveryStatus,
-    SessionProvisionResult,
-    SessionShadow,
-    WrongPassphraseError,
-    clear_redundant_session_file,
-    handle_vault_seal,
-    handle_vault_to_keyring,
-    provision_session_passphrase,
-    purge_passphrase_tiers,
-    session_shadow_state,
-)
+if TYPE_CHECKING:
+    from terok.lib.domain.vault import vault_db as vault_db
+    from terok.lib.integrations.sandbox import (
+        NoPassphraseError as NoPassphraseError,
+        RecoveryStatus as RecoveryStatus,
+        SessionProvisionResult as SessionProvisionResult,
+        SessionShadow as SessionShadow,
+        WrongPassphraseError as WrongPassphraseError,
+        clear_redundant_session_file as clear_redundant_session_file,
+        handle_vault_seal as handle_vault_seal,
+        handle_vault_to_keyring as handle_vault_to_keyring,
+        provision_session_passphrase as provision_session_passphrase,
+        purge_passphrase_tiers as purge_passphrase_tiers,
+        session_shadow_state as session_shadow_state,
+    )
+
+#: Public name -> defining module (PEP 562 lazy resolution).  Every
+#: ``terok_sandbox`` re-export is served on first access, so importing
+#: this module (e.g. for [`VaultStatusSnapshot`][terok.lib.api.vault.VaultStatusSnapshot])
+#: does not pull the sandbox wheel until a sandbox-backed name is touched.
+_LAZY: dict[str, str] = {
+    "NoPassphraseError": "terok.lib.integrations.sandbox",
+    "RecoveryStatus": "terok.lib.integrations.sandbox",
+    "SessionProvisionResult": "terok.lib.integrations.sandbox",
+    "SessionShadow": "terok.lib.integrations.sandbox",
+    "WrongPassphraseError": "terok.lib.integrations.sandbox",
+    "clear_redundant_session_file": "terok.lib.integrations.sandbox",
+    "handle_vault_seal": "terok.lib.integrations.sandbox",
+    "handle_vault_to_keyring": "terok.lib.integrations.sandbox",
+    "provision_session_passphrase": "terok.lib.integrations.sandbox",
+    "purge_passphrase_tiers": "terok.lib.integrations.sandbox",
+    "session_shadow_state": "terok.lib.integrations.sandbox",
+    "vault_db": "terok.lib.domain.vault",
+}
 
 
 @dataclass(frozen=True)
@@ -125,7 +147,12 @@ class VaultStatusSnapshot:
         """
         from terok.lib.core.config import make_sandbox_config
         from terok.lib.domain.vault import vault_db
-        from terok.lib.integrations.sandbox import plaintext_passphrase_config_path
+        from terok.lib.integrations.sandbox import (
+            NoPassphraseError,
+            RecoveryStatus,
+            WrongPassphraseError,
+            plaintext_passphrase_config_path,
+        )
 
         cfg = make_sandbox_config()
         recovery = RecoveryStatus.load(cfg)
@@ -187,16 +214,29 @@ class VaultStatusSnapshot:
 
 __all__ = [
     "NoPassphraseError",
-    "RecoveryStatus",
     "VaultStatusSnapshot",
     "WrongPassphraseError",
+    "clear_redundant_session_file",
     "handle_vault_seal",
     "handle_vault_to_keyring",
-    "SessionProvisionResult",
-    "SessionShadow",
-    "clear_redundant_session_file",
     "provision_session_passphrase",
-    "session_shadow_state",
     "purge_passphrase_tiers",
-    "vault_db",
+    "session_shadow_state",
 ]
+
+
+def __getattr__(name: str) -> object:
+    """Resolve a re-exported name to its source module on first access (PEP 562)."""
+    try:
+        target = _LAZY[name]
+    except KeyError:
+        raise AttributeError(f"module {__name__!r} has no attribute {name!r}") from None
+    module_path, _, source_name = target.partition(":")
+    value = getattr(importlib.import_module(module_path), source_name or name)
+    globals()[name] = value  # cache so subsequent lookups skip __getattr__
+    return value
+
+
+def __dir__() -> list[str]:
+    """Expose the lazy names to ``dir()`` / autocompletion."""
+    return sorted({*globals(), *_LAZY})

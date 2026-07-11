@@ -23,13 +23,6 @@ from __future__ import annotations
 import argparse
 import sys
 
-from terok.lib.api.agents import (
-    AUTH_PROVIDERS,
-    auth_provider_aliases,
-    available_auth_modes,
-    resolve_auth_provider,
-)
-
 from ...lib.api import auth_image_staleness_warning, authenticate
 from ...lib.core.images import require_agent_installed
 from ...lib.core.projects import load_project, require_project_exists
@@ -46,11 +39,15 @@ def _provider_of() -> dict[str, str]:
     Inverse of [`auth_provider_aliases`][terok.lib.domain.auth.auth_provider_aliases]
     (provider→entry); used to show both names in the auth listings.
     """
+    from terok.lib.api.agents import auth_provider_aliases
+
     return {entry: provider for provider, entry in auth_provider_aliases().items()}
 
 
 def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
     """Register the ``auth`` top-level command."""
+    from terok.lib.api.agents import AUTH_PROVIDERS
+
     # Accept either an auth-entry name (codex) or the LLM provider it
     # authenticates (openai → codex), since the two can be confusing.
     provider_of = _provider_of()
@@ -129,6 +126,8 @@ def _run_one(provider: str, project_name: str | None, *, device_auth: bool = Fal
     With *device_auth* the method chooser is skipped and the provider's
     headless device-code login runs directly.
     """
+    from terok.lib.api.agents import resolve_auth_provider
+
     if project_name is not None:
         # Project-scoped: verify the L2 image actually has the agent baked
         # in before launching.  Host-wide auth resolves the image in the
@@ -149,6 +148,8 @@ def _run_interactive(project_name: str | None, *, device_auth: bool = False) -> 
     *device_auth* forces the device-code login for every selected provider —
     the headless escape hatch when driving the menu on a remote host.
     """
+    from terok.lib.api.agents import AUTH_PROVIDERS, available_auth_modes
+
     if project_name is not None:
         require_project_exists(project_name)
 
@@ -187,6 +188,8 @@ def _parse_provider_selection(raw: str, provider_names: list[str]) -> list[str]:
     tokens are reported on stderr and skipped — partial success is preferable to
     aborting the whole menu interaction.
     """
+    from terok.lib.api.agents import resolve_auth_provider
+
     selected: list[str] = []
     seen: set[str] = set()
     for token in raw.split(","):

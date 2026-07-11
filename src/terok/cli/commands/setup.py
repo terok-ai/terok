@@ -32,7 +32,6 @@ import shutil
 import sys
 
 from terok.lib.api import bold, red, stage_line, yellow
-from terok.lib.api.agents import AUTH_PROVIDERS
 
 from ...lib.api import (
     build_images,
@@ -188,6 +187,8 @@ def cmd_setup(
         print(bold(red("Image build failed — see above.")))
     else:
         print(bold(yellow("Desktop entry install reported errors (see above).")))
+
+    from terok.lib.api.agents import AUTH_PROVIDERS
 
     providers = ", ".join(AUTH_PROVIDERS)
     print(
