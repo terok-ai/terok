@@ -115,6 +115,21 @@ class TestDiscovery:
 
         assert _discover_targets() == []
 
+    @patch("terok.lib.domain.panic.list_projects")
+    @patch("terok.lib.domain.panic.get_tasks")
+    @patch("terok.lib.domain.panic.get_all_task_states")
+    def test_skips_project_when_state_query_fails(self, mock_states, mock_tasks, mock_projects):
+        """A failed batch query (``None``) skips the project, like the raise path."""
+        cfg = MagicMock(tasks_root=FAKE_PROJECT_TASKS_ROOT)
+        cfg.name = "proj1"
+        mock_projects.return_value = [cfg]
+        mock_tasks.return_value = [_task_meta("1")]
+        mock_states.return_value = None
+
+        from terok.lib.domain.panic import _discover_targets
+
+        assert _discover_targets() == []
+
 
 @patch(_SUPERVISORS, return_value=[])
 class TestExecutePanic:

@@ -686,8 +686,12 @@ class Project:
         metas = get_tasks(self._config.name)
         if mode:
             metas = [m for m in metas if m.mode == mode]
-        # Hydrate live container state so status filtering is accurate
+        # Hydrate live container state so status filtering is accurate.
+        # A failed query is an error — statuses computed without live state
+        # would be wrong, not merely incomplete (#1134).
         live_states = get_all_task_states(self._config.name, metas)
+        if live_states is None:
+            raise SystemExit("Container runtime unavailable — cannot query container states.")
         for m in metas:
             m.container_state = live_states.get(m.task_id)
         if status:

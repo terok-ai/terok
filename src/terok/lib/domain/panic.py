@@ -253,6 +253,12 @@ def _discover_targets() -> list[_Target]:
         except Exception:
             logger.debug("panic: failed to list tasks for %s", cfg.name, exc_info=True)
             continue
+        if states is None:
+            # No live states means no way to tell running from stopped —
+            # same outcome as the pre-#1134 empty dict (nothing matches
+            # "running"/"paused" below), but logged instead of silent.
+            logger.debug("panic: container state query failed for %s", cfg.name)
+            continue
         targets.extend(
             (
                 cfg.name,

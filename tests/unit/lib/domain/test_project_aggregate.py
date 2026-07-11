@@ -90,6 +90,16 @@ class TestTaskContainment:
         assert [t.id for t in result] == ["a"]
         assert metas[0].container_state == "running"
 
+    def test_list_tasks_errors_when_state_query_fails(self) -> None:
+        """A failed batch query (``None``) is an error — not silently wrong statuses."""
+        metas = [SimpleNamespace(task_id="a", mode="cli", status="running", container_state=None)]
+        with (
+            mock.patch("terok.lib.domain.project.get_tasks", return_value=metas),
+            mock.patch("terok.lib.domain.project.get_all_task_states", return_value=None),
+            pytest.raises(SystemExit, match="runtime unavailable"),
+        ):
+            _project().list_tasks()
+
     def test_tasks_property_delegates_to_list_tasks(self) -> None:
         with mock.patch.object(Project, "list_tasks", return_value=["sentinel"]) as lt:
             assert _project().tasks == ["sentinel"]
