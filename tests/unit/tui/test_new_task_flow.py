@@ -311,122 +311,88 @@ class TestTaskLaunchScreen:
         screen.on_input_submitted(event)
         screen._do_login.assert_called_once()
 
+    @staticmethod
+    def _screen_focused_on(focused_id: str | None, *, ready: bool):
+        """Launch screen with mocked login and focus resting on *focused_id*."""
+        screens, _ = import_screens()
+        screen = screens.TaskLaunchScreen(container_name="c", project_name="p", task_id="1")
+        screen._container_ready = ready
+        screen._do_login = mock.Mock()
+        screen.focused = None if focused_id is None else types.SimpleNamespace(id=focused_id)
+        return screen
+
     def test_on_key_ctrl_enter_is_owned_by_the_widget(self) -> None:
         """The screen ignores Ctrl+Enter — newline insertion lives in the widget.
 
         ``_SubmittablePromptArea`` inserts the newline and stops the event, so
         Ctrl+Enter never reaches the screen's ``on_key``; if it somehow does,
-        the screen must treat it as a no-op (no insert, no submit).
+        the screen must treat it as a no-op (no submit).
         """
-        screens, _ = import_screens()
-        screen = screens.TaskLaunchScreen(container_name="c", project_name="p", task_id="1")
+        screen = self._screen_focused_on("launch-prompt", ready=True)
 
-        mock_textarea = mock.Mock()
-        mock_textarea.text = "line1"
-        mock_textarea.has_focus = True
-        mock_textarea.insert = mock.Mock()
-
-        mock_select = mock.Mock()
-
-        def query_one(selector, cls=None):
-            if "login-agent" in selector:
-                return mock_select
-            return mock_textarea
-
-        screen.query_one = query_one
-
-        # Simulate Ctrl+Enter
         event = mock.Mock()
         event.key = "ctrl+enter"
         screen.on_key(event)
 
-        # The screen does nothing — the widget already handled the newline.
-        mock_textarea.insert.assert_not_called()
+        screen._do_login.assert_not_called()
         event.stop.assert_not_called()
 
     def test_on_key_enter_submits_when_ready_and_focused(self) -> None:
         """Enter (without Ctrl) submits when container ready and prompt has focus."""
-        screens, _ = import_screens()
-        screen = screens.TaskLaunchScreen(container_name="c", project_name="p", task_id="1")
-        screen._container_ready = True
-        screen._do_login = mock.Mock()
+        screen = self._screen_focused_on("launch-prompt", ready=True)
 
-        mock_textarea = mock.Mock()
-        mock_textarea.has_focus = True
-
-        mock_select = mock.Mock()
-
-        def query_one(selector, cls=None):
-            if "login-agent" in selector:
-                return mock_select
-            return mock_textarea
-
-        screen.query_one = query_one
-
-        # Simulate Enter (without Ctrl)
         event = mock.Mock()
         event.key = "enter"
-        event.ctrl = False
         screen.on_key(event)
 
         screen._do_login.assert_called_once()
         event.stop.assert_called_once()
 
+    def test_action_login_submits_when_ready(self) -> None:
+        """Enter on the agent select fires ``screen.login`` — submits once ready."""
+        screen = self._screen_focused_on("login-agent", ready=True)
+        screen.action_login()
+        screen._do_login.assert_called_once()
+
+    def test_action_login_noop_when_not_ready(self) -> None:
+        """The ``screen.login`` binding is gated on container readiness."""
+        screen = self._screen_focused_on("login-agent", ready=False)
+        screen.action_login()
+        screen._do_login.assert_not_called()
+
     def test_on_key_enter_noop_when_not_ready(self) -> None:
         """Enter does nothing when container is not ready, even with focus."""
-        screens, _ = import_screens()
-        screen = screens.TaskLaunchScreen(container_name="c", project_name="p", task_id="1")
-        screen._container_ready = False
-        screen._do_login = mock.Mock()
+        screen = self._screen_focused_on("launch-prompt", ready=False)
 
-        mock_textarea = mock.Mock()
-        mock_textarea.has_focus = True
-
-        mock_select = mock.Mock()
-
-        def query_one(selector, cls=None):
-            if "login-agent" in selector:
-                return mock_select
-            return mock_textarea
-
-        screen.query_one = query_one
-
-        # Simulate Enter (without Ctrl)
         event = mock.Mock()
         event.key = "enter"
-        event.ctrl = False
         screen.on_key(event)
 
         screen._do_login.assert_not_called()
         event.stop.assert_not_called()
 
-    def test_on_key_enter_noop_when_not_focused(self) -> None:
-        """Enter does nothing when prompt doesn't have focus, even if ready."""
-        screens, _ = import_screens()
-        screen = screens.TaskLaunchScreen(container_name="c", project_name="p", task_id="1")
-        screen._container_ready = True
-        screen._do_login = mock.Mock()
+    @pytest.mark.parametrize("focused_id", [None, "btn-dismiss"])
+    def test_on_key_enter_noop_when_not_focused(self, focused_id: str | None) -> None:
+        """Enter elsewhere (a button, or nothing focused) is left alone, even if ready."""
+        screen = self._screen_focused_on(focused_id, ready=True)
 
-        mock_textarea = mock.Mock()
-        mock_textarea.has_focus = False  # No focus
-
-        mock_select = mock.Mock()
-
-        def query_one(selector, cls=None):
-            if "login-agent" in selector:
-                return mock_select
-            return mock_textarea
-
-        screen.query_one = query_one
-
-        # Simulate Enter (without Ctrl)
         event = mock.Mock()
         event.key = "enter"
-        event.ctrl = False
         screen.on_key(event)
 
         screen._do_login.assert_not_called()
         event.stop.assert_not_called()
+
+    def test_agent_select_rebinds_enter_to_screen_login(self) -> None:
+        """The agent select's own Enter binding routes to ``screen.login``.
+
+        Subclass bindings replace same-key base bindings, so Enter no longer
+        expands the list — while Space/Up/Down (untouched base keys) still do.
+        """
+        screens, _ = import_screens()
+        # The stub Binding captures its constructor args as _stub_args.
+        own = {b._stub_args[0]: b._stub_args[1] for b in screens._LoginAgentSelect.BINDINGS}
+        assert own == {"enter": "screen.login"}
 
 
 class TestUnattendedPromptOnKey:
@@ -484,8 +450,8 @@ class TestTaskLaunchScreenHint:
         hint = self._screen("launch-prompt", ready=False)._enter_hint()
         assert "[dim]" in hint and "Enter login" in hint and "⌛" in hint
 
-    def test_enter_hint_agent_select_describes_the_dropdown(self) -> None:
-        assert self._screen("login-agent", ready=True)._enter_hint() == "Enter shows agent list"
+    def test_enter_hint_agent_select_logs_in(self) -> None:
+        assert self._screen("login-agent", ready=True)._enter_hint() == "Enter login"
 
     def test_enter_hint_button_is_omitted(self) -> None:
         assert self._screen("btn-dismiss", ready=True)._enter_hint() is None
@@ -496,6 +462,13 @@ class TestTaskLaunchScreenHint:
         screen.query_one = lambda *a, **k: dialog
         screen._refresh_hint()
         assert dialog.border_subtitle == "Ctrl+J newline · Esc dismiss · Enter login"
+
+    def test_refresh_hint_agent_select_promises_space_and_enter(self) -> None:
+        screen = self._screen("login-agent", ready=True)
+        dialog = mock.Mock()
+        screen.query_one = lambda *a, **k: dialog
+        screen._refresh_hint()
+        assert dialog.border_subtitle == "Space agent list · Esc dismiss · Enter login"
 
     def test_refresh_hint_on_button_drops_newline_and_enter(self) -> None:
         screen = self._screen("btn-login", ready=True)

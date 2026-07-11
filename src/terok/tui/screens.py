@@ -1280,6 +1280,26 @@ else:  # pragma: no cover - stub TextArea in test envs
     _SubmittablePromptArea = TextArea  # type: ignore[assignment,misc]
 
 
+if Select is not None:
+
+    class _LoginAgentSelect(Select):
+        """Agent dropdown where Enter confirms the dialog instead of expanding it.
+
+        The stock Select binds Enter alongside Space/Up/Down to "open the
+        option list", which makes Enter flip meaning as focus moves across
+        the launch dialog. Subclass bindings replace same-key bindings from
+        the base class, so Enter alone is rebound to the host screen's
+        ``login`` action — the same reflex as the prompt area beside it —
+        while Space/Up/Down keep expanding the list. Once the list is
+        expanded, focus sits on the overlay, whose own Enter binding
+        confirms the highlighted option before this one is consulted.
+        """
+
+        BINDINGS = [_modal_binding("enter", "screen.login", "Login")]
+else:  # pragma: no cover - stub Select in test envs
+    _LoginAgentSelect = Select  # type: ignore[assignment,misc]
+
+
 class TaskLaunchScreen(
     screen.ModalScreen["tuple[str, str, str, str, str | None, str | None] | None"]
 ):
@@ -1390,7 +1410,7 @@ class TaskLaunchScreen(
             choices = self._build_agent_choices()
             valid_values = {v for _, v in choices}
             login_value = self._default_shell if self._default_shell in valid_values else "bash"
-            yield Select(
+            yield _LoginAgentSelect(
                 choices,
                 value=login_value,
                 id="login-agent",
@@ -1460,29 +1480,32 @@ class TaskLaunchScreen(
         """Refresh the Enter hint whenever focus moves between the dialog's controls."""
         self._refresh_hint()
 
+    # Enter means "log in" on both of these widgets — via the bubbled key in
+    # ``on_key`` for the prompt (``_SubmittablePromptArea``) and via the
+    # ``screen.login`` binding for the agent select (``_LoginAgentSelect``).
+    _ENTER_LOGS_IN = frozenset({"launch-prompt", "login-agent"})
+
     def _enter_hint(self) -> str | None:
         """What Enter does for the focused control right now, or ``None`` when nothing.
 
-        Enter reaches login only from the prompt, and only once the container is
-        ready — until then it's a dimmed, hourglassed promise that brightens in
-        place the moment login goes live. On the agent ``Select`` Enter expands the
-        dropdown; on the action buttons it activates the focused one, whose own
-        caption already says what that is — so those drop the segment rather than
-        echo the label.
+        Enter reaches login from the prompt and from the collapsed agent select,
+        and only once the container is ready — until then it's a dimmed,
+        hourglassed promise that brightens in place the moment login goes live.
+        On the action buttons Enter activates the focused one, whose own caption
+        already says what that is — so those drop the segment rather than echo
+        the label.
         """
         focused = self.focused
-        focused_id = focused.id if focused else None
-        if focused_id == "launch-prompt":
+        if focused is not None and focused.id in self._ENTER_LOGS_IN:
             return "Enter login" if self._container_ready else "[dim]Enter login ⌛[/dim]"
-        if focused_id == "login-agent":
-            return "Enter shows agent list"
         return None
 
     def _refresh_hint(self) -> None:
         """Rebuild the border subtitle for the current focus and readiness state."""
-        prompt_focused = self.focused is not None and self.focused.id == "launch-prompt"
+        focused_id = self.focused.id if self.focused else None
         subtitle = _join_hints(
-            "Ctrl+J newline" if prompt_focused else None,
+            "Ctrl+J newline" if focused_id == "launch-prompt" else None,
+            "Space agent list" if focused_id == "login-agent" else None,
             "Esc dismiss",
             self._enter_hint(),
         )
@@ -1493,14 +1516,20 @@ class TaskLaunchScreen(
 
         Newline insertion (Ctrl+Enter / Shift+Enter / Ctrl+J) is owned by
         `_SubmittablePromptArea` and never reaches here; Tab still cycles
-        focus by default.
+        focus by default. Enter on the agent select arrives through the
+        ``screen.login`` binding (see ``action_login``), not this handler.
         """
-        # Only act on Enter while the prompt TextArea holds focus.
-        if not self.query_one("#launch-prompt", TextArea).has_focus:
+        focused = self.focused
+        if focused is None or focused.id != "launch-prompt":
             return
         if event.key == "enter" and self._container_ready:
             self._do_login()
             event.stop()
+
+    def action_login(self) -> None:
+        """Log in once the container is ready — Enter on the agent select lands here."""
+        if self._container_ready:
+            self._do_login()
 
     # If no container has appeared within this many wall-clock seconds, assume
     # the launch failed and surface a hint.  Wall-clock based (not tick count)
