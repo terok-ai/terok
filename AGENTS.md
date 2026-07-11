@@ -33,10 +33,22 @@
 
 ## Build, Lint, and Test Commands
 
+**During development — ALWAYS use the fast loop:**
+```bash
+make test-fast # Only the tests affected by your branch diff (tach impact analysis)
+```
+Rerunning the full suite after every edit is the single biggest time sink in
+agent dev loops — don't do it. Iterate with `make test-fast`; run the full
+`make test` exactly once, right before committing. One exception: impact
+analysis follows the Python import graph only, so after changing non-Python
+inputs (`resources/` templates, YAML, shell scripts) `make test-fast` skips
+tests that are actually affected — run the full `make test` for those changes.
+
 **Before committing:**
 ```bash
 make lint      # Run linter (required before every commit)
 make format    # Auto-fix lint issues if lint fails
+make test      # Full unit suite — once, after iterating with test-fast
 ```
 
 **Before pushing:**
@@ -99,9 +111,9 @@ make spdx NAME="Real Human Name" FILES="src/terok/new_file.py"  # Add SPDX heade
 ## Development Workflow
 
 1. Make changes in appropriate module (`src/terok/`)
-2. Run `make lint` frequently during development
+2. Run `make lint` and `make test-fast` frequently during development
 3. Add/update tests in `tests/` directory
-4. Run `make test` to verify changes
+4. Run the full `make test` once, before committing
 5. If you added or changed cross-module imports, run `make tach` to verify module boundary rules
 6. Update documentation in `docs/` if needed
 7. Run `make check` before pushing
