@@ -309,7 +309,7 @@ def _inprocess_pump(sock_path: Path, *, log_path: Path) -> None:
             # ``select`` keeps marking it ready and we'd attempt a
             # second ``shutdown(SHUT_WR)``, dropping the daemon's
             # final reply on the floor.
-            read_fds: list[object] = [sock]
+            read_fds: list[socket.socket | int] = [sock]
             if stdin_open:
                 read_fds.append(stdin_fd)
             ready, _, _ = select.select(read_fds, [], [])
