@@ -83,20 +83,20 @@ include = [
 version = "0.8.4"
 
 [tool.poetry.group.dev.dependencies]
-pydevd-pycharm = "262.8377.41"
-ruff = ">=0.15.20"
+pydevd-pycharm = "262.8665.186"
+ruff = ">=0.15.21"
 markdown-it-py = ">=4.0.0"
 mdit-py-plugins = ">=0.5.0"
 tach = "^0.35.0"
 textual-dev = "^1.8.0"
 docstr-coverage = "^2.3.2"
-complexipy = ">=6.0.0"
+complexipy = ">=6.0.1"
 vulture = ">=2.12"
 reuse = "^6.2.0"
 bandit = ">=1.7"
 pre-commit = ">=4.0"
-import-linter = ">=2.12"
-mypy = ">=1.13,<3.0"
+import-linter = ">=2.13"
+mypy = ">=2.2.0,<3.0"
 
 [tool.poetry.group.test.dependencies]
 pytest = ">=9.1.1"
@@ -123,7 +123,7 @@ python-dbusmock = ">=0.32"
 [tool.poetry.group.docs.dependencies]
 properdocs = ">=1.6.7"
 mkdocs-material = ">=9.7.6"
-mkdocstrings = {extras = ["python"], version = ">=0.26"}
+mkdocstrings = {extras = ["python"], version = ">=1.0.5"}
 mkdocs-gen-files = ">=0.5"
 mkdocs-literate-nav = ">=0.6"
 mkdocs-section-index = ">=0.3"
