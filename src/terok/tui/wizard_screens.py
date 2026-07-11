@@ -58,6 +58,7 @@ from ..lib.api import (
 )
 from .agents_screen import AgentsSelectScreen
 from .askpass_service import build_askpass_env, gui_askpass_usable
+from .widgets.ansi_log import AnsiLog
 
 # ── Step 1: the form ──────────────────────────────────────────────────
 
@@ -625,7 +626,7 @@ class InitProgressScreen(ModalScreen[InitOutcome]):
                         id="wizard-init-ssh-continue",
                         variant="primary",
                     )
-            yield RichLog(id="wizard-init-log", markup=True, wrap=True)
+            yield AnsiLog(id="wizard-init-log", markup=True, wrap=True)
             with Horizontal(id="wizard-init-buttons"):
                 yield Button("Close", id="wizard-init-close", variant="default", disabled=True)
 
@@ -826,9 +827,10 @@ class InitProgressScreen(ModalScreen[InitOutcome]):
         )
 
         def _tail(line: str) -> None:
-            # Raw subprocess output — wrap in Text so the markup-enabled
-            # log pane renders stray brackets literally rather than as markup.
-            log.write(Text(line))
+            # Raw subprocess output — parse ANSI colour escapes (the pump
+            # forces colour out of the child) into a styled Text, which
+            # also keeps stray brackets literal in the markup-enabled pane.
+            log.write(Text.from_ansi(line))
 
         unsubscribe = entry.subscribe(_tail)
         try:

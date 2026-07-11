@@ -468,6 +468,52 @@ async def test_run_dispatched_step_tails_output_and_completes() -> None:
 
 
 @pytest.mark.asyncio
+async def test_run_dispatched_step_parses_ansi_colour() -> None:
+    """Tailed child output has its ANSI escapes parsed into styled Text, not printed raw.
+
+    The console-log pump forces colour out of the child
+    (``FORCE_COLOR=1``), so build/git output routinely carries escapes —
+    ``\\x1b[90m…`` must arrive as a coloured span, and the escape bytes
+    must never reach the pane.
+    """
+    from rich.text import Text
+
+    from terok.tui.console_log import ConsoleLogEntry
+    from terok.tui.wizard_screens import InitProgressScreen
+
+    screen = InitProgressScreen("demo")
+    entry = ConsoleLogEntry(id=1, title="Build", argv=["x"], command="x")
+    fake_app = MagicMock()
+    fake_app.dispatch_console_action = MagicMock(return_value=entry)
+    log = MagicMock()
+
+    async def _drive() -> None:
+        await asyncio.sleep(0)
+        entry.append("\x1b[90mSTEP 3/15: RUN pip install\x1b[0m done")
+        entry.finish(0)
+
+    with patch.object(InitProgressScreen, "app", new_callable=PropertyMock, return_value=fake_app):
+        await asyncio.gather(
+            screen._run_dispatched_step(
+                "terok.tui.worker_actions:build",
+                "demo",
+                log=log,
+                title="Building images for demo",
+                env=None,
+                fail_msg="Image build failed",
+            ),
+            _drive(),
+        )
+
+    tailed = [c.args[0] for c in log.write.call_args_list if isinstance(c.args[0], Text)]
+    assert len(tailed) == 1
+    text = tailed[0]
+    assert text.plain == "STEP 3/15: RUN pip install done"
+    assert "\x1b" not in text.plain, "escape bytes must not reach the pane"
+    assert text.spans, "the colour escape became a styled span"
+
+
+@pytest.mark.asyncio
 async def test_run_dispatched_step_raises_on_nonzero_exit() -> None:
     """A non-zero child exit raises ``RuntimeError(fail_msg)`` so the step is marked failed."""
     from terok.tui.console_log import ConsoleLogEntry
