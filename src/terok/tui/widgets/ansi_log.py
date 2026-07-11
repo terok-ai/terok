@@ -5,11 +5,9 @@
 
 Console panes render subprocess output (``podman build``, ``git``,
 ``terok setup``) whose ANSI color codes Textual translates to truecolor
-through the app's *ANSI theme*
-([`App.ansi_theme`][textual.app.App.ansi_theme]) — a palette designed
-against that theme's own background, not against the Textual theme's
-``$surface`` that [`RichLog`][textual.widgets.RichLog] paints by
-default.  Nothing guarantees contrast between the two: ANSI
+through the app's *ANSI theme* (``App.ansi_theme``) — a palette
+designed against that theme's own background, not against the Textual
+theme's ``$surface`` that ``RichLog`` paints by default.  Nothing guarantees contrast between the two: ANSI
 bright-black mapped through the default Monokai ANSI theme is a grey
 that vanishes on a grey ``$surface`` — the invisible ``STEP 3/15``
 build output.
