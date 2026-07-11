@@ -16,9 +16,35 @@ import argparse
 from collections.abc import Callable
 from typing import Any
 
-from ...lib.api import get_tasks
-from ...lib.core.projects import list_projects
-from ...lib.orchestration.tasks import normalize_task_id_input
+# ── Lazy shims ─────────────────────────────────────────────────────────
+#
+# The data sources live behind module-level shims that import their target on
+# call, not at module scope: this helper is imported at *register* time (for
+# ``set_completer`` / ``add_project_name``), and pulling ``core.projects``
+# (sandbox) / ``orchestration.tasks`` (executor) / the ``get_tasks`` API there
+# would defeat lazy command dispatch — only actual shell completion needs them.
+# Because the shims are module attributes, tests still ``patch`` them by name.
+
+
+def list_projects() -> Any:
+    """Lazy shim → [`list_projects`][terok.lib.core.projects.list_projects]."""
+    from ...lib.core.projects import list_projects as _impl
+
+    return _impl()
+
+
+def get_tasks(project_name: str) -> Any:
+    """Lazy shim → [`get_tasks`][terok.lib.api.get_tasks]."""
+    from ...lib.api import get_tasks as _impl
+
+    return _impl(project_name)
+
+
+def normalize_task_id_input(prefix: str) -> str:
+    """Lazy shim → [`normalize_task_id_input`][terok.lib.orchestration.tasks.normalize_task_id_input]."""
+    from ...lib.orchestration.tasks import normalize_task_id_input as _impl
+
+    return _impl(prefix)
 
 
 def complete_project_names(

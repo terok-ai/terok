@@ -16,16 +16,32 @@ terok-sandbox's re-exports — see
 [`terok.lib.integrations.sandbox`][terok.lib.integrations.sandbox].
 """
 
-from terok_shield import (  # noqa: F401 — re-exported public API
-    COMMANDS,
-    ArgDef,
-    CommandDef,
-    ExecError,
-)
-from terok_shield.commands import (  # noqa: F401 — re-exported public API
-    needs_container,
-    standalone_only,
-)
+from __future__ import annotations
+
+import importlib
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from terok_shield import (
+        COMMANDS as COMMANDS,
+        ArgDef as ArgDef,
+        CommandDef as CommandDef,
+        ExecError as ExecError,
+    )
+    from terok_shield.commands import (
+        needs_container as needs_container,
+        standalone_only as standalone_only,
+    )
+
+#: Public name -> defining module (PEP 562 lazy resolution).
+_LAZY: dict[str, str] = {
+    "ArgDef": "terok_shield",
+    "COMMANDS": "terok_shield",
+    "CommandDef": "terok_shield",
+    "ExecError": "terok_shield",
+    "needs_container": "terok_shield.commands",
+    "standalone_only": "terok_shield.commands",
+}
 
 __all__ = [
     "ArgDef",
@@ -35,3 +51,20 @@ __all__ = [
     "needs_container",
     "standalone_only",
 ]
+
+
+def __getattr__(name: str) -> object:
+    """Resolve a re-exported name to its source module on first access (PEP 562)."""
+    try:
+        target = _LAZY[name]
+    except KeyError:
+        raise AttributeError(f"module {__name__!r} has no attribute {name!r}") from None
+    module_path, _, source_name = target.partition(":")
+    value = getattr(importlib.import_module(module_path), source_name or name)
+    globals()[name] = value  # cache so subsequent lookups skip __getattr__
+    return value
+
+
+def __dir__() -> list[str]:
+    """Expose the lazy names to ``dir()`` / autocompletion."""
+    return sorted({*globals(), *_LAZY})

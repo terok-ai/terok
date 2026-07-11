@@ -10,8 +10,6 @@ import json
 import sys
 from typing import Any
 
-from terok.lib.api.agents import AGENT_NAMES as _AGENT_NAMES
-
 from ...lib.api import (
     HeadlessRunRequest,
     LogViewOptions,
@@ -173,10 +171,15 @@ def register(
         action="store_false",
         help="Print login instructions instead of attaching",
     )
-    # Headless-only flags (silently ignored in cli/toad modes)
+    # Headless-only flags (silently ignored in cli/toad modes).  The agent
+    # roster is imported here, at register time, rather than at module scope
+    # so that merely importing the CLI (e.g. for any other subcommand) does
+    # not pull the executor/agent stack.
+    from terok.lib.api.agents import AGENT_NAMES
+
     t_run.add_argument(
         "--agent",
-        choices=list(_AGENT_NAMES),
+        choices=list(AGENT_NAMES),
         default=None,
         help="Agent to run (headless only; default: from project/global config, or claude)",
     )

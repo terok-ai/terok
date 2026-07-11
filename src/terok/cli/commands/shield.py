@@ -110,12 +110,25 @@ def _persist_desired_state(cmd_name: str, task_dir: Path, kwargs: dict) -> None:
         )
 
 
+def _resolved_commands() -> tuple[CommandDef, ...]:
+    """Materialise the (now lazy) terok-shield command registry.
+
+    terok-shield ships lazy [`CommandDef`][terok_util.cli_types.CommandDef]s
+    (``source`` set) whose ``args`` / ``handler`` / ``extras`` (which
+    ``needs_container`` / ``standalone_only`` read) populate only on
+    ``resolve()``.  Both register and dispatch read those fields, so resolve
+    up front — this runs only for an actual ``terok shield`` invocation (or
+    the full ``--help`` surface), never for another verb.
+    """
+    return tuple(cmd.resolve() for cmd in COMMANDS)
+
+
 def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
     """Register the ``shield`` subcommand group from the registry."""
     p = subparsers.add_parser("shield", help="Manage egress firewall (terok-shield)")
     sub = p.add_subparsers(dest="shield_cmd", required=True)
 
-    for cmd in COMMANDS:
+    for cmd in _resolved_commands():
         if shield_standalone_only(cmd):
             continue
 
@@ -169,7 +182,7 @@ def dispatch(args: argparse.Namespace) -> bool:
         _shield_api.ShieldHooks.install()
         return True
 
-    cmd_lookup = {cmd.name: cmd for cmd in COMMANDS if not shield_standalone_only(cmd)}
+    cmd_lookup = {cmd.name: cmd for cmd in _resolved_commands() if not shield_standalone_only(cmd)}
     cmd_def = cmd_lookup.get(cmd_name)
     if cmd_def is None or cmd_def.handler is None:
         return False

@@ -25,6 +25,8 @@ import inspect
 from collections.abc import Callable, Sequence
 from typing import Any
 
+from terok_util import LazyHandler
+
 from terok.lib.api import CommandDef, CommandTree
 
 _CFG_PARAM = "cfg"
@@ -58,7 +60,13 @@ def inject_cfg_factory(
             continue
         if cmd.handler is None:
             continue
-        sig = inspect.signature(cmd.handler)
+        # Sibling registries wire handlers as opaque LazyHandler("mod:fn");
+        # inspecting one directly sees only its __call__(*args, **kwargs),
+        # never the real `cfg` parameter.  Resolve it — this subtree is
+        # behind the wired-tree gate, so we only get here on a sibling verb
+        # that loads the handler anyway.
+        target = cmd.handler.resolve() if isinstance(cmd.handler, LazyHandler) else cmd.handler
+        sig = inspect.signature(target)
         if _CFG_PARAM not in sig.parameters:
             continue
         overrides[path] = _wrap_with_cfg(cmd.handler, factory)

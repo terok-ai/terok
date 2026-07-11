@@ -38,8 +38,6 @@ import time
 from pathlib import Path
 from typing import TYPE_CHECKING, NoReturn
 
-from terok.lib.api.agents import acp_socket_is_live
-
 from ...lib.api import list_projects
 from ...lib.core.config import is_experimental
 from ...lib.core.paths import acp_log_path, acp_socket_path
@@ -56,6 +54,19 @@ if TYPE_CHECKING:
 _DAEMON_BIND_TIMEOUT_SEC = 6.0
 """Generous bind-timeout ceiling for the freshly spawned daemon, so a
 slow startup doesn't show up as a phantom failure."""
+
+
+def acp_socket_is_live(sock_path: Path) -> bool:
+    """Lazy shim for `acp_socket_is_live` from the executor integration adapter.
+
+    Kept as a module-level function that imports its target on call rather
+    than a module-scope ``from …import`` so that registering the ``acp``
+    command doesn't pull the executor / ACP stack.  Because it lives in this
+    module's namespace, tests can still ``monkeypatch.setattr`` it.
+    """
+    from terok.lib.api.agents import acp_socket_is_live as _impl
+
+    return _impl(sock_path)
 
 
 def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:

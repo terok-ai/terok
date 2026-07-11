@@ -12,9 +12,8 @@ Runs in CI phase 2 (after hook installation).
 
 import pytest
 
-terok_shield = pytest.importorskip("terok_shield")
-has_global_hooks = terok_shield.has_global_hooks
-find_hooks_dirs = terok_shield.find_hooks_dirs
+pytest.importorskip("terok_shield")
+from terok_shield.podman_info import find_hooks_dirs, has_global_hooks
 
 from .conftest import hooks_unavailable
 

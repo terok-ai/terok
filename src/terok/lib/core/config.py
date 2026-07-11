@@ -3,24 +3,29 @@
 
 """Global configuration, directory helpers, and image path resolution."""
 
+from __future__ import annotations
+
 import os
 import sys
 from collections.abc import Callable
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal
 
-from pydantic import ValidationError
-
-from terok.lib.integrations.sandbox import ServicesMode
-
 if TYPE_CHECKING:
     from terok_util import ConfigStack
 
-    from terok.lib.integrations.sandbox import SandboxConfig
+    from terok.lib.core.yaml_schema import RawGlobalConfig
+    from terok.lib.integrations.sandbox import SandboxConfig, ServicesMode
 
 from ..util.yaml import YAMLError, dump as _yaml_dump, load as _yaml_load
 from .paths import config_root as _config_root_base
-from .yaml_schema import RawGlobalConfig
+
+# ``ServicesMode`` / ``RawGlobalConfig`` (and pydantic's ``ValidationError``)
+# are imported lazily — inside ``_load_validated`` / ``__getattr__`` below —
+# because ``yaml_schema`` pulls the executor wheel and the sandbox adapter
+# pulls terok-sandbox.  Importing this module (e.g. for ``declare_setup_invocation``
+# on the CLI hot path) must not drag in that stack; only reading/validating the
+# config does.
 
 __all_public_reexports__ = ("ServicesMode",)
 """Re-exported from [`terok_sandbox.config_schema`][terok_sandbox.config_schema] — one SSOT for
@@ -126,7 +131,7 @@ _validated_config_cache: RawGlobalConfig | None = None
 _raw_config_cache: dict[str, Any] | None = None
 
 
-def _build_config_stack() -> "ConfigStack":
+def _build_config_stack() -> ConfigStack:
     """Build a `ConfigStack` from all existing config layer files.
 
     Loads each layer independently; unreadable or malformed files are
@@ -164,6 +169,10 @@ def _load_validated() -> RawGlobalConfig:
     Warnings are emitted once on first load; subsequent calls return the
     cached result without re-parsing or re-warning.
     """
+    from pydantic import ValidationError
+
+    from .yaml_schema import RawGlobalConfig
+
     global _validated_config_cache  # noqa: PLW0603
     if _validated_config_cache is not None:
         return _validated_config_cache
@@ -352,7 +361,7 @@ def vault_dir() -> Path:
     )
 
 
-def make_sandbox_config() -> "SandboxConfig":
+def make_sandbox_config() -> SandboxConfig:
     """Construct a `SandboxConfig` for sandbox operations.
 
     Bridges terok's config layer (env vars → config.yml → XDG defaults) to
@@ -869,3 +878,18 @@ def is_oauth_enabled_for(provider: str) -> bool:
     if provider == "codex":
         return is_codex_oauth_proxied() or is_codex_oauth_exposed()
     return True
+
+
+def __getattr__(name: str) -> object:
+    """Lazily resolve the ``ServicesMode`` re-export (PEP 562).
+
+    ``ServicesMode`` is forwarded from the sandbox adapter for callers that
+    prefer to stay in the terok namespace, but importing the adapter pulls
+    terok-sandbox.  Serving it here — only when actually accessed — keeps a
+    bare ``import terok.lib.core.config`` off that path.
+    """
+    if name == "ServicesMode":
+        from terok.lib.integrations.sandbox import ServicesMode
+
+        return ServicesMode
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

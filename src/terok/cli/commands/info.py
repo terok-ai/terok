@@ -37,7 +37,6 @@ from ...lib.core.config import (
     vault_dir as _vault_dir,
 )
 from ...lib.core.paths import core_state_dir as _core_state_dir, state_root as _state_root
-from ...lib.core.projects import list_projects
 from ...ui_utils.terminal import (
     gray as _gray,
     supports_color as _supports_color,
@@ -45,7 +44,24 @@ from ...ui_utils.terminal import (
     yes_no as _yes_no,
 )
 from ._completers import complete_project_names as _complete_project_names, set_completer
-from .completions import is_completion_installed as _is_completion_installed
+
+# ``core.config`` and ``core.paths`` above are import-clean (they defer their own
+# sandbox/executor reach), so registering ``config`` stays stack-free.  The two
+# genuinely heavy dependencies — ``core.projects`` (→ sandbox) and the sibling
+# ``completions`` module — are pulled only when a subcommand runs: ``list_projects``
+# is a lazy shim (module attribute, so tests still patch it by name), and
+# ``is_completion_installed`` is imported inside its handler.
+
+
+def list_projects() -> Any:
+    """Lazy shim → [`list_projects`][terok.lib.core.projects.list_projects].
+
+    Kept a module attribute (so tests patch it by name) that imports its target
+    on call, so registering ``config`` doesn't pull ``core.projects`` (sandbox).
+    """
+    from ...lib.core.projects import list_projects as _impl
+
+    return _impl()
 
 
 def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
@@ -247,6 +263,8 @@ def _print_environment_overrides(color: bool) -> None:
 
 def _print_completion_status(color: bool) -> None:
     """Whether shell completions are installed, with a hint to enable them."""
+    from .completions import is_completion_installed as _is_completion_installed
+
     installed = _is_completion_installed()
     suffix = "" if installed else "  (run: terok completions install)"
     print(f"Shell completions: {_yes_no(installed, color)}{suffix}")

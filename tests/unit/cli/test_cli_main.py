@@ -257,24 +257,22 @@ class TestLockedVaultRendering:
         from terok_sandbox.vault.store.encryption import NoPassphraseError
 
         # ``terok.cli.__init__`` re-exports ``main`` and so shadows the
-        # submodule attribute — reach for the symbols directly.
-        from terok.cli.main import _DISPATCHERS, main as cli_main
-
-        original = _DISPATCHERS[0]
+        # submodule attribute — reach for the symbol directly.
+        from terok.cli.main import main as cli_main
 
         def _raise(_args: object) -> bool:
             raise NoPassphraseError("no SQLCipher passphrase available for /vault.db")
 
-        _DISPATCHERS[0] = _raise
-        try:
-            with (
-                patch("sys.argv", ["terok", "config", "paths"]),
-                pytest.raises(SystemExit) as exc_info,
-            ):
-                cli_main()
-            assert exc_info.value.code == 2
-            err = capsys.readouterr().err
-            assert "no SQLCipher passphrase" in err
-            assert "terok vault unlock" in err
-        finally:
-            _DISPATCHERS[0] = original
+        # ``config`` is owned by the ``info`` command module — the only own
+        # module ``main`` lazily imports for this invocation; replacing its
+        # ``dispatch`` with a raiser exercises the top-level except hint.
+        with (
+            patch("terok.cli.commands.info.dispatch", _raise),
+            patch("sys.argv", ["terok", "config", "paths"]),
+            pytest.raises(SystemExit) as exc_info,
+        ):
+            cli_main()
+        assert exc_info.value.code == 2
+        err = capsys.readouterr().err
+        assert "no SQLCipher passphrase" in err
+        assert "terok vault unlock" in err
