@@ -1,4 +1,11 @@
 # Changelog
+## v0.8.5 — You Exist Here
+
+* Keep container on plain restart, make image upgrade opt-in, https://github.com/terok-ai/terok/pull/1135
+* Resilient gate restart after upgrade, https://github.com/terok-ai/terok/pull/1141
+
+**Full Changelog**: https://github.com/terok-ai/terok/compare/v0.8.4...v0.8.5
+
 ## v0.8.4 — The Celestial Temple
 
 * Codex device-code auth login, https://github.com/terok-ai/terok/pull/1096
