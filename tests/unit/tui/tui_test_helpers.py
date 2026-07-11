@@ -86,6 +86,11 @@ def build_textual_stubs() -> dict[str, types.ModuleType]:
         # driver attached, which is the case for every stub-based unit test.
         is_web = False
 
+        # Mirror Textual's App.ansi_theme_dark / ansi_theme_light reactives;
+        # TerokTUI.__init__ re-pairs them so console panes keep the dark
+        # ANSI palette in light themes.  A shared placeholder is enough.
+        ansi_theme_dark = ansi_theme_light = object()
+
         def get_system_commands(self, _screen: Any) -> Any:
             return iter(())
 

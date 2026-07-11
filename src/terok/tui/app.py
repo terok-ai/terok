@@ -282,6 +282,10 @@ if _HAS_TEXTUAL:
         def __init__(self) -> None:
             """Initialize the TUI, setting up internal state and dynamic title."""
             super().__init__()
+            # Console panes show CLI/build output authored for dark
+            # terminals; keep the dark ANSI palette in light themes too
+            # so AnsiLog's palette/background pairing holds everywhere.
+            self.ansi_theme_light = self.ansi_theme_dark
             # Snapshot the global config once; reuse via ``self._config``.
             self._config: Config = get_config()
             # Set dynamic title with version and branch info

@@ -31,6 +31,7 @@ from textual.widgets import RichLog, Static
 from terok.lib.api.agents import AgentRunner
 
 from .screens import _modal_binding
+from .widgets.ansi_log import AnsiLog
 
 try:  # pragma: no cover - optional import for test stubs
     from textual.css.query import NoMatches
@@ -399,7 +400,7 @@ class LogViewerScreen(screen.Screen[None]):
             f" Task {self.task_id} ({self.mode}) | {self.container_name}",
             id="log-header",
         )
-        yield RichLog(auto_scroll=self.follow, id="log-view")
+        yield AnsiLog(auto_scroll=self.follow, id="log-view")
         yield Static(" \\[Esc/q/f] Back", id="log-footer")
 
     def on_mount(self) -> None:

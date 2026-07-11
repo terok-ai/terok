@@ -37,6 +37,8 @@ from textual.containers import Horizontal, Vertical
 from textual.screen import ModalScreen
 from textual.widgets import Button, Label, RichLog
 
+from .widgets.ansi_log import AnsiLog
+
 if TYPE_CHECKING:
     from .console_log import ConsoleLogEntry
 
@@ -117,7 +119,7 @@ class WorkerLogScreen(ModalScreen[None]):
         dialog.border_title = self._entry.title
         with dialog:
             yield Label(f"$ {self._entry.command}", id="worker-log-command")
-            yield RichLog(id="worker-log-output", markup=False, wrap=True)
+            yield AnsiLog(id="worker-log-output", markup=False, wrap=True)
             with Horizontal(id="worker-log-buttons"):
                 yield Button("Hide", id="worker-log-close", variant="default")
 
