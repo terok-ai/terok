@@ -44,11 +44,11 @@ dependencies = [
     "unique-namer~=1.6",
     "textual-serve~=1.1",
     "jinja2~=3.1",
-    "terok-executor @ https://github.com/terok-ai/terok-executor/releases/download/v0.3.2a1/terok_executor-0.3.2a1-py3-none-any.whl",
-    "terok-sandbox @ https://github.com/terok-ai/terok-sandbox/releases/download/v0.4.2a1/terok_sandbox-0.4.2a1-py3-none-any.whl",
-    "terok-shield @ https://github.com/terok-ai/terok-shield/releases/download/v0.7.3a1/terok_shield-0.7.3a1-py3-none-any.whl",
-    "terok-clearance @ https://github.com/terok-ai/terok-clearance/releases/download/v0.7.4a1/terok_clearance-0.7.4a1-py3-none-any.whl",
-    "terok-util @ https://github.com/terok-ai/terok-util/releases/download/v0.2.2a1/terok_util-0.2.2a1-py3-none-any.whl",
+    "terok-executor @ git+https://github.com/sliwowitz/terok-executor.git@feat/uv-port",
+    "terok-sandbox @ git+https://github.com/sliwowitz/terok-sandbox.git@feat/uv-port",
+    "terok-shield @ git+https://github.com/sliwowitz/terok-shield.git@feat/uv-pilot",
+    "terok-clearance @ git+https://github.com/sliwowitz/terok-clearance.git@feat/uv-port",
+    "terok-util @ git+https://github.com/sliwowitz/terok-util.git@feat/uv-port",
 ]
 
 [project.urls]
@@ -116,7 +116,7 @@ docs = [
     "mkdocs-gen-files>=0.5",
     "mkdocs-literate-nav>=0.6",
     "mkdocs-section-index>=0.3",
-    "mkdocs-terok>=0.7,<0.8",
+    "mkdocs-terok @ https://github.com/terok-ai/mkdocs-terok/releases/download/v0.8.0a1/mkdocs_terok-0.8.0a1-py3-none-any.whl",
 ]
 
 [tool.uv]
