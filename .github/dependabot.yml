@@ -1,7 +1,7 @@
 version: 2
 updates:
-  # Python dependencies (pip ecosystem covers uv.lock/pyproject.toml)
-  - package-ecosystem: "pip"
+  # Python dependencies (uv ecosystem: pyproject.toml + uv.lock updated together)
+  - package-ecosystem: "uv"
     directory: "/"
     schedule:
       interval: "weekly"
