@@ -43,6 +43,7 @@ from .helpers import (
     PODMAN_TEST_IMAGE,
     TerokIntegrationEnv,
     TerokShieldIntegrationEnv,
+    podman_subprocess_env,
     start_shielded_container,
 )
 
@@ -478,6 +479,10 @@ def terok_env(
     # driver keeps vfs-backed slots correct too.
     storage_conf = xdg_config_home / "containers" / "storage.conf"
     if not storage_conf.exists():
+        # Probe with the real environment: HOME/XDG are already scrubbed at
+        # this point, and asking a scrubbed podman where its store is would
+        # answer with the empty tmp store it would create -- pinning every
+        # later podman call to a store that has no images in it.
         probe = subprocess.run(
             [
                 "podman",
@@ -489,6 +494,7 @@ def terok_env(
             text=True,
             timeout=30,
             check=False,
+            env=podman_subprocess_env(),
         )
         if probe.returncode == 0 and probe.stdout.count("|") == 2:
             driver, graphroot, runroot = probe.stdout.strip().split("|")

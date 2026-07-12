@@ -49,7 +49,13 @@ def podman_subprocess_env() -> dict[str, str]:
     broadly, re-evaluate whether they belong in an integration test at all.
     """
     real_home = pwd.getpwuid(os.getuid()).pw_dir
-    return {**os.environ, "HOME": real_home}
+    env = {**os.environ, "HOME": real_home}
+    # XDG_CONFIG_HOME must go with it: the fixture's tmp XDG carries a
+    # generated containers/storage.conf for terok's *children*; leaving it
+    # in place here would point this real-HOME podman at that store
+    # definition too, and the image _pull_image built would be invisible.
+    env.pop("XDG_CONFIG_HOME", None)
+    return env
 
 
 @dataclass(frozen=True)
