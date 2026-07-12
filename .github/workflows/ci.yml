@@ -17,33 +17,10 @@ permissions:
 
 jobs:
   checks:
-    uses: terok-ai/terok-util/.github/workflows/fleet-checks.yml@v0.3.0a2
+    uses: terok-ai/terok-util/.github/workflows/fleet-checks.yml@v0.3.0a3
+    with:
+      run-lint-imports: true
 
-  import-linter:
-    if: github.repository == 'terok-ai/terok'
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v7
-
-      - name: Set up Python
-        id: setup-python
-        uses: actions/setup-python@v6
-        with:
-          python-version: "3.12"
-
-      - name: Install uv
-        uses: astral-sh/setup-uv@11f9893b081a58869d3b5fccaea48c9e9e46f990 # v8.3.2
-        with:
-          enable-cache: true
-
-      - name: Install project
-        run: uv sync --locked
-
-      - name: Check cross-package import boundaries
-        run: uv run --no-sync lint-imports
-
-  # Keep host-only integration tests in CI, but outside the Sonar-producing workflow.
-  # That keeps the Sonar path fast while still exercising Linux host features on PRs.
   integration-tests-host:
     name: Integration tests (host)
     if: github.repository == 'terok-ai/terok'

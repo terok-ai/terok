@@ -58,7 +58,7 @@ jobs:
     permissions:
       contents: read
       actions: read
-    uses: terok-ai/mkdocs-terok/.github/workflows/docs-build.yml@v0.8.0a2
+    uses: terok-ai/mkdocs-terok/.github/workflows/docs-build.yml@v0.8.0a3
     with:
       release: ${{ inputs.release == true }}
       uv-sync-args: "--locked --group docs"
@@ -70,7 +70,7 @@ jobs:
       contents: write
       pages: write
       id-token: write
-    uses: terok-ai/mkdocs-terok/.github/workflows/publish-versioned-docs.yml@v0.8.0a2
+    uses: terok-ai/mkdocs-terok/.github/workflows/publish-versioned-docs.yml@v0.8.0a3
     with:
       release: ${{ inputs.release == true }}
       # Brand assets hotlinked at the site root by the terok-* READMEs —
