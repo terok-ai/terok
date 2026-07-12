@@ -2401,11 +2401,11 @@ requires-dist = [
     { name = "requests", specifier = "~=2.34" },
     { name = "rich", specifier = "~=15.0" },
     { name = "ruamel-yaml", specifier = "==0.19.1" },
-    { name = "terok-clearance", git = "https://github.com/sliwowitz/terok-clearance.git?rev=feat%2Fuv-port" },
-    { name = "terok-executor", git = "https://github.com/sliwowitz/terok-executor.git?rev=feat%2Fuv-port" },
-    { name = "terok-sandbox", git = "https://github.com/sliwowitz/terok-sandbox.git?rev=feat%2Fuv-port" },
-    { name = "terok-shield", git = "https://github.com/sliwowitz/terok-shield.git?rev=feat%2Fuv-pilot" },
-    { name = "terok-util", git = "https://github.com/sliwowitz/terok-util.git?rev=feat%2Fuv-port" },
+    { name = "terok-clearance", url = "https://github.com/terok-ai/terok-clearance/releases/download/v0.8.0a1/terok_clearance-0.8.0a1-py3-none-any.whl" },
+    { name = "terok-executor", url = "https://github.com/terok-ai/terok-executor/releases/download/v0.4.0a1/terok_executor-0.4.0a1-py3-none-any.whl" },
+    { name = "terok-sandbox", url = "https://github.com/terok-ai/terok-sandbox/releases/download/v0.5.0a1/terok_sandbox-0.5.0a1-py3-none-any.whl" },
+    { name = "terok-shield", url = "https://github.com/terok-ai/terok-shield/releases/download/v0.8.0a1/terok_shield-0.8.0a1-py3-none-any.whl" },
+    { name = "terok-util", url = "https://github.com/terok-ai/terok-util/releases/download/v0.3.0a1/terok_util-0.3.0a1-py3-none-any.whl" },
     { name = "textual", extras = ["syntax"], specifier = "~=8.2.8" },
     { name = "textual-serve", specifier = "~=1.1" },
     { name = "unique-namer", specifier = "~=1.6" },
@@ -2446,19 +2446,30 @@ test = [
 
 [[package]]
 name = "terok-clearance"
-version = "0.7.4a2.dev185+g5bf7fb0c6"
-source = { git = "https://github.com/sliwowitz/terok-clearance.git?rev=feat%2Fuv-port#5bf7fb0c68d3a1a96701be2de1f046643b6e2945" }
+version = "0.8.0a1"
+source = { url = "https://github.com/terok-ai/terok-clearance/releases/download/v0.8.0a1/terok_clearance-0.8.0a1-py3-none-any.whl" }
 dependencies = [
     { name = "asyncvarlink" },
     { name = "dbus-fast" },
     { name = "pyyaml" },
     { name = "terok-util" },
 ]
+wheels = [
+    { url = "https://github.com/terok-ai/terok-clearance/releases/download/v0.8.0a1/terok_clearance-0.8.0a1-py3-none-any.whl", hash = "sha256:c44f5df6a70d286e88d8230220ff31bb5b3ce5a32481283b87189433c37e3770" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "asyncvarlink", specifier = "==0.3.2" },
+    { name = "dbus-fast", specifier = "~=4.3" },
+    { name = "pyyaml", specifier = "~=6.0" },
+    { name = "terok-util", url = "https://github.com/terok-ai/terok-util/releases/download/v0.3.0a1/terok_util-0.3.0a1-py3-none-any.whl" },
+]
 
 [[package]]
 name = "terok-executor"
-version = "0.3.2a2.dev400+g78ce71550"
-source = { git = "https://github.com/sliwowitz/terok-executor.git?rev=feat%2Fuv-port#78ce71550f068ffe820669b0c301dec93ef26597" }
+version = "0.4.0a1"
+source = { url = "https://github.com/terok-ai/terok-executor/releases/download/v0.4.0a1/terok_executor-0.4.0a1-py3-none-any.whl" }
 dependencies = [
     { name = "agent-client-protocol" },
     { name = "jinja2" },
@@ -2470,11 +2481,27 @@ dependencies = [
     { name = "terok-util" },
     { name = "tomli-w" },
 ]
+wheels = [
+    { url = "https://github.com/terok-ai/terok-executor/releases/download/v0.4.0a1/terok_executor-0.4.0a1-py3-none-any.whl", hash = "sha256:c235944f0b2586fef909433a595b5f760b90778d138a30bc8516109cb1d9df88" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "agent-client-protocol", specifier = "==0.10.1" },
+    { name = "jinja2", specifier = "~=3.1" },
+    { name = "prompt-toolkit", specifier = "~=3.0" },
+    { name = "pydantic", specifier = "~=2.13" },
+    { name = "rich", specifier = "~=15.0" },
+    { name = "ruamel-yaml", specifier = "==0.19.1" },
+    { name = "terok-sandbox", url = "https://github.com/terok-ai/terok-sandbox/releases/download/v0.5.0a1/terok_sandbox-0.5.0a1-py3-none-any.whl" },
+    { name = "terok-util", url = "https://github.com/terok-ai/terok-util/releases/download/v0.3.0a1/terok_util-0.3.0a1-py3-none-any.whl" },
+    { name = "tomli-w", specifier = "~=1.2" },
+]
 
 [[package]]
 name = "terok-sandbox"
-version = "0.4.2a2.dev387+gd14a0e50f"
-source = { git = "https://github.com/sliwowitz/terok-sandbox.git?rev=feat%2Fuv-port#d14a0e50f8c4f3dcbaa7fdc7282913a6247490df" }
+version = "0.5.0a1"
+source = { url = "https://github.com/terok-ai/terok-sandbox/releases/download/v0.5.0a1/terok_sandbox-0.5.0a1-py3-none-any.whl" }
 dependencies = [
     { name = "aiohttp" },
     { name = "cryptography" },
@@ -2490,25 +2517,65 @@ dependencies = [
     { name = "terok-shield" },
     { name = "terok-util" },
 ]
+wheels = [
+    { url = "https://github.com/terok-ai/terok-sandbox/releases/download/v0.5.0a1/terok_sandbox-0.5.0a1-py3-none-any.whl", hash = "sha256:273a6009c4845465e2cecd80ca08b3400d7ecda18ebb9827fa6ecbdfd65e4441" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "aiohttp", specifier = "~=3.14.1" },
+    { name = "cryptography", specifier = "~=49.0" },
+    { name = "jinja2", specifier = "~=3.1" },
+    { name = "keyring", specifier = "~=25.7" },
+    { name = "packaging", specifier = "~=26.2" },
+    { name = "platformdirs", specifier = "~=4.10" },
+    { name = "prompt-toolkit", specifier = "~=3.0" },
+    { name = "pydantic", specifier = "~=2.13" },
+    { name = "ruamel-yaml", specifier = "==0.19.1" },
+    { name = "sqlcipher3", specifier = "==0.6.2" },
+    { name = "terok-clearance", url = "https://github.com/terok-ai/terok-clearance/releases/download/v0.8.0a1/terok_clearance-0.8.0a1-py3-none-any.whl" },
+    { name = "terok-shield", url = "https://github.com/terok-ai/terok-shield/releases/download/v0.8.0a1/terok_shield-0.8.0a1-py3-none-any.whl" },
+    { name = "terok-util", url = "https://github.com/terok-ai/terok-util/releases/download/v0.3.0a1/terok_util-0.3.0a1-py3-none-any.whl" },
+]
 
 [[package]]
 name = "terok-shield"
-version = "0.7.3a2.dev323+g55592c34c"
-source = { git = "https://github.com/sliwowitz/terok-shield.git?rev=feat%2Fuv-pilot#55592c34c5ebaeaa2643b9826cd5ffa2c7cb00d5" }
+version = "0.8.0a1"
+source = { url = "https://github.com/terok-ai/terok-shield/releases/download/v0.8.0a1/terok_shield-0.8.0a1-py3-none-any.whl" }
 dependencies = [
     { name = "pydantic" },
     { name = "pyyaml" },
     { name = "terok-util" },
 ]
+wheels = [
+    { url = "https://github.com/terok-ai/terok-shield/releases/download/v0.8.0a1/terok_shield-0.8.0a1-py3-none-any.whl", hash = "sha256:bb36a2f536bc839d8591696c75c8e259cc4d261bc6fe944a4e84b7e10d8ad9c3" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "pydantic", specifier = "~=2.13" },
+    { name = "pyyaml", specifier = "~=6.0" },
+    { name = "terok-util", url = "https://github.com/terok-ai/terok-util/releases/download/v0.3.0a1/terok_util-0.3.0a1-py3-none-any.whl" },
+]
 
 [[package]]
 name = "terok-util"
-version = "0.2.2a2.dev53+g752a28c36"
-source = { git = "https://github.com/sliwowitz/terok-util.git?rev=feat%2Fuv-port#752a28c364240dbb74ca966e23b899cfaee28045" }
+version = "0.3.0a1"
+source = { url = "https://github.com/terok-ai/terok-util/releases/download/v0.3.0a1/terok_util-0.3.0a1-py3-none-any.whl" }
 dependencies = [
     { name = "jinja2" },
     { name = "platformdirs" },
     { name = "ruamel-yaml" },
+]
+wheels = [
+    { url = "https://github.com/terok-ai/terok-util/releases/download/v0.3.0a1/terok_util-0.3.0a1-py3-none-any.whl", hash = "sha256:b5b1e2132a6d4a1b50bcc35d566e0d462f3e7a8317ae2be162652a54885ed233" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "jinja2", specifier = "~=3.1" },
+    { name = "platformdirs", specifier = "~=4.10" },
+    { name = "ruamel-yaml", specifier = "==0.19.1" },
 ]
 
 [[package]]
