@@ -89,5 +89,5 @@ def main(argv: list[str] | None = None) -> int:
     return 0
 
 
-if __name__ == "__main__":  # pragma: no cover — exercised via the poetry script
+if __name__ == "__main__":  # pragma: no cover — exercised via the console script
     sys.exit(main())

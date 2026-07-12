@@ -1,6 +1,6 @@
 version: 2
 updates:
-  # Python dependencies (pip ecosystem covers Poetry/pyproject.toml)
+  # Python dependencies (pip ecosystem covers uv.lock/pyproject.toml)
   - package-ecosystem: "pip"
     directory: "/"
     schedule:
@@ -14,15 +14,6 @@ updates:
     commit-message:
       prefix: "deps"
       prefix-development: "deps(dev)"
-
-  # CI tool pins (.github/requirements-ci.txt)
-  - package-ecosystem: "pip"
-    directory: "/.github"
-    schedule:
-      interval: "weekly"
-      day: "monday"
-    commit-message:
-      prefix: "ci(deps)"
 
   # GitHub Actions
   - package-ecosystem: "github-actions"

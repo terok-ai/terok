@@ -7,7 +7,7 @@
 ## Technology Stack
 
 - **Language**: Python 3.12+
-- **Package Manager**: Poetry
+- **Package Manager**: uv
 - **Container Runtime**: Podman
 - **Testing**: pytest with coverage
 - **Linting/Formatting**: ruff
@@ -65,9 +65,9 @@ make check        # Run all checks (equivalent to CI)
 **When `pyproject.toml` changes** (added/removed/changed dependencies):
 
 ```bash
-poetry lock --no-update   # Regenerate lockfile without upgrading existing deps
+uv lock                   # Regenerate the lockfile
 make install-dev          # Apply the updated lockfile to your local environment
-# Commit both pyproject.toml and poetry.lock together
+# Commit both pyproject.toml and uv.lock together
 ```
 
 **Other useful commands:**
@@ -125,7 +125,7 @@ make spdx NAME="Real Human Name" FILES="src/terok/new_file.py"  # Add SPDX heade
 - **Agent Instructions**: When modifying container setup (Dockerfile templates, init scripts, installed tools), check if `src/terok/resources/instructions/default.md` needs updating
 - **Minimal Changes**: Make surgical, focused changes
 - **Existing Tests**: Never remove or modify unrelated tests
-- **Dependencies**: Use Poetry for dependency management; avoid adding unnecessary dependencies
+- **Dependencies**: Use uv for dependency management; avoid adding unnecessary dependencies
 
 ## External Package Dependencies
 
@@ -145,11 +145,11 @@ All five siblings are **explicit** dependencies in `pyproject.toml` — even tho
 
 **Version sync rules:**
 
-- When bumping `terok-sandbox` in terok, the same version must be pinned in `terok-executor`. Otherwise Poetry will reject conflicting URL pins. Bump terok-executor first, release it, then bump both in terok.
+- When bumping `terok-sandbox` in terok, the same version must be pinned in `terok-executor`. Otherwise the resolver will reject conflicting URL pins. Bump terok-executor first, release it, then bump both in terok.
 - When bumping `terok-clearance` in terok, the same version must be pinned in `terok-sandbox` (for the same reason). Bump terok-sandbox first, release it, then bump both in terok.
 - When bumping `terok-shield`: terok pins the wheel URL directly (for the `terok shield` CLI bridge), while terok-sandbox uses a version range — update terok's pin, and terok-sandbox only when the new version falls outside its range.
 - `terok-util` is range-pinned by all four siblings but URL-pinned in terok; bump terok's pin directly, and touch the siblings only when util's compatible range changes.
-- After any version bump: run `poetry lock` and commit both `pyproject.toml` and `poetry.lock`.
+- After any version bump: run `uv lock` and commit both `pyproject.toml` and `uv.lock`.
 
 **Import convention:** never import a sibling wheel directly. Every `terok_executor` / `terok_sandbox` / `terok_clearance` symbol is re-exported through a thin adapter in `src/terok/lib/integrations/` (`executor.py`, `sandbox.py`, `clearance.py`) — import from there (`from terok.lib.integrations.executor import X`). This is enforced by `.importlinter`'s `*-boundary` contracts: a direct `from terok_sandbox import …` outside `lib/integrations/` fails CI. When a sibling release adds a symbol terok needs, extend the adapter's re-export surface rather than reaching past it. Two exceptions: terok-shield is never imported from the library — only the `terok shield` CLI command bridges to shield's own CLI registry (via `lib/integrations/shield.py`); and terok-util is a foundation library meant for direct import (`from terok_util import …`) with no adapter and no import-linter contract.
 
@@ -243,10 +243,10 @@ version:
   the patch-series form is exactly right — do *not* exact-pin them (it
   would fight the multi-repo release/PR-chain flow).
 
-Dev / test / docs / tooling dependencies (the `[tool.poetry.group.*]` groups)
+Dev / test / docs / tooling dependencies (the `[dependency-groups]` tables)
 are **exempt** — they are not shipped to installers and exact-pinning them is
 an unwarranted maintenance burden the developers can absorb. After changing
-any pin, run `poetry lock` and commit `pyproject.toml` and `poetry.lock`
+any pin, run `uv lock` and commit `pyproject.toml` and `uv.lock`
 together.
 
 **Comment discipline in `pyproject.toml`.** The dependency tables stay

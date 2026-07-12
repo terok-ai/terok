@@ -33,23 +33,15 @@ jobs:
         with:
           python-version: "3.12"
 
-      - name: Install Poetry
-        uses: snok/install-poetry@a783c322200f0519c7926aa6faa857c4e23e9263 # v1.4.2
+      - name: Install uv
+        uses: astral-sh/setup-uv@11f9893b081a58869d3b5fccaea48c9e9e46f990 # v8.3.2
         with:
-          version: "2.4.1"
-          virtualenvs-create: true
-          virtualenvs-in-project: true
-          plugins: poetry-dynamic-versioning[plugin]
-
-      - name: Load cached venv
-        id: cached-poetry-dependencies
-        uses: actions/cache@v6
-        with:
-          path: .venv
-          key: venv-${{ runner.os }}-py${{ steps.setup-python.outputs.python-version }}-test-${{ hashFiles('**/pyproject.toml', '**/poetry.lock') }}
+          enable-cache: true
 
       - name: Install dependencies
-        run: poetry install --with test --no-interaction
+        # --group docs: the unit suite imports mkdocs_terok (ci_map/test_map
+        # tests), which lives in the docs group.
+        run: uv sync --locked --group docs
 
       - name: Run unit tests
         run: make test-unit
@@ -138,14 +130,19 @@ jobs:
         with:
           python-version: "3.12"
 
+      - name: Install uv
+        uses: astral-sh/setup-uv@11f9893b081a58869d3b5fccaea48c9e9e46f990 # v8.3.2
+        with:
+          enable-cache: true
+
       - name: Install tools
-        run: pip install -r .github/requirements-ci.txt
+        run: uv sync --locked --only-group dev
 
       - name: Create reports directory
         run: mkdir -p reports
 
       - name: Write Bandit report
-        run: bandit -r src/terok/ --exit-zero -f json -o reports/bandit-report.json
+        run: uv run --no-sync bandit -r src/terok/ --exit-zero -f json -o reports/bandit-report.json
 
       - name: Upload Bandit report
         uses: actions/upload-artifact@v7

@@ -28,13 +28,10 @@ RUN dnf install -y \
     && dnf clean all
 
 # ── 2. Install terok from local source tree ──────────────────────
+# The COPY has no .git, so hatch-vcs resolves the version from
+# [tool.hatch.version] fallback-version.
 COPY . /opt/terok-src
-RUN pip install --break-system-packages poetry-dynamic-versioning \
-    && cd /opt/terok-src \
-    && git init && git add -A \
-    && git -c user.name=build -c user.email=build@localhost commit -m init \
-    && git tag v0.0.0 \
-    && pip install --break-system-packages . \
+RUN pip install --break-system-packages /opt/terok-src \
     && rm -rf /opt/terok-src
 
 # ── 3. Prepare terok directories and shell completions ────────────

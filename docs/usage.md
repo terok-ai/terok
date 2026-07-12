@@ -767,7 +767,7 @@ Create `instructions.md` in your project root with project-specific notes. These
 
 ```markdown
 # Project Notes
-This project uses Poetry. Run `make check` before committing.
+This project uses uv. Run `make check` before committing.
 ```
 
 #### Option 2: YAML config
@@ -778,7 +778,7 @@ Set the `instructions` key in your project's `agent:` config:
 # project.yml — flat string (replaces default)
 agent:
   instructions: |
-    You are in a Podman container. This project uses Poetry.
+    You are in a Podman container. This project uses uv.
     Run `make check` before committing.
 ```
 
@@ -804,7 +804,7 @@ agent:
     - _inherit
     - |
       ## Project-specific additions
-      This project uses Poetry for dependency management.
+      This project uses uv for dependency management.
       Run `make check` before committing.
 ```
 

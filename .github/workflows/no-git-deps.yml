@@ -33,11 +33,8 @@ jobs:
                   elif "url" in spec and str(spec["url"]).startswith("git+"):
                       offenders.append(f"{label}.{name} -> {spec['url']}")
 
-          poetry = data.get("tool", {}).get("poetry", {})
-          for key in ("dependencies", "dev-dependencies"):
-              scan(key, poetry.get(key, {}))
-          for gname, g in poetry.get("group", {}).items():
-              scan(f"group.{gname}", g.get("dependencies", {}))
+          sources = data.get("tool", {}).get("uv", {}).get("sources", {})
+          scan("tool.uv.sources", sources)
 
           project = data.get("project", {})
           for dep in project.get("dependencies", []):
@@ -46,6 +43,10 @@ jobs:
           for gname, deps in project.get("optional-dependencies", {}).items():
               for dep in deps:
                   if "git+" in dep:
+                      offenders.append(f"{gname}: {dep}")
+          for gname, deps in data.get("dependency-groups", {}).items():
+              for dep in deps:
+                  if isinstance(dep, str) and "git+" in dep:
                       offenders.append(f"{gname}: {dep}")
 
           if offenders:

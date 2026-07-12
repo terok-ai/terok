@@ -26,7 +26,7 @@ def get_version_info() -> tuple[str, str | None]:
     when it's meaningful to the user:
 
       1. DEVELOPMENT MODE (git checkout):
-         Run directly via `poetry run terok` from a git working directory.
+         Run directly via `uv run terok` from a git working directory.
          -> Show branch name (via live git detection) unless on a tagged release.
 
       2. INSTALLED FROM PyPI (official release):
@@ -204,8 +204,8 @@ def short_version(version: str) -> str:
 
     Keeps at most four dot-separated segments (``X.Y.Z.SUFFIX``) and
     drops the ``+local`` git-hash segment.  Anything past the first
-    suffix — typically ``poetry-dynamic-versioning``'s redundant
-    ``.dev0`` tacked onto a ``.postN`` — is dropped.  No hard-coded
+    suffix — e.g. a version backend's redundant ``.dev0`` tacked onto
+    a ``.postN`` — is dropped.  No hard-coded
     knowledge of which suffixes are meaningful, just "first thing
     after the release triple, if there is one."
 
