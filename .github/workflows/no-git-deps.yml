@@ -13,4 +13,4 @@ jobs:
   # the package family); this caller keeps the local triggers and the
   # release.yml gate wiring.
   scan:
-    uses: terok-ai/terok-util/.github/workflows/no-git-deps.yml@v0.3.0a4
+    uses: terok-ai/terok-util/.github/workflows/no-git-deps.yml@v0.3.0a5

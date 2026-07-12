@@ -17,6 +17,6 @@ permissions:
 
 jobs:
   sonar:
-    uses: terok-ai/terok-util/.github/workflows/fleet-sonar-pr.yml@v0.3.0a4
+    uses: terok-ai/terok-util/.github/workflows/fleet-sonar-pr.yml@v0.3.0a5
     secrets:
       SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}

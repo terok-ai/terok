@@ -17,7 +17,7 @@ permissions:
 
 jobs:
   checks:
-    uses: terok-ai/terok-util/.github/workflows/fleet-checks.yml@v0.3.0a4
+    uses: terok-ai/terok-util/.github/workflows/fleet-checks.yml@v0.3.0a5
     with:
       run-lint-imports: true
 

@@ -1,0 +1,22 @@
+# Multi-distro integration test matrix on the self-hosted runner.
+# Thin caller: the jobs live in terok-util's reusable
+# fleet-test-matrix.yml; the slot list is derived from this repo's
+# tests/containers/matrix.yml via `terok-matrix --slots-json`.
+name: Test Matrix
+
+on:
+  workflow_dispatch:
+    inputs:
+      slots:
+        description: Space-separated slot subset (default = all declared)
+        required: false
+        default: ""
+
+permissions:
+  contents: read
+
+jobs:
+  matrix:
+    uses: terok-ai/terok-util/.github/workflows/fleet-test-matrix.yml@v0.3.0a5
+    with:
+      slots: ${{ inputs.slots }}

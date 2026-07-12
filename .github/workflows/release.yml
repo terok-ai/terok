@@ -27,30 +27,13 @@ jobs:
     permissions:
       contents: read
 
+  # The build job is the fleet-wide reusable hosted in terok-util
+  # (fleet-release-build.yml), pinned by that repo's release tag.
   build:
     needs: no-git-deps
-    runs-on: ubuntu-latest
     permissions:
       contents: read
-    steps:
-      - uses: actions/checkout@v7
-        with:
-          fetch-depth: 0    # hatch-vcs needs full history
-
-      - uses: actions/setup-python@v6
-        with:
-          python-version: "3.12"
-
-      - uses: astral-sh/setup-uv@11f9893b081a58869d3b5fccaea48c9e9e46f990 # v8.3.2
-
-      - name: Build distributions
-        run: uv build
-
-      - uses: actions/upload-artifact@v7
-        with:
-          name: dist
-          path: dist/
-          retention-days: 90    # cover any realistic re-run window
+    uses: terok-ai/terok-util/.github/workflows/fleet-release-build.yml@v0.3.0a5
 
   github-release:
     needs: build
