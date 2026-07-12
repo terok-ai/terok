@@ -9,50 +9,8 @@ permissions:
   contents: read
 
 jobs:
+  # The scanner lives in terok-util's no-git-deps.yml (reusable across
+  # the package family); this caller keeps the local triggers and the
+  # release.yml gate wiring.
   scan:
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-    steps:
-      - uses: actions/checkout@v7
-      - name: Scan pyproject.toml for git sources
-        run: |
-          python3 <<'PY'
-          import sys, tomllib, pathlib
-
-          data = tomllib.loads(pathlib.Path("pyproject.toml").read_text())
-          offenders = []
-
-          def scan(label, deps):
-              for name, spec in deps.items():
-                  if not isinstance(spec, dict):
-                      continue
-                  if "git" in spec:
-                      ref = spec.get("branch") or spec.get("rev") or spec.get("tag") or "?"
-                      offenders.append(f"{label}.{name} -> {spec['git']}@{ref}")
-                  elif "url" in spec and str(spec["url"]).startswith("git+"):
-                      offenders.append(f"{label}.{name} -> {spec['url']}")
-
-          sources = data.get("tool", {}).get("uv", {}).get("sources", {})
-          scan("tool.uv.sources", sources)
-
-          project = data.get("project", {})
-          for dep in project.get("dependencies", []):
-              if "git+" in dep:
-                  offenders.append(dep)
-          for gname, deps in project.get("optional-dependencies", {}).items():
-              for dep in deps:
-                  if "git+" in dep:
-                      offenders.append(f"{gname}: {dep}")
-          for gname, deps in data.get("dependency-groups", {}).items():
-              for dep in deps:
-                  if isinstance(dep, str) and "git+" in dep:
-                      offenders.append(f"{gname}: {dep}")
-
-          if offenders:
-              print("Git sources found in pyproject.toml:")
-              for o in offenders:
-                  print(f"  - {o}")
-              sys.exit(1)
-          print("No git sources - OK.")
-          PY
+    uses: terok-ai/terok-util/.github/workflows/no-git-deps.yml@v0.3.0a2

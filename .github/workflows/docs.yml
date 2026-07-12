@@ -50,117 +50,18 @@ permissions:
   actions: read
 
 jobs:
+  # The build lives in mkdocs-terok's docs-build.yml (reusable across
+  # the package family): uv sync, scc, the coverage-artifact handoff,
+  # strict properdocs build, docs-site upload.
   build:
     if: github.repository == 'terok-ai/terok'
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v7
-
-      - name: Set up Python
-        id: setup-python
-        uses: actions/setup-python@v6
-        with:
-          python-version: "3.12"
-
-      - name: Install uv
-        uses: astral-sh/setup-uv@11f9893b081a58869d3b5fccaea48c9e9e46f990 # v8.3.2
-        with:
-          enable-cache: true
-
-      - name: Install dependencies
-        run: uv sync --locked --group docs
-
-      - name: Install scc (lines of code counter)
-        run: |
-          cd "$(mktemp -d)"
-          curl -sLO https://github.com/boyter/scc/releases/download/v3.5.0/scc_Linux_x86_64.tar.gz
-          echo "6c31f4d0cf3b7a8c5ca910fa4e451949434798f6541ec5dea4b83f4973e13772  scc_Linux_x86_64.tar.gz" | sha256sum -c
-          sudo tar xzf scc_Linux_x86_64.tar.gz -C /usr/local/bin scc
-
-      # On master we strictly require the Tests & Analysis run for *this* commit
-      # to have finished successfully — published docs must agree with published
-      # code. Tests & Analysis only contains the fast in-repo jobs (unit-tests,
-      # ruff, bandit); the third-party SonarQube scan lives in sonar.yml, so
-      # waiting on workflow completion here no longer drags in Sonar wait time.
-      # Polling rather than `workflow_run` keeps this build visible as its own
-      # PR check.
-      - name: Wait for Tests & Analysis on this commit (master)
-        if: github.ref == 'refs/heads/master'
-        uses: actions/github-script@v9
-        with:
-          script: |
-            const deadline = Date.now() + 20 * 60 * 1000;
-            const sleep = ms => new Promise(r => setTimeout(r, ms));
-            while (Date.now() < deadline) {
-              const { data } = await github.rest.actions.listWorkflowRuns({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                workflow_id: 'analysis.yml',
-                head_sha: context.sha,
-                per_page: 5,
-              });
-              const run = data.workflow_runs[0];
-              if (run?.status === 'completed') {
-                if (run.conclusion === 'success') {
-                  core.info(`Tests & Analysis succeeded for ${context.sha}`);
-                  return;
-                }
-                core.setFailed(
-                  `Tests & Analysis ${run.conclusion} for ${context.sha} — refusing to publish docs with a mismatched treemap`
-                );
-                return;
-              }
-              core.info(`Tests & Analysis for ${context.sha}: ${run?.status ?? 'not yet started'} — waiting`);
-              await sleep(20_000);
-            }
-            core.setFailed('Timed out after 20m waiting for Tests & Analysis');
-
-      - name: Coverage artifact (master — same SHA, required)
-        if: github.ref == 'refs/heads/master'
-        uses: dawidd6/action-download-artifact@b6e2e70617bc3265edd6dab6c906732b2f1ae151 # v21
-        with:
-          workflow: analysis.yml
-          workflow_conclusion: success
-          commit: ${{ github.sha }}
-          name: coverage
-          path: reports
-          if_no_artifact_found: fail
-
-      # First push of a PR: Tests & Analysis and this workflow start together,
-      # so this step usually misses and we fall through to latest-master below.
-      # Re-running this workflow after Tests & Analysis goes green picks up the
-      # same-SHA artifact here instead.
-      - name: Coverage artifact (non-master — same SHA, best effort)
-        if: github.ref != 'refs/heads/master'
-        uses: dawidd6/action-download-artifact@b6e2e70617bc3265edd6dab6c906732b2f1ae151 # v21
-        with:
-          workflow: analysis.yml
-          workflow_conclusion: completed
-          commit: ${{ github.event.pull_request.head.sha || github.sha }}
-          name: coverage
-          path: reports
-          if_no_artifact_found: warn
-
-      - name: Coverage artifact (non-master — fall back to latest master)
-        if: github.ref != 'refs/heads/master' && !hashFiles('reports/coverage.json')
-        uses: dawidd6/action-download-artifact@b6e2e70617bc3265edd6dab6c906732b2f1ae151 # v21
-        with:
-          workflow: analysis.yml
-          workflow_conclusion: success
-          branch: master
-          name: coverage
-          path: reports
-          if_no_artifact_found: fail
-
-      - name: Build documentation
-        run: uv run properdocs build --strict
-
-      - name: Upload site for versioned publish
-        if: github.ref == 'refs/heads/master' || inputs.release
-        uses: actions/upload-artifact@v7
-        with:
-          name: docs-site
-          path: site/
+    permissions:
+      contents: read
+      actions: read
+    uses: terok-ai/mkdocs-terok/.github/workflows/docs-build.yml@v0.8.0a2
+    with:
+      release: ${{ inputs.release == true }}
+      uv-sync-args: "--locked --group docs"
 
   publish:
     if: github.repository == 'terok-ai/terok' && (github.ref == 'refs/heads/master' || inputs.release)
@@ -169,7 +70,7 @@ jobs:
       contents: write
       pages: write
       id-token: write
-    uses: terok-ai/mkdocs-terok/.github/workflows/publish-versioned-docs.yml@v0.8.0a1
+    uses: terok-ai/mkdocs-terok/.github/workflows/publish-versioned-docs.yml@v0.8.0a2
     with:
       release: ${{ inputs.release == true }}
       # Brand assets hotlinked at the site root by the terok-* READMEs —
