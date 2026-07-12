@@ -468,6 +468,36 @@ def terok_env(
     if real_containers_conf.is_dir():
         shutil.copytree(real_containers_conf, xdg_config_home / "containers", dirs_exist_ok=True)
 
+    # Copying only helps hosts that HAVE a per-user storage.conf.  The
+    # matrix podman slot has none: its working store exists only as
+    # pre-initialized state under the real HOME, so a child podman under
+    # the tmp HOME re-probes storage from scratch and dies ("'overlay'
+    # is not supported over overlayfs, a mount_program is required").
+    # Point the scrubbed env at the real, initialized store by asking
+    # the ambient podman where it lives -- deriving (not hardcoding) the
+    # driver keeps vfs-backed slots correct too.
+    storage_conf = xdg_config_home / "containers" / "storage.conf"
+    if not storage_conf.exists():
+        probe = subprocess.run(
+            [
+                "podman",
+                "info",
+                "--format",
+                "{{.Store.GraphDriverName}}|{{.Store.GraphRoot}}|{{.Store.RunRoot}}",
+            ],
+            capture_output=True,
+            text=True,
+            timeout=30,
+            check=False,
+        )
+        if probe.returncode == 0 and probe.stdout.count("|") == 2:
+            driver, graphroot, runroot = probe.stdout.strip().split("|")
+            storage_conf.parent.mkdir(parents=True, exist_ok=True)
+            storage_conf.write_text(
+                f'[storage]\ndriver = "{driver}"\ngraphroot = "{graphroot}"\n'
+                f'runroot = "{runroot}"\n'
+            )
+
     env = TerokIntegrationEnv(
         base_dir=tmp_path,
         home_dir=home_dir,
