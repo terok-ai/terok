@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import json
 import os
+import pwd
 import shutil
 import socket
 import subprocess
@@ -453,6 +454,19 @@ def terok_env(
     config_file.write_text("\n".join(config_lines) + "\n", encoding="utf-8")
     monkeypatch.setenv("TEROK_CONFIG_FILE", str(config_file))
     _reset_layered_config_caches()
+
+    # The scrubbed HOME must not blind podman to the operator's container
+    # storage configuration: on hosts where rootless podman *requires* a
+    # per-user storage.conf (the matrix podman slot sets fuse-overlayfs as
+    # the nested-overlay mount_program there), a child podman spawned by
+    # the terok CLI under the tmp HOME would otherwise fail to configure
+    # storage at all and every state query would report the runtime
+    # unavailable.  Copy the real user's containers config into the tmp
+    # XDG so terok's children keep the host's storage semantics while
+    # terok's own state stays isolated.
+    real_containers_conf = Path(pwd.getpwuid(os.getuid()).pw_dir) / ".config" / "containers"
+    if real_containers_conf.is_dir():
+        shutil.copytree(real_containers_conf, xdg_config_home / "containers", dirs_exist_ok=True)
 
     env = TerokIntegrationEnv(
         base_dir=tmp_path,
