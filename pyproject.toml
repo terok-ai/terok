@@ -1,6 +1,6 @@
 [build-system]
-requires = ["poetry-core>=2.0.0", "poetry-dynamic-versioning>=1.0.0,<2.0.0"]
-build-backend = "poetry_dynamic_versioning.backend"
+requires = ["hatchling>=1.27", "hatch-vcs>=0.5"]
+build-backend = "hatchling.build"
 
 [project]
 name = "terok"
@@ -14,8 +14,23 @@ maintainers = [
     {name = "Jiri Vyskocil", email = "jiri@vyskocil.com"},
 ]
 keywords = ["podman", "containers", "tasks", "developer-tools", "cli"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Environment :: Console",
+    "Intended Audience :: Developers",
+    "Intended Audience :: System Administrators",
+    "Operating System :: POSIX :: Linux",
+    "Programming Language :: Python",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
+    "Topic :: Security",
+    "Topic :: System :: Systems Administration",
+    "Typing :: Typed",
+]
 requires-python = ">=3.12,<3.15"
-dynamic = ["version", "classifiers"]
+dynamic = ["version"]
 # Dependency pins follow the policy in AGENTS.md ("Dependency Pinning &
 # pyproject.toml Hygiene").  Keep the dependency list comment-free.
 dependencies = [
@@ -53,81 +68,72 @@ terok-clearance = "terok.tui.clearance_screen:main"
 terok-ssh-routing = "terok.tui.key_routing_screen:main"
 terok-askpass = "terok.tui.askpass:main"
 
-[tool.poetry]
-classifiers = [
-    "Development Status :: 3 - Alpha",
-    "Environment :: Console",
-    "Intended Audience :: Developers",
-    "Intended Audience :: System Administrators",
-    "Operating System :: POSIX :: Linux",
-    "Programming Language :: Python",
-    "Topic :: Security",
-    "Topic :: System :: Systems Administration",
-    "Typing :: Typed",
+[dependency-groups]
+dev = [
+    "ruff>=0.15.21",
+    "markdown-it-py>=4.0.0",
+    "mdit-py-plugins>=0.5.0",
+    "tach>=0.35.0,<0.36",
+    "textual-dev>=1.8.0,<2",
+    "docstr-coverage>=2.3.2,<3",
+    "complexipy>=6.0.1",
+    "vulture>=2.12",
+    "reuse>=6.2.0,<7",
+    "bandit>=1.7",
+    "pre-commit>=4.0",
+    "import-linter>=2.13",
+    "mypy>=2.2.0,<3.0",
 ]
-
-# Use the src/ layout
-packages = [
-  { include = "terok", from = "src" },
+test = [
+    "pytest>=9.1.1",
+    "pytest-asyncio>=1.4.0",
+    "pytest-cov>=4.0",
 ]
-
-# Extra files to ship alongside the package (similar to the old MANIFEST.in
-# and setuptools data-files). These will be present in the sdist and wheel,
-# but note that Poetry does not support installing them under /usr/share;
-# they will live under the installed distribution instead.
-include = [
-  { path = "completions/terok" },
-  { path = "docs/*.md" },
-  { path = "examples/**" },
+# Outside default-groups -- the PyCharm remote-debug helper is an IDE
+# nicety, not a CI tool; keeping it out of "dev" keeps every CI tool
+# job (and the setup-uv cache) from carrying its wheel.  Opt in with
+# ``uv sync --group ide``.
+ide = [
+    "pydevd-pycharm==262.8665.186",
 ]
-version = "0.8.6a1"
-
-[tool.poetry.group.dev.dependencies]
-pydevd-pycharm = "262.8665.186"
-ruff = ">=0.15.21"
-markdown-it-py = ">=4.0.0"
-mdit-py-plugins = ">=0.5.0"
-tach = "^0.35.0"
-textual-dev = "^1.8.0"
-docstr-coverage = "^2.3.2"
-complexipy = ">=6.0.1"
-vulture = ">=2.12"
-reuse = "^6.2.0"
-bandit = ">=1.7"
-pre-commit = ">=4.0"
-import-linter = ">=2.13"
-mypy = ">=2.2.0,<3.0"
-
-[tool.poetry.group.test.dependencies]
-pytest = ">=9.1.1"
-pytest-asyncio = ">=1.4.0"
-pytest-cov = ">=4.0"
-
-# Optional group -- only the matrix runner pulls this in.  Adding
-# python-dbusmock here (rather than to "test") keeps CI's default
-# ``poetry install`` clean: dbus-python (the transitive of
+# Outside default-groups -- only the matrix runner pulls this in.
+# Keeping python-dbusmock here (rather than in "test") keeps CI's
+# default ``uv sync`` clean: dbus-python (the transitive of
 # python-dbusmock) has no wheel and needs system-level libdbus-1-dev
 # headers to compile, which the GitHub-hosted Ubuntu runner doesn't
-# ship.  The matrix Containerfiles install those deps and the runner
-# script invokes ``poetry install --with test --with stories`` to
-# pull this group.
-[tool.poetry.group.stories]
-optional = true
+# ship.  The matrix Containerfiles install those deps and the matrix
+# engine syncs ``--group test --group stories`` per matrix.yml.
+# python-dbusmock powers the mock org.freedesktop.Notifications
+# daemon used by tests/integration/stories/test_verdict_loop.py;
+# same version constraint as terok-clearance.
+stories = [
+    "python-dbusmock>=0.32",
+]
+docs = [
+    "properdocs>=1.6.7",
+    "mkdocs-material>=9.7.6",
+    "mkdocstrings[python]>=1.0.5",
+    "mkdocs-gen-files>=0.5",
+    "mkdocs-literate-nav>=0.6",
+    "mkdocs-section-index>=0.3",
+    "mkdocs-terok>=0.7,<0.8",
+]
 
-[tool.poetry.group.stories.dependencies]
-# Powers the mock org.freedesktop.Notifications daemon used by
-# tests/integration/stories/test_verdict_loop.py.  Same version
-# constraint as terok-clearance.
-python-dbusmock = ">=0.32"
+[tool.uv]
+default-groups = ["dev", "test"]
 
-[tool.poetry.group.docs.dependencies]
-properdocs = ">=1.6.7"
-mkdocs-material = ">=9.7.6"
-mkdocstrings = {extras = ["python"], version = ">=1.0.5"}
-mkdocs-gen-files = ">=0.5"
-mkdocs-literate-nav = ">=0.6"
-mkdocs-section-index = ">=0.3"
-mkdocs-terok = "^0.7"
+[tool.hatch.version]
+source = "vcs"
+fallback-version = "0.8.6a1"
+
+# The sibling terok-* release wheels are pinned by direct URL (see the
+# pinning policy in AGENTS.md); hatchling requires an explicit opt-in
+# for direct references in [project.dependencies].
+[tool.hatch.metadata]
+allow-direct-references = true
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/terok"]
 
 
 [tool.pytest.ini_options]
@@ -199,9 +205,3 @@ disallow_untyped_defs = true
 disallow_incomplete_defs = true
 pretty = true
 show_error_codes = true
-
-[tool.poetry-dynamic-versioning]
-enable = true
-vcs = "git"
-pattern = "^v(?P<base>\\d+\\.\\d+\\.\\d+)(?:(?P<stage>a)(?P<revision>\\d+))?$"
-style = "pep440"

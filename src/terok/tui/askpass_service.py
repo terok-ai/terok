@@ -124,7 +124,7 @@ def locate_helper_bin() -> Path:
     if not found:
         raise RuntimeError(
             "terok-askpass helper not found on PATH — was the package installed "
-            "with its [tool.poetry.scripts] entries?"
+            "with its [project.scripts] entries?"
         )
     return Path(found)
 

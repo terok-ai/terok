@@ -32,7 +32,7 @@ except PackageNotFoundError:
         if pyproject_path.exists():
             with open(pyproject_path, "rb") as f:
                 pyproject_data = tomllib.load(f)
-                __version__ = pyproject_data["tool"]["poetry"]["version"]
+                __version__ = pyproject_data["tool"]["hatch"]["version"]["fallback-version"]
         else:
             __version__ = "unknown"
     except (OSError, KeyError, tomllib.TOMLDecodeError):

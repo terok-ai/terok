@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 #
 # Multi-distro test matrix for terok — declarative input to the shared
-# engine in terok-util.  Run with `poetry run terok-matrix` from the repo
+# engine in terok-util.  Run with `uv run terok-matrix` from the repo
 # root (or `make test-matrix`).
 #
 # terok exercises the full stack (supervisor sidecar, vault, git gate,
@@ -62,13 +62,13 @@ phases:
     pytest: tests/integration/ -v --tb=short -m "not needs_hooks"
   - name: "phase 2: installing shield hooks"
     run:
-      - poetry run terok shield install-hooks
-      - poetry run python3 -c "from terok_shield import has_global_hooks; assert has_global_hooks(), 'Shield hooks not detected after setup'; print('Shield hooks verified.')"
+      - terok shield install-hooks
+      - python3 -c "from terok_shield import has_global_hooks; assert has_global_hooks(), 'Shield hooks not detected after setup'; print('Shield hooks verified.')"
     expect-add: [hooks]
   - name: "phase 3: tests with hooks"
     scope: integ
     pytest: tests/integration/ -v --tb=short -m "needs_hooks"
   - name: terok config
     run:
-      - poetry run terok config paths 2>&1
+      - terok config paths 2>&1
     tolerate-failure: true

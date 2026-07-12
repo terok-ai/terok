@@ -527,6 +527,6 @@ terminal run as captured child processes instead:
 3. Create tag `vX.Y.Z` on GitHub (Releases → New release → Generate notes)
 
 The release workflow on `v*` tags builds the wheel/sdist and attaches
-them.  Between releases, `poetry-dynamic-versioning` derives PEP 440
+them.  Between releases, `hatch-vcs` derives PEP 440
 versions from git; the TUI title bar shows `vX.Y.Z+` past a release and
 `vX.Y.Z` at the tag.

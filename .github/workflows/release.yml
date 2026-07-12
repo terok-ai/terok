@@ -35,19 +35,16 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
-          fetch-depth: 0    # poetry-dynamic-versioning needs full history
+          fetch-depth: 0    # hatch-vcs needs full history
 
       - uses: actions/setup-python@v6
         with:
           python-version: "3.12"
 
-      - uses: snok/install-poetry@a783c322200f0519c7926aa6faa857c4e23e9263 # v1.4.2
-        with:
-          version: "2.4.1"
-          plugins: poetry-dynamic-versioning[plugin]
+      - uses: astral-sh/setup-uv@11f9893b081a58869d3b5fccaea48c9e9e46f990 # v8.3.2
 
       - name: Build distributions
-        run: poetry build
+        run: uv build
 
       - uses: actions/upload-artifact@v7
         with:
