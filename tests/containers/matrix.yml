@@ -63,7 +63,12 @@ phases:
   - name: "phase 2: installing shield hooks"
     run:
       - terok shield install-hooks
-      - python3 -c "from terok_shield import has_global_hooks; assert has_global_hooks(), 'Shield hooks not detected after setup'; print('Shield hooks verified.')"
+      # has_global_hooks moved off shield's lazified root barrel; its public
+      # home is the terok_shield.podman_info subpackage (whose docstring
+      # invites submodule imports).  `check-environment` is no substitute:
+      # its hooks= field folds in podman-version policy, so it cannot assert
+      # "install-hooks put files on disk" on hooks_dir-persisting podman.
+      - python3 -c "from terok_shield.podman_info import has_global_hooks; assert has_global_hooks(), 'Shield hooks not detected after setup'; print('Shield hooks verified.')"
     expect-add: [hooks]
   - name: "phase 3: tests with hooks"
     scope: integ
