@@ -1,22 +1,9 @@
+# Same-repo SonarQube Cloud scan.  The job body lives in terok-util's
+# fleet-sonar.yml (reusable across the package family), pinned here by
+# release tag.  Fork PRs are handled by sonar_pr.yml via workflow_run in
+# the trusted base-repo context, because GitHub does not expose
+# SONAR_TOKEN to runs originating from forks.
 name: SonarQube Cloud
-
-# Pin third-party actions to full commit SHAs for supply-chain security.
-# GitHub-owned actions (actions/*) may use version tags.
-#
-# Same-repo SonarQube scan. Split out of analysis.yml so its third-party
-# wait time doesn't block the Tests & Analysis workflow's conclusion (which
-# docs.yml waits on, and which gates the master Pages deploy).
-#
-# Triggering contexts (must match the inline sonar job this replaces):
-#   - push to master in terok-ai/terok
-#   - same-repo pull request against master (excluding dependabot)
-# Fork PRs continue to be handled by sonar_pr.yml via workflow_run in the
-# trusted base-repo context, because GitHub does not expose SONAR_TOKEN to
-# runs originating from forks.
-#
-# Wait/handoff: poll analysis.yml's run for this commit to complete, then
-# download its coverage/ruff/bandit artifacts via dawidd6 — same shape as
-# docs.yml's master gate.
 
 on:
   push:
@@ -31,77 +18,6 @@ permissions:
 
 jobs:
   sonar:
-    name: SonarQube Cloud
-    if: >-
-      github.repository == 'terok-ai/terok' &&
-      (github.event_name == 'push'
-       || (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/master')
-       || (github.actor != 'dependabot[bot]'
-           && github.event.pull_request.head.repo.full_name == github.repository))
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v7
-        with:
-          fetch-depth: 0
-
-      - name: Wait for Tests & Analysis on this commit
-        uses: actions/github-script@v9
-        with:
-          script: |
-            const deadline = Date.now() + 20 * 60 * 1000;
-            const sleep = ms => new Promise(r => setTimeout(r, ms));
-            const sha = context.payload.pull_request?.head.sha || context.sha;
-            while (Date.now() < deadline) {
-              const { data } = await github.rest.actions.listWorkflowRuns({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                workflow_id: 'analysis.yml',
-                head_sha: sha,
-                per_page: 5,
-              });
-              const run = data.workflow_runs[0];
-              if (run?.status === 'completed') {
-                if (run.conclusion === 'success') {
-                  core.info(`Tests & Analysis succeeded for ${sha}`);
-                  return;
-                }
-                core.setFailed(`Tests & Analysis ${run.conclusion} for ${sha}`);
-                return;
-              }
-              core.info(`Tests & Analysis for ${sha}: ${run?.status ?? 'not yet started'} — waiting`);
-              await sleep(20_000);
-            }
-            core.setFailed('Timed out after 20m waiting for Tests & Analysis')
-
-      - name: Coverage artifact
-        uses: dawidd6/action-download-artifact@b6e2e70617bc3265edd6dab6c906732b2f1ae151 # v21
-        with:
-          workflow: analysis.yml
-          workflow_conclusion: success
-          commit: ${{ github.event.pull_request.head.sha || github.sha }}
-          name: coverage
-          path: reports
-
-      - name: Ruff artifact
-        uses: dawidd6/action-download-artifact@b6e2e70617bc3265edd6dab6c906732b2f1ae151 # v21
-        with:
-          workflow: analysis.yml
-          workflow_conclusion: success
-          commit: ${{ github.event.pull_request.head.sha || github.sha }}
-          name: ruff
-          path: reports
-
-      - name: Bandit artifact
-        uses: dawidd6/action-download-artifact@b6e2e70617bc3265edd6dab6c906732b2f1ae151 # v21
-        with:
-          workflow: analysis.yml
-          workflow_conclusion: success
-          commit: ${{ github.event.pull_request.head.sha || github.sha }}
-          name: bandit
-          path: reports
-
-      - name: SonarQube Cloud scan
-        uses: SonarSource/sonarqube-scan-action@713881670b6b3676cda39549040e2d88c70d582e # v8.2.0
-        env:
-          GITHUB_TOKEN: ${{ github.token }}
-          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+    uses: terok-ai/terok-util/.github/workflows/fleet-sonar.yml@v0.3.0a4
+    secrets:
+      SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
