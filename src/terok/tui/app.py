@@ -2130,21 +2130,27 @@ if _HAS_TEXTUAL:
             """Open the clearance screen from the main screen."""
             await self.action_show_clearance()
 
-    def _run_tui() -> None:
+    def _run_tui(restart_flags: tuple[str, ...] = ()) -> None:
         """Run the TUI; when it exits requesting a restart, re-exec in place.
 
         The re-exec replaces this process with a freshly resolved
         ``terok-tui`` entry point (new code, same terminal, same tmux
-        window when running under one), preserving any CLI flags.
+        window when running under one).  *restart_flags* carries the CLI
+        flags to preserve — rebuilt by ``_restart_flags`` from parsed
+        values, never echoed from raw ``sys.argv``.
         """
         import shutil
 
         result = TerokTUI().run()
-        if result == _RESTART_EXIT_RESULT:
-            exe = shutil.which("terok-tui") or sys.argv[0]
-            os.execvp(exe, [exe, *sys.argv[1:]])
+        if result != _RESTART_EXIT_RESULT:
+            return
+        exe = shutil.which("terok-tui")
+        if not exe:
+            print("terok-tui not found on PATH — restart it manually to pick up the update.")
+            return
+        os.execv(exe, [exe, *restart_flags])
 
-    def _launch_in_tmux(force_new: bool = False) -> None:
+    def _launch_in_tmux(force_new: bool = False, restart_flags: tuple[str, ...] = ()) -> None:
         """Launch the TUI inside a managed tmux session.
 
         If already inside tmux, just run the TUI directly.  Otherwise verify
@@ -2165,7 +2171,7 @@ if _HAS_TEXTUAL:
         """
         if os.environ.get("TMUX"):
             # Already inside tmux — no double-wrap
-            _run_tui()
+            _run_tui(restart_flags)
             return
 
         import shutil
@@ -2193,7 +2199,6 @@ if _HAS_TEXTUAL:
             else:
                 land_args = ["new-window", "-t", session, "-n", "terok", "terok-tui"]
             os.execvp("tmux", ["tmux", *land_args, ";", "attach-session", "-t", session])
-            return
 
         from importlib import resources as _res
 
@@ -2267,6 +2272,25 @@ if _HAS_TEXTUAL:
         )
         return parser
 
+    def _restart_flags(args: argparse.Namespace) -> tuple[str, ...]:
+        """Rebuild the CLI flags a restart re-exec should carry.
+
+        Reconstructed from the *parsed* values rather than echoed from raw
+        ``sys.argv``, so a restarted process can only ever receive flags
+        this parser understands.
+        """
+        return tuple(
+            flag
+            for flag, wanted in (
+                ("--tmux", args.tmux is True),
+                ("--no-tmux", args.tmux is False),
+                ("--new-session", args.new_session),
+                ("--experimental", args.experimental),
+                ("--no-emoji", args.no_emoji),
+            )
+            if wanted
+        )
+
     def main() -> None:
         """CLI entry-point for launching the terok TUI.
 
@@ -2304,10 +2328,11 @@ if _HAS_TEXTUAL:
 
         from .shell_launch import is_web_mode
 
+        restart_flags = _restart_flags(args)
         if use_tmux and not is_web_mode():
-            _launch_in_tmux(force_new=args.new_session)
+            _launch_in_tmux(force_new=args.new_session, restart_flags=restart_flags)
             return
-        _run_tui()
+        _run_tui(restart_flags)
 
 else:
 

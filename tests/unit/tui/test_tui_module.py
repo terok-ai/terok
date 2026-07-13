@@ -122,8 +122,15 @@ def test_launch_in_tmux_resumes_existing_session(
     monkeypatch.setattr(tmux_session, "find_main_window", lambda: main_window)
 
     captured: list[str] = []
-    monkeypatch.setattr(app.os, "execvp", lambda _file, argv: captured.extend(argv))
 
-    app._launch_in_tmux(force_new=False)
+    def fake_execvp(_file: str, argv: list[str]) -> None:
+        # Like the real execvp, never return to the caller.
+        captured.extend(argv)
+        raise SystemExit(0)
+
+    monkeypatch.setattr(app.os, "execvp", fake_execvp)
+
+    with pytest.raises(SystemExit):
+        app._launch_in_tmux(force_new=False)
 
     assert captured == expected_argv

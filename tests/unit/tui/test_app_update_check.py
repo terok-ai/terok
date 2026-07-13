@@ -162,22 +162,66 @@ class TestRunTui:
             app_mod, "TerokTUI", lambda: SimpleNamespace(run=lambda: _RESTART_EXIT_RESULT)
         )
         monkeypatch.setattr(shutil, "which", lambda _cmd: "/usr/local/bin/terok-tui")
-        monkeypatch.setattr(app_mod.sys, "argv", ["terok-tui", "--experimental"])
         execs: list[tuple[str, list[str]]] = []
-        monkeypatch.setattr(app_mod.os, "execvp", lambda f, argv: execs.append((f, argv)))
+        monkeypatch.setattr(app_mod.os, "execv", lambda f, argv: execs.append((f, argv)))
 
-        app_mod._run_tui()
+        app_mod._run_tui(("--experimental",))
 
         assert execs == [
             ("/usr/local/bin/terok-tui", ["/usr/local/bin/terok-tui", "--experimental"])
         ]
 
     def test_normal_exit_does_not_re_exec(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        """A plain quit returns without touching execvp."""
+        """A plain quit returns without touching execv."""
         monkeypatch.setattr(app_mod, "TerokTUI", lambda: SimpleNamespace(run=lambda: None))
         execs: list[object] = []
-        monkeypatch.setattr(app_mod.os, "execvp", lambda f, argv: execs.append((f, argv)))
+        monkeypatch.setattr(app_mod.os, "execv", lambda f, argv: execs.append((f, argv)))
 
         app_mod._run_tui()
 
         assert execs == []
+
+    def test_declines_restart_when_entry_point_missing(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """No ``terok-tui`` on PATH ⇒ exit normally instead of exec'ing a guess."""
+        import shutil
+
+        monkeypatch.setattr(
+            app_mod, "TerokTUI", lambda: SimpleNamespace(run=lambda: _RESTART_EXIT_RESULT)
+        )
+        monkeypatch.setattr(shutil, "which", lambda _cmd: None)
+        execs: list[object] = []
+        monkeypatch.setattr(app_mod.os, "execv", lambda f, argv: execs.append((f, argv)))
+
+        app_mod._run_tui()
+
+        assert execs == []
+
+
+class TestRestartFlags:
+    """Restart flags are rebuilt from parsed values, never echoed from argv."""
+
+    @pytest.mark.parametrize(
+        ("namespace", "expected"),
+        [
+            (
+                {"tmux": None, "new_session": False, "experimental": False, "no_emoji": False},
+                (),
+            ),
+            (
+                {"tmux": True, "new_session": True, "experimental": False, "no_emoji": False},
+                ("--tmux", "--new-session"),
+            ),
+            (
+                {"tmux": False, "new_session": False, "experimental": True, "no_emoji": True},
+                ("--no-tmux", "--experimental", "--no-emoji"),
+            ),
+        ],
+        ids=["defaults-carry-nothing", "tmux-fork", "no-tmux-extras"],
+    )
+    def test_flags_mirror_parsed_values(
+        self, namespace: dict[str, object], expected: tuple[str, ...]
+    ) -> None:
+        """Each flag reappears exactly when its parsed value asks for it."""
+        assert app_mod._restart_flags(SimpleNamespace(**namespace)) == expected

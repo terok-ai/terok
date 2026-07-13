@@ -1864,14 +1864,16 @@ class UpdateRestartScreen(screen.ModalScreen[bool]):
     def __init__(self, running: str, installed: str) -> None:
         """Remember the running and freshly installed version strings."""
         super().__init__()
-        self._running = running
-        self._installed = installed
+        # Not ``_running`` — that would shadow (and clobber) the bool
+        # driving Textual's MessagePump.
+        self._running_version = running
+        self._installed_version = installed
 
     def compose(self) -> ComposeResult:
         """A centred prompt naming both versions and the restart key."""
         yield Static(
-            f"terok has been updated: {self._installed} is now installed\n"
-            f"(this TUI is still running {self._running}).\n\n"
+            f"terok has been updated: {self._installed_version} is now installed\n"
+            f"(this TUI is still running {self._running_version}).\n\n"
             "\\[[$footer-key-foreground]r[/]] restart terok now\n"
             "any other key: keep running, restart later.",
             id="update-restart",
