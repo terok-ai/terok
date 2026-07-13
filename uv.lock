@@ -2396,7 +2396,7 @@ requires-dist = [
     { name = "rich", specifier = "~=15.0" },
     { name = "ruamel-yaml", specifier = "==0.19.1" },
     { name = "terok-clearance", url = "https://github.com/terok-ai/terok-clearance/releases/download/v0.8.0a3/terok_clearance-0.8.0a3-py3-none-any.whl" },
-    { name = "terok-executor", url = "https://github.com/terok-ai/terok-executor/releases/download/v0.4.0a4/terok_executor-0.4.0a4-py3-none-any.whl" },
+    { name = "terok-executor", git = "https://github.com/sliwowitz/terok-executor?rev=feat%2Ffamily-aware-instructions" },
     { name = "terok-sandbox", url = "https://github.com/terok-ai/terok-sandbox/releases/download/v0.5.0a4/terok_sandbox-0.5.0a4-py3-none-any.whl" },
     { name = "terok-shield", url = "https://github.com/terok-ai/terok-shield/releases/download/v0.8.0a3/terok_shield-0.8.0a3-py3-none-any.whl" },
     { name = "terok-util", url = "https://github.com/terok-ai/terok-util/releases/download/v0.3.0/terok_util-0.3.0-py3-none-any.whl" },
@@ -2462,8 +2462,8 @@ requires-dist = [
 
 [[package]]
 name = "terok-executor"
-version = "0.4.0a4"
-source = { url = "https://github.com/terok-ai/terok-executor/releases/download/v0.4.0a4/terok_executor-0.4.0a4-py3-none-any.whl" }
+version = "0.4.0a5.dev415+gc46965611"
+source = { git = "https://github.com/sliwowitz/terok-executor?rev=feat%2Ffamily-aware-instructions#c469656111e1a1d710665917586f6a687e3e0959" }
 dependencies = [
     { name = "agent-client-protocol" },
     { name = "jinja2" },
@@ -2474,22 +2474,6 @@ dependencies = [
     { name = "terok-sandbox" },
     { name = "terok-util" },
     { name = "tomli-w" },
-]
-wheels = [
-    { url = "https://github.com/terok-ai/terok-executor/releases/download/v0.4.0a4/terok_executor-0.4.0a4-py3-none-any.whl", hash = "sha256:984fd45ea2f37537b0dbecfc085edf8f7dea72bdc414fff9063dc1a43f9eca68" },
-]
-
-[package.metadata]
-requires-dist = [
-    { name = "agent-client-protocol", specifier = "==0.11.0" },
-    { name = "jinja2", specifier = "~=3.1" },
-    { name = "prompt-toolkit", specifier = "~=3.0" },
-    { name = "pydantic", specifier = "~=2.13" },
-    { name = "rich", specifier = "~=15.0" },
-    { name = "ruamel-yaml", specifier = "==0.19.1" },
-    { name = "terok-sandbox", url = "https://github.com/terok-ai/terok-sandbox/releases/download/v0.5.0a4/terok_sandbox-0.5.0a4-py3-none-any.whl" },
-    { name = "terok-util", url = "https://github.com/terok-ai/terok-util/releases/download/v0.3.0/terok_util-0.3.0-py3-none-any.whl" },
-    { name = "tomli-w", specifier = "~=1.2" },
 ]
 
 [[package]]

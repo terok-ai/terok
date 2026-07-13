@@ -594,7 +594,12 @@ class AgentManager:
     def resolve_instructions(self, provider_name: str) -> str:
         """Return resolved instructions text for the given provider."""
         effective = self.resolve_config()
-        return resolve_instructions(effective, provider_name, project_root=self._config.root)
+        return resolve_instructions(
+            effective,
+            provider_name,
+            project_root=self._config.root,
+            family=self._config.known_family,
+        )
 
     def get_agent(self, name: str | None = None) -> Agent:
         """Resolve the active headless provider for this project."""

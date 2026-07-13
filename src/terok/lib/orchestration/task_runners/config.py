@@ -80,7 +80,9 @@ def _prepare_agent_config(
     from terok.lib.integrations.executor import get_agent as _get_agent
 
     resolved = _get_agent(agent_name, default_agent=project.default_agent)
-    instr_text = resolve_instructions(effective, resolved.name, project_root=project.root)
+    instr_text = resolve_instructions(
+        effective, resolved.name, project_root=project.root, family=project.known_family
+    )
     return prepare_agent_config_dir(
         AgentConfigSpec(
             tasks_root=project.tasks_root,

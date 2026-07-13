@@ -122,7 +122,7 @@ make spdx NAME="Real Human Name" FILES="src/terok/new_file.py"  # Add SPDX heade
 
 - **Container Readiness**: When modifying init scripts or server startup, preserve readiness markers (see `docs/developer.md`)
 - **Security Modes**: Understand online vs gatekeeping modes when working with git operations
-- **Agent Instructions**: When modifying container setup (Dockerfile templates, init scripts, installed tools), check if `src/terok/resources/instructions/default.md` needs updating
+- **Agent Instructions**: When modifying container setup (Dockerfile templates, init scripts, installed tools), check if terok-executor's bundled `resources/instructions/default.md` needs updating — the copy that used to live in this repo was removed (the executor one is the only source)
 - **Minimal Changes**: Make surgical, focused changes
 - **Existing Tests**: Never remove or modify unrelated tests
 - **Dependencies**: Use uv for dependency management; avoid adding unnecessary dependencies

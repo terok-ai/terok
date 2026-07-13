@@ -137,6 +137,20 @@ class ProjectConfig(BaseModel):
         return self.name if self.credentials_scope == "project" else "default"
 
     @property
+    def known_family(self) -> str | None:
+        """Package family of the task image, when recognizable.
+
+        The explicit ``family:`` override when set, else detected from
+        ``base_image`` via [`known_family`][terok_executor.known_family] —
+        ``None`` for unrecognized images.  Used to render family-aware
+        agent instructions (``apt`` vs ``dnf``); image builds use the
+        strict variant instead.
+        """
+        from terok.lib.integrations.executor import known_family
+
+        return known_family(self.base_image, self.family)
+
+    @property
     def project_mounts_dir(self) -> Path:
         """Per-project agent-config mount tree (``_claude-config/`` etc.).
 

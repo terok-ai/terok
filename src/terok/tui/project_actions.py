@@ -681,7 +681,9 @@ class ProjectActionsMixin(_MixinBase):
             pid, agent_config=project.agent_config, project_root=project.root
         )
         provider = get_agent(None, default_agent=project.default_agent)
-        text = resolve_instructions(effective, provider.name, project_root=project.root)
+        text = resolve_instructions(
+            effective, provider.name, project_root=project.root, family=project.known_family
+        )
         await self.push_screen(TextViewScreen(text, title=f"Resolved instructions — {pid}"))
 
     async def _action_edit_global_instructions(self) -> None:

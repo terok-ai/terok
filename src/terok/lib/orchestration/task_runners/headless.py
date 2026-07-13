@@ -201,7 +201,9 @@ def task_run_headless(request: HeadlessRunRequest) -> str:
     instr_text = (
         request.instructions
         if request.instructions is not None
-        else resolve_instructions(effective, resolved.name, project_root=project.root)
+        else resolve_instructions(
+            effective, resolved.name, project_root=project.root, family=project.known_family
+        )
     )
 
     # Apply provider-aware config resolution with best-effort feature mapping.
