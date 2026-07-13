@@ -17,6 +17,6 @@ permissions:
 
 jobs:
   matrix:
-    uses: terok-ai/terok-util/.github/workflows/fleet-test-matrix.yml@v0.3.0a5
+    uses: terok-ai/terok-util/.github/workflows/fleet-test-matrix.yml@v0.3.0
     with:
       slots: ${{ inputs.slots }}
