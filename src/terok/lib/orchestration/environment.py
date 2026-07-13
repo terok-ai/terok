@@ -416,13 +416,15 @@ def _vault_patch_provider_sets(
     return enabled, disabled
 
 
-def _warn_leaked_credentials(mounts_dir: Path) -> None:
-    """Warn about real credential files in shared mounts.
+def _report_leaked_credentials(mounts_dir: Path) -> None:
+    """Report real credential files found in shared mounts.
 
-    When an OAuth token is intentionally exposed (for Claude subscription
-    features or direct Codex control), the
-    provider-specific leak warning is suppressed and replaced by a loud,
-    explicit banner so the user can't miss that a real token is mounted.
+    A real credential in a shared mount is a containment failure — every
+    task container can read it — so each finding is printed as a red
+    error.  The deliberate exceptions are the explicitly enabled
+    exposed-OAuth modes (Claude subscription features, direct Codex
+    control): those suppress the error and print a loud yellow banner
+    instead, so the user still can't miss that a real token is mounted.
 
     *mounts_dir* is the project's effective agent-config mount tree —
     shared or project-scoped per
@@ -433,38 +435,42 @@ def _warn_leaked_credentials(mounts_dir: Path) -> None:
     from terok.lib.integrations.executor import scan_leaked_credentials
 
     from ..core.config import is_claude_oauth_exposed, is_codex_oauth_exposed
-    from ..util.ansi import bold, supports_color, yellow
+    from ..util.ansi import bold, red, supports_color, yellow
 
     leaked = scan_leaked_credentials(mounts_dir)
     color = supports_color()
 
-    def _banner(provider_label: str, file_desc: str) -> None:
-        print(
-            "\n"
-            + bold(
-                yellow(
-                    f"  WARNING: {provider_label} OAuth token is EXPOSED to all task containers.\n"
-                    f"  The vault does NOT protect this token — it is mounted\n"
-                    f"  directly via {file_desc} in the shared config directory.\n"
-                    f"  Every task container managed by terok can read the real token.\n",
-                    color,
-                ),
-                color,
-            ),
-            file=sys.stderr,
+    def _block(paint: Callable[[str, bool], str], text: str) -> None:
+        print("\n" + bold(paint(text, color), color), file=sys.stderr)
+
+    def _exposed_banner(provider_label: str, file_desc: str) -> None:
+        _block(
+            yellow,
+            f"  WARNING: {provider_label} OAuth token is EXPOSED to all task containers.\n"
+            f"  The vault does NOT protect this token — it is mounted\n"
+            f"  directly via {file_desc} in the shared config directory.\n"
+            f"  Every task container managed by terok can read the real token.\n",
         )
 
     if is_claude_oauth_exposed():
-        _banner("Claude", ".credentials.json")
+        _exposed_banner("Claude", ".credentials.json")
         leaked = [(p, path) for p, path in leaked if p != "claude"]
 
     if is_codex_oauth_exposed():
-        _banner("Codex", "auth.json")
+        _exposed_banner("Codex", "auth.json")
         leaked = [(p, path) for p, path in leaked if p != "codex"]
 
-    for provider, path in leaked:
-        _logger.warning("Real credential in shared mount for provider %s", provider)
-        _logger.debug("  path: %s", path)
+    if leaked:
+        providers = ", ".join(sorted({p for p, _ in leaked}))
+        _block(
+            red,
+            f"  ERROR: Real credential in shared mount for provider(s): {providers}.\n"
+            "  Every task container managed by terok can read these files —\n"
+            "  the vault does NOT protect them.\n"
+            "  Run `terok vault clean` to remove leaked credential files.\n",
+        )
+        for provider, path in leaked:
+            _logger.debug("Leaked credential for %s: %s", provider, path)
 
 
 # ---------- Clone-cache workspace seeding ----------
@@ -652,7 +658,7 @@ class TaskEnvironment:
         # Claude OAuth env override + leaked-cred scan with exposed-token filtering
         if not vault_bypass:
             _apply_claude_oauth_overrides(env)
-            _warn_leaked_credentials(mounts_dir)
+            _report_leaked_credentials(mounts_dir)
 
         return env, volumes
 
