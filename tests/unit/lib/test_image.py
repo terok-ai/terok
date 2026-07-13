@@ -272,11 +272,14 @@ class TestPerLayerHashes:
             "L1.cli.Dockerfile": "FROM terok-l0:ubuntu-24-04",
             "L2.Dockerfile": "FROM terok-l1-cli:ubuntu-24-04",
         }
-        assert l0_content_hash("ubuntu:24.04", rendered) == l0_content_hash(
-            "ubuntu:24.04", rendered
-        )
-        assert l1_content_hash(rendered) == l1_content_hash(rendered)
-        assert l2_content_hash(rendered) == l2_content_hash(rendered)
+        # Two calls each: the property under test is determinism.
+        first_l0 = l0_content_hash("ubuntu:24.04", rendered)
+        second_l0 = l0_content_hash("ubuntu:24.04", rendered)
+        assert first_l0 == second_l0
+        first_l1, second_l1 = l1_content_hash(rendered), l1_content_hash(rendered)
+        assert first_l1 == second_l1
+        first_l2, second_l2 = l2_content_hash(rendered), l2_content_hash(rendered)
+        assert first_l2 == second_l2
 
     def test_l0_changes_dont_affect_l1_hash(self) -> None:
         """Changing L0 Dockerfile does not change L1 hash."""

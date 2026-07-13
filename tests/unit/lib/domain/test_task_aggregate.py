@@ -49,7 +49,8 @@ class TestTaskIdentity:
         assert t.meta is t._meta
 
     def test_equality_by_project_and_id(self) -> None:
-        assert _task() == _task()
+        first, second = _task(), _task()
+        assert first == second
 
     def test_inequality_across_projects(self) -> None:
         other = Task(SimpleNamespace(name="otherproj"), _task()._meta)  # type: ignore[arg-type]
@@ -59,8 +60,9 @@ class TestTaskIdentity:
         assert _task() != _task(task_id="different")
 
     def test_hashes_by_project_and_id(self) -> None:
-        assert hash(_task()) == hash(_task())
-        assert {_task(), _task()} == {_task()}  # dedups in a set
+        first, second = _task(), _task()
+        assert hash(first) == hash(second)
+        assert {first, second} == {first}  # dedups in a set
 
     def test_repr_carries_id_name_mode(self) -> None:
         assert repr(_task()) == f"Task(id={_TID!r}, name='my-task', mode='cli')"

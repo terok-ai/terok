@@ -148,7 +148,11 @@ class ProjectActionsMixin(_MixinBase):
         else:
             with self.suspend():
                 try:
-                    subprocess.run(cmd)
+                    # Threaded like the prompt below it: the app is suspended,
+                    # not stopped, and an interactive session can last minutes
+                    # -- blocking the loop for its whole duration would freeze
+                    # every background worker and timer with it.
+                    await asyncio.to_thread(subprocess.run, cmd)
                 except Exception as e:
                     print(f"Error: {e}")
                 await asyncio.to_thread(input, _RESUME_PROMPT)

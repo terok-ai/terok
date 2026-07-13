@@ -138,7 +138,8 @@ class TestPasswordHashing:
 
     def test_hash_is_salted(self) -> None:
         """Hashing the same password twice produces different records."""
-        assert _hash_password("same") != _hash_password("same")
+        first, second = _hash_password("same"), _hash_password("same")
+        assert first != second
 
     def test_verify_rejects_garbage(self) -> None:
         """Malformed records never verify."""

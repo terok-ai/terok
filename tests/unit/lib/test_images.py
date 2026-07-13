@@ -74,7 +74,8 @@ def test_base_tag_length_and_hash(name: str, prefix_len: int, suffix_len: int) -
 
 def test_base_tag_long_name_hash_is_stable() -> None:
     name = "b" * 150
-    assert images._base_tag(name) == images._base_tag(name)
+    first, second = images._base_tag(name), images._base_tag(name)
+    assert first == second
 
 
 def test_base_tag_long_name_hash_changes_for_different_inputs() -> None:

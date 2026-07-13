@@ -38,11 +38,13 @@ class TestProjectIdentity:
         assert p.config is p._config
 
     def test_equality_and_hash_by_name(self) -> None:
-        assert _project() == _project()
-        assert _project() != _project(name="other")
-        assert _project() != object()
-        assert hash(_project()) == hash(_project())
-        assert {_project(), _project()} == {_project()}
+        # Two separate instances throughout: equality is by name, not identity.
+        first, second = _project(), _project()
+        assert first == second
+        assert first != _project(name="other")
+        assert first != object()
+        assert hash(first) == hash(second)
+        assert {first, second} == {first}
 
     def test_repr(self) -> None:
         assert repr(_project()) == f"Project(name={_PROJ!r}, security='online')"
