@@ -142,6 +142,23 @@ def test_name_delegations(call, symbol, expected) -> None:  # type: ignore[no-un
     assert m.call_args == expected
 
 
+class TestAgentManagerInstructions:
+    """``resolve_instructions`` threads the config's package family."""
+
+    def test_family_forwarded_to_instruction_rendering(self) -> None:
+        from terok.lib.domain.project import AgentManager
+
+        config = SimpleNamespace(name=_PROJ, agent_config={}, root=None, known_family="rpm")
+        with (
+            mock.patch("terok.lib.domain.project.resolve_agent_config", return_value={}),
+            mock.patch(
+                "terok.lib.domain.project.resolve_instructions", return_value="TEXT"
+            ) as resolve,
+        ):
+            assert AgentManager(config).resolve_instructions("claude") == "TEXT"  # type: ignore[arg-type]
+        assert resolve.call_args == mock.call({}, "claude", project_root=None, family="rpm")
+
+
 class TestInfrastructureManagers:
     """Lazy-initialized managers are built from the config and cached."""
 

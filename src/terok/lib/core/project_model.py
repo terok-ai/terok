@@ -141,7 +141,7 @@ class ProjectConfig(BaseModel):
         """Package family of the task image, when recognizable.
 
         The explicit ``family:`` override when set, else detected from
-        ``base_image`` via [`known_family`][terok_executor.known_family] —
+        ``base_image`` by terok-executor's lenient ``known_family`` —
         ``None`` for unrecognized images.  Used to render family-aware
         agent instructions (``apt`` vs ``dnf``); image builds use the
         strict variant instead.

@@ -820,6 +820,31 @@ class TestSSHKeyRegistration:
         assert screen._rendered_yaml is None
 
 
+class TestShowResolvedInstructions:
+    """The instructions preview resolves with the project's package family."""
+
+    def test_preview_threads_family_and_opens_viewer(self) -> None:
+        from terok.tui.project_actions import ProjectActionsMixin
+
+        instance = mock.Mock(spec=ProjectActionsMixin)
+        instance.current_project_name = "proj"
+        instance.push_screen = mock.AsyncMock()
+        project = SimpleNamespace(
+            agent_config={}, root=None, default_agent=None, known_family="rpm"
+        )
+        with (
+            mock.patch("terok.tui.project_actions.load_project", return_value=project),
+            mock.patch("terok.lib.api.resolve_agent_config", return_value={}),
+            mock.patch(
+                "terok.lib.api.agents.get_agent", return_value=SimpleNamespace(name="claude")
+            ),
+            mock.patch("terok.lib.api.agents.resolve_instructions", return_value="TEXT") as ri,
+        ):
+            run(ProjectActionsMixin._action_show_resolved_instructions(instance))
+        assert ri.call_args == mock.call({}, "claude", project_root=None, family="rpm")
+        instance.push_screen.assert_awaited_once()
+
+
 class TestEditInstructionsRouting:
     """``_edit_instructions_file`` chooses ``$EDITOR`` or the integrated editor."""
 

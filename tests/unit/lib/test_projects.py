@@ -15,6 +15,7 @@ import pytest
 from terok.lib.core.config import build_dir, make_sandbox_config, sandbox_live_dir
 from terok.lib.core.projects import (
     BrokenProject,
+    ProjectConfig,
     derive_project,
     discover_projects,
     list_projects,
@@ -26,6 +27,7 @@ from terok.lib.core.projects import (
 from terok.lib.domain.project_state import get_project_state
 from terok.lib.util.yaml import load as yaml_load
 from tests.test_utils import project_env, write_project
+from tests.testfs import MOCK_BASE
 
 
 def project_yaml(
@@ -96,6 +98,31 @@ class TestProject:
             assert project.credentials_scope == "project"
             assert project.credential_set == project_name
             assert project.project_mounts_dir == project.root / "mounts"
+
+    @pytest.mark.parametrize(
+        ("image", "expected"),
+        [
+            ({"base_image": "fedora:44"}, "rpm"),
+            ({"base_image": "ubuntu:24.04"}, "deb"),
+            ({"base_image": "rockylinux:9", "family": "rpm"}, "rpm"),
+            ({"base_image": "rockylinux:9"}, None),
+        ],
+        ids=["detected-rpm", "detected-deb", "override-wins", "unrecognized-none"],
+    )
+    def test_known_family(self, image: dict[str, str], expected: str | None) -> None:
+        """``known_family`` detects from ``base_image``; ``family:`` wins; unknown → None."""
+        project = ProjectConfig(
+            name="proj-family",
+            security_class="online",
+            upstream_url=None,
+            default_branch=None,
+            root=MOCK_BASE / "projects" / "proj-family",
+            tasks_root=MOCK_BASE / "tasks",
+            gate_path=MOCK_BASE / "gate" / "proj-family.git",
+            staging_root=None,
+            **image,
+        )
+        assert project.known_family == expected
 
     @pytest.mark.parametrize(
         ("project_name", "yaml_text", "config_text", "expected"),
