@@ -116,7 +116,7 @@ docs = [
     "mkdocs-gen-files>=0.5",
     "mkdocs-literate-nav>=0.6",
     "mkdocs-section-index>=0.3",
-    "mkdocs-terok @ https://github.com/terok-ai/mkdocs-terok/releases/download/v0.8.0a1/mkdocs_terok-0.8.0a1-py3-none-any.whl",
+    "mkdocs-terok~=0.8.0",
 ]
 
 [tool.uv]
