@@ -58,7 +58,7 @@ jobs:
     permissions:
       contents: read
       actions: read
-    uses: terok-ai/mkdocs-terok/.github/workflows/docs-build.yml@v0.8.0a3
+    uses: terok-ai/mkdocs-terok/.github/workflows/docs-build.yml@v0.8.0
     with:
       release: ${{ inputs.release == true }}
       uv-sync-args: "--locked --group docs"
