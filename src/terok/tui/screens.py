@@ -1799,9 +1799,13 @@ class TmuxQuitScreen(screen.ModalScreen[str | None]):
     and other windows (logins, tasks) remain.  ``q`` keeps the plain-quit
     muscle memory but detaches tmux too, returning the user to their
     normal terminal; ``n`` quits into the next tmux window for users who
-    want to look at the remaining windows; any other key cancels.
+    want to look at the remaining windows; any other key cancels.  The
+    prompt also points at plain tmux detach (``^b d``) as the way to keep
+    the TUI itself alive in the background — that key is handled by tmux,
+    not by this screen.
 
     Dismisses with ``"detach"``, ``"next"``, or ``None`` (cancel).
+    Sized to stay comfortable on an 80x24 terminal.
     """
 
     CSS = """
@@ -1823,14 +1827,26 @@ class TmuxQuitScreen(screen.ModalScreen[str | None]):
         self._other_windows = other_windows
 
     def compose(self) -> ComposeResult:
-        """A centred prompt mapping each quit flavour to a single key."""
-        windows = f"{self._other_windows} window" + ("s" if self._other_windows != 1 else "")
+        """A centred, 80x24-safe prompt mapping each quit flavour to its key.
+
+        Accents are deliberately sparse: a bold title, the footer key
+        colour on the three key hints, dim for the parenthetical asides —
+        everything else stays plain so the choices carry the emphasis.
+        """
+        key = "$footer-key-foreground"
+        windows = f"{self._other_windows} other window" + ("s" if self._other_windows != 1 else "")
         yield Static(
-            f"Quitting closes this tmux window — {windows} (tasks, logins) stay open.\n\n"
-            "\\[[$footer-key-foreground]q[/]] quit and return to your terminal"
-            " (tasks keep running)\n"
-            "\\[[$footer-key-foreground]n[/]] quit into the next tmux window\n"
-            "any other key: go back to terok.",
+            f"[bold]Quit terok?[/]\n"
+            f"\n"
+            f"terok is running inside a tmux window.  Closing it leaves\n"
+            f"{windows} (tasks, logins) open, and tasks keep running.\n"
+            f"\n"
+            f"  \\[[{key}]q[/]]     close terok and return to your terminal\n"
+            f"  \\[[{key}]n[/]]     close terok and switch to the next tmux window\n"
+            f"  \\[[{key}]^b d[/]]  keep terok open in the background instead\n"
+            f"          [dim]come back any time with 'terok tui --tmux'[/]\n"
+            f"\n"
+            f"[dim]any other key: back to terok[/]",
             id="tmux-quit-confirm",
         )
 
