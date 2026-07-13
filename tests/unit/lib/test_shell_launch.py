@@ -21,6 +21,7 @@ from terok.tui.shell_launch import (
     spawn_terminal_with_command,
     tmux_new_window,
 )
+from terok.tui.tmux_session import TMUX_TIMEOUT_S
 from tests.testfs import FAKE_TMUX_SOCKET
 
 SHELL_COMMAND = ["podman", "exec", "-it", "c1", "bash"]
@@ -116,8 +117,9 @@ class TestTmuxNewWindow:
             (subprocess.CompletedProcess(args=[], returncode=0, stdout="@7\n"), True),
             (subprocess.CalledProcessError(1, "tmux"), False),
             (FileNotFoundError("tmux"), False),
+            (subprocess.TimeoutExpired("tmux", TMUX_TIMEOUT_S), False),
         ],
-        ids=["success", "failure", "tmux-not-found"],
+        ids=["success", "failure", "tmux-not-found", "hung-server"],
     )
     def test_tmux_new_window(self, side_effect: object, expected: bool) -> None:
         expected_argv = [
@@ -137,7 +139,9 @@ class TestTmuxNewWindow:
                 mock_run.return_value = side_effect
             result = tmux_new_window(SHELL_COMMAND, title="login:c1")
         assert result is expected
-        mock_run.assert_called_once_with(expected_argv, check=True, capture_output=True, text=True)
+        mock_run.assert_called_once_with(
+            expected_argv, check=True, capture_output=True, text=True, timeout=TMUX_TIMEOUT_S
+        )
 
     @pytest.mark.parametrize(
         ("stamp", "stdout", "expected_stamps"),

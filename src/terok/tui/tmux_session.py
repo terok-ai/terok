@@ -27,6 +27,7 @@ in the TUI.
 """
 
 import os
+import re
 import subprocess  # nosec B404 — every call is a fixed "tmux" argv, no shell
 
 SESSION_NAME = "terok"
@@ -41,7 +42,9 @@ MAIN_WINDOW_OPTION = "@terok-main"
 LOGIN_WINDOW_OPTION = "@terok-login"
 """tmux window option stamped with the container name a login window is attached to."""
 
-_TMUX_TIMEOUT_S = 5
+TMUX_TIMEOUT_S = 5
+"""Best-effort ceiling for any single host tmux command (a hung server must not stall the TUI)."""
+
 _EXIT_HINT_MS = 10000
 _EXIT_HINT = "terok closed — Ctrl-b d returns to your terminal; 'terok tui --tmux' reopens terok"
 
@@ -53,7 +56,7 @@ def _tmux(*args: str) -> str | None:
             ["tmux", *args],
             capture_output=True,
             text=True,
-            timeout=_TMUX_TIMEOUT_S,
+            timeout=TMUX_TIMEOUT_S,
         )
     except (OSError, subprocess.SubprocessError):
         return None
@@ -73,6 +76,23 @@ def is_terok_tmux() -> bool:
 def session_exists() -> bool:
     """Return True when the shared terok session exists on the default server."""
     return _tmux("has-session", "-t", f"={SESSION_NAME}") is not None
+
+
+def session_marker_args() -> tuple[str, ...]:
+    """``new-session`` arguments carrying the terok marker, when tmux supports them.
+
+    Setting a session-environment variable at creation (``new-session
+    -e``) needs tmux >= 3.2; an older tmux rejects the flag outright,
+    which would kill session creation entirely rather than merely losing
+    the marker.  Probing ``tmux -V`` (versions like ``3.2a`` or
+    ``next-3.4``) keeps old tmuxes working: without the marker the
+    terok-specific niceties quietly stay off and the base behaviour is
+    unchanged.
+    """
+    version = re.search(r"(\d+)\.(\d+)", _tmux("-V") or "")
+    if version and (int(version.group(1)), int(version.group(2))) >= (3, 2):
+        return ("-e", f"{TEROK_TMUX_ENV}=1")
+    return ()
 
 
 def _window_stamps(option: str, *target: str) -> list[tuple[str, str]]:

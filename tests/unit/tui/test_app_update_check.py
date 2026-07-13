@@ -181,6 +181,26 @@ class TestRunTui:
 
         assert execs == []
 
+    def test_exec_failure_becomes_a_message_not_a_traceback(
+        self, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """The entry point vanishing between which() and exec (upgrade in flight) exits cleanly."""
+        import shutil
+
+        monkeypatch.setattr(
+            app_mod, "TerokTUI", lambda: SimpleNamespace(run=lambda: _RESTART_EXIT_RESULT)
+        )
+        monkeypatch.setattr(shutil, "which", lambda _cmd: "/usr/local/bin/terok-tui")
+
+        def broken_execv(_file: str, _argv: list[str]) -> None:
+            raise OSError("gone")
+
+        monkeypatch.setattr(app_mod.os, "execv", broken_execv)
+
+        app_mod._run_tui()
+
+        assert "Could not restart" in capsys.readouterr().out
+
     def test_declines_restart_when_entry_point_missing(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:

@@ -125,6 +125,33 @@ class TestStampMainWindow:
         assert fake.calls[-1] == ["tmux", "set-option", "-w", "-t", "@2", "@terok-main", "1"]
 
 
+class TestSessionMarkerArgs:
+    """The ``-e`` marker is only offered on a tmux new enough to accept it."""
+
+    @pytest.mark.parametrize(
+        ("version_line", "expected"),
+        [
+            ("tmux 3.6b\n", ("-e", "TEROK_TMUX=1")),
+            ("tmux 3.2a\n", ("-e", "TEROK_TMUX=1")),
+            ("tmux next-3.4\n", ("-e", "TEROK_TMUX=1")),
+            ("tmux 3.1c\n", ()),
+            ("tmux 2.9\n", ()),
+        ],
+        ids=["modern", "exactly-3.2", "next-prefix", "too-old-minor", "too-old-major"],
+    )
+    def test_marker_follows_tmux_version(
+        self, monkeypatch: pytest.MonkeyPatch, version_line: str, expected: tuple[str, ...]
+    ) -> None:
+        """tmux >= 3.2 gets the marker; anything older (which rejects -e) gets none."""
+        FakeTmux(outputs={"-V": version_line}).install(monkeypatch)
+        assert tmux_session.session_marker_args() == expected
+
+    def test_no_marker_when_probe_fails(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """An unprobeable tmux is treated as too old — degrade, don't break."""
+        FakeTmux(fail=True).install(monkeypatch)
+        assert tmux_session.session_marker_args() == ()
+
+
 class TestLoginWindows:
     """Login windows are stamped per container and found for reuse."""
 

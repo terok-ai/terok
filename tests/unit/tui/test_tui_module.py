@@ -45,6 +45,13 @@ def test_tmux_configuration_integration(
 
 
 @pytest.mark.parametrize(
+    "marker_args",
+    [
+        pytest.param(("-e", "TEROK_TMUX=1"), id="modern-tmux"),
+        pytest.param((), id="old-tmux"),
+    ],
+)
+@pytest.mark.parametrize(
     ("force_new", "expected_session_args"),
     [
         pytest.param(
@@ -57,6 +64,7 @@ def test_launch_in_tmux_creates_or_forks(
     monkeypatch: pytest.MonkeyPatch,
     force_new: bool,
     expected_session_args: list[str],
+    marker_args: tuple[str, ...],
 ) -> None:
     """With no session running, launch creates the shared (or a forked) marked session."""
     import shutil
@@ -67,16 +75,17 @@ def test_launch_in_tmux_creates_or_forks(
     # ``_launch_in_tmux`` does a local ``import shutil``; patch the real module.
     monkeypatch.setattr(shutil, "which", lambda _cmd: "/usr/bin/tmux")
     monkeypatch.setattr(tmux_session, "session_exists", lambda: False)
+    monkeypatch.setattr(tmux_session, "session_marker_args", lambda: marker_args)
 
     captured: list[str] = []
     monkeypatch.setattr(app.os, "execvp", lambda _file, argv: captured.extend(argv))
 
     app._launch_in_tmux(force_new=force_new)
 
-    # argv is ["tmux", "-f", <conf>, *session_args, "-e", <marker>, "terok-tui"];
+    # argv is ["tmux", "-f", <conf>, *session_args, *marker_args, "terok-tui"];
     # the conf path is materialised at runtime so we assert around it.
     assert captured[:2] == ["tmux", "-f"]
-    assert captured[3:] == [*expected_session_args, "-e", "TEROK_TMUX=1", "terok-tui"]
+    assert captured[3:] == [*expected_session_args, *marker_args, "terok-tui"]
 
 
 @pytest.mark.parametrize(

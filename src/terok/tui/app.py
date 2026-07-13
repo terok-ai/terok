@@ -473,7 +473,15 @@ if _HAS_TEXTUAL:
             # In a terok-managed tmux, mark this window as the one running
             # the TUI — self-healing across kill-and-relaunch (best-effort,
             # a few local socket calls; quiet no-op everywhere else).
-            tmux_session.stamp_main_window()
+            # Threaded so a hung tmux server can't stall startup for the
+            # helper's subprocess timeouts.
+            self.run_worker(
+                tmux_session.stamp_main_window,
+                name="stamp-tmux-window",
+                group="tmux-stamp",
+                thread=True,
+                exit_on_error=False,
+            )
 
             # Watch for a terok upgrade landing on disk under the running
             # TUI.  Restarting re-execs this process, which makes no sense
@@ -1577,9 +1585,14 @@ if _HAS_TEXTUAL:
 
             # When the window dies with us and the client lands in another
             # tmux window, leave a status-line breadcrumb there.  A restart
-            # keeps the window alive, so no hint.
+            # keeps the window alive, so no hint.  Threaded but awaited:
+            # the hint must be issued before the process (and with it the
+            # window) dies, yet a hung tmux server should freeze at most
+            # this coroutine, not the whole UI.
             if not restart:
-                tmux_session.flash_exit_hint()
+                import asyncio
+
+                await asyncio.to_thread(tmux_session.flash_exit_hint)
 
             exit_kwargs: dict[str, Any] = {"result": _RESTART_EXIT_RESULT} if restart else {}
             pending = [
@@ -2148,7 +2161,12 @@ if _HAS_TEXTUAL:
         if not exe:
             print("terok-tui not found on PATH — restart it manually to pick up the update.")
             return
-        os.execv(exe, [exe, *restart_flags])  # nosec B606 — resolved entry point, literal flags
+        try:
+            os.execv(exe, [exe, *restart_flags])  # nosec B606 — resolved entry point, literal flags
+        except OSError:
+            # The entry point vanished or lost its exec bit between the
+            # which() above and here — an upgrade in flight can do that.
+            print(f"Could not restart {exe} — start terok-tui again manually.")
 
     def _launch_in_tmux(force_new: bool = False, restart_flags: tuple[str, ...] = ()) -> None:
         """Launch the TUI inside a managed tmux session.
@@ -2166,8 +2184,9 @@ if _HAS_TEXTUAL:
         fresh, tmux-named session alongside the existing one instead.
 
         Sessions are created with the ``TEROK_TMUX=1`` session environment
-        marker (``new-session -e``, tmux >= 3.2) so everything inside can
-        tell a terok-managed tmux apart from the user's own.
+        marker so everything inside can tell a terok-managed tmux apart
+        from the user's own — on a tmux too old for ``new-session -e``
+        (< 3.2) the marker is skipped and the tmux niceties stay off.
         """
         if os.environ.get("TMUX"):
             # Already inside tmux — no double-wrap
@@ -2184,8 +2203,6 @@ if _HAS_TEXTUAL:
                 file=sys.stderr,
             )
             sys.exit(1)
-
-        marker = f"{tmux_session.TEROK_TMUX_ENV}=1"
 
         if not force_new and tmux_session.session_exists():
             # Resume: land the client on the TUI's stamped window rather
@@ -2218,10 +2235,11 @@ if _HAS_TEXTUAL:
             if force_new
             else ["new-session", "-A", "-s", tmux_session.SESSION_NAME, "-n", "terok"]
         )
+        marker_args = tmux_session.session_marker_args()
         with _res.as_file(tmux_conf) as conf_path:
             os.execvp(
                 "tmux",
-                ["tmux", "-f", str(conf_path), *session_args, "-e", marker, "terok-tui"],
+                ["tmux", "-f", str(conf_path), *session_args, *marker_args, "terok-tui"],
             )
 
     import argparse

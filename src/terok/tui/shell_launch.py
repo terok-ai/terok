@@ -16,7 +16,7 @@ import os
 import shlex
 import subprocess
 
-from .tmux_session import find_login_window, select_window, stamp_login_window
+from .tmux_session import TMUX_TIMEOUT_S, find_login_window, select_window, stamp_login_window
 
 
 def is_inside_tmux() -> bool:
@@ -138,9 +138,9 @@ def tmux_new_window(command: list[str], title: str | None = None, stamp: str | N
     tmux_cmd.append(shell_cmd)
     try:
         result = subprocess.run(  # nosec B603 — fixed tmux verbs; command is shell-quoted above
-            tmux_cmd, check=True, capture_output=True, text=True
+            tmux_cmd, check=True, capture_output=True, text=True, timeout=TMUX_TIMEOUT_S
         )
-    except (subprocess.CalledProcessError, FileNotFoundError):
+    except (subprocess.SubprocessError, FileNotFoundError):
         return False
     if stamp and (window_id := result.stdout.strip()):
         stamp_login_window(window_id, stamp)
