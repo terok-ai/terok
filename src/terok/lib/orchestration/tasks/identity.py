@@ -83,7 +83,6 @@ def _gen_task_id() -> str:
     """Return a fresh task ID: Crockford-letter head + digit + 3 Crockford chars."""
     alphabets = (_TASK_ID_HEAD_CHARS, string.digits) + (_TASK_ID_BODY_CHARS,) * (_TASK_ID_LEN - 2)
     tid = "".join(map(secrets.choice, alphabets))
-    assert _TASK_ID_CROCKFORD_4_5_RE.fullmatch(tid), tid  # generator-output invariant
     return tid
 
 

@@ -29,7 +29,7 @@ except ImportError:  # pragma: no cover - optional dep
 #: executor passthrough plus the ``sandbox`` / ``vault`` / ``gate`` / ``ssh``
 #: shortcuts and the clearance-backed ``dbus`` group.  Single source of truth
 #: for both [`_build_wired_tree`][terok.cli.main._build_wired_tree] (which
-#: asserts the tree it builds matches this set) and the gate predicate
+#: checks the tree it builds matches this set) and the gate predicate
 #: [`_invocation_needs_wired_tree`][terok.cli.main._invocation_needs_wired_tree].
 #: Building the tree imports the executor / sandbox / clearance wheels, so a
 #: terok-own verb (``info``, ``task``, …) skips it entirely.
@@ -435,9 +435,8 @@ def _build_wired_tree() -> CommandTree:
     # Drift guard: the gate predicate keys off ``_WIRED_TREE_ROOTS``; keep it
     # in lockstep with what we actually wire so a new sibling group can't
     # silently become ungated (and unreachable for terok-own verbs).
-    assert {root.name for root in tree.roots} == set(_WIRED_TREE_ROOTS), (
-        "wired-tree roots drifted from _WIRED_TREE_ROOTS — update the gate set"
-    )
+    if {root.name for root in tree.roots} != set(_WIRED_TREE_ROOTS):
+        raise RuntimeError("wired-tree roots drifted from _WIRED_TREE_ROOTS — update the gate set")
     return tree
 
 
