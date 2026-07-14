@@ -210,7 +210,7 @@ def main(prog: str = "terok") -> None:
         import os
 
         try:
-            os.execlp("terok-tui", "terok-tui", *sys.argv[1:])
+            os.execlp("terok-tui", "terok-tui", *sys.argv[1:])  # nosec B606 B607 — PATH lookup of our own entry point is the install contract; argv is fixed + user's own flags
             return  # type: ignore[unreachable]  # in tests os.execlp is mocked
         except FileNotFoundError:
             pass

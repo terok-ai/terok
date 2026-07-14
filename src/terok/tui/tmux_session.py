@@ -152,7 +152,7 @@ def stamp_main_window() -> None:
     _tmux("set-option", "-w", "-t", own, MAIN_WINDOW_OPTION, "1")
 
 
-def revive_window_args(session: str = SESSION_NAME) -> tuple[str, ...]:
+def revive_window_args(session: str = SESSION_NAME) -> list[str]:
     """``new-window`` arguments reviving the TUI as *session*'s first window.
 
     When a resume finds no stamped main window the TUI is respawned, and
@@ -166,8 +166,8 @@ def revive_window_args(session: str = SESSION_NAME) -> tuple[str, ...]:
     use".
     """
     if _version_at_least(3, 2):
-        return ("-b", "-t", f"={session}:^")
-    return ("-t", f"={session}:")
+        return ["-b", "-t", f"={session}:^"]
+    return ["-t", f"={session}:"]
 
 
 def find_login_window(cname: str) -> str | None:
