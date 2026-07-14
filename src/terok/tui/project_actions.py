@@ -216,8 +216,9 @@ class ProjectActionsMixin(_MixinBase):
         ([`_terminal_pollution_guard`][terok.tui.project_actions._terminal_pollution_guard])
         so the prompt and the TUI resume get a sane tty, and the prompt
         keeps the child's last lines readable before the TUI redraws
-        over them.  Launch failures always prompt so the error stays
-        visible; clean exits prompt unless *prompt_on_success* is false.
+        over them.  Failures — launch errors and non-zero exits — always
+        prompt so the error stays visible; clean (zero) exits prompt
+        unless *prompt_on_success* is false.
 
         Returns:
             The child's exit code, or ``None`` if it could not be launched.
@@ -231,7 +232,7 @@ class ProjectActionsMixin(_MixinBase):
                 except (OSError, ValueError) as exc:
                     print(f"Error: {exc}")
                     code = None
-            if code is None or prompt_on_success:
+            if prompt_on_success or code != 0:
                 with suppress(EOFError):
                     await asyncio.to_thread(input, _RESUME_PROMPT)
         return code
@@ -665,7 +666,7 @@ class ProjectActionsMixin(_MixinBase):
         code = await self._run_suspended(
             *shlex.split(editor), str(instr_path), prompt_on_success=False
         )
-        if code is None:
+        if code != 0:
             return
         self.notify(done_msg)
         self._refresh_project_state()

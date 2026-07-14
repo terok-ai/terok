@@ -987,6 +987,16 @@ class TestEditInExternalEditor:
         instance.notify.assert_not_called()
         instance._refresh_project_state.assert_not_called()
 
+    def test_nonzero_editor_exit_suppresses_success(self, tmp_path: object) -> None:
+        """An editor exiting non-zero (e.g. vim ``:cq``) must not claim success."""
+        mixin = self._get_mixin()
+        instance = self._instance(mixin)
+        instance._run_suspended = mock.AsyncMock(return_value=1)
+        instr_path = tmp_path / "instructions.md"
+        run(mixin._edit_in_external_editor(instance, instr_path, "vim", done_msg="ok"))
+        instance.notify.assert_not_called()
+        instance._refresh_project_state.assert_not_called()
+
 
 class TestActionAuth:
     """Per-project ``_action_auth`` and host-wide ``_action_auth_host_wide`` dispatch."""
