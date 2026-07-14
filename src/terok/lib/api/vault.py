@@ -35,13 +35,18 @@ if TYPE_CHECKING:
         RecoveryStatus as RecoveryStatus,
         SessionProvisionResult as SessionProvisionResult,
         SessionShadow as SessionShadow,
+        TierProvisionResult as TierProvisionResult,
         WrongPassphraseError as WrongPassphraseError,
         clear_redundant_session_file as clear_redundant_session_file,
+        credentials_provisioned as credentials_provisioned,
         handle_vault_seal as handle_vault_seal,
         handle_vault_to_keyring as handle_vault_to_keyring,
+        keyring_backend_available as keyring_backend_available,
+        provision_passphrase_tier as provision_passphrase_tier,
         provision_session_passphrase as provision_session_passphrase,
         purge_passphrase_tiers as purge_passphrase_tiers,
         session_shadow_state as session_shadow_state,
+        systemd_creds_available as systemd_creds_available,
     )
 
 #: Public name -> defining module (PEP 562 lazy resolution).  Every
@@ -53,13 +58,18 @@ _LAZY: dict[str, str] = {
     "RecoveryStatus": "terok.lib.integrations.sandbox",
     "SessionProvisionResult": "terok.lib.integrations.sandbox",
     "SessionShadow": "terok.lib.integrations.sandbox",
+    "TierProvisionResult": "terok.lib.integrations.sandbox",
     "WrongPassphraseError": "terok.lib.integrations.sandbox",
     "clear_redundant_session_file": "terok.lib.integrations.sandbox",
+    "credentials_provisioned": "terok.lib.integrations.sandbox",
     "handle_vault_seal": "terok.lib.integrations.sandbox",
     "handle_vault_to_keyring": "terok.lib.integrations.sandbox",
+    "keyring_backend_available": "terok.lib.integrations.sandbox",
+    "provision_passphrase_tier": "terok.lib.integrations.sandbox",
     "provision_session_passphrase": "terok.lib.integrations.sandbox",
     "purge_passphrase_tiers": "terok.lib.integrations.sandbox",
     "session_shadow_state": "terok.lib.integrations.sandbox",
+    "systemd_creds_available": "terok.lib.integrations.sandbox",
     "vault_db": "terok.lib.domain.vault",
 }
 
@@ -214,14 +224,19 @@ class VaultStatusSnapshot:
 
 __all__ = [
     "NoPassphraseError",
+    "TierProvisionResult",
     "VaultStatusSnapshot",
     "WrongPassphraseError",
     "clear_redundant_session_file",
+    "credentials_provisioned",
     "handle_vault_seal",
     "handle_vault_to_keyring",
+    "keyring_backend_available",
+    "provision_passphrase_tier",
     "provision_session_passphrase",
     "purge_passphrase_tiers",
     "session_shadow_state",
+    "systemd_creds_available",
 ]
 
 

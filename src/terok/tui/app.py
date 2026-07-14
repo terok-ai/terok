@@ -671,7 +671,14 @@ if _HAS_TEXTUAL:
             [`_offer_selinux_fix`][terok.tui.app.TerokTUI._offer_selinux_fix]
             so the user can pick Install / Switch-to-TCP from a modal
             instead of having to drop to a shell.
+
+            The credentials pre-flight runs first: the subprocess is
+            captured and TTY-less, so the passphrase-tier conversation
+            must happen up front in TUI modals — see
+            [`_ensure_credentials_provisioned`][terok.tui.app.TerokTUI._ensure_credentials_provisioned].
             """
+            if not await self._ensure_credentials_provisioned():
+                return False
             entry = self.dispatch_console_command(["terok", "setup"], title="Running terok setup")
             await self.push_screen(WorkerLogScreen(entry))
             await entry.wait()
@@ -686,6 +693,123 @@ if _HAS_TEXTUAL:
                 timeout=15,
             )
             return False
+
+        async def _ensure_credentials_provisioned(self) -> bool:
+            """Collect the passphrase-tier decision before dispatching ``terok setup``.
+
+            The setup subprocess runs captured and TTY-less, so sandbox's
+            credentials phase can neither show its chooser nor announce a
+            fresh mint to ``/dev/tty`` — it would fail closed after other
+            phases already ran, scaring the user with an error they were
+            never given a chance to prevent.  The TUI has the conversation
+            up front instead: tier chooser → create-passphrase modal →
+            in-process provisioning through the sandbox library → reveal +
+            recovery ack for a minted value.  The subprocess then finds
+            the tier already resolving and passes.
+
+            With systemd-creds available the strongest tier picks itself
+            (mirroring the CLI's auto-detect) and only the mint + reveal
+            remain.  Provisioning in-process — never ``--echo-passphrase``
+            into the captured log — keeps the recovery key out of every
+            log surface, which is the whole point of sandbox's
+            controlling-TTY announce design.
+
+            Returns ``True`` when setup may proceed (already provisioned,
+            or provisioning just landed), ``False`` on cancel or failure
+            (both already notified).
+            """
+            import asyncio
+
+            from terok.lib.api.vault import (
+                credentials_provisioned,
+                keyring_backend_available,
+                provision_passphrase_tier,
+                systemd_creds_available,
+            )
+
+            from .screens import VaultCreatePassphraseModal, VaultTierChooserModal
+
+            cfg = SandboxConfig()
+            if await asyncio.to_thread(credentials_provisioned, cfg):
+                return True
+
+            typed = ""  # the create-modal's "generate for me" sentinel
+            if await asyncio.to_thread(systemd_creds_available):
+                tier = "systemd-creds"
+            else:
+                keyring_ok = await asyncio.to_thread(keyring_backend_available)
+                tier = await self.push_screen_wait(
+                    VaultTierChooserModal(keyring_available=keyring_ok)
+                )
+                if tier is None:
+                    self._notify_provisioning_skipped()
+                    return False
+                typed = await self.push_screen_wait(VaultCreatePassphraseModal())
+                if typed is None:
+                    self._notify_provisioning_skipped()
+                    return False
+
+            try:
+                result = await asyncio.to_thread(
+                    provision_passphrase_tier, cfg, tier=tier, passphrase=typed or None
+                )
+            except Exception as exc:  # noqa: BLE001 — surface keyring/seal failures verbatim
+                self.notify(
+                    f"Vault passphrase provisioning failed: {exc}",
+                    severity="error",
+                    timeout=15,
+                )
+                return False
+
+            await self._refresh_vault_status()
+            if result.generated:
+                await self._reveal_new_passphrase(result.passphrase, result.source)
+            return True
+
+        def _notify_provisioning_skipped(self) -> None:
+            """One warning for every cancel exit of the provisioning conversation."""
+            self.notify(
+                "Setup skipped — vault encryption needs a passphrase tier "
+                "first.  Re-run from the command palette → Run terok setup.",
+                severity="warning",
+                timeout=10,
+            )
+
+        async def _reveal_new_passphrase(self, passphrase: str, source: str) -> None:
+            """Show a freshly minted passphrase once and record the operator's save ack.
+
+            The counterpart of the CLI's bold-yellow ``/dev/tty`` announce:
+            the value appears in exactly one modal, never in the console
+            log.  "Mark as saved" writes the recovery marker; closing
+            without it leaves the pill's UNSAVED warning as the nudge.
+            """
+            from .screens import VaultRevealModal
+
+            outcome = await self.push_screen_wait(
+                VaultRevealModal(passphrase, source, already_acked=False)
+            )
+            if outcome is True:
+                RecoveryStatus.acknowledge(SandboxConfig())
+                await self._refresh_vault_status()
+
+        @work(exclusive=True, group="vault-provision", exit_on_error=False)
+        async def _run_vault_provision_flow(self) -> None:
+            """First-passphrase flow for the palette's unlock action on a fresh install.
+
+            Reached when the operator picks "unlock" but no credentials DB
+            exists — there is nothing to unlock, and the old modal would
+            have silently keyed the future vault to whatever they typed,
+            on the reboot-volatile session tier.  Runs the same chooser +
+            create + reveal conversation as the setup pre-flight.  A
+            worker method because the conversation needs
+            ``push_screen_wait``.
+            """
+            if await self._ensure_credentials_provisioned():
+                self.notify(
+                    "Vault passphrase provisioned — the encrypted DB is created on first use.",
+                    severity="information",
+                    timeout=8,
+                )
 
         async def _offer_selinux_fix(self) -> bool:
             """Push the SELinux-fix modal; on a chosen remediation, re-run setup.
@@ -2049,6 +2173,18 @@ if _HAS_TEXTUAL:
                 and self._last_vault_status is not None
                 and self._last_vault_status.locked
             ):
+                from pathlib import Path
+
+                if not Path(self._last_vault_status.db_path).exists():
+                    # Fresh install — there is nothing to unlock, and an
+                    # unlock prompt here would accept any string and
+                    # silently key the future vault to it on the
+                    # reboot-volatile session tier.  First-time
+                    # provisioning belongs to the setup flow (chooser +
+                    # create + reveal), which runs right after this probe
+                    # on startup; the palette unlock action routes there
+                    # too.
+                    return
                 await self.push_screen(VaultUnlockModal(), self._on_vault_unlock_result)
 
         def _render_status_pill(self, status: "VaultStatusSnapshot | None") -> None:

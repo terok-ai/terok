@@ -98,8 +98,9 @@ services (vault, gate, clearance) are started on demand by the supervisor
 at task launch.  Idempotent — safe to re-run.
 
 Interactive runs prompt for where the credentials-DB passphrase is
-stored; non-interactive hosts without systemd-creds must choose with
-`terok setup --passphrase-tier <keyring|session-file|config>`.
+stored; the TUI collects the same choice in its setup dialogs before
+dispatching.  Non-interactive hosts without systemd-creds must choose
+with `terok setup --passphrase-tier <keyring|session-file|config>`.
 
 ### First project
 

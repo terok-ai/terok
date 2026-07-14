@@ -1018,9 +1018,20 @@ class ProjectActionsMixin(_MixinBase):
         Re-uses the same modal as the on-mount probe, then funnels the
         result through ``_on_vault_unlock_result`` so the write +
         re-probe + pill refresh all stay in one place.
+
+        On a fresh install (no credentials DB yet) there is nothing to
+        unlock — the modal would accept any string and silently make it
+        the future vault's key on the reboot-volatile session tier.
+        Route to the first-passphrase provisioning flow instead, the
+        same chooser + create + reveal conversation setup runs.
         """
+        from terok.lib.api import SandboxConfig
+
         from .screens import VaultUnlockModal
 
+        if not SandboxConfig().db_path.exists():
+            self._run_vault_provision_flow()
+            return
         await self.push_screen(VaultUnlockModal(), self._on_vault_unlock_result)
 
     async def _action_vault_lock(self) -> None:
