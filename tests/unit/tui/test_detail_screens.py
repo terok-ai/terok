@@ -967,34 +967,23 @@ class TestEditInExternalEditor:
         """A clean editor exit creates the parent dir, notifies, and refreshes state."""
         mixin = self._get_mixin()
         instance = self._instance(mixin)
+        instance._run_suspended = mock.AsyncMock(return_value=0)
         instr_path = tmp_path / "nested" / "instructions.md"
-        proc = mock.AsyncMock()
-        with mock.patch(
-            "terok.tui.project_actions.asyncio.create_subprocess_exec",
-            new=mock.AsyncMock(return_value=proc),
-        ) as exec_mock:
-            run(mixin._edit_in_external_editor(instance, instr_path, "vim -u NONE", done_msg="ok"))
-        exec_mock.assert_awaited_once_with("vim", "-u", "NONE", str(instr_path))
-        proc.wait.assert_awaited_once()
+        run(mixin._edit_in_external_editor(instance, instr_path, "vim -u NONE", done_msg="ok"))
+        instance._run_suspended.assert_awaited_once_with(
+            "vim", "-u", "NONE", str(instr_path), prompt_on_success=False
+        )
         assert instr_path.parent.is_dir()
-        instance.suspend.assert_called_once_with()
         instance.notify.assert_called_once_with("ok")
         instance._refresh_project_state.assert_called_once()
 
     def test_launch_failure_is_surfaced_not_raised(self, tmp_path: object) -> None:
-        """A failed spawn prints an error and waits — it never crashes the TUI."""
+        """A failed spawn (``None`` exit code) aborts quietly — no notify, no refresh."""
         mixin = self._get_mixin()
         instance = self._instance(mixin)
+        instance._run_suspended = mock.AsyncMock(return_value=None)
         instr_path = tmp_path / "instructions.md"
-        with (
-            mock.patch(
-                "terok.tui.project_actions.asyncio.create_subprocess_exec",
-                new=mock.AsyncMock(side_effect=FileNotFoundError("no such editor")),
-            ),
-            mock.patch("builtins.input") as input_mock,
-        ):
-            run(mixin._edit_in_external_editor(instance, instr_path, "bogus-editor", done_msg="ok"))
-        input_mock.assert_called_once()
+        run(mixin._edit_in_external_editor(instance, instr_path, "bogus-editor", done_msg="ok"))
         instance.notify.assert_not_called()
         instance._refresh_project_state.assert_not_called()
 

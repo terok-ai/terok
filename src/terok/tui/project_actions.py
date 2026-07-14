@@ -11,10 +11,13 @@ project and task actions.
 from __future__ import annotations
 
 import asyncio
+import fcntl
 import os
 import shlex
-import subprocess
-from collections.abc import Callable
+import sys
+import termios
+from collections.abc import Callable, Iterator
+from contextlib import contextmanager, suppress
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -41,6 +44,50 @@ if TYPE_CHECKING:
     _MixinBase = App
 else:
     _MixinBase = object
+
+#: Indices into the ``termios.tcgetattr`` attribute list.
+_IFLAG = 0
+_LFLAG = 3
+
+
+@contextmanager
+def _terminal_pollution_guard() -> Iterator[None]:
+    """Shield the TUI from terminal state a foreground child leaves behind.
+
+    Interactive children run under a suspended TUI (agent CLIs, editors,
+    ``podman attach``) share stdin/stdout with the app, and some exit
+    without undoing their terminal tweaks.  Two of those poisons outlive
+    the child: a tty left in raw mode swallows the Enter that should
+    complete ``_RESUME_PROMPT`` (``\\r`` is never translated to ``\\n``),
+    and ``O_NONBLOCK`` left on
+    stdout kills Textual's writer thread with a ``BlockingIOError`` on
+    the first write after resume — its bounded queue then fills and
+    wedges the whole app.  Node-based agent CLIs are known to do both.
+
+    Snapshots the tty attributes on entry; on exit clears ``O_NONBLOCK``
+    from stdin and stdout and restores the snapshot with canonical line
+    input re-forced (in case the snapshot itself was already polluted).
+    A no-op wherever there is no real tty to guard.
+    """
+    try:
+        stdin_fd = sys.stdin.fileno()
+        saved = termios.tcgetattr(stdin_fd)
+    except (ValueError, OSError, termios.error):
+        stdin_fd, saved = -1, None
+    try:
+        yield
+    finally:
+        for stream in (sys.stdin, sys.stdout):
+            with suppress(ValueError, OSError):
+                fd = stream.fileno()
+                flags = fcntl.fcntl(fd, fcntl.F_GETFL)
+                if flags & os.O_NONBLOCK:
+                    fcntl.fcntl(fd, fcntl.F_SETFL, flags & ~os.O_NONBLOCK)
+        if saved is not None:
+            saved[_IFLAG] |= termios.ICRNL
+            saved[_LFLAG] |= termios.ICANON | termios.ECHO
+            with suppress(termios.error):
+                termios.tcsetattr(stdin_fd, termios.TCSADRAIN, saved)
 
 
 class ProjectActionsMixin(_MixinBase):
@@ -153,17 +200,41 @@ class ProjectActionsMixin(_MixinBase):
         elif method == "terminal":
             self.notify(f"{label} in new terminal: {cname}")
         else:
-            with self.suspend():
-                try:
-                    # Threaded like the prompt below it: the app is suspended,
-                    # not stopped, and an interactive session can last minutes
-                    # -- blocking the loop for its whole duration would freeze
-                    # every background worker and timer with it.
-                    await asyncio.to_thread(subprocess.run, cmd)
-                except Exception as e:
-                    print(f"Error: {e}")
-                await asyncio.to_thread(input, _RESUME_PROMPT)
+            await self._run_suspended(*cmd)
             await self.refresh_tasks()
+
+    async def _run_suspended(self, *argv: str, prompt_on_success: bool = True) -> int | None:
+        """Run *argv* in the foreground with the TUI suspended.
+
+        The single home of the suspend dance shared by container logins,
+        OAuth containers and the external editor.  The child runs as an
+        asyncio subprocess and the resume prompt reads in a thread: the
+        app is suspended, not stopped, and an interactive session can
+        last minutes — blocking the loop for its whole duration would
+        freeze every background worker and timer with it.  The terminal
+        is scrubbed after the child exits
+        ([`_terminal_pollution_guard`][terok.tui.project_actions._terminal_pollution_guard])
+        so the prompt and the TUI resume get a sane tty, and the prompt
+        keeps the child's last lines readable before the TUI redraws
+        over them.  Launch failures always prompt so the error stays
+        visible; clean exits prompt unless *prompt_on_success* is false.
+
+        Returns:
+            The child's exit code, or ``None`` if it could not be launched.
+        """
+        with self.suspend():
+            code: int | None
+            with _terminal_pollution_guard():
+                try:
+                    proc = await asyncio.create_subprocess_exec(*argv)
+                    code = await proc.wait()
+                except (OSError, ValueError) as exc:
+                    print(f"Error: {exc}")
+                    code = None
+            if code is None or prompt_on_success:
+                with suppress(EOFError):
+                    await asyncio.to_thread(input, _RESUME_PROMPT)
+        return code
 
     # ---------- Project infrastructure actions ----------
 
@@ -459,15 +530,8 @@ class ProjectActionsMixin(_MixinBase):
             self._watch_auth_session(session)
             return
 
-        with self.suspend():
-            try:
-                proc = await asyncio.create_subprocess_exec(*session.argv)
-                exit_code = await proc.wait()
-            except (OSError, ValueError) as exc:
-                print(f"Error: {exc}")
-                exit_code = 1
-            await asyncio.to_thread(input, _RESUME_PROMPT)
-        self._capture_auth_session(session, exit_code=exit_code)
+        code = await self._run_suspended(*session.argv)
+        self._capture_auth_session(session, exit_code=1 if code is None else code)
 
     @work(exclusive=False, group="auth-watch", exit_on_error=False)
     async def _watch_auth_session(self, session: AuthSession) -> None:
@@ -598,14 +662,11 @@ class ProjectActionsMixin(_MixinBase):
         login path keeps).
         """
         instr_path.parent.mkdir(parents=True, exist_ok=True)
-        with self.suspend():
-            try:
-                proc = await asyncio.create_subprocess_exec(*shlex.split(editor), str(instr_path))
-                await proc.wait()
-            except (OSError, ValueError) as exc:
-                print(f"Error launching {editor}: {exc}")
-                await asyncio.to_thread(input, _RESUME_PROMPT)
-                return
+        code = await self._run_suspended(
+            *shlex.split(editor), str(instr_path), prompt_on_success=False
+        )
+        if code is None:
+            return
         self.notify(done_msg)
         self._refresh_project_state()
 
