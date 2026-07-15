@@ -2462,8 +2462,8 @@ requires-dist = [
 
 [[package]]
 name = "terok-executor"
-version = "0.4.0a6.dev427+g646fbe1e6"
-source = { git = "https://github.com/sliwowitz/terok-executor?rev=feat%2Fgpu-vendors#646fbe1e668ec54ba369dc659fabb02ca3a2bd43" }
+version = "0.4.0a6.dev428+g5b08a6e5b"
+source = { git = "https://github.com/sliwowitz/terok-executor?rev=feat%2Fgpu-vendors#5b08a6e5b786f9f2f0cd39a046b44f159466e019" }
 dependencies = [
     { name = "agent-client-protocol" },
     { name = "jinja2" },
@@ -2478,8 +2478,8 @@ dependencies = [
 
 [[package]]
 name = "terok-sandbox"
-version = "0.5.0a6.dev408+g5c0270799"
-source = { git = "https://github.com/sliwowitz/terok-sandbox?rev=feat%2Fgpu-vendors#5c0270799d8256f0a00b44fa2448974431527e24" }
+version = "0.5.0a6.dev409+gb39aa011b"
+source = { git = "https://github.com/sliwowitz/terok-sandbox?rev=feat%2Fgpu-vendors#b39aa011be453c285684292df7832156905649dd" }
 dependencies = [
     { name = "aiohttp" },
     { name = "cryptography" },
