@@ -62,7 +62,7 @@ if _HAS_TEXTUAL:
         needs_setup,
     )
     from terok.lib.api.shield import RecoveryStatus, ShieldManager
-    from terok.lib.api.vault import VaultStatusSnapshot
+    from terok.lib.api.vault import VaultStatus
 
     from ..lib.api import (
         BrokenProject,
@@ -185,6 +185,7 @@ if _HAS_TEXTUAL:
         "vault_to_keyring": "_action_vault_to_keyring",
         "vault_reveal": "_action_vault_reveal",
         "vault_acknowledge": "_action_vault_acknowledge",
+        "vault_change": "_action_vault_change",
     }
 
     TASK_ACTION_HANDLERS: dict[str, str] = {
@@ -345,7 +346,7 @@ if _HAS_TEXTUAL:
             self._container_event_stream: ContainerEventStream | None = None
             self._watch_debounce = None
             self._last_shield_env: EnvironmentCheck | None = None
-            self._last_vault_status: VaultStatusSnapshot | None = None
+            self._last_vault_status: VaultStatus | None = None
             self._vault_watcher: TaskWatcher | None = None
             self._vault_watch_debounce: Timer | None = None
             # Cached state for detail screens
@@ -720,29 +721,18 @@ if _HAS_TEXTUAL:
             """
             import asyncio
 
-            from terok.lib.api.vault import (
-                credentials_provisioned,
-                keyring_backend_available,
-                provision_passphrase_tier,
-                systemd_creds_available,
-            )
+            from terok.lib.api.vault import plan_provisioning, provision_passphrase_tier
 
             from .screens import VaultCreatePassphraseModal, VaultTierChooserModal
 
             cfg = SandboxConfig()
-            # The probes get the same user-facing error path as the
-            # provisioning call below: credentials_provisioned fails
-            # closed (WrongPassphraseError) on a configured-but-broken
-            # durable tier, and an unnotified crash here would strand
-            # the palette worker in a silent ERROR state.
+            # The plan probe gets the same user-facing error path as the
+            # provisioning call below: it fails closed
+            # (WrongPassphraseError) on a configured-but-broken durable
+            # tier, and an unnotified crash here would strand the
+            # palette worker in a silent ERROR state.
             try:
-                provisioned = await asyncio.to_thread(credentials_provisioned, cfg)
-                auto_tier = not provisioned and await asyncio.to_thread(systemd_creds_available)
-                keyring_ok = (
-                    not provisioned
-                    and not auto_tier
-                    and await asyncio.to_thread(keyring_backend_available)
-                )
+                plan = await asyncio.to_thread(plan_provisioning, cfg)
             except Exception as exc:  # noqa: BLE001 — e.g. an unsealable systemd-creds credential
                 self.notify(
                     f"Vault passphrase probe failed: {exc}",
@@ -750,16 +740,16 @@ if _HAS_TEXTUAL:
                     timeout=15,
                 )
                 return False
-            if provisioned:
+            if plan.provisioned:
                 return True
 
             typed: str | None = ""  # the create-modal's "generate for me" sentinel
             tier: str | None
-            if auto_tier:
-                tier = "systemd-creds"
+            if plan.auto_tier is not None:
+                tier = plan.auto_tier
             else:
                 tier = await self.push_screen_wait(
-                    VaultTierChooserModal(keyring_available=keyring_ok)
+                    VaultTierChooserModal(keyring_available=plan.keyring_available)
                 )
                 if tier is None:
                     self._notify_provisioning_skipped()
@@ -830,6 +820,122 @@ if _HAS_TEXTUAL:
                     severity="information",
                     timeout=8,
                 )
+
+        @work(exclusive=True, group="vault-change", exit_on_error=False)
+        async def _run_vault_change_flow(self) -> None:
+            """Change the vault passphrase — the TUI rendering of the CLI verb.
+
+            Drives sandbox's ``change_passphrase`` (the same prompt-free
+            core behind ``vault passphrase change``): verify → rekey the
+            DB → rewrite every tier holding the old value → drop the
+            recovery marker.  The *current* passphrase is asked for only
+            when the vault is locked — when a tier resolves it, retyping
+            would be theatre (Reveal prints it to the same operator).
+            The new value comes from the create modal (typed-and-
+            confirmed, or Enter to generate) and is revealed + re-acked
+            after the change succeeded — the previously confirmed copy
+            is now the wrong passphrase.
+            """
+            import asyncio
+
+            from terok.lib.api.vault import (
+                VaultState,
+                WrongPassphraseError,
+                change_passphrase,
+                load_vault_status,
+            )
+
+            from .screens import VaultCreatePassphraseModal, VaultUnlockModal
+
+            try:
+                status = await asyncio.to_thread(load_vault_status)
+            except Exception as exc:  # noqa: BLE001 — surface probe failures verbatim
+                self.notify(f"Vault probe failed: {exc}", severity="error", timeout=15)
+                return
+            if status.state is VaultState.UNPROVISIONED:
+                self.notify(
+                    "Nothing to change — the vault has no passphrase yet."
+                    "  Run terok setup (or the unlock action) to provision one first.",
+                    severity="warning",
+                    timeout=10,
+                )
+                return
+
+            old: str | None = None
+            if status.state is not VaultState.UNLOCKED:
+                old = await self.push_screen_wait(
+                    VaultUnlockModal(
+                        title="Vault locked — current passphrase needed",
+                        prompt=(
+                            "Enter the CURRENT credentials-DB passphrase.\n"
+                            "The change re-encrypts the DB, so the old key must open it first."
+                        ),
+                        confirm_label="Continue",
+                    )
+                )
+                if not old:
+                    self.notify("Passphrase change cancelled.", severity="warning", timeout=8)
+                    return
+
+            typed = await self.push_screen_wait(VaultCreatePassphraseModal())
+            if typed is None:
+                self.notify("Passphrase change cancelled.", severity="warning", timeout=8)
+                return
+
+            cfg = SandboxConfig()
+            try:
+                result = await asyncio.to_thread(change_passphrase, cfg, old=old, new=typed or None)
+            except WrongPassphraseError:
+                self.notify(
+                    "That passphrase does not open the credentials DB — nothing was changed.",
+                    severity="error",
+                    timeout=10,
+                )
+                return
+            except Exception as exc:  # noqa: BLE001 — every failure becomes a notification
+                if "database is locked" in str(exc).lower():
+                    self.notify(
+                        "Cannot re-encrypt the credentials DB while it is in use —"
+                        " a running task's supervisor still holds it open.  Stop or"
+                        " delete the running tasks, then retry.  Nothing was changed.",
+                        severity="error",
+                        timeout=20,
+                    )
+                elif isinstance(exc, (ValueError, RuntimeError)):
+                    # change_passphrase's own refusals (identical/empty value,
+                    # passphrase-command tier) arrive fully worded.
+                    self.notify(f"Nothing was changed: {exc}", severity="error", timeout=15)
+                else:
+                    self.notify(f"Passphrase change failed: {exc}", severity="error", timeout=20)
+                return
+
+            if result.problems:
+                details = "\n".join(f"{p.tier}: {p.detail}" for p in result.problems)
+                self.notify(
+                    "The vault now uses the new passphrase, but some tiers could"
+                    f" not be rewritten:\n{details}",
+                    title="Passphrase changed — tiers need attention",
+                    severity="error",
+                    timeout=30,
+                )
+            else:
+                self.notify(
+                    "Vault passphrase changed — every stored tier now holds the"
+                    " new value.  Already-running tasks keep the old one until"
+                    " restarted.",
+                    severity="information",
+                    timeout=10,
+                )
+            await self._refresh_vault_status()
+            # The recovery marker was dropped with the old passphrase —
+            # reveal the new value (minted or typed) and collect a fresh
+            # save-acknowledgement.
+            source = (
+                str(self._last_vault_status.source)
+                if (self._last_vault_status and self._last_vault_status.source)
+                else "vault"
+            )
+            await self._reveal_new_passphrase(result.passphrase, source)
 
         async def _offer_selinux_fix(self) -> bool:
             """Push the SELinux-fix modal; on a chosen remediation, re-run setup.
@@ -2044,8 +2150,10 @@ if _HAS_TEXTUAL:
 
         async def action_show_vault(self) -> None:
             """Open the vault management screen."""
+            from terok.lib.api.vault import load_vault_status
+
             try:
-                self._last_vault_status = VaultStatusSnapshot.load()
+                self._last_vault_status = load_vault_status()
             except Exception:
                 self._last_vault_status = None
             await self.push_screen(
@@ -2062,7 +2170,7 @@ if _HAS_TEXTUAL:
                 await getattr(self, handler)()
 
         def _maybe_warn_recovery_unconfirmed(self) -> None:
-            """One-shot startup notification when no recovery acknowledgement is on disk.
+            """One-shot startup notification for the recovery-key warnings.
 
             The pill in the status bar carries the same signal on every
             refresh; this lifts it to a notification once per process
@@ -2071,45 +2179,32 @@ if _HAS_TEXTUAL:
             silently on a locked vault — the unlock prompt is already
             pulling the operator's attention.
 
-            Severity escalates from ``warning`` to ``error`` when the
-            resolver lands on the session-unlock tmpfs tier and the
-            marker is missing — the operator is literally one reboot
-            away from losing the vault.
+            Text and severity come from the snapshot's shared warning
+            catalog, so the CLI, the pill, and this notification can
+            never drift apart; only the TUI affordance line ("open the
+            Vault screen → Reveal") is added here.
             """
+            from terok.lib.api.vault import VaultState, VaultWarningKind
+
             if getattr(self, "_recovery_warning_shown", False):
                 return
             self._recovery_warning_shown = True
             vault_status = getattr(self, "_last_vault_status", None)
-            if vault_status is None or vault_status.locked:
+            if vault_status is None or vault_status.state is not VaultState.UNLOCKED:
                 return
-            # Best-effort hint — must never block TUI startup, so swallow any
-            # resolver/marker failure and degrade silently.
-            try:
-                rstatus = RecoveryStatus.load()
-            except Exception:  # noqa: BLE001
-                return
-            if rstatus.acknowledged:
-                return
-            if rstatus.urgent:
-                self.notify(
-                    "Vault recovery key UNCONFIRMED and the passphrase lives "
-                    "ONLY in the session-unlock tmpfs file — it will be wiped "
-                    "on the next reboot and your vault becomes UNRECOVERABLE "
-                    "then.  Open the Vault screen → Reveal NOW and save the "
-                    "key off-host.",
-                    title="Recovery key — saving NOW or lose the vault on reboot",
-                    severity="error",
-                    timeout=30,
-                )
+            recovery_kinds = (
+                VaultWarningKind.RECOVERY_VOLATILE,
+                VaultWarningKind.RECOVERY_UNCONFIRMED,
+            )
+            warning = next((w for w in vault_status.warnings if w.kind in recovery_kinds), None)
+            if warning is None:
                 return
             self.notify(
-                "Vault recovery key unconfirmed — every keystore tier is "
-                "machine-bound, so a hardware failure strands the vault. "
-                "Run `terok vault passphrase reveal` (or open the Vault "
-                "screen and click Reveal) to save the key off-host.",
-                title="Recovery key unconfirmed",
-                severity="warning",
-                timeout=20,
+                f"{warning.message.capitalize()}.  Open the Vault screen → Reveal"
+                " and save the key off-host.",
+                title=f"Vault: {warning.brief}",
+                severity="error" if warning.severity == "error" else "warning",
+                timeout=30 if warning.severity == "error" else 20,
             )
 
         def _start_vault_watcher(self) -> None:
@@ -2181,34 +2276,40 @@ if _HAS_TEXTUAL:
 
         async def _refresh_vault_status(self, *, push_modal_if_locked: bool = False) -> None:
             """Read a fresh snapshot, update the pill, optionally push the unlock modal."""
+            from terok.lib.api.vault import VaultState, load_vault_status
+
             try:
-                self._last_vault_status = VaultStatusSnapshot.load()
+                self._last_vault_status = load_vault_status()
             except Exception:
                 self._last_vault_status = None
 
             self._render_status_pill(self._last_vault_status)
 
+            # Only a genuinely LOCKED vault gets the unlock prompt.  An
+            # UNPROVISIONED one has nothing to unlock — the modal would
+            # accept any string and silently key the future vault to it
+            # on the reboot-volatile session tier.  First-time
+            # provisioning belongs to the chooser + create + reveal
+            # flow, which runs right after this probe on startup; the
+            # palette unlock action routes there too.
             if (
                 push_modal_if_locked
                 and self._last_vault_status is not None
-                and self._last_vault_status.locked
+                and self._last_vault_status.state is VaultState.LOCKED
             ):
-                from pathlib import Path
-
-                if not Path(self._last_vault_status.db_path).exists():
-                    # Fresh install — there is nothing to unlock, and an
-                    # unlock prompt here would accept any string and
-                    # silently key the future vault to it on the
-                    # reboot-volatile session tier.  First-time
-                    # provisioning belongs to the setup flow (chooser +
-                    # create + reveal), which runs right after this probe
-                    # on startup; the palette unlock action routes there
-                    # too.
-                    return
                 await self.push_screen(VaultUnlockModal(), self._on_vault_unlock_result)
 
-        def _render_status_pill(self, status: "VaultStatusSnapshot | None") -> None:
-            """Update the bottom StatusBar with a short vault-state pill."""
+        def _render_status_pill(self, status: "VaultStatus | None") -> None:
+            """Update the bottom StatusBar with a short vault-state pill.
+
+            The pill is pure rendering: the state comes from the
+            snapshot's classifier and the "visible until acted on"
+            annotations are the shared warning catalog's ``brief``
+            forms — the same facts the CLI's ``vault status`` and the
+            startup notification present, worded once sandbox-side.
+            """
+            from terok.lib.api.vault import VaultState
+
             try:
                 bar = self.query_one("#status-bar", StatusBar)
             except NoMatches:
@@ -2218,8 +2319,13 @@ if _HAS_TEXTUAL:
             if status is None:
                 bar.set_message("")
                 return
-            plaintext = status.plaintext_passphrase_path
-            if status.locked:
+            if status.state is VaultState.UNPROVISIONED:
+                bar.set_message("Vault: not set up yet — run terok setup from the command palette")
+                return
+            if status.state is VaultState.ERROR:
+                bar.set_message(f"Vault: ERROR — {status.db_error}")
+                return
+            if status.state is VaultState.LOCKED:
                 # The reason distinguishes "no passphrase" from "wrong
                 # passphrase" from "broken tier" — without it the operator
                 # can't tell whether to type harder or fix a seal.
@@ -2228,31 +2334,10 @@ if _HAS_TEXTUAL:
                     f"Vault: LOCKED{reason} — open Vault from the command palette to unlock"
                 )
                 return
-            if status.passphrase_source is None:
-                bar.set_message("")
-                return
-            # The plaintext-on-disk tier (sandbox#282) needs visibility
-            # even when a higher tier unlocked the call — fold it into
-            # the pill so the operator sees it without opening the
-            # vault status screen.
-            suffix = " — plaintext on disk" if plaintext is not None else ""
-            # The recovery-acknowledgement marker is one more bit of
-            # "visible until acted on" state.  When the resolver lands
-            # on the session-unlock tmpfs file AND the marker is
-            # missing, the operator is one reboot away from losing the
-            # vault — escalate the pill text accordingly.
-            # Best-effort hint — must never block the pill refresh, so swallow
-            # any resolver/marker failure and degrade to "no annotation".
-            try:
-                rstatus = RecoveryStatus.load()
-            except Exception:  # noqa: BLE001
-                rstatus = None
-            if rstatus is not None and not rstatus.acknowledged:
-                if rstatus.urgent:
-                    suffix += " — recovery key UNSAVED, vault dies on reboot"
-                else:
-                    suffix += " — recovery key UNCONFIRMED"
-            bar.set_message(f"Vault: unlocked ({status.passphrase_source}){suffix}")
+            suffix = "".join(
+                f" — {warning.brief}" for warning in status.warnings if warning.severity != "info"
+            )
+            bar.set_message(f"Vault: unlocked ({status.source}){suffix}")
 
         async def _on_vault_unlock_result(self, passphrase: "str | None") -> None:
             """Validate the typed passphrase and land it on the session-unlock tier.

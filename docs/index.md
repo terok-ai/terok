@@ -100,7 +100,7 @@ at task launch.  Idempotent — safe to re-run.
 Interactive runs prompt for where the credentials-DB passphrase is
 stored; the TUI collects the same choice in its setup dialogs before
 dispatching.  Non-interactive hosts without systemd-creds must choose
-with `terok setup --passphrase-tier <keyring|session-file|config>`.
+with `terok setup --passphrase-tier <systemd-creds|keyring|session-file>`.
 
 ### First project
 

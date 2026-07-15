@@ -12,6 +12,7 @@ from types import SimpleNamespace
 from unittest import mock
 
 import pytest
+import textual.theme  # noqa: F401 — prime the real module; see comment below
 from rich.text import Text
 
 from tests.testfs import MOCK_BASE, MOCK_CONFIG_ROOT
@@ -22,6 +23,13 @@ from tests.unit.tui.tui_test_helpers import (
     import_widgets,
     make_key_event,
 )
+
+# ``terok.tui.app`` imports ``textual.theme`` at module level, and the
+# stub map in ``tui_test_helpers`` does not cover that submodule (the
+# stubbed ``textual`` is not a package, so the import can't fall through
+# to disk).  The ``import textual.theme`` above primes the real module
+# in ``sys.modules`` so the stubbed re-imports below resolve it there,
+# regardless of collection order.
 
 MOCK_WORKSPACE = str(MOCK_BASE / "ws")
 TEST_PROJECT_NAME = "test-proj"
@@ -1738,36 +1746,52 @@ MOCK_VAULT_DB = MOCK_BASE / "vault" / "credentials.db"
 
 def make_vault_status(
     *,
-    locked: bool = False,
-    passphrase_source: str | None = "keyring",
-    credentials_stored: tuple[str, ...] | None = ("claude", "gh"),
+    state: object | None = None,
+    source: str | None = "keyring",
+    providers: tuple[str, ...] | None = ("claude", "gh"),
     credential_types: dict[str, str] | None = None,
-    ssh_keys_stored: int | None = 0,
-    plaintext_passphrase_path: object | None = None,
+    ssh_keys: int | None = 0,
     db_path: object = MOCK_VAULT_DB,
-    recovery_acknowledged: bool = True,
+    db_exists: bool = True,
+    warnings: tuple[object, ...] = (),
     db_error: str | None = None,
     lock_reason: str | None = None,
 ) -> mock.Mock:
     """Build a vault status snapshot mock.
 
-    Mirrors the post-supervisor
-    [`VaultStatusSnapshot`][terok.lib.api.vault.VaultStatusSnapshot]
-    shape — pure DB-side facts, no daemon-mode / socket / transport
-    fields.
+    Mirrors the sandbox-owned [`VaultStatus`][terok_sandbox.VaultStatus]
+    shape — state classification, DB-side facts, and the shared warning
+    catalog.  ``state`` defaults to ``UNLOCKED``.
     """
+    from terok.lib.api.vault import VaultState
+
     status = mock.Mock()
-    status.locked = locked
-    status.passphrase_source = passphrase_source
-    status.credentials_stored = credentials_stored
+    status.state = VaultState.UNLOCKED if state is None else state
+    status.source = source
+    status.providers = providers
     status.credential_types = credential_types or {}
-    status.ssh_keys_stored = ssh_keys_stored
-    status.plaintext_passphrase_path = plaintext_passphrase_path
+    status.ssh_keys = ssh_keys
     status.db_path = db_path
-    status.recovery_acknowledged = recovery_acknowledged
+    status.db_exists = db_exists
+    status.warnings = warnings
     status.db_error = db_error
     status.lock_reason = lock_reason
     return status
+
+
+def make_vault_warning(
+    *,
+    kind: str = "recovery-unconfirmed",
+    severity: str = "warning",
+    brief: str = "recovery key UNCONFIRMED",
+    message: str = "the vault passphrase is not confirmed saved off-host",
+) -> object:
+    """Build a real ``VaultWarning`` catalog entry for status fakes."""
+    from terok.lib.api.vault import VaultWarning, VaultWarningKind
+
+    return VaultWarning(
+        kind=VaultWarningKind(kind), severity=severity, brief=brief, message=message
+    )
 
 
 class TestVaultScreen:
@@ -1801,6 +1825,7 @@ class TestVaultScreen:
             pytest.param("action_vault_lock", "vault_lock", id="lock"),
             pytest.param("action_vault_seal", "vault_seal", id="seal"),
             pytest.param("action_vault_to_keyring", "vault_to_keyring", id="to-keyring"),
+            pytest.param("action_vault_change", "vault_change", id="change"),
         ],
     )
     def test_vault_screen_actions(self, method_name: str, expected: str) -> None:
@@ -1828,48 +1853,55 @@ class TestRenderVaultStatus:
         status = make_vault_status()
         text_str = str(screens.render_vault_status(status))
         assert "claude" in text_str
-        assert "Locked:" in text_str
-        assert "no" in text_str
+        assert "State:" in text_str
+        assert "unlocked" in text_str
         assert "resolved via keyring" in text_str
 
     def test_render_vault_status_locked_shows_help_block(self) -> None:
         """Locked snapshot ends with the supervisor-aware unlock-hint block."""
+        from terok.lib.api.vault import VaultState
+
         screens, _ = import_screens()
-        status = make_vault_status(locked=True, passphrase_source=None)
+        status = make_vault_status(state=VaultState.LOCKED, source=None, providers=None)
         text_str = str(screens.render_vault_status(status))
         assert "Unlock" in text_str or "unlock" in text_str
         assert "supervisor" in text_str
 
     def test_render_vault_status_no_credentials(self) -> None:
-        """Empty credentials tuple renders 'none stored'."""
+        """Empty providers tuple renders 'none stored'."""
         screens, _ = import_screens()
-        status = make_vault_status(credentials_stored=())
+        status = make_vault_status(providers=())
         result = screens.render_vault_status(status)
         assert "none stored" in str(result)
 
     def test_render_vault_status_shows_passphrase_source(self) -> None:
         """Resolved tier surfaces as ``Passphrase: resolved via <source>``."""
         screens, _ = import_screens()
-        status = make_vault_status(passphrase_source="systemd-creds", ssh_keys_stored=3)
+        status = make_vault_status(source="systemd-creds", ssh_keys=3)
         text_str = str(screens.render_vault_status(status))
         assert "resolved via systemd-creds" in text_str
         assert "SSH keys:    3" in text_str
 
     def test_render_vault_status_announces_locked(self) -> None:
-        """Locked vault prints an explicit ``Locked: yes`` line with the no-tier reason."""
+        """Locked vault prints an explicit ``State: LOCKED`` line with the no-tier reason."""
+        from terok.lib.api.vault import VaultState
+
         screens, _ = import_screens()
-        status = make_vault_status(locked=True, passphrase_source=None)
+        status = make_vault_status(state=VaultState.LOCKED, source=None, providers=None)
         text_str = str(screens.render_vault_status(status))
-        assert "Locked:" in text_str
-        assert "yes" in text_str
+        assert "State:" in text_str
+        assert "LOCKED" in text_str
         assert "no tier resolved" in text_str
 
     def test_render_vault_status_names_the_lock_reason(self) -> None:
         """A classified lock renders its reason instead of the generic fallback."""
+        from terok.lib.api.vault import VaultState
+
         screens, _ = import_screens()
         status = make_vault_status(
-            locked=True,
-            passphrase_source="session-file",
+            state=VaultState.LOCKED,
+            source="session-file",
+            providers=None,
             lock_reason="the passphrase via session-file does not open the DB",
         )
         text_str = str(screens.render_vault_status(status))
@@ -1879,40 +1911,46 @@ class TestRenderVaultStatus:
         assert "resolved via" not in text_str
 
     def test_render_vault_status_marks_unlocked_explicitly(self) -> None:
-        """Resolved vault shows ``Locked: no`` plus which tier did it."""
+        """Resolved vault shows ``State: unlocked`` plus which tier did it."""
         screens, _ = import_screens()
-        status = make_vault_status(locked=False, passphrase_source="keyring")
+        status = make_vault_status(source="keyring")
         text_str = str(screens.render_vault_status(status))
-        assert "Locked:      no" in text_str
+        assert "State:       unlocked" in text_str
         assert "resolved via keyring" in text_str
 
-    def test_render_vault_status_surfaces_plaintext_warning(self) -> None:
-        """``plaintext_passphrase_path`` set → red WARNING line shows the basename only.
+    def test_render_vault_status_unprovisioned_points_at_setup(self) -> None:
+        """A fresh install names the remedy — setup, not an unlock prompt."""
+        from terok.lib.api.vault import VaultState
 
-        Aisle CR (terok#939, CWE-200): the TUI is screenshot- and
-        screen-share friendly, so rendering the full filesystem path
-        is more disclosure than the warning requires.  Surface the
-        basename — enough to recognise *which* file, not enough to
-        advertise its location.  The CLI ``vault status`` keeps
-        printing the full path for grep-friendly scripting.
-        """
         screens, _ = import_screens()
-        config_path = MOCK_BASE / "etc" / "terok" / "config.yml"
-        status = make_vault_status(plaintext_passphrase_path=config_path)
+        status = make_vault_status(
+            state=VaultState.UNPROVISIONED, source=None, providers=None, db_exists=False
+        )
         text_str = str(screens.render_vault_status(status))
-        assert "WARNING" in text_str
-        assert "plaintext" in text_str
-        # Basename surfaces; the full path does not.
-        assert "config.yml" in text_str
-        assert str(config_path.parent) not in text_str
+        assert "not set up yet" in text_str
+        assert "terok setup" in text_str
 
-    def test_render_vault_status_no_plaintext_warning_when_unset(self) -> None:
-        """Default-None case keeps the render quiet — no WARNING line at all."""
+    def test_render_vault_status_renders_warning_catalog(self) -> None:
+        """Catalog entries render as ``WARNING:`` lines (``note:`` for info severity)."""
         screens, _ = import_screens()
-        status = make_vault_status(plaintext_passphrase_path=None)
+        status = make_vault_status(
+            warnings=(
+                make_vault_warning(
+                    kind="recovery-unconfirmed",
+                    severity="warning",
+                    message="the vault passphrase is not confirmed saved off-host",
+                ),
+                make_vault_warning(
+                    kind="shadow-redundant",
+                    severity="info",
+                    brief="redundant session file",
+                    message="the session-file tier duplicates the durable keyring tier",
+                ),
+            )
+        )
         text_str = str(screens.render_vault_status(status))
-        assert "WARNING" not in text_str
-        assert "plaintext" not in text_str
+        assert "WARNING: the vault passphrase is not confirmed saved off-host" in text_str
+        assert "note:    the session-file tier duplicates the durable keyring tier" in text_str
 
     def test_render_vault_status_shows_db_path(self) -> None:
         """The DB path (display-only) surfaces on every render.
@@ -1926,6 +1964,15 @@ class TestRenderVaultStatus:
         status = make_vault_status()
         text_str = str(screens.render_vault_status(status))
         assert str(MOCK_VAULT_DB) in text_str
+        # The DB exists — no fresh-install annotation.
+        assert "created encrypted on first use" not in text_str
+
+    def test_render_vault_status_annotates_missing_db(self) -> None:
+        """``db_exists=False`` gains the created-on-first-use annotation."""
+        screens, _ = import_screens()
+        status = make_vault_status(db_exists=False)
+        text_str = str(screens.render_vault_status(status))
+        assert "created encrypted on first use" in text_str
 
 
 class TestVaultUnlockModal:
@@ -2071,12 +2118,16 @@ class TestVaultScreenRefresh:
 
     def test_refresh_status_updates_status(self) -> None:
         """_refresh_status fetches a new snapshot from the api facade."""
+        from terok.lib.api.vault import VaultState
+
         screens, _ = import_screens()
-        screen = screens.VaultScreen(make_vault_status(locked=True, passphrase_source=None))
+        screen = screens.VaultScreen(make_vault_status(state=VaultState.LOCKED, source=None))
         detail = mock.Mock()
         screen.query_one = mock.Mock(return_value=detail)
         new_status = make_vault_status()
-        with mock.patch("terok.lib.api.vault.VaultStatusSnapshot.load", return_value=new_status):
+        # ``load_vault_status`` is bound by value at (re-)import time, so
+        # patch the freshly imported screens module's own global.
+        with mock.patch.object(screens, "load_vault_status", return_value=new_status):
             screen._refresh_status()
         assert screen._status is new_status
         detail.update.assert_called_once()
@@ -2087,7 +2138,7 @@ class TestVaultScreenRefresh:
         screen = screens.VaultScreen(make_vault_status())
         detail = mock.Mock()
         screen.query_one = mock.Mock(return_value=detail)
-        with mock.patch("terok.lib.api.vault.VaultStatusSnapshot.load", side_effect=RuntimeError):
+        with mock.patch.object(screens, "load_vault_status", side_effect=RuntimeError):
             screen._refresh_status()
         assert screen._status is None
 
@@ -2128,6 +2179,7 @@ class TestVaultActionDispatch:
             ("vault_to_keyring", "_action_vault_to_keyring"),
             ("vault_reveal", "_action_vault_reveal"),
             ("vault_acknowledge", "_action_vault_acknowledge"),
+            ("vault_change", "_action_vault_change"),
         ],
     )
     def test_vault_action_dispatch_all(self, action: str, handler: str) -> None:
@@ -2148,6 +2200,7 @@ class TestVaultActionDispatch:
         instance._action_vault_to_keyring.assert_not_called()
         instance._action_vault_reveal.assert_not_called()
         instance._action_vault_acknowledge.assert_not_called()
+        instance._action_vault_change.assert_not_called()
 
 
 class TestVaultActionImplementations:
@@ -2164,12 +2217,15 @@ class TestVaultActionImplementations:
 
         return ProjectActionsMixin
 
-    def test_unlock_pushes_modal_with_result_callback(self, tmp_path) -> None:
+    def test_unlock_pushes_modal_with_result_callback(self) -> None:
         """``_action_vault_unlock`` opens VaultUnlockModal wired to ``_on_vault_unlock_result``.
 
-        The DB file must exist — without one the action routes to the
-        first-passphrase provisioning flow instead of the unlock modal.
+        The probe must classify the vault as LOCKED — on UNPROVISIONED
+        the action routes to the first-passphrase provisioning flow
+        instead of the unlock modal.
         """
+        from terok.lib.api.vault import VaultState
+
         mixin = self._get_mixin()
         instance = mock.Mock(spec=mixin)
         instance.push_screen = mock.AsyncMock()
@@ -2177,12 +2233,8 @@ class TestVaultActionImplementations:
         # mixin's TYPE_CHECKING stubs the spec sees — wire it explicitly so
         # we can compare against the value passed as the callback.
         instance._on_vault_unlock_result = mock.AsyncMock()
-        db = tmp_path / "credentials.db"
-        db.write_bytes(b"x")
-        with mock.patch(
-            "terok.lib.api.SandboxConfig",
-            return_value=mock.Mock(db_path=db),
-        ):
+        status = make_vault_status(state=VaultState.LOCKED, source=None)
+        with mock.patch("terok.lib.api.vault.load_vault_status", return_value=status):
             run(mixin._action_vault_unlock(instance))
         instance.push_screen.assert_awaited_once()
         modal_arg, callback_arg = instance.push_screen.call_args[0]
@@ -2449,120 +2501,109 @@ class TestVaultAcknowledgeAction:
 class TestMaybeWarnRecoveryUnconfirmed:
     """One-shot startup notification for an unconfirmed recovery key.
 
-    Three severity bands — silent / yellow warning / red error — picked
-    by ``RecoveryStatus.urgent`` so the message escalates when the
-    operator is one reboot away from losing the vault.
+    Three severity bands — silent / yellow warning / red error — read
+    straight from the snapshot's shared warning catalog so the message
+    escalates when the operator is one reboot away from losing the
+    vault.
     """
 
     @staticmethod
-    def _fake_status(*, acknowledged: bool, source: object) -> object:
-        """Build a duck-typed ``RecoveryStatus`` stand-in for the notify branches."""
-        from terok.lib.integrations.sandbox import RecoveryStatus
+    def _unconfirmed_warning() -> object:
+        """The durable-tier catalog entry (``warning`` severity)."""
+        return make_vault_warning(
+            kind="recovery-unconfirmed",
+            severity="warning",
+            brief="recovery key UNCONFIRMED",
+            message="the vault passphrase is not confirmed saved off-host",
+        )
 
-        return RecoveryStatus(acknowledged=acknowledged, source=source)
+    @staticmethod
+    def _volatile_warning() -> object:
+        """The session-only catalog entry (``error`` severity)."""
+        return make_vault_warning(
+            kind="recovery-volatile",
+            severity="error",
+            brief="recovery key UNSAVED, vault dies on reboot",
+            message=(
+                "the only copy of the vault passphrase is the session file, which is"
+                " cleared on reboot — save it off-host now or the vault becomes"
+                " unrecoverable the next time this machine restarts"
+            ),
+        )
+
+    def _make_instance(self, app_class: type, status: object) -> mock.Mock:
+        instance = mock.Mock(spec=app_class)
+        instance.notify = mock.Mock()
+        instance._last_vault_status = status
+        if hasattr(instance, "_recovery_warning_shown"):
+            del instance._recovery_warning_shown
+        return instance
 
     def test_warns_once_when_unlocked_and_unacked_durable(self) -> None:
-        """Fresh process + unlocked vault + missing marker + durable tier → ``warning``."""
-        app_mod, app_class = import_app()
-        instance = mock.Mock(spec=app_class)
-        instance.notify = mock.Mock()
-        instance._last_vault_status = make_vault_status(locked=False, passphrase_source="keyring")
-        if hasattr(instance, "_recovery_warning_shown"):
-            del instance._recovery_warning_shown
-        with mock.patch.object(
-            app_mod.RecoveryStatus,
-            "load",
-            return_value=self._fake_status(acknowledged=False, source="keyring"),
-        ):
-            app_class._maybe_warn_recovery_unconfirmed(instance)
+        """Fresh process + unlocked vault + a warning-severity catalog entry → ``warning``."""
+        _, app_class = import_app()
+        instance = self._make_instance(
+            app_class,
+            make_vault_status(source="keyring", warnings=(self._unconfirmed_warning(),)),
+        )
+        app_class._maybe_warn_recovery_unconfirmed(instance)
         instance.notify.assert_called_once()
         assert instance.notify.call_args.kwargs["severity"] == "warning"
+        assert instance.notify.call_args.kwargs["title"] == "Vault: recovery key UNCONFIRMED"
 
     def test_errors_when_session_only(self) -> None:
-        """Unacked + session-file source → red ``error`` (one reboot away from loss)."""
-        app_mod, app_class = import_app()
-        instance = mock.Mock(spec=app_class)
-        instance.notify = mock.Mock()
-        instance._last_vault_status = make_vault_status(
-            locked=False, passphrase_source="session-file"
+        """The RECOVERY_VOLATILE entry → red ``error`` (one reboot away from loss)."""
+        _, app_class = import_app()
+        instance = self._make_instance(
+            app_class,
+            make_vault_status(source="session-file", warnings=(self._volatile_warning(),)),
         )
-        if hasattr(instance, "_recovery_warning_shown"):
-            del instance._recovery_warning_shown
-        with mock.patch.object(
-            app_mod.RecoveryStatus,
-            "load",
-            return_value=self._fake_status(acknowledged=False, source="session-file"),
-        ):
-            app_class._maybe_warn_recovery_unconfirmed(instance)
+        app_class._maybe_warn_recovery_unconfirmed(instance)
         instance.notify.assert_called_once()
         assert instance.notify.call_args.kwargs["severity"] == "error"
         body = instance.notify.call_args[0][0]
-        assert "UNRECOVERABLE" in body
+        assert "unrecoverable" in body.lower()
         assert "reboot" in body.lower()
 
-    def test_quiet_when_already_acknowledged(self) -> None:
-        """Marker already lands → silent, no notification."""
-        app_mod, app_class = import_app()
-        instance = mock.Mock(spec=app_class)
-        instance.notify = mock.Mock()
-        instance._last_vault_status = make_vault_status(locked=False, passphrase_source="keyring")
-        if hasattr(instance, "_recovery_warning_shown"):
-            del instance._recovery_warning_shown
-        with mock.patch.object(
-            app_mod.RecoveryStatus,
-            "load",
-            return_value=self._fake_status(acknowledged=True, source="keyring"),
-        ):
-            app_class._maybe_warn_recovery_unconfirmed(instance)
+    def test_quiet_when_no_recovery_warning(self) -> None:
+        """Marker already landed → no recovery entry in the catalog → silent."""
+        _, app_class = import_app()
+        instance = self._make_instance(app_class, make_vault_status(source="keyring", warnings=()))
+        app_class._maybe_warn_recovery_unconfirmed(instance)
         instance.notify.assert_not_called()
 
     def test_quiet_when_locked(self) -> None:
         """Locked vault → unlock modal already pulls attention; suppress warning."""
-        app_mod, app_class = import_app()
-        instance = mock.Mock(spec=app_class)
-        instance.notify = mock.Mock()
-        instance._last_vault_status = make_vault_status(locked=True, passphrase_source=None)
-        if hasattr(instance, "_recovery_warning_shown"):
-            del instance._recovery_warning_shown
-        with mock.patch.object(
-            app_mod.RecoveryStatus,
-            "load",
-            return_value=self._fake_status(acknowledged=False, source=None),
-        ):
-            app_class._maybe_warn_recovery_unconfirmed(instance)
+        from terok.lib.api.vault import VaultState
+
+        _, app_class = import_app()
+        instance = self._make_instance(
+            app_class,
+            make_vault_status(
+                state=VaultState.LOCKED,
+                source=None,
+                warnings=(self._unconfirmed_warning(),),
+            ),
+        )
+        app_class._maybe_warn_recovery_unconfirmed(instance)
         instance.notify.assert_not_called()
 
     def test_fires_at_most_once_per_session(self) -> None:
         """Second invocation does nothing — the flag survives the call."""
-        app_mod, app_class = import_app()
-        instance = mock.Mock(spec=app_class)
-        instance.notify = mock.Mock()
-        instance._last_vault_status = make_vault_status(locked=False, passphrase_source="keyring")
-        if hasattr(instance, "_recovery_warning_shown"):
-            del instance._recovery_warning_shown
-        with mock.patch.object(
-            app_mod.RecoveryStatus,
-            "load",
-            return_value=self._fake_status(acknowledged=False, source="keyring"),
-        ):
-            app_class._maybe_warn_recovery_unconfirmed(instance)
-            app_class._maybe_warn_recovery_unconfirmed(instance)
+        _, app_class = import_app()
+        instance = self._make_instance(
+            app_class,
+            make_vault_status(source="keyring", warnings=(self._unconfirmed_warning(),)),
+        )
+        app_class._maybe_warn_recovery_unconfirmed(instance)
+        app_class._maybe_warn_recovery_unconfirmed(instance)
         instance.notify.assert_called_once()
 
     def test_quiet_when_status_is_none(self) -> None:
         """No probe yet (status=None) → nothing to warn about."""
-        app_mod, app_class = import_app()
-        instance = mock.Mock(spec=app_class)
-        instance.notify = mock.Mock()
-        instance._last_vault_status = None
-        if hasattr(instance, "_recovery_warning_shown"):
-            del instance._recovery_warning_shown
-        with mock.patch.object(
-            app_mod.RecoveryStatus,
-            "load",
-            return_value=self._fake_status(acknowledged=False, source="keyring"),
-        ):
-            app_class._maybe_warn_recovery_unconfirmed(instance)
+        _, app_class = import_app()
+        instance = self._make_instance(app_class, None)
+        app_class._maybe_warn_recovery_unconfirmed(instance)
         instance.notify.assert_not_called()
 
 
@@ -2682,48 +2723,43 @@ class TestVaultStatusPill:
 
     def test_render_pill_locked(self) -> None:
         """Locked status renders the call-to-action pill."""
+        from terok.lib.api.vault import VaultState
+
         _, app_class = import_app()
         instance = mock.Mock(spec=app_class)
         bar = mock.Mock()
         instance.query_one = mock.Mock(return_value=bar)
-        status = make_vault_status(locked=True, passphrase_source=None)
+        status = make_vault_status(state=VaultState.LOCKED, source=None)
         app_class._render_status_pill(instance, status)
         bar.set_message.assert_called_once()
         assert "LOCKED" in bar.set_message.call_args[0][0]
 
-    @staticmethod
-    def _fake_status(*, acknowledged: bool, source: object) -> object:
-        from terok.lib.integrations.sandbox import RecoveryStatus
-
-        return RecoveryStatus(acknowledged=acknowledged, source=source)
-
-    def test_render_pill_unlocked_shows_source(self, monkeypatch) -> None:
-        """Resolved tier surfaces in the pill text (recovery key already acked)."""
-        app_mod, app_class = import_app()
-        monkeypatch.setattr(
-            app_mod.RecoveryStatus,
-            "load",
-            lambda: self._fake_status(acknowledged=True, source="keyring"),
-        )
+    def test_render_pill_unlocked_shows_source(self) -> None:
+        """Resolved tier surfaces in the pill text (no warnings pending)."""
+        _, app_class = import_app()
         instance = mock.Mock(spec=app_class)
         bar = mock.Mock()
         instance.query_one = mock.Mock(return_value=bar)
-        status = make_vault_status(passphrase_source="keyring")
+        status = make_vault_status(source="keyring", warnings=())
         app_class._render_status_pill(instance, status)
         bar.set_message.assert_called_once_with("Vault: unlocked (keyring)")
 
-    def test_render_pill_unlocked_appends_unconfirmed_recovery(self, monkeypatch) -> None:
-        """Missing recovery-ack marker on a durable tier → ``UNCONFIRMED`` suffix."""
-        app_mod, app_class = import_app()
-        monkeypatch.setattr(
-            app_mod.RecoveryStatus,
-            "load",
-            lambda: self._fake_status(acknowledged=False, source="systemd-creds"),
-        )
+    def test_render_pill_unlocked_appends_unconfirmed_recovery(self) -> None:
+        """A warning-severity catalog entry rides the pill as a suffix."""
+        _, app_class = import_app()
         instance = mock.Mock(spec=app_class)
         bar = mock.Mock()
         instance.query_one = mock.Mock(return_value=bar)
-        status = make_vault_status(passphrase_source="systemd-creds")
+        status = make_vault_status(
+            source="systemd-creds",
+            warnings=(
+                make_vault_warning(
+                    kind="recovery-unconfirmed",
+                    severity="warning",
+                    brief="recovery key UNCONFIRMED",
+                ),
+            ),
+        )
         app_class._render_status_pill(instance, status)
         message = bar.set_message.call_args[0][0]
         assert "systemd-creds" in message
@@ -2731,18 +2767,22 @@ class TestVaultStatusPill:
         # The session-only escalation must not bleed into the durable branch.
         assert "vault dies on reboot" not in message
 
-    def test_render_pill_session_only_escalates_pill_text(self, monkeypatch) -> None:
-        """Missing marker + session-file source → louder pill text."""
-        app_mod, app_class = import_app()
-        monkeypatch.setattr(
-            app_mod.RecoveryStatus,
-            "load",
-            lambda: self._fake_status(acknowledged=False, source="session-file"),
-        )
+    def test_render_pill_session_only_escalates_pill_text(self) -> None:
+        """The RECOVERY_VOLATILE brief → louder pill text."""
+        _, app_class = import_app()
         instance = mock.Mock(spec=app_class)
         bar = mock.Mock()
         instance.query_one = mock.Mock(return_value=bar)
-        status = make_vault_status(passphrase_source="session-file")
+        status = make_vault_status(
+            source="session-file",
+            warnings=(
+                make_vault_warning(
+                    kind="recovery-volatile",
+                    severity="error",
+                    brief="recovery key UNSAVED, vault dies on reboot",
+                ),
+            ),
+        )
         app_class._render_status_pill(instance, status)
         message = bar.set_message.call_args[0][0]
         assert "session-file" in message
@@ -2751,30 +2791,52 @@ class TestVaultStatusPill:
         assert "UNSAVED" in message
         assert "vault dies on reboot" in message
 
-    def test_render_pill_unlocked_appends_plaintext_marker(self) -> None:
-        """sandbox#282: pill flags plaintext-on-disk even when another tier unlocked."""
+    def test_render_pill_info_warning_stays_quiet(self) -> None:
+        """Info-severity catalog entries (e.g. redundant shadow) never suffix the pill."""
         _, app_class = import_app()
         instance = mock.Mock(spec=app_class)
         bar = mock.Mock()
         instance.query_one = mock.Mock(return_value=bar)
         status = make_vault_status(
-            passphrase_source="systemd-creds",
-            plaintext_passphrase_path=MOCK_BASE / "etc" / "terok" / "config.yml",
+            source="keyring",
+            warnings=(
+                make_vault_warning(
+                    kind="shadow-redundant",
+                    severity="info",
+                    brief="redundant session file",
+                ),
+            ),
         )
         app_class._render_status_pill(instance, status)
-        message = bar.set_message.call_args[0][0]
-        assert "systemd-creds" in message
-        assert "plaintext" in message
+        bar.set_message.assert_called_once_with("Vault: unlocked (keyring)")
 
-    def test_render_pill_unknown_source_clears(self) -> None:
-        """Unlocked but no resolved tier means the pill goes blank."""
+    def test_render_pill_unprovisioned_points_at_setup(self) -> None:
+        """A fresh install renders the setup pointer, not an unlock nag."""
+        from terok.lib.api.vault import VaultState
+
         _, app_class = import_app()
         instance = mock.Mock(spec=app_class)
         bar = mock.Mock()
         instance.query_one = mock.Mock(return_value=bar)
-        status = make_vault_status(locked=False, passphrase_source=None)
+        status = make_vault_status(state=VaultState.UNPROVISIONED, source=None)
         app_class._render_status_pill(instance, status)
-        bar.set_message.assert_called_once_with("")
+        message = bar.set_message.call_args[0][0]
+        assert "not set up yet" in message
+        assert "terok setup" in message
+
+    def test_render_pill_error_carries_db_error(self) -> None:
+        """A non-passphrase DB failure surfaces verbatim in the pill."""
+        from terok.lib.api.vault import VaultState
+
+        _, app_class = import_app()
+        instance = mock.Mock(spec=app_class)
+        bar = mock.Mock()
+        instance.query_one = mock.Mock(return_value=bar)
+        status = make_vault_status(state=VaultState.ERROR, db_error="schema drift")
+        app_class._render_status_pill(instance, status)
+        message = bar.set_message.call_args[0][0]
+        assert "ERROR" in message
+        assert "schema drift" in message
 
     def test_render_pill_none_status_clears(self) -> None:
         """``None`` status (probe failed) clears the pill."""
@@ -2805,46 +2867,33 @@ class TestRefreshVaultStatus:
 
     def test_refresh_probes_and_stores_status(self) -> None:
         """Fresh probe lands in ``_last_vault_status`` and feeds the pill."""
-        app_mod, app_class = import_app()
+        _, app_class = import_app()
         instance = self._make_instance(app_class)
-        status = make_vault_status(locked=False, passphrase_source="keyring")
-        with mock.patch.object(
-            app_mod.VaultStatusSnapshot, "load", classmethod(lambda cls: status)
-        ):
+        status = make_vault_status(source="keyring")
+        with mock.patch("terok.lib.api.vault.load_vault_status", return_value=status):
             run(app_class._refresh_vault_status(instance))
         assert instance._last_vault_status is status
         instance._render_status_pill.assert_called_once_with(status)
         instance.push_screen.assert_not_called()
 
     def test_refresh_probe_failure_clears_status(self) -> None:
-        """``VaultStatusSnapshot.load`` raising still updates the pill (with ``None``)."""
-        app_mod, app_class = import_app()
+        """``load_vault_status`` raising still updates the pill (with ``None``)."""
+        _, app_class = import_app()
         instance = self._make_instance(app_class)
-
-        def _boom(cls):  # noqa: ARG001 — classmethod stub raises unconditionally
-            raise RuntimeError("nope")
-
-        with mock.patch.object(app_mod.VaultStatusSnapshot, "load", classmethod(_boom)):
+        with mock.patch("terok.lib.api.vault.load_vault_status", side_effect=RuntimeError("nope")):
             run(app_class._refresh_vault_status(instance, push_modal_if_locked=True))
         assert instance._last_vault_status is None
         instance._render_status_pill.assert_called_once_with(None)
         instance.push_screen.assert_not_called()
 
-    def test_refresh_locked_pushes_modal_when_requested(self, tmp_path) -> None:
-        """Locked vault + ``push_modal_if_locked=True`` opens the unlock modal.
+    def test_refresh_locked_pushes_modal_when_requested(self) -> None:
+        """LOCKED + ``push_modal_if_locked=True`` opens the unlock modal."""
+        from terok.lib.api.vault import VaultState
 
-        The DB file must exist — a locked vault *without* a DB is the
-        fresh-install case, where the unlock modal is suppressed in
-        favour of the setup flow's provisioning conversation.
-        """
         app_mod, app_class = import_app()
         instance = self._make_instance(app_class)
-        db = tmp_path / "credentials.db"
-        db.write_bytes(b"x")
-        status = make_vault_status(locked=True, passphrase_source=None, db_path=str(db))
-        with mock.patch.object(
-            app_mod.VaultStatusSnapshot, "load", classmethod(lambda cls: status)
-        ):
+        status = make_vault_status(state=VaultState.LOCKED, source=None)
+        with mock.patch("terok.lib.api.vault.load_vault_status", return_value=status):
             run(app_class._refresh_vault_status(instance, push_modal_if_locked=True))
         instance.push_screen.assert_awaited_once()
         modal_arg = instance.push_screen.call_args[0][0]
@@ -2852,14 +2901,30 @@ class TestRefreshVaultStatus:
         # Callback is the unlock-result coroutine.
         assert instance.push_screen.call_args[0][1] == instance._on_vault_unlock_result
 
+    def test_refresh_unprovisioned_never_pushes_modal(self) -> None:
+        """UNPROVISIONED has nothing to unlock — the modal stays closed even when asked.
+
+        First-time provisioning belongs to the chooser + create +
+        reveal flow; a free-text modal here would silently key the
+        future vault to whatever was typed.
+        """
+        from terok.lib.api.vault import VaultState
+
+        _, app_class = import_app()
+        instance = self._make_instance(app_class)
+        status = make_vault_status(state=VaultState.UNPROVISIONED, source=None)
+        with mock.patch("terok.lib.api.vault.load_vault_status", return_value=status):
+            run(app_class._refresh_vault_status(instance, push_modal_if_locked=True))
+        instance.push_screen.assert_not_called()
+
     def test_refresh_locked_without_request_skips_modal(self) -> None:
         """Even when locked, the modal stays closed if the caller didn't ask."""
-        app_mod, app_class = import_app()
+        from terok.lib.api.vault import VaultState
+
+        _, app_class = import_app()
         instance = self._make_instance(app_class)
-        status = make_vault_status(locked=True, passphrase_source=None)
-        with mock.patch.object(
-            app_mod.VaultStatusSnapshot, "load", classmethod(lambda cls: status)
-        ):
+        status = make_vault_status(state=VaultState.LOCKED, source=None)
+        with mock.patch("terok.lib.api.vault.load_vault_status", return_value=status):
             run(app_class._refresh_vault_status(instance, push_modal_if_locked=False))
         instance.push_screen.assert_not_called()
 

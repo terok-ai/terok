@@ -215,10 +215,12 @@ if TYPE_CHECKING:
     )
     from terok.lib.api.vault import (
         NoPassphraseError as NoPassphraseError,
-        VaultStatusSnapshot as VaultStatusSnapshot,
+        VaultState as VaultState,
+        VaultStatus as VaultStatus,
         WrongPassphraseError as WrongPassphraseError,
         handle_vault_seal as handle_vault_seal,
         handle_vault_to_keyring as handle_vault_to_keyring,
+        load_vault_status as load_vault_status,
         vault_db as vault_db,
     )
     from terok.lib.core.config import (
@@ -297,7 +299,9 @@ _LAZY: dict[str, str] = {
     "TaskDeleteResult": "terok.lib.api.task",
     "TaskMeta": "terok.lib.api.task",
     "TaskStorageInfo": "terok.lib.api.agents",
-    "VaultStatusSnapshot": "terok.lib.api.vault",
+    "VaultState": "terok.lib.api.vault",
+    "VaultStatus": "terok.lib.api.vault",
+    "load_vault_status": "terok.lib.api.vault",
     "WrongPassphraseError": "terok.lib.api.vault",
     "acp_socket_is_live": "terok.lib.api.agents",
     "agent_config_dir": "terok.lib.api.task",

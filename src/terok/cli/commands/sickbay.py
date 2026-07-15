@@ -37,7 +37,7 @@ from terok.lib.api.setup import (
     resolve_container_state_dir,
     systemd_creds_has_tpm2,
 )
-from terok.lib.api.vault import VaultStatusSnapshot
+from terok.lib.api.vault import VaultState, load_vault_status
 
 from ...lib.core import runtime as _rt
 from ...lib.core.config import get_services_mode, global_config_path
@@ -157,26 +157,28 @@ def _passphrase_tier_label(source: str | None) -> str | None:
 
 
 def _check_vault() -> _CheckResult:
-    """Check vault store state — locked, populated, plaintext-on-disk.
+    """Check vault store state — classification, contents, warnings.
 
     Every container's supervisor embeds its own vault proxy, so the
-    host-side check reduces to DB-side facts — does the resolver chain
-    unlock the store, what's in it, and is the passphrase exposed on
-    disk?  Per-container proxy
-    health is reported by
+    host-side check reduces to the shared snapshot's facts — the state
+    classification, what's stored, and the warning catalog.
+    Per-container proxy health is reported by
     [`ContainerDoctor`][terok.lib.orchestration.container_doctor.ContainerDoctor]
     against each running task individually.
     """
     label = "Vault"
     try:
-        status = VaultStatusSnapshot.load()
+        status = load_vault_status()
     except Exception as exc:  # noqa: BLE001
         return ("warn", label, f"check failed — {exc}")
 
-    if status.db_error is not None:
+    if status.state is VaultState.ERROR:
         return ("warn", label, f"DB error — {status.db_error}")
 
-    if status.locked:
+    if status.state is VaultState.UNPROVISIONED:
+        return ("warn", label, "not set up yet — run 'terok setup' to provision a passphrase")
+
+    if status.state is VaultState.LOCKED:
         # The reason separates "no passphrase" / "wrong passphrase" /
         # "broken tier" — three different remedies behind one word.
         reason = f" ({status.lock_reason})" if status.lock_reason else ""
@@ -186,18 +188,17 @@ def _check_vault() -> _CheckResult:
             f"locked{reason} — run 'terok vault unlock' to make stored credentials available",
         )
 
-    creds = len(status.credentials_stored or ())
     parts: list[str] = []
-    tier = _passphrase_tier_label(status.passphrase_source)
+    tier = _passphrase_tier_label(status.source)
     if tier:
         parts.append(tier)
-    parts.append(f"{creds} credential(s) stored")
-    if status.plaintext_passphrase_path is not None:
-        parts.append("plaintext passphrase on disk")
+    parts.append(f"{len(status.providers or ())} credential(s) stored")
+    # Non-info warnings ride the detail line — same catalog wording the
+    # TUI pill and the CLI vault status show.
+    alerts = [w.brief for w in status.warnings if w.severity != "info"]
+    parts.extend(alerts)
     detail = ", ".join(parts)
-    if status.plaintext_passphrase_path is not None:
-        return ("warn", label, detail)
-    return ("ok", label, detail)
+    return ("warn" if alerts else "ok", label, detail)
 
 
 def _check_vault_shadow(*, fix: bool) -> list[_CheckResult]:

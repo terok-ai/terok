@@ -10,9 +10,10 @@ tier (via [`RecoveryStatus`][terok_sandbox.RecoveryStatus]), stored
 credentials (via the [`CredentialDB`][terok_sandbox.CredentialDB]
 opened by [`vault_db`][terok.lib.domain.vault.vault_db]).
 
-[`VaultStatusSnapshot`][terok.lib.api.vault.VaultStatusSnapshot]
-bundles those facts into one immutable value the TUI / CLI render,
-local to terok.
+[`load_vault_status`][terok.lib.api.vault.load_vault_status] loads
+the sandbox-owned [`VaultStatus`][terok_sandbox.VaultStatus] snapshot
+(state classification + warning catalog) under terok's effective
+config — one immutable value the TUI / CLI render.
 
 The passphrase-management verbs ``vault seal`` and ``vault
 to-keyring`` are operator-driven and ship from the sandbox CLI;
@@ -23,25 +24,32 @@ worker actions.
 from __future__ import annotations
 
 import importlib
-from collections.abc import Mapping
-from dataclasses import dataclass, field
-from types import MappingProxyType
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from terok.lib.domain.vault import vault_db as vault_db
     from terok.lib.integrations.sandbox import (
         NoPassphraseError as NoPassphraseError,
+        PassphraseChangeResult as PassphraseChangeResult,
+        PassphraseTier as PassphraseTier,
+        ProvisioningPlan as ProvisioningPlan,
         RecoveryStatus as RecoveryStatus,
         SessionProvisionResult as SessionProvisionResult,
         SessionShadow as SessionShadow,
         TierProvisionResult as TierProvisionResult,
+        TierRewrite as TierRewrite,
+        VaultState as VaultState,
+        VaultStatus as VaultStatus,
+        VaultWarning as VaultWarning,
+        VaultWarningKind as VaultWarningKind,
         WrongPassphraseError as WrongPassphraseError,
+        change_passphrase as change_passphrase,
         clear_redundant_session_file as clear_redundant_session_file,
         credentials_provisioned as credentials_provisioned,
         handle_vault_seal as handle_vault_seal,
         handle_vault_to_keyring as handle_vault_to_keyring,
         keyring_backend_available as keyring_backend_available,
+        plan_provisioning as plan_provisioning,
         provision_passphrase_tier as provision_passphrase_tier,
         provision_session_passphrase as provision_session_passphrase,
         purge_passphrase_tiers as purge_passphrase_tiers,
@@ -51,20 +59,30 @@ if TYPE_CHECKING:
 
 #: Public name -> defining module (PEP 562 lazy resolution).  Every
 #: ``terok_sandbox`` re-export is served on first access, so importing
-#: this module (e.g. for [`VaultStatusSnapshot`][terok.lib.api.vault.VaultStatusSnapshot])
+#: this module (e.g. for [`load_vault_status`][terok.lib.api.vault.load_vault_status])
 #: does not pull the sandbox wheel until a sandbox-backed name is touched.
 _LAZY: dict[str, str] = {
     "NoPassphraseError": "terok.lib.integrations.sandbox",
+    "PassphraseChangeResult": "terok.lib.integrations.sandbox",  # nosec: B105 — export-map path, not a secret
+    "PassphraseTier": "terok.lib.integrations.sandbox",  # nosec: B105 — export-map path, not a secret
+    "ProvisioningPlan": "terok.lib.integrations.sandbox",
     "RecoveryStatus": "terok.lib.integrations.sandbox",
     "SessionProvisionResult": "terok.lib.integrations.sandbox",
     "SessionShadow": "terok.lib.integrations.sandbox",
     "TierProvisionResult": "terok.lib.integrations.sandbox",
+    "TierRewrite": "terok.lib.integrations.sandbox",
+    "VaultState": "terok.lib.integrations.sandbox",
+    "VaultStatus": "terok.lib.integrations.sandbox",
+    "VaultWarning": "terok.lib.integrations.sandbox",
+    "VaultWarningKind": "terok.lib.integrations.sandbox",
     "WrongPassphraseError": "terok.lib.integrations.sandbox",
+    "change_passphrase": "terok.lib.integrations.sandbox",  # nosec: B105 — export-map path, not a secret
     "clear_redundant_session_file": "terok.lib.integrations.sandbox",
     "credentials_provisioned": "terok.lib.integrations.sandbox",
     "handle_vault_seal": "terok.lib.integrations.sandbox",
     "handle_vault_to_keyring": "terok.lib.integrations.sandbox",
     "keyring_backend_available": "terok.lib.integrations.sandbox",
+    "plan_provisioning": "terok.lib.integrations.sandbox",
     "provision_passphrase_tier": "terok.lib.integrations.sandbox",  # nosec: B105 — export-map path, not a secret
     "provision_session_passphrase": "terok.lib.integrations.sandbox",
     "purge_passphrase_tiers": "terok.lib.integrations.sandbox",
@@ -74,164 +92,45 @@ _LAZY: dict[str, str] = {
 }
 
 
-@dataclass(frozen=True)
-class VaultStatusSnapshot:
-    """Host-side view of the vault store.
+def load_vault_status() -> VaultStatus:
+    """Load the sandbox's one-call vault picture under terok's effective config.
 
-    This captures the store's content (credentials + SSH keys,
-    passphrase tier, plaintext-on-disk marker) — the host-level
-    questions the operator asks: "is the vault locked?" and "what's
-    in it?".  Wire shape (socket, transport, ports) is per-container
-    and composed inside the supervisor, with no host-level analogue.
-
-    All fields are derived from
-    [`RecoveryStatus`][terok_sandbox.RecoveryStatus],
-    [`CredentialDB`][terok_sandbox.CredentialDB], and
-    [`SandboxConfig`][terok_sandbox.SandboxConfig] — no daemon
-    queries, no IPC.
+    [`VaultStatus`][terok_sandbox.VaultStatus] is the single snapshot
+    every surface renders — state classification, lock reason, chain
+    table, provider/type/SSH-key inventory, and the shared warning
+    catalog — computed sandbox-side so the CLI ``vault status``, the
+    TUI pill, and sickbay can never drift apart in wording again.
+    This helper only supplies terok's
+    [`make_sandbox_config`][terok.lib.core.config.make_sandbox_config]
+    so the read happens under the orchestrator's effective
+    sub-environment rather than sandbox's bare defaults.
     """
+    from terok.lib.core.config import make_sandbox_config
+    from terok.lib.integrations.sandbox import VaultStatus
 
-    locked: bool
-    """``True`` when no resolver tier currently unlocks the store."""
-
-    passphrase_source: str | None
-    """Tier name (``systemd-creds`` / ``keyring`` / ``session-file`` /
-    ``config``) or ``None`` when locked."""
-
-    credentials_stored: tuple[str, ...] | None
-    """Sorted, deduplicated provider slugs across every credential set,
-    or ``None`` when the DB could not be read (locked or errored)."""
-
-    ssh_keys_stored: int | None
-    """Count of distinct keypairs stored in the vault, or ``None`` when the
-    DB could not be read."""
-
-    plaintext_passphrase_path: str | None
-    """Filesystem path of the plaintext-passphrase file when present, else ``None``."""
-
-    db_path: str
-    """Filesystem path of the SQLCipher store (display-only)."""
-
-    recovery_acknowledged: bool
-    """``True`` when the operator has confirmed the recovery passphrase is saved off-host."""
-
-    db_error: str | None
-    """Diagnostic message when the DB couldn't be opened for a reason other
-    than 'locked' (schema drift, permission denied, plaintext-DB found, …).
-    Renderers should surface this verbatim — it's the actionable signal."""
-
-    lock_reason: str | None = None
-    """Why ``locked`` is ``True`` — ``None`` when unlocked.
-
-    "Locked" hides three different operator problems with three
-    different remedies: *no passphrase in any tier* (provision one),
-    *the resolved value doesn't open the DB* (typo / DB from another
-    install — re-enter the right one), and *a configured tier is
-    unreadable* (broken systemd-creds seal after a machine change,
-    dead ``passphrase_command`` — fix or purge the tier).  Renderers
-    append this to the bare "locked" so the operator isn't left
-    guessing which of the three they're in."""
-
-    credential_types: Mapping[str, str] = field(default_factory=dict)
-    """Mapping ``provider → type`` (``api_key`` / ``oauth_token`` / …),
-    populated by the same DB pass that built ``credentials_stored`` so
-    renderers don't need to reopen the DB just to look up a type.
-    Wrapped in a read-only proxy by ``load()`` so the public snapshot
-    can't be mutated in place by callers."""
-
-    @property
-    def session_only_passphrase(self) -> bool:
-        """``True`` when the passphrase lives only in the session-unlock tmpfs file."""
-        # "session-file" is a passphrase-tier label, not a secret.
-        return not self.locked and self.passphrase_source == "session-file"  # nosec B105
-
-    @classmethod
-    def load(cls) -> VaultStatusSnapshot:
-        """Open the DB if unlockable and assemble the snapshot.
-
-        The single ``cfg`` is shared between ``RecoveryStatus.load`` and
-        ``vault_db`` so the passphrase tier is resolved exactly once —
-        preventing snapshots that report contradictory
-        ``(locked, passphrase_source)`` pairs when host state changes
-        mid-load.
-        """
-        from terok.lib.core.config import make_sandbox_config
-        from terok.lib.domain.vault import vault_db
-        from terok.lib.integrations.sandbox import (
-            NoPassphraseError,
-            RecoveryStatus,
-            WrongPassphraseError,
-            plaintext_passphrase_config_path,
-        )
-
-        cfg = make_sandbox_config()
-        recovery = RecoveryStatus.load(cfg)
-        plaintext = plaintext_passphrase_config_path()
-        plaintext_str = str(plaintext) if plaintext is not None else None
-
-        credentials: tuple[str, ...] | None = None
-        types: dict[str, str] = {}
-        ssh_count: int | None = None
-        # Classify rather than conflate: ``lock_reason`` separates the
-        # three passphrase problems "locked" used to hide, while DB-open
-        # failures for non-passphrase reasons (schema drift, permission
-        # denied, corruption) stay on ``db_error`` — renderers gate
-        # behaviour on ``locked`` and must not misread a broken DB as a
-        # locked one (or vice versa).  Wording mirrors sandbox's
-        # ``vault status`` classifier so both surfaces tell one story.
-        lock_reason: str | None = None
-        db_error: str | None = None
-        if recovery.resolve_error is not None:
-            lock_reason = f"a configured tier is unreadable — {recovery.resolve_error}"
-        elif recovery.source is None:
-            lock_reason = "no passphrase in any tier"
-        else:
-            try:
-                with vault_db(cfg=cfg) as db:
-                    for cs in db.list_credential_sets():
-                        for provider in db.list_credentials(cs):
-                            row = db.load_credential(cs, provider)
-                            types.setdefault(
-                                provider,
-                                row.get("type", "unknown") if row else "unknown",
-                            )
-                    credentials = tuple(sorted(types))
-                    ssh_count = db.count_ssh_keys()
-            except NoPassphraseError:
-                # Tier vanished between the resolve and the open — plain lock.
-                lock_reason = "no passphrase in any tier"
-            except WrongPassphraseError:
-                lock_reason = (
-                    f"the passphrase via {recovery.source} does not open the DB"
-                    " — wrong key, or a DB from another install"
-                )
-            except Exception as exc:  # noqa: BLE001 — surface every DB-open failure to the operator
-                db_error = str(exc)
-
-        return cls(
-            locked=lock_reason is not None,
-            lock_reason=lock_reason,
-            passphrase_source=recovery.source,
-            credentials_stored=credentials,
-            credential_types=MappingProxyType(types),
-            ssh_keys_stored=ssh_count,
-            plaintext_passphrase_path=plaintext_str,
-            db_path=str(cfg.db_path),
-            recovery_acknowledged=recovery.acknowledged,
-            db_error=db_error,
-        )
+    return VaultStatus.load(make_sandbox_config())
 
 
 __all__ = [
     "NoPassphraseError",
+    "PassphraseChangeResult",
+    "PassphraseTier",
+    "ProvisioningPlan",
     "TierProvisionResult",
-    "VaultStatusSnapshot",
+    "TierRewrite",
+    "VaultState",
+    "VaultStatus",
+    "VaultWarning",
+    "VaultWarningKind",
     "WrongPassphraseError",
+    "change_passphrase",
     "clear_redundant_session_file",
     "credentials_provisioned",
     "handle_vault_seal",
     "handle_vault_to_keyring",
     "keyring_backend_available",
+    "load_vault_status",
+    "plan_provisioning",
     "provision_passphrase_tier",
     "provision_session_passphrase",
     "purge_passphrase_tiers",

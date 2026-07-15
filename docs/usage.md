@@ -558,15 +558,20 @@ which providers were unauthenticated when the container was created.
 ### Vault passphrase backend
 
 The credentials DB itself is SQLCipher-encrypted; the passphrase
-travels through a six-tier resolver chain (session-unlock file →
+travels through a five-tier resolver chain (session-unlock file →
 systemd-creds → OS keyring → `credentials.passphrase_command` helper →
-`credentials.passphrase` plaintext → interactive prompt).
-`terok vault unlock` writes to the session tier, `terok vault lock`
-clears it, and `terok-sandbox setup` picks the persistent tier at
-install time.  To move the passphrase between backends —
-**retrieve → lock --forget → reseed** — see the
-["Changing tiers" recipe](https://github.com/terok-ai/terok-sandbox/blob/master/docs/credentials-encryption.md)
-in terok-sandbox.
+interactive prompt).  `terok vault unlock` writes to the session tier,
+`terok vault lock` clears every stored copy, and setup picks the
+persistent tier at install time.
+
+To **change the passphrase**, run `terok vault passphrase change`
+(or the `[c]hange` action on the TUI's Vault screen): it re-encrypts
+the DB under the new key and rewrites every tier that stored the old
+one, then walks you through saving the new recovery key.  To move the
+*same* passphrase between backends, `terok vault passphrase
+to-keyring` / `seal` are the first-class paths — see
+[credentials-encryption](https://github.com/terok-ai/terok-sandbox/blob/master/docs/credentials-encryption.md)
+in terok-sandbox for the full tier guide.
 
 Pressing PANIC hard-locks the vault: it destroys **every** stored
 passphrase tier (session file *and* persistent tiers), so nothing can

@@ -70,7 +70,7 @@ from rich.text import Text
 
 from terok.lib.api.gate import GateStalenessInfo
 from terok.lib.api.setup import EnvironmentCheck
-from terok.lib.api.vault import VaultStatusSnapshot
+from terok.lib.api.vault import VaultState, VaultStatus, load_vault_status
 
 from ..lib.api import ProjectConfig, sanitize_task_name, validate_task_name
 from .widgets import TaskMeta, render_project_details, render_project_loading, render_task_details
@@ -2413,29 +2413,30 @@ class ShieldScreen(screen.Screen[str | None]):
 # ---------------------------------------------------------------------------
 
 
-def _format_credentials_typed(status: VaultStatusSnapshot) -> str:
+def _format_credentials_typed(status: VaultStatus) -> str:
     """Format stored credentials as ``name (type), ...`` for status display.
 
     The snapshot already collected provider names and types in one DB
     pass across every credential set — the renderer is a pure
     formatter that doesn't touch the DB.
     """
-    if not status.credentials_stored:
+    if not status.providers:
         return ""
     return ", ".join(
-        f"{name} ({status.credential_types.get(name, 'unknown')})"
-        for name in status.credentials_stored
+        f"{name} ({(status.credential_types or {}).get(name, 'unknown')})"
+        for name in status.providers
     )
 
 
-def render_vault_status(status: VaultStatusSnapshot | None) -> Text:
+def render_vault_status(status: VaultStatus | None) -> Text:
     """Render vault status details as a Rich Text object.
 
     Every container's supervisor embeds its own vault proxy, so the
     host view collapses to the DB-side facts the operator can act on:
-    locked / unlocked, passphrase tier, count + type of stored
-    credentials, plaintext-on-disk warning.  Per-container proxy
-    health surfaces in the task's own doctor row.
+    state, passphrase tier, count + type of stored credentials, and
+    the shared warning catalog.  Per-container proxy health surfaces
+    in the task's own doctor row.  Pure rendering — every fact and
+    every warning text comes from the sandbox-owned snapshot.
     """
     if status is None:
         return Text("Vault status unknown.")
@@ -2445,23 +2446,27 @@ def render_vault_status(status: VaultStatusSnapshot | None) -> Text:
     err = Style(color="red")
     dim = Style(dim=True)
 
-    # Name the lock state: "no passphrase" / "wrong passphrase" /
-    # "broken tier" call for three different remedies, and the bare
-    # word "locked" hides which one the operator is facing.
-    locked_label = (
-        Text(f"yes — {status.lock_reason or 'no tier resolved'}", style=err)
-        if status.locked
-        else Text("no", style=ok)
-    )
+    # Name the state: "unprovisioned" / "no passphrase" / "wrong
+    # passphrase" / "broken tier" call for different remedies, and the
+    # bare word "locked" hides which one the operator is facing.
+    if status.state is VaultState.UNPROVISIONED:
+        state_label = Text("not set up yet — run terok setup", style=warn)
+    elif status.state is VaultState.LOCKED:
+        state_label = Text(f"LOCKED — {status.lock_reason or 'no tier resolved'}", style=err)
+    elif status.state is VaultState.ERROR:
+        state_label = Text("ERROR — see below", style=err)
+    else:
+        state_label = Text("unlocked", style=ok)
 
     lines: list[Text] = [
-        Text.assemble("Locked:      ", locked_label),
+        Text.assemble("State:       ", state_label),
     ]
 
-    if not status.locked and status.passphrase_source is not None:
-        lines.append(Text(f"Passphrase:  resolved via {status.passphrase_source}"))
+    if status.state is VaultState.UNLOCKED and status.source is not None:
+        lines.append(Text(f"Passphrase:  resolved via {status.source}"))
 
-    lines.append(Text(f"DB:          {status.db_path}"))
+    db_note = "" if status.db_exists else "  (created encrypted on first use)"
+    lines.append(Text(f"DB:          {status.db_path}{db_note}"))
 
     if status.db_error is not None:
         lines.append(Text.assemble("DB error:    ", Text(status.db_error, style=err)))
@@ -2469,46 +2474,27 @@ def render_vault_status(status: VaultStatusSnapshot | None) -> Text:
     # ``None`` means the DB couldn't be read; render explicitly so a
     # locked vault holding real data isn't mistaken for a fresh empty
     # install ("SSH keys: 0  /  Credentials: none stored").
-    if status.ssh_keys_stored is None:
+    if status.ssh_keys is None:
         lines.append(Text.assemble("SSH keys:    ", Text("(unavailable)", style=dim)))
     else:
-        lines.append(Text(f"SSH keys:    {status.ssh_keys_stored}"))
+        lines.append(Text(f"SSH keys:    {status.ssh_keys}"))
 
-    if status.credentials_stored is None:
+    if status.providers is None:
         lines.append(Text.assemble("Credentials: ", Text("(unavailable)", style=dim)))
-    elif status.credentials_stored:
+    elif status.providers:
         lines.append(Text(f"Credentials: {_format_credentials_typed(status)}"))
     else:
         lines.append(Text.assemble("Credentials: ", Text("none stored", style=dim)))
 
-    plaintext_path = status.plaintext_passphrase_path
-    if plaintext_path is not None:
-        # The TUI is screenshot- and screen-share-friendly; rendering
-        # the full filesystem path of the plaintext-passphrase file
-        # is more disclosure than the warning requires.  Surface
-        # just the basename — enough for the operator to recognise
-        # what's going on, not enough to advertise the file's
-        # location to a casual observer.  The CLI ``vault status``
-        # still prints the full path for grep-friendly scripting.
-        from pathlib import Path as _Path
-
-        redacted = _Path(plaintext_path).name
+    # The shared warning catalog — same facts and wording as the CLI
+    # ``vault status`` and the pill, authored once sandbox-side.
+    if status.warnings:
         lines.append(Text(""))
-        lines.append(
-            Text.assemble(
-                Text("WARNING: ", style=err),
-                Text(f"vault passphrase stored in plaintext on disk ({redacted})", style=warn),
-            )
-        )
-        lines.append(
-            Text(
-                "         accept on-disk plaintext as your trust boundary,"
-                " or migrate to keyring/systemd-creds.",
-                style=warn,
-            )
-        )
+        for warning in status.warnings:
+            label, style = ("note:    ", dim) if warning.severity == "info" else ("WARNING: ", err)
+            lines.append(Text.assemble(Text(label, style=style), Text(warning.message, style=warn)))
 
-    if status.locked:
+    if status.state is VaultState.LOCKED:
         lines.append(Text(""))
         lines.append(
             Text(
@@ -2764,7 +2750,7 @@ class VaultCreatePassphraseModal(screen.ModalScreen[str | None]):
 class VaultUnlockModal(screen.ModalScreen["str | None"]):
     """Passphrase prompt that writes to the session-unlock tmpfs file.
 
-    Triggered when ``VaultStatusSnapshot.locked`` is True at TUI mount or after
+    Triggered when the vault snapshot reports ``LOCKED`` at TUI mount or after
     a manual ``Ctrl+L`` re-probe.  Mirrors the [`AskpassModal`][terok.tui.askpass_service.AskpassModal]
     shape: one masked input, two buttons.  The "Unlock for this
     session" path is the always-safe one — it writes the session-file
@@ -2812,22 +2798,36 @@ class VaultUnlockModal(screen.ModalScreen["str | None"]):
     }
     """
 
+    def __init__(
+        self,
+        *,
+        title: str = "Vault locked",
+        prompt: str = (
+            "Enter the credentials-DB passphrase to unlock the vault for this session.\n"
+            "The value is written to the session-unlock tmpfs file (cleared at reboot)."
+        ),
+        confirm_label: str = "Unlock for this session",
+    ) -> None:
+        """Store the dialog texts — the change flow reuses this modal to ask
+        for the *current* passphrase of a locked vault, same entry mechanics,
+        different framing."""
+        super().__init__()
+        self._title = title
+        self._prompt = prompt
+        self._confirm_label = confirm_label
+
     def compose(self) -> ComposeResult:
-        """Lay out prompt, masked input, and Cancel / Unlock buttons."""
+        """Lay out prompt, masked input, and Cancel / confirm buttons."""
         if Input is None:  # pragma: no cover — textual is stubbed in unit tests
             return
         dialog = Vertical(id="vault-unlock-dialog")
-        dialog.border_title = "Vault locked"
+        dialog.border_title = self._title
         with dialog:
-            yield Static(
-                "Enter the credentials-DB passphrase to unlock the vault for this session.\n"
-                "The value is written to the session-unlock tmpfs file (cleared at reboot).",
-                id="vault-unlock-prompt",
-            )
+            yield Static(self._prompt, id="vault-unlock-prompt")
             yield Input(password=True, id="vault-unlock-input")
             with Horizontal(id="vault-unlock-buttons"):
                 yield Button("Cancel", id="vault-unlock-cancel", variant="default")
-                yield Button("Unlock for this session", id="vault-unlock-ok", variant="primary")
+                yield Button(self._confirm_label, id="vault-unlock-ok", variant="primary")
 
     def on_mount(self) -> None:
         """Focus the input so the user can type immediately."""
@@ -2983,6 +2983,7 @@ class VaultScreen(screen.Screen[str | None]):
         _modal_binding("k", "vault_to_keyring", "Move passphrase to keyring"),
         _modal_binding("v", "vault_reveal", "Reveal recovery passphrase"),
         _modal_binding("a", "vault_acknowledge", "Mark recovery key as saved"),
+        _modal_binding("c", "vault_change", "Change the vault passphrase"),
         _modal_binding("r", "vault_refresh", "Refresh status"),
     ]
 
@@ -2996,7 +2997,7 @@ class VaultScreen(screen.Screen[str | None]):
         + _DETAIL_SCREEN_CSS
     )
 
-    def __init__(self, status: VaultStatusSnapshot | None = None) -> None:
+    def __init__(self, status: VaultStatus | None = None) -> None:
         """Store vault status for rendering."""
         super().__init__()
         self._status = status
@@ -3016,6 +3017,7 @@ class VaultScreen(screen.Screen[str | None]):
             None,
             Option("re\\[v]eal recovery passphrase", id="vault_reveal"),
             Option("mark recovery key as s\\[a]ved", id="vault_acknowledge"),
+            Option("\\[c]hange the vault passphrase", id="vault_change"),
             None,
             Option("\\[r]efresh status", id="vault_refresh"),
             id="actions-list",
@@ -3035,7 +3037,7 @@ class VaultScreen(screen.Screen[str | None]):
     def _refresh_status(self) -> None:
         """Re-fetch status and update the display."""
         try:
-            self._status = VaultStatusSnapshot.load()
+            self._status = load_vault_status()
         except Exception as exc:
             from ..lib.util.logging_utils import log_warning
 
@@ -3078,6 +3080,10 @@ class VaultScreen(screen.Screen[str | None]):
     def action_vault_acknowledge(self) -> None:
         """Mark the current passphrase as saved without re-displaying it."""
         self.dismiss("vault_acknowledge")
+
+    def action_vault_change(self) -> None:
+        """Change the passphrase — re-encrypt the DB and rewrite every tier."""
+        self.dismiss("vault_change")
 
     def action_vault_refresh(self) -> None:
         """Refresh the status display."""

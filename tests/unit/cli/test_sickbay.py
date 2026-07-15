@@ -241,20 +241,22 @@ class TestReconcilePostStop:
 
 
 class TestCheckVault:
-    """Verify ``_check_vault`` against the post-supervisor DB-side snapshot.
+    """Verify ``_check_vault`` against the sandbox-owned ``VaultStatus`` snapshot.
 
-    Vault is no longer a host daemon — the check collapses to whether
-    the store unlocks, what's in it, and whether the passphrase is
-    exposed on disk.  No more daemon / socket / transport branches.
+    Vault is no longer a host daemon — the check collapses to the
+    snapshot's state classification, what's stored, and the shared
+    warning catalog.  No more daemon / socket / transport branches.
     """
 
     @staticmethod
     def _snapshot(**overrides: object) -> unittest.mock.MagicMock:
+        from terok.lib.api.vault import VaultState
+
         defaults = {
-            "locked": False,
-            "passphrase_source": "keyring",
-            "credentials_stored": (),
-            "plaintext_passphrase_path": None,
+            "state": VaultState.UNLOCKED,
+            "source": "keyring",
+            "providers": (),
+            "warnings": (),
             "db_error": None,
             "lock_reason": None,
         }
@@ -263,53 +265,95 @@ class TestCheckVault:
 
     def test_unlocked_with_credentials_is_ok(self) -> None:
         """Unlocked store + credentials → ok with tier + count."""
-        snap = self._snapshot(credentials_stored=("claude",))
-        with unittest.mock.patch(
-            "terok.cli.commands.sickbay.VaultStatusSnapshot.load", return_value=snap
-        ):
+        snap = self._snapshot(providers=("claude",))
+        with unittest.mock.patch("terok.cli.commands.sickbay.load_vault_status", return_value=snap):
             sev, _, detail = _check_vault()
         assert sev == "ok"
         assert "1 credential(s)" in detail
         assert "keyring" in detail
 
+    def test_unprovisioned_is_warn(self) -> None:
+        """Fresh install → warn pointing at ``terok setup``, not an unlock prompt."""
+        from terok.lib.api.vault import VaultState
+
+        snap = self._snapshot(state=VaultState.UNPROVISIONED, source=None)
+        with unittest.mock.patch("terok.cli.commands.sickbay.load_vault_status", return_value=snap):
+            sev, _, detail = _check_vault()
+        assert sev == "warn"
+        assert "not set up yet" in detail
+        assert "terok setup" in detail
+
+    def test_db_error_is_warn(self) -> None:
+        """A non-passphrase DB failure surfaces verbatim as a warn."""
+        from terok.lib.api.vault import VaultState
+
+        snap = self._snapshot(state=VaultState.ERROR, db_error="schema drift")
+        with unittest.mock.patch("terok.cli.commands.sickbay.load_vault_status", return_value=snap):
+            sev, _, detail = _check_vault()
+        assert sev == "warn"
+        assert "DB error" in detail
+        assert "schema drift" in detail
+
     def test_locked_is_warn(self) -> None:
         """Locked → warn with unlock pointer."""
-        snap = self._snapshot(locked=True, passphrase_source=None)
-        with unittest.mock.patch(
-            "terok.cli.commands.sickbay.VaultStatusSnapshot.load", return_value=snap
-        ):
+        from terok.lib.api.vault import VaultState
+
+        snap = self._snapshot(state=VaultState.LOCKED, source=None)
+        with unittest.mock.patch("terok.cli.commands.sickbay.load_vault_status", return_value=snap):
             sev, _, detail = _check_vault()
         assert sev == "warn"
         assert "unlock" in detail
 
     def test_locked_detail_carries_the_reason(self) -> None:
         """The lock reason rides along — wrong key vs no key vs broken tier differ."""
+        from terok.lib.api.vault import VaultState
+
         snap = self._snapshot(
-            locked=True,
-            passphrase_source="keyring",
+            state=VaultState.LOCKED,
+            source="keyring",
             lock_reason="the passphrase via keyring does not open the DB",
         )
-        with unittest.mock.patch(
-            "terok.cli.commands.sickbay.VaultStatusSnapshot.load", return_value=snap
-        ):
+        with unittest.mock.patch("terok.cli.commands.sickbay.load_vault_status", return_value=snap):
             sev, _, detail = _check_vault()
         assert sev == "warn"
         assert "via keyring does not open the DB" in detail
 
-    def test_plaintext_passphrase_warns(self) -> None:
-        """Plaintext passphrase on disk → warn even when unlocked."""
-        snap = self._snapshot(plaintext_passphrase_path="/etc/terok/passphrase.yml")
-        with unittest.mock.patch(
-            "terok.cli.commands.sickbay.VaultStatusSnapshot.load", return_value=snap
-        ):
+    def test_noninfo_warning_rides_detail_and_warns(self) -> None:
+        """A non-info catalog warning turns the row into a warn carrying its brief."""
+        from terok.lib.api.vault import VaultWarning, VaultWarningKind
+
+        warning = VaultWarning(
+            kind=VaultWarningKind.RECOVERY_UNCONFIRMED,
+            severity="warning",
+            brief="recovery key UNCONFIRMED",
+            message="the vault passphrase is not confirmed saved off-host",
+        )
+        snap = self._snapshot(providers=("claude",), warnings=(warning,))
+        with unittest.mock.patch("terok.cli.commands.sickbay.load_vault_status", return_value=snap):
             sev, _, detail = _check_vault()
         assert sev == "warn"
-        assert "plaintext passphrase on disk" in detail
+        assert "recovery key UNCONFIRMED" in detail
+
+    def test_info_warning_stays_ok(self) -> None:
+        """Info-severity catalog entries never degrade the row to a warn."""
+        from terok.lib.api.vault import VaultWarning, VaultWarningKind
+
+        note = VaultWarning(
+            kind=VaultWarningKind.SHADOW_REDUNDANT,
+            severity="info",
+            brief="redundant session file",
+            message="the session-file tier duplicates the durable keyring tier",
+        )
+        snap = self._snapshot(providers=("claude",), warnings=(note,))
+        with unittest.mock.patch("terok.cli.commands.sickbay.load_vault_status", return_value=snap):
+            sev, _, detail = _check_vault()
+        assert sev == "ok"
+        assert "redundant session file" not in detail
 
     def test_exception_returns_warn(self) -> None:
         """Exception during snapshot → warn with the message."""
         with unittest.mock.patch(
-            "terok.cli.commands.sickbay.VaultStatusSnapshot.load",
+            "terok.cli.commands.sickbay.load_vault_status",
             side_effect=RuntimeError("oops"),
         ):
             sev, _, detail = _check_vault()
@@ -760,10 +804,16 @@ class TestCheckRecoveryAcknowledged:
 
     @staticmethod
     def _status(*, acknowledged: bool, source: str | None):
-        """Build a real ``RecoveryStatus`` so the ``urgent`` property derives correctly."""
-        from terok.lib.integrations.sandbox import RecoveryStatus
+        """Build a real ``RecoveryStatus`` so the ``urgent`` property derives correctly.
 
-        return RecoveryStatus(acknowledged=acknowledged, source=source)
+        ``source`` is coerced to the real ``PassphraseTier`` member —
+        ``session_only`` compares by identity, so a bare string would
+        silently defeat the escalation branch.
+        """
+        from terok.lib.integrations.sandbox import PassphraseTier, RecoveryStatus
+
+        tier = PassphraseTier(source) if source is not None else None
+        return RecoveryStatus(acknowledged=acknowledged, source=tier)
 
     def test_ok_when_marker_present(self) -> None:
         """Acknowledged → ``ok`` with a brief detail."""

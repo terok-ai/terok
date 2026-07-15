@@ -20,18 +20,22 @@ MOCK_VAULT_DB = MOCK_BASE / "vault" / "credentials.db"
 
 def _make_vault_snapshot(
     *,
-    locked: bool = False,
-    passphrase_source: str | None = "keyring",
-    credentials_stored: tuple[str, ...] | None = ("claude", "gh"),
-    plaintext_passphrase_path: str | None = None,
+    state: str = "unlocked",
+    source: str | None = "keyring",
+    providers: tuple[str, ...] | None = ("claude", "gh"),
+    warnings: tuple[object, ...] = (),
+    lock_reason: str | None = None,
     db_error: str | None = None,
 ) -> MagicMock:
-    """Return a mock VaultStatusSnapshot."""
+    """Return a mock of the sandbox-owned ``VaultStatus`` snapshot."""
+    from terok.lib.api.vault import VaultState
+
     s = MagicMock()
-    s.locked = locked
-    s.passphrase_source = passphrase_source
-    s.credentials_stored = credentials_stored
-    s.plaintext_passphrase_path = plaintext_passphrase_path
+    s.state = VaultState(state)
+    s.source = source
+    s.providers = providers
+    s.warnings = warnings
+    s.lock_reason = lock_reason
     s.db_error = db_error
     return s
 
@@ -155,25 +159,32 @@ def test_check_shield_generic_dnsmasq_hint_without_reported_reason() -> None:
     ("snapshot_kwargs", "side_effect", "expected_status", "expected_detail"),
     [
         pytest.param(
-            {"credentials_stored": ("claude", "gh")},
+            {"providers": ("claude", "gh")},
             None,
             "ok",
             "2 credential(s)",
             id="unlocked-with-creds",
         ),
         pytest.param(
-            {"locked": True, "passphrase_source": None, "credentials_stored": None},
+            {"state": "locked", "source": None, "providers": None},
             None,
             "warn",
             "locked",
             id="locked",
         ),
         pytest.param(
-            {"plaintext_passphrase_path": "/etc/terok/passphrase.yml"},
+            {"state": "unprovisioned", "source": None, "providers": None},
             None,
             "warn",
-            "plaintext passphrase on disk",
-            id="plaintext-passphrase",
+            "not set up yet",
+            id="unprovisioned",
+        ),
+        pytest.param(
+            {"state": "error", "providers": None, "db_error": "schema drift"},
+            None,
+            "warn",
+            "DB error",
+            id="db-error",
         ),
         pytest.param(
             {},
@@ -193,7 +204,7 @@ def test_check_vault_states(
     """_check_vault maps DB-side facts to the correct severity and message."""
     snapshot = _make_vault_snapshot(**snapshot_kwargs)
     with patch(
-        "terok.cli.commands.sickbay.VaultStatusSnapshot.load",
+        "terok.cli.commands.sickbay.load_vault_status",
         return_value=snapshot,
         side_effect=side_effect,
     ):

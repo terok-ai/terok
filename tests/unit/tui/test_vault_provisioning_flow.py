@@ -15,12 +15,12 @@ unbound-method-on-stub, same idiom as ``test_vault_unlock_flow.py``.
 
 from __future__ import annotations
 
-from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from terok.lib.integrations.sandbox import VaultState
 from terok.tui.app import TerokTUI
 from terok.tui.project_actions import ProjectActionsMixin
 
@@ -42,22 +42,39 @@ def _provision_result(*, generated: bool) -> SimpleNamespace:
     return SimpleNamespace(passphrase="minted-or-typed", source="keyring", generated=generated)
 
 
+def _plan(
+    *,
+    provisioned: bool = False,
+    auto_tier: str | None = None,
+    keyring_available: bool = True,
+) -> SimpleNamespace:
+    """A ``ProvisioningPlan`` stand-in (the flow reads all four fields)."""
+    return SimpleNamespace(
+        provisioned=provisioned,
+        auto_tier=auto_tier,
+        choices=("keyring", "session-file"),
+        keyring_available=keyring_available,
+    )
+
+
 class TestEnsureCredentialsProvisioned:
     """The pre-flight conversation that runs before the setup subprocess."""
 
     async def test_already_provisioned_short_circuits(self, flow_stub: SimpleNamespace) -> None:
         """A resolving tier / encrypted DB → no modals, setup may proceed."""
-        with patch("terok.lib.api.vault.credentials_provisioned", return_value=True):
+        with patch("terok.lib.api.vault.plan_provisioning", return_value=_plan(provisioned=True)):
             assert await TerokTUI._ensure_credentials_provisioned(flow_stub) is True
         flow_stub.push_screen_wait.assert_not_awaited()
 
-    async def test_systemd_creds_skips_chooser_and_reveals_mint(
+    async def test_auto_tier_skips_chooser_and_reveals_mint(
         self, flow_stub: SimpleNamespace
     ) -> None:
         """With systemd-creds available the strongest tier picks itself, CLI-style."""
         with (
-            patch("terok.lib.api.vault.credentials_provisioned", return_value=False),
-            patch("terok.lib.api.vault.systemd_creds_available", return_value=True),
+            patch(
+                "terok.lib.api.vault.plan_provisioning",
+                return_value=_plan(auto_tier="systemd-creds"),
+            ),
             patch(
                 "terok.lib.api.vault.provision_passphrase_tier",
                 return_value=_provision_result(generated=True),
@@ -72,9 +89,7 @@ class TestEnsureCredentialsProvisioned:
         """Esc in the tier chooser → False, nothing provisioned, one warning."""
         flow_stub.push_screen_wait.return_value = None
         with (
-            patch("terok.lib.api.vault.credentials_provisioned", return_value=False),
-            patch("terok.lib.api.vault.systemd_creds_available", return_value=False),
-            patch("terok.lib.api.vault.keyring_backend_available", return_value=True),
+            patch("terok.lib.api.vault.plan_provisioning", return_value=_plan()),
             patch("terok.lib.api.vault.provision_passphrase_tier") as provision,
         ):
             assert await TerokTUI._ensure_credentials_provisioned(flow_stub) is False
@@ -85,9 +100,7 @@ class TestEnsureCredentialsProvisioned:
         """Tier chosen but Esc in the create modal → False, nothing provisioned."""
         flow_stub.push_screen_wait.side_effect = ["keyring", None]
         with (
-            patch("terok.lib.api.vault.credentials_provisioned", return_value=False),
-            patch("terok.lib.api.vault.systemd_creds_available", return_value=False),
-            patch("terok.lib.api.vault.keyring_backend_available", return_value=True),
+            patch("terok.lib.api.vault.plan_provisioning", return_value=_plan()),
             patch("terok.lib.api.vault.provision_passphrase_tier") as provision,
         ):
             assert await TerokTUI._ensure_credentials_provisioned(flow_stub) is False
@@ -98,9 +111,7 @@ class TestEnsureCredentialsProvisioned:
         """The recommended path: empty-string sentinel → mint → reveal + ack."""
         flow_stub.push_screen_wait.side_effect = ["keyring", ""]
         with (
-            patch("terok.lib.api.vault.credentials_provisioned", return_value=False),
-            patch("terok.lib.api.vault.systemd_creds_available", return_value=False),
-            patch("terok.lib.api.vault.keyring_backend_available", return_value=True),
+            patch("terok.lib.api.vault.plan_provisioning", return_value=_plan()),
             patch(
                 "terok.lib.api.vault.provision_passphrase_tier",
                 return_value=_provision_result(generated=True),
@@ -117,9 +128,7 @@ class TestEnsureCredentialsProvisioned:
         """A twice-confirmed typed value is something the operator knows — no reveal."""
         flow_stub.push_screen_wait.side_effect = ["session-file", "hunter2-hunter2"]
         with (
-            patch("terok.lib.api.vault.credentials_provisioned", return_value=False),
-            patch("terok.lib.api.vault.systemd_creds_available", return_value=False),
-            patch("terok.lib.api.vault.keyring_backend_available", return_value=True),
+            patch("terok.lib.api.vault.plan_provisioning", return_value=_plan()),
             patch(
                 "terok.lib.api.vault.provision_passphrase_tier",
                 return_value=_provision_result(generated=False),
@@ -138,9 +147,7 @@ class TestEnsureCredentialsProvisioned:
         """A dead keyring backend surfaces as an error notify, setup does not run."""
         flow_stub.push_screen_wait.side_effect = ["keyring", ""]
         with (
-            patch("terok.lib.api.vault.credentials_provisioned", return_value=False),
-            patch("terok.lib.api.vault.systemd_creds_available", return_value=False),
-            patch("terok.lib.api.vault.keyring_backend_available", return_value=True),
+            patch("terok.lib.api.vault.plan_provisioning", return_value=_plan()),
             patch(
                 "terok.lib.api.vault.provision_passphrase_tier",
                 side_effect=RuntimeError("OS keyring is unreachable"),
@@ -165,60 +172,68 @@ class TestSetupSubprocessGating:
 
 
 class TestFreshInstallUnlockGuard:
-    """No DB → the unlock surfaces route to provisioning instead of a free-text key."""
+    """UNPROVISIONED → the unlock surfaces route to provisioning instead of a free-text key."""
 
-    async def test_startup_probe_suppresses_modal_without_db(self, tmp_path: Path) -> None:
-        """Locked + no DB on startup → no unlock modal (setup flow owns provisioning)."""
-        status = SimpleNamespace(locked=True, db_path=str(tmp_path / "absent.db"))
+    async def test_startup_probe_suppresses_modal_when_unprovisioned(self) -> None:
+        """UNPROVISIONED on startup → no unlock modal (setup flow owns provisioning)."""
+        status = SimpleNamespace(state=VaultState.UNPROVISIONED)
         stub = SimpleNamespace(
             _render_status_pill=MagicMock(),
             push_screen=AsyncMock(),
             _on_vault_unlock_result=MagicMock(),
         )
-        with patch("terok.tui.app.VaultStatusSnapshot") as snapshot_cls:
-            snapshot_cls.load.return_value = status
+        with patch("terok.lib.api.vault.load_vault_status", return_value=status):
             await TerokTUI._refresh_vault_status(stub, push_modal_if_locked=True)
         stub.push_screen.assert_not_awaited()
 
-    async def test_startup_probe_pushes_modal_with_db(self, tmp_path: Path) -> None:
-        """Locked + a real DB file → the validated unlock modal appears as before."""
-        db = tmp_path / "credentials.db"
-        db.write_bytes(b"x")
-        status = SimpleNamespace(locked=True, db_path=str(db))
+    async def test_startup_probe_pushes_modal_when_locked(self) -> None:
+        """A genuinely LOCKED vault → the validated unlock modal appears as before."""
+        status = SimpleNamespace(state=VaultState.LOCKED)
         stub = SimpleNamespace(
             _render_status_pill=MagicMock(),
             push_screen=AsyncMock(),
             _on_vault_unlock_result=MagicMock(),
         )
-        with patch("terok.tui.app.VaultStatusSnapshot") as snapshot_cls:
-            snapshot_cls.load.return_value = status
+        with patch("terok.lib.api.vault.load_vault_status", return_value=status):
             await TerokTUI._refresh_vault_status(stub, push_modal_if_locked=True)
         stub.push_screen.assert_awaited_once()
 
-    async def test_palette_unlock_routes_to_provision_flow(self, tmp_path: Path) -> None:
-        """The palette action detects the missing DB and starts the create-flow."""
-        cfg = SimpleNamespace(db_path=tmp_path / "absent.db")
+    async def test_palette_unlock_routes_to_provision_flow(self) -> None:
+        """The palette action detects the UNPROVISIONED state and starts the create-flow."""
+        status = SimpleNamespace(state=VaultState.UNPROVISIONED)
         stub = SimpleNamespace(
             _run_vault_provision_flow=MagicMock(),
             push_screen=AsyncMock(),
             _on_vault_unlock_result=MagicMock(),
         )
-        with patch("terok.lib.api.SandboxConfig", return_value=cfg):
+        with patch("terok.lib.api.vault.load_vault_status", return_value=status):
             await ProjectActionsMixin._action_vault_unlock(stub)
         stub._run_vault_provision_flow.assert_called_once()
         stub.push_screen.assert_not_awaited()
 
-    async def test_palette_unlock_keeps_modal_with_db(self, tmp_path: Path) -> None:
-        """With a DB present the palette action still opens the validated unlock modal."""
-        db = tmp_path / "credentials.db"
-        db.write_bytes(b"x")
-        cfg = SimpleNamespace(db_path=db)
+    async def test_palette_unlock_keeps_modal_when_locked(self) -> None:
+        """On a LOCKED vault the palette action still opens the validated unlock modal."""
+        status = SimpleNamespace(state=VaultState.LOCKED)
         stub = SimpleNamespace(
             _run_vault_provision_flow=MagicMock(),
             push_screen=AsyncMock(),
             _on_vault_unlock_result=MagicMock(),
         )
-        with patch("terok.lib.api.SandboxConfig", return_value=cfg):
+        with patch("terok.lib.api.vault.load_vault_status", return_value=status):
+            await ProjectActionsMixin._action_vault_unlock(stub)
+        stub._run_vault_provision_flow.assert_not_called()
+        stub.push_screen.assert_awaited_once()
+
+    async def test_palette_unlock_probe_failure_falls_back_to_modal(self) -> None:
+        """A broken probe must not lock the operator out of the unlock prompt."""
+        stub = SimpleNamespace(
+            _run_vault_provision_flow=MagicMock(),
+            push_screen=AsyncMock(),
+            _on_vault_unlock_result=MagicMock(),
+        )
+        with patch(
+            "terok.lib.api.vault.load_vault_status", side_effect=RuntimeError("probe broke")
+        ):
             await ProjectActionsMixin._action_vault_unlock(stub)
         stub._run_vault_provision_flow.assert_not_called()
         stub.push_screen.assert_awaited_once()
@@ -441,7 +456,7 @@ class TestProbeFailureSurfaces:
 
     async def test_probe_exception_notifies_and_blocks(self, flow_stub: SimpleNamespace) -> None:
         with patch(
-            "terok.lib.api.vault.credentials_provisioned",
+            "terok.lib.api.vault.plan_provisioning",
             side_effect=RuntimeError("sealed credential present but could not be unsealed"),
         ):
             assert await TerokTUI._ensure_credentials_provisioned(flow_stub) is False

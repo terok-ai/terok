@@ -19,7 +19,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from terok.lib.integrations.sandbox import WrongPassphraseError
+from terok.lib.integrations.sandbox import VaultState, WrongPassphraseError
 from terok.tui.app import TerokTUI
 
 
@@ -107,10 +107,9 @@ class TestStatusPillLockReason:
     def test_locked_pill_carries_reason(self) -> None:
         message = self._pill_message(
             SimpleNamespace(
-                locked=True,
+                state=VaultState.LOCKED,
                 lock_reason="no passphrase in any tier",
-                plaintext_passphrase_path=None,
-                passphrase_source=None,
+                source=None,
             )
         )
         assert "LOCKED" in message
@@ -119,10 +118,9 @@ class TestStatusPillLockReason:
     def test_locked_pill_without_reason_keeps_generic_text(self) -> None:
         message = self._pill_message(
             SimpleNamespace(
-                locked=True,
+                state=VaultState.LOCKED,
                 lock_reason=None,
-                plaintext_passphrase_path=None,
-                passphrase_source=None,
+                source=None,
             )
         )
         assert "LOCKED" in message

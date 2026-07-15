@@ -501,17 +501,19 @@ def test_check_vault_surfaces_passphrase_tier() -> None:
     from unittest.mock import MagicMock
 
     from terok.cli.commands import sickbay
+    from terok.lib.api.vault import VaultState
 
     fake_snapshot = MagicMock(
-        locked=False,
-        passphrase_source="systemd-creds",
-        credentials_stored=(),
-        plaintext_passphrase_path=None,
+        state=VaultState.UNLOCKED,
+        source="systemd-creds",
+        providers=(),
+        warnings=(),
+        lock_reason=None,
         db_error=None,
     )
 
     with (
-        patch.object(sickbay.VaultStatusSnapshot, "load", return_value=fake_snapshot),
+        patch.object(sickbay, "load_vault_status", return_value=fake_snapshot),
         patch.object(sickbay, "systemd_creds_has_tpm2", return_value=False),
     ):
         status, label, detail = sickbay._check_vault()

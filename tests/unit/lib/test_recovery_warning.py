@@ -24,10 +24,14 @@ def _status(*, acknowledged: bool, source: str | None):
 
     Uses the real ``RecoveryStatus`` dataclass so the ``urgent``
     property derives correctly from ``acknowledged`` + ``source``.
+    ``source`` is coerced to the real [`PassphraseTier`][terok_sandbox.PassphraseTier]
+    member — ``session_only`` compares by identity, so a bare string
+    would silently defeat the escalation branch.
     """
-    from terok.lib.integrations.sandbox import RecoveryStatus
+    from terok.lib.integrations.sandbox import PassphraseTier, RecoveryStatus
 
-    return RecoveryStatus(acknowledged=acknowledged, source=source)
+    tier = PassphraseTier(source) if source is not None else None
+    return RecoveryStatus(acknowledged=acknowledged, source=tier)
 
 
 class TestMaybeWarnRecoveryUnconfirmed:
