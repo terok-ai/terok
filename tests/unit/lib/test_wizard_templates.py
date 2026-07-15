@@ -86,9 +86,30 @@ class TestProjectTemplate:
         assert parsed["project"]["security_class"] == security_class
         assert parsed["image"]["base_image"] == BASE_IMAGES[base]
 
-    def test_gatekeeping_section_only_for_gatekeeping(self) -> None:
-        assert "gatekeeping:" in _render("gatekeeping", "ubuntu")
-        assert "gatekeeping:" not in _render("online", "ubuntu")
+    def test_gatekeeping_hint_only_for_gatekeeping(self) -> None:
+        """The gatekeeping knobs appear as a commented example, never active.
+
+        The runtime defaults are the secure configuration; a freshly
+        generated project.yml must not override any of them.
+        """
+        rendered = _render("gatekeeping", "ubuntu")
+        assert "# gatekeeping:" in rendered
+        assert "gatekeeping" not in yaml.safe_load(rendered)
+        assert "gatekeeping" not in _render("online", "ubuntu")
+
+    def test_gatekeeping_template_never_mentions_posture_degrading_knobs(self) -> None:
+        """``expose_external_remote`` (default off) stays out of the template.
+
+        Advertising it — even commented — would nudge users toward
+        weakening the gatekeeping isolation; it belongs in the docs.
+        """
+        assert "expose_external_remote" not in _render("gatekeeping", "ubuntu")
+
+    def test_gate_disable_hint_only_for_online(self) -> None:
+        """``gate.enabled: false`` is rejected for gatekeeping projects at
+        load time, so only the online template may advertise it."""
+        assert "# gate:" in _render("online", "ubuntu")
+        assert "# gate:" not in _render("gatekeeping", "ubuntu")
 
     def test_run_gpus_section_only_for_nvidia(self) -> None:
         assert "gpus: all" in _render("online", "nvidia")

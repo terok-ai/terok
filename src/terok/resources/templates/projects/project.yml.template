@@ -14,6 +14,7 @@ project:
 git:
   upstream_url: "{{UPSTREAM_URL}}"
   default_branch: "{{DEFAULT_BRANCH}}"
+{%- if SECURITY_CLASS == "online" %}
 
 # gate:
 #   enabled: false   # uncomment if the host cannot reach upstream
@@ -21,6 +22,7 @@ git:
 #                    # the container's own network path can — terok will
 #                    # then skip the host-side mirror and let the
 #                    # container fetch directly from upstream.
+{%- endif %}
 
 image:
   base_image: "{{BASE_IMAGE}}"
@@ -44,11 +46,12 @@ run:
 {%- endif %}
 {%- if SECURITY_CLASS == "gatekeeping" %}
 
-gatekeeping:
-  expose_external_remote: true
-  upstream_polling:
-    enabled: true
-    interval_minutes: 5
+# The gate polls upstream every 5 minutes; uncomment to change the
+# interval or turn auto-polling off.
+# gatekeeping:
+#   upstream_polling:
+#     enabled: true
+#     interval_minutes: 5
 {%- endif %}
 {%- if CREDENTIALS_SCOPE == "project" %}
 

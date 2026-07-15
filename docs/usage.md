@@ -272,10 +272,6 @@ git:
   upstream_url: git@github.com:yourorg/yourrepo.git  # optional; omit for local-only
   default_branch: main
   # authorship: human-agent  # optional: author = human, committer = agent
-
-# gate:
-#   enabled: false          # optional; skip the host-side gate mirror
-                            #           (container fetches upstream directly)
 ```
 
 See [Gate and upstream combinations](#gate-and-upstream-combinations)

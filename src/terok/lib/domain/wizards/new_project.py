@@ -59,9 +59,9 @@ class Choice:
     disabled_reason: str = ""
 
 
-# The wizard picks a project template by asking two independent
+# The wizard picks the template variant by asking two independent
 # questions (security mode + base image) instead of one combinatorial
-# menu.  Template files on disk follow ``{security}-{base}.yml``.
+# menu.  A single Jinja template renders all combinations.
 SECURITY_CLASSES: tuple[Choice, ...] = (
     Choice("online", "Online (agent pushes directly to upstream)"),
     Choice("gatekeeping", "Gatekeeping (changes staged for human review)"),
