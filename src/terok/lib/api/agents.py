@@ -30,6 +30,7 @@ if TYPE_CHECKING:
     from terok.lib.domain.auth import (
         auth_provider_aliases as auth_provider_aliases,
         authenticate as authenticate,
+        authenticated_entries as authenticated_entries,
         available_auth_modes as available_auth_modes,
         find_host_auth_image as find_host_auth_image,
         resolve_auth_provider as resolve_auth_provider,
@@ -89,6 +90,7 @@ _LAZY: dict[str, str] = {
     "acp_socket_is_live": "terok.lib.integrations.executor",
     "auth_provider_aliases": "terok.lib.domain.auth",
     "authenticate": "terok.lib.domain.auth",
+    "authenticated_entries": "terok.lib.domain.auth",
     "available_auth_modes": "terok.lib.domain.auth",
     "build_images": "terok.lib.orchestration.image",
     "bundled_default_instructions": "terok.lib.integrations.executor",

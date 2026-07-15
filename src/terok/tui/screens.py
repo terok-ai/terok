@@ -344,8 +344,8 @@ class ProjectDetailsScreen(screen.Screen[str | None]):
 class AuthActionsScreen(screen.ModalScreen[str | None]):
     """Small modal for authenticating agents and tools.
 
-    Options are built dynamically from ``AUTH_PROVIDERS``.
-    Number keys (1-9) act as shortcuts for the corresponding list entry.
+    Options are built dynamically from ``AUTH_PROVIDERS`` — every entry is
+    listed; navigate with the arrow keys and select with Enter.
     """
 
     BINDINGS = [
@@ -375,21 +375,14 @@ class AuthActionsScreen(screen.ModalScreen[str | None]):
     """
 
     def compose(self) -> ComposeResult:
-        """Build the numbered list of authentication providers."""
+        """Build the list of authentication providers."""
         from terok.lib.api.agents import AUTH_PROVIDERS
 
-        providers = list(AUTH_PROVIDERS.values())
         options: list[Option | None] = [
-            Option(f"\\[{i}] {p.label}", id=f"auth_{p.name}")
-            for i, p in enumerate(providers, 1)
-            if i <= 9
+            Option(p.label, id=f"auth_{p.name}") for p in AUTH_PROVIDERS.values()
         ]
-        next_num = len(providers) + 1
         options.append(None)
-        import_label = (
-            f"\\[{next_num}] Import OpenCode config" if next_num <= 9 else "Import OpenCode config"
-        )
-        options.append(Option(import_label, id="import_opencode_config"))
+        options.append(Option("Import OpenCode config", id="import_opencode_config"))
         with Vertical(id="auth-dialog") as dialog:
             yield OptionList(*options, id="auth-actions-list")
         dialog.border_title = "Authenticate agents and tools"
@@ -404,20 +397,6 @@ class AuthActionsScreen(screen.ModalScreen[str | None]):
         """Dismiss with the selected provider's action ID."""
         if event.option_id:
             self.dismiss(event.option_id)
-
-    def on_key(self, event: events.Key) -> None:
-        """Handle number-key shortcuts (1-9) to select a provider or import."""
-        from terok.lib.api.agents import AUTH_PROVIDERS
-
-        if event.character and event.character.isdigit():
-            idx = int(event.character) - 1
-            providers = list(AUTH_PROVIDERS.values())
-            if 0 <= idx < min(len(providers), 9):
-                self.dismiss(f"auth_{providers[idx].name}")
-                event.stop()
-            elif idx == len(providers) and idx < 9:
-                self.dismiss("import_opencode_config")
-                event.stop()
 
     async def action_dismiss(self, result: str | None = None) -> None:
         """Close the auth modal without selecting a provider."""
