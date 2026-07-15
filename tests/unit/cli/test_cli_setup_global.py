@@ -414,3 +414,33 @@ class TestResolveDesktopPolicy:
                 _resolve_desktop_policy(no_desktop_entry=False, install_desktop_entry=True)
                 == "install"
             )
+
+
+class TestCmdSetupStringExitCode:
+    """A string SystemExit from the aggregator prints as lines, not inside '(exit …)'."""
+
+    def test_string_code_prints_verbatim(self, capsys: pytest.CaptureFixture[str]) -> None:
+        """The multi-line refusal hint lands on its own lines with a plain banner after."""
+        hint = "setup: no passphrase tier was chosen.\n  pick one explicitly"
+        with (
+            patch("terok.lib.api.agents.ensure_sandbox_ready", side_effect=SystemExit(hint)),
+            patch("terok.cli.commands.setup._ensure_desktop_entry", return_value=True),
+            patch("terok.cli.commands.setup._ensure_shell_completions"),
+            pytest.raises(SystemExit),
+        ):
+            cmd_setup()
+        out = capsys.readouterr().out
+        assert hint in out
+        assert "Sandbox aggregator reported failures." in out
+        assert "(exit setup:" not in out
+
+    def test_numeric_code_keeps_exit_suffix(self, capsys: pytest.CaptureFixture[str]) -> None:
+        """The numeric-code path is unchanged — '(exit N)' stays."""
+        with (
+            patch("terok.lib.api.agents.ensure_sandbox_ready", side_effect=SystemExit(2)),
+            patch("terok.cli.commands.setup._ensure_desktop_entry", return_value=True),
+            patch("terok.cli.commands.setup._ensure_shell_completions"),
+            pytest.raises(SystemExit),
+        ):
+            cmd_setup()
+        assert "Sandbox aggregator reported failures (exit 2)." in capsys.readouterr().out

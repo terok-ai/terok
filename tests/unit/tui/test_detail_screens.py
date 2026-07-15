@@ -2132,8 +2132,12 @@ class TestVaultActionImplementations:
 
         return ProjectActionsMixin
 
-    def test_unlock_pushes_modal_with_result_callback(self) -> None:
-        """``_action_vault_unlock`` opens VaultUnlockModal wired to ``_on_vault_unlock_result``."""
+    def test_unlock_pushes_modal_with_result_callback(self, tmp_path) -> None:
+        """``_action_vault_unlock`` opens VaultUnlockModal wired to ``_on_vault_unlock_result``.
+
+        The DB file must exist — without one the action routes to the
+        first-passphrase provisioning flow instead of the unlock modal.
+        """
         mixin = self._get_mixin()
         instance = mock.Mock(spec=mixin)
         instance.push_screen = mock.AsyncMock()
@@ -2141,7 +2145,13 @@ class TestVaultActionImplementations:
         # mixin's TYPE_CHECKING stubs the spec sees — wire it explicitly so
         # we can compare against the value passed as the callback.
         instance._on_vault_unlock_result = mock.AsyncMock()
-        run(mixin._action_vault_unlock(instance))
+        db = tmp_path / "credentials.db"
+        db.write_bytes(b"x")
+        with mock.patch(
+            "terok.lib.api.SandboxConfig",
+            return_value=mock.Mock(db_path=db),
+        ):
+            run(mixin._action_vault_unlock(instance))
         instance.push_screen.assert_awaited_once()
         modal_arg, callback_arg = instance.push_screen.call_args[0]
         # The handler imports VaultUnlockModal from the real ``terok.tui.screens``
@@ -2544,6 +2554,7 @@ class TestSelinuxFixDispatch:
         instance.dispatch_console_command.return_value = self._entry(exit_code=5)
         instance.push_screen = mock.AsyncMock()
         instance._offer_selinux_fix = mock.AsyncMock(return_value=True)
+        instance._ensure_credentials_provisioned = mock.AsyncMock(return_value=True)
         result = run(app_class._run_setup_subprocess(instance))
         assert result is True
         instance._offer_selinux_fix.assert_awaited_once()
@@ -2555,6 +2566,7 @@ class TestSelinuxFixDispatch:
         instance.dispatch_console_command.return_value = self._entry(exit_code=1)
         instance.push_screen = mock.AsyncMock()
         instance._offer_selinux_fix = mock.AsyncMock()
+        instance._ensure_credentials_provisioned = mock.AsyncMock(return_value=True)
         result = run(app_class._run_setup_subprocess(instance))
         assert result is False
         instance.notify.assert_called_once()
@@ -2567,6 +2579,7 @@ class TestSelinuxFixDispatch:
         instance.dispatch_console_command.return_value = self._entry(exit_code=0)
         instance.push_screen = mock.AsyncMock()
         instance._offer_selinux_fix = mock.AsyncMock()
+        instance._ensure_credentials_provisioned = mock.AsyncMock(return_value=True)
         result = run(app_class._run_setup_subprocess(instance))
         assert result is True
         instance._offer_selinux_fix.assert_not_awaited()
@@ -2785,11 +2798,18 @@ class TestRefreshVaultStatus:
         instance._render_status_pill.assert_called_once_with(None)
         instance.push_screen.assert_not_called()
 
-    def test_refresh_locked_pushes_modal_when_requested(self) -> None:
-        """Locked vault + ``push_modal_if_locked=True`` opens the unlock modal."""
+    def test_refresh_locked_pushes_modal_when_requested(self, tmp_path) -> None:
+        """Locked vault + ``push_modal_if_locked=True`` opens the unlock modal.
+
+        The DB file must exist — a locked vault *without* a DB is the
+        fresh-install case, where the unlock modal is suppressed in
+        favour of the setup flow's provisioning conversation.
+        """
         app_mod, app_class = import_app()
         instance = self._make_instance(app_class)
-        status = make_vault_status(locked=True, passphrase_source=None)
+        db = tmp_path / "credentials.db"
+        db.write_bytes(b"x")
+        status = make_vault_status(locked=True, passphrase_source=None, db_path=str(db))
         with mock.patch.object(
             app_mod.VaultStatusSnapshot, "load", classmethod(lambda cls: status)
         ):

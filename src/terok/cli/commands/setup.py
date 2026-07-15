@@ -161,7 +161,13 @@ def cmd_setup(
         ensure_sandbox_ready(passphrase_tier=passphrase_tier)
     except SystemExit as exc:
         sandbox_failed = True
-        if exc.code:
+        if isinstance(exc.code, str):
+            # A refusal message, not a numeric code — print it verbatim
+            # on its own lines instead of inlining a whole multi-line
+            # operator hint into "(exit …)".
+            print(exc.code)
+            print(bold(red("Sandbox aggregator reported failures.")))
+        elif exc.code:
             print(bold(red(f"Sandbox aggregator reported failures (exit {exc.code}).")))
 
     images_failed = False

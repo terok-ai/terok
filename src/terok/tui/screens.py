@@ -2479,6 +2479,240 @@ def render_vault_status(status: VaultStatusSnapshot | None) -> Text:
 
 
 # ---------------------------------------------------------------------------
+# Vault Tier Chooser + Create Passphrase Modals — first-time provisioning
+# ---------------------------------------------------------------------------
+
+
+class VaultTierChooserModal(screen.ModalScreen[str | None]):
+    """Pick the storage tier for a brand-new vault passphrase.
+
+    The TUI counterpart of the setup chooser sandbox shows on a TTY:
+    it runs *before* ``terok setup`` is dispatched, so the captured
+    non-TTY subprocess never hits the fail-closed "no passphrase tier
+    was chosen" refusal.  Shown only when systemd-creds isn't available
+    (with it, the strongest tier picks itself and there is nothing to
+    ask).
+
+    Dismisses with ``"keyring"`` / ``"session-file"`` or ``None`` on
+    cancel.  The plaintext ``config`` tier is deliberately not offered
+    — that stays a CLI-only choice behind its typed confirmation.
+    """
+
+    BINDINGS = [
+        _modal_binding("escape", "cancel", "Cancel"),
+    ]
+
+    CSS = """
+    VaultTierChooserModal {
+        align: center middle;
+    }
+
+    #vault-tier-dialog {
+        width: 76;
+        max-width: 100%;
+        height: auto;
+        border: heavy $primary;
+        border-title-align: right;
+        background: $surface;
+        padding: 1 2;
+    }
+
+    #vault-tier-prompt {
+        margin-bottom: 1;
+        color: $text-muted;
+    }
+
+    #vault-tier-buttons {
+        height: 3;
+        align-horizontal: right;
+        margin-top: 1;
+    }
+
+    #vault-tier-buttons Button {
+        margin-left: 1;
+    }
+    """
+
+    def __init__(self, *, keyring_available: bool) -> None:
+        """Record whether the OS keyring backend is reachable (dims that option)."""
+        super().__init__()
+        self._keyring_available = keyring_available
+
+    def compose(self) -> ComposeResult:
+        """Lay out the explainer and the per-tier buttons."""
+        dialog = Vertical(id="vault-tier-dialog")
+        dialog.border_title = "Set up vault encryption"
+        keyring_note = (
+            ""
+            if self._keyring_available
+            else "\n\nNo OS keyring backend is reachable on this host, so the"
+            " recommended tier is unavailable."
+        )
+        with dialog:
+            yield Static(
+                "terok encrypts stored credentials with a passphrase.  Choose"
+                " where to keep it:\n\n"
+                "  • OS keyring — auto-unlocks with your login session"
+                " (recommended)\n"
+                "  • Session only — RAM-backed, cleared at reboot; you re-enter"
+                " it after each boot\n\n"
+                "systemd-creds (the strongest, machine-bound tier) needs"
+                " systemd ≥ 257 and isn't available on this host."
+                f"{keyring_note}",
+                id="vault-tier-prompt",
+            )
+            with Horizontal(id="vault-tier-buttons"):
+                yield Button("Cancel", id="vault-tier-cancel", variant="default")
+                yield Button("Session only", id="vault-tier-session", variant="default")
+                yield Button(
+                    "OS keyring (recommended)",
+                    id="vault-tier-keyring",
+                    variant="primary",
+                    disabled=not self._keyring_available,
+                )
+
+    def action_cancel(self) -> None:
+        """Esc — no tier chosen; the caller treats it as a setup skip."""
+        self.dismiss(None)
+
+    def on_button_pressed(self, event: Button.Pressed) -> None:
+        """Route the three buttons to their tier labels (or ``None``)."""
+        match event.button.id:
+            case "vault-tier-keyring":
+                self.dismiss("keyring")
+            case "vault-tier-session":
+                self.dismiss("session-file")
+            case _:
+                self.dismiss(None)
+
+
+class VaultCreatePassphraseModal(screen.ModalScreen[str | None]):
+    """Create a NEW vault passphrase — explicitly not an unlock prompt.
+
+    Dismisses with ``""`` (empty string) for "generate a strong
+    passphrase for me" — the recommended default — or the typed value
+    once both fields match, or ``None`` on cancel.  The empty-string
+    sentinel is safe because the typed path never accepts an empty
+    passphrase (SQLCipher reads it as "no encryption").
+
+    A generated value is revealed once afterwards via
+    [`VaultRevealModal`][terok.tui.screens.VaultRevealModal] so the
+    operator can save their recovery key; a typed value is something
+    they already know, so no reveal follows.
+    """
+
+    BINDINGS = [
+        _modal_binding("escape", "cancel", "Cancel"),
+    ]
+
+    CSS = """
+    VaultCreatePassphraseModal {
+        align: center middle;
+    }
+
+    #vault-create-dialog {
+        width: 76;
+        max-width: 100%;
+        height: auto;
+        border: heavy $primary;
+        border-title-align: right;
+        background: $surface;
+        padding: 1 2;
+    }
+
+    #vault-create-prompt {
+        margin-bottom: 1;
+        color: $text-muted;
+    }
+
+    #vault-create-mismatch {
+        color: $warning;
+        height: 1;
+    }
+
+    #vault-create-buttons {
+        height: 3;
+        align-horizontal: right;
+        margin-top: 1;
+    }
+
+    #vault-create-buttons Button {
+        margin-left: 1;
+    }
+    """
+
+    def compose(self) -> ComposeResult:
+        """Lay out the explainer, the two typed-entry fields, and the buttons."""
+        if Input is None:  # pragma: no cover — textual is stubbed in unit tests
+            return
+        dialog = Vertical(id="vault-create-dialog")
+        dialog.border_title = "Create vault passphrase"
+        with dialog:
+            yield Static(
+                "No vault exists yet — this creates a NEW passphrase (it does"
+                " not unlock anything).  Recommended: let terok generate a"
+                " strong one; it is shown once afterwards so you can save it"
+                " as your recovery key.\n\n"
+                "Or type your own below (entered twice, must match):",
+                id="vault-create-prompt",
+            )
+            yield Input(password=True, placeholder="passphrase", id="vault-create-input")
+            yield Input(password=True, placeholder="repeat passphrase", id="vault-create-repeat")
+            yield Static("", id="vault-create-mismatch")
+            with Horizontal(id="vault-create-buttons"):
+                yield Button("Cancel", id="vault-create-cancel", variant="default")
+                yield Button(
+                    "Use typed passphrase",
+                    id="vault-create-typed",
+                    variant="default",
+                    disabled=True,
+                )
+                yield Button(
+                    "Generate for me (recommended)",
+                    id="vault-create-generate",
+                    variant="primary",
+                )
+
+    def on_mount(self) -> None:
+        """Focus the primary (generate) button — it's the recommended path."""
+        if Input is None:  # pragma: no cover — textual is stubbed in unit tests
+            return
+        self.query_one("#vault-create-generate", Button).focus()
+
+    def _typed_values(self) -> tuple[str, str]:
+        """Return the two field values (empty strings when widgets are stubbed)."""
+        first = self.query_one("#vault-create-input", Input).value
+        second = self.query_one("#vault-create-repeat", Input).value
+        return first, second
+
+    def on_input_changed(self, _event: "Input.Changed") -> None:
+        """Enable the typed-path button only when both fields match and are non-empty."""
+        first, second = self._typed_values()
+        match_ok = bool(first) and first == second
+        self.query_one("#vault-create-typed", Button).disabled = not match_ok
+        hint = ""
+        if first and second and first != second:
+            hint = "passphrases do not match"
+        self.query_one("#vault-create-mismatch", Static).update(hint)
+
+    def action_cancel(self) -> None:
+        """Esc — no passphrase created; the caller treats it as a setup skip."""
+        self.dismiss(None)
+
+    def on_button_pressed(self, event: Button.Pressed) -> None:
+        """Route generate / typed / cancel to their dismissal values."""
+        match event.button.id:
+            case "vault-create-generate":
+                self.dismiss("")
+            case "vault-create-typed":
+                first, second = self._typed_values()
+                if first and first == second:
+                    self.dismiss(first)
+            case _:
+                self.dismiss(None)
+
+
+# ---------------------------------------------------------------------------
 # Vault Unlock Modal
 # ---------------------------------------------------------------------------
 
