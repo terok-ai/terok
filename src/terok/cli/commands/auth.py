@@ -130,9 +130,10 @@ def _run_one(provider: str, project_name: str | None, *, device_auth: bool = Fal
 
     resolved = resolve_auth_provider(provider)
     if project_name is not None:
-        # Project-scoped: verify the L2 image actually has the agent baked
-        # in before launching.  Host-wide auth resolves the image in the
-        # facade and does its own checks there.
+        # Project-scoped: verify the agent is baked into the project's L1
+        # image (which the L2 auth container builds on) before launching.
+        # Host-wide auth resolves the image in the facade and does its own
+        # checks there.
         require_agent_installed(load_project(project_name), resolved, noun="Provider")
     if resolved in (authenticated_entries(project_name) or ()):
         print(
