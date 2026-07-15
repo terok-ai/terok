@@ -1152,3 +1152,54 @@ class TestStreamContainers:
         ):
             sb._stream_containers(None, None, fix=False, reporter=object())
         assert [c.args for c in Doctor.call_args_list] == [("alpha", "t1"), ("alpha", "t2")]
+
+
+class TestStalePassphraseTasks:
+    """Running tasks that predate the last rekey still hold the old passphrase."""
+
+    def test_no_rekey_stamp_means_nothing_to_flag(self, tmp_path: Path) -> None:
+        """Absent stamp (no change since boot) → the walk never starts."""
+        from types import SimpleNamespace
+
+        from terok.cli.commands import sickbay
+
+        cfg = SimpleNamespace(vault_rekey_stamp_file=tmp_path / "never-written")
+        with unittest.mock.patch("terok.lib.core.config.make_sandbox_config", return_value=cfg):
+            assert sickbay._check_stale_passphrase_tasks(None, None) == []
+
+    def _run_task_check(self, *, state: str, started_at: float | None) -> object:
+        from types import SimpleNamespace
+
+        from terok.cli.commands import sickbay
+
+        container = SimpleNamespace(state=state, started_at=started_at)
+        runtime = unittest.mock.MagicMock()
+        runtime.container.return_value = container
+        with (
+            unittest.mock.patch.object(sickbay, "read_task_meta", return_value={"mode": "cli"}),
+            unittest.mock.patch.object(
+                sickbay, "tasks_meta_dir", return_value=Path("/tmp/terok-testing")
+            ),
+            unittest.mock.patch.object(sickbay._rt, "resolve_runtime", return_value=runtime),
+        ):
+            return sickbay._check_task_stale_passphrase(
+                "proj", "n2mb3", unittest.mock.MagicMock(), rekeyed_at=1000.0
+            )
+
+    def test_pre_rekey_running_task_warns_with_restart_hint(self) -> None:
+        result = self._run_task_check(state="running", started_at=900.0)
+        assert result is not None
+        status, label, detail = result
+        assert status == "warn"
+        assert label == "Task proj/n2mb3"
+        assert "restart the task" in detail
+
+    def test_post_rekey_task_is_clean(self) -> None:
+        assert self._run_task_check(state="running", started_at=2000.0) is None
+
+    def test_stopped_task_is_skipped(self) -> None:
+        assert self._run_task_check(state="exited", started_at=900.0) is None
+
+    def test_unknown_start_time_stays_silent(self) -> None:
+        """No start time (runtime probe failed) must not manufacture a warning."""
+        assert self._run_task_check(state="running", started_at=None) is None

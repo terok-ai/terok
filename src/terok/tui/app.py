@@ -922,7 +922,7 @@ if _HAS_TEXTUAL:
                 self.notify(
                     "Vault passphrase changed — every stored tier now holds the"
                     " new value.  Already-running tasks keep the old one until"
-                    " restarted.",
+                    " restarted; sickbay flags them.",
                     severity="information",
                     timeout=10,
                 )

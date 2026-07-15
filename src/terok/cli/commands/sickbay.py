@@ -423,6 +423,76 @@ def _check_shield_annotations(project_name: str | None, task_id: str | None) -> 
     return results
 
 
+def _check_stale_passphrase_tasks(
+    project_name: str | None, task_id: str | None
+) -> list[_CheckResult]:
+    """Flag running tasks whose container predates the last vault passphrase change.
+
+    A supervisor keeps the passphrase it resolved at spawn, so a task
+    started before ``vault passphrase change`` silently holds the OLD
+    one and fails on its next vault access.  Sandbox stamps every rekey
+    (``vault_rekey_stamp_file``, runtime-dir so it dies with the boot);
+    comparing container start times against the stamp names exactly the
+    tasks that need a restart.
+
+    Warn-only, deliberately no ``--fix``: the remedy is restarting a
+    *live agent session*, which sickbay must never do on its own.
+    """
+    from terok.lib.core.config import make_sandbox_config
+
+    try:
+        rekeyed_at = make_sandbox_config().vault_rekey_stamp_file.stat().st_mtime
+    except OSError:
+        return []  # no passphrase change since boot — nothing to flag
+
+    results: list[_CheckResult] = []
+    if project_name:
+        projects = [(project_name, load_project(project_name))]
+    else:
+        projects = [(p.name, p) for p in list_projects()]
+
+    for pid, project in projects:
+        meta_dir = tasks_meta_dir(pid)
+        if not meta_dir.is_dir():
+            continue
+        task_ids = list(iter_task_ids(meta_dir)) if task_id is None else [task_id]
+        for tid in task_ids:
+            result = _check_task_stale_passphrase(pid, tid, project, rekeyed_at=rekeyed_at)
+            if result:
+                results.append(result)
+
+    return results
+
+
+def _check_task_stale_passphrase(
+    pid: str, tid: str, project: ProjectConfig, *, rekeyed_at: float
+) -> _CheckResult | None:
+    """Check one task's container start time against the rekey stamp."""
+    if not is_valid_project_name(pid) or not is_task_id(tid):
+        return None
+    try:
+        meta = read_task_meta(tasks_meta_dir(pid), tid)
+    except Exception:  # noqa: BLE001
+        return None
+    if meta is None:
+        return None
+    mode = meta.get("mode")
+    if not mode:
+        return None
+    container = _rt.resolve_runtime(project).container(container_name(pid, mode, tid))
+    if container.state != "running":
+        return None
+    started = container.started_at
+    if started is None or started >= rekeyed_at:
+        return None
+    return (
+        "warn",
+        f"Task {pid}/{tid}",
+        "started before the last vault passphrase change — its supervisor still"
+        " holds the OLD passphrase; restart the task to pick up the new one",
+    )
+
+
 def _sanitize_id(value: str) -> str:
     """Strip C0/C1 control characters from a project name for safe terminal output."""
     import unicodedata
@@ -724,6 +794,8 @@ def _cmd_sickbay(
         for status, label, detail in _check_unfired_hooks(project_name, task_id, fix=fix):
             reporter.emit(status, label, detail)
         for status, label, detail in _check_shield_annotations(project_name, task_id):
+            reporter.emit(status, label, detail)
+        for status, label, detail in _check_stale_passphrase_tasks(project_name, task_id):
             reporter.emit(status, label, detail)
 
         _stream_containers(project_name, task_id, fix=fix, reporter=reporter)
