@@ -18,7 +18,13 @@ from __future__ import annotations
 from collections.abc import Callable
 from pathlib import Path
 
-from terok.lib.integrations.executor import AGENTS, AUTH_PROVIDERS, Authenticator
+from terok.lib.integrations.executor import (
+    AGENTS,
+    AUTH_PROVIDERS,
+    Authenticator,
+    credential_provider,
+    list_authenticated_agents,
+)
 
 from ..core.images import project_cli_image
 from ..orchestration.image import image_exists
@@ -116,6 +122,33 @@ def resolve_credential_routing(project_name: str | None) -> tuple[Path, str]:
         mounts_dir.mkdir(parents=True, exist_ok=True, mode=0o700)
         mounts_dir.chmod(0o700)
     return mounts_dir, project.credential_set
+
+
+def authenticated_entries(project_name: str | None = None) -> frozenset[str] | None:
+    """Auth entries that already hold a stored credential, or ``None`` when unknowable.
+
+    The vault stores credentials under provider keys (``anthropic``, ``github``);
+    this maps them back onto the auth entries that write them (``claude``,
+    ``gh``) so listings can badge already-authenticated entries.  The queried
+    credential set follows the same routing as
+    [`authenticate`][terok.lib.domain.auth.authenticate]: the host-wide bucket
+    for ``project_name=None`` and shared-scope projects, the project's private
+    set for ``credentials.scope: project``.
+
+    Returns ``None`` when the vault cannot be read — not yet provisioned,
+    sealed, or unlocking with a stale passphrase.  ``terok auth`` is often the
+    first command run on a fresh install, so an unreadable vault is a normal
+    state here, not an error; callers should present the auth state as unknown
+    rather than as "nothing authenticated".
+    """
+    from terok.lib.integrations.sandbox import NoPassphraseError, WrongPassphraseError
+
+    _, credential_set = resolve_credential_routing(project_name)
+    try:
+        stored = set(list_authenticated_agents(scope=credential_set))
+    except (NoPassphraseError, WrongPassphraseError):
+        return None
+    return frozenset(entry for entry in AUTH_PROVIDERS if credential_provider(entry) in stored)
 
 
 def authenticate(
@@ -310,6 +343,7 @@ def _resolve_host_auth_image(provider: str) -> str:
 __all__ = [
     "auth_provider_aliases",
     "authenticate",
+    "authenticated_entries",
     "available_auth_modes",
     "find_host_auth_image",
     "resolve_auth_provider",

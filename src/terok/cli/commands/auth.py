@@ -148,19 +148,26 @@ def _run_interactive(project_name: str | None, *, device_auth: bool = False) -> 
     *device_auth* forces the device-code login for every selected provider —
     the headless escape hatch when driving the menu on a remote host.
     """
-    from terok.lib.api.agents import AUTH_PROVIDERS, available_auth_modes
+    from terok.lib.api.agents import AUTH_PROVIDERS, authenticated_entries, available_auth_modes
 
     if project_name is not None:
         require_project_exists(project_name)
 
     provider_names = list(AUTH_PROVIDERS)
     provider_of = _provider_of()
+    authed = authenticated_entries(project_name)
     print("Authenticate agents — pick one or more by number or name (agent or provider):")
     for i, name in enumerate(provider_names, 1):
         info = AUTH_PROVIDERS[name]
-        modes = [_MODE_LABELS[m] for m in available_auth_modes(name)]
+        modes = f"[{', '.join(_MODE_LABELS[m] for m in available_auth_modes(name))}]"
         label = f"{info.label} → {provider_of[name]}" if name in provider_of else info.label
-        print(f"  {i:>2}. {name:<12} {label:<22} [{', '.join(modes)}]")
+        mark = "  ✓ authenticated" if name in (authed or ()) else ""
+        print(f"  {i:>2}. {name:<12} {label:<22} {modes:<30}{mark}".rstrip())
+    if authed is None:
+        print(
+            "  (vault locked — cannot tell which entries are already authenticated)",
+            file=sys.stderr,
+        )
 
     try:
         answer = input("\nChoice (numbers or names, comma-separated; empty = cancel): ").strip()
