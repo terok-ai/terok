@@ -111,7 +111,7 @@ def has_gpu(project: Any) -> bool:
     Badge-level truthiness only — every ``run.gpus`` selector shape
     (``true``, ``"all"``, a vendor name, a list of vendors) lights the
     badge; the vendor-aware interpretation happens at launch in
-    [`gpu_run_args`][terok_sandbox.runtime.gpu.gpu_run_args].
+    terok-sandbox's ``gpu_run_args``.
     """
     root = getattr(project, "root", None)
     if root is None:

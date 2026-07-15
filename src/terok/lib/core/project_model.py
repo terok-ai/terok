@@ -74,8 +74,8 @@ class ProjectConfig(BaseModel):
     ``"all"``/``true`` passes through every vendor detected on the
     host; ``"nvidia"``, ``"amd"``, ``"intel"`` (single, comma-separated,
     or a list) select vendors explicitly.  Kept in the raw config shape —
-    terok-executor normalizes it at launch via
-    [`normalize_gpus`][terok_sandbox.config_schema.normalize_gpus].
+    terok-executor normalizes it at launch via terok-sandbox's
+    ``normalize_gpus``.
     """
     nested_containers: bool = False
     """Project runs podman/docker inside its container (see ``run.nested_containers``)."""

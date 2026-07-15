@@ -149,7 +149,9 @@ class TestTaskStateInheritance:
     ("output", "error", "expected"),
     [
         pytest.param(
-            "proj-cli-1 running\nproj-web-2 exited\nproj-run-3 stopped\n",
+            '[{"Names": ["proj-cli-1"], "State": "running"},'
+            ' {"Names": ["proj-web-2"], "State": "exited"},'
+            ' {"Names": ["proj-run-3"], "State": "stopped"}]',
             None,
             {
                 "proj-cli-1": "running",
@@ -159,12 +161,13 @@ class TestTaskStateInheritance:
             id="parsed-output",
         ),
         pytest.param(
-            "proj-cli-1 Running\nproj-web-2 Exited\n",
+            '[{"Names": ["proj-cli-1"], "State": "Running"},'
+            ' {"Names": ["proj-web-2"], "State": "Exited"}]',
             None,
             {"proj-cli-1": "running", "proj-web-2": "exited"},
             id="parsed-output-normalizes-case",
         ),
-        pytest.param("", None, {}, id="empty-output"),
+        pytest.param("[]", None, {}, id="empty-output"),
         pytest.param(None, FileNotFoundError(), None, id="podman-missing"),
         pytest.param(
             None,
