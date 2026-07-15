@@ -269,7 +269,7 @@ def generate_into_tmp(values: dict[str, object]) -> tuple[str, str, str]:
                 project_name="gpu-proj",
                 upstream_url="https://example.com/r.git",
             ),
-            ["gpus: all", "nvcr.io/nvidia/"],
+            ["gpus: nvidia", "nvcr.io/nvidia/"],
             id="online-nvidia",
         ),
         pytest.param(

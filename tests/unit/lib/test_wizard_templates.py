@@ -112,8 +112,8 @@ class TestProjectTemplate:
         assert "# gate:" not in _render("gatekeeping", "ubuntu")
 
     def test_run_gpus_section_only_for_nvidia(self) -> None:
-        assert "gpus: all" in _render("online", "nvidia")
-        assert "gpus: all" not in _render("online", "ubuntu")
+        assert "gpus: nvidia" in _render("online", "nvidia")
+        assert "gpus: nvidia" not in _render("online", "ubuntu")
 
     def test_agents_line_omitted_when_unset(self) -> None:
         """Empty AGENTS suppresses the line and surfaces the commented hint."""

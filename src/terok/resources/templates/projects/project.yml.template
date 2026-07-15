@@ -41,9 +41,9 @@ image:
 {%- if BASE == "nvidia" %}
 
 run:
-  # GPU passthrough: "all" auto-detects every vendor the host supports;
-  # or pick vendors explicitly — nvidia, amd, intel (single or a list).
-  gpus: all
+  # GPU passthrough matching this NVIDIA base image.  Other selectors:
+  # "all" (every vendor the host supports), amd, intel — or a list.
+  gpus: nvidia
 {%- endif %}
 {%- if SECURITY_CLASS == "gatekeeping" %}
 

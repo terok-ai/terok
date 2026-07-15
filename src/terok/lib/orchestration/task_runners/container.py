@@ -192,7 +192,7 @@ def _run_container(
         image: Container image to run.
         env: Environment variables to pass via ``-e``.
         volumes: Typed volume specs (sandbox decides mount vs inject).
-        project: The resolved [`ProjectConfig`][terok.cli.commands.sickbay.ProjectConfig] (used for the GPU selector).
+        project: The resolved [`ProjectConfig`][terok.lib.core.project_model.ProjectConfig] (used for the GPU selector).
         task_id: Task identifier — the second component of the clearance
             annotation triple.
         task_dir: Per-task directory (used for per-task shield state).
