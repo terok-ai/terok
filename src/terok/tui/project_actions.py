@@ -291,7 +291,7 @@ class ProjectActionsMixin(_MixinBase):
         )
 
     async def _action_build_agents(self) -> None:
-        """Rebuild from L0 with fresh agents."""
+        """Rebuild from L1 with fresh agents."""
         if not self.current_project_name:
             self.notify("No project selected.")
             return
@@ -299,7 +299,7 @@ class ProjectActionsMixin(_MixinBase):
         self._run_console_action(
             "terok.tui.worker_actions:build_agents",
             pid,
-            title=f"Rebuilding {pid} from L0 with fresh agents",
+            title=f"Rebuilding {pid} from L1 with fresh agents",
             on_complete=self._invalidate_image_caches,
         )
 

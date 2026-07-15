@@ -94,7 +94,7 @@ def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) ->
         "--refresh-agents",
         dest="refresh_agents",
         action="store_true",
-        help="Rebuild from L0 with fresh agent installs (cache bust)",
+        help="Rebuild from L1 with fresh agent installs (cache bust)",
     )
     p_build.add_argument(
         "--agents",

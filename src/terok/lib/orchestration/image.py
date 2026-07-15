@@ -186,7 +186,8 @@ class ProjectImage:
 
         Args:
             include_dev: Also build the L2 dev image (tagged ``<project>:l2-dev``).
-            refresh_agents: Rebuild L0+L1 with fresh agents (cache bust).
+            refresh_agents: Rebuild L1 with fresh agents (cache bust); L0
+                is re-run fully cached.
             full_rebuild: Rebuild every layer with ``--no-cache --pull=always``.
             agents: One-shot override for the agent selection.  ``None``
                 uses ``project.agents`` (which inherits from the global

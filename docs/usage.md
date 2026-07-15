@@ -315,7 +315,7 @@ terok project build myproj --dev
 
 Build modes:
 - **Default** (`build`): Only rebuilds L2 project images, reuses existing L0/L1. Use for project config changes.
-- **`--refresh-agents`**: Rebuilds L0+L1+L2 and cache-busts the per-agent install layers, leaving the system-package layer intact. Use when an agent CLI has a new release.
+- **`--refresh-agents`**: Rebuilds L1+L2 and cache-busts the per-agent install layers, leaving the system-package layer intact. Use when an agent CLI has a new release.
 - **`--full-rebuild`**: Rebuilds L0+L1+L2 with `--no-cache --pull=always`. Use when the base image or system packages need updating.
 - **`--agents <list>|all`**: One-shot override of the agent selection for this build. Does not modify `project.yml`.
 

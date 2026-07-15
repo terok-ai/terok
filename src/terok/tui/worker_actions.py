@@ -40,7 +40,7 @@ def build(project_name: str) -> None:
 
 
 def build_agents(project_name: str) -> None:
-    """Rebuild *project_name* from L0 with a fresh agent set."""
+    """Rebuild *project_name* from L1 with a fresh agent set."""
     from terok.lib.api import build_images
 
     build_images(project_name, refresh_agents=True)

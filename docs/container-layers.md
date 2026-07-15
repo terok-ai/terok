@@ -50,12 +50,12 @@ Built `FROM` the L1 image.
 | Command | Layers Built | When to Use |
 |---------|-------------|-------------|
 | `terok project build <project>` | L2 only | Project config changes |
-| `terok project build <project> --refresh-agents` | L0 + L1 + L2 | Bust the agent-install cache |
+| `terok project build <project> --refresh-agents` | L1 + L2 | Bust the agent-install cache |
 | `terok project build <project> --full-rebuild` | L0 + L1 + L2 (no cache) | Refresh base image + system packages |
-| `terok project build <project> --agents <list>\|all` | L0 + L1 + L2 | One-shot override of which agents bake into L1 |
+| `terok project build <project> --agents <list>\|all` | L1 (if missing) + L2 | One-shot override of which agents bake into L1 |
 | `terok project build <project> --dev` | + L2-dev image | Manual debugging container |
 
-`--refresh-agents` rebuilds from L0 with a fresh `AGENT_CACHE_BUST` build-arg; the per-agent install layers below the cache-bust point are re-executed, the system-package layer above it is reused.
+`--refresh-agents` rebuilds L1 with a fresh `AGENT_CACHE_BUST` build-arg (L0 is re-run fully cached); the per-agent install layers below the cache-bust point are re-executed, the system-package layer above it is reused.
 
 `--full-rebuild` passes `--no-cache --pull=always`, forcing a fresh base-image pull and re-running system-package installs.
 
