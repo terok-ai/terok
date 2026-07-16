@@ -245,7 +245,10 @@ class GpuSelectScreen(ModalScreen[str | None]):
             for cb in self.query(Checkbox)
             if cb.id != _MASTER_ID and cb.value and cb.name
         ]
-        return ",".join(checked)
+        # Initial tokens the probe hasn't materialized as checkboxes yet
+        # (Apply racing _load_devices) must survive, not silently drop.
+        pending = sorted(self._pending_tokens - set(checked))
+        return ",".join([*checked, *pending])
 
 
 __all__ = ["GpuSelectScreen"]

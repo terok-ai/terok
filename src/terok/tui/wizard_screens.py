@@ -147,8 +147,15 @@ class WizardFormScreen(ModalScreen["dict[str, str] | None"]):
         self._agents_override: str | None = initial.pop("agents", None) or None
         # ``None`` = untouched — the effective value then follows the
         # selected base's implied vendor (GPU software stacks default
-        # their vendor on; plain bases default off).
-        self._gpus_override: str | None = initial.pop("gpus", None)
+        # their vendor on; plain bases default off).  A restored value
+        # equal to that derived default is treated as untouched, so a
+        # form/review Back round-trip does not freeze the default into
+        # an explicit override that later base changes cannot update.
+        initial_gpus = initial.pop("gpus", None)
+        base_default = BASE_GPU_VENDOR.get(initial.get("base", ""), "")
+        self._gpus_override: str | None = (
+            None if initial_gpus is None or initial_gpus == base_default else initial_gpus
+        )
         self._initial: dict[str, str] = initial
 
     def compose(self) -> ComposeResult:

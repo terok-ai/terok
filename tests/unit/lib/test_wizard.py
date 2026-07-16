@@ -561,8 +561,9 @@ class TestCustomBase:
     def test_validate_accepts(self, value: str) -> None:
         assert validate_custom_image(value) is None
 
-    @pytest.mark.parametrize("value", ["", "two words"])
+    @pytest.mark.parametrize("value", ["", "two words", 'rocky"linux:9', "img\\name", "img'x"])
     def test_validate_rejects(self, value: str) -> None:
+        """Empty, whitespace, and YAML-hostile quote characters all bounce."""
         assert validate_custom_image(value) is not None
 
     def test_render_uses_custom_image_and_family_hint(self) -> None:

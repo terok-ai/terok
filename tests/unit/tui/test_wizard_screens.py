@@ -267,6 +267,34 @@ async def test_gpu_base_defaults_gpu_button_and_value() -> None:
 
 
 @pytest.mark.asyncio
+async def test_restored_derived_gpu_default_stays_derived() -> None:
+    """Back round-trip: a base-derived selector must keep following the base."""
+    from textual.widgets import Select
+
+    app = _WizardHost(WizardFormScreen(initial={"base": "rocm", "gpus": "amd"}))
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        app.screen.query_one("#wizard-field-base", Select).value = "nvidia"
+        await pilot.pause()
+        label = str(app.screen.query_one("#wizard-form-gpus", Button).label)
+    assert label == "GPU: nvidia"
+
+
+@pytest.mark.asyncio
+async def test_restored_explicit_gpu_choice_survives_base_change() -> None:
+    """Back round-trip: an explicit selector is not re-derived from the base."""
+    from textual.widgets import Select
+
+    app = _WizardHost(WizardFormScreen(initial={"base": "rocm", "gpus": "amd:1"}))
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        app.screen.query_one("#wizard-field-base", Select).value = "nvidia"
+        await pilot.pause()
+        label = str(app.screen.query_one("#wizard-form-gpus", Button).label)
+    assert label == "GPU: amd:1"
+
+
+@pytest.mark.asyncio
 async def test_gpu_modal_selection_overrides_base_default() -> None:
     """An explicit GPU choice survives later base changes."""
     from textual.widgets import Select

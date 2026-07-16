@@ -11,6 +11,8 @@ nothing — the wizard's GPU button relies on all four.
 
 from __future__ import annotations
 
+import threading
+from contextlib import AbstractContextManager
 from unittest.mock import patch
 
 import pytest
@@ -45,7 +47,7 @@ class _Host(App):
         self.result = result
 
 
-def _detected(choices: tuple[GpuDeviceChoice, ...]):
+def _detected(choices: tuple[GpuDeviceChoice, ...]) -> AbstractContextManager[object]:
     return patch("terok.tui.gpu_screen.detect_gpu_choices", return_value=choices)
 
 
@@ -142,6 +144,27 @@ async def test_empty_detection_degrades_to_all_only() -> None:
             await pilot.click("#gpu-select-apply")
             await pilot.pause()
     assert app.result == "all"
+
+
+@pytest.mark.asyncio
+async def test_apply_before_detection_keeps_initial_tokens() -> None:
+    """Applying while the probe is still running must not drop the selector."""
+    gate = threading.Event()
+
+    def _blocked_probe() -> tuple[GpuDeviceChoice, ...]:
+        gate.wait(5)
+        return ()
+
+    try:
+        with patch("terok.tui.gpu_screen.detect_gpu_choices", side_effect=_blocked_probe):
+            app = _Host(GpuSelectScreen(initial="amd:1"))
+            async with app.run_test(size=(100, 44)) as pilot:
+                await pilot.pause()
+                await pilot.click("#gpu-select-apply")
+                await pilot.pause()
+    finally:
+        gate.set()
+    assert app.result == "amd:1"
 
 
 @pytest.mark.asyncio

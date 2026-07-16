@@ -165,17 +165,27 @@ def detect_gpu_choices() -> tuple[GpuDeviceChoice, ...]:
     return tuple(choices)
 
 
+_IMAGE_REF_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9._:/@-]*")
+"""Conservative OCI-reference shape: registry/name/tag/digest characters
+only.  Anything outside it (quotes, backslashes, whitespace) would break
+the quoted YAML the template renders the value into."""
+
+
 def validate_custom_image(value: str) -> str | None:
     """Light validation for a hand-typed base image reference.
 
     Only structural sanity — the authoritative reference validation
-    happens in terok-executor at build time; this catches the obvious
-    (empty, whitespace) before it lands in project.yml.
+    happens in terok-executor at build time; this catches what would
+    corrupt the generated ``project.yml`` (empty values, whitespace,
+    quote characters) before it lands there.
     """
     if not value:
         return "Custom base image name is required."
-    if any(ch.isspace() for ch in value):
-        return "Image references cannot contain whitespace."
+    if _IMAGE_REF_RE.fullmatch(value) is None:
+        return (
+            "Image references may only contain letters, digits, and '. _ : / @ -' "
+            "(no whitespace or quotes)."
+        )
     return None
 
 
