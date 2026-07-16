@@ -166,18 +166,28 @@ def _stub_credential_db(tmp_path_factory: pytest.TempPathFactory) -> Iterator[No
     a SQLCipher file with a known test passphrase — tests that mock
     deeper (``cfg.open_credential_db.return_value = MagicMock()``)
     override this stub.
+
+    The stub mirrors the real signature — ``open_credential_db(db_path=None,
+    *, prompt_on_tty=False)`` — because callers like
+    [`list_authenticated_agents`][terok_executor.list_authenticated_agents]
+    pass ``db_path`` positionally; a keyword-only stub raises ``TypeError``
+    on exactly the vault-backed code paths tests need to exercise.  The
+    ``db_path`` override is deliberately ignored: every test reads and
+    writes the one per-session vault file.
     """
     from terok_sandbox import CredentialDB
 
     db_path = tmp_path_factory.mktemp("unit-vault") / "credentials.db"
     test_passphrase = "unit-test-passphrase"  # nosec: B105 — fixture, not a real secret
 
-    def _open(*, prompt_on_tty: bool = False) -> CredentialDB:
+    def _open(_db_path: Path | None = None, *, prompt_on_tty: bool = False) -> CredentialDB:
         return CredentialDB(db_path, passphrase=test_passphrase)
 
     with patch(
         "terok_sandbox.config.SandboxConfig.open_credential_db",
-        new=lambda self, *, prompt_on_tty=False: _open(prompt_on_tty=prompt_on_tty),
+        new=lambda self, db_path=None, *, prompt_on_tty=False: _open(
+            db_path, prompt_on_tty=prompt_on_tty
+        ),
     ):
         yield
 

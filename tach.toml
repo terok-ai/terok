@@ -273,6 +273,7 @@ depends_on = [
 path = "terok.lib.domain.project"
 layer = "domain"
 depends_on = [
+    "terok.lib.domain.auth",
     "terok.lib.orchestration.agent_config",
     "terok.lib.orchestration.image",
     "terok.lib.domain.project_state",
@@ -966,10 +967,12 @@ from = ["terok.lib.domain.ssh"]
 expose = [
     "auth_provider_aliases",
     "authenticate",
+    "authenticated_entries",
     "available_auth_modes",
     "find_host_auth_image",
     "resolve_auth_provider",
     "resolve_credential_routing",
+    "stored_credential_entries",
 ]
 from = ["terok.lib.domain.auth"]
 
