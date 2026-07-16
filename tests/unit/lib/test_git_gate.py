@@ -100,6 +100,10 @@ def test_sync_project_gate_https_clone() -> None:
                 return git_result()
             if cmd[:4] == ["git", "-C", str(gate_dir), "remote"]:
                 return git_result(stdout="Fetching origin\n")
+            if cmd[:4] == ["git", "-C", str(gate_dir), "symbolic-ref"]:
+                return git_result(stdout="refs/heads/main\n")
+            if cmd[:4] == ["git", "-C", str(gate_dir), "show-ref"]:
+                return git_result()
             return git_result(returncode=1)
 
         with patch(
