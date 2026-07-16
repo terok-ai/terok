@@ -2428,6 +2428,43 @@ def _format_credentials_typed(status: VaultStatus) -> str:
     )
 
 
+def _vault_state_label(status: VaultStatus, *, ok: Style, warn: Style, err: Style) -> Text:
+    """Name the state — "unprovisioned" / "locked (why)" / "error" / "unlocked".
+
+    The distinct labels matter: each calls for a different remedy, and
+    the bare word "locked" hides which one the operator is facing.
+    """
+    if status.state is VaultState.UNPROVISIONED:
+        return Text("not set up yet — run terok setup", style=warn)
+    if status.state is VaultState.LOCKED:
+        return Text(f"LOCKED — {status.lock_reason or 'no tier resolved'}", style=err)
+    if status.state is VaultState.ERROR:
+        return Text("ERROR — see below", style=err)
+    return Text("unlocked", style=ok)
+
+
+def _vault_inventory_lines(status: VaultStatus, *, dim: Style) -> list[Text]:
+    """Render the SSH-key / credential inventory rows.
+
+    ``None`` means the DB couldn't be read; rendered explicitly so a
+    locked vault holding real data isn't mistaken for a fresh empty
+    install ("SSH keys: 0  /  Credentials: none stored").
+    """
+    lines: list[Text] = []
+    if status.ssh_keys is None:
+        lines.append(Text.assemble("SSH keys:    ", Text("(unavailable)", style=dim)))
+    else:
+        lines.append(Text(f"SSH keys:    {status.ssh_keys}"))
+
+    if status.providers is None:
+        lines.append(Text.assemble("Credentials: ", Text("(unavailable)", style=dim)))
+    elif status.providers:
+        lines.append(Text(f"Credentials: {_format_credentials_typed(status)}"))
+    else:
+        lines.append(Text.assemble("Credentials: ", Text("none stored", style=dim)))
+    return lines
+
+
 def render_vault_status(status: VaultStatus | None) -> Text:
     """Render vault status details as a Rich Text object.
 
@@ -2446,20 +2483,8 @@ def render_vault_status(status: VaultStatus | None) -> Text:
     err = Style(color="red")
     dim = Style(dim=True)
 
-    # Name the state: "unprovisioned" / "no passphrase" / "wrong
-    # passphrase" / "broken tier" call for different remedies, and the
-    # bare word "locked" hides which one the operator is facing.
-    if status.state is VaultState.UNPROVISIONED:
-        state_label = Text("not set up yet — run terok setup", style=warn)
-    elif status.state is VaultState.LOCKED:
-        state_label = Text(f"LOCKED — {status.lock_reason or 'no tier resolved'}", style=err)
-    elif status.state is VaultState.ERROR:
-        state_label = Text("ERROR — see below", style=err)
-    else:
-        state_label = Text("unlocked", style=ok)
-
     lines: list[Text] = [
-        Text.assemble("State:       ", state_label),
+        Text.assemble("State:       ", _vault_state_label(status, ok=ok, warn=warn, err=err)),
     ]
 
     if status.state is VaultState.UNLOCKED and status.source is not None:
@@ -2471,20 +2496,7 @@ def render_vault_status(status: VaultStatus | None) -> Text:
     if status.db_error is not None:
         lines.append(Text.assemble("DB error:    ", Text(status.db_error, style=err)))
 
-    # ``None`` means the DB couldn't be read; render explicitly so a
-    # locked vault holding real data isn't mistaken for a fresh empty
-    # install ("SSH keys: 0  /  Credentials: none stored").
-    if status.ssh_keys is None:
-        lines.append(Text.assemble("SSH keys:    ", Text("(unavailable)", style=dim)))
-    else:
-        lines.append(Text(f"SSH keys:    {status.ssh_keys}"))
-
-    if status.providers is None:
-        lines.append(Text.assemble("Credentials: ", Text("(unavailable)", style=dim)))
-    elif status.providers:
-        lines.append(Text(f"Credentials: {_format_credentials_typed(status)}"))
-    else:
-        lines.append(Text.assemble("Credentials: ", Text("none stored", style=dim)))
+    lines.extend(_vault_inventory_lines(status, dim=dim))
 
     # The shared warning catalog — same facts and wording as the CLI
     # ``vault status`` and the pill, authored once sandbox-side.

@@ -61,7 +61,7 @@ if _HAS_TEXTUAL:
         needs_setup,
     )
     from terok.lib.api.shield import RecoveryStatus, ShieldManager
-    from terok.lib.api.vault import VaultStatus
+    from terok.lib.api.vault import PassphraseChangeResult, VaultStatus
 
     from ..lib.api import (
         BrokenProject,
@@ -823,29 +823,19 @@ if _HAS_TEXTUAL:
                     timeout=8,
                 )
 
-        @work(exclusive=True, group="vault-change", exit_on_error=False)
-        async def _run_vault_change_flow(self) -> None:
-            """Change the vault passphrase — the TUI rendering of the CLI verb.
+        async def _collect_change_inputs(self) -> "tuple[str | None, str] | None":
+            """Probe the vault and run the change conversation's modals.
 
-            Drives sandbox's ``change_passphrase`` (the same prompt-free
-            core behind ``vault passphrase change``): verify → rekey the
-            DB → rewrite every tier holding the old value → drop the
-            recovery marker.  The *current* passphrase is asked for only
-            when the vault is locked — when a tier resolves it, retyping
-            would be theatre (Reveal prints it to the same operator).
-            The new value comes from the create modal (typed-and-
-            confirmed, or Enter to generate) and is revealed + re-acked
-            after the change succeeded — the previously confirmed copy
-            is now the wrong passphrase.
+            Returns ``(old, typed)`` — ``old`` is ``None`` when a tier
+            resolves the current passphrase (retyping would be theatre;
+            Reveal prints it to the same operator), ``typed`` is ``""``
+            for the generate sentinel.  ``None`` means the flow should
+            stop: unprovisioned vault, probe failure, or the operator
+            cancelled (each already notified).
             """
             import asyncio
 
-            from terok.lib.api.vault import (
-                VaultState,
-                WrongPassphraseError,
-                change_passphrase,
-                load_vault_status,
-            )
+            from terok.lib.api.vault import VaultState, load_vault_status
 
             from .screens import VaultCreatePassphraseModal, VaultUnlockModal
 
@@ -853,7 +843,7 @@ if _HAS_TEXTUAL:
                 status = await asyncio.to_thread(load_vault_status)
             except Exception as exc:  # noqa: BLE001 — surface probe failures verbatim
                 self.notify(f"Vault probe failed: {exc}", severity="error", timeout=15)
-                return
+                return None
             if status.state is VaultState.UNPROVISIONED:
                 self.notify(
                     "Nothing to change — the vault has no passphrase yet."
@@ -861,7 +851,7 @@ if _HAS_TEXTUAL:
                     severity="warning",
                     timeout=10,
                 )
-                return
+                return None
 
             old: str | None = None
             if status.state is not VaultState.UNLOCKED:
@@ -877,42 +867,33 @@ if _HAS_TEXTUAL:
                 )
                 if not old:
                     self.notify("Passphrase change cancelled.", severity="warning", timeout=8)
-                    return
+                    return None
 
             typed = await self.push_screen_wait(VaultCreatePassphraseModal())
             if typed is None:
                 self.notify("Passphrase change cancelled.", severity="warning", timeout=8)
-                return
+                return None
+            return old, typed
 
-            from terok.lib.core.config import make_sandbox_config
-
-            cfg = make_sandbox_config()
-            try:
-                result = await asyncio.to_thread(change_passphrase, cfg, old=old, new=typed or None)
-            except WrongPassphraseError:
+        def _notify_change_failure(self, exc: BaseException) -> None:
+            """Render a failed ``change_passphrase`` call as one honest notification."""
+            if "database is locked" in str(exc).lower():
                 self.notify(
-                    "That passphrase does not open the credentials DB — nothing was changed.",
+                    "Cannot re-encrypt the credentials DB while it is in use —"
+                    " a running task's supervisor still holds it open.  Stop or"
+                    " delete the running tasks, then retry.  Nothing was changed.",
                     severity="error",
-                    timeout=10,
+                    timeout=20,
                 )
-                return
-            except Exception as exc:  # noqa: BLE001 — every failure becomes a notification
-                if "database is locked" in str(exc).lower():
-                    self.notify(
-                        "Cannot re-encrypt the credentials DB while it is in use —"
-                        " a running task's supervisor still holds it open.  Stop or"
-                        " delete the running tasks, then retry.  Nothing was changed.",
-                        severity="error",
-                        timeout=20,
-                    )
-                elif isinstance(exc, (ValueError, RuntimeError)):
-                    # change_passphrase's own refusals (identical/empty value,
-                    # passphrase-command tier) arrive fully worded.
-                    self.notify(f"Nothing was changed: {exc}", severity="error", timeout=15)
-                else:
-                    self.notify(f"Passphrase change failed: {exc}", severity="error", timeout=20)
-                return
+            elif isinstance(exc, (ValueError, RuntimeError)):
+                # change_passphrase's own refusals (identical/empty value,
+                # passphrase-command tier) arrive fully worded.
+                self.notify(f"Nothing was changed: {exc}", severity="error", timeout=15)
+            else:
+                self.notify(f"Passphrase change failed: {exc}", severity="error", timeout=20)
 
+        def _notify_change_outcome(self, result: "PassphraseChangeResult") -> None:
+            """Report the change result — loud when any tier still needs attention."""
             if result.problems:
                 details = "\n".join(f"{p.tier}: {p.detail}" for p in result.problems)
                 self.notify(
@@ -930,6 +911,44 @@ if _HAS_TEXTUAL:
                     severity="information",
                     timeout=10,
                 )
+
+        @work(exclusive=True, group="vault-change", exit_on_error=False)
+        async def _run_vault_change_flow(self) -> None:
+            """Change the vault passphrase — the TUI rendering of the CLI verb.
+
+            Drives sandbox's ``change_passphrase`` (the same prompt-free
+            core behind ``vault passphrase change``): verify → rekey the
+            DB → rewrite every tier holding the old value → drop the
+            recovery marker.  The conversation lives in
+            ``_collect_change_inputs``; the new value is revealed +
+            re-acked after the change succeeded — the previously
+            confirmed copy is now the wrong passphrase.
+            """
+            import asyncio
+
+            from terok.lib.api.vault import WrongPassphraseError, change_passphrase
+            from terok.lib.core.config import make_sandbox_config
+
+            inputs = await self._collect_change_inputs()
+            if inputs is None:
+                return
+            old, typed = inputs
+
+            cfg = make_sandbox_config()
+            try:
+                result = await asyncio.to_thread(change_passphrase, cfg, old=old, new=typed or None)
+            except WrongPassphraseError:
+                self.notify(
+                    "That passphrase does not open the credentials DB — nothing was changed.",
+                    severity="error",
+                    timeout=10,
+                )
+                return
+            except Exception as exc:  # noqa: BLE001 — every failure becomes a notification
+                self._notify_change_failure(exc)
+                return
+
+            self._notify_change_outcome(result)
             await self._refresh_vault_status()
             # The recovery marker was dropped with the old passphrase —
             # reveal the new value (minted or typed) and collect a fresh

@@ -26,14 +26,23 @@ _change_flow = TerokTUI._run_vault_change_flow.__wrapped__
 
 @pytest.fixture
 def flow_stub() -> SimpleNamespace:
-    """Duck for ``_run_vault_change_flow`` — modal + notify + refresh seams."""
-    return SimpleNamespace(
+    """Duck for ``_run_vault_change_flow`` — modal + notify + refresh seams.
+
+    The real conversation / notification helpers are bound onto the
+    stub so the tests keep exercising the full flow behavior after the
+    complexity split, not a mocked-out skeleton.
+    """
+    stub = SimpleNamespace(
         push_screen_wait=AsyncMock(),
         notify=MagicMock(),
         _refresh_vault_status=AsyncMock(),
         _reveal_new_passphrase=AsyncMock(),
         _last_vault_status=None,
     )
+    stub._collect_change_inputs = TerokTUI._collect_change_inputs.__get__(stub)
+    stub._notify_change_failure = TerokTUI._notify_change_failure.__get__(stub)
+    stub._notify_change_outcome = TerokTUI._notify_change_outcome.__get__(stub)
+    return stub
 
 
 def _status(state: VaultState) -> SimpleNamespace:
