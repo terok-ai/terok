@@ -2328,7 +2328,7 @@ class TestVaultRevealAction:
     ) -> dict[str, mock.Mock]:
         """Stubs for the three api sub-modules ``_action_vault_reveal`` imports from.
 
-        The action imports ``SandboxConfig`` from ``terok.lib.api``,
+        The action imports ``make_sandbox_config`` from ``terok.lib.api``,
         [`RecoveryStatus`][terok_sandbox.RecoveryStatus] from
         ``terok.lib.api.shield`` (and reads its
         ``is_acknowledged`` classmethod), and the two passphrase
@@ -2338,7 +2338,7 @@ class TestVaultRevealAction:
         """
         ack = is_recovery_acknowledged or mock.Mock(return_value=False)
         return {
-            "terok.lib.api": mock.Mock(SandboxConfig=lambda: cfg),
+            "terok.lib.api": mock.Mock(make_sandbox_config=lambda: cfg),
             "terok.lib.api.shield": mock.Mock(RecoveryStatus=mock.Mock(is_acknowledged=ack)),
             "terok.lib.api.vault": mock.Mock(
                 NoPassphraseError=no_pass,
@@ -2430,7 +2430,7 @@ class TestVaultRevealResult:
         instance._refresh_vault_status = mock.AsyncMock()
         ack_recovery = mock.Mock(return_value=True)
         stubs = {
-            "terok.lib.api": mock.Mock(SandboxConfig=lambda: mock.Mock()),
+            "terok.lib.api": mock.Mock(make_sandbox_config=lambda: mock.Mock()),
             "terok.lib.api.shield": mock.Mock(RecoveryStatus=mock.Mock(acknowledge=ack_recovery)),
         }
         with mock.patch.dict(sys.modules, stubs):
@@ -2446,7 +2446,7 @@ class TestVaultRevealResult:
         instance._refresh_vault_status = mock.AsyncMock()
         ack_recovery = mock.Mock(return_value=True)
         stubs = {
-            "terok.lib.api": mock.Mock(SandboxConfig=lambda: mock.Mock()),
+            "terok.lib.api": mock.Mock(make_sandbox_config=lambda: mock.Mock()),
             "terok.lib.api.shield": mock.Mock(RecoveryStatus=mock.Mock(acknowledge=ack_recovery)),
         }
         with mock.patch.dict(sys.modules, stubs):
@@ -2462,7 +2462,7 @@ class TestVaultRevealResult:
         instance._refresh_vault_status = mock.AsyncMock()
         ack_recovery = mock.Mock(return_value=True)
         stubs = {
-            "terok.lib.api": mock.Mock(SandboxConfig=lambda: mock.Mock()),
+            "terok.lib.api": mock.Mock(make_sandbox_config=lambda: mock.Mock()),
             "terok.lib.api.shield": mock.Mock(RecoveryStatus=mock.Mock(acknowledge=ack_recovery)),
         }
         with mock.patch.dict(sys.modules, stubs):
@@ -2487,7 +2487,7 @@ class TestVaultAcknowledgeAction:
         instance._refresh_vault_status = mock.AsyncMock()
         ack_recovery = mock.Mock(return_value=True)
         stubs = {
-            "terok.lib.api": mock.Mock(SandboxConfig=lambda: mock.Mock()),
+            "terok.lib.api": mock.Mock(make_sandbox_config=lambda: mock.Mock()),
             "terok.lib.api.shield": mock.Mock(RecoveryStatus=mock.Mock(acknowledge=ack_recovery)),
         }
         with mock.patch.dict(sys.modules, stubs):
@@ -2955,7 +2955,7 @@ class TestOnVaultUnlockResult:
         """An empty / ``None`` passphrase shortcuts before touching the disk."""
         app_mod, app_class = import_app()
         instance = self._make_instance(app_class, tmp_path / "session" / "passphrase")
-        with mock.patch.object(app_mod, "SandboxConfig") as ctor:
+        with mock.patch("terok.lib.core.config.make_sandbox_config") as ctor:
             run(app_class._on_vault_unlock_result(instance, None))
             run(app_class._on_vault_unlock_result(instance, ""))
         ctor.assert_not_called()
@@ -2966,7 +2966,10 @@ class TestOnVaultUnlockResult:
         app_mod, app_class = import_app()
         target = tmp_path / "session" / "passphrase"
         instance = self._make_instance(app_class, target)
-        with mock.patch.object(app_mod, "SandboxConfig", return_value=instance._test_sandbox_cfg):
+        with mock.patch(
+            "terok.lib.core.config.make_sandbox_config",
+            return_value=instance._test_sandbox_cfg,
+        ):
             run(app_class._on_vault_unlock_result(instance, "hunter2"))
         assert target.read_text(encoding="utf-8") == "hunter2\n"
         # 0o600 — owner rw, nothing else.
@@ -2985,7 +2988,10 @@ class TestOnVaultUnlockResult:
         not_a_dir = tmp_path / "regular-file"
         not_a_dir.write_text("blocker")
         instance = self._make_instance(app_class, not_a_dir / "child" / "passphrase")
-        with mock.patch.object(app_mod, "SandboxConfig", return_value=instance._test_sandbox_cfg):
+        with mock.patch(
+            "terok.lib.core.config.make_sandbox_config",
+            return_value=instance._test_sandbox_cfg,
+        ):
             run(app_class._on_vault_unlock_result(instance, "swordfish"))
         instance._refresh_vault_status.assert_not_awaited()
         # Notify is called with the error severity — the operator sees a red toast.

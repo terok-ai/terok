@@ -11,7 +11,7 @@ credentials (via the [`CredentialDB`][terok_sandbox.CredentialDB]
 opened by [`vault_db`][terok.lib.domain.vault.vault_db]).
 
 [`load_vault_status`][terok.lib.api.vault.load_vault_status] loads
-the sandbox-owned ``VaultStatus`` snapshot
+the sandbox-owned [`VaultStatus`][terok_sandbox.VaultStatus] snapshot
 (state classification + warning catalog) under terok's effective
 config — one immutable value the TUI / CLI render.
 
@@ -95,7 +95,7 @@ _LAZY: dict[str, str] = {
 def load_vault_status() -> VaultStatus:
     """Load the sandbox's one-call vault picture under terok's effective config.
 
-    Sandbox's ``VaultStatus`` is the single snapshot
+    [`VaultStatus`][terok_sandbox.VaultStatus] is the single snapshot
     every surface renders — state classification, lock reason, chain
     table, provider/type/SSH-key inventory, and the shared warning
     catalog — computed sandbox-side so the CLI ``vault status``, the

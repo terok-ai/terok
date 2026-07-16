@@ -331,7 +331,7 @@ class TestRevealAndSkipHelpers:
         )
         with (
             patch("terok.tui.app.RecoveryStatus") as recovery,
-            patch("terok.tui.app.SandboxConfig"),
+            patch("terok.lib.core.config.make_sandbox_config"),
         ):
             await TerokTUI._reveal_new_passphrase(stub, "minted", "keyring")
         recovery.acknowledge.assert_called_once()

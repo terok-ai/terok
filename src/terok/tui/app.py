@@ -53,7 +53,6 @@ if _HAS_TEXTUAL:
     from textual.widgets import Footer, Header
     from textual.worker import Worker, WorkerState
 
-    from terok.lib.api import SandboxConfig
     from terok.lib.api.gate import GateStalenessInfo
     from terok.lib.api.setup import (
         EnvironmentCheck,
@@ -722,10 +721,11 @@ if _HAS_TEXTUAL:
             import asyncio
 
             from terok.lib.api.vault import plan_provisioning, provision_passphrase_tier
+            from terok.lib.core.config import make_sandbox_config
 
             from .screens import VaultCreatePassphraseModal, VaultTierChooserModal
 
-            cfg = SandboxConfig()
+            cfg = make_sandbox_config()
             # The plan probe gets the same user-facing error path as the
             # provisioning call below: it fails closed
             # (WrongPassphraseError) on a configured-but-broken durable
@@ -799,7 +799,9 @@ if _HAS_TEXTUAL:
                 VaultRevealModal(passphrase, source, already_acked=False)
             )
             if outcome is True:
-                RecoveryStatus.acknowledge(SandboxConfig())
+                from terok.lib.core.config import make_sandbox_config
+
+                RecoveryStatus.acknowledge(make_sandbox_config())
                 await self._refresh_vault_status()
 
         @work(exclusive=True, group="vault-provision", exit_on_error=False)
@@ -882,7 +884,9 @@ if _HAS_TEXTUAL:
                 self.notify("Passphrase change cancelled.", severity="warning", timeout=8)
                 return
 
-            cfg = SandboxConfig()
+            from terok.lib.core.config import make_sandbox_config
+
+            cfg = make_sandbox_config()
             try:
                 result = await asyncio.to_thread(change_passphrase, cfg, old=old, new=typed or None)
             except WrongPassphraseError:
@@ -2228,7 +2232,9 @@ if _HAS_TEXTUAL:
 
             try:
                 watcher = TaskWatcher()
-                session_dir = SandboxConfig().vault_passphrase_file.parent
+                from terok.lib.core.config import make_sandbox_config
+
+                session_dir = make_sandbox_config().vault_passphrase_file.parent
                 # The dir may not exist before the first unlock; create it
                 # so the watch can arm now rather than never.
                 session_dir.mkdir(parents=True, exist_ok=True)
@@ -2354,8 +2360,9 @@ if _HAS_TEXTUAL:
                 return
 
             from terok.lib.api.vault import WrongPassphraseError, provision_session_passphrase
+            from terok.lib.core.config import make_sandbox_config
 
-            cfg = SandboxConfig()
+            cfg = make_sandbox_config()
             try:
                 result = provision_session_passphrase(cfg, passphrase)
             except WrongPassphraseError:

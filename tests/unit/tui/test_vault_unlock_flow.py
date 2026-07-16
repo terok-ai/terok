@@ -139,7 +139,7 @@ class TestVaultWatcher:
         # tests re-import the app module (import_app/import_fresh), so the
         # sys.modules entry can be a *different* module object than the one
         # our top-of-file ``TerokTUI`` resolves names from.
-        monkeypatch.setitem(TerokTUI._start_vault_watcher.__globals__, "SandboxConfig", lambda: cfg)
+        monkeypatch.setattr("terok.lib.core.config.make_sandbox_config", lambda: cfg)
         stub = SimpleNamespace(
             _vault_watcher=None,
             _on_vault_session_dir_changed=MagicMock(),

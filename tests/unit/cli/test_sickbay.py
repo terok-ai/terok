@@ -1203,3 +1203,74 @@ class TestStalePassphraseTasks:
     def test_unknown_start_time_stays_silent(self) -> None:
         """No start time (runtime probe failed) must not manufacture a warning."""
         assert self._run_task_check(state="running", started_at=None) is None
+
+    def test_walk_flags_only_the_pre_rekey_task(self, tmp_path: Path) -> None:
+        """With a stamp present, the walk names exactly the stale task."""
+        from types import SimpleNamespace
+
+        from terok.cli.commands import sickbay
+
+        stamp = tmp_path / "vault.rekeyed_at"
+        stamp.write_text("", encoding="utf-8")
+        cfg = SimpleNamespace(vault_rekey_stamp_file=stamp)
+        rekeyed_at = stamp.stat().st_mtime
+
+        def _container_for(name: str) -> SimpleNamespace:
+            # 'stale' predates the stamp, 'fresh' postdates it.
+            started = rekeyed_at + (-100.0 if "n2mb3" in name else 100.0)
+            return SimpleNamespace(state="running", started_at=started)
+
+        runtime = unittest.mock.MagicMock()
+        runtime.container.side_effect = _container_for
+        meta_dir = tmp_path / "meta"
+        meta_dir.mkdir()
+        with (
+            unittest.mock.patch("terok.lib.core.config.make_sandbox_config", return_value=cfg),
+            unittest.mock.patch.object(
+                sickbay,
+                "list_projects",
+                return_value=[SimpleNamespace(name="proj")],
+            ),
+            unittest.mock.patch.object(
+                sickbay, "load_project", return_value=unittest.mock.MagicMock()
+            ),
+            unittest.mock.patch.object(sickbay, "tasks_meta_dir", return_value=meta_dir),
+            unittest.mock.patch.object(
+                sickbay, "iter_task_ids", return_value=iter(["n2mb3", "q4xyz"])
+            ),
+            unittest.mock.patch.object(sickbay, "read_task_meta", return_value={"mode": "cli"}),
+            unittest.mock.patch.object(sickbay._rt, "resolve_runtime", return_value=runtime),
+        ):
+            results = sickbay._check_stale_passphrase_tasks(None, None)
+
+        assert [(status, label) for status, label, _ in results] == [("warn", "Task proj/n2mb3")]
+
+    def test_explicit_task_scope_checks_only_that_task(self, tmp_path: Path) -> None:
+        """``terok sickbay <project> <task>`` walks a single task, not the meta dir."""
+        from types import SimpleNamespace
+
+        from terok.cli.commands import sickbay
+
+        stamp = tmp_path / "vault.rekeyed_at"
+        stamp.write_text("", encoding="utf-8")
+        cfg = SimpleNamespace(vault_rekey_stamp_file=stamp)
+        container = SimpleNamespace(state="running", started_at=stamp.stat().st_mtime - 100.0)
+        runtime = unittest.mock.MagicMock()
+        runtime.container.return_value = container
+        meta_dir = tmp_path / "meta"
+        meta_dir.mkdir()
+        with (
+            unittest.mock.patch("terok.lib.core.config.make_sandbox_config", return_value=cfg),
+            unittest.mock.patch.object(
+                sickbay, "load_project", return_value=unittest.mock.MagicMock()
+            ),
+            unittest.mock.patch.object(sickbay, "tasks_meta_dir", return_value=meta_dir),
+            unittest.mock.patch.object(
+                sickbay, "iter_task_ids", side_effect=AssertionError("must not iterate")
+            ),
+            unittest.mock.patch.object(sickbay, "read_task_meta", return_value={"mode": "cli"}),
+            unittest.mock.patch.object(sickbay._rt, "resolve_runtime", return_value=runtime),
+        ):
+            results = sickbay._check_stale_passphrase_tasks("proj", "n2mb3")
+
+        assert len(results) == 1 and results[0][1] == "Task proj/n2mb3"

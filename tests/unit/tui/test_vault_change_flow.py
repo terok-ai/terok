@@ -106,6 +106,7 @@ class TestRunVaultChangeFlow:
         assert change.call_args.kwargs == {"old": "old-pass", "new": "typed-new"}
 
     async def test_cancel_on_create_modal_changes_nothing(self, flow_stub: SimpleNamespace) -> None:
+        """Backing out of the create modal must leave the vault untouched."""
         flow_stub.push_screen_wait.return_value = None
         with (
             patch(
@@ -137,6 +138,7 @@ class TestRunVaultChangeFlow:
         assert reveal_args[0] == "the-new-passphrase"
 
     async def test_wrong_passphrase_notifies_and_stops(self, flow_stub: SimpleNamespace) -> None:
+        """A wrong current passphrase surfaces as an error and skips the reveal."""
         flow_stub.push_screen_wait.side_effect = ["bad-old", "typed-new"]
         with (
             patch(

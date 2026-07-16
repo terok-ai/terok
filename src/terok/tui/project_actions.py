@@ -1115,7 +1115,7 @@ class ProjectActionsMixin(_MixinBase):
         """Change the vault passphrase — re-encrypt the DB, rewrite every tier.
 
         Delegates to the app-level worker
-        ([`_run_vault_change_flow`][terok.tui.app]) because the
+        ([`TerokTUI._run_vault_change_flow`][terok.tui.app.TerokTUI._run_vault_change_flow]) because the
         conversation (current-passphrase modal when locked → create
         modal → reveal + re-ack) needs ``push_screen_wait``.
         """
@@ -1141,13 +1141,13 @@ class ProjectActionsMixin(_MixinBase):
         without a resolvable passphrase, and the unlock modal is the
         right next step.
         """
-        from terok.lib.api import SandboxConfig
+        from terok.lib.api import make_sandbox_config
         from terok.lib.api.shield import RecoveryStatus
         from terok.lib.api.vault import NoPassphraseError, WrongPassphraseError
 
         from .screens import VaultRevealModal
 
-        cfg = SandboxConfig()
+        cfg = make_sandbox_config()
         try:
             passphrase, source = cfg.resolve_passphrase_with_source(prompt_on_tty=False)
         except (NoPassphraseError, WrongPassphraseError) as exc:
@@ -1185,10 +1185,10 @@ class ProjectActionsMixin(_MixinBase):
         """
         if outcome is not True:
             return
-        from terok.lib.api import SandboxConfig
+        from terok.lib.api import make_sandbox_config
         from terok.lib.api.shield import RecoveryStatus
 
-        RecoveryStatus.acknowledge(SandboxConfig())
+        RecoveryStatus.acknowledge(make_sandbox_config())
         self.notify(
             "Recovery key marked as saved.",
             severity="information",
@@ -1206,10 +1206,10 @@ class ProjectActionsMixin(_MixinBase):
         vault-lock state — acknowledging a locked vault still writes
         the sidecar.
         """
-        from terok.lib.api import SandboxConfig
+        from terok.lib.api import make_sandbox_config
         from terok.lib.api.shield import RecoveryStatus
 
-        RecoveryStatus.acknowledge(SandboxConfig())
+        RecoveryStatus.acknowledge(make_sandbox_config())
         self.notify(
             "Recovery key marked as saved.",
             severity="information",

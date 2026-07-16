@@ -101,7 +101,7 @@ def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) ->
         default=None,
         help=(
             "Force credentials-DB passphrase storage to a specific tier "
-            "(``systemd-creds`` | ``keyring`` | ``session-file``); "
+            "(systemd-creds | keyring | session-file); "
             "required on a non-TTY host without systemd-creds."
         ),
     )
