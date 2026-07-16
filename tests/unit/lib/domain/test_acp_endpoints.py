@@ -7,12 +7,15 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from types import SimpleNamespace
 from unittest import mock
 
+import pytest
 from terok_executor import ACPEndpointStatus
 
 from terok.lib.domain.project import (
     ACPEndpoint,
+    Project,
     _read_bound_agent,
     _task_has_any_authed_agent,
 )
@@ -114,6 +117,95 @@ class TestTaskHasAnyAuthedAgent:
                 )
                 is False
             )
+
+
+class TestAuthedVocabulary:
+    """The auth set fed to the intersection must speak the image label's language.
+
+    The vault keys credentials by provider (``anthropic`` — sandbox's v3
+    re-keying); image labels list agent names (``claude``).  These tests pin
+    the whole pipeline against the *real* storage path — a hand-built authed
+    set can't catch a vocabulary drift between the two sibling packages.
+    """
+
+    def test_stored_credential_surfaces_under_agent_name(self) -> None:
+        """A credential stored the way ``terok auth`` stores it maps back to the agent name."""
+        from terok_executor import store_api_key
+
+        from terok.lib.domain.auth import stored_credential_entries
+
+        store_api_key("claude", "sk-unit-test")  # real path: lands under 'anthropic'
+        entries = stored_credential_entries("default")
+        assert "claude" in entries
+        assert "anthropic" not in entries  # vault vocabulary must not leak through
+
+    @pytest.mark.parametrize(
+        ("agent", "expected_vault_key"),
+        [("claude", "anthropic"), ("codex", "openai"), ("gh", "github")],
+    )
+    def test_vault_stores_under_provider_key(self, agent: str, expected_vault_key: str) -> None:
+        """Pin the executor-side keying this module's translation depends on.
+
+        If a future sibling release changes how credentials are keyed, this
+        fails loudly here instead of silently emptying the READY intersection.
+        """
+        from terok_executor import credential_provider
+
+        assert credential_provider(agent) == expected_vault_key
+
+    def test_running_task_with_stored_credential_is_ready(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        """End-to-end regression for the v3 re-keying bug: READY must survive it.
+
+        Stores a claude credential through the executor's real storage path
+        (vault key ``anthropic``), then lists endpoints for a running task
+        whose image label declares ``claude``.  Before the fix the raw vault
+        key was intersected with the label and the endpoint degraded to
+        ``unsupported`` despite valid auth.
+        """
+        from terok_executor import store_api_key
+
+        store_api_key("claude", "sk-unit-test")
+        monkeypatch.setenv("XDG_RUNTIME_DIR", str(tmp_path))  # no live socket anywhere
+        project = Project(
+            SimpleNamespace(name="proj", security_class="online", credential_set="default")  # type: ignore[arg-type]
+        )
+        task = _FakeTask("t1", mode="cli")
+        with (
+            mock.patch.object(Project, "list_tasks", return_value=[task]),
+            mock.patch("terok.lib.domain.project.make_sandbox_config"),
+            mock.patch("terok.lib.integrations.sandbox.Sandbox"),
+            # Label side pinned to its real vocabulary: agent names, as
+            # written by the executor's L1 build into ``ai.terok.agents``.
+            mock.patch(
+                "terok.lib.domain.project._image_agents_for_task",
+                return_value={"claude", "gh"},
+            ),
+        ):
+            (endpoint,) = project.acp_endpoints()
+        assert endpoint.status is ACPEndpointStatus.READY
+
+    def test_running_task_without_credential_stays_unsupported(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        """Empty vault ⇒ the same task classifies as ``unsupported``, not READY."""
+        monkeypatch.setenv("XDG_RUNTIME_DIR", str(tmp_path))
+        project = Project(
+            SimpleNamespace(name="proj", security_class="online", credential_set="default")  # type: ignore[arg-type]
+        )
+        task = _FakeTask("t1", mode="cli")
+        with (
+            mock.patch.object(Project, "list_tasks", return_value=[task]),
+            mock.patch("terok.lib.domain.project.make_sandbox_config"),
+            mock.patch("terok.lib.integrations.sandbox.Sandbox"),
+            mock.patch(
+                "terok.lib.domain.project._image_agents_for_task",
+                return_value={"claude", "gh"},
+            ),
+        ):
+            (endpoint,) = project.acp_endpoints()
+        assert endpoint.status is ACPEndpointStatus.UNSUPPORTED
 
 
 class TestACPEndpointDataclass:

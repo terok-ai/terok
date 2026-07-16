@@ -54,7 +54,6 @@ from terok.lib.integrations.executor import (
     AGENTS_LABEL,
     ACPEndpointStatus,
     get_agent,
-    list_authenticated_agents,
     resolve_instructions,
 )
 from terok.lib.integrations.sandbox import GitGate, SSHManager
@@ -88,6 +87,7 @@ from ..orchestration.tasks import (
     task_new,
 )
 from ..util.fs import archive_timestamp, create_archive_file
+from .auth import stored_credential_entries
 from .task import Task
 from .vault import vault_db
 
@@ -332,8 +332,12 @@ def _task_has_any_authed_agent(
 
     The image label is the source of truth for "what agents could this
     task run"; intersecting with the live auth set tells us whether
-    ``acp connect`` would succeed.  Empty image labels surface as
-    ``unsupported`` rather than failing at connect time — that case
+    ``acp connect`` would succeed.  *authed* must therefore contain
+    auth-entry / agent names (``claude``, ``gh``) as produced by
+    [`stored_credential_entries`][terok.lib.domain.auth.stored_credential_entries]
+    — never raw vault provider keys (``anthropic``, ``github``), which
+    the label's vocabulary can never match.  Empty image labels surface
+    as ``unsupported`` rather than failing at connect time — that case
     is real for legacy task images pre-dating the agents label.
 
     *sandbox* and *label_cache* are threaded through from the listing
@@ -728,7 +732,10 @@ class Project:
         # ``credentials.scope: project`` reads its own vault row, not
         # the host-wide bucket — otherwise its tasks would be reported
         # READY on host-wide creds the container will never see.
-        authed = set(list_authenticated_agents(scope=self._config.credential_set))
+        # ``stored_credential_entries`` translates the vault's provider
+        # keys (anthropic, github) into the agent names the image label
+        # speaks — raw vault keys never intersect the label.
+        authed = set(stored_credential_entries(self._config.credential_set))
         sandbox = Sandbox(config=make_sandbox_config())
         label_cache: dict[str, set[str]] = {}
         out: list[ACPEndpoint] = []

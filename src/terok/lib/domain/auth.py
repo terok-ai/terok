@@ -124,16 +124,33 @@ def resolve_credential_routing(project_name: str | None) -> tuple[Path, str]:
     return mounts_dir, project.credential_set
 
 
+def stored_credential_entries(credential_set: str) -> frozenset[str]:
+    """Auth entries whose credential is already stored in *credential_set*.
+
+    The vault keys credentials by the provider they authenticate to
+    (``anthropic``, ``github`` — terok-sandbox's v3 re-keying), while image
+    labels, rosters, and listings all speak in auth-entry / agent names
+    (``claude``, ``gh``).  This is the single translation point between the
+    two vocabularies: any code comparing vault contents against agent names
+    must go through here — intersecting raw vault keys with agent names is
+    provably always empty for every renamed provider.
+
+    Vault errors (e.g. [`NoPassphraseError`][terok_sandbox.NoPassphraseError])
+    propagate — callers own the unreadable-vault policy.
+    """
+    stored = set(list_authenticated_agents(scope=credential_set))
+    return frozenset(entry for entry in AUTH_PROVIDERS if credential_provider(entry) in stored)
+
+
 def authenticated_entries(project_name: str | None = None) -> frozenset[str] | None:
     """Auth entries that already hold a stored credential, or ``None`` when unknowable.
 
-    The vault stores credentials under provider keys (``anthropic``, ``github``);
-    this maps them back onto the auth entries that write them (``claude``,
-    ``gh``) so listings can badge already-authenticated entries.  The queried
-    credential set follows the same routing as
-    [`authenticate`][terok.lib.domain.auth.authenticate]: the host-wide bucket
+    Resolves the credential set with the same routing as
+    [`authenticate`][terok.lib.domain.auth.authenticate] — the host-wide bucket
     for ``project_name=None`` and shared-scope projects, the project's private
-    set for ``credentials.scope: project``.
+    set for ``credentials.scope: project`` — then maps the stored vault keys
+    back to entry names via
+    [`stored_credential_entries`][terok.lib.domain.auth.stored_credential_entries].
 
     Returns ``None`` when the vault cannot be read — not yet provisioned,
     sealed, or unlocking with a stale passphrase.  ``terok auth`` is often the
@@ -145,10 +162,9 @@ def authenticated_entries(project_name: str | None = None) -> frozenset[str] | N
 
     _, credential_set = resolve_credential_routing(project_name)
     try:
-        stored = set(list_authenticated_agents(scope=credential_set))
+        return stored_credential_entries(credential_set)
     except (NoPassphraseError, WrongPassphraseError):
         return None
-    return frozenset(entry for entry in AUTH_PROVIDERS if credential_provider(entry) in stored)
 
 
 def authenticate(
@@ -348,4 +364,5 @@ __all__ = [
     "find_host_auth_image",
     "resolve_auth_provider",
     "resolve_credential_routing",
+    "stored_credential_entries",
 ]
