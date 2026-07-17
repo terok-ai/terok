@@ -567,7 +567,13 @@ persistent tier at install time.
 To **change the passphrase**, run `terok vault passphrase change`
 (or the `[c]hange` action on the TUI's Vault screen): it re-encrypts
 the DB under the new key and rewrites every tier that stored the old
-one, then walks you through saving the new recovery key.  To move the
+one, then walks you through saving the new recovery key.  Re-encryption
+needs the DB exclusively, and every running task's supervisor holds it
+open — so with tasks running the flow offers to stop them, re-encrypt,
+and restart them afterwards (their containers keep their state).  A
+supervisor orphaned by an earlier stop that still pins the DB is
+detected and offered for cleanup; a process outside terok holding it
+is named and never touched.  To move the
 *same* passphrase between backends, `terok vault passphrase
 to-keyring` / `seal` are the first-class paths — see
 [credentials-encryption](https://github.com/terok-ai/terok-sandbox/blob/master/docs/credentials-encryption.md)

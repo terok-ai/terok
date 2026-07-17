@@ -407,6 +407,14 @@ def _build_wired_tree() -> CommandTree:
         verb_specs=((("stop",), "name"),),
     )
 
+    # ``vault passphrase change`` needs the credentials DB exclusively;
+    # sandbox's handler can't know about terok's fleet, so terok wraps
+    # it with the stop → re-encrypt → restart conversation (the CLI
+    # twin of the TUI flow's ``_clear_rekey_blockers``).
+    from .commands.vault_change import wrap_passphrase_change
+
+    modified = wrap_passphrase_change(modified)
+
     # The shortcut nodes share identity with their counterparts inside
     # the modified executor tree — both ``terok vault X`` and ``terok
     # executor sandbox vault X`` resolve to the same wrapped handler.

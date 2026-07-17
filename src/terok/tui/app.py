@@ -61,7 +61,7 @@ if _HAS_TEXTUAL:
         needs_setup,
     )
     from terok.lib.api.shield import RecoveryStatus, ShieldManager
-    from terok.lib.api.vault import PassphraseChangeResult, VaultStatus
+    from terok.lib.api.vault import PassphraseChangeResult, RunningTask, VaultStatus
 
     from ..lib.api import (
         BrokenProject,
@@ -875,13 +875,146 @@ if _HAS_TEXTUAL:
                 return None
             return old, typed
 
+        async def _clear_rekey_blockers(self) -> "list[RunningTask] | None":
+            """Free the credentials DB for the rekey; return the tasks stopped here.
+
+            ``PRAGMA rekey`` needs the DB exclusively, and every running
+            task's supervisor holds a connection.  Instead of dead-ending
+            on ``database is locked``, walk the operator through it:
+
+            1. running tasks → offer the stop → re-encrypt → restart
+               round trip (the caller owes the returned tasks a restart);
+            2. holders that no running task explains (a supervisor
+               orphaned by an earlier stop — its poststop reap never
+               fired) → offer to kill exactly those pids;
+            3. a foreign process holding the DB → report it verbatim and
+               refuse — never signal what isn't ours.
+
+            ``None`` means the flow must stop: the operator declined, a
+            stop failed, or the DB is still pinned.  Every ``None`` path
+            has already notified and restarted whatever it stopped.
+            """
+            import asyncio
+
+            from terok.lib.api.vault import (
+                find_running_tasks,
+                stop_tasks_for_rekey,
+                terminate_stale_holders,
+                wait_for_db_release,
+            )
+
+            running = await asyncio.to_thread(find_running_tasks)
+            stopped: list[RunningTask] = []
+            if running:
+                listing = "\n".join(f"  • {t}" for t in running)
+                proceed = await self.push_screen_wait(
+                    ConfirmDestructiveScreen(
+                        "Re-encrypting the credentials DB needs exclusive access,"
+                        f" but {len(running)} running task(s) hold it open:\n\n{listing}\n\n"
+                        "Stop them, re-encrypt, and restart them afterwards?"
+                        "  The containers stop gracefully and keep their state.",
+                        title="Running tasks hold the vault DB",
+                        confirm_label="Stop, re-encrypt & restart",
+                    )
+                )
+                if not proceed:
+                    self.notify(
+                        "Passphrase change cancelled — no tasks were touched.",
+                        severity="warning",
+                        timeout=8,
+                    )
+                    return None
+                results = await asyncio.to_thread(stop_tasks_for_rekey, running)
+                stopped = [task for task, error in results if error is None]
+                failed = [(task, error) for task, error in results if error is not None]
+                if failed:
+                    details = "\n".join(f"{task}: {error}" for task, error in failed)
+                    self.notify(
+                        f"Could not stop every task — nothing was changed:\n{details}",
+                        severity="error",
+                        timeout=20,
+                    )
+                    await self._restart_stopped_tasks(stopped)
+                    return None
+
+            # Ground truth: the stop offer above is a courtesy, the fd scan
+            # decides.  With nothing stopped the timeout degenerates to a
+            # single immediate scan; after stops it waits out the
+            # asynchronous supervisor teardown.
+            holders = await asyncio.to_thread(
+                wait_for_db_release, timeout_s=15.0 if stopped else 0.0
+            )
+            if not holders:
+                return stopped
+            listing = "\n".join(f"  • {h}" for h in holders)
+            if any(not h.owned for h in holders):
+                self.notify(
+                    "Processes outside terok are holding the credentials DB"
+                    f" open — close them and retry:\n{listing}\n\nNothing was changed.",
+                    severity="error",
+                    timeout=20,
+                )
+                await self._restart_stopped_tasks(stopped)
+                return None
+            proceed = await self.push_screen_wait(
+                ConfirmDestructiveScreen(
+                    "No running task explains these supervisor processes still"
+                    f" holding the credentials DB:\n\n{listing}\n\n"
+                    "They were likely orphaned by an earlier task stop."
+                    "  Kill them and continue?",
+                    title="Stale vault DB holders",
+                    confirm_label="Kill & continue",
+                )
+            )
+            if not proceed:
+                self.notify("Passphrase change cancelled.", severity="warning", timeout=8)
+                await self._restart_stopped_tasks(stopped)
+                return None
+            survivors = await asyncio.to_thread(terminate_stale_holders, holders)
+            if survivors:
+                listing = "\n".join(f"  • {h}" for h in survivors)
+                self.notify(
+                    f"The credentials DB is still held open — nothing was changed:\n{listing}",
+                    severity="error",
+                    timeout=20,
+                )
+                await self._restart_stopped_tasks(stopped)
+                return None
+            return stopped
+
+        async def _restart_stopped_tasks(self, stopped: "list[RunningTask]") -> None:
+            """Bring back the tasks stopped for the rekey; stream the ladder output.
+
+            Runs on every exit path once something was stopped — success,
+            failed rekey, or operator cancel — because leaving the fleet
+            down would punish the operator twice.  A restart failure is
+            flagged by the console log's non-zero exit plus a loud
+            notification; the worker's final lines name each casualty.
+            """
+            if not stopped:
+                return
+            entry = self.dispatch_console_action(
+                "terok.tui.worker_actions:vault_rekey_restart_tasks",
+                [[task.project, task.task_id] for task in stopped],
+                title=f"Restarting {len(stopped)} task(s) after the passphrase change",
+            )
+            await self.push_screen(WorkerLogScreen(entry))
+            await entry.wait()
+            if not entry.ok:
+                self.notify(
+                    "Some tasks could not be restarted — see the console log for details.",
+                    severity="error",
+                    timeout=20,
+                )
+            self.run_worker(self.refresh_tasks())
+
         def _notify_change_failure(self, exc: BaseException) -> None:
             """Render a failed ``change_passphrase`` call as one honest notification."""
             if "database is locked" in str(exc).lower():
                 self.notify(
-                    "Cannot re-encrypt the credentials DB while it is in use —"
-                    " a running task's supervisor still holds it open.  Stop or"
-                    " delete the running tasks, then retry.  Nothing was changed.",
+                    "Cannot re-encrypt the credentials DB — something re-opened"
+                    " it after the pre-flight check (a task started mid-change?)."
+                    "  Retry the passphrase change.  Nothing was changed.",
                     severity="error",
                     timeout=20,
                 )
@@ -920,9 +1053,11 @@ if _HAS_TEXTUAL:
             core behind ``vault passphrase change``): verify → rekey the
             DB → rewrite every tier holding the old value → drop the
             recovery marker.  The conversation lives in
-            ``_collect_change_inputs``; the new value is revealed +
-            re-acked after the change succeeded — the previously
-            confirmed copy is now the wrong passphrase.
+            ``_collect_change_inputs``; the rekey's exclusive-access
+            demand in ``_clear_rekey_blockers`` (which may stop running
+            tasks — restarted on every exit path below); the new value is
+            revealed + re-acked after the change succeeded — the
+            previously confirmed copy is now the wrong passphrase.
             """
             import asyncio
 
@@ -934,31 +1069,43 @@ if _HAS_TEXTUAL:
                 return
             old, typed = inputs
 
-            cfg = make_sandbox_config()
-            try:
-                result = await asyncio.to_thread(change_passphrase, cfg, old=old, new=typed or None)
-            except WrongPassphraseError:
-                self.notify(
-                    "That passphrase does not open the credentials DB — nothing was changed.",
-                    severity="error",
-                    timeout=10,
-                )
-                return
-            except Exception as exc:  # noqa: BLE001 — every failure becomes a notification
-                self._notify_change_failure(exc)
+            stopped = await self._clear_rekey_blockers()
+            if stopped is None:
                 return
 
-            self._notify_change_outcome(result)
-            await self._refresh_vault_status()
-            # The recovery marker was dropped with the old passphrase —
-            # reveal the new value (minted or typed) and collect a fresh
-            # save-acknowledgement.
-            source = (
-                str(self._last_vault_status.source)
-                if (self._last_vault_status and self._last_vault_status.source)
-                else "vault"
-            )
-            await self._reveal_new_passphrase(result.passphrase, source)
+            cfg = make_sandbox_config()
+            try:
+                try:
+                    result = await asyncio.to_thread(
+                        change_passphrase, cfg, old=old, new=typed or None
+                    )
+                except WrongPassphraseError:
+                    self.notify(
+                        "That passphrase does not open the credentials DB — nothing was changed.",
+                        severity="error",
+                        timeout=10,
+                    )
+                    return
+                except Exception as exc:  # noqa: BLE001 — every failure becomes a notification
+                    self._notify_change_failure(exc)
+                    return
+
+                self._notify_change_outcome(result)
+                await self._refresh_vault_status()
+                # The recovery marker was dropped with the old passphrase —
+                # reveal the new value (minted or typed) and collect a fresh
+                # save-acknowledgement.
+                source = (
+                    str(self._last_vault_status.source)
+                    if (self._last_vault_status and self._last_vault_status.source)
+                    else "vault"
+                )
+                await self._reveal_new_passphrase(result.passphrase, source)
+            finally:
+                # A task stopped under the old passphrase restarts fine
+                # under either key — bring the fleet back even when the
+                # change itself failed or was cancelled above.
+                await self._restart_stopped_tasks(stopped)
 
         async def _offer_selinux_fix(self) -> bool:
             """Push the SELinux-fix modal; on a chosen remediation, re-run setup.

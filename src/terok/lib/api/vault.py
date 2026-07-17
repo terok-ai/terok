@@ -28,6 +28,16 @@ from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from terok.lib.domain.vault import vault_db as vault_db
+    from terok.lib.domain.vault_rekey import (
+        DbHolder as DbHolder,
+        RunningTask as RunningTask,
+        find_db_holders as find_db_holders,
+        find_running_tasks as find_running_tasks,
+        restart_tasks_after_rekey as restart_tasks_after_rekey,
+        stop_tasks_for_rekey as stop_tasks_for_rekey,
+        terminate_stale_holders as terminate_stale_holders,
+        wait_for_db_release as wait_for_db_release,
+    )
     from terok.lib.integrations.sandbox import (
         NoPassphraseError as NoPassphraseError,
         PassphraseChangeResult as PassphraseChangeResult,
@@ -62,11 +72,13 @@ if TYPE_CHECKING:
 #: this module (e.g. for [`load_vault_status`][terok.lib.api.vault.load_vault_status])
 #: does not pull the sandbox wheel until a sandbox-backed name is touched.
 _LAZY: dict[str, str] = {
+    "DbHolder": "terok.lib.domain.vault_rekey",
     "NoPassphraseError": "terok.lib.integrations.sandbox",
     "PassphraseChangeResult": "terok.lib.integrations.sandbox",  # nosec: B105 — export-map path, not a secret
     "PassphraseTier": "terok.lib.integrations.sandbox",  # nosec: B105 — export-map path, not a secret
     "ProvisioningPlan": "terok.lib.integrations.sandbox",
     "RecoveryStatus": "terok.lib.integrations.sandbox",
+    "RunningTask": "terok.lib.domain.vault_rekey",
     "SessionProvisionResult": "terok.lib.integrations.sandbox",
     "SessionShadow": "terok.lib.integrations.sandbox",
     "TierProvisionResult": "terok.lib.integrations.sandbox",
@@ -79,6 +91,8 @@ _LAZY: dict[str, str] = {
     "change_passphrase": "terok.lib.integrations.sandbox",  # nosec: B105 — export-map path, not a secret
     "clear_redundant_session_file": "terok.lib.integrations.sandbox",
     "credentials_provisioned": "terok.lib.integrations.sandbox",
+    "find_db_holders": "terok.lib.domain.vault_rekey",
+    "find_running_tasks": "terok.lib.domain.vault_rekey",
     "handle_vault_seal": "terok.lib.integrations.sandbox",
     "handle_vault_to_keyring": "terok.lib.integrations.sandbox",
     "keyring_backend_available": "terok.lib.integrations.sandbox",
@@ -86,9 +100,13 @@ _LAZY: dict[str, str] = {
     "provision_passphrase_tier": "terok.lib.integrations.sandbox",  # nosec: B105 — export-map path, not a secret
     "provision_session_passphrase": "terok.lib.integrations.sandbox",
     "purge_passphrase_tiers": "terok.lib.integrations.sandbox",
+    "restart_tasks_after_rekey": "terok.lib.domain.vault_rekey",
     "session_shadow_state": "terok.lib.integrations.sandbox",
+    "stop_tasks_for_rekey": "terok.lib.domain.vault_rekey",
     "systemd_creds_available": "terok.lib.integrations.sandbox",
+    "terminate_stale_holders": "terok.lib.domain.vault_rekey",
     "vault_db": "terok.lib.domain.vault",
+    "wait_for_db_release": "terok.lib.domain.vault_rekey",
 }
 
 
@@ -112,10 +130,12 @@ def load_vault_status() -> VaultStatus:
 
 
 __all__ = [
+    "DbHolder",
     "NoPassphraseError",
     "PassphraseChangeResult",
     "PassphraseTier",
     "ProvisioningPlan",
+    "RunningTask",
     "TierProvisionResult",
     "TierRewrite",
     "VaultState",
@@ -126,6 +146,8 @@ __all__ = [
     "change_passphrase",
     "clear_redundant_session_file",
     "credentials_provisioned",
+    "find_db_holders",
+    "find_running_tasks",
     "handle_vault_seal",
     "handle_vault_to_keyring",
     "keyring_backend_available",
@@ -134,8 +156,12 @@ __all__ = [
     "provision_passphrase_tier",
     "provision_session_passphrase",
     "purge_passphrase_tiers",
+    "restart_tasks_after_rekey",
     "session_shadow_state",
+    "stop_tasks_for_rekey",
     "systemd_creds_available",
+    "terminate_stale_holders",
+    "wait_for_db_release",
 ]
 
 

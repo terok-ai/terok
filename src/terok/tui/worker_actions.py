@@ -185,6 +185,31 @@ def vault_to_keyring() -> None:
     handle_vault_to_keyring(cfg=make_sandbox_config())
 
 
+def vault_rekey_restart_tasks(tasks: list[list[str]]) -> None:
+    """Restart the tasks that were stopped so the credentials DB could be re-encrypted.
+
+    *tasks* rows are ``[project, task_id]`` pairs (JSON-positional shape).
+    Each restart's ladder output streams into the console log; a failed
+    task never blocks the rest.  Exits non-zero listing the casualties so
+    the log view flags the run — the operator restarts those by hand.
+    """
+    from terok.lib.api.vault import RunningTask, restart_tasks_after_rekey
+
+    failures = [
+        (task, error)
+        for task, error in restart_tasks_after_rekey(
+            RunningTask(project, task_id) for project, task_id in tasks
+        )
+        if error is not None
+    ]
+    if failures:
+        details = "\n".join(f"  ✗ {task}: {error}" for task, error in failures)
+        raise SystemExit(
+            f"some tasks could not be restarted:\n{details}\n"
+            "bring each back manually with: terok task restart <project> <task>"
+        )
+
+
 def selinux_install_policy() -> None:
     """Run the bundled SELinux installer with ``sudo bash`` and stream the output.
 

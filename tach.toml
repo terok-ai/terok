@@ -172,7 +172,19 @@ path = "terok.lib.api.vault"
 layer = "domain"
 depends_on = [
     "terok.lib.domain.vault",
+    "terok.lib.domain.vault_rekey",
     "terok.lib.integrations.sandbox",
+]
+
+# Rekey pre-flight — running-task round trip + credentials-DB holder scan.
+[[modules]]
+path = "terok.lib.domain.vault_rekey"
+layer = "domain"
+depends_on = [
+    "terok.lib.core.config",
+    "terok.lib.core.projects",
+    "terok.lib.orchestration.task_runners",
+    "terok.lib.orchestration.tasks",
 ]
 
 [[modules]]
@@ -735,6 +747,19 @@ from = ["terok.lib.core.work_status"]
 [[interfaces]]
 expose = ["task_logs", "LogViewOptions"]
 from = ["terok.lib.domain.task_logs"]
+
+[[interfaces]]
+expose = [
+    "RunningTask",
+    "DbHolder",
+    "find_running_tasks",
+    "stop_tasks_for_rekey",
+    "restart_tasks_after_rekey",
+    "find_db_holders",
+    "wait_for_db_release",
+    "terminate_stale_holders",
+]
+from = ["terok.lib.domain.vault_rekey"]
 
 [[interfaces]]
 expose = [
