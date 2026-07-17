@@ -537,6 +537,34 @@ async def test_init_screen_decline_overwrite_distinguishes_from_failure() -> Non
             assert close_button.variant == "default"
 
 
+@pytest.mark.asyncio
+async def test_failed_step_is_marked_without_widget_readback() -> None:
+    """A step failure marks the running step via tracked state.
+
+    Regression: the old path read the step text back through
+    ``Static.renderable``, which newer Textual removed — every init
+    failure then added an 'Unexpected wizard error' line and left the
+    failed step showing the running spinner.
+    """
+    from terok.tui.wizard_screens import InitProgressScreen
+
+    fake_project = MagicMock()
+    fake_project.provision_ssh_key.side_effect = RuntimeError("boom")
+
+    with patch.object(InitProgressScreen, "on_mount", new=AsyncMock()):
+        app = _WizardHost(InitProgressScreen("demo"))
+        async with app.run_test() as pilot:
+            await pilot.pause()
+            screen = app.screen
+            assert isinstance(screen, InitProgressScreen)
+            with patch("terok.lib.api.get_project", return_value=fake_project):
+                await screen._run_init()
+            await pilot.pause()
+            step = str(screen.query_one("#wizard-init-step-ssh", Static).render())
+            assert "boom" in step
+            assert "⋯" not in step
+
+
 # ── Form prefill (Back round-trip preservation) ──────────────────────
 
 

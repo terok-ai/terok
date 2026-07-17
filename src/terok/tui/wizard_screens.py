@@ -709,6 +709,7 @@ class InitProgressScreen(ModalScreen[InitOutcome]):
         self._project_name = project_name
         self._rendered_yaml = rendered_yaml
         self._ssh_continue: Any = None  # an asyncio.Event, set when user clicks continue
+        self._running_step: str | None = None  # step key currently in "running" state
         # Default pessimistic — the worker flips this to SUCCESS on a clean
         # finish, DECLINED when the user opts out of overwriting, and leaves
         # it on FAILED when a step raises.
@@ -895,6 +896,10 @@ class InitProgressScreen(ModalScreen[InitOutcome]):
         return f"wizard-init-step-{key}"
 
     def _mark(self, key: str, status: str, detail: str = "") -> None:
+        # Track the in-flight step in state rather than reading it back
+        # out of the widget — Static's rendered-content attribute has
+        # changed names across Textual releases.
+        self._running_step = key if status == "running" else None
         self.query_one(f"#{self._step_id(key)}", Static).update(
             self._step_text(key, status, detail)
         )
@@ -1092,12 +1097,8 @@ class InitProgressScreen(ModalScreen[InitOutcome]):
             # out of the worker and vanishing silently.
             log.write(f"[red]Error: {exc}[/]")
             # Mark the currently-running step failed (whichever one raised).
-            for key in self._STEP_KEYS:
-                widget = self.query_one(f"#{self._step_id(key)}", Static)
-                # `renderable` is on Static at runtime but missing from textual stubs.
-                if "⋯" in str(widget.renderable):  # type: ignore[attr-defined]
-                    self._mark(key, "failed", str(exc))
-                    break
+            if self._running_step is not None:
+                self._mark(self._running_step, "failed", str(exc))
         # Close-button enabling is consolidated in the outer
         # ``_run_init_with_confirm`` finally — keeping it there prevents
         # the button from flashing enabled then disabled between the
