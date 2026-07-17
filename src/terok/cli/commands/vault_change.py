@@ -113,16 +113,18 @@ def _clear_rekey_blockers() -> list[RunningTask]:
     holders = wait_for_db_release(timeout_s=15.0 if stopped else 0.0)
     if not holders:
         return stopped
-    listing = "\n".join(f"  • {h}" for h in holders)
     if any(not h.owned for h in holders):
+        listing = "\n".join(f"  • {h}" for h in holders if not h.owned)
         _restart_stopped(stopped)
         raise SystemExit(
             "processes outside terok are holding the credentials DB open —"
             f" close them and retry:\n{listing}\nnothing was changed."
         )
+    listing = "\n".join(f"  • {h.summary}" for h in holders)
     print(
-        "No running task explains these supervisor processes still holding"
-        f" the credentials DB (likely orphaned by an earlier stop):\n{listing}"
+        f"{len(holders)} supervisor process(es) still hold the credentials DB, but no"
+        " running task explains them — most likely orphaned by an earlier task stop"
+        f" (harmless to kill):\n{listing}"
     )
     _confirm_or_exit(
         "Kill them and continue?",
@@ -131,7 +133,7 @@ def _clear_rekey_blockers() -> list[RunningTask]:
     )
     survivors = terminate_stale_holders(holders)
     if survivors:
-        listing = "\n".join(f"  • {h}" for h in survivors)
+        listing = "\n".join(f"  • {h.summary}" for h in survivors)
         _restart_stopped(stopped)
         raise SystemExit(f"the credentials DB is still held open — nothing was changed:\n{listing}")
     return stopped

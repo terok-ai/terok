@@ -31,7 +31,10 @@ from terok.lib.domain.vault_rekey import (
     wait_for_db_release,
 )
 
-_SUPERVISOR_ARGV = b"/usr/bin/python\0-P\0-m\0terok_sandbox\0supervise-child\0vault\0abc123\0"
+_SUPERVISOR_ARGV = (
+    b"/usr/bin/python\0-P\0-m\0terok_sandbox\0supervise-child\0vault\0abc123"
+    b"\0/home/op/.local/share/terok/sandbox/sidecar/alpaka-fedora-cli-v78t0.json\0"
+)
 _FOREIGN_ARGV = b"/usr/bin/sqlitebrowser\0/home/op/creds.db\0"
 
 
@@ -75,6 +78,30 @@ class TestFindDbHolders:
 
         assert [(h.pid, h.owned) for h in holders] == [(4242, True)]
         assert "supervise-child" in holders[0].cmdline
+
+    def test_supervise_child_gets_a_concise_summary(
+        self, fake_proc: Path, fake_vault: SimpleNamespace
+    ) -> None:
+        """The listing line collapses to ``pid · service · task``, not the 200-char argv."""
+        _add_process(fake_proc, 4242, cmdline=_SUPERVISOR_ARGV, holds=fake_vault.db_path)
+
+        holder = find_db_holders(fake_vault)[0]
+
+        assert holder.service == "vault"
+        assert holder.task_label == "alpaka-fedora-cli-v78t0"
+        assert holder.summary == "pid 4242 · vault · alpaka-fedora-cli-v78t0"
+
+    def test_foreign_holder_summary_keeps_full_argv(
+        self, fake_proc: Path, fake_vault: SimpleNamespace
+    ) -> None:
+        """A non-supervise-child holder has no service, so its summary stays identifiable."""
+        _add_process(fake_proc, 99, cmdline=_FOREIGN_ARGV, holds=fake_vault.db_path)
+
+        holder = find_db_holders(fake_vault)[0]
+
+        assert holder.service is None
+        assert holder.summary == str(holder)
+        assert "sqlitebrowser" in holder.summary
 
     def test_wal_sidecar_counts_as_holding(
         self, fake_proc: Path, fake_vault: SimpleNamespace

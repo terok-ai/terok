@@ -924,6 +924,11 @@ if _HAS_TEXTUAL:
                         timeout=8,
                     )
                     return None
+                self.notify(
+                    f"Stopping {len(running)} task(s) to free the credentials DB…",
+                    title="Passphrase change in progress",
+                    timeout=30,
+                )
                 results = await asyncio.to_thread(stop_tasks_for_rekey, running)
                 stopped = [task for task, error in results if error is None]
                 failed = [(task, error) for task, error in results if error is not None]
@@ -946,8 +951,8 @@ if _HAS_TEXTUAL:
             )
             if not holders:
                 return stopped
-            listing = "\n".join(f"  • {h}" for h in holders)
             if any(not h.owned for h in holders):
+                listing = "\n".join(f"  • {h}" for h in holders if not h.owned)
                 self.notify(
                     "Processes outside terok are holding the credentials DB"
                     f" open — close them and retry:\n{listing}\n\nNothing was changed.",
@@ -956,12 +961,15 @@ if _HAS_TEXTUAL:
                 )
                 await self._restart_stopped_tasks(stopped)
                 return None
+            listing = "\n".join(f"  • {h.summary}" for h in holders)
             proceed = await self.push_screen_wait(
                 ConfirmDestructiveScreen(
-                    "No running task explains these supervisor processes still"
-                    f" holding the credentials DB:\n\n{listing}\n\n"
-                    "They were likely orphaned by an earlier task stop."
-                    "  Kill them and continue?",
+                    f"{len(holders)} supervisor process(es) still hold the"
+                    " credentials DB open, but no running task explains them —"
+                    " they were most likely orphaned by an earlier task stop"
+                    " (harmless to kill):\n\n"
+                    f"{listing}\n\n"
+                    "Kill them and continue with the passphrase change?",
                     title="Stale vault DB holders",
                     confirm_label="Kill & continue",
                 )
@@ -970,9 +978,14 @@ if _HAS_TEXTUAL:
                 self.notify("Passphrase change cancelled.", severity="warning", timeout=8)
                 await self._restart_stopped_tasks(stopped)
                 return None
+            self.notify(
+                f"Terminating {len(holders)} stale holder(s)…",
+                title="Passphrase change in progress",
+                timeout=30,
+            )
             survivors = await asyncio.to_thread(terminate_stale_holders, holders)
             if survivors:
-                listing = "\n".join(f"  • {h}" for h in survivors)
+                listing = "\n".join(f"  • {h.summary}" for h in survivors)
                 self.notify(
                     f"The credentials DB is still held open — nothing was changed:\n{listing}",
                     severity="error",
@@ -1075,6 +1088,11 @@ if _HAS_TEXTUAL:
 
             cfg = make_sandbox_config()
             try:
+                self.notify(
+                    "Re-encrypting the credentials DB under the new passphrase…",
+                    title="Passphrase change in progress",
+                    timeout=30,
+                )
                 try:
                     result = await asyncio.to_thread(
                         change_passphrase, cfg, old=old, new=typed or None

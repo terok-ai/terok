@@ -9,7 +9,7 @@ from typing import TYPE_CHECKING, Any
 
 from textual import events, screen
 from textual.app import ComposeResult
-from textual.containers import Horizontal, Vertical
+from textual.containers import Horizontal, Vertical, VerticalScroll
 from textual.widgets import Button, Static
 
 # Optional textual widget imports: TUI tests build a stub textual module
@@ -1729,9 +1729,9 @@ class ConfirmDestructiveScreen(screen.ModalScreen[bool]):
     }
 
     #confirm-dialog {
-        width: 60;
+        width: 72;
         height: auto;
-        max-height: 80%;
+        max-height: 90%;
         border: heavy $error;
         border-title-align: right;
         border-subtitle-align: left;
@@ -1739,11 +1739,16 @@ class ConfirmDestructiveScreen(screen.ModalScreen[bool]):
         padding: 1;
     }
 
-    #confirm-message {
+    /* The message scrolls; the buttons dock to the dialog's bottom edge so
+       they stay reachable no matter how long the message is (e.g. a rekey
+       stale-holder listing with many entries). */
+    #confirm-scroll {
+        height: auto;
         margin-bottom: 1;
     }
 
     #confirm-buttons {
+        dock: bottom;
         height: auto;
         align-horizontal: right;
     }
@@ -1766,9 +1771,10 @@ class ConfirmDestructiveScreen(screen.ModalScreen[bool]):
         self._confirm_label = confirm_label
 
     def compose(self) -> ComposeResult:
-        """Build the confirmation message and Yes/Cancel buttons."""
+        """Build the (scrollable) confirmation message and Yes/Cancel buttons."""
         with Vertical(id="confirm-dialog") as dialog:
-            yield Static(self._message, id="confirm-message", markup=False)
+            with VerticalScroll(id="confirm-scroll"):
+                yield Static(self._message, id="confirm-message", markup=False)
             with Horizontal(id="confirm-buttons"):
                 yield Button("Cancel", id="btn-cancel", variant="default")
                 yield Button(self._confirm_label, id="btn-confirm", variant="error")

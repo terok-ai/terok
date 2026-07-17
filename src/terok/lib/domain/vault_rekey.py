@@ -89,10 +89,30 @@ class DbHolder:
     """``True`` when the argv marks it as sandbox's own supervisor family —
     the only holders [`terminate_stale_holders`][terok.lib.domain.vault_rekey.terminate_stale_holders]
     will signal."""
+    service: str | None = None
+    """The supervisor service (``vault`` / ``signer`` / …) parsed from a
+    ``supervise-child`` argv, or ``None`` for anything else."""
+    task_label: str | None = None
+    """The sidecar stem (e.g. ``alpaka-fedora-cli-v78t0``) that names the
+    task the holder belongs to, or ``None`` when it can't be derived."""
 
     def __str__(self) -> str:
-        """Render as ``pid NNN (argv…)`` for operator-facing listings."""
+        """Render as ``pid NNN (argv…)`` — the full form, for foreign holders."""
         return f"pid {self.pid} ({self.cmdline})"
+
+    @property
+    def summary(self) -> str:
+        """One concise line for the operator-facing listing.
+
+        A recognised ``supervise-child`` collapses to ``pid · service ·
+        task``; anything else keeps its (short) argv so a foreign holder
+        stays fully identifiable.
+        """
+        if self.service and self.task_label:
+            return f"pid {self.pid} · {self.service} · {self.task_label}"
+        if self.service:
+            return f"pid {self.pid} · {self.service}"
+        return str(self)
 
 
 def find_running_tasks() -> tuple[RunningTask, ...]:
@@ -272,9 +292,36 @@ def _describe_holder(pid: int) -> DbHolder:
     raw = b""
     with contextlib.suppress(OSError):
         raw = (_PROC / str(pid) / "cmdline").read_bytes()
+    args = raw.split(b"\0")
     cmdline = raw.replace(b"\0", b" ").decode(errors="replace").strip() or "?"
     owned = any(mark in raw for mark in _OWNED_CMDLINE_MARKS)
-    return DbHolder(pid=pid, cmdline=cmdline, owned=owned)
+    service, task_label = _parse_supervise_child(args)
+    return DbHolder(pid=pid, cmdline=cmdline, owned=owned, service=service, task_label=task_label)
+
+
+def _parse_supervise_child(args: list[bytes]) -> tuple[str | None, str | None]:
+    """Pull ``(service, task_label)`` out of a ``supervise-child`` argv.
+
+    The launcher spawns ``… supervise-child <service> <container_id>
+    <sidecar_path>``; the service is the token after the verb, and the
+    task label is the sidecar filename's stem (far friendlier than the
+    64-char container id).  Returns ``(None, None)`` for any argv that
+    isn't a supervise-child.
+    """
+    try:
+        verb = args.index(b"supervise-child")
+    except ValueError:
+        return None, None
+    service = args[verb + 1].decode(errors="replace") if verb + 1 < len(args) else None
+    label = next(
+        (
+            arg.rsplit(b"/", 1)[-1].removesuffix(b".json").decode(errors="replace")
+            for arg in args
+            if arg.endswith(b".json")
+        ),
+        None,
+    )
+    return service, label
 
 
 def _await_exits(pids: Sequence[int], *, grace_s: float) -> None:
