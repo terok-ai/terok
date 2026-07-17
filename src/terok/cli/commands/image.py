@@ -179,7 +179,7 @@ def _cmd_build(
         if project is not None:
             resolved_base = base or project.base_image or DEFAULT_BASE_IMAGE
             resolved_family = family or project.family
-            resolved_agents = AgentRoster.parse_selection(agents or ",".join(project.agents))
+            resolved_agents = AgentRoster.parse_selection(agents or project.agents)
         else:
             resolved_base = base or ExecutorConfigView.image_base_image() or DEFAULT_BASE_IMAGE
             resolved_family = family

@@ -6,10 +6,13 @@
 from __future__ import annotations
 
 from collections.abc import Callable
+from unittest.mock import MagicMock
 
 import pytest
 
 from terok.lib.core import images
+from terok.lib.core.project_model import ProjectConfig
+from tests.testfs import MOCK_BASE
 
 BASE_IMAGE_FUNCS: list[tuple[Callable[[str], str], str]] = [
     (images.base_dev_image, "terok-l0"),
@@ -131,13 +134,7 @@ def test_base_image_functions_reuse_the_same_long_tag() -> None:
     assert len(tags) == 1
 
 
-# ── installed_agents / is_installed ───────────────────────────────────
-
-
-@pytest.fixture(autouse=True)
-def _clear_installed_agents_cache() -> None:
-    """Drop the lru_cache between tests so each test sees a fresh inspect."""
-    images.installed_agents.cache_clear()
+# ── installed_agents / installed_agents_for_project ──────────────────
 
 
 def _patch_labels(mock_runtime, labels: dict[str, str]) -> None:
@@ -147,10 +144,35 @@ def _patch_labels(mock_runtime, labels: dict[str, str]) -> None:
     unlabeled images — the distinction doesn't matter for the callers
     under test here.
     """
-    # ``installed_agents`` is ``@lru_cache``-d — clear the cache so each
-    # test sees the patched labels regardless of call order.
-    images.installed_agents.cache_clear()
     mock_runtime.image.return_value.labels.return_value = labels
+
+
+def _patch_labels_by_tag(mock_runtime, labels_by_tag: dict[str, dict[str, str]]) -> None:
+    """Configure ``mock_runtime`` so each image tag answers with its own labels."""
+
+    def _image(tag: str):
+        image = MagicMock(name=f"image[{tag}]")
+        image.labels.return_value = labels_by_tag.get(tag, {})
+        return image
+
+    mock_runtime.image.side_effect = _image
+
+
+def _project(agents: str = "all") -> ProjectConfig:
+    """Minimal project whose L2 tag is ``my-project:l2-cli``."""
+    root = MOCK_BASE / "images" / "my-project"
+    return ProjectConfig(
+        name="my-project",
+        security_class="online",
+        upstream_url=None,
+        default_branch="main",
+        root=root,
+        tasks_root=root / "tasks",
+        gate_path=root / "gate",
+        staging_root=None,
+        base_image="ubuntu-24.04",
+        agents=agents,
+    )
 
 
 def test_installed_agents_parses_label(mock_runtime) -> None:
@@ -173,14 +195,77 @@ def test_installed_agents_missing_image_returns_empty(mock_runtime) -> None:
     assert images.installed_agents("terok-l1-cli:nope") == frozenset()
 
 
-def test_is_installed_treats_unlabeled_as_unrestricted(mock_runtime) -> None:
-    # Legacy / unlabeled image: every agent is considered installed so
-    # older builds keep working until the user rebuilds.
+def test_installed_agents_for_project_reads_the_l2_image_not_the_l1_alias(
+    mock_runtime,
+) -> None:
+    # The unsuffixed L1 tag is a default alias for the user's *global*
+    # agent selection, so the answer must come from the L2 image the
+    # task actually boots.
+    _patch_labels_by_tag(
+        mock_runtime,
+        {
+            "terok-l1-cli:ubuntu-24.04": {"ai.terok.agents": "claude,codex,vibe"},
+            "my-project:l2-cli": {"ai.terok.agents": "claude"},
+        },
+    )
+    assert images.installed_agents_for_project(_project()) == frozenset({"claude"})
+
+
+def test_installed_agents_for_project_falls_back_to_project_selection(mock_runtime) -> None:
+    # Unlabeled / absent L2 image: the offer comes from the project
+    # definition (what a rebuild would install), never "every known agent".
     _patch_labels(mock_runtime, {})
-    assert images.is_installed("anything", "terok-l1-cli:legacy") is True
+    assert images.installed_agents_for_project(_project("claude,codex")) == frozenset(
+        {"claude", "codex"}
+    )
 
 
-def test_is_installed_filters_by_label(mock_runtime) -> None:
-    _patch_labels(mock_runtime, {"ai.terok.agents": "claude,codex"})
-    assert images.is_installed("claude", "terok-l1-cli:test") is True
-    assert images.is_installed("vibe", "terok-l1-cli:test") is False
+def test_installed_agents_for_project_fallback_resolves_all(mock_runtime) -> None:
+    from terok.lib.integrations.executor import AgentRoster
+
+    _patch_labels(mock_runtime, {})
+    expected = frozenset(AgentRoster.shared().resolve_selection("all"))
+    assert images.installed_agents_for_project(_project("all")) == expected
+
+
+def test_installed_agents_for_project_unresolvable_selection_is_empty(mock_runtime) -> None:
+    _patch_labels(mock_runtime, {})
+    assert images.installed_agents_for_project(_project("no-such-agent")) == frozenset()
+
+
+# ── require_agent_installed ───────────────────────────────────────────
+
+
+def test_require_agent_installed_accepts_labeled_agent(mock_runtime) -> None:
+    _patch_labels_by_tag(mock_runtime, {"my-project:l2-cli": {"ai.terok.agents": "claude,codex"}})
+    images.require_agent_installed(_project(), "claude")
+
+
+def test_require_agent_installed_rejects_agent_missing_from_l2_label(mock_runtime) -> None:
+    # ``vibe`` is in the default-alias L1 label but not in this project's
+    # L2 image — the guard must agree with the picker and reject.
+    _patch_labels_by_tag(
+        mock_runtime,
+        {
+            "terok-l1-cli:ubuntu-24.04": {"ai.terok.agents": "claude,vibe"},
+            "my-project:l2-cli": {"ai.terok.agents": "claude"},
+        },
+    )
+    project = _project()
+    with pytest.raises(SystemExit, match="not available in the image"):
+        images.require_agent_installed(project, "vibe")
+
+
+def test_require_agent_installed_uses_project_selection_when_unlabeled(mock_runtime) -> None:
+    _patch_labels(mock_runtime, {})
+    project = _project("claude")
+    images.require_agent_installed(project, "claude")
+    with pytest.raises(SystemExit, match="not available in the image"):
+        images.require_agent_installed(project, "codex")
+
+
+def test_require_agent_installed_treats_unknown_set_as_unrestricted(mock_runtime) -> None:
+    # No label anywhere and an unresolvable project selection: the set is
+    # unknown, so the guard stays permissive rather than blocking launches.
+    _patch_labels(mock_runtime, {})
+    images.require_agent_installed(_project("no-such-agent"), "claude")

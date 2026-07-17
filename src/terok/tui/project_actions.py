@@ -278,7 +278,6 @@ class ProjectActionsMixin(_MixinBase):
             "terok.tui.worker_actions:build",
             pid,
             title=f"Building images for {pid}",
-            on_complete=self._invalidate_image_caches,
         )
 
     async def action_init_ssh(self) -> None:
@@ -303,7 +302,6 @@ class ProjectActionsMixin(_MixinBase):
             "terok.tui.worker_actions:build_agents",
             pid,
             title=f"Rebuilding {pid} from L1 with fresh agents",
-            on_complete=self._invalidate_image_caches,
         )
 
     async def _action_build_full(self) -> None:
@@ -316,20 +314,7 @@ class ProjectActionsMixin(_MixinBase):
             "terok.tui.worker_actions:build_full",
             pid,
             title=f"Rebuilding {pid} from L0 (no cache)",
-            on_complete=self._invalidate_image_caches,
         )
-
-    @staticmethod
-    def _invalidate_image_caches() -> None:
-        """Drop cached image-label lookups after an in-TUI rebuild.
-
-        The [`installed_agents`][terok.lib.core.images.installed_agents] lru_cache is keyed on the L1 tag,
-        which a rebuild reuses — so without this, the picker would keep
-        showing the previous agent set until the TUI restarts.
-        """
-        from ..lib.api import installed_agents
-
-        installed_agents.cache_clear()
 
     async def _action_project_init(self) -> None:
         """Re-run full project setup: ssh-init, generate, build, gate-sync.
@@ -349,7 +334,6 @@ class ProjectActionsMixin(_MixinBase):
         from .wizard_screens import InitProgressScreen
 
         def _on_init_done(_outcome: object) -> None:
-            self._invalidate_image_caches()
             self._refresh_project_state()
 
         await self.push_screen(InitProgressScreen(self.current_project_name), _on_init_done)

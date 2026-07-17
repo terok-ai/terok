@@ -369,10 +369,12 @@ class TestCmdBuild:
 
         from terok.cli.commands.image import _cmd_build
 
+        # ``agents`` is a plain selection string on ProjectConfig — a list
+        # here would hide a re-join regression ("all" → "a,l,l").
         fake_project = MagicMock(
             base_image="fedora:43",
             family="rpm",
-            agents=["claude", "codex"],
+            agents="claude,codex",
         )
         fake_images = MagicMock(l0="L0", l1="L1")
         with (
@@ -402,6 +404,40 @@ class TestCmdBuild:
         assert kwargs["agents"] is sentinel.RESOLVED_AGENTS
         # Per-project builds must NOT clobber the user's host-wide default tag.
         assert kwargs["tag_as_default"] is False
+
+    def test_project_agents_selection_string_passes_through_verbatim(self) -> None:
+        """The project's ``agents`` string reaches the parser as-is.
+
+        Regression: a ``",".join(project.agents)`` over the *string* field
+        exploded it character-by-character (``"all"`` → ``"a,l,l"``), so
+        every project build without ``--agents`` died with "Unknown
+        roster entries".
+        """
+        from unittest.mock import MagicMock
+
+        from terok.cli.commands.image import _cmd_build
+
+        fake_project = MagicMock(base_image="fedora:43", family="rpm", agents="all")
+        fake_images = MagicMock(l0="L0", l1="L1")
+        with (
+            patch("terok.lib.core.projects.load_project", return_value=fake_project),
+            patch(
+                "terok.lib.integrations.executor.AgentRoster.parse_selection",
+                side_effect=lambda v: v,
+            ) as mock_parse,
+            patch("terok_executor.container.build.build_base_images", return_value=fake_images),
+        ):
+            _cmd_build(
+                project_name="myproj",
+                base=None,
+                agents=None,
+                family=None,
+                rebuild=False,
+                full_rebuild=False,
+                sidecar=False,
+            )
+
+        mock_parse.assert_called_once_with("all")
 
     def test_build_error_exits_cleanly(self) -> None:
         from terok_executor import BuildError
