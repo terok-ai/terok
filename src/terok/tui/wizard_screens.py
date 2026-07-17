@@ -653,9 +653,14 @@ class InitProgressScreen(ModalScreen[InitOutcome]):
         height: auto;
         border: round $warning;
         background: $surface;
-        padding: 1;
+        padding: 0 1;
         margin-bottom: 1;
         display: none;
+    }
+
+    #wizard-init-ssh-buttons {
+        height: auto;
+        margin-top: 1;
     }
 
     .wizard-init-ssh-spacer {
@@ -1016,11 +1021,13 @@ class InitProgressScreen(ModalScreen[InitOutcome]):
                 # the raw text the way TextArea.text does.
                 self._ssh_pub_line = result["public_line"]
                 self.query_one("#wizard-init-ssh-key").styles.display = "block"
+                self._apply_ssh_layout()
                 log.write(
                     "[yellow]Register the public key on the git remote, then click Continue.[/]"
                 )
                 await self._ssh_continue.wait()
                 self.query_one("#wizard-init-ssh-key").styles.display = "none"
+                self._apply_ssh_layout()
 
             # Silent stdout capture — the facade's summarise/print lines
             # land in the log instead of the terminal.  podman subprocess
@@ -1095,6 +1102,28 @@ class InitProgressScreen(ModalScreen[InitOutcome]):
         # ``_run_init_with_confirm`` finally — keeping it there prevents
         # the button from flashing enabled then disabled between the
         # two coroutines.
+
+    _SSH_COMPACT_HEIGHT = 30
+    """Terminal rows below which the SSH panel claims the log's space."""
+
+    def on_resize(self) -> None:
+        """Re-evaluate the SSH panel's space claim when the terminal changes."""
+        with contextlib.suppress(NoMatches):
+            self._apply_ssh_layout()
+
+    def _apply_ssh_layout(self) -> None:
+        """Give the SSH key panel room on short terminals — reactively.
+
+        While the panel is visible on a small screen, the log pane and
+        the Close row (disabled during init anyway) yield their rows and
+        the dialog stretches to the full height; everything returns when
+        the panel hides or the terminal grows.
+        """
+        panel = self.query_one("#wizard-init-ssh-key")
+        compact = panel.styles.display == "block" and self.size.height < self._SSH_COMPACT_HEIGHT
+        self.query_one("#wizard-init-log").display = not compact
+        self.query_one("#wizard-init-buttons").display = not compact
+        self.query_one("#wizard-init-dialog").styles.height = "100%" if compact else "80%"
 
     # ── Button handlers ───────────────────────────────────────────────
 
