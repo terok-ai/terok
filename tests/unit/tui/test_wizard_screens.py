@@ -19,7 +19,7 @@ from unittest.mock import AsyncMock, MagicMock, PropertyMock, patch
 
 import pytest
 from textual.app import App
-from textual.widgets import Input, Label, RadioButton, RadioSet, Static, TextArea
+from textual.widgets import Button, Input, Label, RadioButton, RadioSet, Static, TextArea
 
 from terok.lib.domain.wizards.new_project import QUESTIONS, Question
 from terok.tui.wizard_screens import ProjectReviewScreen, WizardFormScreen
@@ -104,7 +104,7 @@ async def test_wizard_form_submit_returns_collected_dict() -> None:
     # First radio button is pre-selected on each choice; confirm it mapped
     # through to the slug, not the label.
     assert app.result["security_class"] == _question("security_class").resolve_choices()[0].slug
-    assert app.result["base"] == _question("base").resolve_choices()[0].slug
+    assert app.result["base"] == _question("base").default
     # Optional fields default to empty strings.
     assert app.result["upstream_url"] == ""
     assert app.result["default_branch"] == ""
@@ -202,23 +202,115 @@ async def test_wizard_form_radio_selection_picks_other_option() -> None:
 
 
 @pytest.mark.asyncio
-async def test_nvidia_radio_disabled_when_cdi_missing() -> None:
-    """Without CDI, the NVIDIA radio is rendered disabled with the hint below it.
+async def test_base_dropdown_defaults_and_submits() -> None:
+    """The base question renders as a defaulted dropdown; submit carries it."""
+    from textual.widgets import Select
 
-    The wizard probes ``check_gpu_available`` at form-open time; on
-    hosts without CDI the option stays visible (so users see what's on
-    offer) but is unclickable and carries the install-CDI hint.
-    """
-    with patch("terok.lib.domain.wizards.new_project.check_gpu_available", return_value=False):
-        app = _WizardHost(WizardFormScreen())
-        async with app.run_test() as pilot:
-            await pilot.pause()
-            base_set = app.screen.query_one("#wizard-field-base", RadioSet)
-            buttons = {rb.name: rb for rb in base_set.query(RadioButton)}
-            assert buttons["nvidia"].disabled is True
-            assert buttons["fedora"].disabled is False
-            help_lines = [str(lbl.render()) for lbl in app.screen.query(Label)]
-            assert any("Container Device Interface" in line for line in help_lines)
+    app = _WizardHost(WizardFormScreen())
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        base_select = app.screen.query_one("#wizard-field-base", Select)
+        assert base_select.value == "fedora"
+        # The custom-image field exists but is hidden on the happy path.
+        assert app.screen.query_one("#wizard-field-custom-image", Input).display is False
+        app.screen.query_one("#wizard-field-project_name", Input).value = "p1"
+        await pilot.click("#wizard-form-create")
+        await pilot.pause()
+    assert isinstance(app.result, dict)
+    assert app.result["base"] == "fedora"
+    assert app.result["gpus"] == ""
+
+
+@pytest.mark.asyncio
+async def test_custom_base_reveals_input_and_requires_image() -> None:
+    """Custom base shows the image input; empty image blocks, value submits."""
+    from textual.widgets import Select
+
+    app = _WizardHost(WizardFormScreen())
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        app.screen.query_one("#wizard-field-base", Select).value = "custom"
+        await pilot.pause()
+        image_input = app.screen.query_one("#wizard-field-custom-image", Input)
+        assert image_input.display is True
+        app.screen.query_one("#wizard-field-project_name", Input).value = "p1"
+        await pilot.click("#wizard-form-create")
+        await pilot.pause()
+        error = str(app.screen.query_one("#wizard-error-custom-image", Label).render())
+        assert "required" in error
+        image_input.value = "rockylinux:9"
+        await pilot.pause(0.4)
+        await pilot.click("#wizard-form-create")
+        await pilot.pause()
+    assert isinstance(app.result, dict)
+    assert app.result["custom_image"] == "rockylinux:9"
+
+
+@pytest.mark.asyncio
+async def test_gpu_base_defaults_gpu_button_and_value() -> None:
+    """Picking a GPU software-stack base defaults the GPU field to its vendor."""
+    from textual.widgets import Select
+
+    app = _WizardHost(WizardFormScreen())
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        base_select = app.screen.query_one("#wizard-field-base", Select)
+        base_select.value = "rocm"
+        await pilot.pause()
+        label = str(app.screen.query_one("#wizard-form-gpus", Button).label)
+        assert label == "GPU: amd"
+        app.screen.query_one("#wizard-field-project_name", Input).value = "p1"
+        await pilot.click("#wizard-form-create")
+        await pilot.pause()
+    assert isinstance(app.result, dict)
+    assert app.result["gpus"] == "amd"
+
+
+@pytest.mark.asyncio
+async def test_restored_derived_gpu_default_stays_derived() -> None:
+    """Back round-trip: a base-derived selector must keep following the base."""
+    from textual.widgets import Select
+
+    app = _WizardHost(WizardFormScreen(initial={"base": "rocm", "gpus": "amd"}))
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        app.screen.query_one("#wizard-field-base", Select).value = "nvidia"
+        await pilot.pause()
+        label = str(app.screen.query_one("#wizard-form-gpus", Button).label)
+    assert label == "GPU: nvidia"
+
+
+@pytest.mark.asyncio
+async def test_restored_explicit_gpu_choice_survives_base_change() -> None:
+    """Back round-trip: an explicit selector is not re-derived from the base."""
+    from textual.widgets import Select
+
+    app = _WizardHost(WizardFormScreen(initial={"base": "rocm", "gpus": "amd:1"}))
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        app.screen.query_one("#wizard-field-base", Select).value = "nvidia"
+        await pilot.pause()
+        label = str(app.screen.query_one("#wizard-form-gpus", Button).label)
+    assert label == "GPU: amd:1"
+
+
+@pytest.mark.asyncio
+async def test_gpu_modal_selection_overrides_base_default() -> None:
+    """An explicit GPU choice survives later base changes."""
+    from textual.widgets import Select
+
+    app = _WizardHost(WizardFormScreen())
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        screen = app.screen
+        assert isinstance(screen, WizardFormScreen)
+        screen._on_gpus_dismissed("nvidia:0,intel")
+        await pilot.pause()
+        assert str(screen.query_one("#wizard-form-gpus", Button).label) == "GPU: nvidia:0,intel"
+        screen.query_one("#wizard-field-base", Select).value = "rocm"
+        await pilot.pause()
+        # Explicit selection is not clobbered by the base's implied vendor.
+        assert str(screen.query_one("#wizard-form-gpus", Button).label) == "GPU: nvidia:0,intel"
 
 
 # ── ProjectReviewScreen ───────────────────────────────────────────────

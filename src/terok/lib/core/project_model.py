@@ -73,7 +73,8 @@ class ProjectConfig(BaseModel):
 
     ``"all"``/``true`` passes through every vendor detected on the
     host; ``"nvidia"``, ``"amd"``, ``"intel"`` (single, comma-separated,
-    or a list) select vendors explicitly.  Kept in the raw config shape —
+    or a list) select vendors explicitly, and a ``:N`` suffix
+    (``"amd:1"``) grants single devices.  Kept in the raw config shape —
     terok-executor normalizes it at launch via
     [`normalize_gpus`][terok_sandbox.config_schema.normalize_gpus].
     """

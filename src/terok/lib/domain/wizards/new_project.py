@@ -34,7 +34,11 @@ from typing import Literal
 import jinja2
 from terok_util import ensure_dir_writable
 
-from terok.lib.integrations.sandbox import check_gpu_available
+from terok.lib.integrations.sandbox import (
+    detect_gpu_vendors,
+    gpu_device_addresses,
+    normalize_gpus,
+)
 from terok.ui_utils.editor import open_in_editor
 
 from ...core.config import user_projects_dir
@@ -66,52 +70,180 @@ SECURITY_CLASSES: tuple[Choice, ...] = (
     Choice("online", "Online (agent pushes directly to upstream)"),
     Choice("gatekeeping", "Gatekeeping (changes staged for human review)"),
 )
-BASES: tuple[Choice, ...] = tuple(
-    sorted(
-        (
-            Choice("ubuntu", "Ubuntu 24.04"),
-            Choice("fedora", "Fedora 44"),
-            Choice("podman", "Podman (Fedora-based)"),
-            Choice("nvidia", "NVIDIA CUDA (GPU)"),
-        ),
-        key=lambda c: c.label.casefold(),
-    )
+# Plain OS bases first (happy path), GPU software stacks after — always
+# selectable: a CUDA/ROCm/oneAPI image is a software choice (compilers,
+# libraries) that is useful with or without GPU hardware on this host.
+BASES: tuple[Choice, ...] = (
+    Choice("ubuntu", "Ubuntu 24.04"),
+    Choice("ubuntu26", "Ubuntu 26.04"),
+    Choice("fedora", "Fedora 44"),
+    Choice("podman", "Podman (Fedora-based)"),
+    Choice("nvidia", "NVIDIA CUDA (GPU software stack)"),
+    Choice("rocm", "AMD ROCm (GPU software stack)"),
+    Choice("oneapi", "Intel oneAPI (GPU software stack)"),
+    Choice("custom", "Custom image…"),
 )
 BASE_IMAGES: dict[str, str] = {
     "ubuntu": "ubuntu:24.04",
+    "ubuntu26": "ubuntu:26.04",
     "fedora": "fedora:44",
     "podman": "quay.io/podman/stable:latest",
     "nvidia": "nvcr.io/nvidia/nvhpc:25.9-devel-cuda13.0-ubuntu24.04",
+    "rocm": "docker.io/rocm/dev-ubuntu-24.04:latest",
+    "oneapi": "docker.io/intel/oneapi-basekit:latest",
 }
+DEFAULT_BASE = "fedora"
+"""Preselected base — the dropdown's happy-path value."""
 
-#: Shown next to the NVIDIA base when ``check_gpu_available()`` returns
-#: ``False`` — short enough to fit inline beside the option label, with a
-#: link to the same docs page [`GpuConfigError.hint`][terok_sandbox.GpuConfigError]
-#: surfaces post-launch so users see one consistent pointer either way.
-_NVIDIA_UNAVAILABLE_REASON = (
-    "NVIDIA Container Device Interface not detected — install the NVIDIA Container Toolkit "
-    "and configure CDI first.  See: https://podman-desktop.io/docs/podman/gpu"
+CUSTOM_BASE = "custom"
+"""Slug of the bring-your-own-image option — the image name is asked
+separately and the wizard adds a ``family:`` hint to the config."""
+
+CUSTOM_IMAGE_WARNING = (
+    "terok will try to autodetect the image's package family (dnf vs apt); "
+    "unrecognized images need 'family: deb' or 'family: rpm' in project.yml, "
+    "and beyond that you are on your own.  See "
+    "https://terok-ai.github.io/terok/custom-images/"
 )
 
-
-def _load_base_choices() -> tuple[Choice, ...]:
-    """Return the base-image options, tagging ``nvidia`` as disabled when CDI is missing.
-
-    Probing podman lives outside the schema so the wizard surfaces the
-    same hint the runtime would emit if the user proceeded blind: see
-    [`check_gpu_available`][terok_sandbox.check_gpu_available] and the
-    on-launch [`GpuConfigError`][terok_sandbox.GpuConfigError] path.
-    """
-    if check_gpu_available():
-        return BASES
-    return tuple(
-        Choice(c.slug, c.label, _NVIDIA_UNAVAILABLE_REASON) if c.slug == "nvidia" else c
-        for c in BASES
-    )
+#: GPU vendor implied by each GPU software-stack base.  Selecting one
+#: *defaults* the GPU passthrough field to that vendor (visible and
+#: revertible — the stack is useful without hardware too); it never
+#: forces it.
+BASE_GPU_VENDOR: dict[str, str] = {"nvidia": "nvidia", "rocm": "amd", "oneapi": "intel"}
 
 
 _TEMPLATE_DIR: Traversable = resources.files("terok") / "resources" / "templates" / "projects"
 _TEMPLATE_NAME = "project.yml.template"
+
+
+# ── GPU passthrough — opt-in with best-effort device detection ────────
+
+GPU_ALL = "all"
+"""Selector meaning "every vendor the host supports" — the on-default."""
+
+
+@dataclass(frozen=True, slots=True)
+class GpuDeviceChoice:
+    """One detected GPU the wizard can offer as a checkbox."""
+
+    token: str
+    """Selector token this device contributes (``"amd"`` or ``"amd:1"``)."""
+
+    label: str
+    """Human-readable line (token plus PCI address when known)."""
+
+
+def detect_gpu_choices() -> tuple[GpuDeviceChoice, ...]:
+    """Best-effort device list for the GPU picker; empty on any failure.
+
+    Cheap by construction (sysfs reads plus one time-bounded podman
+    probe) and only called after the user opts into GPU passthrough —
+    the wizard's happy path never pays it.  A single-device vendor is
+    offered as its plain vendor token; multi-device vendors get one
+    entry per device in terok's PCI-address order.  Every failure mode
+    collapses to ``()`` so the picker degrades to offering ``"all"``.
+    """
+    try:
+        vendors = detect_gpu_vendors()
+        addresses = gpu_device_addresses()
+    except Exception:  # noqa: BLE001 — detection is decorative, never fatal
+        return ()
+    choices: list[GpuDeviceChoice] = []
+    for vendor in ("nvidia", "amd", "intel"):
+        if vendor not in vendors:
+            continue
+        addrs = addresses.get(vendor, ())
+        if len(addrs) > 1:
+            choices.extend(
+                GpuDeviceChoice(f"{vendor}:{i}", f"{vendor}:{i}  ({addr})")
+                for i, addr in enumerate(addrs)
+            )
+        else:
+            suffix = f"  ({addrs[0]})" if addrs else ""
+            choices.append(GpuDeviceChoice(vendor, f"{vendor}{suffix}"))
+    return tuple(choices)
+
+
+_IMAGE_REF_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9._:/@-]*")
+"""Conservative OCI-reference shape: registry/name/tag/digest characters
+only.  Anything outside it (quotes, backslashes, whitespace) would break
+the quoted YAML the template renders the value into."""
+
+
+def validate_custom_image(value: str) -> str | None:
+    """Light validation for a hand-typed base image reference.
+
+    Only structural sanity — the authoritative reference validation
+    happens in terok-executor at build time; this catches what would
+    corrupt the generated ``project.yml`` (empty values, whitespace,
+    quote characters) before it lands there.
+    """
+    if not value:
+        return "Custom base image name is required."
+    if _IMAGE_REF_RE.fullmatch(value) is None:
+        return (
+            "Image references may only contain letters, digits, and '. _ : / @ -' "
+            "(no whitespace or quotes)."
+        )
+    return None
+
+
+def prompt_custom_image() -> str:
+    """CLI prompt for the custom base image, with the on-your-own warning."""
+    print(f"\nNote: {CUSTOM_IMAGE_WARNING}")
+    while True:
+        raw = input("Base image (e.g. rockylinux:9): ").strip()
+        error = validate_custom_image(raw)
+        if error is None:
+            return raw
+        print(error, file=sys.stderr)
+
+
+def validate_gpus(value: str) -> str | None:
+    """Validate a ``run.gpus`` selector with sandbox's own grammar.
+
+    Empty means "GPU passthrough off" and is always accepted.
+    """
+    if not value:
+        return None
+    try:
+        normalize_gpus(value)
+    except ValueError as exc:
+        return str(exc)
+    return None
+
+
+def prompt_gpu_passthrough(base_slug: str) -> str:
+    """Two-stage CLI opt-in for GPU passthrough.
+
+    Default off; a GPU software-stack base flips the default on with
+    its vendor preselected (revertible — the stack is a legitimate
+    software-only choice).  On yes, detected devices are listed for
+    orientation and the selector collected, validated by
+    [`validate_gpus`][terok.lib.domain.wizards.new_project.validate_gpus].
+    Returns ``""`` when declined.
+    """
+    vendor_default = BASE_GPU_VENDOR.get(base_slug, "")
+    default_on = bool(vendor_default)
+    hint = "[Y/n]" if default_on else "[y/N]"
+    answer = input(f"\nEnable GPU passthrough? {hint}: ").strip().lower()
+    enabled = answer in ("y", "yes") or (default_on and answer == "")
+    if not enabled:
+        return ""
+    choices = detect_gpu_choices()
+    if choices:
+        print("Detected GPUs:")
+        for c in choices:
+            print(f"  · {c.label}")
+    selector_default = vendor_default or GPU_ALL
+    while True:
+        raw = input(f"GPU selector [{selector_default}]: ").strip()
+        value = raw or selector_default
+        error = validate_gpus(value)
+        if error is None:
+            return value
+        print(error, file=sys.stderr)
 
 
 # ── Question declarations ─────────────────────────────────────────────
@@ -163,6 +295,16 @@ class Question:
 
     placeholder: str = ""
     """Hint string, rendered inside the Textual ``Input``; unused in CLI."""
+
+    dropdown: bool = False
+    """Render this ``choice`` as a compact dropdown instead of radio buttons.
+
+    A TUI presentation hint for choice lists long enough that radios
+    would eat the form's vertical space; the CLI menu is unaffected.
+    """
+
+    default: str = ""
+    """Preselected slug for ``choice`` questions (the happy-path value)."""
 
     default_visible: bool = False
     """When True, CLI prompt shows ``"(optional)"`` to telegraph "Enter is fine"."""
@@ -278,7 +420,9 @@ QUESTIONS: tuple[Question, ...] = (
         key="base",
         kind="choice",
         prompt="Select base image",
-        choices_loader=_load_base_choices,
+        choices=BASES,
+        dropdown=True,
+        default=DEFAULT_BASE,
         required=True,
     ),
     Question(
@@ -545,6 +689,10 @@ def collect_wizard_inputs() -> dict | None:
                     values[question.key] = value
                     break
                 print(error, file=sys.stderr)
+            if question.key == "base":
+                if values["base"] == CUSTOM_BASE:
+                    values["custom_image"] = prompt_custom_image()
+                values["gpus"] = prompt_gpu_passthrough(values["base"])
         agents = prompt_agent_override()
         if agents:
             values["agents"] = agents
@@ -626,7 +774,10 @@ def render_project_yaml(values: dict) -> str:
         "USER_SNIPPET": values["user_snippet"],
         "SECURITY_CLASS": values["security_class"],
         "BASE": values["base"],
-        "BASE_IMAGE": BASE_IMAGES[values["base"]],
+        "BASE_IMAGE": BASE_IMAGES.get(values["base"]) or values.get("custom_image", ""),
+        # Empty string suppresses the ``run.gpus`` block — GPU
+        # passthrough is opt-in and any base can carry it.
+        "GPUS": values.get("gpus", ""),
         # Empty string suppresses the ``agents:`` line via the
         # template's ``{% if AGENTS %}`` gate — the project then
         # inherits the global default written by ``terok agents set``.
@@ -748,7 +899,16 @@ def _maybe_print_global_agents_hint(values: dict) -> None:
 __all__ = [
     "AGENTS_QUESTION",
     "BASES",
+    "BASE_GPU_VENDOR",
+    "CUSTOM_BASE",
+    "CUSTOM_IMAGE_WARNING",
     "Choice",
+    "GpuDeviceChoice",
+    "detect_gpu_choices",
+    "prompt_custom_image",
+    "prompt_gpu_passthrough",
+    "validate_custom_image",
+    "validate_gpus",
     "QUESTIONS",
     "Question",
     "QuestionKind",

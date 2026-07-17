@@ -64,16 +64,30 @@ if TYPE_CHECKING:
     )
     from terok.lib.domain.wizards.new_project import (
         AGENTS_QUESTION as AGENTS_QUESTION,
+        BASE_GPU_VENDOR as BASE_GPU_VENDOR,
+        CUSTOM_BASE as CUSTOM_BASE,
+        CUSTOM_IMAGE_WARNING as CUSTOM_IMAGE_WARNING,
         QUESTIONS as QUESTIONS,
+        GpuDeviceChoice as GpuDeviceChoice,
         Question as Question,
+        detect_gpu_choices as detect_gpu_choices,
         render_project_yaml as render_project_yaml,
         validate_answer as validate_answer,
+        validate_custom_image as validate_custom_image,
+        validate_gpus as validate_gpus,
         write_project_yaml as write_project_yaml,
     )
 
 #: Public name -> defining module (PEP 562 lazy resolution).
 _LAZY: dict[str, str] = {
     "AGENTS_QUESTION": "terok.lib.domain.wizards.new_project",
+    "validate_custom_image": "terok.lib.domain.wizards.new_project",
+    "validate_gpus": "terok.lib.domain.wizards.new_project",
+    "detect_gpu_choices": "terok.lib.domain.wizards.new_project",
+    "GpuDeviceChoice": "terok.lib.domain.wizards.new_project",
+    "BASE_GPU_VENDOR": "terok.lib.domain.wizards.new_project",
+    "CUSTOM_BASE": "terok.lib.domain.wizards.new_project",
+    "CUSTOM_IMAGE_WARNING": "terok.lib.domain.wizards.new_project",
     "BrokenProject": "terok.lib.core.projects",
     "DeleteProjectResult": "terok.lib.domain.project",
     "Project": "terok.lib.domain.project",

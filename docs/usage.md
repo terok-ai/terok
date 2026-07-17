@@ -1034,18 +1034,30 @@ run:
   gpus: all   # or true — every vendor detected on the host
 ```
 
-or select vendors explicitly:
+or select vendors — and single devices — explicitly:
 
 ```yaml
 run:
-  gpus: amd            # one vendor
-  # gpus: nvidia,intel # comma-separated
+  gpus: amd                # one vendor, all of its devices
+  # gpus: "amd:1"          # one device (quote — the selector contains a colon)
+  # gpus: "nvidia:0,nvidia:1"   # two devices, token repetition
   # gpus: [nvidia, amd, intel]  # YAML list — all three into one container
 ```
 
 `all` passes through every vendor whose host support terok detects and
 fails only when none is found; naming a vendor explicitly fails loudly
-at launch when that vendor's prerequisites are missing.
+at launch when that vendor's prerequisites are missing.  A whole-vendor
+token absorbs that vendor's indexed ones.
+
+**Device index semantics.**  On CDI hosts the index is handed to the
+vendor's spec (`--device amd.com/gpu=1`) and means whatever the vendor's
+tooling says it means — authoritative and enforced.  Without CDI the
+grant is *best effort*: terok orders a vendor's devices by PCI bus
+address (stable across launches, and across reboots for unchanged
+hardware, but not guaranteed to match `rocm-smi`/`nvidia-smi`
+numbering), mounts only the selected device nodes, and prints a warning
+recommending CDI.  Inside the container a selected card enumerates as
+device 0.  Switching a host to CDI can renumber devices.
 
 ### Per-vendor requirements and flags
 
@@ -1059,35 +1071,44 @@ recipes also work on older podman releases.
 with a generated CDI spec (`nvidia-ctk cdi generate`).  Three tiers,
 picked automatically:
 
-1. CDI: `--device nvidia.com/gpu=all`
+1. CDI: `--device nvidia.com/gpu=all` (or one `=N` per selected device)
 2. Pre-CDI toolkit installs (podman < 4.1): the toolkit's legacy OCI
    hook triggers on the env vars and injects devices and driver
-   userland itself — terok emits only the env vars
-3. Driver without toolkit: every `/dev/nvidia*` device node is passed;
-   the image must then carry a driver userland (`libcuda`) matching
-   the host kernel module
+   userland itself — terok emits only the env vars (device selection
+   included, via `NVIDIA_VISIBLE_DEVICES`)
+3. Driver without toolkit: the `/dev/nvidia*` device nodes are passed —
+   all of them, or the shared nodes plus the selected GPUs' nodes
+   (minors resolved from `/proc/driver/nvidia/gpus`); the image must
+   then carry a driver userland (`libcuda`) matching the host kernel
+   module
 
-All tiers set `NVIDIA_VISIBLE_DEVICES=all`, `NVIDIA_DRIVER_CAPABILITIES=all`.
+All tiers set `NVIDIA_VISIBLE_DEVICES` (`all` or the selected indices)
+and `NVIDIA_DRIVER_CAPABILITIES=all`.
 
 **AMD** — CDI via the [AMD Container Toolkit](https://instinct.docs.amd.com/projects/container-toolkit/en/latest/)
 (`amd-ctk cdi generate`, kind `amd.com/gpu`) when present; otherwise the
 [ROCm-documented](https://rocm.docs.amd.com/projects/install-on-linux/en/latest/how-to/docker.html)
 device pair (requires the `amdgpu` kernel driver):
 
-- `--device /dev/kfd --device /dev/dri` (or `--device amd.com/gpu=all` via CDI)
+- `--device /dev/kfd` plus the AMD render nodes (or `--device
+  amd.com/gpu=all` via CDI)
 - `--group-add keep-groups`
 
-**Intel** — CDI (kind `intel.com/gpu`) when present; otherwise plain
-DRM device nodes — the oneAPI / Level Zero / OpenCL stack needs nothing
-else (requires the `i915`/`xe` kernel driver):
+**Intel** — CDI (kind `intel.com/gpu`) when present; otherwise the
+Intel render nodes — the oneAPI / Level Zero / OpenCL stack needs
+nothing else (requires the `i915`/`xe` kernel driver):
 
-- `--device /dev/dri` (or `--device intel.com/gpu=all` via CDI)
+- the Intel `/dev/dri/renderD*` nodes (or `--device intel.com/gpu=all`
+  via CDI)
 - `--group-add keep-groups`
 
-The raw AMD/Intel recipes also mount `/dev/dri/by-path` read-only when
-the host has it — `--device /dev/dri` replicates the device nodes but
-not the PCI-addressed symlinks, and Intel's NEO runtime enumerates GPUs
-through that directory first.
+Raw DRM grants are **vendor-scoped**: only the granted vendor's render
+nodes are mounted, never the whole `/dev/dri` — on a mixed host the
+other vendors' GPUs (and non-GPU DRM devices such as BMC display
+adapters) stay invisible to the container.  Each granted node's
+`/dev/dri/by-path` symlink is bound read-only alongside it, keeping
+Intel NEO's PCI-ordered enumeration path working and multi-GPU device
+identity legible inside the container.
 
 `--group-add keep-groups` keeps the invoking user's host groups (the
 `render` group gating AMD/Intel nodes) inside the rootless container.
@@ -1108,11 +1129,12 @@ image:
 
 ### Selecting GPUs inside the container
 
-Passthrough is all-GPUs-per-vendor; narrow the view inside the
-container with the vendor's own selector when needed:
-`CUDA_VISIBLE_DEVICES` (NVIDIA), `ROCR_VISIBLE_DEVICES` /
+Prefer selecting at the terok level (`gpus: "amd:1"`) — the container
+then never sees the other devices.  For finer runtime control inside a
+container that was granted several devices, the vendors' own selectors
+still work: `CUDA_VISIBLE_DEVICES` (NVIDIA), `ROCR_VISIBLE_DEVICES` /
 `HIP_VISIBLE_DEVICES` (AMD), `ONEAPI_DEVICE_SELECTOR` /
-`ZE_AFFINITY_MASK` (Intel).
+`ZE_AFFINITY_MASK` (Intel) — indices are container-local.
 
 ---
 

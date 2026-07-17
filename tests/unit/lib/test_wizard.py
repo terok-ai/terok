@@ -14,32 +14,36 @@ import pytest
 from terok.lib.domain.wizards.new_project import (
     AGENTS_QUESTION,
     BASES,
+    DEFAULT_BASE,
     QUESTIONS,
     SECURITY_CLASSES,
+    GpuDeviceChoice,
     Question,
-    _load_base_choices,
     _slugify_project_name,
     _validate_project_name,
     collect_wizard_inputs,
+    detect_gpu_choices,
     generate_config,
     prompt_agent_override,
+    prompt_custom_image,
+    prompt_gpu_passthrough,
     render_project_yaml,
     run_wizard,
     validate_answer,
+    validate_custom_image,
+    validate_gpus,
     write_project_yaml,
 )
 from tests.testfs import mock_wizard_project_file
 
 
 @pytest.fixture(autouse=True)
-def _gpu_available() -> object:
-    """Pretend CDI is configured so wizard inputs that pick NVIDIA still pass.
+def _gpu_prompt_off() -> object:
+    """Silence the CLI GPU opt-in so input sequences stay one-per-question.
 
-    The gating tests below patch this themselves to exercise the
-    disabled-option branch — the fixture is here so the existing
-    end-to-end flow keeps testing the happy path on hosts without a GPU.
+    The dedicated GPU tests below exercise the real prompt themselves.
     """
-    with patch("terok.lib.domain.wizards.new_project.check_gpu_available", return_value=True) as p:
+    with patch("terok.lib.domain.wizards.new_project.prompt_gpu_passthrough", return_value="") as p:
         yield p
 
 
@@ -53,6 +57,7 @@ def wizard_values(
     agents: str | None = None,
     user_snippet: str = "",
     credentials_scope: str = "shared",
+    gpus: str = "",
 ) -> dict[str, object]:
     """Build a wizard value dict with sensible defaults."""
     values: dict[str, object] = {
@@ -63,6 +68,7 @@ def wizard_values(
         "default_branch": default_branch,
         "user_snippet": user_snippet,
         "credentials_scope": credentials_scope,
+        "gpus": gpus,
     }
     if agents is not None:
         values["agents"] = agents
@@ -97,12 +103,12 @@ def test_validate_project_name(project_name: str, valid: bool) -> None:
     [
         pytest.param(
             # sec, base, pid, upstream, branch, snippet-y/N, creds-scope, override-agents-y/N
-            ["1", "1", "myproj", "https://example.com/r.git", "main", "n", "1", "n"],
+            ["1", "3", "myproj", "https://example.com/r.git", "main", "n", "1", "n"],
             wizard_values(project_name="myproj", upstream_url="https://example.com/r.git"),
             id="collect-all-values-no-override",
         ),
         pytest.param(
-            ["2", "1", "gkproj", "git@host:r.git", "", "n", "1", "n"],
+            ["2", "3", "gkproj", "git@host:r.git", "", "n", "1", "n"],
             wizard_values(
                 security_class="gatekeeping",
                 project_name="gkproj",
@@ -112,7 +118,7 @@ def test_validate_project_name(project_name: str, valid: bool) -> None:
             id="gatekeeping-selection",
         ),
         pytest.param(
-            ["1", "2", "proj", "https://example.com/r.git", "", "n", "1", "n"],
+            ["1", "5", "proj", "https://example.com/r.git", "", "n", "1", "n"],
             wizard_values(
                 base="nvidia",
                 project_name="proj",
@@ -125,7 +131,7 @@ def test_validate_project_name(project_name: str, valid: bool) -> None:
             # ... snippet=n, creds-scope=project, override-agents=y, then a comma-list selection
             [
                 "1",
-                "2",
+                "5",
                 "proj",
                 "https://example.com/r.git",
                 "dev",
@@ -145,12 +151,12 @@ def test_validate_project_name(project_name: str, valid: bool) -> None:
             id="opt-in-agents-override",
         ),
         pytest.param(
-            ["1", "1", "!!!", "good-id", "https://example.com/r.git", "main", "n", "1", "n"],
+            ["1", "3", "!!!", "good-id", "https://example.com/r.git", "main", "n", "1", "n"],
             wizard_values(project_name="good-id", upstream_url="https://example.com/r.git"),
             id="retry-invalid-project-name",
         ),
         pytest.param(
-            ["1", "1", "proj", "", "main", "n", "1", "n"],
+            ["1", "3", "proj", "", "main", "n", "1", "n"],
             wizard_values(project_name="proj", upstream_url=""),
             id="empty-upstream-url-accepted",
         ),
@@ -190,7 +196,7 @@ def test_collect_wizard_inputs_lowercases_project_name() -> None:
     with (
         patch(
             "builtins.input",
-            side_effect=["1", "1", "MyProject", "https://example.com/r.git", "main", "", "1", "n"],
+            side_effect=["1", "3", "MyProject", "https://example.com/r.git", "main", "", "1", "n"],
         ),
         patch("builtins.print") as mock_print,
     ):
@@ -266,11 +272,21 @@ def generate_into_tmp(values: dict[str, object]) -> tuple[str, str, str]:
         pytest.param(
             wizard_values(
                 base="nvidia",
+                gpus="nvidia",
                 project_name="gpu-proj",
                 upstream_url="https://example.com/r.git",
             ),
-            ["gpus: nvidia", "nvcr.io/nvidia/"],
+            ['gpus: "nvidia"', "nvcr.io/nvidia/"],
             id="online-nvidia",
+        ),
+        pytest.param(
+            wizard_values(
+                gpus="amd:1,intel",
+                project_name="devsel-proj",
+                upstream_url="https://example.com/r.git",
+            ),
+            ['gpus: "amd:1,intel"'],
+            id="device-selector-any-base",
         ),
         pytest.param(
             wizard_values(
@@ -515,39 +531,132 @@ class TestValidateAnswer:
 
 
 # ---------------------------------------------------------------------------
-# Base-image gating — NVIDIA is offered for visibility but rejected when
-# the host has no CDI for ``nvidia.com/gpu``, so the wizard fails fast
-# instead of letting the user reach a broken ``podman run``.
+# GPU passthrough — opt-in prompt, selector validation, device detection.
+# GPU software-stack bases are never gated on hardware: the image is a
+# software choice, useful with or without a GPU on this host.
 # ---------------------------------------------------------------------------
 
 
-class TestBaseChoicesCdiGate:
-    """``_load_base_choices`` reflects ``check_gpu_available`` at call time."""
+class TestBaseQuestion:
+    """The base question is a defaulted dropdown with all bases selectable."""
 
-    def test_all_selectable_when_cdi_available(self, _gpu_available: Mock) -> None:
-        """Probe says yes → no option carries a disabled reason."""
-        _gpu_available.return_value = True
-        for c in _load_base_choices():
+    def test_dropdown_with_default(self) -> None:
+        base_q = next(q for q in QUESTIONS if q.key == "base")
+        assert base_q.dropdown is True
+        assert base_q.default == DEFAULT_BASE
+
+    def test_gpu_bases_always_selectable(self) -> None:
+        for c in BASES:
             assert c.disabled_reason == ""
 
-    def test_nvidia_disabled_when_cdi_missing(self, _gpu_available: Mock) -> None:
-        """Probe says no → only the nvidia entry is gated; others stay selectable."""
-        _gpu_available.return_value = False
-        choices = _load_base_choices()
-        by_slug = {c.slug: c for c in choices}
-        assert by_slug["nvidia"].disabled_reason
-        assert "https://podman-desktop.io" in by_slug["nvidia"].disabled_reason
-        for slug in ("ubuntu", "fedora", "podman"):
-            assert by_slug[slug].disabled_reason == ""
 
-    def test_validate_answer_rejects_disabled_slug(self, _gpu_available: Mock) -> None:
-        """Selecting the gated slug surfaces the disabled reason as the error."""
-        _gpu_available.return_value = False
-        base_q = next(q for q in QUESTIONS if q.key == "base")
-        value, err = validate_answer(base_q, "nvidia")
-        assert value == "nvidia"
-        assert err is not None
-        assert "Container Device Interface" in err
+class TestCustomBase:
+    """The bring-your-own-image option: prompt, validation, rendering."""
+
+    def test_prompt_retries_until_valid(self) -> None:
+        with patch("builtins.input", side_effect=["", "has space", "rockylinux:9"]):
+            assert prompt_custom_image() == "rockylinux:9"
+
+    @pytest.mark.parametrize("value", ["rockylinux:9", "registry.example.com:5000/org/img:tag"])
+    def test_validate_accepts(self, value: str) -> None:
+        assert validate_custom_image(value) is None
+
+    @pytest.mark.parametrize("value", ["", "two words", 'rocky"linux:9', "img\\name", "img'x"])
+    def test_validate_rejects(self, value: str) -> None:
+        """Empty, whitespace, and YAML-hostile quote characters all bounce."""
+        assert validate_custom_image(value) is not None
+
+    def test_render_uses_custom_image_and_family_hint(self) -> None:
+        values = wizard_values(base="custom", project_name="cust")
+        values["custom_image"] = "rockylinux:9"
+        rendered = render_project_yaml(values)
+        assert 'base_image: "rockylinux:9"' in rendered
+        assert "# family: rpm" in rendered
+        assert "custom-images" in rendered
+
+    def test_bundled_bases_carry_no_family_hint(self) -> None:
+        rendered = render_project_yaml(wizard_values(project_name="plain", upstream_url=""))
+        assert "# family:" not in rendered
+
+
+class TestGpuPrompt:
+    """``prompt_gpu_passthrough`` — default off, base-vendor default, retry."""
+
+    def test_default_off(self) -> None:
+        with patch("builtins.input", side_effect=[""]):
+            assert prompt_gpu_passthrough("ubuntu") == ""
+
+    def test_opt_in_defaults_all(self) -> None:
+        with (
+            patch("builtins.input", side_effect=["y", ""]),
+            patch("terok.lib.domain.wizards.new_project.detect_gpu_choices", return_value=()),
+        ):
+            assert prompt_gpu_passthrough("ubuntu") == "all"
+
+    def test_gpu_base_defaults_vendor_on(self) -> None:
+        """A GPU software-stack base flips the default to on with its vendor."""
+        with (
+            patch("builtins.input", side_effect=["", ""]),
+            patch("terok.lib.domain.wizards.new_project.detect_gpu_choices", return_value=()),
+        ):
+            assert prompt_gpu_passthrough("rocm") == "amd"
+
+    def test_gpu_base_still_declinable(self) -> None:
+        """Software-only use of a GPU base: answer no, get no gpus block."""
+        with patch("builtins.input", side_effect=["n"]):
+            assert prompt_gpu_passthrough("nvidia") == ""
+
+    def test_invalid_selector_retries(self) -> None:
+        with (
+            patch("builtins.input", side_effect=["y", "matrox", "amd:1"]),
+            patch("terok.lib.domain.wizards.new_project.detect_gpu_choices", return_value=()),
+        ):
+            assert prompt_gpu_passthrough("ubuntu") == "amd:1"
+
+
+class TestValidateGpus:
+    """``validate_gpus`` defers to sandbox's selector grammar."""
+
+    @pytest.mark.parametrize("value", ["", "all", "nvidia", "amd:1,intel", "nvidia:0,nvidia:1"])
+    def test_accepts(self, value: str) -> None:
+        assert validate_gpus(value) is None
+
+    @pytest.mark.parametrize("value", ["matrox", "nvidia:x", "all:0"])
+    def test_rejects(self, value: str) -> None:
+        assert validate_gpus(value) is not None
+
+
+class TestDetectGpuChoices:
+    """Detection maps vendors/devices to picker entries; failure → ()."""
+
+    def test_multi_device_vendor_gets_indexed_tokens(self) -> None:
+        with (
+            patch(
+                "terok.lib.domain.wizards.new_project.detect_gpu_vendors",
+                return_value=frozenset({"amd", "intel"}),
+            ),
+            patch(
+                "terok.lib.domain.wizards.new_project.gpu_device_addresses",
+                return_value={
+                    "nvidia": (),
+                    "amd": ("0000:03:00.0", "0000:0b:00.0"),
+                    "intel": ("0000:00:02.0",),
+                },
+            ),
+        ):
+            choices = detect_gpu_choices()
+        assert [c.token for c in choices] == ["amd:0", "amd:1", "intel"]
+        assert "0000:0b:00.0" in choices[1].label
+
+    def test_detection_failure_is_empty(self) -> None:
+        with patch(
+            "terok.lib.domain.wizards.new_project.detect_gpu_vendors",
+            side_effect=RuntimeError("no podman"),
+        ):
+            assert detect_gpu_choices() == ()
+
+    def test_choice_type_is_stable(self) -> None:
+        assert GpuDeviceChoice("amd", "amd (0000:03:00.0)").token == "amd"
 
 
 # ---------------------------------------------------------------------------

@@ -46,18 +46,24 @@ from textual.widgets import (
     RadioButton,
     RadioSet,
     RichLog,
+    Select,
     Static,
     TextArea,
 )
 
 from ..lib.api import (
+    BASE_GPU_VENDOR,
+    CUSTOM_BASE,
+    CUSTOM_IMAGE_WARNING,
     QUESTIONS,
     Question,
     validate_answer,
+    validate_custom_image,
     write_project_yaml,
 )
 from .agents_screen import AgentsSelectScreen
 from .askpass_service import build_askpass_env, gui_askpass_usable
+from .gpu_screen import GpuSelectScreen
 from .widgets.ansi_log import AnsiLog
 
 # ── Step 1: the form ──────────────────────────────────────────────────
@@ -139,6 +145,17 @@ class WizardFormScreen(ModalScreen["dict[str, str] | None"]):
         self._errors: dict[str, Label] = {}
         initial = dict(initial) if initial else {}
         self._agents_override: str | None = initial.pop("agents", None) or None
+        # ``None`` = untouched — the effective value then follows the
+        # selected base's implied vendor (GPU software stacks default
+        # their vendor on; plain bases default off).  A restored value
+        # equal to that derived default is treated as untouched, so a
+        # form/review Back round-trip does not freeze the default into
+        # an explicit override that later base changes cannot update.
+        initial_gpus = initial.pop("gpus", None)
+        base_default = BASE_GPU_VENDOR.get(initial.get("base", ""), "")
+        self._gpus_override: str | None = (
+            None if initial_gpus is None or initial_gpus == base_default else initial_gpus
+        )
         self._initial: dict[str, str] = initial
 
     def compose(self) -> ComposeResult:
@@ -156,6 +173,11 @@ class WizardFormScreen(ModalScreen["dict[str, str] | None"]):
                     yield from self._field(q)
             with Horizontal(id="wizard-form-buttons"):
                 yield Button(
+                    self._gpus_button_label(),
+                    id="wizard-form-gpus",
+                    variant="default",
+                )
+                yield Button(
                     self._agents_button_label(),
                     id="wizard-form-agents",
                     variant="default",
@@ -171,6 +193,8 @@ class WizardFormScreen(ModalScreen["dict[str, str] | None"]):
             yield Label(q.help, classes="wizard-help")
         preset = self._initial.get(q.key, "")
         match q.kind:
+            case "choice" if q.dropdown:
+                yield from self._select_widget(q, selected_slug=preset)
             case "choice":
                 yield from self._choice_widget(q, selected_slug=preset)
             case "text":
@@ -209,6 +233,46 @@ class WizardFormScreen(ModalScreen["dict[str, str] | None"]):
                 )
                 if c.disabled_reason:
                     yield Label(c.disabled_reason, classes="wizard-help")
+
+    def _select_widget(self, q: Question, *, selected_slug: str = "") -> ComposeResult:
+        """Render a compact ``Select`` dropdown for a long choice list.
+
+        Preselection order: the form-restore prefill, then the
+        question's declared default, then the first selectable option —
+        like the radio path, the field is never initially unselected.
+        """
+        choices = q.resolve_choices()
+        selectable = [c.slug for c in choices if not c.disabled_reason]
+        preset = selected_slug if selected_slug in selectable else ""
+        value = (
+            preset
+            or (q.default if q.default in selectable else "")
+            or (selectable[0] if selectable else "")
+        )
+        yield Select(
+            ((c.label, c.slug) for c in choices if not c.disabled_reason),
+            value=value,
+            allow_blank=False,
+            id=self._widget_id(q),
+        )
+        if q.key == "base":
+            yield from self._custom_image_field(visible=value == CUSTOM_BASE)
+
+    def _custom_image_field(self, *, visible: bool) -> ComposeResult:
+        """The bring-your-own-image input, shown only for the custom base."""
+        warning = Label(CUSTOM_IMAGE_WARNING, classes="wizard-help", id="wizard-custom-image-note")
+        warning.display = visible
+        yield warning
+        field = Input(
+            value=self._initial.get("custom_image", ""),
+            placeholder="e.g. rockylinux:9 or registry.example.com/org/img:tag",
+            id="wizard-field-custom-image",
+        )
+        field.display = visible
+        yield field
+        err = Label("", classes="wizard-error", id="wizard-error-custom-image")
+        err.display = visible
+        yield err
 
     @staticmethod
     def _widget_id(q: Question) -> str:
@@ -251,6 +315,56 @@ class WizardFormScreen(ModalScreen["dict[str, str] | None"]):
             return f"Agents: {self._agents_override}"
         return "Override agents…"
 
+    @on(Button.Pressed, "#wizard-form-gpus")
+    def _on_open_gpus_modal(self) -> None:
+        """Open the GPU picker seeded with the effective selector."""
+        self.app.push_screen(
+            GpuSelectScreen(initial=self._effective_gpus()),
+            self._on_gpus_dismissed,
+        )
+
+    def _on_gpus_dismissed(self, selector: str | None) -> None:
+        if selector is None:
+            return
+        self._gpus_override = selector
+        self._refresh_gpus_button()
+
+    @on(Select.Changed, "#wizard-field-base")
+    def _on_base_changed(self) -> None:
+        """Track the base: GPU default and custom-image field visibility."""
+        if self._gpus_override is None:
+            self._refresh_gpus_button()
+        show = self._current_base_slug() == CUSTOM_BASE
+        with contextlib.suppress(NoMatches):
+            for widget_id in (
+                "#wizard-custom-image-note",
+                "#wizard-field-custom-image",
+                "#wizard-error-custom-image",
+            ):
+                self.query_one(widget_id).display = show
+
+    def _refresh_gpus_button(self) -> None:
+        with contextlib.suppress(NoMatches):
+            self.query_one("#wizard-form-gpus", Button).label = self._gpus_button_label()
+
+    def _gpus_button_label(self) -> str:
+        effective = self._effective_gpus()
+        return f"GPU: {effective}" if effective else "GPU: off"
+
+    def _effective_gpus(self) -> str:
+        """The selector the form will submit — explicit choice or base default."""
+        if self._gpus_override is not None:
+            return self._gpus_override
+        return BASE_GPU_VENDOR.get(self._current_base_slug(), "")
+
+    def _current_base_slug(self) -> str:
+        base_q = next(q for q in QUESTIONS if q.key == "base")
+        with contextlib.suppress(NoMatches):
+            value = self.query_one(f"#{self._widget_id(base_q)}", Select).value
+            if value is not Select.BLANK:
+                return str(value)
+        return base_q.default
+
     @on(Button.Pressed, "#wizard-form-create")
     def _on_create(self) -> None:
         """Validate every field; on success dismiss with the collected dict."""
@@ -267,6 +381,15 @@ class WizardFormScreen(ModalScreen["dict[str, str] | None"]):
                 any_error = True
         if self._agents_override:
             values["agents"] = self._agents_override
+        values["gpus"] = self._effective_gpus()
+        if values.get("base") == CUSTOM_BASE:
+            custom = self.query_one("#wizard-field-custom-image", Input).value.strip()
+            error = validate_custom_image(custom)
+            err_label = self.query_one("#wizard-error-custom-image", Label)
+            err_label.update(error or "")
+            if error is not None:
+                any_error = True
+            values["custom_image"] = custom
         if not any_error:
             self.dismiss(values)
 
@@ -274,6 +397,9 @@ class WizardFormScreen(ModalScreen["dict[str, str] | None"]):
         """Pull the current raw string out of the widget for *q*."""
         widget_id = f"#{self._widget_id(q)}"
         match q.kind:
+            case "choice" if q.dropdown:
+                value = self.query_one(widget_id, Select).value
+                return "" if value is Select.BLANK else str(value)
             case "choice":
                 rs = self.query_one(widget_id, RadioSet)
                 pressed = rs.pressed_button

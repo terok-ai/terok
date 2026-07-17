@@ -26,6 +26,11 @@ git:
 
 image:
   base_image: "{{BASE_IMAGE}}"
+{%- if BASE == "custom" %}
+  # family: rpm    # uncomment and set (deb/rpm) if terok cannot autodetect
+  #                # the package manager — see
+  #                # https://terok-ai.github.io/terok/custom-images/
+{%- endif %}
 {%- if AGENTS %}
   agents: "{{AGENTS}}"
 {%- else %}
@@ -38,12 +43,13 @@ image:
   # Both can be set — file is included first, inline appended.
   user_snippet_inline: |
     {{USER_SNIPPET | indent(4)}}
-{%- if BASE == "nvidia" %}
+{%- if GPUS %}
 
 run:
-  # GPU passthrough matching this NVIDIA base image.  Other selectors:
-  # "all" (every vendor the host supports), amd, intel — or a list.
-  gpus: nvidia
+  # GPU passthrough selector: "all" (every vendor the host supports),
+  # vendors (nvidia, amd, intel), or single devices like amd:1 —
+  # comma-separate to combine.
+  gpus: "{{GPUS}}"
 {%- endif %}
 {%- if SECURITY_CLASS == "gatekeeping" %}
 

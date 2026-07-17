@@ -48,9 +48,10 @@ def _full_variables(*, security_class: str, base: str, **overrides: str) -> dict
         "USER_SNIPPET": overrides.get("user_snippet", ""),
         "SECURITY_CLASS": security_class,
         "BASE": base,
-        "BASE_IMAGE": BASE_IMAGES[base],
+        "BASE_IMAGE": BASE_IMAGES.get(base, "registry.example.test/custom:1"),
         "AGENTS": overrides.get("agents", "all"),
         "CREDENTIALS_SCOPE": overrides.get("credentials_scope", "shared"),
+        "GPUS": overrides.get("gpus", ""),
     }
 
 
@@ -84,7 +85,9 @@ class TestProjectTemplate:
         # would silently produce malformed indentation.
         parsed = yaml.safe_load(rendered)
         assert parsed["project"]["security_class"] == security_class
-        assert parsed["image"]["base_image"] == BASE_IMAGES[base]
+        assert parsed["image"]["base_image"] == BASE_IMAGES.get(
+            base, "registry.example.test/custom:1"
+        )
 
     def test_gatekeeping_hint_only_for_gatekeeping(self) -> None:
         """The gatekeeping knobs appear as a commented example, never active.
@@ -111,9 +114,16 @@ class TestProjectTemplate:
         assert "# gate:" in _render("online", "ubuntu")
         assert "# gate:" not in _render("gatekeeping", "ubuntu")
 
-    def test_run_gpus_section_only_for_nvidia(self) -> None:
-        assert "gpus: nvidia" in _render("online", "nvidia")
-        assert "gpus: nvidia" not in _render("online", "ubuntu")
+    def test_run_gpus_section_follows_gpus_variable(self) -> None:
+        """The gpus block is driven by GPUS alone — any base can carry it."""
+        assert 'gpus: "nvidia"' in _render("online", "nvidia", gpus="nvidia")
+        assert 'gpus: "amd:1,intel"' in _render("online", "ubuntu", gpus="amd:1,intel")
+        assert "gpus:" not in _render("online", "nvidia")
+
+    def test_custom_base_family_hint(self) -> None:
+        """Only the custom base renders the commented family override hint."""
+        assert "# family: rpm" in _render("online", "custom")
+        assert "# family:" not in _render("online", "ubuntu")
 
     def test_agents_line_omitted_when_unset(self) -> None:
         """Empty AGENTS suppresses the line and surfaces the commented hint."""
