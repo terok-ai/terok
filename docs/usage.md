@@ -1127,6 +1127,10 @@ image:
   # base_image: intel/oneapi-basekit:latest                         # Intel oneAPI/SYCL
 ```
 
+For raw-tier NVIDIA hosts (no toolkit, no CDI) the image must carry a
+matching driver userland — a proven recipe lives in
+[Custom Base Images](custom-images.md#baking-the-nvidia-userland-toolkit-less-hosts).
+
 ### Selecting GPUs inside the container
 
 Prefer selecting at the terok level (`gpus: "amd:1"`) — the container
