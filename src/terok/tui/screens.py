@@ -115,9 +115,10 @@ _DETAIL_SCREEN_CSS = """
 def _visible_agents(installed: frozenset[str] | None) -> list[str]:
     """Provider names visible to the user given an *installed* filter.
 
-    Empty/``None`` *installed* (legacy or unlabeled image) → no filtering;
-    every known provider is shown.  Otherwise the registry is intersected
-    with the install set, preserving registry order.
+    Empty/``None`` *installed* (the lookup failed, so the set is
+    unknown) → no filtering; every known provider is shown as a last
+    resort.  Otherwise the registry is intersected with the install
+    set, preserving registry order.
     """
     from terok.lib.api.agents import AGENTS
 
@@ -940,10 +941,12 @@ class AgentSelectionScreen(screen.ModalScreen[str | None]):
         Args:
             default_agent: Name of the project's default agent (pre-highlighted
                 and marked with ``*``).
-            installed: Names baked into the project's L1 image (from the
-                ``ai.terok.agents`` label).  When provided and non-empty,
-                the picker hides agents not in the set.  ``None`` or empty
-                means no filtering — every known agent is shown.
+            installed: Names available in the image the task will run
+                (label of the project's L2 image, or the project
+                definition's ``image.agents`` selection).  When provided
+                and non-empty, the picker hides agents not in the set.
+                ``None`` or empty means the set is unknown — every known
+                agent is shown as a last resort.
         """
         super().__init__()
         self._installed = installed
@@ -1399,14 +1402,15 @@ class TaskLaunchScreen(
     ) -> None:
         """Create the launch screen with container context and default agent.
 
-        *installed* is the set of agents present in the project's L1 image
-        (from the ``ai.terok.agents`` label).  ``None`` means the lookup is
-        still in flight — the agent dropdown renders disabled with only
-        ``bash`` as a placeholder until the caller invokes
+        *installed* is the set of agents available in the image the task
+        will run (label of the project's L2 image, or the project
+        definition's ``image.agents`` selection).  ``None`` means the
+        lookup is still in flight — the agent dropdown renders disabled
+        with only ``bash`` as a placeholder until the caller invokes
         [`set_installed`][terok.tui.screens.TaskLaunchScreen.set_installed]
         with the resolved set.  A non-empty frozenset filters the dropdown
-        to those agents; an empty frozenset means no filter (legacy /
-        unlabeled images) — every known provider is shown.
+        to those agents; an empty frozenset means the set is unknown —
+        every known provider is shown as a last resort.
         """
         super().__init__()
         self._container_name = container_name

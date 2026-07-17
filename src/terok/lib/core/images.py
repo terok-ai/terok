@@ -56,8 +56,10 @@ def installed_agents(image_tag: str) -> frozenset[str]:
     """Return the set of agent names baked into *image_tag*.
 
     Reads the ``ai.terok.agents`` OCI label written by terok-executor's L1
-    build (a sorted comma-separated list).  Result is cached per image
-    tag, since the label is fixed for the life of an image.
+    build (a sorted comma-separated list).  Derived images inherit the
+    label, so an L2 tag answers for the L1 it was built on.  Result is
+    cached per image tag, since the label is fixed for the life of an
+    image.
 
     When the image is not present locally, or the label is missing
     (e.g. a legacy image built before selectable agents), returns an
@@ -73,41 +75,60 @@ def installed_agents(image_tag: str) -> frozenset[str]:
 
 
 def installed_agents_for_project(project: ProjectConfig) -> frozenset[str]:
-    """Return the agents installed in *project*'s L1 image.
+    """Return the agent names available in the image *project*'s tasks run.
 
-    Convenience over [`installed_agents`][terok.lib.core.images.installed_agents] for the very common
-    ``installed_agents(agent_cli_image(project.base_image))`` pattern.
+    Reads the ``ai.terok.agents`` label from the project's L2 CLI image —
+    the image a new task actually boots, which inherits the label from
+    the (agent-suffixed) L1 it was built on.  The unsuffixed L1 tag
+    ([`agent_cli_image`][terok.lib.core.images.agent_cli_image]) is
+    deliberately not consulted: it is a default alias pointing at the
+    user's *global* default selection, unrelated to what this project's
+    image contains.
+
+    When the L2 image is absent or unlabeled (not built yet, or built
+    before selectable agents), falls back to resolving the project
+    definition's ``image.agents`` selection — the set a rebuild would
+    install.  Only an unresolvable selection yields an empty set;
+    callers treat empty as "unknown / unrestricted".
     """
-    return installed_agents(agent_cli_image(project.base_image))
+    return installed_agents(project_cli_image(project.name)) or _agents_from_selection(
+        project.agents
+    )
 
 
-def is_installed(name: str, image_tag: str) -> bool:
-    """Return whether *name* is baked into *image_tag*.
+def _agents_from_selection(selection: str) -> frozenset[str]:
+    """Resolve an ``image.agents`` selection string into concrete roster names.
 
-    Treats an unknown / unlabeled image (empty [`installed_agents`][terok.lib.core.images.installed_agents]
-    result) as "unrestricted" — every name is considered installed —
-    so legacy images keep working until the user rebuilds.
+    Returns an empty set when the selection names unknown roster entries
+    (a stale or hand-edited project.yml) — an honest "unknown", not a
+    guess.
     """
-    installed = installed_agents(image_tag)
-    return not installed or name in installed
+    from terok.lib.integrations.executor import AgentRoster
+
+    roster = AgentRoster.shared()
+    try:
+        return frozenset(roster.resolve_selection(AgentRoster.parse_selection(selection)))
+    except ValueError:
+        return frozenset()
 
 
 def require_agent_installed(project: ProjectConfig, name: str, *, noun: str = "Agent") -> None:
-    """Fail fast if *name* is not baked into *project*'s L1 image.
+    """Fail fast if *name* is not available in the image *project*'s tasks run.
 
     Used at CLI / TUI / runtime entry points so the user sees a clear,
     actionable message instead of a deep ``command not found`` later.
-    Unlabeled (legacy) images are treated as unrestricted via
-    [`is_installed`][terok.lib.core.images.is_installed].
+    Checks the same source the TUI pickers offer from
+    ([`installed_agents_for_project`][terok.lib.core.images.installed_agents_for_project]),
+    so an agent the picker offered is never rejected here.  An empty
+    (unknown) result is treated as unrestricted.
     """
-    image = agent_cli_image(project.base_image)
-    if is_installed(name, image):
+    available = installed_agents_for_project(project)
+    if not available or name in available:
         return
-    available = ", ".join(sorted(installed_agents(image))) or "(none)"
     raise SystemExit(
-        f"{noun} {name!r} is not installed in the L1 image for "
-        f"project {project.name!r} ({image}).\n"
-        f"Installed: {available}\n"
+        f"{noun} {name!r} is not available in the image for "
+        f"project {project.name!r} ({project_cli_image(project.name)}).\n"
+        f"Available: {', '.join(sorted(available))}\n"
         f"Add it to image.agents and rebuild: "
         f"terok project build --agents {name} {project.name}"
     )
