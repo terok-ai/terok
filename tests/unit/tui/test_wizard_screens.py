@@ -417,6 +417,55 @@ def test_touched_wizard_yaml_survives_roundtrip() -> None:
         assert path.read_text() == rendered
 
 
+# ── InitProgressScreen — SSH panel layout ─────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_ssh_panel_usable_on_80x24() -> None:
+    """On short terminals the SSH panel claims the log's rows reactively —
+    the continue button stays on-screen and the panel border closes."""
+    from terok.tui.wizard_screens import InitProgressScreen
+
+    with patch.object(InitProgressScreen, "_run_init_with_confirm", lambda self: None):
+        app = _WizardHost(InitProgressScreen("demo"))
+        async with app.run_test(size=(80, 24)) as pilot:
+            await pilot.pause()
+            screen = app.screen
+            assert isinstance(screen, InitProgressScreen)
+            screen.query_one("#wizard-init-ssh-key").styles.display = "block"
+            screen._apply_ssh_layout()
+            await pilot.pause()
+            assert screen.query_one("#wizard-init-log").display is False
+            cont = screen.query_one("#wizard-init-ssh-continue")
+            assert cont.region.height > 0
+            assert cont.region.y + cont.region.height <= 24
+            panel = screen.query_one("#wizard-init-ssh-key")
+            buttons = screen.query_one("#wizard-init-ssh-buttons")
+            # The panel's bottom border renders below its last child.
+            assert buttons.region.y + buttons.region.height < panel.region.y + panel.region.height
+            screen.query_one("#wizard-init-ssh-key").styles.display = "none"
+            screen._apply_ssh_layout()
+            await pilot.pause()
+            assert screen.query_one("#wizard-init-log").display is True
+
+
+@pytest.mark.asyncio
+async def test_ssh_panel_keeps_log_on_tall_terminals() -> None:
+    """Plenty of rows: the log stays while the panel is up."""
+    from terok.tui.wizard_screens import InitProgressScreen
+
+    with patch.object(InitProgressScreen, "_run_init_with_confirm", lambda self: None):
+        app = _WizardHost(InitProgressScreen("demo"))
+        async with app.run_test(size=(100, 40)) as pilot:
+            await pilot.pause()
+            screen = app.screen
+            assert isinstance(screen, InitProgressScreen)
+            screen.query_one("#wizard-init-ssh-key").styles.display = "block"
+            screen._apply_ssh_layout()
+            await pilot.pause()
+            assert screen.query_one("#wizard-init-log").display is True
+
+
 # ── InitProgressScreen — error paths ──────────────────────────────────
 
 
@@ -486,6 +535,34 @@ async def test_init_screen_decline_overwrite_distinguishes_from_failure() -> Non
             close_button = screen.query_one("#wizard-init-close")
             assert close_button.disabled is False
             assert close_button.variant == "default"
+
+
+@pytest.mark.asyncio
+async def test_failed_step_is_marked_without_widget_readback() -> None:
+    """A step failure marks the running step via tracked state.
+
+    Regression: the old path read the step text back through
+    ``Static.renderable``, which newer Textual removed — every init
+    failure then added an 'Unexpected wizard error' line and left the
+    failed step showing the running spinner.
+    """
+    from terok.tui.wizard_screens import InitProgressScreen
+
+    fake_project = MagicMock()
+    fake_project.provision_ssh_key.side_effect = RuntimeError("boom")
+
+    with patch.object(InitProgressScreen, "on_mount", new=AsyncMock()):
+        app = _WizardHost(InitProgressScreen("demo"))
+        async with app.run_test() as pilot:
+            await pilot.pause()
+            screen = app.screen
+            assert isinstance(screen, InitProgressScreen)
+            with patch("terok.lib.api.get_project", return_value=fake_project):
+                await screen._run_init()
+            await pilot.pause()
+            step = str(screen.query_one("#wizard-init-step-ssh", Static).render())
+            assert "boom" in step
+            assert "⋯" not in step
 
 
 # ── Form prefill (Back round-trip preservation) ──────────────────────

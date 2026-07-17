@@ -30,6 +30,7 @@ _GPU_ALL = "all"  # nosec: B105 — selector token, not a secret
 _MASTER_ID = "gpu-select-all"
 _ERROR_ID = "gpu-select-error"
 _DEVICES_ID = "gpu-select-devices"
+_SCROLL_ID = "gpu-select-scroll"
 _CUSTOM_ID = "gpu-select-custom"
 _PROBE_NOTE_ID = "gpu-select-probe-note"
 
@@ -61,7 +62,7 @@ class GpuSelectScreen(ModalScreen[str | None]):
         width: 70;
         max-width: 100%;
         height: auto;
-        max-height: 90%;
+        max-height: 100%;
         border: heavy $primary;
         border-title-align: right;
         background: $surface;
@@ -69,14 +70,30 @@ class GpuSelectScreen(ModalScreen[str | None]):
     }
 
     #gpu-select-scroll {
-        height: auto;
-        max-height: 16;
+        /* Explicit height, updated from content when detection lands —
+           an auto-height VerticalScroll greedily takes its max, which
+           in turn inflates the auto-sized dialog to the full screen. */
+        height: 3;
+        max-height: 8;
     }
 
     .gpu-select-list {
         border: round $primary-darken-2;
         padding: 0 1;
         height: auto;
+    }
+
+    /* Compact one-row toggles: the default bordered Checkbox is three
+       rows tall, which overflows small terminals and the scroll cap. */
+    GpuSelectScreen Checkbox {
+        border: none;
+        padding: 0 1;
+        height: auto;
+    }
+
+    GpuSelectScreen Checkbox:focus {
+        text-style: bold;
+        background: $boost;
     }
 
     .gpu-select-master {
@@ -86,7 +103,6 @@ class GpuSelectScreen(ModalScreen[str | None]):
     .gpu-select-help {
         color: $text-muted;
         height: auto;
-        margin-bottom: 1;
     }
 
     .gpu-select-error {
@@ -122,12 +138,10 @@ class GpuSelectScreen(ModalScreen[str | None]):
         dialog.border_title = "GPU passthrough"
         with dialog:
             yield Label(
-                "Pick 'All detected GPUs' to pass through every vendor the "
-                "host supports, or select individual devices.  Mixed setups "
-                "beyond what's listed can be typed as a custom selector.",
+                "Pass through all detected GPUs, or pick devices.",
                 classes="gpu-select-help",
             )
-            with VerticalScroll(id="gpu-select-scroll"):
+            with VerticalScroll(id=_SCROLL_ID):
                 with Vertical(classes="gpu-select-list"):
                     yield Checkbox(
                         "All detected GPUs",
@@ -141,9 +155,7 @@ class GpuSelectScreen(ModalScreen[str | None]):
                         yield Label(
                             "Detecting devices…", id=_PROBE_NOTE_ID, classes="gpu-select-help"
                         )
-            yield Label(
-                "Custom selector (optional, wins over checkboxes):", classes="gpu-select-help"
-            )
+            yield Label("Custom selector (wins over checkboxes):", classes="gpu-select-help")
             yield Input(
                 value="",
                 placeholder='e.g. "nvidia:0,amd" — vendors or vendor:N devices',
@@ -180,6 +192,9 @@ class GpuSelectScreen(ModalScreen[str | None]):
                     name=choice.token,
                 )
             )
+        # Master + rule + one row per device (compact checkboxes), capped
+        # by the stylesheet's max-height; scrolls only past the cap.
+        self.query_one(f"#{_SCROLL_ID}").styles.height = 2 + len(choices)
         known = {c.token for c in choices}
         self._pending_tokens -= known
         self._spill_pending_to_custom()

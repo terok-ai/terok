@@ -168,6 +168,34 @@ async def test_apply_before_detection_keeps_initial_tokens() -> None:
 
 
 @pytest.mark.asyncio
+async def test_fits_80x24_terminal() -> None:
+    """The whole modal — device list through Apply — fits an 80x24 screen.
+
+    Guards the compact-checkbox layout: the default three-row toggles
+    pushed the buttons off-screen (pilot clicks then raise OutOfBounds).
+    """
+    with _detected(_TRI_HOST):
+        app = _Host(GpuSelectScreen())
+        async with app.run_test(size=(80, 24)) as pilot:
+            await pilot.pause()
+            assert app.screen.query_one("#gpu-select-item-3", Checkbox).region.height == 1
+            await pilot.click("#gpu-select-apply")
+            await pilot.pause()
+    assert app.result == "all"
+
+
+@pytest.mark.asyncio
+async def test_dialog_hugs_content_on_large_terminals() -> None:
+    """No blank tail: the dialog auto-sizes to its content, not the screen."""
+    with _detected(_TRI_HOST):
+        app = _Host(GpuSelectScreen())
+        async with app.run_test(size=(120, 44)) as pilot:
+            await pilot.pause()
+            dialog = app.screen.query_one("#gpu-select-dialog")
+            assert dialog.region.height < 30
+
+
+@pytest.mark.asyncio
 async def test_cancel_returns_none() -> None:
     """Cancel dismisses with ``None`` — caller keeps the previous value."""
     with _detected(()):

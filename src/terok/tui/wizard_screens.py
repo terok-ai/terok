@@ -653,9 +653,14 @@ class InitProgressScreen(ModalScreen[InitOutcome]):
         height: auto;
         border: round $warning;
         background: $surface;
-        padding: 1;
+        padding: 0 1;
         margin-bottom: 1;
         display: none;
+    }
+
+    #wizard-init-ssh-buttons {
+        height: auto;
+        margin-top: 1;
     }
 
     .wizard-init-ssh-spacer {
@@ -704,6 +709,7 @@ class InitProgressScreen(ModalScreen[InitOutcome]):
         self._project_name = project_name
         self._rendered_yaml = rendered_yaml
         self._ssh_continue: Any = None  # an asyncio.Event, set when user clicks continue
+        self._running_step: str | None = None  # step key currently in "running" state
         # Default pessimistic — the worker flips this to SUCCESS on a clean
         # finish, DECLINED when the user opts out of overwriting, and leaves
         # it on FAILED when a step raises.
@@ -890,6 +896,10 @@ class InitProgressScreen(ModalScreen[InitOutcome]):
         return f"wizard-init-step-{key}"
 
     def _mark(self, key: str, status: str, detail: str = "") -> None:
+        # Track the in-flight step in state rather than reading it back
+        # out of the widget — Static's rendered-content attribute has
+        # changed names across Textual releases.
+        self._running_step = key if status == "running" else None
         self.query_one(f"#{self._step_id(key)}", Static).update(
             self._step_text(key, status, detail)
         )
@@ -1016,11 +1026,13 @@ class InitProgressScreen(ModalScreen[InitOutcome]):
                 # the raw text the way TextArea.text does.
                 self._ssh_pub_line = result["public_line"]
                 self.query_one("#wizard-init-ssh-key").styles.display = "block"
+                self._apply_ssh_layout()
                 log.write(
                     "[yellow]Register the public key on the git remote, then click Continue.[/]"
                 )
                 await self._ssh_continue.wait()
                 self.query_one("#wizard-init-ssh-key").styles.display = "none"
+                self._apply_ssh_layout()
 
             # Silent stdout capture — the facade's summarise/print lines
             # land in the log instead of the terminal.  podman subprocess
@@ -1085,16 +1097,34 @@ class InitProgressScreen(ModalScreen[InitOutcome]):
             # out of the worker and vanishing silently.
             log.write(f"[red]Error: {exc}[/]")
             # Mark the currently-running step failed (whichever one raised).
-            for key in self._STEP_KEYS:
-                widget = self.query_one(f"#{self._step_id(key)}", Static)
-                # `renderable` is on Static at runtime but missing from textual stubs.
-                if "⋯" in str(widget.renderable):  # type: ignore[attr-defined]
-                    self._mark(key, "failed", str(exc))
-                    break
+            if self._running_step is not None:
+                self._mark(self._running_step, "failed", str(exc))
         # Close-button enabling is consolidated in the outer
         # ``_run_init_with_confirm`` finally — keeping it there prevents
         # the button from flashing enabled then disabled between the
         # two coroutines.
+
+    _SSH_COMPACT_HEIGHT = 30
+    """Terminal rows below which the SSH panel claims the log's space."""
+
+    def on_resize(self) -> None:
+        """Re-evaluate the SSH panel's space claim when the terminal changes."""
+        with contextlib.suppress(NoMatches):
+            self._apply_ssh_layout()
+
+    def _apply_ssh_layout(self) -> None:
+        """Give the SSH key panel room on short terminals — reactively.
+
+        While the panel is visible on a small screen, the log pane and
+        the Close row (disabled during init anyway) yield their rows and
+        the dialog stretches to the full height; everything returns when
+        the panel hides or the terminal grows.
+        """
+        panel = self.query_one("#wizard-init-ssh-key")
+        compact = panel.styles.display == "block" and self.size.height < self._SSH_COMPACT_HEIGHT
+        self.query_one("#wizard-init-log").display = not compact
+        self.query_one("#wizard-init-buttons").display = not compact
+        self.query_one("#wizard-init-dialog").styles.height = "100%" if compact else "80%"
 
     # ── Button handlers ───────────────────────────────────────────────
 
