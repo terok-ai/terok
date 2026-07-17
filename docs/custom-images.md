@@ -99,6 +99,40 @@ userlands — the wizard offers the common ones directly, and all three
 vendors' images are on the autodetection allowlist above.  See
 [GPU Passthrough](usage.md#gpu-passthrough) for granting the hardware.
 
+### Baking the NVIDIA userland (toolkit-less hosts)
+
+On raw-tier NVIDIA hosts (no Container Toolkit, no CDI) the image must
+carry a driver userland matching the host kernel module.  A proven
+snippet for `user_snippet_inline`/`user_snippet_file` — set `NV_DRIVER`
+to the host's driver version (`nvidia-smi` shows it):
+
+```dockerfile
+ENV NV_DRIVER=595.71.05
+RUN su dev -c 'cd /tmp \
+        && curl -fLO https://us.download.nvidia.com/tesla/$NV_DRIVER/NVIDIA-Linux-x86_64-$NV_DRIVER.run \
+        && sh NVIDIA-Linux-x86_64-$NV_DRIVER.run -x' \
+    && cd /tmp/NVIDIA-Linux-x86_64-$NV_DRIVER \
+    && install -D -m755 -t /usr/lib64/nvidia \
+        libcuda.so.$NV_DRIVER libnvidia-ml.so.$NV_DRIVER libnvidia-ptxjitcompiler.so.$NV_DRIVER \
+    && install -m755 nvidia-smi /usr/local/bin/ \
+    && ldconfig -n /usr/lib64/nvidia \
+    && ln -s libcuda.so.$NV_DRIVER /usr/lib64/nvidia/libcuda.so \
+    && rm -rf /tmp/NVIDIA-Linux-x86_64-$NV_DRIVER* \
+    && printf '%s\n' \
+        'if [ -e /dev/nvidiactl ] && ! ldconfig -p | grep -q "libcuda\.so\.1"; then' \
+        '    export LD_LIBRARY_PATH=/usr/lib64/nvidia${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}' \
+        'fi' \
+        > /etc/profile.d/nvidia-baked-fallback.sh
+```
+
+Notes: the profile.d guard prefers a host-injected userland when one
+appears (installing the toolkit later needs no rebuild); the extraction
+runs as `dev` deliberately — see
+[Building on old podman hosts](#building-on-old-podman-hosts-seccomp);
+and the baked version is **locked to the host driver** — a host driver
+upgrade requires bumping `NV_DRIVER` and rebuilding.  Installing the
+NVIDIA Container Toolkit (CDI) removes this whole requirement.
+
 ### Building on old podman hosts (seccomp)
 
 Old podman releases (Ubuntu 22.04's 3.4 era) ship a seccomp profile
