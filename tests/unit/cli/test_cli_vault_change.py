@@ -78,9 +78,9 @@ class TestPreflightWrapper:
         with (
             patch("terok.lib.api.vault.find_running_tasks", return_value=(_TASK,)),
             patch("terok.lib.api.vault.stop_tasks_for_rekey") as stop,
-            pytest.raises(SystemExit, match="no tasks were touched"),
         ):
-            _with_rekey_preflight(handler)()
+            with pytest.raises(SystemExit, match="no tasks were touched"):
+                _with_rekey_preflight(handler)()
         stop.assert_not_called()
         handler.assert_not_called()
 
@@ -88,11 +88,9 @@ class TestPreflightWrapper:
         """Piped stdin belongs to the passphrase protocol — never consume it for y/N."""
         monkeypatch.setattr("sys.stdin.isatty", lambda: False)
         handler = MagicMock()
-        with (
-            patch("terok.lib.api.vault.find_running_tasks", return_value=(_TASK,)),
-            pytest.raises(SystemExit, match="without a TTY"),
-        ):
-            _with_rekey_preflight(handler)()
+        with patch("terok.lib.api.vault.find_running_tasks", return_value=(_TASK,)):
+            with pytest.raises(SystemExit, match="without a TTY"):
+                _with_rekey_preflight(handler)()
         handler.assert_not_called()
 
     def test_failed_stop_restarts_the_stopped_and_exits(self, tty: MagicMock) -> None:
@@ -106,9 +104,9 @@ class TestPreflightWrapper:
                 return_value=[(_TASK, None), (other, "podman refused")],
             ),
             patch("terok.lib.api.vault.restart_tasks_after_rekey", side_effect=_all_ok) as restart,
-            pytest.raises(SystemExit, match="nothing was changed"),
         ):
-            _with_rekey_preflight(handler)()
+            with pytest.raises(SystemExit, match="nothing was changed"):
+                _with_rekey_preflight(handler)()
         handler.assert_not_called()
         restart.assert_called_once_with([_TASK])
 
@@ -118,9 +116,9 @@ class TestPreflightWrapper:
         with (
             patch("terok.lib.api.vault.wait_for_db_release", return_value=(_THEIRS,)),
             patch("terok.lib.api.vault.terminate_stale_holders") as terminate,
-            pytest.raises(SystemExit, match="outside terok"),
         ):
-            _with_rekey_preflight(handler)()
+            with pytest.raises(SystemExit, match="outside terok"):
+                _with_rekey_preflight(handler)()
         tty.assert_not_called()
         terminate.assert_not_called()
         handler.assert_not_called()
@@ -143,9 +141,9 @@ class TestPreflightWrapper:
             patch("terok.lib.api.vault.find_running_tasks", return_value=(_TASK,)),
             patch("terok.lib.api.vault.stop_tasks_for_rekey", return_value=[(_TASK, None)]),
             patch("terok.lib.api.vault.restart_tasks_after_rekey", side_effect=_all_ok) as restart,
-            pytest.raises(SystemExit, match="tiers marked"),
         ):
-            _with_rekey_preflight(handler)()
+            with pytest.raises(SystemExit, match="tiers marked"):
+                _with_rekey_preflight(handler)()
         restart.assert_called_once_with([_TASK])
 
     def test_restart_casualties_turn_a_clean_change_loud(self, tty: MagicMock) -> None:
@@ -158,9 +156,9 @@ class TestPreflightWrapper:
                 "terok.lib.api.vault.restart_tasks_after_rekey",
                 return_value=[(_TASK, "image gone")],
             ),
-            pytest.raises(SystemExit, match="could not be restarted"),
         ):
-            _with_rekey_preflight(handler)()
+            with pytest.raises(SystemExit, match="could not be restarted"):
+                _with_rekey_preflight(handler)()
         handler.assert_called_once()
 
 

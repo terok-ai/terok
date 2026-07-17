@@ -232,7 +232,14 @@ def _restart_one(project: str, task_id: str) -> None:
 
 
 def _swallowed_error(action: Callable[[str, str], None], task: RunningTask) -> str | None:
-    """Run *action* on *task*; return its error message instead of raising."""
+    """Run *action* on *task*; return its error message instead of raising.
+
+    ``SystemExit`` is caught deliberately, not re-raised: the task
+    lifecycle verbs (``task_stop`` / ``task_restart``) report failures
+    by raising it, and a fleet sweep must record the row and carry on
+    — one stubborn task exiting the whole flow would strand every
+    other stopped task.  Same convention as the TUI's task actions.
+    """
     try:
         action(task.project, task.task_id)
     except (Exception, SystemExit) as exc:
