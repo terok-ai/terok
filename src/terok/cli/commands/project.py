@@ -24,6 +24,7 @@ from ...lib.api import (
 from ...lib.core.projects import list_projects, load_project, normalize_project_name
 from ...lib.domain.project import make_git_gate
 from ...lib.domain.wizards.new_project import offer_edit_then_init, run_wizard
+from ...lib.util.output_capture import tee_output
 from ._completers import complete_project_names as _complete_project_names, set_completer
 from .setup import cmd_project_init
 
@@ -279,13 +280,14 @@ def dispatch(args: argparse.Namespace) -> bool:
         case "generate":
             generate_dockerfiles(args.project_name)
         case "build":
-            build_images(
-                args.project_name,
-                include_dev=getattr(args, "dev", False),
-                refresh_agents=getattr(args, "refresh_agents", False),
-                full_rebuild=getattr(args, "full_rebuild", False),
-                agents=getattr(args, "agents", None),
-            )
+            with tee_output("build", project=args.project_name):
+                build_images(
+                    args.project_name,
+                    include_dev=getattr(args, "dev", False),
+                    refresh_agents=getattr(args, "refresh_agents", False),
+                    full_rebuild=getattr(args, "full_rebuild", False),
+                    agents=getattr(args, "agents", None),
+                )
         case "ssh-init":
             _cmd_ssh_init(args)
         case "gate-path":

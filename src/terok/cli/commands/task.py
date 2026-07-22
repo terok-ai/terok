@@ -35,6 +35,7 @@ from ...lib.api import (
 )
 from ...lib.core.config import get_logs_partial_streaming as _get_logs_partial_streaming
 from ...lib.orchestration.tasks import resolve_task_id
+from ...lib.util.output_capture import tee_output
 from ._completers import add_project_name, add_task_id
 
 
@@ -511,12 +512,13 @@ def _cmd_task_run_interactive(args: argparse.Namespace, *, runner: Any, attach: 
     pid = args.project_name
     _ensure_project_image(pid)
     tid = task_new(pid, name=getattr(args, "name", None))
-    runner(
-        pid,
-        tid,
-        unrestricted=_resolve_unrestricted(args),
-        debug=getattr(args, "debug", False),
-    )
+    with tee_output("run", project=pid, task_id=tid):
+        runner(
+            pid,
+            tid,
+            unrestricted=_resolve_unrestricted(args),
+            debug=getattr(args, "debug", False),
+        )
     if attach:
         # ``task_login`` calls ``os.execvp`` and never returns on success.
         task_login(pid, tid)
@@ -537,22 +539,23 @@ def _cmd_task_run_headless(args: argparse.Namespace) -> None:
 
     _ensure_project_image(args.project_name)
 
-    task_run_headless(
-        HeadlessRunRequest(
-            project_name=args.project_name,
-            prompt=prompt,
-            config_path=getattr(args, "agent_config", None),
-            model=getattr(args, "model", None),
-            timeout=getattr(args, "timeout", None),
-            follow=not getattr(args, "no_follow", False),
-            name=getattr(args, "name", None),
-            agent=getattr(args, "agent", None),
-            provider=getattr(args, "provider", None),
-            instructions=instructions_text,
-            unrestricted=_resolve_unrestricted(args),
-            debug=getattr(args, "debug", False),
+    with tee_output("run", project=args.project_name):
+        task_run_headless(
+            HeadlessRunRequest(
+                project_name=args.project_name,
+                prompt=prompt,
+                config_path=getattr(args, "agent_config", None),
+                model=getattr(args, "model", None),
+                timeout=getattr(args, "timeout", None),
+                follow=not getattr(args, "no_follow", False),
+                name=getattr(args, "name", None),
+                agent=getattr(args, "agent", None),
+                provider=getattr(args, "provider", None),
+                instructions=instructions_text,
+                unrestricted=_resolve_unrestricted(args),
+                debug=getattr(args, "debug", False),
+            )
         )
-    )
 
 
 def _resolve_attach(args: argparse.Namespace) -> bool:
@@ -603,7 +606,8 @@ def _ensure_project_image(project_name: str) -> None:
     if answer in ("n", "no"):
         raise SystemExit(hint)
 
-    build_images(project_name)
+    with tee_output("build", project=project_name):
+        build_images(project_name)
 
 
 def _read_instructions(instructions_path: str | None) -> str | None:
@@ -757,7 +761,8 @@ def _dispatch_task_sub(args: argparse.Namespace) -> bool:
         task_stop(pid, tid, timeout=getattr(args, "timeout", None))
     elif args.task_cmd == "restart":
         _setup_verdict_or_exit()
-        task_restart(pid, tid, fresh=args.recreate)
+        with tee_output("run", project=pid, task_id=tid):
+            task_restart(pid, tid, fresh=args.recreate)
     elif args.task_cmd == "followup":
         _setup_verdict_or_exit()
         task_followup_headless(
