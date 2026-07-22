@@ -6,6 +6,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -315,8 +316,13 @@ class TestRunContainerDoctor:
 
         mock_exec.return_value = ExecResult(exit_code=0, stdout="ok\n", stderr="")
 
-        # Act
-        results = run_container_doctor("proj", "42")
+        # Act — supervisor-liveness runs first; stub it so this test stays
+        # focused on the layered-probe machinery (its own class covers it).
+        with patch(
+            "terok.lib.orchestration.container_doctor._check_supervisor_alive",
+            return_value=([], True),
+        ):
+            results = run_container_doctor("proj", "42")
 
         # Assert — probe was executed and result collected
         assert len(results) >= 1
@@ -383,10 +389,16 @@ class TestRunContainerDoctor:
         ]
 
         # Act — focus on the probe/fix machinery; the per-container
-        # reachability pair is exercised by its own dedicated tests.
-        with patch(
-            "terok.lib.orchestration.container_doctor._check_per_container_services",
-            return_value=[],
+        # reachability pair and supervisor check are exercised by their own tests.
+        with (
+            patch(
+                "terok.lib.orchestration.container_doctor._check_per_container_services",
+                return_value=[],
+            ),
+            patch(
+                "terok.lib.orchestration.container_doctor._check_supervisor_alive",
+                return_value=([], True),
+            ),
         ):
             results = run_container_doctor("proj", "42", fix=True)
 
@@ -449,10 +461,16 @@ class TestRunContainerDoctor:
         mock_agent_checks.return_value = []
         mock_terok_checks.return_value = []
 
-        # Act — focus on host-side dispatch; reachability pair stubbed out.
-        with patch(
-            "terok.lib.orchestration.container_doctor._check_per_container_services",
-            return_value=[],
+        # Act — focus on host-side dispatch; reachability + supervisor stubbed out.
+        with (
+            patch(
+                "terok.lib.orchestration.container_doctor._check_per_container_services",
+                return_value=[],
+            ),
+            patch(
+                "terok.lib.orchestration.container_doctor._check_supervisor_alive",
+                return_value=([], True),
+            ),
         ):
             results = run_container_doctor("proj", "42")
 
@@ -677,6 +695,10 @@ class TestStreamingGrouping:
                 "terok.lib.orchestration.container_doctor._check_per_container_services",
                 return_value=[],
             ),
+            patch(
+                "terok.lib.orchestration.container_doctor._check_supervisor_alive",
+                return_value=([], True),
+            ),
         ):
             mock_runtime.container.return_value.state = "running"
             results = run_container_doctor("proj", "42")
@@ -785,3 +807,161 @@ class TestPerContainerReachability:
         ):
             # No sidecar file written → empty mapping, no exception.
             assert _read_sidecar_ports("proj-cli-42") == {}
+
+
+class TestSupervisorAliveCheck:
+    """Root-cause 'Supervisor alive' check (issue #1189)."""
+
+    @staticmethod
+    def _live(alive: bool, pid: int | None, detail: str) -> SimpleNamespace:
+        """A stand-in for ``terok_sandbox.SupervisorLiveness``."""
+        return SimpleNamespace(alive=alive, pid=pid, detail=detail)
+
+    def test_unresolved_container_id_skips(self) -> None:
+        from terok.lib.orchestration.container_doctor import _check_supervisor_alive
+
+        assert _check_supervisor_alive("proj-cli-42", "") == ([], True)
+
+    @patch("terok.lib.orchestration.container_doctor.make_sandbox_config")
+    @patch("terok.lib.orchestration.container_doctor.supervisor_liveness")
+    def test_ok_when_supervisor_alive(
+        self, mock_live: MagicMock, mock_cfg: MagicMock, tmp_path: Path
+    ) -> None:
+        from terok.lib.orchestration.container_doctor import _check_supervisor_alive
+
+        mock_cfg.return_value = MagicMock(state_dir=tmp_path)
+        mock_live.return_value = self._live(True, 4242, "supervisor pid 4242 alive")
+        assert _check_supervisor_alive("proj-cli-42", "cid123") == (
+            [("ok", "Supervisor alive", "supervisor pid 4242 alive")],
+            True,
+        )
+
+    @patch("terok.lib.orchestration.container_doctor.make_sandbox_config")
+    @patch("terok.lib.orchestration.container_doctor.supervisor_liveness")
+    def test_error_names_cause_and_points_at_logs(
+        self, mock_live: MagicMock, mock_cfg: MagicMock, tmp_path: Path
+    ) -> None:
+        from terok.lib.orchestration.container_doctor import _check_supervisor_alive
+
+        mock_cfg.return_value = MagicMock(state_dir=tmp_path)
+        mock_live.return_value = self._live(
+            False, None, "no PID file — the supervisor hook never spawned a supervisor"
+        )
+        results, supervisor_up = _check_supervisor_alive("proj-cli-42", "cid123")
+        assert supervisor_up is False
+        status, label, detail = results[0]
+        assert status == "error"
+        assert label == "Supervisor alive"
+        assert "no PID file" in detail
+        assert "hook.log" in detail  # points at the cross-container diary
+        assert "cid123.log" in detail  # and this container's supervisor log
+
+    @patch("terok.lib.orchestration.container_doctor.respawn_supervisor")
+    @patch("terok.lib.orchestration.container_doctor.make_sandbox_config")
+    @patch("terok.lib.orchestration.container_doctor.supervisor_liveness")
+    def test_fix_respawns_and_reports_success(
+        self,
+        mock_live: MagicMock,
+        mock_cfg: MagicMock,
+        mock_respawn: MagicMock,
+        tmp_path: Path,
+    ) -> None:
+        """--fix re-spawns a dead supervisor, reports it, and flips supervisor_up."""
+        mock_cfg.return_value = MagicMock(state_dir=tmp_path)
+        mock_live.return_value = self._live(False, None, "no PID file — …")
+        mock_respawn.return_value = self._live(True, 7777, "supervisor pid 7777 alive")
+
+        from terok.lib.orchestration.container_doctor import _check_supervisor_alive
+
+        results, supervisor_up = _check_supervisor_alive("proj-cli-42", "cid123", fix=True)
+
+        mock_respawn.assert_called_once()
+        assert supervisor_up is True  # symptoms won't cite a now-running supervisor
+        assert results[0][0] == "error"
+        assert results[1][0] == "ok"
+        assert "fix:" in results[1][1]
+        assert "re-spawned" in results[1][2]
+
+    @patch("terok.lib.orchestration.container_doctor.respawn_supervisor")
+    @patch("terok.lib.orchestration.container_doctor.make_sandbox_config")
+    @patch("terok.lib.orchestration.container_doctor.supervisor_liveness")
+    def test_fix_reports_failed_respawn(
+        self,
+        mock_live: MagicMock,
+        mock_cfg: MagicMock,
+        mock_respawn: MagicMock,
+        tmp_path: Path,
+    ) -> None:
+        mock_cfg.return_value = MagicMock(state_dir=tmp_path)
+        mock_live.return_value = self._live(False, None, "no PID file — …")
+        mock_respawn.return_value = self._live(False, None, "no PID file — …")
+
+        from terok.lib.orchestration.container_doctor import _check_supervisor_alive
+
+        results, supervisor_up = _check_supervisor_alive("proj-cli-42", "cid123", fix=True)
+
+        assert supervisor_up is False
+        assert results[1][0] == "warn"
+        assert "respawn failed" in results[1][2]
+
+    def test_no_respawn_without_fix(self) -> None:
+        """A dead supervisor is reported but not touched when fix is off."""
+        with (
+            patch("terok.lib.orchestration.container_doctor.make_sandbox_config") as mock_cfg,
+            patch("terok.lib.orchestration.container_doctor.supervisor_liveness") as mock_live,
+            patch("terok.lib.orchestration.container_doctor.respawn_supervisor") as mock_respawn,
+        ):
+            mock_cfg.return_value = MagicMock(state_dir=Path("/x"))
+            mock_live.return_value = self._live(False, None, "no PID file — …")
+            from terok.lib.orchestration.container_doctor import _check_supervisor_alive
+
+            results, supervisor_up = _check_supervisor_alive("proj-cli-42", "cid123")
+
+        mock_respawn.assert_not_called()
+        assert supervisor_up is False
+        assert len(results) == 1
+
+
+class TestReachabilityReferencesSupervisor:
+    """A missing endpoint cites the supervisor check when the supervisor is down."""
+
+    def _cfg(self, tmp_path: Path) -> MagicMock:
+        cfg = MagicMock()
+        cfg.services_mode = "socket"
+        cfg.state_dir = tmp_path / "state"
+        cfg.runtime_dir = tmp_path / "rt"
+        return cfg
+
+    def test_missing_socket_references_root_cause_when_down(self, tmp_path: Path) -> None:
+        from terok.lib.orchestration.container_doctor import _check_per_container_services
+
+        with patch(
+            "terok.lib.orchestration.container_doctor.make_sandbox_config",
+            return_value=self._cfg(tmp_path),
+        ):
+            results = _check_per_container_services("proj-cli-42", supervisor_up=False)
+        assert all(status == "warn" for status, _, _ in results)
+        assert all("supervisor is not running" in detail for _, _, detail in results)
+
+    def test_missing_socket_stays_bare_when_supervisor_up(self, tmp_path: Path) -> None:
+        from terok.lib.orchestration.container_doctor import _check_per_container_services
+
+        with patch(
+            "terok.lib.orchestration.container_doctor.make_sandbox_config",
+            return_value=self._cfg(tmp_path),
+        ):
+            results = _check_per_container_services("proj-cli-42", supervisor_up=True)
+        assert all("supervisor is not running" not in detail for _, _, detail in results)
+
+    def test_tcp_mode_unrecorded_port_references_root_cause_when_down(self, tmp_path: Path) -> None:
+        """TCP mode with no recorded port still cites the dead supervisor, like every other miss."""
+        from terok.lib.orchestration.container_doctor import _check_per_container_services
+
+        cfg = self._cfg(tmp_path)
+        cfg.services_mode = "tcp"  # no sidecar → _read_sidecar_ports returns {} → ports absent
+        with patch(
+            "terok.lib.orchestration.container_doctor.make_sandbox_config", return_value=cfg
+        ):
+            results = _check_per_container_services("proj-cli-42", supervisor_up=False)
+        assert all("cannot probe" in detail for _, _, detail in results)
+        assert all("supervisor is not running" in detail for _, _, detail in results)
