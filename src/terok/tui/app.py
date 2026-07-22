@@ -545,7 +545,7 @@ if _HAS_TEXTUAL:
             # paused on blur (on_app_blur) so an idle background session
             # never wakes.
             self._vault_poll_timer = self.set_interval(
-                self._VAULT_POLL_INTERVAL_S, self._refresh_vault_pill_now
+                _VAULT_POLL_INTERVAL_S, self._refresh_vault_pill_now
             )
 
             # Once per session, surface the unconfirmed-recovery warning
