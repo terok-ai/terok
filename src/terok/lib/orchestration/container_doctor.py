@@ -31,7 +31,9 @@ from terok.lib.integrations.sandbox import (
     DoctorCheck,
     ExecResult,
     ShieldManager,
+    container_diagnostics,
     sandbox_doctor_checks,
+    supervisor_liveness,
 )
 
 from ..core import runtime as _rt
@@ -55,6 +57,8 @@ _SHIELD_STATE_LABEL = "Shield state"
 _VAULT_SOCKET_FILENAME = "vault.sock"
 _GATE_SOCKET_FILENAME = "gate-server.sock"
 _REACHABILITY_TCP_TIMEOUT_S = 2.0
+
+_SUPERVISOR_CHECK_LABEL = "Supervisor alive"
 
 #: Map from per-check ``(category, label-prefix)`` → human-readable group
 #: heading.  Checks that match a row here are coalesced under one
@@ -377,6 +381,41 @@ def _check_shield_state(task_dir: Path, cname: str) -> _CheckResult:
 
 
 # ---------------------------------------------------------------------------
+# Supervisor liveness (host-side root-cause check)
+# ---------------------------------------------------------------------------
+
+
+def _check_supervisor_alive(cname: str, cid: str) -> list[_CheckResult]:
+    """Root-cause check: is *cname*'s per-container supervisor actually running?
+
+    Delegates the "is our supervisor alive?" question to sandbox
+    ([`supervisor_liveness`][terok_sandbox.diagnostics.supervisor_liveness]),
+    which owns the wrapper-spawn contract, then dresses the verdict as a
+    sickbay result.  Reported *before* the socket/bridge checks so a dead
+    supervisor is named as the one root cause instead of surfacing three
+    ways as missing sockets.  A dead supervisor points the operator at the
+    hook diary (empty ⇒ the hook never fired) and the supervisor log.
+
+    Returns a single-item list (empty only when the container ID is
+    unresolved, so there is no PID file to name).
+    """
+    if not cid:
+        return []
+    state_dir = make_sandbox_config().state_dir
+    live = supervisor_liveness(cid, state_dir=state_dir)
+    if live.alive:
+        return [("ok", _SUPERVISOR_CHECK_LABEL, live.detail)]
+    diag = container_diagnostics(cid, cname, state_dir=state_dir)
+    return [
+        (
+            "error",
+            _SUPERVISOR_CHECK_LABEL,
+            f"{live.detail}. See {diag.hook_log} (empty ⇒ hook never fired) and {diag.log}",
+        )
+    ]
+
+
+# ---------------------------------------------------------------------------
 # Per-container service reachability (host-side, best-effort)
 # ---------------------------------------------------------------------------
 
@@ -422,8 +461,14 @@ def _tcp_reachable(port: int) -> bool:
         return False
 
 
+#: Appended to a missing-endpoint reachability detail when the supervisor
+#: itself is down — points the operator at the root-cause line instead of
+#: re-diagnosing the same failure from the symptom.
+_SUPERVISOR_DOWN_SUFFIX = f" — supervisor is not running (see '{_SUPERVISOR_CHECK_LABEL}')"
+
+
 def _check_service_reachable(
-    label: str, cname: str, socket_filename: str, tcp_port: int | None
+    label: str, cname: str, socket_filename: str, tcp_port: int | None, *, supervisor_up: bool
 ) -> _CheckResult:
     """Best-effort reachability check for one per-container service.
 
@@ -431,35 +476,47 @@ def _check_service_reachable(
     dir.  TCP mode: a loopback connect to *tcp_port* succeeds.  Returns a
     ``warn`` when the endpoint is missing/unreachable and ``ok`` otherwise
     — never an ``error``, since the supervisor binds these lazily and a
-    transient miss must not fail the doctor run.
+    transient miss must not fail the doctor run.  When *supervisor_up* is
+    ``False`` a miss cites the supervisor check rather than re-reporting
+    the root cause as its own symptom.
     """
+    miss = "" if supervisor_up else _SUPERVISOR_DOWN_SUFFIX
     if make_sandbox_config().services_mode == "socket":
         sock_path = _container_runtime_dir(cname) / socket_filename
         if sock_path.exists():
             return ("ok", label, f"socket present ({sock_path})")
-        return ("warn", label, f"socket missing ({sock_path})")
+        return ("warn", label, f"socket missing ({sock_path}){miss}")
     # TCP mode
     if tcp_port is None:
         return ("warn", label, "TCP port not recorded in sidecar — cannot probe")
     if _tcp_reachable(tcp_port):
         return ("ok", label, f"reachable on 127.0.0.1:{tcp_port}")
-    return ("warn", label, f"not reachable on 127.0.0.1:{tcp_port}")
+    return ("warn", label, f"not reachable on 127.0.0.1:{tcp_port}{miss}")
 
 
-def _check_per_container_services(cname: str) -> list[_CheckResult]:
+def _check_per_container_services(cname: str, *, supervisor_up: bool = True) -> list[_CheckResult]:
     """Reachability checks for this container's per-container vault + gate.
 
     Both are warn-level and best-effort: they confirm the supervisor has
     stood up the endpoints the container talks to, without ever blocking
-    the rest of the doctor run.
+    the rest of the doctor run.  *supervisor_up* threads the root-cause
+    verdict through so a missing endpoint references it.
     """
     ports = _read_sidecar_ports(cname)
     return [
         _check_service_reachable(
-            "Vault reachable", cname, _VAULT_SOCKET_FILENAME, ports.get("tcp_port")
+            "Vault reachable",
+            cname,
+            _VAULT_SOCKET_FILENAME,
+            ports.get("tcp_port"),
+            supervisor_up=supervisor_up,
         ),
         _check_service_reachable(
-            "Gate reachable", cname, _GATE_SOCKET_FILENAME, ports.get("gate_port")
+            "Gate reachable",
+            cname,
+            _GATE_SOCKET_FILENAME,
+            ports.get("gate_port"),
+            supervisor_up=supervisor_up,
         ),
     ]
 
@@ -557,20 +614,23 @@ def _apply_fix(runtime: ContainerRuntime, cname: str, check: DoctorCheck) -> _Ch
 
 def _resolve_running_container(
     project_name: str, task_id: str
-) -> tuple[str, Path, list[_CheckResult]]:
-    """Resolve a task to its running container name and task directory.
+) -> tuple[str, str, Path, list[_CheckResult]]:
+    """Resolve a task to its running container name, ID, and task directory.
 
-    Returns ``(cname, task_dir, [])`` on success.  If the task cannot be
-    checked, *cname* is empty and the list holds the skip/warning result.
+    Returns ``(cname, cid, task_dir, [])`` on success.  If the task cannot
+    be checked, *cname* is empty and the list holds the skip/warning
+    result.  The *cid* (full podman ID) keys the supervisor PID file, so
+    it is resolved here from the same ``podman inspect`` the state probe
+    already runs.
     """
     label = f"Task {project_name}/{task_id}"
     if not task_exists(project_name, task_id):
-        return ("", Path(), [("warn", label, "metadata not found")])
+        return ("", "", Path(), [("warn", label, "metadata not found")])
 
     meta, _ = load_task_meta(project_name, task_id)
     mode = meta.get("mode")
     if not mode:
-        return ("", Path(), [("warn", label, "never started (no mode)")])
+        return ("", "", Path(), [("warn", label, "never started (no mode)")])
 
     cname = container_name(project_name, mode, task_id)
     # State probe is runtime-agnostic — ``podman inspect`` returns
@@ -580,12 +640,12 @@ def _resolve_running_container(
     # below for the exec-routed probes.
     from terok.lib.integrations.sandbox import PodmanRuntime
 
-    state = PodmanRuntime().container(cname).state
-    if state != "running":
-        return ("", Path(), [("info", label, f"not running ({state}) — skipped")])
+    handle = PodmanRuntime().container(cname)
+    if handle.state != "running":
+        return ("", "", Path(), [("info", label, f"not running ({handle.state}) — skipped")])
 
     task_dir = load_project(project_name).tasks_root / str(task_id)
-    return (cname, task_dir, [])
+    return (cname, handle.id or "", task_dir, [])
 
 
 def _dispatch_host_side(check: DoctorCheck, task_dir: Path, cname: str) -> _CheckResult:
@@ -651,13 +711,19 @@ class ContainerDoctor:
         the sickbay command to tag multi-task runs with ``"Task
         pid/tid: "``.
         """
-        cname, task_dir, early = _resolve_running_container(self.project_name, self.task_id)
+        cname, cid, task_dir, early = _resolve_running_container(self.project_name, self.task_id)
         if early:
             if reporter is not None:
                 for status, label, detail in early:
                     reporter.emit(status, label, detail)
                 return []
             return early
+
+        # Root cause first: is the per-container supervisor even running?
+        # Reported ahead of every socket/bridge probe so a dead supervisor
+        # is named once, and the reachability symptoms below reference it.
+        supervisor = _check_supervisor_alive(cname, cid)
+        supervisor_up = not any(status == "error" for status, _, _ in supervisor)
 
         # Resolve the runtime once per doctor run so every probe / fix
         # reaches the container through the same backend that booted it
@@ -669,17 +735,19 @@ class ContainerDoctor:
         # Per-container vault + gate reachability — host-side, best-effort.
         # Emitted after the layered probes so they read as a closing
         # "are this container's services actually up?" pair.
-        reachability = _check_per_container_services(cname)
+        reachability = _check_per_container_services(cname, supervisor_up=supervisor_up)
 
         if reporter is None:
             # Legacy path: collect-and-return.  No streaming, no grouping.
-            results: list[_CheckResult] = []
+            results: list[_CheckResult] = list(supervisor)
             for check in checks:
                 results.extend(_execute_check(runtime, check, cname, task_dir, fix=fix))
             results.extend(reachability)
             return results
 
         # Streaming path with grouping.
+        for status, label, detail in supervisor:
+            reporter.emit(status, f"{label_prefix}{label}", detail)
         _stream_checks(
             runtime,
             checks,
