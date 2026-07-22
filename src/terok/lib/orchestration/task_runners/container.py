@@ -36,6 +36,7 @@ from ...core import runtime as _rt
 from ...core.config import make_sandbox_config
 from ...core.projects import load_project
 from ...util.ansi import blue as _blue, supports_color as _supports_color, yellow as _yellow
+from ...util.logging_utils import timed_phase
 from ..tasks import dossier_path, tasks_meta_dir
 
 if TYPE_CHECKING:
@@ -275,29 +276,30 @@ def _run_container(
     if project.perf:
         _maybe_warn_perf_restricted()
     try:
-        _agent_runner(project).launch_prepared(
-            env=env,
-            volumes=volumes,
-            image=image,
-            command=list(command or ()),
-            name=cname,
-            task_dir=task_dir,
-            gpus=project.gpus,
-            memory=project.memory,
-            cpus=project.cpus,
-            caps=("perfmon",) if project.perf else None,
-            unrestricted="TEROK_UNRESTRICTED" in env,
-            sealed=project.is_sealed,
-            hooks=hooks,
-            extra_args=merged_args,
-            runtime=project.runtime,
-            hostname=cname,
-            annotations=annotations,
-            project_id=project.name,  # executor API kwarg is ``project_id``; value is the project name
-            task_id=task_id,
-            dossier_path=task_dossier_path,
-            allow_debugger=allow_debugger,
-        )
+        with timed_phase(f"launch[{cname}]: podman run"):
+            _agent_runner(project).launch_prepared(
+                env=env,
+                volumes=volumes,
+                image=image,
+                command=list(command or ()),
+                name=cname,
+                task_dir=task_dir,
+                gpus=project.gpus,
+                memory=project.memory,
+                cpus=project.cpus,
+                caps=("perfmon",) if project.perf else None,
+                unrestricted="TEROK_UNRESTRICTED" in env,
+                sealed=project.is_sealed,
+                hooks=hooks,
+                extra_args=merged_args,
+                runtime=project.runtime,
+                hostname=cname,
+                annotations=annotations,
+                project_id=project.name,  # executor API kwarg is ``project_id``; value is the project name
+                task_id=task_id,
+                dossier_path=task_dossier_path,
+                allow_debugger=allow_debugger,
+            )
     except FileNotFoundError as exc:
         raise SystemExit(f"podman not found; please install podman ({exc})") from exc
     except BuildError as exc:

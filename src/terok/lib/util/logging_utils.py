@@ -16,6 +16,9 @@ operator's terminal (CWE-150).
 
 from __future__ import annotations
 
+import time
+from collections.abc import Iterator
+from contextlib import contextmanager
 from pathlib import Path
 
 from terok_util import BestEffortLogger, sanitize_tty
@@ -47,6 +50,29 @@ def _log_debug(message: str) -> None:
 def log_warning(message: str) -> None:
     """Append a WARNING line to the terok library log."""
     _logger.warning(message)
+
+
+@contextmanager
+def timed_phase(name: str) -> Iterator[None]:
+    """Bracket a launch/lifecycle phase with best-effort timing DEBUG lines.
+
+    Emits ``<name>: start`` on entry and ``<name>: done in N.NNs`` on
+    clean exit (``failed in N.NNs`` when the wrapped body raises), so a
+    slow ``terok task run`` is diagnosable from ``terok.log`` alone —
+    the shared file log only ever timestamps to the second, so the
+    monotonic delta is what resolves the sub-second phase boundaries.
+    The wrapped exception always propagates unchanged; logging never
+    masks it.
+    """
+    _log_debug(f"{name}: start")
+    started = time.monotonic()
+    ok = False
+    try:
+        yield
+        ok = True
+    finally:
+        elapsed = time.monotonic() - started
+        _log_debug(f"{name}: {'done' if ok else 'failed'} in {elapsed:.2f}s")
 
 
 def warn_user(component: str, message: str) -> None:

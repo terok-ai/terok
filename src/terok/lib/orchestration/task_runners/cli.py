@@ -20,6 +20,7 @@ from ...core import runtime as _rt
 from ...core.images import project_cli_image
 from ...core.projects import load_project
 from ...util.ansi import green as _green, red as _red, supports_color as _supports_color
+from ...util.logging_utils import _log_debug, timed_phase
 from ..agent_config import resolve_agent_config
 from ..environment import build_task_env_and_volumes
 from ..hooks import run_hook
@@ -55,6 +56,7 @@ def task_run_cli(
     meta, meta_path = load_task_meta(project.name, task_id, "cli")
 
     cname = container_name(project.name, "cli", task_id)
+    _log_debug(f"cli run: start project={project.name} task={task_id} cname={cname}")
     # One resolve per launch — vault-expensive under krun.
     runtime = _rt.resolve_runtime(project)
     _refuse_existing_container(runtime, project.name, cname, task_id)
@@ -119,10 +121,11 @@ def task_run_cli(
     )
 
     # Stream initial logs until ready marker is seen (or timeout), then detach
-    runtime.container(cname).stream_initial_logs(
-        ready_check=lambda line: "__CLI_READY__" in line or ">> init complete" in line,
-        timeout_sec=60.0,
-    )
+    with timed_phase(f"launch[{cname}]: stream init logs"):
+        runtime.container(cname).stream_initial_logs(
+            ready_check=lambda line: "__CLI_READY__" in line or ">> init complete" in line,
+            timeout_sec=60.0,
+        )
 
     # Verify the container is still alive after log streaming
     _assert_running(project, cname)

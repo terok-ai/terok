@@ -27,6 +27,7 @@ from terok.lib.integrations.sandbox import ShieldManager
 
 from ...core import runtime as _rt
 from ...core.config import SHIELD_SECURITY_HINT, get_shield_bypass_firewall_no_protection
+from ...util.logging_utils import timed_phase
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -260,28 +261,33 @@ def _apply_shield_policy(
     if get_shield_bypass_firewall_no_protection():
         return
 
-    try:
-        if is_restart:
-            policy = project.shield_on_task_restart
-            if policy == "retain":
-                _restore_shield_state(cname, task_dir)
-            elif policy == "up":
-                pass  # already UP from OCI hook
+    with timed_phase(f"shield[{cname}]: apply policy"):
+        try:
+            if is_restart:
+                policy = project.shield_on_task_restart
+                if policy == "retain":
+                    _restore_shield_state(cname, task_dir)
+                elif policy == "up":
+                    pass  # already UP from OCI hook
+                else:
+                    raise ValueError(
+                        f"Unknown shield.on_task_restart value: {policy!r} "
+                        "(expected 'retain' or 'up')"
+                    )
+            elif project.shield_drop_on_task_run:
+                _drop_shield_on_creation(cname, task_dir)
             else:
-                raise ValueError(
-                    f"Unknown shield.on_task_restart value: {policy!r} (expected 'retain' or 'up')"
-                )
-        elif project.shield_drop_on_task_run:
-            _drop_shield_on_creation(cname, task_dir)
-        else:
-            _write_desired_shield_state(task_dir, "up")
+                _write_desired_shield_state(task_dir, "up")
 
-        _apply_auth_protect_denies(cname, task_dir)
-    except Exception:
-        # Any shield-application failure leaves a live, half-protected
-        # container.  Tear it down before surfacing the original error.
-        _stop_container_best_effort(project, cname)
-        raise
+            # Roster-driven denies resolve allowlist hostnames — the DNS-bound
+            # step, timed separately as the usual suspect for a slow shield-up.
+            with timed_phase(f"shield[{cname}]: auth-protect denies"):
+                _apply_auth_protect_denies(cname, task_dir)
+        except Exception:
+            # Any shield-application failure leaves a live, half-protected
+            # container.  Tear it down before surfacing the original error.
+            _stop_container_best_effort(project, cname)
+            raise
 
 
 __all__ = [

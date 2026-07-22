@@ -32,6 +32,7 @@ from ...util.ansi import (
     supports_color as _supports_color,
     yellow as _yellow,
 )
+from ...util.logging_utils import timed_phase
 from ...util.net import url_host
 from ..agent_config import resolve_agent_config
 from ..environment import build_task_env_and_volumes
@@ -241,10 +242,11 @@ def task_run_toad(
         """Return True when the supervisor wrapper reports both listeners are up."""
         return "TEROK_READY" in line
 
-    ready = runtime.container(cname).stream_initial_logs(
-        ready_check=_toad_ready,
-        timeout_sec=None,
-    )
+    with timed_phase(f"launch[{cname}]: stream init logs"):
+        ready = runtime.container(cname).stream_initial_logs(
+            ready_check=_toad_ready,
+            timeout_sec=None,
+        )
 
     if not ready or not runtime.container(cname).running:
         print(f"Toad failed to start. Check logs: podman logs {cname}")
