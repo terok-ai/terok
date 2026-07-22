@@ -3094,3 +3094,143 @@ class TestOnVaultUnlockResult:
         # Notify is called with the error severity — the operator sees a red toast.
         instance.notify.assert_called_once()
         assert instance.notify.call_args.kwargs.get("severity") == "error"
+
+
+class TestGateBackupsScreen:
+    """The gate-backups browser returns (action, ref) or None."""
+
+    _BACKUPS = [
+        {
+            "ref": "refs/terok/backup/feat/x/20260720T000000Z-aaaaaaaaaaaa",
+            "branch": "feat/x",
+            "saved_at": "2026-07-20T00:00:00+00:00",
+            "sha": "a" * 40,
+        }
+    ]
+
+    def test_enter_requests_restore(self) -> None:
+        """Selecting a backup dismisses with a restore request for its ref."""
+        screens, _ = import_screens()
+        screen = screens.GateBackupsScreen(self._BACKUPS)
+        screen.dismiss = mock.Mock()
+        event = mock.Mock()
+        event.option.id = self._BACKUPS[0]["ref"]
+        screen.on_option_list_option_selected(event)
+        screen.dismiss.assert_called_once_with(("restore", self._BACKUPS[0]["ref"]))
+
+    def test_delete_key_requests_delete_of_highlighted(self) -> None:
+        """``d`` dismisses with a delete request for the highlighted ref."""
+        screens, _ = import_screens()
+        screen = screens.GateBackupsScreen(self._BACKUPS)
+        screen.dismiss = mock.Mock()
+        option_list = mock.Mock(highlighted=0)
+        option_list.get_option_at_index.return_value = mock.Mock(id=self._BACKUPS[0]["ref"])
+        screen.query_one = mock.Mock(return_value=option_list)
+        screen.action_delete()
+        screen.dismiss.assert_called_once_with(("delete", self._BACKUPS[0]["ref"]))
+
+    def test_delete_with_no_backups_is_a_noop(self) -> None:
+        """``d`` does nothing when there is nothing to delete."""
+        screens, _ = import_screens()
+        screen = screens.GateBackupsScreen([])
+        screen.dismiss = mock.Mock()
+        screen.action_delete()
+        screen.dismiss.assert_not_called()
+
+    def test_cancel_dismisses_with_none(self) -> None:
+        """Esc dismisses with ``None`` — no action taken."""
+        screens, _ = import_screens()
+        screen = screens.GateBackupsScreen(self._BACKUPS)
+        screen.dismiss = mock.Mock()
+        screen.action_cancel()
+        screen.dismiss.assert_called_once_with(None)
+
+
+class _NoopAwaitable:
+    """An awaitable that returns None and is safe to discard unawaited.
+
+    ``_action_gate_backups`` awaits its final ``push_screen`` but calls the
+    nested confirm ``push_screen`` synchronously, so the mock's return must
+    be awaitable *and* not warn when dropped — a coroutine would do both
+    wrong.
+    """
+
+    def __await__(self):
+        return iter(())
+
+
+class TestActionGateBackups:
+    """The project action lists backups and dispatches a confirmed restore/delete."""
+
+    def _instance(self, app_class: type) -> object:
+        instance = app_class()
+        instance.current_project_name = "proj1"
+        instance.notify = mock.Mock()
+        instance._run_console_action = mock.Mock()
+        instance._pushed: list[tuple] = []
+
+        def _push(screen: object, callback: object = None) -> object:
+            instance._pushed.append((screen, callback))
+            return _NoopAwaitable()
+
+        instance.push_screen = mock.Mock(side_effect=_push)
+        return instance
+
+    def test_no_project_selected_notifies(self) -> None:
+        """With no current project the action just notifies and stops."""
+        _app_mod, app_class = import_app()
+        instance = self._instance(app_class)
+        instance.current_project_name = None
+        run(app_class._action_gate_backups(instance))
+        instance.notify.assert_called_once()
+        instance.push_screen.assert_not_called()
+
+    def test_lists_backups_and_pushes_browser(self) -> None:
+        """A readable gate opens the browser screen with its backups."""
+        _app_mod, app_class = import_app()
+        instance = self._instance(app_class)
+        fake_gate = mock.Mock()
+        fake_gate.list_backups.return_value = TestGateBackupsScreen._BACKUPS
+        with (
+            mock.patch("terok.lib.api.load_project"),
+            mock.patch("terok.lib.api.make_git_gate", return_value=fake_gate),
+        ):
+            run(app_class._action_gate_backups(instance))
+        instance.push_screen.assert_called_once()
+
+    def test_confirmed_restore_dispatches_console_action(self) -> None:
+        """Picking restore + confirming runs the restore worker action."""
+        _app_mod, app_class = import_app()
+        instance = self._instance(app_class)
+        fake_gate = mock.Mock()
+        fake_gate.list_backups.return_value = TestGateBackupsScreen._BACKUPS
+        with (
+            mock.patch("terok.lib.api.load_project"),
+            mock.patch("terok.lib.api.make_git_gate", return_value=fake_gate),
+        ):
+            run(app_class._action_gate_backups(instance))
+
+        # Drive the browser's result callback: operator chose restore.
+        ref = TestGateBackupsScreen._BACKUPS[0]["ref"]
+        on_pick = instance._pushed[0][1]
+        on_pick(("restore", ref))
+        # That pushed a confirm screen; drive its callback with True.
+        confirm_cb = instance._pushed[-1][1]
+        confirm_cb(True)
+        instance._run_console_action.assert_called_once()
+        assert instance._run_console_action.call_args.args[0].endswith("restore_gate_backup")
+        assert ref in instance._run_console_action.call_args.args
+
+    def test_cancelled_pick_does_nothing(self) -> None:
+        """Dismissing the browser with None dispatches no action."""
+        _app_mod, app_class = import_app()
+        instance = self._instance(app_class)
+        fake_gate = mock.Mock()
+        fake_gate.list_backups.return_value = TestGateBackupsScreen._BACKUPS
+        with (
+            mock.patch("terok.lib.api.load_project"),
+            mock.patch("terok.lib.api.make_git_gate", return_value=fake_gate),
+        ):
+            run(app_class._action_gate_backups(instance))
+        instance._pushed[0][1](None)
+        instance._run_console_action.assert_not_called()

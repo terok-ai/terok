@@ -11,10 +11,13 @@ calling the unbound ``PollingMixin`` methods on a mock ``self``.
 
 from __future__ import annotations
 
-from types import ModuleType
+from types import ModuleType, SimpleNamespace
 from unittest import mock
 
-from tests.unit.tui.tui_test_helpers import build_textual_stubs, import_fresh
+import pytest
+import textual.theme  # noqa: F401 — prime the real module before stubbing (see import_fresh)
+
+from tests.unit.tui.tui_test_helpers import build_textual_stubs, import_app, import_fresh
 
 
 def _app() -> ModuleType:
@@ -86,3 +89,125 @@ class TestOnReviewLagUpdated:
         app.TerokTUI._on_review_lag_updated(me, "proj1", ["!42 feat/x +3"])
         me.notify.assert_not_called()
         me._refresh_project_state.assert_not_called()
+
+
+class TestRefreshReviewLag:
+    """The shared review-lag worker surfaces entries and honours query failure."""
+
+    @pytest.mark.asyncio
+    async def test_surfaces_computed_entries(self) -> None:
+        """Non-None entries are stringified and handed to the update handler."""
+        app = _app()
+        me = mock.Mock(current_project_name="proj1")
+        with (
+            mock.patch("terok.lib.api.load_project"),
+            mock.patch("terok.lib.api.refresh_review_lag", return_value=["!42 feat/x +3"]),
+        ):
+            await app.TerokTUI._refresh_review_lag(me, "proj1")
+        me._on_review_lag_updated.assert_called_once_with("proj1", ["!42 feat/x +3"])
+
+    @pytest.mark.asyncio
+    async def test_query_failure_is_not_surfaced(self) -> None:
+        """A None result (forge unreachable) keeps prior state — no handler call."""
+        app = _app()
+        me = mock.Mock(current_project_name="proj1")
+        with (
+            mock.patch("terok.lib.api.load_project"),
+            mock.patch("terok.lib.api.refresh_review_lag", return_value=None),
+        ):
+            await app.TerokTUI._refresh_review_lag(me, "proj1")
+        me._on_review_lag_updated.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_load_error_is_swallowed(self) -> None:
+        """A failed project load logs and returns without crashing the worker."""
+        app = _app()
+        me = mock.Mock(current_project_name="proj1")
+        with mock.patch("terok.lib.api.load_project", side_effect=SystemExit("boom")):
+            await app.TerokTUI._refresh_review_lag(me, "proj1")
+        me._on_review_lag_updated.assert_not_called()
+
+
+class TestGateMarkerWatch:
+    """The gate-dir inotify watch arms, fires, and tears down."""
+
+    def _instance(self, app_class: type) -> object:
+        instance = app_class()
+        instance._gate_marker_watcher = None
+        instance._gate_watch_debounce = None
+        instance._poll_review_lag = mock.Mock()
+        instance.set_timer = mock.Mock(return_value=mock.Mock())
+        instance._log_debug = mock.Mock()
+        return instance
+
+    def test_disabled_review_lag_skips_the_watch(self) -> None:
+        _app_mod, app_class = import_app()
+        instance = self._instance(app_class)
+        project = SimpleNamespace(review_lag_enabled=False, gate_path="/gate")
+        with mock.patch("terok.tui.task_watcher.TaskWatcher") as watcher_cls:
+            instance._start_gate_marker_watch(project)
+        watcher_cls.assert_not_called()
+        assert instance._gate_marker_watcher is None
+
+    def test_watch_start_failure_leaves_no_watcher(self) -> None:
+        _app_mod, app_class = import_app()
+        instance = self._instance(app_class)
+        project = SimpleNamespace(review_lag_enabled=True, gate_path="/gate")
+        watcher = mock.Mock()
+        watcher.start.return_value = False
+        with mock.patch("terok.tui.task_watcher.TaskWatcher", return_value=watcher):
+            instance._start_gate_marker_watch(project)
+        assert instance._gate_marker_watcher is None
+
+    def test_successful_arm_records_the_watcher(self) -> None:
+        _app_mod, app_class = import_app()
+        instance = self._instance(app_class)
+        project = SimpleNamespace(review_lag_enabled=True, gate_path="/gate")
+        watcher = mock.Mock()
+        watcher.start.return_value = True
+        watcher.fileno = 7
+        loop = mock.Mock()
+        with (
+            mock.patch("terok.tui.task_watcher.TaskWatcher", return_value=watcher),
+            mock.patch("asyncio.get_running_loop", return_value=loop),
+        ):
+            instance._start_gate_marker_watch(project)
+        loop.add_reader.assert_called_once_with(7, instance._on_gate_dir_changed)
+        assert instance._gate_marker_watcher is watcher
+
+    def test_change_debounces_a_review_lag_recheck(self) -> None:
+        _app_mod, app_class = import_app()
+        instance = self._instance(app_class)
+        instance._gate_marker_watcher = mock.Mock()
+        instance._gate_marker_watcher.drain.return_value = True
+        instance._on_gate_dir_changed()
+        instance.set_timer.assert_called_once()
+        assert instance.set_timer.call_args.args[1] is instance._poll_review_lag
+
+    def test_empty_drain_is_a_noop(self) -> None:
+        _app_mod, app_class = import_app()
+        instance = self._instance(app_class)
+        instance._gate_marker_watcher = mock.Mock()
+        instance._gate_marker_watcher.drain.return_value = False
+        instance._on_gate_dir_changed()
+        instance.set_timer.assert_not_called()
+
+    def test_stop_detaches_and_clears(self) -> None:
+        _app_mod, app_class = import_app()
+        instance = self._instance(app_class)
+        watcher = mock.Mock()
+        watcher.fileno = 7
+        instance._gate_marker_watcher = watcher
+        instance._gate_watch_debounce = mock.Mock()
+        loop = mock.Mock()
+        with mock.patch("asyncio.get_running_loop", return_value=loop):
+            instance._stop_gate_marker_watch()
+        loop.remove_reader.assert_called_once_with(7)
+        watcher.stop.assert_called_once()
+        assert instance._gate_marker_watcher is None
+
+    def test_stop_without_watcher_is_safe(self) -> None:
+        _app_mod, app_class = import_app()
+        instance = self._instance(app_class)
+        instance._stop_gate_marker_watch()  # no watcher, no debounce
+        assert instance._gate_marker_watcher is None
