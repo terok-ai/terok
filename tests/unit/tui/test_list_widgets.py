@@ -79,6 +79,21 @@ def test_task_list_preserves_live_state_and_posts_current_project() -> None:
     assert messages[-1].task.task_id == "t1"
 
 
+def test_task_label_shows_debug_badge_only_when_debug() -> None:
+    """A debug-mode task gets the cockroach badge; a normal one does not."""
+    widgets = import_widgets()
+    task_list = widgets.TaskList()
+    _wire_listview(task_list)
+    task_list._label_width = lambda: 80
+
+    cockroach = "\U0001fab3"
+    normal = widgets.TaskMeta(task_id="t1", mode="cli", workspace="", web_port=None)
+    debugged = widgets.TaskMeta(task_id="t2", mode="cli", workspace="", web_port=None, debug=True)
+
+    assert cockroach not in task_list._format_task_label(normal)
+    assert cockroach in task_list._format_task_label(debugged)
+
+
 def test_task_list_drops_stale_selection_messages() -> None:
     """Stale rows from another project cannot update the current selection."""
     widgets = import_widgets()

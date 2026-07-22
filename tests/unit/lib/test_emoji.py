@@ -11,6 +11,7 @@ import pytest
 from rich.cells import cell_len
 
 from terok.lib.core.task_display import (
+    DEBUG_BADGE,
     GPU_DISPLAY,
     MODE_DISPLAY,
     SECURITY_CLASS_DISPLAY,
@@ -34,6 +35,7 @@ EMOJI_COLLECTIONS = [
     pytest.param("security-class", SECURITY_CLASS_DISPLAY.values(), id="security-class"),
     pytest.param("gpu", GPU_DISPLAY.values(), id="gpu"),
     pytest.param("work-status", WORK_STATUS_DISPLAY.values(), id="work-status"),
+    pytest.param("debug-badge", [DEBUG_BADGE], id="debug-badge"),
 ]
 
 LABEL_COLLECTIONS = [
@@ -41,6 +43,7 @@ LABEL_COLLECTIONS = [
     pytest.param("security-class", SECURITY_CLASS_DISPLAY.values(), id="security-class"),
     pytest.param("gpu", GPU_DISPLAY.values(), id="gpu"),
     pytest.param("work-status", WORK_STATUS_DISPLAY.values(), id="work-status"),
+    pytest.param("debug-badge", [DEBUG_BADGE], id="debug-badge"),
 ]
 
 

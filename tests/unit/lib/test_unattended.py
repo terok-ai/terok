@@ -401,6 +401,20 @@ class TestTaskRunHeadless:
             assert meta["mode"] == "run"
             assert meta["exit_code"] == 0
 
+    def test_headless_debug_flows_to_sidecar_and_meta(self) -> None:
+        """``--debug`` reaches ``launch_prepared`` and is persisted in task meta."""
+        with tempfile.TemporaryDirectory() as td:
+            base = Path(td)
+            result = run_headless_request(
+                base,
+                write_runner_project(base, "proj_dbg"),
+                HeadlessRunRequest("proj_dbg", "test", debug=True),
+            )
+
+            kwargs = result.run_mock.return_value.launch_prepared.call_args.kwargs
+            assert kwargs["allow_debugger"] is True
+            assert read_task_meta(base, "proj_dbg", result.task_id)["debug"] is True
+
     def test_headless_no_follow_mode(self) -> None:
         """task_run_headless with follow=False prints detach info."""
         with tempfile.TemporaryDirectory() as td:

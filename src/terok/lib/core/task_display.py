@@ -82,6 +82,14 @@ GPU_DISPLAY: dict[bool, ProjectBadge] = {
     False: ProjectBadge(emoji="\U0001f4bf", label="CPU"),
 }
 
+# Read-only marker on tasks launched with the hardening floor relaxed
+# (``terok task run --debug``): the supervisor children stay ptrace-able so
+# a debugger can attach.  Cockroach (U+1FAB3) is natively wide
+# (``East_Asian_Width=W``, no VS16), so it aligns without ``render_emoji``
+# padding.  The TUI shows it; there is no control to toggle debug mode there
+# — the trigger is CLI-only by design.
+DEBUG_BADGE = ProjectBadge(emoji="\U0001fab3", label="debug")
+
 
 def mode_info(mode: str | None) -> ModeInfo:
     """Return the display info for a task mode string."""

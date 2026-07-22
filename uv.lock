@@ -2396,7 +2396,7 @@ requires-dist = [
     { name = "rich", specifier = "~=15.0" },
     { name = "ruamel-yaml", specifier = "==0.19.1" },
     { name = "terok-clearance", url = "https://github.com/terok-ai/terok-clearance/releases/download/v0.8.0a6/terok_clearance-0.8.0a6-py3-none-any.whl" },
-    { name = "terok-executor", url = "https://github.com/terok-ai/terok-executor/releases/download/v0.4.0a15/terok_executor-0.4.0a15-py3-none-any.whl" },
+    { name = "terok-executor", git = "https://github.com/sliwowitz/terok-executor?rev=feat%2Fdebug-mode-allow-debugger" },
     { name = "terok-sandbox", url = "https://github.com/terok-ai/terok-sandbox/releases/download/v0.5.0a15/terok_sandbox-0.5.0a15-py3-none-any.whl" },
     { name = "terok-shield", url = "https://github.com/terok-ai/terok-shield/releases/download/v0.8.0a6/terok_shield-0.8.0a6-py3-none-any.whl" },
     { name = "terok-util", url = "https://github.com/terok-ai/terok-util/releases/download/v0.3.1a3/terok_util-0.3.1a3-py3-none-any.whl" },
@@ -2462,8 +2462,8 @@ requires-dist = [
 
 [[package]]
 name = "terok-executor"
-version = "0.4.0a15"
-source = { url = "https://github.com/terok-ai/terok-executor/releases/download/v0.4.0a15/terok_executor-0.4.0a15-py3-none-any.whl" }
+version = "0.4.0a16.dev442+g996598ae8"
+source = { git = "https://github.com/sliwowitz/terok-executor?rev=feat%2Fdebug-mode-allow-debugger#996598ae8152c2cecebb2272aa4d506dbc2f8185" }
 dependencies = [
     { name = "agent-client-protocol" },
     { name = "jinja2" },
@@ -2474,22 +2474,6 @@ dependencies = [
     { name = "terok-sandbox" },
     { name = "terok-util" },
     { name = "tomli-w" },
-]
-wheels = [
-    { url = "https://github.com/terok-ai/terok-executor/releases/download/v0.4.0a15/terok_executor-0.4.0a15-py3-none-any.whl", hash = "sha256:8f222bbf47b15fcbcbaee2f90e9fab2d4ddc663a845361aba1346f85b48d01b4" },
-]
-
-[package.metadata]
-requires-dist = [
-    { name = "agent-client-protocol", specifier = "==0.11.0" },
-    { name = "jinja2", specifier = "~=3.1" },
-    { name = "prompt-toolkit", specifier = "~=3.0" },
-    { name = "pydantic", specifier = "~=2.13" },
-    { name = "rich", specifier = "~=15.0" },
-    { name = "ruamel-yaml", specifier = "==0.19.1" },
-    { name = "terok-sandbox", url = "https://github.com/terok-ai/terok-sandbox/releases/download/v0.5.0a15/terok_sandbox-0.5.0a15-py3-none-any.whl" },
-    { name = "terok-util", url = "https://github.com/terok-ai/terok-util/releases/download/v0.3.1a3/terok_util-0.3.1a3-py3-none-any.whl" },
-    { name = "tomli-w", specifier = "~=1.2" },
 ]
 
 [[package]]

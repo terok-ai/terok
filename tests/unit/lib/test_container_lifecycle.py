@@ -345,7 +345,26 @@ def test_task_restart_missing_container_recreates_in_place() -> None:
 
         assert "Recreating" in output
         sandbox.return_value.rm.assert_not_called()  # nothing to remove
-        run_cli.assert_called_once_with(project_name, task_id, unrestricted=False)
+        run_cli.assert_called_once_with(project_name, task_id, unrestricted=False, debug=False)
+
+
+def test_task_restart_recreate_preserves_debug_from_meta() -> None:
+    """Recreation rewrites the sidecar, so debug mode is carried from saved meta."""
+    project_name = "proj_restart_debug"
+    with project_env(project_config(project_name), project_name=project_name) as ctx:
+        task_id = create_task_with_mode(ctx, project_name)
+        update_task_meta(ctx, project_name, task_id, debug=True)
+
+        runtime_mock = _mock_runtime(_mock_container(state=None))
+        with (
+            mock_git_config(),
+            patch("terok.lib.core.runtime.resolve_runtime", return_value=runtime_mock),
+            patch("terok.lib.orchestration.task_runners.restart._sandbox"),
+            patch("terok.lib.orchestration.task_runners.restart.task_run_cli") as run_cli,
+        ):
+            capture_stdout(task_restart, project_name, task_id)
+
+        run_cli.assert_called_once_with(project_name, task_id, unrestricted=None, debug=True)
 
 
 def test_task_restart_missing_toad_container_recreates_via_toad_runner() -> None:
@@ -367,7 +386,7 @@ def test_task_restart_missing_toad_container_recreates_via_toad_runner() -> None
             output = capture_stdout(task_restart, project_name, task_id)
 
         assert "Recreating" in output
-        run_toad.assert_called_once_with(project_name, task_id, unrestricted=None)
+        run_toad.assert_called_once_with(project_name, task_id, unrestricted=None, debug=False)
         run_cli.assert_not_called()
 
 
@@ -385,7 +404,7 @@ def test_ensure_task_running_launches_missing_container() -> None:
         ):
             capture_stdout(ensure_task_running, project_name, task_id, unrestricted=True)
 
-        run_cli.assert_called_once_with(project_name, task_id, unrestricted=True)
+        run_cli.assert_called_once_with(project_name, task_id, unrestricted=True, debug=False)
 
 
 def test_task_restart_fresh_skips_resume_and_recreates() -> None:

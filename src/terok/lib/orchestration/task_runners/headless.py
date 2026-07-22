@@ -76,6 +76,9 @@ class HeadlessRunRequest:
     routes to at runtime; ``None`` → the agent's default provider."""
     instructions: str | None = None
     unrestricted: bool | None = None
+    debug: bool = False
+    """Launch with the hardening floor relaxed (``--debug``) so the
+    supervisor children stay ptrace-able for an attached debugger."""
 
 
 @dataclass(frozen=True)
@@ -289,6 +292,7 @@ def task_run_headless(request: HeadlessRunRequest) -> str:
         task_id=task_id,
         task_dir=task_dir,
         command=["bash", "-lc", headless_cmd],
+        allow_debugger=request.debug,
     )
     _apply_shield_policy(project, cname, task_dir, is_restart=False)
     run_hook(
@@ -309,6 +313,7 @@ def task_run_headless(request: HeadlessRunRequest) -> str:
     if request.provider:
         meta["provider"] = request.provider
     meta["unrestricted"] = unrestricted
+    meta["debug"] = request.debug
     write_task_meta(meta_path, meta)
 
     _report_headless_result(

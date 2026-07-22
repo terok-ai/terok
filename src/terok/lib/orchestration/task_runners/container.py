@@ -207,6 +207,7 @@ def _run_container(
     extra_args: list[str] | None = None,
     command: list[str] | None = None,
     hooks: LifecycleHooks | None = None,
+    allow_debugger: bool = False,
 ) -> None:
     """Launch a detached task container, annotated for clearance enrichment.
 
@@ -244,6 +245,12 @@ def _run_container(
             args (e.g. ``["-p", "127.0.0.1:8080:7860"]``).
         command: Optional command + args appended after the image name.
         hooks: Optional lifecycle callbacks fired around the launch.
+        allow_debugger: Launch in debug mode — the supervisor children
+            stay ptrace-able so a debugger can attach (only the
+            ``PR_SET_DUMPABLE`` clear is skipped; core-limit + mlockall
+            still apply).  Forwarded to
+            [`AgentRunner.launch_prepared`][terok_executor.AgentRunner.launch_prepared]'s
+            ``allow_debugger`` kwarg, which writes it into the sidecar.
     """
     # OCI annotation under the ``dossier.*`` namespace flows through to
     # the shield reader, which picks it up at hook spawn time and uses
@@ -289,6 +296,7 @@ def _run_container(
             project_id=project.name,  # executor API kwarg is ``project_id``; value is the project name
             task_id=task_id,
             dossier_path=task_dossier_path,
+            allow_debugger=allow_debugger,
         )
     except FileNotFoundError as exc:
         raise SystemExit(f"podman not found; please install podman ({exc})") from exc

@@ -177,6 +177,7 @@ if TYPE_CHECKING:
     )
     from terok.lib.api.task import (
         CONTAINER_MODES as CONTAINER_MODES,
+        DEBUG_BADGE as DEBUG_BADGE,
         GPU_DISPLAY as GPU_DISPLAY,
         SECURITY_CLASS_DISPLAY as SECURITY_CLASS_DISPLAY,
         STATUS_DISPLAY as STATUS_DISPLAY,
@@ -274,6 +275,7 @@ _LAZY: dict[str, str] = {
     "CommandDef": "terok_util",
     "CommandTree": "terok_util",
     "ContainerEventStream": "terok.lib.api.task",
+    "DEBUG_BADGE": "terok.lib.api.task",
     "DEFAULT_BASE_IMAGE": "terok.lib.api.agents",
     "DeleteProjectResult": "terok.lib.api.project",
     "EXECUTOR_COMMANDS": "terok.lib.api.agents",
@@ -513,6 +515,7 @@ __all__ = [
     "CommandTree",
     "Config",
     "ContainerEventStream",
+    "DEBUG_BADGE",
     "GPU_DISPLAY",
     "HeadlessRunRequest",
     "LogViewOptions",

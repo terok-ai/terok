@@ -23,6 +23,7 @@ from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from terok.lib.core.task_display import (
+        DEBUG_BADGE as DEBUG_BADGE,
         GPU_DISPLAY as GPU_DISPLAY,
         SECURITY_CLASS_DISPLAY as SECURITY_CLASS_DISPLAY,
         STATUS_DISPLAY as STATUS_DISPLAY,
@@ -84,6 +85,7 @@ if TYPE_CHECKING:
 _LAZY: dict[str, str] = {
     "CONTAINER_MODES": "terok.lib.core.task_state",
     "ContainerEventStream": "terok.lib.orchestration.tasks",
+    "DEBUG_BADGE": "terok.lib.core.task_display",
     "GPU_DISPLAY": "terok.lib.core.task_display",
     "HeadlessRunRequest": "terok.lib.orchestration.task_runners",
     "LogViewOptions": "terok.lib.domain.task_logs",

@@ -156,6 +156,15 @@ def register(
     )
     t_run.add_argument("--name", help="Human-readable task name (slug-style, e.g. fix-auth-bug)")
     _add_restriction_flags(t_run)
+    t_run.add_argument(
+        "--debug",
+        action="store_true",
+        help=(
+            "Debug mode: launch with the hardening floor relaxed so a debugger can "
+            "attach to the supervised service processes (skips PR_SET_DUMPABLE only; "
+            "core-limit + mlockall still apply). Marked with a cockroach badge in the TUI."
+        ),
+    )
     # CLI-mode attach (default: attach when stdout is a TTY).  Headless
     # already streams/follows on its own; toad returns a URL + token.
     attach_group = t_run.add_mutually_exclusive_group()
@@ -506,6 +515,7 @@ def _cmd_task_run_interactive(args: argparse.Namespace, *, runner: Any, attach: 
         pid,
         tid,
         unrestricted=_resolve_unrestricted(args),
+        debug=getattr(args, "debug", False),
     )
     if attach:
         # ``task_login`` calls ``os.execvp`` and never returns on success.
@@ -540,6 +550,7 @@ def _cmd_task_run_headless(args: argparse.Namespace) -> None:
             provider=getattr(args, "provider", None),
             instructions=instructions_text,
             unrestricted=_resolve_unrestricted(args),
+            debug=getattr(args, "debug", False),
         )
     )
 

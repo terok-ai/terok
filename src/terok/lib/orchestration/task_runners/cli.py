@@ -43,6 +43,7 @@ def task_run_cli(
     project_name: str,
     task_id: str,
     unrestricted: bool | None = None,
+    debug: bool = False,
 ) -> None:
     """Launch a CLI-mode task container and wait for its readiness marker.
 
@@ -103,6 +104,7 @@ def task_run_cli(
         # Ensure init runs and then keep the container alive even without a TTY
         # init-ssh-and-repo.sh now prints a readiness marker we can watch for
         command=["bash", "-lc", "init-ssh-and-repo.sh && echo __CLI_READY__; tail -f /dev/null"],
+        allow_debugger=debug,
     )
     _apply_shield_policy(project, cname, task_dir, is_restart=False)
     run_hook(
@@ -138,6 +140,7 @@ def task_run_cli(
     meta["mode"] = "cli"
     meta["ready_at"] = datetime.now(UTC).isoformat()
     meta["unrestricted"] = unrestricted
+    meta["debug"] = debug
     write_task_meta(meta_path, meta)
 
     color_enabled = _supports_color()

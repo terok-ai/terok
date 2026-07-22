@@ -794,6 +794,32 @@ terok task status myproj v9krt
 
 The TUI task detail panel also shows the permission mode.
 
+### Debug Mode
+
+Each container's services (vault proxy, clearance hub, SSH signer, gate) run as
+separate supervised child processes.  In production every child hardens itself —
+it clears the dumpable flag (`PR_SET_DUMPABLE=0`, so no `ptrace`, no core dump),
+zeroes `RLIMIT_CORE`, and `mlockall`s its memory.  That is exactly what you want
+in normal operation, but it also makes the split's other payoff — a debuggable
+per-service process you can attach to — unreachable.
+
+`--debug` relaxes that floor for one task launch:
+
+```bash
+terok task run myproj --debug                       # cli mode
+terok task run myproj --mode headless --prompt "…" --debug
+```
+
+Only the dumpable clear is skipped, so a debugger can attach
+(`py-spy dump --pid <child>`, `gdb -p <child>`); the core-file limit and
+`mlockall` still apply.  The choice is **fail-closed**: hardening is relaxed only
+when this explicit flag is set — it is never inferred from `-O` / `__debug__`.
+
+Debug mode is a **CLI-only** trigger — there is no TUI control to enable it
+(asking for it presumes you'll attach a debugger, so the launch stays in the
+terminal).  A debug-mode task is marked read-only in the TUI task list with a
+🪳 badge, and the choice is remembered across `task restart`.
+
 ### Native Claude Agents and MCPs
 
 Sub-agents, skills, and MCP servers are managed natively by Claude — terok

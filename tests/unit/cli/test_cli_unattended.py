@@ -77,6 +77,13 @@ def test_run_dispatches_to_task_run_headless() -> None:
     assert request.name is None
     assert request.provider is None
     assert request.instructions is None
+    assert request.debug is False
+
+
+def test_headless_debug_flag_sets_request_debug() -> None:
+    """``--debug`` on a headless run sets ``HeadlessRunRequest.debug``."""
+    assert capture_headless_request("myproject", "Fix it").debug is False
+    assert capture_headless_request("myproject", "Fix it", "--debug").debug is True
 
 
 def test_headless_without_prompt_exits() -> None:
@@ -223,7 +230,7 @@ def test_run_interactive_mode_creates_and_runs(mode: str, runner_target: str) ->
         run_cli("task", "run", "myproj", "--mode", mode, "--no-attach")
 
     mock_new.assert_called_once_with("myproj", name=None)
-    mock_runner.assert_called_once_with("myproj", "42", unrestricted=None)
+    mock_runner.assert_called_once_with("myproj", "42", unrestricted=None, debug=False)
     mock_login.assert_not_called()
 
 

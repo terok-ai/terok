@@ -131,6 +131,7 @@ def task_run_toad(
     project_name: str,
     task_id: str,
     unrestricted: bool | None = None,
+    debug: bool = False,
 ) -> None:
     """Launch the Toad multi-agent TUI behind Caddy for token-gated browser access.
 
@@ -181,6 +182,7 @@ def task_run_toad(
 
     meta["mode"] = "toad"
     meta["unrestricted"] = unrestricted
+    meta["debug"] = debug
     write_task_meta(meta_path, meta)
 
     # Preserve the address family when the public host is a loopback — binding
@@ -220,6 +222,7 @@ def task_run_toad(
         task_dir=task_dir,
         extra_args=["-p", f"{bind_addr}:{port}:{_TOAD_PUBLIC_PORT}"],
         command=["bash", "-lc", toad_cmd],
+        allow_debugger=debug,
     )
     _apply_shield_policy(project, cname, task_dir, is_restart=False)
     run_hook(

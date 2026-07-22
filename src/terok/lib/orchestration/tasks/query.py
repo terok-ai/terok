@@ -89,6 +89,12 @@ class TaskMeta(TaskState):
     name: str = ""
     agent: str | None = None
     unrestricted: bool | None = None
+    debug: bool = False
+    """Whether the task was launched with the hardening floor relaxed
+    (``terok task run --debug``): its supervisor children stay ptrace-able
+    so a debugger can attach.  Drives the read-only
+    [`DEBUG_BADGE`][terok.lib.core.task_display.DEBUG_BADGE] in the TUI —
+    there is no TUI control to toggle it (the trigger is CLI-only)."""
     work_status: str | None = None
     work_message: str | None = None
     shield_state: str | None = None
@@ -191,6 +197,7 @@ def get_task_meta(project_name: str, task_id: str) -> TaskMeta:
         name=raw["name"],
         agent=raw.get("agent"),
         unrestricted=raw.get("unrestricted"),
+        debug=bool(raw.get("debug")),
         work_status=ws_status,
         work_message=ws_message,
         created_at=raw.get("created_at"),
@@ -273,6 +280,7 @@ def _get_tasks(project_name: str, reverse: bool = False) -> list[TaskMeta]:
                     name=meta["name"],
                     agent=meta.get("agent"),
                     unrestricted=meta.get("unrestricted"),
+                    debug=bool(meta.get("debug")),
                     work_status=ws_status,
                     work_message=ws_message,
                     created_at=meta.get("created_at"),

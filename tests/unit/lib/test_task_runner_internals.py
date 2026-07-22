@@ -595,6 +595,26 @@ class TestRunContainer:
         assert spec.gpus is None
         assert spec.unrestricted is False  # FOO doesn't have TEROK_UNRESTRICTED
 
+    def test_allow_debugger_forwarded_to_launch_prepared(self) -> None:
+        """``allow_debugger`` reaches ``launch_prepared``; default is False."""
+        project = self._make_project()
+        for requested, expected in ((True, True), (False, False)):
+            with patch(
+                "terok.lib.orchestration.task_runners.container._agent_runner"
+            ) as sandbox_factory:
+                _run_container(
+                    task_id="t1",
+                    cname="test-ctr",
+                    image="alpine:latest",
+                    env={},
+                    volumes=[],
+                    project=project,
+                    task_dir=MOCK_TASK_DIR,
+                    allow_debugger=requested,
+                )
+            kwargs = sandbox_factory.return_value.launch_prepared.call_args.kwargs
+            assert kwargs["allow_debugger"] is expected
+
     def test_unrestricted_flag_from_env(self) -> None:
         """unrestricted is True when TEROK_UNRESTRICTED is in env."""
         project = self._make_project()

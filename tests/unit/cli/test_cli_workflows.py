@@ -273,16 +273,22 @@ class TestTaskRunInteractive:
                 ["terok", "task", "run", "proj1"],
                 "42",
                 "terok.cli.commands.task.task_run_cli",
-                ("proj1", "42", {"unrestricted": None}),
+                ("proj1", "42", {"unrestricted": None, "debug": False}),
             ),
             (
                 ["terok", "task", "run", "proj1", "--mode", "toad"],
                 "10",
                 "terok.cli.commands.task.task_run_toad",
-                ("proj1", "10", {"unrestricted": None}),
+                ("proj1", "10", {"unrestricted": None, "debug": False}),
+            ),
+            (
+                ["terok", "task", "run", "proj1", "--debug"],
+                "42",
+                "terok.cli.commands.task.task_run_cli",
+                ("proj1", "42", {"unrestricted": None, "debug": True}),
             ),
         ],
-        ids=["default-cli-mode", "toad-mode"],
+        ids=["default-cli-mode", "toad-mode", "cli-debug-mode"],
     )
     def test_task_run_interactive_dispatch(
         self,

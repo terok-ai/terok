@@ -9,7 +9,7 @@ from textual import events
 from textual.message import Message
 from textual.widgets import ListItem, ListView, Static
 
-from ...lib.api import STATUS_DISPLAY, TaskMeta, mode_info
+from ...lib.api import DEBUG_BADGE, STATUS_DISPLAY, TaskMeta, mode_info
 from ...lib.util.emoji import render_emoji
 from ...ui_utils.terminal import wrap_with_hanging_indent
 
@@ -82,6 +82,9 @@ class TaskList(ListView):
         m_emoji = render_emoji(mode_info(task.mode))
         s_info = STATUS_DISPLAY.get(task.status, STATUS_DISPLAY["created"])
         s_emoji = render_emoji(s_info)
+        # Read-only marker on debug-mode tasks (``terok task run --debug``);
+        # no TUI control toggles it — the trigger is CLI-only by design.
+        d_badge = f"{render_emoji(DEBUG_BADGE)} " if task.debug else ""
 
         extra_parts: list[str] = []
         if task.work_status:
@@ -89,7 +92,7 @@ class TaskList(ListView):
         if task.web_port is not None:
             extra_parts.append(f"port={task.web_port}")
 
-        prefix = f"{task.task_id} {m_emoji} {s_emoji} "
+        prefix = f"{task.task_id} {m_emoji} {s_emoji} {d_badge}"
         suffix = f" [{'; '.join(extra_parts)}]" if extra_parts else ""
         return wrap_with_hanging_indent(prefix, task.name, suffix, width)
 
