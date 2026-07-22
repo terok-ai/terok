@@ -227,6 +227,12 @@ class TestRenderHelpers:
         text_str = str(result)
         assert "42" in text_str
 
+    def test_render_task_details_shows_debug_line_when_debug(self) -> None:
+        assert_rendered_needles(render_task_details_text(debug=True), ["Debug:", "enabled"], [])
+
+    def test_render_task_details_omits_debug_line_by_default(self) -> None:
+        assert_rendered_needles(render_task_details_text(), [], ["Debug:"])
+
     def test_render_task_details_none_shows_empty_message(self) -> None:
         widgets = import_widgets()
 

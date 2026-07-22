@@ -11,7 +11,7 @@ from textual import events
 from textual.app import ComposeResult
 from textual.widgets import Static
 
-from ...lib.api import STATUS_DISPLAY, TaskMeta, get_config, mode_info
+from ...lib.api import DEBUG_BADGE, STATUS_DISPLAY, TaskMeta, get_config, mode_info
 from ...lib.util.emoji import render_emoji
 from ...lib.util.net import url_host
 from ...ui_utils.terminal import wrap_with_hanging_indent
@@ -77,6 +77,11 @@ def render_task_details(
         Text(f"Status:    {render_emoji(s_info)} {s_info.label}"),
         Text(type_line),
     ]
+    # Read-only debug marker (``terok task run --debug``) — surfaced here
+    # as well as the task-list badge so the relaxed hardening floor is
+    # visible from the detail pane and the details screen.
+    if task.debug:
+        lines.append(Text(f"Debug:     {render_emoji(DEBUG_BADGE)} enabled"))
     if task.work_status:
         work_text = task.work_status
         if task.work_message:
