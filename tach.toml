@@ -639,6 +639,13 @@ layer = "core"
 depends_on = ["terok.lib.core.paths"]
 utility = true
 
+# Tee build/run output to journald or a bespoke log file
+[[modules]]
+path = "terok.lib.util.output_capture"
+layer = "core"
+depends_on = ["terok.lib.core.paths"]
+utility = true
+
 # Emoji display-width utilities
 [[modules]]
 path = "terok.lib.util.emoji"

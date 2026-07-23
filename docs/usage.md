@@ -144,6 +144,25 @@ Run `terok config paths` to check whether completions are detected as installed.
 | Override (whole tree) | `TEROK_ROOT=/path/to/root` or `paths.root` in config.yml |
 | Override (terok core state only) | `TEROK_STATE_DIR=/path/to/state` |
 
+### Build/run output logs
+
+Image builds and task launches stream their output to your terminal *and*
+persist it durably, so the diagnostic signal survives the terminal. The live
+output is byte-for-byte unchanged (colours and progress bars intact — the
+capture fronts the operation with a pseudo-terminal); the durable copy goes
+to one of two backends, chosen automatically:
+
+| Host | Backend | Retrieve | Retention |
+|------|---------|----------|-----------|
+| **systemd present** | journald | `journalctl -t terok TEROK_KIND=run` (add `TEROK_TASK=<id>` / `TEROK_PROJECT=<name>` to filter) | managed by journald |
+| **no systemd** | timestamped files under `…/terok/core/projects/<project>/logs/` (`build-*.log`, `run-<task>-*.log`) | unlimited (never auto-pruned) |
+
+Each operation prints a `↳ output …` pointer to stderr on completion so the
+location is discoverable. The file backend is deliberately unbounded; to cap
+growth on a non-systemd host, point logrotate at the glob — see
+[`examples/logrotate/terok.conf`](https://github.com/terok-ai/terok/blob/master/examples/logrotate/terok.conf).
+On systemd hosts nothing extra is needed — journald owns retention.
+
 ---
 
 ## Global Configuration

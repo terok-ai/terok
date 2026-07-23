@@ -2793,7 +2793,18 @@ if _HAS_TEXTUAL:
         is already running; ``--new-session`` opts out and starts a parallel,
         tmux-named session instead.
         """
+        from terok_util import configure
+
         from terok.lib.core.config import declare_setup_invocation
+        from terok.lib.util.logging_utils import _terok_log_path
+
+        # Unified logging for the TUI process: journald when present, else the
+        # terok.log file — never a stderr StreamHandler, which would paint over
+        # the Textual screen.  (The file is the same one logging_utils appends
+        # its best-effort breadcrumbs to.)
+        _log_path = _terok_log_path()
+        _log_path.parent.mkdir(parents=True, exist_ok=True)
+        configure(identifier="terok", stream=_log_path.open("a", encoding="utf-8"))
 
         declare_setup_invocation()
         args = _build_arg_parser().parse_args()

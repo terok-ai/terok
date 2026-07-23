@@ -184,8 +184,13 @@ def main(prog: str = "terok") -> None:
     # stack.  Command modules are loaded lazily too — only the invoked verb's
     # module (see ``_load_own_commands``) — so ``terok <verb>`` imports one
     # command module instead of all fourteen.
+    from terok_util import configure
+
     from terok.lib.core.config import declare_setup_invocation, set_experimental
 
+    # One-time unified logging: routes every getLogger(__name__) under terok.*
+    # to journald (when present) or stderr, with no per-module wiring.
+    configure(identifier="terok")
     declare_setup_invocation()
     # Fast-path: bare ``terok`` in a terminal launches the TUI.  Scripts
     # piping ``terok`` get the argparse usage error instead — the TTY
