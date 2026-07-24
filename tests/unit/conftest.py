@@ -154,6 +154,19 @@ def _mock_infrastructure() -> Iterator[None]:
 
 
 @pytest.fixture(autouse=True)
+def _no_shield_self_confinement(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Neutralise shield's irreversible Landlock self-floor for in-process tests.
+
+    Dispatching ``shield watch`` / ``shield simple-clearance`` enters shield's
+    reader handlers, which call ``confine_to_state`` — Landlock ``restrict_self``,
+    process-wide and permanent.  Left live it confines the pytest worker itself,
+    so every later test errors trying to open its temp/coverage files.  The real
+    floor is proved on the live kernel in terok-shield's own subprocess test.
+    """
+    monkeypatch.setattr("terok_shield._confine.confine_to_state", lambda _state_dir: None)
+
+
+@pytest.fixture(autouse=True)
 def _stub_credential_db(tmp_path_factory: pytest.TempPathFactory) -> Iterator[None]:
     """Stub ``SandboxConfig.open_credential_db`` so tests never hit the resolution chain.
 
