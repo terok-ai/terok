@@ -6,7 +6,7 @@
 [`_maybe_warn_recovery_unconfirmed`][terok.lib.orchestration.task_runners.container._maybe_warn_recovery_unconfirmed]
 prints one line after the SSH login hint when no recovery-ack marker
 is on disk.  Coverage here protects against silent regressions on
-the three states (acked / unacked-durable / unacked-session-only)
+the three states (acked / unacked-durable / unacked-volatile-only)
 plus probe failure.
 """
 
@@ -25,7 +25,7 @@ def _status(*, acknowledged: bool, source: str | None):
     Uses the real ``RecoveryStatus`` dataclass so the ``urgent``
     property derives correctly from ``acknowledged`` + ``source``.
     ``source`` is coerced to the real [`PassphraseTier`][terok_sandbox.PassphraseTier]
-    member — ``session_only`` compares by identity, so a bare string
+    member — ``volatile_only`` compares by identity, so a bare string
     would silently defeat the escalation branch.
     """
     from terok.lib.integrations.sandbox import PassphraseTier, RecoveryStatus
@@ -35,7 +35,7 @@ def _status(*, acknowledged: bool, source: str | None):
 
 
 class TestMaybeWarnRecoveryUnconfirmed:
-    """Branches: acked / unacked-durable / unacked-session / probe-raises."""
+    """Branches: acked / unacked-durable / unacked-volatile / probe-raises."""
 
     def test_acknowledged_prints_nothing(
         self, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
@@ -69,12 +69,12 @@ class TestMaybeWarnRecoveryUnconfirmed:
         # The escalated wording must NOT appear on the durable branch.
         assert "UNRECOVERABLE" not in out
 
-    def test_unacknowledged_session_only_escalates(
+    def test_unacknowledged_volatile_only_escalates(
         self, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
     ) -> None:
-        """Marker missing + session-file source → loud ``error`` footer.
+        """Marker missing + kernel-keyring source → loud ``error`` footer.
 
-        The session tier is wiped on the next reboot, so this state is
+        The volatile tier is wiped on the next reboot, so this state is
         a genuinely different severity from the durable-tier warning.
         The text must call out "session-unlock", "reboot", and
         "UNRECOVERABLE" so the operator understands the asymmetry.
@@ -84,7 +84,7 @@ class TestMaybeWarnRecoveryUnconfirmed:
         monkeypatch.setattr(
             RecoveryStatus,
             "load",
-            classmethod(lambda cls, cfg=None: _status(acknowledged=False, source="session-file")),
+            classmethod(lambda cls, cfg=None: _status(acknowledged=False, source="kernel-keyring")),
         )
         _maybe_warn_recovery_unconfirmed(color=False)
         out = capsys.readouterr().out

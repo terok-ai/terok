@@ -159,7 +159,8 @@ def _stub_credential_db(tmp_path_factory: pytest.TempPathFactory) -> Iterator[No
 
     After at-rest encryption (terok-sandbox#268), opening the
     credential DB requires a passphrase that resolves through the
-    chain (session-file → keyring → config → prompt).  Unit-test
+    chain (systemd-creds → keyring → kernel-keyring → passphrase-command
+    → prompt).  Unit-test
     runners have none of those, so every ``vault_db()`` /
     ``maybe_vault_db()`` consumer would raise ``NoPassphraseError``
     in CI.  Provision a real per-session ``CredentialDB`` backed by

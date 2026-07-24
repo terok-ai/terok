@@ -19,7 +19,6 @@ from terok.cli.commands.sickbay import (
     _check_stray_sidecars,
     _check_task_hook,
     _check_vault,
-    _check_vault_shadow,
     _reconcile_post_stop,
 )
 from terok.lib.util.yaml import dump as yaml_dump
@@ -339,16 +338,16 @@ class TestCheckVault:
         from terok.lib.api.vault import VaultWarning, VaultWarningKind
 
         note = VaultWarning(
-            kind=VaultWarningKind.SHADOW_REDUNDANT,
+            kind=VaultWarningKind.RECOVERY_UNCONFIRMED,
             severity="info",
-            brief="redundant session file",
-            message="the session-file tier duplicates the durable keyring tier",
+            brief="informational vault note",
+            message="an informational note that must not degrade the row",
         )
         snap = self._snapshot(providers=("claude",), warnings=(note,))
         with unittest.mock.patch("terok.cli.commands.sickbay.load_vault_status", return_value=snap):
             sev, _, detail = _check_vault()
         assert sev == "ok"
-        assert "redundant session file" not in detail
+        assert "informational vault note" not in detail
 
     def test_exception_returns_warn(self) -> None:
         """Exception during snapshot → warn with the message."""
@@ -359,77 +358,6 @@ class TestCheckVault:
             sev, _, detail = _check_vault()
         assert sev == "warn"
         assert "oops" in detail
-
-
-class TestCheckVaultShadow:
-    """``_check_vault_shadow`` reports — and with ``--fix`` clears — session residue."""
-
-    @staticmethod
-    def _shadow(redundant: bool | None, source: str = "systemd-creds") -> unittest.mock.Mock:
-        return unittest.mock.Mock(durable_source=source, redundant=redundant)
-
-    def _patch(
-        self, *, shadow: unittest.mock.Mock | None, removed: str | None = "systemd-creds"
-    ) -> tuple[unittest.mock._patch, unittest.mock._patch, unittest.mock._patch]:
-        """Patch the sandbox seams the check reaches (function-local imports)."""
-        return (
-            unittest.mock.patch("terok.lib.api.vault.session_shadow_state", return_value=shadow),
-            unittest.mock.patch(
-                "terok.lib.api.vault.clear_redundant_session_file", return_value=removed
-            ),
-            unittest.mock.patch(
-                "terok.lib.core.config.make_sandbox_config", return_value=unittest.mock.Mock()
-            ),
-        )
-
-    def test_no_shadow_emits_nothing(self) -> None:
-        a, b, c = self._patch(shadow=None)
-        with a, b, c:
-            assert _check_vault_shadow(fix=False) == []
-
-    def test_redundant_warns_without_fix(self) -> None:
-        a, b, c = self._patch(shadow=self._shadow(True))
-        with a, b, c:
-            results = _check_vault_shadow(fix=False)
-        assert results[0][0] == "warn"
-        assert "same passphrase" in results[0][2]
-        assert "--fix" in results[0][2]
-
-    def test_redundant_removed_with_fix(self) -> None:
-        a, clear, c = self._patch(shadow=self._shadow(True), removed="systemd-creds")
-        with a, clear as clear_mock, c:
-            results = _check_vault_shadow(fix=True)
-        clear_mock.assert_called_once()
-        assert results[0][0] == "ok"
-        assert "removed redundant session copy of systemd-creds" in results[0][2]
-
-    def test_different_key_warns_and_keeps(self) -> None:
-        a, clear, c = self._patch(shadow=self._shadow(False))
-        with a, clear as clear_mock, c:
-            results = _check_vault_shadow(fix=True)  # even with --fix, an override is kept
-        clear_mock.assert_not_called()
-        assert results[0][0] == "warn"
-        assert "DIFFERENT passphrase" in results[0][2]
-
-    def test_unverifiable_warns(self) -> None:
-        a, b, c = self._patch(shadow=self._shadow(None))
-        with a, b, c:
-            results = _check_vault_shadow(fix=True)
-        assert results[0][0] == "warn"
-        assert "could not be read to compare" in results[0][2]
-
-    def test_failure_degrades_to_warn(self) -> None:
-        with (
-            unittest.mock.patch(
-                "terok.lib.core.config.make_sandbox_config", return_value=unittest.mock.Mock()
-            ),
-            unittest.mock.patch(
-                "terok.lib.api.vault.session_shadow_state", side_effect=RuntimeError("boom")
-            ),
-        ):
-            results = _check_vault_shadow(fix=False)
-        assert results[0][0] == "warn"
-        assert "check failed" in results[0][2]
 
 
 class TestCheckShieldDnsTier:
@@ -807,7 +735,7 @@ class TestCheckRecoveryAcknowledged:
         """Build a real ``RecoveryStatus`` so the ``urgent`` property derives correctly.
 
         ``source`` is coerced to the real ``PassphraseTier`` member —
-        ``session_only`` compares by identity, so a bare string would
+        ``volatile_only`` compares by identity, so a bare string would
         silently defeat the escalation branch.
         """
         from terok.lib.integrations.sandbox import PassphraseTier, RecoveryStatus
@@ -841,11 +769,11 @@ class TestCheckRecoveryAcknowledged:
         # Escalated wording must not bleed into the durable branch.
         assert "UNRECOVERABLE" not in detail
 
-    def test_error_when_marker_missing_session_only(self) -> None:
-        """Unacked + session-file source → ``error`` with the reboot-loss wording."""
+    def test_error_when_marker_missing_volatile_only(self) -> None:
+        """Unacked + kernel-keyring source → ``error`` with the reboot-loss wording."""
         with unittest.mock.patch(
             "terok.lib.api.shield.RecoveryStatus.load",
-            return_value=self._status(acknowledged=False, source="session-file"),
+            return_value=self._status(acknowledged=False, source="kernel-keyring"),
         ):
             sev, label, detail = _check_recovery_acknowledged()
         assert sev == "error"

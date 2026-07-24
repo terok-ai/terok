@@ -52,7 +52,7 @@ def _plan(
     return SimpleNamespace(
         provisioned=provisioned,
         auto_tier=auto_tier,
-        choices=("keyring", "session-file"),
+        choices=("keyring", "kernel-keyring"),
         keyring_available=keyring_available,
     )
 
@@ -126,7 +126,7 @@ class TestEnsureCredentialsProvisioned:
         self, flow_stub: SimpleNamespace
     ) -> None:
         """A twice-confirmed typed value is something the operator knows — no reveal."""
-        flow_stub.push_screen_wait.side_effect = ["session-file", "hunter2-hunter2"]
+        flow_stub.push_screen_wait.side_effect = ["kernel-keyring", "hunter2-hunter2"]
         with (
             patch("terok.lib.api.vault.plan_provisioning", return_value=_plan()),
             patch(
@@ -136,7 +136,7 @@ class TestEnsureCredentialsProvisioned:
         ):
             assert await TerokTUI._ensure_credentials_provisioned(flow_stub) is True
         assert provision.call_args.kwargs == {
-            "tier": "session-file",
+            "tier": "kernel-keyring",
             "passphrase": "hunter2-hunter2",
         }
         flow_stub._reveal_new_passphrase.assert_not_awaited()
@@ -246,7 +246,7 @@ class TestTierChooserModalRouting:
         ("button_id", "expected"),
         [
             ("vault-tier-keyring", "keyring"),
-            ("vault-tier-session", "session-file"),
+            ("vault-tier-kernel", "kernel-keyring"),
             ("vault-tier-cancel", None),
         ],
     )
@@ -405,9 +405,9 @@ class TestTierChooserModalPilot:
         async with app.run_test() as pilot:
             await pilot.pause()
             assert modal.query_one("#vault-tier-keyring", Button).disabled
-            await pilot.click("#vault-tier-session")
+            await pilot.click("#vault-tier-kernel")
             await pilot.pause()
-        assert app.result == "session-file"
+        assert app.result == "kernel-keyring"
 
 
 class TestCreatePassphraseModalPilot:

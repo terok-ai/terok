@@ -201,54 +201,6 @@ def _check_vault() -> _CheckResult:
     return ("warn" if alerts else "ok", label, detail)
 
 
-def _check_vault_shadow(*, fix: bool) -> list[_CheckResult]:
-    """Detect — and with ``--fix``, clear — a session file that shadows a durable tier.
-
-    A session-unlock file holding the *same* passphrase a durable tier
-    (systemd-creds / keyring / config) already resolves is redundant
-    residue — typically a stray ``vault unlock`` on a host that already
-    auto-unlocks (the #1070 footgun).  ``--fix`` removes it; a
-    *different*-key session file is a deliberate override / re-key and is
-    reported but never auto-removed.  Resolves a tier only when a shadow
-    is actually present, so it's a cheap no-op on the common path.
-    """
-    from terok.lib.api.vault import clear_redundant_session_file, session_shadow_state
-    from terok.lib.core.config import make_sandbox_config
-
-    label = "Vault shadow"
-    try:
-        cfg = make_sandbox_config()
-        shadow = session_shadow_state(cfg)
-    except Exception as exc:  # noqa: BLE001 — a diagnostic must never crash sickbay
-        return [("warn", label, f"check failed — {exc}")]
-    if shadow is None:
-        return []
-    src = shadow.durable_source
-    if shadow.redundant is True:
-        if not fix:
-            return [
-                (
-                    "warn",
-                    label,
-                    f"session-file duplicates {src} (same passphrase) — --fix removes it",
-                )
-            ]
-        removed = clear_redundant_session_file(cfg)
-        if removed:
-            return [("ok", label, f"removed redundant session copy of {removed}")]
-        return [("ok", label, "redundant session copy already gone")]
-    if shadow.redundant is False:
-        return [
-            (
-                "warn",
-                label,
-                f"session-file shadows {src} with a DIFFERENT passphrase"
-                " — deliberate override or stale unlock",
-            )
-        ]
-    return [("warn", label, f"session-file shadows {src}, which could not be read to compare")]
-
-
 def _task_meta_path(pid: str, tid: str) -> Path | None:
     """Resolve a task's canonical metadata path, refusing traversal in *pid* / *tid*.
 
@@ -775,11 +727,6 @@ def _cmd_sickbay(
             reporter.begin(label)
             status, _, detail = check()
             reporter.end(status, detail)
-        # Host-level remediation: a redundant session-file shadow of a
-        # durable tier is cleared here under --fix (warn-only otherwise).
-        # Runs in --system too — it's a host concern, not per-container.
-        for status, label, detail in _check_vault_shadow(fix=fix):
-            reporter.emit(status, label, detail)
         # Visual separator between host-wide checks and per-project /
         # per-task rows that follow — same intent as ``terok setup``'s
         # blank line between stage groups.  ``--system`` prints no such

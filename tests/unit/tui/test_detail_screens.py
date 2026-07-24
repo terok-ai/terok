@@ -2003,12 +2003,12 @@ class TestRenderVaultStatus:
         screens, _ = import_screens()
         status = make_vault_status(
             state=VaultState.LOCKED,
-            source="session-file",
+            source="kernel-keyring",
             providers=None,
-            lock_reason="the passphrase via session-file does not open the DB",
+            lock_reason="the passphrase via kernel-keyring does not open the DB",
         )
         text_str = str(screens.render_vault_status(status))
-        assert "via session-file does not open the DB" in text_str
+        assert "via kernel-keyring does not open the DB" in text_str
         assert "no tier resolved" not in text_str
         # And when locked, the Passphrase: line is suppressed (no tier to name).
         assert "resolved via" not in text_str
@@ -2044,16 +2044,16 @@ class TestRenderVaultStatus:
                     message="the vault passphrase is not confirmed saved off-host",
                 ),
                 make_vault_warning(
-                    kind="shadow-redundant",
+                    kind="recovery-unconfirmed",
                     severity="info",
-                    brief="redundant session file",
-                    message="the session-file tier duplicates the durable keyring tier",
+                    brief="informational vault note",
+                    message="an informational note that renders at info severity",
                 ),
             )
         )
         text_str = str(screens.render_vault_status(status))
         assert "WARNING: the vault passphrase is not confirmed saved off-host" in text_str
-        assert "note:    the session-file tier duplicates the durable keyring tier" in text_str
+        assert "note:    an informational note that renders at info severity" in text_str
 
     def test_render_vault_status_shows_db_path(self) -> None:
         """The DB path (display-only) surfaces on every render.
@@ -2606,7 +2606,7 @@ class TestMaybeWarnRecoveryUnconfirmed:
 
     Three severity bands — silent / yellow warning / red error — read
     straight from the snapshot's shared warning catalog so the message
-    escalates when the operator is one reboot away from losing the
+    escalates when the operator is one logout away from losing the
     vault.
     """
 
@@ -2622,15 +2622,15 @@ class TestMaybeWarnRecoveryUnconfirmed:
 
     @staticmethod
     def _volatile_warning() -> object:
-        """The session-only catalog entry (``error`` severity)."""
+        """The volatile-only catalog entry (``error`` severity)."""
         return make_vault_warning(
             kind="recovery-volatile",
             severity="error",
-            brief="recovery key UNSAVED, vault dies on reboot",
+            brief="recovery key UNSAVED, vault dies at logout",
             message=(
-                "the only copy of the vault passphrase is the session file, which is"
-                " cleared on reboot — save it off-host now or the vault becomes"
-                " unrecoverable the next time this machine restarts"
+                "the only copy of the vault passphrase is the kernel-keyring cache, which is"
+                " cleared at logout — save it off-host now or the vault becomes"
+                " unrecoverable the next time you log out"
             ),
         )
 
@@ -2654,19 +2654,19 @@ class TestMaybeWarnRecoveryUnconfirmed:
         assert instance.notify.call_args.kwargs["severity"] == "warning"
         assert instance.notify.call_args.kwargs["title"] == "Vault: recovery key UNCONFIRMED"
 
-    def test_errors_when_session_only(self) -> None:
-        """The RECOVERY_VOLATILE entry → red ``error`` (one reboot away from loss)."""
+    def test_errors_when_volatile_only(self) -> None:
+        """The RECOVERY_VOLATILE entry → red ``error`` (one logout away from loss)."""
         _, app_class = import_app()
         instance = self._make_instance(
             app_class,
-            make_vault_status(source="session-file", warnings=(self._volatile_warning(),)),
+            make_vault_status(source="kernel-keyring", warnings=(self._volatile_warning(),)),
         )
         app_class._maybe_warn_recovery_unconfirmed(instance)
         instance.notify.assert_called_once()
         assert instance.notify.call_args.kwargs["severity"] == "error"
         body = instance.notify.call_args[0][0]
         assert "unrecoverable" in body.lower()
-        assert "reboot" in body.lower()
+        assert "logout" in body.lower()
 
     def test_quiet_when_no_recovery_warning(self) -> None:
         """Marker already landed → no recovery entry in the catalog → silent."""
@@ -2867,35 +2867,35 @@ class TestVaultStatusPill:
         message = bar.set_message.call_args[0][0]
         assert "systemd-creds" in message
         assert "recovery key UNCONFIRMED" in message
-        # The session-only escalation must not bleed into the durable branch.
-        assert "vault dies on reboot" not in message
+        # The volatile-only escalation must not bleed into the durable branch.
+        assert "vault dies at logout" not in message
 
-    def test_render_pill_session_only_escalates_pill_text(self) -> None:
+    def test_render_pill_volatile_only_escalates_pill_text(self) -> None:
         """The RECOVERY_VOLATILE brief → louder pill text."""
         _, app_class = import_app()
         instance = mock.Mock(spec=app_class)
         bar = mock.Mock()
         instance.query_one = mock.Mock(return_value=bar)
         status = make_vault_status(
-            source="session-file",
+            source="kernel-keyring",
             warnings=(
                 make_vault_warning(
                     kind="recovery-volatile",
                     severity="error",
-                    brief="recovery key UNSAVED, vault dies on reboot",
+                    brief="recovery key UNSAVED, vault dies at logout",
                 ),
             ),
         )
         app_class._render_status_pill(instance, status)
         message = bar.set_message.call_args[0][0]
-        assert "session-file" in message
-        # The escalation explicitly names the reboot-loss risk so the
+        assert "kernel-keyring" in message
+        # The escalation explicitly names the logout-loss risk so the
         # operator sees the asymmetry against durable tiers at a glance.
         assert "UNSAVED" in message
-        assert "vault dies on reboot" in message
+        assert "vault dies at logout" in message
 
     def test_render_pill_info_warning_stays_quiet(self) -> None:
-        """Info-severity catalog entries (e.g. redundant shadow) never suffix the pill."""
+        """Info-severity catalog entries never suffix the pill."""
         _, app_class = import_app()
         instance = mock.Mock(spec=app_class)
         bar = mock.Mock()
@@ -2904,9 +2904,9 @@ class TestVaultStatusPill:
             source="keyring",
             warnings=(
                 make_vault_warning(
-                    kind="shadow-redundant",
+                    kind="recovery-unconfirmed",
                     severity="info",
-                    brief="redundant session file",
+                    brief="informational vault note",
                 ),
             ),
         )
@@ -3033,73 +3033,26 @@ class TestRefreshVaultStatus:
 
 
 class TestOnVaultUnlockResult:
-    """[`_on_vault_unlock_result`][terok.tui.app.TerokTUI._on_vault_unlock_result] session-file write path."""
+    """[`_on_vault_unlock_result`][terok.tui.app.TerokTUI._on_vault_unlock_result] short-circuit guard.
 
-    def _make_instance(self, app_class: type, passphrase_file: object) -> object:
+    The passphrase now lands via sandbox's validated
+    ``provision_session_passphrase`` (kernel-keyring cache) — the write,
+    wrong-passphrase and durable-shadow paths are covered against the
+    mocked writer in ``test_vault_unlock_flow.py``.  What remains
+    terok-owned here is the pre-config empty-input guard.
+    """
+
+    def test_empty_passphrase_is_a_noop(self) -> None:
+        """An empty / ``None`` passphrase shortcuts before loading the sandbox config."""
+        app_mod, app_class = import_app()
         instance = mock.Mock(spec=app_class)
         instance._refresh_vault_status = mock.AsyncMock()
         instance.notify = mock.Mock()
-        cfg = mock.Mock()
-        cfg.vault_passphrase_file = passphrase_file
-        # Present NO durable tier and NO DB so the real (guarded, validating)
-        # provision_session_passphrase neither refuses-as-shadow nor opens a
-        # DB — it just writes, which is the path these tests exercise.  Real
-        # absent paths, not Mock attrs, so ``.is_file()`` / ``.exists()`` are
-        # honest ``False`` rather than truthy Mocks.
-        cfg.vault_systemd_creds_file = passphrase_file.parent / "absent.cred"
-        cfg.db_path = passphrase_file.parent / "absent.db"
-        cfg.credentials_use_keyring = False
-        cfg.credentials_passphrase = None
-        cfg.credentials_passphrase_command = None
-        instance._test_sandbox_cfg = cfg
-        return instance
-
-    def test_empty_passphrase_is_a_noop(self, tmp_path: object) -> None:
-        """An empty / ``None`` passphrase shortcuts before touching the disk."""
-        app_mod, app_class = import_app()
-        instance = self._make_instance(app_class, tmp_path / "session" / "passphrase")
         with mock.patch("terok.lib.core.config.make_sandbox_config") as ctor:
             run(app_class._on_vault_unlock_result(instance, None))
             run(app_class._on_vault_unlock_result(instance, ""))
         ctor.assert_not_called()
         instance._refresh_vault_status.assert_not_awaited()
-
-    def test_writes_session_file_and_reprobes(self, tmp_path: object) -> None:
-        """Happy path: chmod 0o600, content ends with newline, pill re-rendered."""
-        app_mod, app_class = import_app()
-        target = tmp_path / "session" / "passphrase"
-        instance = self._make_instance(app_class, target)
-        with mock.patch(
-            "terok.lib.core.config.make_sandbox_config",
-            return_value=instance._test_sandbox_cfg,
-        ):
-            run(app_class._on_vault_unlock_result(instance, "hunter2"))
-        assert target.read_text(encoding="utf-8") == "hunter2\n"
-        # 0o600 — owner rw, nothing else.
-        assert target.stat().st_mode & 0o777 == 0o600
-        # Re-probe drives the pill refresh; modal stays closed.
-        instance._refresh_vault_status.assert_awaited_once_with()
-        # Friendly notify so the operator knows the write landed.
-        instance.notify.assert_called_once()
-
-    def test_oserror_surfaces_via_notify(self, tmp_path: object) -> None:
-        """A disk failure shows an error notification and skips the re-probe."""
-        app_mod, app_class = import_app()
-        # Point the passphrase file at a path under a non-directory parent so
-        # the ``parent.mkdir`` call raises ``NotADirectoryError`` (an OSError
-        # subclass) without the test having to fabricate one.
-        not_a_dir = tmp_path / "regular-file"
-        not_a_dir.write_text("blocker")
-        instance = self._make_instance(app_class, not_a_dir / "child" / "passphrase")
-        with mock.patch(
-            "terok.lib.core.config.make_sandbox_config",
-            return_value=instance._test_sandbox_cfg,
-        ):
-            run(app_class._on_vault_unlock_result(instance, "swordfish"))
-        instance._refresh_vault_status.assert_not_awaited()
-        # Notify is called with the error severity — the operator sees a red toast.
-        instance.notify.assert_called_once()
-        assert instance.notify.call_args.kwargs.get("severity") == "error"
 
 
 class TestGateBackupsScreen:

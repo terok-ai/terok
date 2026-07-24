@@ -104,13 +104,23 @@ class TestFocusProbe:
 
     def test_focus_kicks_the_probe(self) -> None:
         """Attention returning to the TUI triggers an immediate version check."""
-        stub = SimpleNamespace(is_web=False, _check_for_update=MagicMock())
+        stub = SimpleNamespace(
+            is_web=False,
+            _check_for_update=MagicMock(),
+            _vault_poll_timer=None,
+            _schedule_vault_refresh=MagicMock(),
+        )
         TerokTUI.on_app_focus(stub)
         stub._check_for_update.assert_called_once_with()
 
     def test_web_tui_never_probes_on_focus(self) -> None:
         """A web-served TUI can't re-exec, so focus must not probe."""
-        stub = SimpleNamespace(is_web=True, _check_for_update=MagicMock())
+        stub = SimpleNamespace(
+            is_web=True,
+            _check_for_update=MagicMock(),
+            _vault_poll_timer=None,
+            _schedule_vault_refresh=MagicMock(),
+        )
         TerokTUI.on_app_focus(stub)
         stub._check_for_update.assert_not_called()
 

@@ -7,9 +7,9 @@
 ``provision_session_passphrase`` — the same validated writer the CLI
 uses — so a wrong entry is rejected with an explanation instead of
 written-and-reported-as-success (issue #1070's failure mode).  The
-vault watcher keeps the pill live when ``vault unlock`` / ``lock``
-runs in another terminal.  Both are driven unbound-method-on-stub,
-same idiom as ``test_app_quit.py``.
+focus-driven adaptive poll keeps the pill live when ``vault unlock`` /
+``lock`` runs in another terminal.  Both are driven
+unbound-method-on-stub, same idiom as ``test_app_quit.py``.
 """
 
 from __future__ import annotations
@@ -127,72 +127,66 @@ class TestStatusPillLockReason:
         assert "(" not in message  # no empty-reason parens
 
 
-class TestVaultWatcher:
-    """Session-dir inotify keeps the pill live across external unlock/lock."""
+class TestVaultPoll:
+    """Focus-gated adaptive poll keeps the pill live across external unlock/lock.
 
-    async def test_start_arms_watch_on_session_dir(self, tmp_path, monkeypatch) -> None:
-        """The watcher arms on the (created-if-missing) session-file directory."""
-        session_file = tmp_path / "sandbox" / "vault.passphrase"
-        cfg = MagicMock()
-        cfg.vault_passphrase_file = session_file
-        # Patch the method's own globals, not "terok.tui.app": other TUI
-        # tests re-import the app module (import_app/import_fresh), so the
-        # sys.modules entry can be a *different* module object than the one
-        # our top-of-file ``TerokTUI`` resolves names from.
-        monkeypatch.setattr("terok.lib.core.config.make_sandbox_config", lambda: cfg)
-        stub = SimpleNamespace(
-            _vault_watcher=None,
-            _on_vault_session_dir_changed=MagicMock(),
-        )
-        try:
-            TerokTUI._start_vault_watcher(stub)
-            assert stub._vault_watcher is not None
-            assert stub._vault_watcher.fileno >= 0
-            assert session_file.parent.is_dir()  # created so the watch could arm now
-        finally:
-            if stub._vault_watcher is not None:
-                stub._vault_watcher.stop()
+    The inotify session-dir watcher was removed with the volatile
+    session-file tier — the kernel-keyring cache has no watchable file.
+    A focus-driven interval poll replaces it: blur pauses the backstop
+    timer, focus resumes it and fires an immediate re-probe, and each
+    tick runs an exclusive ``vault-poll`` worker over
+    ``_refresh_vault_status``.
+    """
 
-    def test_event_debounces_one_refresh(self) -> None:
-        """inotify activity collapses into a single timer-scheduled refresh."""
+    def test_blur_pauses_the_poll_timer(self) -> None:
+        """Losing focus pauses the backstop interval — no vault work while unseen."""
+        timer = MagicMock()
+        stub = SimpleNamespace(_vault_poll_timer=timer)
+        TerokTUI.on_app_blur(stub)
+        timer.pause.assert_called_once()
+
+    def test_blur_without_timer_is_a_noop(self) -> None:
+        """Terminals that never armed the timer must not crash on blur."""
+        stub = SimpleNamespace(_vault_poll_timer=None)
+        TerokTUI.on_app_blur(stub)  # no AttributeError, nothing to pause
+
+    def test_focus_resumes_timer_and_schedules_refresh(self) -> None:
+        """Regaining focus resumes the timer and fires an immediate re-probe."""
         timer = MagicMock()
         stub = SimpleNamespace(
-            _vault_watcher=MagicMock(drain=MagicMock(return_value=True)),
-            _vault_watch_debounce=None,
-            set_timer=MagicMock(return_value=timer),
-            _on_vault_watch_fired=MagicMock(),
+            is_web=False,
+            _vault_poll_timer=timer,
+            _check_for_update=MagicMock(),
+            _schedule_vault_refresh=MagicMock(),
         )
-        TerokTUI._on_vault_session_dir_changed(stub)
-        stub.set_timer.assert_called_once()
-        assert stub._vault_watch_debounce is timer
-        # A second burst restarts the pending timer rather than stacking.
-        TerokTUI._on_vault_session_dir_changed(stub)
-        timer.stop.assert_called_once()
+        TerokTUI.on_app_focus(stub)
+        timer.resume.assert_called_once()
+        stub._schedule_vault_refresh.assert_called_once()
+        # Focus-in still drives the existing update probe too.
+        stub._check_for_update.assert_called_once()
 
-    def test_drained_empty_is_a_noop(self) -> None:
+    def test_focus_without_timer_still_refreshes(self) -> None:
+        """A missing timer doesn't block the immediate focus-in re-probe."""
         stub = SimpleNamespace(
-            _vault_watcher=MagicMock(drain=MagicMock(return_value=False)),
-            _vault_watch_debounce=None,
-            set_timer=MagicMock(),
+            is_web=False,
+            _vault_poll_timer=None,
+            _check_for_update=MagicMock(),
+            _schedule_vault_refresh=MagicMock(),
         )
-        TerokTUI._on_vault_session_dir_changed(stub)
-        stub.set_timer.assert_not_called()
+        TerokTUI.on_app_focus(stub)
+        stub._schedule_vault_refresh.assert_called_once()
 
-    async def test_fired_debounce_refreshes(self) -> None:
+    def test_refresh_pill_now_runs_exclusive_vault_worker(self) -> None:
+        """The one-shot re-probe hands ``_refresh_vault_status`` to an exclusive worker."""
+        sentinel = object()
         stub = SimpleNamespace(
-            _vault_watch_debounce=MagicMock(),
-            _refresh_vault_status=AsyncMock(),
+            run_worker=MagicMock(),
+            _refresh_vault_status=MagicMock(return_value=sentinel),
         )
-        await TerokTUI._on_vault_watch_fired(stub)
-        assert stub._vault_watch_debounce is None
-        stub._refresh_vault_status.assert_awaited_once()
-
-    def test_stop_detaches_and_closes(self) -> None:
-        watcher = MagicMock(fileno=7)
-        debounce = MagicMock()
-        stub = SimpleNamespace(_vault_watcher=watcher, _vault_watch_debounce=debounce)
-        TerokTUI._stop_vault_watcher(stub)
-        debounce.stop.assert_called_once()
-        watcher.stop.assert_called_once()
-        assert stub._vault_watcher is None
-        assert stub._vault_watch_debounce is None
+        TerokTUI._schedule_vault_refresh(stub)
+        stub._refresh_vault_status.assert_called_once_with()
+        stub.run_worker.assert_called_once()
+        args, kwargs = stub.run_worker.call_args
+        assert args[0] is sentinel
+        assert kwargs["group"] == "vault-poll"
+        assert kwargs["exclusive"] is True

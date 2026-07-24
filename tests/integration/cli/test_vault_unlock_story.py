@@ -1,20 +1,20 @@
 # SPDX-FileCopyrightText: 2026 Jiri Vyskocil
 # SPDX-License-Identifier: Apache-2.0
 
-"""End-to-end story: locked vault → CLI hint → unlock via session-file → CLI succeeds.
+"""End-to-end story: locked vault → CLI hint → unlock via kernel-keyring → CLI succeeds.
 
 Walks the full operator journey introduced in terok#877 / sandbox#278:
 
 1. A real SQLCipher-encrypted credentials DB exists on disk with a
    known passphrase but no resolver tier has it (fixture
    passphrase_command removed, keyring/systemd-creds disabled, no
-   session-unlock file).
+   cached kernel-keyring passphrase).
 2. A real CLI verb (``terok project derive``) that opens the vault
    via [`vault_db`][terok.lib.domain.vault.vault_db] is exercised in a
    subprocess and surfaces the actionable hint installed by PR #936
    instead of crashing with a raw traceback.
-3. The session-unlock tmpfs file is planted with the right
-   passphrase.
+3. ``terok vault unlock`` caches the right passphrase in the
+   kernel-keyring tier.
 4. The same CLI verb (different target name, since the previous
    half-derive succeeded for the filesystem step) succeeds — the
    vault opens and no vault-locked surfaces appear in the output.
@@ -79,7 +79,7 @@ class TestVaultUnlockStory:
             encoding="utf-8",
         )
 
-    def test_locked_then_unlocked_via_session_file(
+    def test_locked_then_unlocked_via_kernel_keyring(
         self,
         terok_env: TerokIntegrationEnv,
         tmp_path,
@@ -115,10 +115,17 @@ class TestVaultUnlockStory:
         assert "passphrase" in locked.stderr
         assert "terok vault unlock" in locked.stderr
 
-        # --- Act 2: drop the right passphrase into the session-unlock file
-        passphrase_file = runtime_dir / "vault.passphrase"
-        passphrase_file.write_text(self._STORY_PASSPHRASE + "\n", encoding="utf-8")
-        passphrase_file.chmod(0o600)
+        # --- Act 2: cache the right passphrase via ``terok vault unlock``,
+        # which validates it against the DB and stores it in the
+        # kernel-keyring tier (the volatile session-file tier it replaced
+        # had no equivalent plant-a-file handoff).
+        terok_env.run_cli(
+            "vault",
+            "unlock",
+            input_text=self._STORY_PASSPHRASE + "\n",
+            extra_env=sandbox_env,
+            check=True,
+        )
 
         # --- Act 3: re-run with a fresh target — vault opens, derive succeeds
         # The previous run created ``beta`` on disk before failing on the
@@ -137,7 +144,7 @@ class TestVaultUnlockStory:
             f"stdout:\n{unlocked.stdout}\nstderr:\n{unlocked.stderr}"
         )
         # The dispatch-loop hint owned by terok must stay silent once the
-        # session-file tier resolves cleanly — absence is the contract,
+        # kernel-keyring tier resolves cleanly — absence is the contract,
         # not the absence of any specific sandbox-side wording.
         assert "terok vault unlock" not in unlocked.stderr
         # The derived project lives where the CLI says it should.

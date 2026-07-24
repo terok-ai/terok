@@ -1126,7 +1126,7 @@ class ProjectActionsMixin(_MixinBase):
     # install / uninstall / start / stop.
 
     async def _action_vault_unlock(self) -> None:
-        """Prompt for the SQLCipher passphrase and land it on the session-file tier.
+        """Prompt for the SQLCipher passphrase and cache it in the kernel-keyring tier.
 
         Re-uses the same modal as the on-mount probe, then funnels the
         result through ``_on_vault_unlock_result`` so the write +

@@ -37,7 +37,7 @@ def quit_stub() -> SimpleNamespace:
         _stop_upstream_polling=MagicMock(),
         _stop_container_status_polling=MagicMock(),
         _stop_gate_server_polling=MagicMock(),
-        _stop_vault_watcher=MagicMock(),
+        _vault_poll_timer=MagicMock(),
         exit=MagicMock(),
     )
 

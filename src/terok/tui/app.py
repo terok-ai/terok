@@ -112,6 +112,17 @@ if _HAS_TEXTUAL:
     # can afford to be lazy.
     _UPDATE_CHECK_INTERVAL_S = 600.0
 
+    # How often to re-probe the vault so an external `vault unlock`/`lock`
+    # reflects in the pill.  The kernel-keyring tier has no watchable
+    # artifact (unlike the old session file), so — same philosophy as the
+    # upgrade check — focus-in probes immediately (the "operator just came
+    # back after unlocking" moment) and this interval is *paused on blur*,
+    # so on a focus-reporting terminal a backgrounded session does no work.
+    # Terminals that DON'T report focus never blur, so for them this
+    # interval is the sole liveness mechanism — hence kept snappy (2s)
+    # rather than lazy: on those terminals focus-in never fires to cover it.
+    _VAULT_POLL_INTERVAL_S = 2.0
+
     @dataclass(frozen=True)
     class ProjectStateResult:
         """Result of loading project infrastructure state in a background thread."""
@@ -350,8 +361,7 @@ if _HAS_TEXTUAL:
             self._gate_watch_debounce: Timer | None = None
             self._last_shield_env: EnvironmentCheck | None = None
             self._last_vault_status: VaultStatus | None = None
-            self._vault_watcher: TaskWatcher | None = None
-            self._vault_watch_debounce: Timer | None = None
+            self._vault_poll_timer: Timer | None = None
             # Cached state for detail screens
             self._last_project_state: dict | None = None
             self._last_image_old: bool | None = None
@@ -529,9 +539,9 @@ if _HAS_TEXTUAL:
             # the ``maybe_vault_db`` graceful-degradation state and the
             # operator sees a silent empty SSH tile with no remediation.
             await self._refresh_vault_status(push_modal_if_locked=True)
-            # Keep the pill live: external `vault unlock` / `lock` runs
-            # surface without restarting the TUI.
-            self._start_vault_watcher()
+            self._vault_poll_timer = self.set_interval(
+                _VAULT_POLL_INTERVAL_S, self._schedule_vault_refresh
+            )
 
             # Once per session, surface the unconfirmed-recovery warning
             # as a notification — the pill catches the operator's eye
@@ -2031,7 +2041,9 @@ if _HAS_TEXTUAL:
             """
             self._stop_upstream_polling()
             self._stop_container_status_polling()
-            self._stop_vault_watcher()
+            if self._vault_poll_timer is not None:
+                self._vault_poll_timer.stop()
+                self._vault_poll_timer = None
             if self._askpass_service is not None:
                 await self._askpass_service.stop()
 
@@ -2074,17 +2086,35 @@ if _HAS_TEXTUAL:
             )
 
         def on_app_focus(self) -> None:
-            """Probe for a landed upgrade the moment attention returns to the TUI.
+            """Probe for a landed upgrade — and re-read the vault — on focus-in.
 
             Fires on terminal focus-in: re-attaching the tmux session,
             switching back to the TUI's window or pane, refocusing the
             terminal.  Whoever just upgraded terok in another window and
             came back should meet the restart offer right away, not
-            after the idle interval.  The probe worker is exclusive, so
-            a burst of focus flips collapses into one probe.
+            after the idle interval.  The same moment is when an external
+            `vault unlock`/`lock` should surface, so re-probe the vault
+            and resume the backstop poll that blur paused.  Both probe
+            workers are exclusive, so a burst of focus flips collapses
+            into one.
             """
             if not self.is_web:
                 self._check_for_update()
+            if self._vault_poll_timer is not None:
+                self._vault_poll_timer.resume()
+            self._schedule_vault_refresh()
+
+        def on_app_blur(self) -> None:
+            """Pause the vault-pill backstop poll while the TUI isn't focused.
+
+            The operator can't see a stale pill they're not looking at,
+            and focus-in catches it up the instant they return — so an
+            idle background session should do no vault work.  Terminals
+            that don't report focus never fire this, leaving the interval
+            running as their liveness fallback.
+            """
+            if self._vault_poll_timer is not None:
+                self._vault_poll_timer.pause()
 
         def _probe_installed_version(self) -> None:
             """Compare the on-disk version with the running one (worker thread).
@@ -2407,74 +2437,22 @@ if _HAS_TEXTUAL:
                 timeout=30 if warning.severity == "error" else 20,
             )
 
-        def _start_vault_watcher(self) -> None:
-            """Arm an inotify watch on the session-unlock file's directory.
+        def _schedule_vault_refresh(self) -> None:
+            """Re-probe the vault off the event loop, at most one probe at a time.
 
-            A `terok vault unlock` / `lock` in another terminal changes
-            the pill's truth, but the pill only re-probed on mount and
-            after TUI-initiated actions — the operator stared at a stale
-            "LOCKED" until restart (issue #1070's first symptom).  Reuses
-            [`TaskWatcher`][terok.tui.task_watcher.TaskWatcher] on the
-            *runtime* dir only: every chain-mutating verb touches the
-            session file, while the vault/DB dir is deliberately NOT
-            watched — the refresh itself opens the DB, whose WAL writes
-            would fire the watch and self-trigger a refresh loop.
-            Best-effort: without inotify the existing mount/action
-            refreshes still apply.
+            The probe opens the credentials DB, so it must not run on the
+            message pump.  Requests arrive faster than probes finish — a
+            focus flip can land on top of a pending tick — and an
+            exclusive worker collapses those into a single in-flight
+            probe rather than stacking DB opens.
             """
-            import asyncio
-
-            from .task_watcher import TaskWatcher
-
-            try:
-                watcher = TaskWatcher()
-                from terok.lib.core.config import make_sandbox_config
-
-                session_dir = make_sandbox_config().vault_passphrase_file.parent
-                # The dir may not exist before the first unlock; create it
-                # so the watch can arm now rather than never.
-                session_dir.mkdir(parents=True, exist_ok=True)
-                if not watcher.start([session_dir]):
-                    return
-            except Exception:  # noqa: BLE001 — watch is best-effort enrichment
-                return
-            try:
-                asyncio.get_running_loop().add_reader(
-                    watcher.fileno, self._on_vault_session_dir_changed
-                )
-            except (RuntimeError, ValueError, OSError, NotImplementedError):
-                watcher.stop()
-                return
-            self._vault_watcher = watcher
-
-        def _on_vault_session_dir_changed(self) -> None:
-            """Drain inotify events, then debounce a single pill refresh."""
-            if self._vault_watcher is None or not self._vault_watcher.drain():
-                return
-            if self._vault_watch_debounce is not None:
-                self._vault_watch_debounce.stop()
-            self._vault_watch_debounce = self.set_timer(0.5, self._on_vault_watch_fired)
-
-        async def _on_vault_watch_fired(self) -> None:
-            """Debounce landing point: re-probe the vault and repaint the pill."""
-            self._vault_watch_debounce = None
-            await self._refresh_vault_status()
-
-        def _stop_vault_watcher(self) -> None:
-            """Detach and close the vault inotify watch and any pending debounce."""
-            if self._vault_watch_debounce is not None:
-                self._vault_watch_debounce.stop()
-                self._vault_watch_debounce = None
-            if self._vault_watcher is None:
-                return
-            import asyncio
-
-            try:
-                asyncio.get_running_loop().remove_reader(self._vault_watcher.fileno)
-            except (RuntimeError, ValueError, OSError):
-                pass
-            self._vault_watcher.stop()
-            self._vault_watcher = None
+            self.run_worker(
+                self._refresh_vault_status(),
+                name="vault-poll",
+                group="vault-poll",
+                exclusive=True,
+                exit_on_error=False,
+            )
 
         async def _refresh_vault_status(self, *, push_modal_if_locked: bool = False) -> None:
             """Read a fresh snapshot, update the pill, optionally push the unlock modal."""
@@ -2581,10 +2559,10 @@ if _HAS_TEXTUAL:
                 return
             if not result.written:
                 # A durable tier (systemd-creds / keyring / config) already
-                # unlocks the vault, so a session file would only shadow it —
-                # exactly the residue this guard prevents.  Inform, don't write.
+                # unlocks the vault, so caching in the kernel keyring would be
+                # pointless — exactly what this guard prevents.  Inform, don't write.
                 self.notify(
-                    f"Vault already auto-unlocks via {result.shadowed_durable} — no session"
+                    f"Vault already auto-unlocks via {result.shadowed_durable} — no cached"
                     " passphrase needed.",
                     severity="information",
                     timeout=8,
