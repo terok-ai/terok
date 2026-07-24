@@ -37,7 +37,7 @@ from ..util.host_cmd import WORKSPACE_DANGEROUS_DIRNAME
 if TYPE_CHECKING:
     # Type-only import: terok_executor doesn't re-export AgentRoster at the
     # top level, but the runtime convention only applies to actual imports.
-    from terok.lib.integrations.executor import AgentRoster
+    from terok.lib.integrations.executor import AgentRoster, EgressProjection
 
 _logger = logging.getLogger(__name__)
 
@@ -537,8 +537,8 @@ class TaskEnvironment:
     Falls back to [`ProjectConfig.default_provider`][terok.lib.core.project_model.ProjectConfig]
     (already global-resolved) when ``None``."""
 
-    def materialize(self) -> tuple[dict, list[VolumeSpec]]:
-        """Compose env + volumes for the task container.
+    def materialize(self) -> tuple[dict, list[VolumeSpec], EgressProjection]:
+        """Compose env + volumes + egress projection for the task container.
 
         Delegates shared config mounts, base env vars, workspace volume,
         git identity, and OpenCode provider env to
@@ -660,11 +660,14 @@ class TaskEnvironment:
             _apply_claude_oauth_overrides(env)
             _report_leaked_credentials(mounts_dir)
 
-        return env, volumes
+        # Executor's roster egress projection (shield's generated t20 / t30 tiers)
+        # rides alongside env/volumes to the launch path — terok forwards it
+        # opaquely; it owns no egress logic itself.
+        return env, volumes, result.egress
 
 
 def build_task_env_and_volumes(
     project: ProjectConfig, task_id: str, *, provider: str | None = None
-) -> tuple[dict, list[VolumeSpec]]:
+) -> tuple[dict, list[VolumeSpec], EgressProjection]:
     """Shim around [`TaskEnvironment.materialize`][terok.lib.orchestration.environment.TaskEnvironment.materialize]."""
     return TaskEnvironment(project, task_id, provider_override=provider).materialize()

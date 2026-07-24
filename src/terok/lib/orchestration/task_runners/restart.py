@@ -14,6 +14,8 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+from terok.lib.integrations.sandbox import BUNDLE_VERSION, resolve_container_shield_version
+
 from ...core import runtime as _rt
 from ...core.config import get_public_host
 from ...core.images import project_cli_image
@@ -213,17 +215,37 @@ def _image_drift(project: ProjectConfig, cname: str) -> str | None:
     return None
 
 
+def _validate_shield_bundle_version(cname: str) -> None:
+    """Refuse to restart a container whose shield bundle predates this terok.
+
+    The shield OCI hook fails closed on a bundle-version mismatch at start;
+    catching it here — *before* the running container is stopped — lets the
+    operator re-create the task instead of stranding a half-torn-down service.
+    An unreadable version (unshielded container, podman unreachable) is skipped:
+    the hook, or the absence of shielding, decides.  This mirrors the frozen
+    web-port precondition: refuse before we take anything down.
+    """
+    version = resolve_container_shield_version(cname)
+    if version is not None and version != BUNDLE_VERSION:
+        raise SystemExit(
+            f"Container {cname} was prepared with shield bundle v{version}, but this terok "
+            f"ships v{BUNDLE_VERSION}.  Re-create the task — a fresh container gets a current "
+            f"shield bundle; the running one keeps running untouched until then."
+        )
+
+
 def _validate_restart_preconditions(
     project: ProjectConfig, task_id: str, mode: str, meta: dict, cname: str
 ) -> None:
     """Validate what would fail the restart *before* the container is stopped.
 
     Taking down a working service only to then error out is worse than
-    refusing to stop: re-claim the saved web port and rehydrate the toad
-    token here, raising ``SystemExit`` if either is no longer viable.
-    The port claim also pins the recreate rung to the saved port — the
-    registry hands the same claim back to the launch path.
+    refusing to stop: check the shield bundle version, re-claim the saved web
+    port, and rehydrate the toad token here, raising ``SystemExit`` if any is
+    no longer viable.  The port claim also pins the recreate rung to the saved
+    port — the registry hands the same claim back to the launch path.
     """
+    _validate_shield_bundle_version(cname)
     web_port = meta.get("web_port")
     if isinstance(web_port, int):
         actual = assign_web_port(project.name, task_id, preferred=web_port)

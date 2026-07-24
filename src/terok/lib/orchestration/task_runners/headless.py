@@ -254,7 +254,7 @@ def task_run_headless(request: HeadlessRunRequest) -> str:
         unrestricted = _str_to_bool(cfg_val) if cfg_val is not None else True
 
     # Build env and volumes (per-run --provider overrides the project/global default)
-    env, volumes = build_task_env_and_volumes(project, task_id, provider=request.provider)
+    env, volumes, egress = build_task_env_and_volumes(project, task_id, provider=request.provider)
 
     # Set TEROK_UNRESTRICTED for the wrapper functions inside the container
     if unrestricted:
@@ -293,6 +293,7 @@ def task_run_headless(request: HeadlessRunRequest) -> str:
         task_dir=task_dir,
         command=["bash", "-lc", headless_cmd],
         allow_debugger=request.debug,
+        egress=egress,
     )
     _apply_shield_policy(project, cname, task_dir, is_restart=False)
     run_hook(

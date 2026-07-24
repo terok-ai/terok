@@ -21,7 +21,7 @@ from __future__ import annotations
 
 import subprocess  # noqa: S404 — wrapping ``podman inspect``; argv is built from fixed verbs + caller-vetted container name  # nosec B404
 from contextlib import suppress
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 from terok.lib.integrations.sandbox import ShieldManager
 
@@ -128,109 +128,6 @@ def _drop_shield_on_creation(cname: str, task_dir: Path) -> None:
         warnings.warn(f"shield drop: {exc}", stacklevel=2)
 
 
-def _collect_route_hosts(route: object) -> frozenset[str]:
-    """Return the egress hosts derived from a single vault route.
-
-    Inspects ``route.upstream`` and (when present) ``route.oauth_refresh
-    ['token_url']``, returning the non-empty ``netloc`` parts.  Empty
-    set when neither URL is declared or both fail to parse.
-    """
-    from urllib.parse import urlparse
-
-    hosts: set[str] = set()
-    for url in (
-        getattr(route, "upstream", "") or "",
-        (getattr(route, "oauth_refresh", None) or {}).get("token_url", "")
-        if isinstance(getattr(route, "oauth_refresh", None), dict)
-        else "",
-    ):
-        if url and (host := urlparse(url).netloc):
-            hosts.add(host)
-    return frozenset(hosts)
-
-
-def _auth_protect_hosts() -> dict[str, frozenset[str]]:
-    """Return ``{provider: {hosts to deny}}`` from the active roster.
-
-    For every roster entry with a ``vault.upstream``, harvest the host
-    portion of the upstream URL and the OAuth refresh ``token_url`` (if
-    declared).  These are the egress endpoints an in-container ``/login``
-    flow must never reach — blocking them keeps a compromised or
-    socially-engineered agent from completing the OAuth handshake even
-    when the shield is in ``down`` mode (terok-ai/terok#873).
-
-    Routes with ``vault.shared_domain: true`` are skipped: their upstream
-    apex also serves docs, dashboards, ``git push`` and similar non-API
-    traffic, so a host-level deny would overshoot.  Credential containment
-    (read-only shadow over the on-disk token) is the actual containment
-    story for those providers.  See the field declaration on
-    [`VaultRoute`][terok_executor.roster.types.VaultRoute] for the rationale.
-    """
-    from terok.lib.integrations.executor import AgentRoster
-
-    out: dict[str, frozenset[str]] = {}
-    for name, route in AgentRoster.shared().vault_routes.items():
-        if getattr(route, "shared_domain", False):
-            continue
-        if hosts := _collect_route_hosts(route):
-            out[name] = hosts
-    return out
-
-
-def _resolved_allow_entries(shield_obj: Any) -> frozenset[str]:
-    """Return the set of domain/IP entries in the active allow profiles.
-
-    The set is the union of every line in every profile listed in
-    ``shield.config.default_profiles``.  Used as the opt-out signal for
-    auth-protect denies: a developer who needs direct access to an
-    otherwise-blocked endpoint adds it to a custom allowlist profile (per
-    [terok-ai/terok#566](https://github.com/terok-ai/terok/issues/566)).
-    """
-    try:
-        names = list(shield_obj.config.default_profiles)
-        if not names:
-            return frozenset()
-        return frozenset(shield_obj.profiles.compose_profiles(names))
-    except Exception:  # noqa: BLE001
-        return frozenset()
-
-
-def _apply_auth_protect_denies(cname: str, task_dir: Path) -> None:
-    """Deny agent OAuth/API endpoints in this task's container.
-
-    Replaces the previous Anthropic/OpenAI special cases with a generic
-    roster-driven loop.  The denies survive ``shield down`` (the deny set
-    is repopulated on mode transitions), so an in-container ``/login``
-    fails even when the egress firewall has been dropped for development.
-
-    Skipped for providers in
-    [`exposed_credential_providers`][terok.lib.core.config.exposed_credential_providers]
-    (where the writable credential file is intentional) and for hosts
-    already present in the active allow profiles (the developer has
-    explicitly opted that endpoint back in).
-    """
-    from terok.lib.integrations.executor import credential_provider
-
-    from ...core.config import exposed_credential_providers
-
-    # ``_auth_protect_hosts()`` is keyed by *provider* name (the vault-route
-    # key, e.g. ``anthropic``), but ``exposed_credential_providers()`` yields
-    # *agent* names (e.g. ``claude``).  Resolve agents → their default provider
-    # so the exposed-skip matches — otherwise an exposed agent's own upstream
-    # gets denied and its direct egress is refused.
-    exposed = {credential_provider(name) for name in exposed_credential_providers()}
-    shield_obj = ShieldManager(task_dir).shield
-    allow_entries = _resolved_allow_entries(shield_obj)
-
-    for provider, hosts in _auth_protect_hosts().items():
-        if provider in exposed:
-            continue
-        for host in hosts:
-            if host in allow_entries:
-                continue
-            shield_obj.deny(cname, host)
-
-
 def _stop_container_best_effort(project: ProjectConfig, cname: str) -> None:
     """Stop *cname*, swallowing every error.
 
@@ -278,11 +175,6 @@ def _apply_shield_policy(
                 _drop_shield_on_creation(cname, task_dir)
             else:
                 _write_desired_shield_state(task_dir, "up")
-
-            # Roster-driven denies resolve allowlist hostnames — the DNS-bound
-            # step, timed separately as the usual suspect for a slow shield-up.
-            with timed_phase(f"shield[{cname}]: auth-protect denies"):
-                _apply_auth_protect_denies(cname, task_dir)
         except Exception:
             # Any shield-application failure leaves a live, half-protected
             # container.  Tear it down before surfacing the original error.

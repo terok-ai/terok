@@ -28,6 +28,7 @@ from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from terok_sandbox import (
+        BUNDLE_VERSION as BUNDLE_VERSION,
         DEFAULT_GUEST_SSHD_PORT as DEFAULT_GUEST_SSHD_PORT,
         DEFAULT_SSH_HOST as DEFAULT_SSH_HOST,
         PUSH_MARKER_FILENAME as PUSH_MARKER_FILENAME,
@@ -110,6 +111,7 @@ if TYPE_CHECKING:
         red as red,
         release_port as release_port,
         remove_container_state as remove_container_state,
+        resolve_container_shield_version as resolve_container_shield_version,
         resolve_container_state_dir as resolve_container_state_dir,
         respawn_supervisor as respawn_supervisor,
         sandbox_doctor_checks as sandbox_doctor_checks,
@@ -217,6 +219,8 @@ _LAZY: dict[str, str] = {
     "red": "terok_sandbox",
     "release_port": "terok_sandbox",
     "remove_container_state": "terok_sandbox",
+    "BUNDLE_VERSION": "terok_sandbox",
+    "resolve_container_shield_version": "terok_sandbox",
     "resolve_container_state_dir": "terok_sandbox",
     "sandbox_doctor_checks": "terok_sandbox",
     "sandbox_uninstall": "terok_sandbox",
@@ -318,6 +322,8 @@ __all__ = [
     "red",
     "release_port",
     "remove_container_state",
+    "BUNDLE_VERSION",
+    "resolve_container_shield_version",
     "resolve_container_state_dir",
     "sandbox_doctor_checks",
     "sandbox_uninstall",

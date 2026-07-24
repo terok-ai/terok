@@ -377,10 +377,15 @@ class TestTask:
             with_gate=True,
         ):
             _seed_task_meta(project_name, "7")
-            env, volumes = build_task_env_and_volumes(
+            env, volumes, egress = build_task_env_and_volumes(
                 project=load_project(project_name),
                 task_id="7",
             )
+
+            # Executor's roster egress projection rides through to the launcher:
+            # dedicated provider API hosts are denied, shared-domain apexes are not.
+            assert "api.anthropic.com" in egress.deny_to_vault
+            assert "gitlab.com" not in egress.deny_to_vault
 
             assert "http://" in env["CODE_REPO"]
             assert _gate_repo_fragment(project_name) in env["CODE_REPO"]
@@ -413,7 +418,7 @@ class TestTask:
             )
 
             _seed_task_meta(project_name, "9")
-            env, volumes = build_task_env_and_volumes(
+            env, volumes, _ = build_task_env_and_volumes(
                 project=load_project(project_name),
                 task_id="9",
             )
@@ -443,7 +448,7 @@ class TestTask:
             )
 
             _seed_task_meta(project_name, "8")
-            env, volumes = build_task_env_and_volumes(load_project(project_name), task_id="8")
+            env, volumes, _ = build_task_env_and_volumes(load_project(project_name), task_id="8")
             assert env["CODE_REPO"] == "https://example.com/repo.git"
             assert env["GIT_BRANCH"] == "main"
             assert env["TEROK_GIT_AUTHORSHIP"] == "agent-human"
@@ -460,7 +465,7 @@ class TestTask:
             f"project:\n  id: {project_name}\n  security_class: online\ngit:\n  upstream_url: https://example.com/repo.git\n  authorship: human-agent\n",
             project_name=project_name,
         ):
-            env, _volumes = build_task_env_and_volumes(load_project(project_name), task_id="1")
+            env, _volumes, _ = build_task_env_and_volumes(load_project(project_name), task_id="1")
             assert env["TEROK_GIT_AUTHORSHIP"] == "human-agent"
 
     def test_task_run_cli_colors_login_lines_when_tty(self, mock_runtime) -> None:
@@ -899,7 +904,7 @@ class TestTask:
             with_gate=True,
         ):
             _seed_task_meta(project_name, "10")
-            env, _ = build_task_env_and_volumes(
+            env, _, _ = build_task_env_and_volumes(
                 project=load_project(project_name),
                 task_id="10",
             )
@@ -924,7 +929,7 @@ class TestTask:
             with_gate=True,
         ):
             _seed_task_meta(project_name, "11")
-            env, _ = build_task_env_and_volumes(
+            env, _, _ = build_task_env_and_volumes(
                 project=load_project(project_name),
                 task_id="11",
             )
@@ -948,7 +953,7 @@ class TestTask:
             with_gate=True,
         ):
             _seed_task_meta(project_name, "12")
-            env, _ = build_task_env_and_volumes(
+            env, _, _ = build_task_env_and_volumes(
                 project=load_project(project_name),
                 task_id="12",
             )
@@ -979,7 +984,7 @@ class TestTask:
             with_gate=True,
         ):
             _seed_task_meta(project_name, "13")
-            env, _ = build_task_env_and_volumes(
+            env, _, _ = build_task_env_and_volumes(
                 project=load_project(project_name),
                 task_id="13",
             )

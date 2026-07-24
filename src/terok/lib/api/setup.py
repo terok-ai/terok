@@ -23,6 +23,7 @@ if TYPE_CHECKING:
     )
 
     from terok.lib.integrations.sandbox import (
+        BUNDLE_VERSION as BUNDLE_VERSION,
         SERVICES_TCP_OPTOUT_YAML as SERVICES_TCP_OPTOUT_YAML,
         EnvironmentCheck as EnvironmentCheck,
         SelinuxStatus as SelinuxStatus,
@@ -33,6 +34,7 @@ if TYPE_CHECKING:
         is_ssh_url as is_ssh_url,
         needs_setup as needs_setup,
         public_line_of as public_line_of,
+        resolve_container_shield_version as resolve_container_shield_version,
         resolve_container_state_dir as resolve_container_state_dir,
         sandbox_uninstall as sandbox_uninstall,
         selinux_install_command as selinux_install_command,
@@ -54,6 +56,8 @@ _LAZY: dict[str, str] = {
     "namespace_state_dir": "terok_util",
     "needs_setup": "terok.lib.integrations.sandbox",
     "public_line_of": "terok.lib.integrations.sandbox",
+    "BUNDLE_VERSION": "terok.lib.integrations.sandbox",
+    "resolve_container_shield_version": "terok.lib.integrations.sandbox",
     "resolve_container_state_dir": "terok.lib.integrations.sandbox",
     "sandbox_uninstall": "terok.lib.integrations.sandbox",
     "selinux_install_command": "terok.lib.integrations.sandbox",
@@ -73,6 +77,8 @@ __all__ = [
     "is_ssh_url",
     "needs_setup",
     "public_line_of",
+    "BUNDLE_VERSION",
+    "resolve_container_shield_version",
     "resolve_container_state_dir",
     "sandbox_uninstall",
     "selinux_install_command",

@@ -685,3 +685,46 @@ def test_task_restart_toad_rehydrates_token_and_prints_url() -> None:
         container.start.assert_called_once()
         assert "Toad:" in output
         assert "8080" in output
+
+
+# ── _validate_shield_bundle_version (upgrade-restart gate) ─────────────────
+
+
+def test_validate_shield_bundle_version_refuses_stale() -> None:
+    """A container whose bundle predates this terok is refused before any teardown."""
+    from terok.lib.orchestration.task_runners.restart import _validate_shield_bundle_version
+
+    with (
+        patch(
+            "terok.lib.orchestration.task_runners.restart.resolve_container_shield_version",
+            return_value=1,
+        ),
+        patch("terok.lib.orchestration.task_runners.restart.BUNDLE_VERSION", 15),
+        pytest.raises(SystemExit, match="Re-create the task"),
+    ):
+        _validate_shield_bundle_version("ctr")
+
+
+def test_validate_shield_bundle_version_passes_current() -> None:
+    """A matching bundle version restarts normally (no raise)."""
+    from terok.lib.orchestration.task_runners.restart import _validate_shield_bundle_version
+
+    with (
+        patch(
+            "terok.lib.orchestration.task_runners.restart.resolve_container_shield_version",
+            return_value=15,
+        ),
+        patch("terok.lib.orchestration.task_runners.restart.BUNDLE_VERSION", 15),
+    ):
+        _validate_shield_bundle_version("ctr")
+
+
+def test_validate_shield_bundle_version_skips_unreadable() -> None:
+    """An unreadable version (unshielded / podman down) is skipped, not blocked."""
+    from terok.lib.orchestration.task_runners.restart import _validate_shield_bundle_version
+
+    with patch(
+        "terok.lib.orchestration.task_runners.restart.resolve_container_shield_version",
+        return_value=None,
+    ):
+        _validate_shield_bundle_version("ctr")

@@ -61,7 +61,7 @@ def task_run_cli(
     runtime = _rt.resolve_runtime(project)
     _refuse_existing_container(runtime, project.name, cname, task_id)
 
-    env, volumes = build_task_env_and_volumes(project, task_id)
+    env, volumes, egress = build_task_env_and_volumes(project, task_id)
 
     # Resolve layered agent config (global → project → CLI overrides)
     agent_config_dir = _prepare_agent_config(project, project_name, task_id)
@@ -107,6 +107,7 @@ def task_run_cli(
         # init-ssh-and-repo.sh now prints a readiness marker we can watch for
         command=["bash", "-lc", "init-ssh-and-repo.sh && echo __CLI_READY__; tail -f /dev/null"],
         allow_debugger=debug,
+        egress=egress,
     )
     _apply_shield_policy(project, cname, task_dir, is_restart=False)
     run_hook(

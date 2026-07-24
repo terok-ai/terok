@@ -156,7 +156,7 @@ def task_run_toad(
     port = assign_web_port(project.name, task_id)
     meta["web_port"] = port
 
-    env, volumes = build_task_env_and_volumes(project, task_id)
+    env, volumes, egress = build_task_env_and_volumes(project, task_id)
 
     agent_config_dir = _prepare_agent_config(project, project_name, task_id)
     volumes.append(VolumeSpec(agent_config_dir, CONTAINER_TEROK_CONFIG, sharing=Sharing.PRIVATE))
@@ -224,6 +224,7 @@ def task_run_toad(
         extra_args=["-p", f"{bind_addr}:{port}:{_TOAD_PUBLIC_PORT}"],
         command=["bash", "-lc", toad_cmd],
         allow_debugger=debug,
+        egress=egress,
     )
     _apply_shield_policy(project, cname, task_dir, is_restart=False)
     run_hook(

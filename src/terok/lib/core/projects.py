@@ -36,6 +36,7 @@ from .config import (
 )
 from .project_model import (  # noqa: F401 — re-exported public API
     ProjectConfig,
+    ShieldOverride,
     is_valid_project_name,
     validate_project_name,
 )
@@ -283,6 +284,11 @@ def _build_project_config(
         task_name_categories=raw.tasks.name_categories,
         shield_drop_on_task_run=shield_drop,
         shield_on_task_restart=shield_restart,
+        shield_allow=tuple(raw.shield.allow),
+        shield_override=tuple(
+            ShieldOverride(host=o.host, reason=o.reason, expires=o.expires)
+            for o in raw.shield.override
+        ),
         hook_pre_start=hook_pre,
         hook_post_start=hook_post,
         hook_post_ready=hook_ready,
