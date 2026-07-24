@@ -70,7 +70,7 @@ terok-askpass = "terok.tui.askpass:main"
 
 [dependency-groups]
 dev = [
-    "ruff>=0.15.21",
+    "ruff~=0.16",
     "markdown-it-py>=4.0.0",
     "mdit-py-plugins>=0.5.0",
     "tach>=0.35.0,<0.36",
