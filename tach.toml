@@ -694,6 +694,7 @@ depends_on = []
 [[interfaces]]
 expose = [
     "ProjectConfig",
+    "ShieldOverride",
     "is_valid_project_name",
     "validate_project_name",
 ]

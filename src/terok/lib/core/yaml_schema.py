@@ -315,10 +315,31 @@ class RawGatekeepingSection(BaseModel):
         return data
 
 
+class RawShieldOverride(BaseModel):
+    """One ``shield.override`` break-glass entry (shield's t10 tier).
+
+    A t10 override sits *above* the security-deny, so it can reach a host the
+    firewall would otherwise refuse.  A single host or IP only — never a CIDR
+    (widening a subnet through the firewall is exactly what break-glass must
+    not do); a ``reason`` is mandatory so the punch-through is auditable.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    host: str = Field(description="Single host or IP to allow above the deny (no CIDR)")
+    reason: str = Field(description="Why this break-glass override exists (audit trail)")
+    expires: str | None = Field(
+        default=None,
+        description="Optional ISO-8601 date after which the override is dropped at launch",
+    )
+
+
 class RawShieldProjectSection(BaseModel):
     """The ``shield:`` section of project.yml.
 
-    Both fields default to ``None`` (inherit from global ``config.yml``).
+    ``drop_on_task_run`` / ``on_task_restart`` default to ``None`` (inherit from
+    global ``config.yml``); ``allow`` / ``override`` are additive project layers
+    that stack on top of the global defaults.
     """
 
     model_config = ConfigDict(extra="forbid")
@@ -330,6 +351,14 @@ class RawShieldProjectSection(BaseModel):
     on_task_restart: Literal["retain", "up"] | None = Field(
         default=None,
         description="Shield policy on container restart: ``retain`` or ``up``",
+    )
+    allow: list[str] = Field(
+        default_factory=list,
+        description="Extra hosts allowed at egress (shield's t40 project-allow tier)",
+    )
+    override: list[RawShieldOverride] = Field(
+        default_factory=list,
+        description="Break-glass overrides above the security-deny (shield's t10 tier)",
     )
 
 

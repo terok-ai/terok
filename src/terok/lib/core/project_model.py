@@ -19,6 +19,21 @@ from typing import Any, Literal
 from pydantic import BaseModel, ConfigDict, Field, computed_field
 
 
+class ShieldOverride(BaseModel):
+    """A resolved break-glass override — shield's t10 tier (above the deny).
+
+    ``host`` is a single host or IP (never a CIDR); ``reason`` records why the
+    punch-through exists; ``expires`` is an optional ISO-8601 date after which
+    the override is dropped at launch.
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    host: str
+    reason: str
+    expires: str | None = None
+
+
 class ProjectConfig(BaseModel):
     """Resolved project configuration loaded from ``project.yml``.
 
@@ -130,6 +145,10 @@ class ProjectConfig(BaseModel):
     task_name_categories: list[str] | None = None
     shield_drop_on_task_run: bool = True
     shield_on_task_restart: str = "retain"
+    shield_allow: tuple[str, ...] = ()
+    """Extra hosts allowed at egress — shield's t40 project-allow tier."""
+    shield_override: tuple[ShieldOverride, ...] = ()
+    """Break-glass overrides above the security-deny — shield's t10 tier."""
     # Lifecycle hooks (host-side commands)
     hook_pre_start: str | None = None
     hook_post_start: str | None = None

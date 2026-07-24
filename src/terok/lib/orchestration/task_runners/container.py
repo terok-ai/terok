@@ -13,8 +13,10 @@ from __future__ import annotations
 
 import math
 import shlex
+from datetime import date
 from pathlib import Path
 from typing import TYPE_CHECKING
+from urllib.parse import urlparse
 
 from terok.lib.core.config import get_services_mode, is_experimental
 from terok.lib.integrations.executor import (
@@ -44,6 +46,24 @@ if TYPE_CHECKING:
     from terok.lib.integrations.sandbox import ContainerRuntime
 
     from ...core.project_model import ProjectConfig
+
+
+def _compose_shield_tiers(project: ProjectConfig) -> tuple[tuple[str, ...], tuple[str, ...]]:
+    """Author the project's t40 (project-allow) + t10 (override) shield tiers.
+
+    t40 = the upstream git host (so the agent can reach its own remote once the
+    shield is UP) plus the project's custom ``shield.allow`` hosts.  t10 = the
+    project's break-glass ``shield.override`` hosts, dropping any whose
+    ``expires`` date is in the past.  Both are de-duplicated, order-preserving.
+    """
+    allow: list[str] = []
+    if project.upstream_url and (host := urlparse(project.upstream_url).hostname):
+        allow.append(host)
+    allow.extend(project.shield_allow)
+
+    today = date.today().isoformat()
+    override = [o.host for o in project.shield_override if not (o.expires and o.expires < today)]
+    return tuple(dict.fromkeys(allow)), tuple(dict.fromkeys(override))
 
 
 def _podman_start(project: ProjectConfig, cname: str) -> None:
@@ -277,6 +297,7 @@ def _run_container(
             annotations["krun.cpus"] = str(vcpus)
     if project.perf:
         _maybe_warn_perf_restricted()
+    project_allow, override = _compose_shield_tiers(project)
     try:
         with timed_phase(f"launch[{cname}]: podman run"):
             _agent_runner(project).launch_prepared(
@@ -302,6 +323,8 @@ def _run_container(
                 dossier_path=task_dossier_path,
                 allow_debugger=allow_debugger,
                 egress=egress,
+                project_allow=project_allow,
+                override=override,
             )
     except FileNotFoundError as exc:
         raise SystemExit(f"podman not found; please install podman ({exc})") from exc
