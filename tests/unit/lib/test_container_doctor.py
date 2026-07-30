@@ -13,6 +13,11 @@ import pytest
 from terok_sandbox import ExecResult
 from terok_sandbox.doctor import CheckVerdict, DoctorCheck
 
+from terok.lib.integrations.sandbox import (
+    CONTAINER_GATE_SOCKET,
+    CONTAINER_RUNTIME_DIR,
+    CONTAINER_VAULT_SOCKET,
+)
 from terok.lib.orchestration.container_doctor import (
     _exec_in_container,
     _gate_token_check,
@@ -723,9 +728,13 @@ class TestPerContainerReachability:
 
         cname = "proj-cli-42"
         run_dir = tmp_path / "rt" / "run" / cname
-        run_dir.mkdir(parents=True)
-        (run_dir / "vault.sock").touch()
-        (run_dir / "gate-server.sock").touch()
+        socket_paths = [
+            run_dir / Path(path).relative_to(CONTAINER_RUNTIME_DIR)
+            for path in (CONTAINER_VAULT_SOCKET, CONTAINER_GATE_SOCKET)
+        ]
+        for socket_path in socket_paths:
+            socket_path.parent.mkdir(parents=True, exist_ok=True)
+            socket_path.touch()
 
         cfg = self._cfg("socket", state_dir=tmp_path / "state", runtime_dir=tmp_path / "rt")
         with patch(
@@ -735,6 +744,9 @@ class TestPerContainerReachability:
 
         labels = {label: sev for sev, label, _ in results}
         assert labels == {"Vault reachable": "ok", "Gate reachable": "ok"}
+        assert all(
+            str(path) in detail for path, (_, _, detail) in zip(socket_paths, results, strict=True)
+        )
 
     def test_socket_mode_warns_when_socket_missing(self, tmp_path: Path) -> None:
         from terok.lib.orchestration.container_doctor import _check_per_container_services

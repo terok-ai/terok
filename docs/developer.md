@@ -337,9 +337,9 @@ four `socat` bridges so agents see uniform endpoints in both modes:
 | Endpoint (in container) | Socket mode | TCP mode |
 |---|---|---|
 | `$SSH_AUTH_SOCK` = `/tmp/ssh-agent.sock` | socat → mounted signer socket (token handshake via `ssh-agent-bridge.sh`) | socat → signer loopback port |
-| `http://localhost:$TEROK_VAULT_LOOPBACK_PORT` (vault HTTP) | socat → `/run/terok/vault.sock` | socat → `host.containers.internal:$TEROK_TOKEN_BROKER_PORT` |
-| vault Unix socket | `/run/terok/vault.sock` (the mount itself) | `/tmp/terok-vault.sock` (socat → broker port) |
-| `http://localhost:9418` (git) | socat → `/run/terok/gate-server.sock` | socat → `host.containers.internal:$TEROK_GATE_PORT` |
+| `http://localhost:$TEROK_VAULT_LOOPBACK_PORT` (vault HTTP) | socat → `/run/terok/vault/vault.sock` | socat → `host.containers.internal:$TEROK_TOKEN_BROKER_PORT` |
+| vault Unix socket | `/run/terok/vault/vault.sock` (inside the read-only runtime-tree mount) | `/tmp/terok-vault.sock` (socat → broker port) |
+| `http://localhost:9418` (git) | socat → `/run/terok/gate/gate-server.sock` | socat → `host.containers.internal:$TEROK_GATE_PORT` |
 
 The gate bridge uses `socat … retry=30,interval=1` so a clone racing the
 supervisor's gate bind waits instead of failing.  Bridge liveness is

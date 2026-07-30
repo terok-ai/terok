@@ -26,6 +26,9 @@ from urllib.parse import ParseResult, urlparse, urlunparse
 
 from terok.lib.integrations.executor import AgentRoster
 from terok.lib.integrations.sandbox import (
+    CONTAINER_GATE_SOCKET,
+    CONTAINER_RUNTIME_DIR,
+    CONTAINER_VAULT_SOCKET,
     CheckVerdict,
     ContainerRuntime,
     DoctorCheck,
@@ -51,12 +54,10 @@ _SHIELD_STATE_FILENAME = "shield_desired_state"
 _CONTAINER_WORKSPACE = "/workspace"  # nosec B108 — standard workspace mount point
 _SHIELD_STATE_LABEL = "Shield state"
 
-#: Per-container socket file names the supervisor binds inside the
-#: container's runtime dir (``cfg.runtime_dir / "run" / <cname>``).  These
-#: mirror the well-known names the supervisor uses; the gate one only
-#: exists when the container's gate is wired.
-_VAULT_SOCKET_FILENAME = "vault.sock"
-_GATE_SOCKET_FILENAME = "gate-server.sock"
+#: Per-container service paths relative to the runtime tree mounted at
+#: [`CONTAINER_RUNTIME_DIR`][terok_sandbox.CONTAINER_RUNTIME_DIR].
+_VAULT_SOCKET_RELATIVE_PATH = Path(CONTAINER_VAULT_SOCKET).relative_to(CONTAINER_RUNTIME_DIR)
+_GATE_SOCKET_RELATIVE_PATH = Path(CONTAINER_GATE_SOCKET).relative_to(CONTAINER_RUNTIME_DIR)
 _REACHABILITY_TCP_TIMEOUT_S = 2.0
 
 _SUPERVISOR_CHECK_LABEL = "Supervisor alive"
@@ -457,7 +458,7 @@ def _container_runtime_dir(cname: str) -> Path:
     Mirrors terok-sandbox's
     [`allocate_per_container_resources`][terok_sandbox.allocate_per_container_resources]:
     ``cfg.runtime_dir / "run" / <container-name>``.  The supervisor binds
-    ``vault.sock`` / ``gate-server.sock`` inside this directory in socket
+    service sockets inside dedicated subdirectories of this tree in socket
     mode; in TCP mode it listens on loopback ports recorded in the sidecar.
     """
     return make_sandbox_config().runtime_dir / "run" / cname
@@ -499,7 +500,7 @@ _SUPERVISOR_DOWN_SUFFIX = f" — supervisor is not running (see '{_SUPERVISOR_CH
 
 
 def _check_service_reachable(
-    label: str, cname: str, socket_filename: str, tcp_port: int | None, *, supervisor_up: bool
+    label: str, cname: str, socket_relative_path: Path, tcp_port: int | None, *, supervisor_up: bool
 ) -> _CheckResult:
     """Best-effort reachability check for one per-container service.
 
@@ -513,7 +514,7 @@ def _check_service_reachable(
     """
     miss = "" if supervisor_up else _SUPERVISOR_DOWN_SUFFIX
     if make_sandbox_config().services_mode == "socket":
-        sock_path = _container_runtime_dir(cname) / socket_filename
+        sock_path = _container_runtime_dir(cname) / socket_relative_path
         if sock_path.exists():
             return ("ok", label, f"socket present ({sock_path})")
         return ("warn", label, f"socket missing ({sock_path}){miss}")
@@ -538,14 +539,14 @@ def _check_per_container_services(cname: str, *, supervisor_up: bool = True) -> 
         _check_service_reachable(
             "Vault reachable",
             cname,
-            _VAULT_SOCKET_FILENAME,
+            _VAULT_SOCKET_RELATIVE_PATH,
             ports.get("tcp_port"),
             supervisor_up=supervisor_up,
         ),
         _check_service_reachable(
             "Gate reachable",
             cname,
-            _GATE_SOCKET_FILENAME,
+            _GATE_SOCKET_RELATIVE_PATH,
             ports.get("gate_port"),
             supervisor_up=supervisor_up,
         ),

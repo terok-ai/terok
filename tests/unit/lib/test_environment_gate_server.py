@@ -10,6 +10,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from terok.lib.core.projects import ProjectConfig, load_project
+from terok.lib.integrations.sandbox import CONTAINER_GATE_SOCKET
 from terok.lib.orchestration.environment import _security_mode_env_and_volumes
 from tests.test_utils import mock_git_config, project_env
 from tests.testnet import gate_repo_url
@@ -200,14 +201,10 @@ def test_gatekeeping_does_not_set_gate_remote_url() -> None:
 def test_socket_mode_sets_gate_socket_env_without_mount() -> None:
     """Socket mode sets ``TEROK_GATE_SOCKET`` but no host bind-mount.
 
-    The gate now runs inside the per-container supervisor, which binds
-    ``gate-server.sock`` inside the per-container ``/run/terok`` dir
-    (mounted by the executor's launch flow).  terok only tells the
-    container-side socat bridge the well-known in-container path — it
-    does not emit a host gate-socket VolumeSpec anymore.
+    The gate runs inside the per-container supervisor and the executor
+    mounts its isolated runtime tree.  terok only tells the container-side
+    bridge the canonical socket path; it emits no host socket mount.
     """
-    from terok.lib.orchestration.environment import _CONTAINER_RUNTIME_DIR
-
     _project, env, volumes = resolve_security_env(
         _GATEKEEPING_YAML,
         project_name="gk-proj",
@@ -216,7 +213,7 @@ def test_socket_mode_sets_gate_socket_env_without_mount() -> None:
         use_socket=True,
     )
 
-    assert env["TEROK_GATE_SOCKET"] == f"{_CONTAINER_RUNTIME_DIR}/gate-server.sock"
+    assert env["TEROK_GATE_SOCKET"] == CONTAINER_GATE_SOCKET
     assert gate_mounts(volumes) == []
 
 

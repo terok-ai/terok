@@ -426,6 +426,7 @@ def _isolate_port_registry(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> N
 @pytest.fixture
 def terok_env(
     tmp_path: Path,
+    tmp_path_factory: pytest.TempPathFactory,
     monkeypatch: pytest.MonkeyPatch,
     request: pytest.FixtureRequest,
 ) -> TerokIntegrationEnv:
@@ -541,7 +542,9 @@ def terok_env(
     monkeypatch.setenv("TEROK_EXECUTOR_STATE_DIR", str(agent_state))
     sandbox_live = tmp_path / "sandbox-live"
     sandbox_state = tmp_path / "sandbox-state"
-    sandbox_runtime = tmp_path / "sandbox-runtime"
+    # Keep nested service sockets below Linux's 107-byte AF_UNIX limit:
+    # unlike tmp_path, the factory root omits pytest's descriptive test name.
+    sandbox_runtime = tmp_path_factory.mktemp("sandbox-runtime")
     sandbox_live.mkdir(parents=True, exist_ok=True)
     sandbox_state.mkdir(parents=True, exist_ok=True)
     sandbox_runtime.mkdir(parents=True, exist_ok=True)

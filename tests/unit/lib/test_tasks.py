@@ -16,6 +16,7 @@ import pytest
 
 from terok.lib.core.projects import load_project
 from terok.lib.domain.task_logs import LogViewOptions, task_logs
+from terok.lib.integrations.sandbox import CONTAINER_GATE_SOCKET
 from terok.lib.orchestration.environment import build_task_env_and_volumes
 from terok.lib.orchestration.task_runners import (
     ensure_task_running,
@@ -393,7 +394,7 @@ class TestTask:
             # supervisor to validate.  The gate runs inside the supervisor
             # now — no host gate-socket bind-mount is emitted.
             assert env["TEROK_GATE_TOKEN"] == "tok" * 10 + "ab"
-            gate_mounts = [v for v in volumes if v.container_path.endswith("/gate-server.sock")]
+            gate_mounts = [v for v in volumes if v.container_path == CONTAINER_GATE_SOCKET]
             assert gate_mounts == []
             # Verify SSH is NOT mounted by default in gatekeeping mode
             ssh_mounts = [v for v in volumes if str(CONTAINER_SSH_DIR) in v.container_path]

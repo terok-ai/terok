@@ -21,6 +21,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from terok.lib.integrations.sandbox import (
+    CONTAINER_GATE_SOCKET,
     SandboxConfig,
     VolumeSpec,
     mint_gate_token,
@@ -40,9 +41,6 @@ if TYPE_CHECKING:
     from terok.lib.integrations.executor import AgentRoster, EgressProjection
 
 _logger = logging.getLogger(__name__)
-
-_CONTAINER_RUNTIME_DIR = "/run/terok"
-"""Container-side mount point — must match [`terok_sandbox.CONTAINER_RUNTIME_DIR`][terok_sandbox.CONTAINER_RUNTIME_DIR]."""
 
 _CONTAINER_GATE_PORT = 9418
 """Fixed in-container port the container reaches the gate on, both modes.
@@ -247,7 +245,6 @@ def _security_mode_env_and_volumes(
     wires a gate URL.
     """
     volumes: list[VolumeSpec] = []
-    gate_repo = project.gate_path
     gate_base = cfg.gate_base_path
     gate_port = _resolve_gate_port()
 
@@ -258,12 +255,11 @@ def _security_mode_env_and_volumes(
 
     # Gate socket path for the container-side socat bridge.  The gate now
     # runs inside the per-container supervisor, which binds
-    # ``gate-server.sock`` inside the per-container ``/run/terok`` dir — the
-    # same dir the supervisor's vault/ssh sockets live in, mounted by the
-    # executor's launch flow.  No host bind-mount is needed here; we only
-    # tell the bridge the well-known in-container path it connects to.
-    if use_socket and ("CODE_REPO" in env or "CLONE_FROM" in env) and gate_repo.exists():
-        env["TEROK_GATE_SOCKET"] = f"{_CONTAINER_RUNTIME_DIR}/gate-server.sock"
+    # The executor mounts the isolated runtime tree and the supervisor binds
+    # the gate endpoint in its dedicated lane.  No host bind-mount is needed
+    # here; the bridge only needs the canonical in-container socket path.
+    if use_socket and "TEROK_GATE_TOKEN" in env:
+        env["TEROK_GATE_SOCKET"] = CONTAINER_GATE_SOCKET
 
     return env, volumes
 

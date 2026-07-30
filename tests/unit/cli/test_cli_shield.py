@@ -382,11 +382,13 @@ def test_dispatch_simple_clearance(
 
 
 @patch("terok_shield.watch.run_watch")
+@patch("terok_shield._confine.confine_to_state")
 @patch("terok.cli.commands.shield._resolve_task", return_value=("proj-cli-1", MOCK_TASK_DIR_1))
 @patch("terok.cli.commands.shield.ShieldManager")
 def test_dispatch_watch(
     mock_mgr_cls: MagicMock,
     _resolve: MagicMock,
+    mock_confine: MagicMock,
     mock_run: MagicMock,
 ) -> None:
     """``shield watch`` dispatches to the watch handler."""
@@ -396,6 +398,7 @@ def test_dispatch_watch(
 
     args = argparse.Namespace(cmd="shield", shield_cmd="watch", project_name="proj", task_id="1")
     assert dispatch(args)
+    mock_confine.assert_called_once_with(mock_shield.config.state_dir)
     mock_run.assert_called_once_with(mock_shield.config.state_dir, "proj-cli-1")
 
 
