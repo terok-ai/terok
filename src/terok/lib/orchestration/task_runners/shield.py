@@ -4,7 +4,7 @@
 """Per-task shield (egress firewall) policy.
 
 ``_apply_shield_policy`` is the entry point every runner calls after a
-container starts — it honours ``shield.drop_on_task_run`` on creation and
+container starts — it honours ``shield.down_on_task_run`` on creation and
 ``shield.on_task_restart`` on restart.  ``_refresh_shield_tiers`` is the
 restart path's pre-start companion: it recomputes the container's policy
 bundle from the *current* roster and project config so a resumed container
@@ -28,7 +28,7 @@ from typing import TYPE_CHECKING
 from terok.lib.integrations.sandbox import ShieldManager
 
 from ...core import runtime as _rt
-from ...core.config import SHIELD_SECURITY_HINT, get_shield_bypass_firewall_no_protection
+from ...core.config import SHIELD_SECURITY_HINT, get_shield_disable_firewall_no_protection
 from ...util.logging_utils import timed_phase
 
 if TYPE_CHECKING:
@@ -101,20 +101,20 @@ def _restore_shield_state(cname: str, task_dir: Path) -> None:
         return
     try:
         container_id = resolve_container_uuid(cname)
-        ShieldManager(task_dir).down(cname, container_id, allow_all=(desired == "disengaged"))
+        ShieldManager(task_dir).down(cname, container_id, disengaged=(desired == "disengaged"))
     except Exception as exc:
         import warnings
 
         warnings.warn(f"shield restore: {exc}", stacklevel=2)
 
 
-def _drop_shield_on_creation(cname: str, task_dir: Path) -> None:
-    """Drop the shield after fresh container creation and persist the state.
+def _shield_down_on_creation(cname: str, task_dir: Path) -> None:
+    """Take the shield down after fresh container creation and persist the state.
 
-    Records the ``down`` intent *before* attempting the drop so that a
-    transient drop failure (UUID race, shield socket hiccup) still
-    captures the operator's ``shield.drop_on_task_run`` request — the
-    next ``retain`` restart will re-attempt the drop instead of
+    Records the ``down`` intent *before* attempting the transition so
+    that a transient failure (UUID race, shield socket hiccup) still
+    captures the operator's ``shield.down_on_task_run`` request — the
+    next ``retain`` restart will re-attempt the transition instead of
     silently leaving the shield UP.
     """
     _write_desired_shield_state(task_dir, "down")
@@ -141,10 +141,11 @@ def _refresh_shield_tiers(project: ProjectConfig, cname: str, task_dir: Path) ->
     the bundle frozen at creation.  Runs *before* anything is torn down;
     a failure aborts the restart with the container untouched.
 
-    Skipped when the firewall bypass is active or the container was never
-    shielded (no shield state under *task_dir* — e.g. created under bypass).
+    Skipped when the firewall kill-switch is active or the container was
+    never shielded (no shield state under *task_dir* — e.g. created with
+    the shield disabled).
     """
-    if get_shield_bypass_firewall_no_protection():
+    if get_shield_disable_firewall_no_protection():
         return
     if not ShieldManager(task_dir).state_dir.is_dir():
         return
@@ -192,7 +193,7 @@ def _apply_shield_policy(
 ) -> None:
     """Apply shield policy after container start (creation or restart).
 
-    On fresh creation, honours ``shield.drop_on_task_run``.  On restart,
+    On fresh creation, honours ``shield.down_on_task_run``.  On restart,
     honours ``shield.on_task_restart`` (``retain`` restores the last known
     state, ``up`` leaves the deny-all ruleset from the OCI hook).
 
@@ -202,7 +203,7 @@ def _apply_shield_policy(
     any failure we best-effort stop the container before re-raising — a
     half-protected container is worse than no container.
     """
-    if get_shield_bypass_firewall_no_protection():
+    if get_shield_disable_firewall_no_protection():
         return
 
     with timed_phase(f"shield[{cname}]: apply policy"):
@@ -218,8 +219,8 @@ def _apply_shield_policy(
                         f"Unknown shield.on_task_restart value: {policy!r} "
                         "(expected 'retain' or 'up')"
                     )
-            elif project.shield_drop_on_task_run:
-                _drop_shield_on_creation(cname, task_dir)
+            elif project.shield_down_on_task_run:
+                _shield_down_on_creation(cname, task_dir)
             else:
                 _write_desired_shield_state(task_dir, "up")
         except Exception:

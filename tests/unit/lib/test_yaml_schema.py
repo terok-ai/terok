@@ -34,7 +34,7 @@ class RawProjectYamlTests(unittest.TestCase):
         # tracks the schema rather than freezing one specific OS choice.
         self.assertEqual(raw.image.base_image, RawImageSection.model_fields["base_image"].default)
         self.assertEqual(raw.run.shutdown_timeout, 10)
-        self.assertIsNone(raw.shield.drop_on_task_run)
+        self.assertIsNone(raw.shield.down_on_task_run)
         self.assertIsNone(raw.shield.on_task_restart)
         self.assertIsNone(raw.services.mode)
 
@@ -53,7 +53,7 @@ class RawProjectYamlTests(unittest.TestCase):
                 "review_lag": {"enabled": False, "surface_in_tasks": False},
             },
             "run": {"shutdown_timeout": 30, "gpus": "all"},
-            "shield": {"drop_on_task_run": False, "on_task_restart": "up"},
+            "shield": {"down_on_task_run": False, "on_task_restart": "up"},
             "services": {"mode": "tcp"},
             "image": {"base_image": "nvidia/cuda:12.0", "user_snippet_inline": "RUN echo hi"},
             "default_agent": "claude",
@@ -73,7 +73,7 @@ class RawProjectYamlTests(unittest.TestCase):
         self.assertFalse(raw.gatekeeping.review_lag.surface_in_tasks)
         self.assertEqual(raw.run.shutdown_timeout, 30)
         self.assertEqual(raw.run.gpus, "all")
-        self.assertFalse(raw.shield.drop_on_task_run)
+        self.assertFalse(raw.shield.down_on_task_run)
         self.assertEqual(raw.shield.on_task_restart, "up")
         self.assertEqual(raw.services.mode, "tcp")
         self.assertEqual(raw.image.base_image, "nvidia/cuda:12.0")
@@ -259,8 +259,8 @@ class RawGlobalConfigTests(unittest.TestCase):
         cfg = RawGlobalConfig.model_validate({})
         self.assertFalse(cfg.tui.default_tmux)
         self.assertTrue(cfg.logs.partial_streaming)
-        self.assertFalse(cfg.shield.bypass_firewall_no_protection)
-        self.assertTrue(cfg.shield.drop_on_task_run)
+        self.assertFalse(cfg.shield.disable_firewall_no_protection)
+        self.assertTrue(cfg.shield.down_on_task_run)
         self.assertEqual(cfg.shield.on_task_restart, "retain")
         self.assertIsNone(cfg.gate_server.port)
         self.assertIsNone(cfg.default_agent)
@@ -293,8 +293,8 @@ class RawGlobalConfigTests(unittest.TestCase):
                 "tui": {"default_tmux": True},
                 "logs": {"partial_streaming": False},
                 "shield": {
-                    "bypass_firewall_no_protection": True,
-                    "drop_on_task_run": False,
+                    "disable_firewall_no_protection": True,
+                    "down_on_task_run": False,
                     "on_task_restart": "up",
                 },
                 "gate_server": {"port": 1234, "suppress_systemd_warning": True},
@@ -304,8 +304,8 @@ class RawGlobalConfigTests(unittest.TestCase):
         )
         self.assertTrue(cfg.tui.default_tmux)
         self.assertFalse(cfg.logs.partial_streaming)
-        self.assertTrue(cfg.shield.bypass_firewall_no_protection)
-        self.assertFalse(cfg.shield.drop_on_task_run)
+        self.assertTrue(cfg.shield.disable_firewall_no_protection)
+        self.assertFalse(cfg.shield.down_on_task_run)
         self.assertEqual(cfg.shield.on_task_restart, "up")
         self.assertEqual(cfg.gate_server.port, 1234)
         self.assertTrue(cfg.gate_server.suppress_systemd_warning)

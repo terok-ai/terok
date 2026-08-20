@@ -356,16 +356,16 @@ class RawShieldOverride(BaseModel):
 class RawShieldProjectSection(BaseModel):
     """The ``shield:`` section of project.yml.
 
-    ``drop_on_task_run`` / ``on_task_restart`` default to ``None`` (inherit from
+    ``down_on_task_run`` / ``on_task_restart`` default to ``None`` (inherit from
     global ``config.yml``); ``allow`` / ``override`` are additive project layers
     that stack on top of the global defaults.
     """
 
     model_config = ConfigDict(extra="forbid")
 
-    drop_on_task_run: bool | None = Field(
+    down_on_task_run: bool | None = Field(
         default=None,
-        description="Drop shield (bypass firewall) when task container is created",
+        description="Take the shield down when the task container is created",
     )
     on_task_restart: Literal["retain", "up"] | None = Field(
         default=None,

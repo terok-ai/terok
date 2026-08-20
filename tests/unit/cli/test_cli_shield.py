@@ -68,14 +68,14 @@ def _stub_resolve_task_id() -> object:
             id="deny",
         ),
         pytest.param(
-            ["shield", "down", "proj", "task1", "--all"],
+            ["shield", "down", "proj", "task1", "--disengage"],
             {
                 "shield_cmd": "down",
                 "project_name": "proj",
                 "task_id": "task1",
-                "allow_all": True,
+                "disengaged": True,
             },
-            id="down-all",
+            id="down-disengage",
         ),
         pytest.param(
             ["shield", "up", "proj", "task1"],
@@ -286,13 +286,13 @@ def test_dispatch_task_scoped_commands(
 
 
 @patch("terok.cli.commands.shield.ShieldManager")
-def test_dispatch_preview_all_without_down_prints_error(mock_mgr_cls: MagicMock) -> None:
-    """``preview --all`` without ``--down`` fails with a clean CLI error."""
+def test_dispatch_preview_disengage_without_down_prints_error(mock_mgr_cls: MagicMock) -> None:
+    """``preview --disengage`` without ``--down`` fails with a clean CLI error."""
     mock_shield = MagicMock()
-    mock_shield.preview.side_effect = ValueError("--all requires --down")
+    mock_shield.preview.side_effect = ValueError("--disengage requires --down")
     mock_mgr_cls.return_value.shield = mock_shield
 
-    args = argparse.Namespace(cmd="shield", shield_cmd="preview", down=False, allow_all=True)
+    args = argparse.Namespace(cmd="shield", shield_cmd="preview", down=False, disengaged=True)
     with (
         patch("sys.stderr", new_callable=StringIO) as err,
         pytest.raises(SystemExit) as exc_info,
@@ -300,7 +300,7 @@ def test_dispatch_preview_all_without_down_prints_error(mock_mgr_cls: MagicMock)
         dispatch(args)
 
     assert exc_info.value.code == 1
-    assert "--all requires --down" in err.getvalue()
+    assert "--disengage requires --down" in err.getvalue()
 
 
 @patch("terok.cli.commands.shield._resolve_task", return_value=("proj-cli-1", MOCK_TASK_DIR_1))
@@ -444,10 +444,10 @@ class TestPersistDesiredState:
         assert (tmp_path / "shield_desired_state").read_text().strip() == "down"
 
     def test_disengaged_persists(self, tmp_path: Path) -> None:
-        """``shield down --all`` writes 'disengaged' to the desired state file."""
+        """``shield down --disengage`` writes 'disengaged' to the desired state file."""
         from terok.cli.commands.shield import _persist_desired_state
 
-        _persist_desired_state("down", tmp_path, {"allow_all": True})
+        _persist_desired_state("down", tmp_path, {"disengaged": True})
         assert (tmp_path / "shield_desired_state").read_text().strip() == "disengaged"
 
     def test_unrelated_command_noop(self, tmp_path: Path) -> None:
@@ -507,7 +507,7 @@ class TestPersistDesiredState:
         mock_mgr_cls.return_value.shield = mock_shield
 
         args = argparse.Namespace(
-            cmd="shield", shield_cmd="down", project_name="proj", task_id="1", allow_all=False
+            cmd="shield", shield_cmd="down", project_name="proj", task_id="1", disengaged=False
         )
         assert dispatch(args)
         mock_shield.down.assert_called_once()

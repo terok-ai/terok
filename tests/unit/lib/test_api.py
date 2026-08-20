@@ -56,9 +56,9 @@ class TestGetConfig:
                 "terok.lib.api._config.get_public_host", return_value="1.2.3.4"
             ) as get_public_host_mock,
             patch(
-                "terok.lib.api._config.get_shield_bypass_firewall_no_protection",
+                "terok.lib.api._config.get_shield_disable_firewall_no_protection",
                 return_value=True,
-            ) as get_shield_bypass_firewall_no_protection_mock,
+            ) as get_shield_disable_firewall_no_protection_mock,
             patch(
                 "terok.lib.api._config.get_tui_default_tmux", return_value=True
             ) as get_tui_default_tmux_mock,
@@ -78,7 +78,7 @@ class TestGetConfig:
         assert cfg.user_projects_dir == Path("/proj")
         assert cfg.global_config_path == Path("/cfg/g.yml")
         assert cfg.public_host == "1.2.3.4"
-        assert cfg.shield_bypass_firewall_no_protection is True
+        assert cfg.shield_disable_firewall_no_protection is True
         assert cfg.tui_default_tmux is True
         assert cfg.tui_external_editor is False
         assert cfg.shield_security_hint == "HINT"
@@ -93,7 +93,7 @@ class TestGetConfig:
             user_projects_dir_mock,
             global_config_path_mock,
             get_public_host_mock,
-            get_shield_bypass_firewall_no_protection_mock,
+            get_shield_disable_firewall_no_protection_mock,
             get_tui_default_tmux_mock,
             get_tui_external_editor_mock,
         ):

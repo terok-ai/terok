@@ -406,7 +406,7 @@ def make_sandbox_config(project: ProjectConfig | None = None) -> SandboxConfig:
         gate_port=get_gate_server_port(),
         token_broker_port=get_vault_token_broker_port(),
         ssh_signer_port=get_vault_ssh_signer_port(),
-        shield_bypass=get_shield_bypass_firewall_no_protection(),
+        shield_disabled=get_shield_disable_firewall_no_protection(),
         shield_audit=get_shield_audit(),
         services_mode=project.services_mode if project is not None else get_services_mode(),
     )
@@ -610,8 +610,8 @@ def get_vault_ssh_signer_port() -> int | None:
     return _load_validated().vault.ssh_signer_port
 
 
-def get_shield_bypass_firewall_no_protection() -> bool:
-    """Return whether the shield firewall is globally bypassed.
+def get_shield_disable_firewall_no_protection() -> bool:
+    """Return whether the shield firewall is globally disabled (kill-switch).
 
     .. danger::
 
@@ -623,14 +623,14 @@ def get_shield_bypass_firewall_no_protection() -> bool:
     Global config (config.yml)::
 
         shield:
-          bypass_firewall_no_protection: true
+          disable_firewall_no_protection: true
     """
-    return _load_validated().shield.bypass_firewall_no_protection
+    return _load_validated().shield.disable_firewall_no_protection
 
 
-def get_shield_drop_on_task_run() -> bool:
-    """Return the global default for ``shield.drop_on_task_run``."""
-    return _load_validated().shield.drop_on_task_run
+def get_shield_down_on_task_run() -> bool:
+    """Return the global default for ``shield.down_on_task_run``."""
+    return _load_validated().shield.down_on_task_run
 
 
 def get_shield_on_task_restart() -> str:

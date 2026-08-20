@@ -169,12 +169,12 @@ def test_get_public_host_env_override(monkeypatch: pytest.MonkeyPatch) -> None:
     ("section", "expected"),
     [
         ({}, False),
-        ({"bypass_firewall_no_protection": True}, True),
-        ({"bypass_firewall_no_protection": False}, False),
+        ({"disable_firewall_no_protection": True}, True),
+        ({"disable_firewall_no_protection": False}, False),
     ],
     ids=["default-false", "enabled", "explicit-false"],
 )
-def test_get_shield_bypass_firewall_no_protection(
+def test_get_shield_disable_firewall_no_protection(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
     section: dict[str, bool],
@@ -183,17 +183,17 @@ def test_get_shield_bypass_firewall_no_protection(
     config_text = (
         ""
         if not section
-        else f"shield:\n  bypass_firewall_no_protection: {str(section['bypass_firewall_no_protection']).lower()}\n"
+        else f"shield:\n  disable_firewall_no_protection: {str(section['disable_firewall_no_protection']).lower()}\n"
     )
     monkeypatch.setenv("TEROK_CONFIG_FILE", str(write_config(tmp_path, config_text)))
-    assert cfg.get_shield_bypass_firewall_no_protection() is expected
+    assert cfg.get_shield_disable_firewall_no_protection() is expected
 
 
 @pytest.mark.parametrize(
     ("config_yaml", "expected_drop", "expected_restart"),
     [
         ("", True, "retain"),
-        ("shield:\n  drop_on_task_run: false\n  on_task_restart: up\n", False, "up"),
+        ("shield:\n  down_on_task_run: false\n  on_task_restart: up\n", False, "up"),
     ],
     ids=["defaults", "explicit"],
 )
@@ -206,7 +206,7 @@ def test_get_shield_policy_accessors(
 ) -> None:
     """Shield policy accessors read from the global config file."""
     monkeypatch.setenv("TEROK_CONFIG_FILE", str(write_config(tmp_path, config_yaml)))
-    assert cfg.get_shield_drop_on_task_run() is expected_drop
+    assert cfg.get_shield_down_on_task_run() is expected_drop
     assert cfg.get_shield_on_task_restart() == expected_restart
 
 
@@ -639,21 +639,23 @@ def test_make_sandbox_config_credentials_propagation(
     assert sc.db_path == (tmp_path / "creds" / "credentials.db").resolve()
 
 
-def test_make_sandbox_config_shield_bypass(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    """Factory bridges shield.bypass_firewall_no_protection to SandboxConfig.shield_bypass."""
-    monkeypatch.setenv(
-        "TEROK_CONFIG_FILE",
-        str(write_config(tmp_path, "shield:\n  bypass_firewall_no_protection: true\n")),
-    )
-    assert cfg.make_sandbox_config().shield_bypass is True
-
-
-def test_make_sandbox_config_shield_bypass_default(
+def test_make_sandbox_config_shield_disabled(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """Factory defaults shield_bypass to False."""
+    """Factory bridges shield.disable_firewall_no_protection to SandboxConfig.shield_disabled."""
+    monkeypatch.setenv(
+        "TEROK_CONFIG_FILE",
+        str(write_config(tmp_path, "shield:\n  disable_firewall_no_protection: true\n")),
+    )
+    assert cfg.make_sandbox_config().shield_disabled is True
+
+
+def test_make_sandbox_config_shield_disabled_default(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Factory defaults shield_disabled to False."""
     monkeypatch.setenv("TEROK_CONFIG_FILE", str(write_config(tmp_path, "")))
-    assert cfg.make_sandbox_config().shield_bypass is False
+    assert cfg.make_sandbox_config().shield_disabled is False
 
 
 def test_make_sandbox_config_shield_audit(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:

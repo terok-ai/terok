@@ -133,7 +133,7 @@ class TestSocketPath:
             user_projects_dir=tmp_path,
             global_config_path=tmp_path / "config.yml",
             public_host="127.0.0.1",
-            shield_bypass_firewall_no_protection=False,
+            shield_disable_firewall_no_protection=False,
             tui_default_tmux=False,
             tui_external_editor=True,
             shield_security_hint="",

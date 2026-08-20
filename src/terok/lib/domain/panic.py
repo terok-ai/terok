@@ -45,7 +45,7 @@ from typing import Any
 
 from terok.lib.integrations.sandbox import PodmanRuntime
 
-from ..core.config import get_shield_bypass_firewall_no_protection
+from ..core.config import get_shield_disable_firewall_no_protection
 from ..core.paths import core_state_dir
 from ..core.projects import list_projects
 from ..orchestration.tasks import (
@@ -80,7 +80,7 @@ class PanicResult:
     vault_error: str | None = None
     containers_stopped: list[str] = field(default_factory=list)
     container_stop_errors: list[tuple[str, str]] = field(default_factory=list)
-    shield_bypassed: bool = False
+    shield_disabled: bool = False
     total_running: int = 0
 
     @property
@@ -109,7 +109,7 @@ def execute_panic(
     result = PanicResult()
     targets = _discover_targets()
     result.total_running = len(targets)
-    result.shield_bypassed = get_shield_bypass_firewall_no_protection()
+    result.shield_disabled = get_shield_disable_firewall_no_protection()
 
     _phase1_lockdown(result, targets)
     _write_panic_lock()
@@ -168,7 +168,7 @@ def _phase1_lockdown(result: PanicResult, targets: list[_Target]) -> None:
         # Future → (kind, label); label is the container name for shields, "" otherwise.
         futs: dict[Future[Any], tuple[str, str]] = {}
 
-        if not result.shield_bypassed:
+        if not result.shield_disabled:
             for t in targets:
                 futs[pool.submit(_raise_shield, t)] = ("shield", t[3])
 
@@ -223,8 +223,8 @@ def _record_phase1_success(result: PanicResult, kind: str, res: Any) -> None:
 
 def _format_shield_status(result: PanicResult) -> str:
     """Format the shield status line for the panic report."""
-    if result.shield_bypassed:
-        return "Shields: BYPASSED (firewall protection disabled)"
+    if result.shield_disabled:
+        return "Shields: DISABLED (egress firewall off)"
     s = f"Shields raised: {len(result.shields_raised)}"
     if result.shield_errors:
         s += f" ({len(result.shield_errors)} failed)"

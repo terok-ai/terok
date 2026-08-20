@@ -1,10 +1,10 @@
 # SPDX-FileCopyrightText: 2025 Jiri Vyskocil
 # SPDX-License-Identifier: Apache-2.0
 
-"""Integration test: bypass containers must retain network connectivity.
+"""Integration test: unshielded containers must retain network connectivity.
 
-Verifies that containers started via the shield bypass path
-(bypass_firewall_no_protection) have working DNS and outbound
+Verifies that containers started via the shield kill-switch path
+(disable_firewall_no_protection) have working DNS and outbound
 connectivity.  This catches regressions where post-start operations
 (e.g. _apply_shield_policy) accidentally install blocking nftables rules
 into containers that were never shielded.
@@ -57,8 +57,8 @@ def _detect_rootless_network_mode() -> str:
         return "slirp4netns"
 
 
-def _bypass_network_args() -> list[str]:
-    """Replicate terok's _bypass_network_args for the test container."""
+def _unshielded_network_args() -> list[str]:
+    """Replicate sandbox's unshielded_network_args for the test container."""
     if os.geteuid() == 0:
         return []
     if _detect_rootless_network_mode() == "slirp4netns":
@@ -85,9 +85,9 @@ def _podman_rm(name: str) -> None:
 
 
 @pytest.fixture()
-def bypass_container(_pull_image: None) -> Iterator[str]:
-    """Start a container using the bypass network path (no shield)."""
-    name = f"{PODMAN_CONTAINER_PREFIX}-bypass-{uuid.uuid4().hex[:8]}"
+def unshielded_container(_pull_image: None) -> Iterator[str]:
+    """Start a container using the unshielded network path (no shield)."""
+    name = f"{PODMAN_CONTAINER_PREFIX}-unshielded-{uuid.uuid4().hex[:8]}"
     _podman_rm(name)
     try:
         result = subprocess.run(
@@ -97,7 +97,7 @@ def bypass_container(_pull_image: None) -> Iterator[str]:
                 "-d",
                 "--name",
                 name,
-                *_bypass_network_args(),
+                *_unshielded_network_args(),
                 PODMAN_TEST_IMAGE,
                 *PODMAN_SLEEP_COMMAND,
             ],
@@ -116,24 +116,24 @@ def bypass_container(_pull_image: None) -> Iterator[str]:
 
 @podman_missing
 class TestBypassContainerConnectivity:
-    """Containers started via the bypass path must have working networking."""
+    """Containers started via the unshielded path must have working networking."""
 
-    def test_dns_resolves(self, bypass_container: str) -> None:
-        """DNS resolution works inside a bypass container."""
-        result = exec_in_container(bypass_container, "nslookup", "example.com", timeout=10)
+    def test_dns_resolves(self, unshielded_container: str) -> None:
+        """DNS resolution works inside an unshielded container."""
+        result = exec_in_container(unshielded_container, "nslookup", "example.com", timeout=10)
         assert result.returncode == 0, (
-            f"DNS resolution failed inside bypass container: {result.stderr}"
+            f"DNS resolution failed inside unshielded container: {result.stderr}"
         )
 
-    def test_outbound_http_reachable(self, bypass_container: str) -> None:
-        """Outbound HTTP works inside a bypass container."""
-        assert_reachable(bypass_container, ALLOWED_TARGET_HTTP, timeout=10)
+    def test_outbound_http_reachable(self, unshielded_container: str) -> None:
+        """Outbound HTTP works inside an unshielded container."""
+        assert_reachable(unshielded_container, ALLOWED_TARGET_HTTP, timeout=10)
 
-    def test_shield_down_does_not_break_connectivity(self, bypass_container: str) -> None:
-        """Calling shield_down on a bypass container must not kill networking.
+    def test_shield_down_does_not_break_connectivity(self, unshielded_container: str) -> None:
+        """Calling shield_down on an unshielded container must not kill networking.
 
         This is the regression test for the bug where _apply_shield_policy()
-        installed a bypass nftables ruleset with input policy drop into a
+        installed a down-posture nftables ruleset with input policy drop into a
         container that was never shielded, blocking all pasta-forwarded
         traffic.
         """
@@ -141,19 +141,19 @@ class TestBypassContainerConnectivity:
 
         # Simulate what _apply_shield_policy does: call ShieldManager.down()
         # on a container that was started WITHOUT shield pre_start — exactly
-        # as the production drop path does (see ``_drop_shield_on_creation``).
+        # as the production drop path does (see ``_shield_down_on_creation``).
         from terok.lib.integrations.sandbox import ShieldManager
         from terok.lib.orchestration.task_runners.shield import resolve_container_uuid
 
         with tempfile.TemporaryDirectory() as td:
             task_dir = Path(td)
             try:
-                container_id = resolve_container_uuid(bypass_container)
-                ShieldManager(task_dir).down(bypass_container, container_id)
+                container_id = resolve_container_uuid(unshielded_container)
+                ShieldManager(task_dir).down(unshielded_container, container_id)
             except Exception:
                 pass  # nft missing in alpine, nsenter perms, etc. — tolerable
 
             # Verify networking regardless of whether shield_down succeeded
             # or failed.  A successful shield_down that installs blocking
             # nftables rules is the exact regression we're catching.
-            assert_reachable(bypass_container, ALLOWED_TARGET_HTTP, timeout=10)
+            assert_reachable(unshielded_container, ALLOWED_TARGET_HTTP, timeout=10)

@@ -164,7 +164,7 @@ class ProjectConfig(BaseModel):
     ``krun`` project can pin ``tcp`` while the rest stay on ``socket``.
     """
     task_name_categories: list[str] | None = None
-    shield_drop_on_task_run: bool = True
+    shield_down_on_task_run: bool = True
     shield_on_task_restart: str = "retain"
     shield_sets: tuple[str, ...] | None = None
     """Curated egress sets granted to tasks (t40).

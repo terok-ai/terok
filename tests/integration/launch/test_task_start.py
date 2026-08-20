@@ -33,7 +33,7 @@ git:
 
 GLOBAL_CONFIG = """
 shield:
-  bypass_firewall_no_protection: true
+  disable_firewall_no_protection: true
 vault:
   bypass_no_secret_protection: true
 """

@@ -42,7 +42,7 @@ import pytest
 # terok also reads it in [`make_sandbox_config`][terok.lib.core.config.make_sandbox_config]
 # — the true round-trip surface.
 #
-# ``shield_bypass`` is deliberately excluded: sandbox keeps it
+# ``shield_disabled`` is deliberately excluded: sandbox keeps it
 # hardcoded to ``False`` so a user-writable config-yml scope
 # (``~/.config/terok/config.yml``) or a ``TEROK_CONFIG_FILE`` env
 # override can never silently disable the egress firewall — even
@@ -73,7 +73,7 @@ def test_config_equality_contract(tmp_path: Path) -> None:
     matches what
     [`SandboxConfig`][terok_sandbox.SandboxConfig] would have read
     standalone for the fields sandbox/executor own in `config.yml`.
-    Tests `services.mode` and `shield.bypass_firewall_no_protection` /
+    Tests `services.mode` and `shield.disable_firewall_no_protection` /
     `shield.audit` — representative sandbox-owned schema knobs.
     """
     cfg_path = _write_user_config(

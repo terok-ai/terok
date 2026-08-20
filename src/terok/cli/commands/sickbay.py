@@ -108,8 +108,8 @@ def _check_shield() -> _CheckResult:
         ec = check_environment()
     except Exception as exc:  # noqa: BLE001
         return ("warn", label, f"check failed — {exc}")
-    if ec.health == "bypass":
-        return ("warn", label, "bypass_firewall_no_protection is active — egress disabled")
+    if ec.health == "disabled":
+        return ("warn", label, "disable_firewall_no_protection is active — egress disabled")
     if ec.health == "stale-hooks":
         return ("warn", label, "hooks outdated — run 'terok shield install-hooks --user'")
     if ec.health == "setup-needed":

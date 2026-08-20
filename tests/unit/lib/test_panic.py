@@ -20,7 +20,7 @@ from tests.testfs import FAKE_PROJECT_TASKS_ROOT
 _SHIELD = "terok.lib.domain.panic._raise_shield"
 _SUPERVISORS = "terok.lib.domain.panic._kill_supervisors"
 _VAULT = "terok.lib.domain.panic._stop_vault"
-_BYPASS = "terok.lib.domain.panic.get_shield_bypass_firewall_no_protection"
+_DISABLED = "terok.lib.domain.panic.get_shield_disable_firewall_no_protection"
 _DISCOVER = "terok.lib.domain.panic._discover_targets"
 _LOCK = "terok.lib.domain.panic._write_panic_lock"
 _STOP = "terok.lib.domain.panic._stop_containers"
@@ -141,7 +141,7 @@ class TestExecutePanic:
     """
 
     @patch(_LOCK)
-    @patch(_BYPASS, return_value=False)
+    @patch(_DISABLED, return_value=False)
     @patch(_DISCOVER)
     @patch(_SHIELD)
     @patch(_VAULT, return_value=(True, None))
@@ -158,18 +158,18 @@ class TestExecutePanic:
         assert not r.has_errors
 
     @patch(_LOCK)
-    @patch(_BYPASS, return_value=True)
+    @patch(_DISABLED, return_value=True)
     @patch(_DISCOVER, return_value=[_target()])
     @patch(_SHIELD)
     @patch(_VAULT, return_value=(True, None))
-    def test_shield_bypass(self, _p, mock_shield, _d, _b, _l, _s):
-        """Shield ops skipped when bypass active."""
+    def test_shield_disabled(self, _p, mock_shield, _d, _b, _l, _s):
+        """Shield ops skipped when the kill-switch is active."""
         r = execute_panic()
-        assert r.shield_bypassed and r.shields_raised == []
+        assert r.shield_disabled and r.shields_raised == []
         mock_shield.assert_not_called()
 
     @patch(_LOCK)
-    @patch(_BYPASS, return_value=False)
+    @patch(_DISABLED, return_value=False)
     @patch(_DISCOVER)
     @patch(_SHIELD)
     @patch(_VAULT, return_value=(True, None))
@@ -187,7 +187,7 @@ class TestExecutePanic:
 
     @patch(_STOP, return_value=(["c1"], []))
     @patch(_LOCK)
-    @patch(_BYPASS, return_value=False)
+    @patch(_DISABLED, return_value=False)
     @patch(_DISCOVER)
     @patch(_SHIELD)
     @patch(_VAULT, return_value=(True, None))
@@ -202,7 +202,7 @@ class TestExecutePanic:
 
     @patch(_STOP)
     @patch(_LOCK)
-    @patch(_BYPASS, return_value=False)
+    @patch(_DISABLED, return_value=False)
     @patch(_DISCOVER, return_value=[])
     @patch(_VAULT, return_value=(True, None))
     def test_phase2_skipped_when_no_targets(self, _p, _d, _b, _l, mock_stop, _s):
@@ -212,7 +212,7 @@ class TestExecutePanic:
         assert r.containers_stopped == []
 
     @patch(_LOCK)
-    @patch(_BYPASS, return_value=False)
+    @patch(_DISABLED, return_value=False)
     @patch(_DISCOVER, return_value=[_target()])
     @patch(_SHIELD, return_value=("proj1-cli-1", None))
     @patch(_VAULT, return_value=(True, None))
@@ -224,7 +224,7 @@ class TestExecutePanic:
         assert r.supervisor_errors == []
 
     @patch(_LOCK)
-    @patch(_BYPASS, return_value=False)
+    @patch(_DISABLED, return_value=False)
     @patch(_DISCOVER, return_value=[_target()])
     @patch(_SHIELD, return_value=("proj1-cli-1", None))
     @patch(_VAULT, return_value=(True, None))
@@ -236,7 +236,7 @@ class TestExecutePanic:
         assert r.has_errors
 
     @patch(_LOCK)
-    @patch(_BYPASS, return_value=False)
+    @patch(_DISABLED, return_value=False)
     @patch(_DISCOVER)
     @patch(_SHIELD, side_effect=Exception("thread crashed"))
     @patch(_VAULT, return_value=(True, None))
@@ -432,10 +432,10 @@ class TestFormatReport:
         report = format_panic_report(r)
         assert "FAILED" in report and "fail" in report
 
-    def test_bypass(self):
-        """Bypass flagged."""
-        r = PanicResult(shield_bypassed=True, vault_stopped=True)
-        assert "BYPASSED" in format_panic_report(r)
+    def test_disabled(self):
+        """Kill-switch flagged."""
+        r = PanicResult(shield_disabled=True, vault_stopped=True)
+        assert "DISABLED" in format_panic_report(r)
 
     def test_container_stop_errors(self):
         """Container stop errors appear in report."""

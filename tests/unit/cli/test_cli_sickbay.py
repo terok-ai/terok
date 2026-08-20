@@ -44,13 +44,13 @@ def _make_vault_snapshot(
     ("health", "setup_hint", "issues", "side_effect", "expected_status", "expected_detail"),
     [
         pytest.param(
-            "bypass",
+            "disabled",
             "",
             [],
             None,
             "warn",
-            "bypass_firewall_no_protection",
-            id="bypass",
+            "disable_firewall_no_protection",
+            id="disabled",
         ),
         pytest.param(
             "stale-hooks",

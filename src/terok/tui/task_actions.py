@@ -94,7 +94,7 @@ def _shield_up(cname: str, task_dir: Path) -> None:
     ShieldManager(task_dir).up(cname, resolve_container_uuid(cname))
 
 
-def _shield_down(cname: str, task_dir: Path, *, allow_all: bool = False) -> None:
+def _shield_down(cname: str, task_dir: Path, *, disengaged: bool = False) -> None:
     """Drop this task's shield.
 
     See [`_shield_up`][terok.tui.task_actions._shield_up] for the
@@ -102,7 +102,7 @@ def _shield_down(cname: str, task_dir: Path, *, allow_all: bool = False) -> None
     """
     from ..lib.orchestration.task_runners import resolve_container_uuid
 
-    ShieldManager(task_dir).down(cname, resolve_container_uuid(cname), allow_all=allow_all)
+    ShieldManager(task_dir).down(cname, resolve_container_uuid(cname), disengaged=disengaged)
 
 
 class TaskActionsMixin(_MixinBase):
@@ -857,31 +857,31 @@ class TaskActionsMixin(_MixinBase):
 
     def _action_shield_down(self) -> None:
         """Bring the shield down for the current task (no egress filtering)."""
-        if self._notify_shield_bypassed():
+        if self._notify_shield_disabled():
             return
         self._action_shield_toggle("down", _shield_down)
 
-    def _notify_shield_bypassed(self) -> bool:
-        """Warn the user and return ``True`` if the shield bypass is active."""
+    def _notify_shield_disabled(self) -> bool:
+        """Warn the user and return ``True`` if the shield kill-switch is active."""
         cfg = get_config()
-        if not cfg.shield_bypass_firewall_no_protection:
+        if not cfg.shield_disable_firewall_no_protection:
             return False
         self.notify(
-            f"Shield unavailable (bypass_firewall_no_protection). {cfg.shield_security_hint}"
+            f"Shield unavailable (disable_firewall_no_protection). {cfg.shield_security_hint}"
         )
         return True
 
     def _action_shield_up(self) -> None:
         """Raise the shield (deny-all) for the current task."""
-        if self._notify_shield_bypassed():
+        if self._notify_shield_disabled():
             return
         self._action_shield_toggle("up", _shield_up)
 
     def _action_shield_disengaged(self) -> None:
-        """Drop the shield with allow_all (also permit private-range traffic)."""
-        if self._notify_shield_bypassed():
+        """Disengage the shield (also permit private-range traffic)."""
+        if self._notify_shield_disabled():
             return
-        self._action_shield_toggle("down", lambda c, d: _shield_down(c, d, allow_all=True))
+        self._action_shield_toggle("down", lambda c, d: _shield_down(c, d, disengaged=True))
 
     async def _action_shield_interactive(self) -> None:
         """Open the native shield clearance screen for live verdict handling.
@@ -924,17 +924,17 @@ class TaskActionsMixin(_MixinBase):
 
     def action_shield_down_from_main(self) -> None:
         """Drop the shield from the main screen."""
-        if self._notify_shield_bypassed():
+        if self._notify_shield_disabled():
             return
         self._action_shield_toggle("down", _shield_down)
 
     def action_shield_disengaged_from_main(self) -> None:
-        """Drop the shield with allow_all (+ private ranges) for the current task."""
+        """Disengage the shield (+ private ranges) for the current task."""
         self._action_shield_disengaged()
 
     def action_shield_up_from_main(self) -> None:
         """Raise the shield from the main screen."""
-        if self._notify_shield_bypassed():
+        if self._notify_shield_disabled():
             return
         self._action_shield_toggle("up", _shield_up)
 

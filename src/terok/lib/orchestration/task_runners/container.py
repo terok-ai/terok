@@ -258,7 +258,7 @@ def _run_container(
     and clearance hub identify themselves with the correct project /
     task identity from the first event.
 
-    Podman command assembly (userns, shield/bypass, GPU, env redaction,
+    Podman command assembly (userns, shield/unshielded, GPU, env redaction,
     CDI detection) is delegated to `AgentRunner.launch_prepared`.
     In sealed isolation mode (``project.is_sealed``) the sandbox splits
     into create → copy → start instead of a single ``podman run -d``.
