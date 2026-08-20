@@ -75,7 +75,7 @@ Terok was started at the
   Fedora / nvidia/cuda out of the box, GPU passthrough for projects
   whose base image supports it.
 - **Multi-vendor agents** — Claude Code, Codex, Copilot, Vibe, plus
-  custom LLM endpoints via OpenCode.
+  custom LLM endpoints via OpenCode or Pi.
 
 ## The six-package stack
 

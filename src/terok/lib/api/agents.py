@@ -58,6 +58,7 @@ if TYPE_CHECKING:
         ensure_sandbox_ready as ensure_sandbox_ready,
         get_agent as get_agent,
         prepare_oauth_session as prepare_oauth_session,
+        providers_config_dir as providers_config_dir,
         resolve_instructions as resolve_instructions,
         store_api_key as store_api_key,
     )
@@ -101,6 +102,7 @@ _LAZY: dict[str, str] = {
     "installed_agents": "terok.lib.core.images",
     "installed_agents_for_project": "terok.lib.core.images",
     "prepare_oauth_session": "terok.lib.integrations.executor",
+    "providers_config_dir": "terok.lib.integrations.executor",
     "resolve_agent_config": "terok.lib.orchestration.agent_config",
     "resolve_auth_provider": "terok.lib.domain.auth",
     "resolve_credential_routing": "terok.lib.domain.auth",
@@ -126,6 +128,7 @@ __all__ = [
     "bundled_default_instructions",
     "ensure_sandbox_ready",
     "get_agent",
+    "providers_config_dir",
     "resolve_auth_provider",
     "resolve_instructions",
 ]

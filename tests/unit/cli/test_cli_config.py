@@ -33,7 +33,8 @@ def make_config_layout(tmp_path: Path, gate_port: int) -> SimpleNamespace:
     state_root = tmp_path / "state"
     build_root = tmp_path / "build"
     envs_root = tmp_path / "envs"
-    for path in (user_root, system_root, state_root, build_root, envs_root):
+    providers_root = tmp_path / "providers"
+    for path in (user_root, system_root, state_root, build_root, envs_root, providers_root):
         path.mkdir(parents=True, exist_ok=True)
 
     resources_root = tmp_path / "pkg"
@@ -58,6 +59,7 @@ def make_config_layout(tmp_path: Path, gate_port: int) -> SimpleNamespace:
         state_root=state_root,
         build_root=build_root,
         envs_root=envs_root,
+        providers_root=providers_root,
         resources_root=resources_root,
         templates_dir=templates_dir,
         project_root=project_root,
@@ -100,6 +102,13 @@ def patch_config_command(layout: SimpleNamespace) -> Iterator[None]:
         )
         stack.enter_context(
             patch(
+                "terok.lib.api.agents.providers_config_dir",
+                return_value=layout.providers_root,
+                create=True,
+            )
+        )
+        stack.enter_context(
+            patch(
                 "terok.cli.commands.info.list_projects",
                 return_value=[SimpleNamespace(name="alpha", root=layout.project_root)],
             )
@@ -135,6 +144,10 @@ def test_config_command_color_output(
     assert "\x1b[35malpha\x1b[0m" in output
     assert f"\x1b[90m{layout.project_root / 'project.yml'}\x1b[0m" in output
     assert f"\x1b[90m{layout.templates_dir}\x1b[0m" in output
+    assert (
+        f"- Provider definitions (user): \x1b[90m{layout.providers_root}\x1b[0m "
+        f"(exists: \x1b[32myes\x1b[0m)"
+    ) in output
     assert "\x1b[90mscript.sh\x1b[0m" in output
     assert f"- TEROK_CONFIG_FILE=\x1b[90m{layout.global_cfg}\x1b[0m" in output
     assert (

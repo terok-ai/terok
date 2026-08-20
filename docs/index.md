@@ -64,7 +64,7 @@ Terok was started at the
 - **Sickbay + panic** — health checks with auto-remediation and an
   emergency kill-switch
 - **Multi-vendor agents** — Claude Code, Codex, Copilot, Vibe, plus
-  custom LLM endpoints via OpenCode (Helmholtz, university, or your
+  custom LLM endpoints via OpenCode or Pi (Helmholtz, university, or your
   own endpoint — bundled defaults included)
 
 ## Quick Start

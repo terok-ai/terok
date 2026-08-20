@@ -44,8 +44,19 @@ def _fake_roster(
     """Stand-in for [`AgentRoster`][terok.lib.integrations.executor.AgentRoster] reading what the dispatcher needs."""
     if labels is None:
         labels = {"claude": "Anthropic Claude", "codex": "OpenAI Codex", "gh": "GitHub CLI"}
-    agents = {name: SimpleNamespace(label=labels.get(name, name)) for name in all_names}
-    auth_providers: dict[str, SimpleNamespace] = {}
+    agents = {
+        name: SimpleNamespace(
+            label=labels.get(name, name),
+            protocol=None,
+            provider_binding=SimpleNamespace(default=name),
+        )
+        for name in agent_names
+    }
+    auth_providers = {
+        name: SimpleNamespace(label=labels.get(name, name))
+        for name in all_names
+        if name not in agents
+    }
 
     def _resolve(_selection: object) -> tuple[str, ...]:
         return agent_names
@@ -64,7 +75,9 @@ def _fake_roster(
         agent_names=agent_names,
         all_names=all_names,
         agents=agents,
+        providers={},
         auth_providers=auth_providers,
+        installs={name: object() for name in all_names},
         resolve_selection=_resolve,
         parse_selection=staticmethod(_parse),
         prompt_selection=_prompt,
@@ -125,6 +138,48 @@ def test_list_includes_tool_entries_with_all_flag(capsys: pytest.CaptureFixture[
     assert "gh" in out
 
 
+def test_list_classifies_runtime_endpoints_separately(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Harnesses remain installable while custom endpoints are runtime-only."""
+    names = ("opencode", "blablador", "rossendorf", "gh")
+    roster = _fake_roster(agent_names=("opencode",), all_names=names, labels={})
+    roster.agents["opencode"] = SimpleNamespace(
+        label="OpenCode",
+        protocol="openai-chat",
+        provider_binding=None,
+    )
+    roster.providers = {
+        "blablador": SimpleNamespace(serves={"openai-chat": "/v1"}),
+        "rossendorf": SimpleNamespace(serves={"openai-chat": "/api/v1"}),
+    }
+    roster.installs = {name: object() for name in ("opencode", "blablador", "gh")}
+    roster.auth_providers.update(
+        {
+            "blablador": SimpleNamespace(label="Helmholtz Blablador"),
+            "rossendorf": SimpleNamespace(label="Rossendorf"),
+        }
+    )
+
+    with patch("terok.lib.integrations.executor.AgentRoster.shared", return_value=roster):
+        agents.dispatch(_ns_list(all_flag=True))
+
+    out = capsys.readouterr().out
+    assert out.splitlines()[0].split() == ["NAME", "TYPE", "LABEL"]
+    rows = {
+        columns[0]: columns[1]
+        for line in out.splitlines()
+        if len(columns := line.split(maxsplit=2)) == 3 and columns[0] in names
+    }
+    assert rows == {
+        "blablador": "harness",
+        "gh": "tool",
+        "opencode": "harness",
+        "rossendorf": "endpoint",
+    }
+    assert "runtime-only (--provider), not image.agents" in out
+
+
 def test_list_renders_label_alongside_name(capsys: pytest.CaptureFixture[str]) -> None:
     """The output table carries each agent's human-readable label."""
     with patch("terok.lib.integrations.executor.AgentRoster.shared", return_value=_fake_roster()):
@@ -144,7 +199,7 @@ def test_list_handles_empty_roster(capsys: pytest.CaptureFixture[str]) -> None:
 
 
 def test_list_falls_back_to_auth_provider_label(capsys: pytest.CaptureFixture[str]) -> None:
-    """An agent missing from ``providers`` still renders via ``auth_providers``."""
+    """An entry missing from ``agents`` still renders via ``auth_providers``."""
     roster = _fake_roster(agent_names=("kisski",), all_names=("kisski",), labels={})
     roster.agents = {}
     roster.auth_providers = {"kisski": SimpleNamespace(label="KISSKI AcademicCloud")}

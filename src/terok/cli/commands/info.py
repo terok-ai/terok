@@ -46,11 +46,11 @@ from ...ui_utils.terminal import (
 from ._completers import complete_project_names as _complete_project_names, set_completer
 
 # ``core.config`` and ``core.paths`` above are import-clean (they defer their own
-# sandbox/executor reach), so registering ``config`` stays stack-free.  The two
-# genuinely heavy dependencies — ``core.projects`` (→ sandbox) and the sibling
-# ``completions`` module — are pulled only when a subcommand runs: ``list_projects``
-# is a lazy shim (module attribute, so tests still patch it by name), and
-# ``is_completion_installed`` is imported inside its handler.
+# sandbox/executor reach), so registering ``config`` stays stack-free.  The
+# genuinely heavy dependencies — ``core.projects`` (→ sandbox), the executor
+# integration, and the sibling ``completions`` module — are pulled only when a
+# subcommand runs: ``list_projects`` is a lazy shim (module attribute, so tests
+# still patch it by name); the other imports live inside their handlers.
 
 
 def list_projects() -> Any:
@@ -157,6 +157,8 @@ def _print_config() -> None:
 
 def _print_read_paths(color: bool) -> None:
     """Configuration sources: global config search order, vault, projects."""
+    from ...lib.api.agents import providers_config_dir
+
     print("Configuration (read):")
 
     gcfg = _global_config_path()
@@ -184,6 +186,12 @@ def _print_read_paths(color: bool) -> None:
     print(
         f"- Projects (system): {_gray(str(sproj), color)} "
         f"(exists: {_yes_no(Path(sproj).is_dir(), color)})"
+    )
+
+    providers = providers_config_dir()
+    print(
+        f"- Provider definitions (user): {_gray(str(providers), color)} "
+        f"(exists: {_yes_no(providers.is_dir(), color)})"
     )
 
     projs = list_projects()

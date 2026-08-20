@@ -412,6 +412,75 @@ Different selections produce different L1 image tags (`terok-l1-cli:<base>-claud
 
 Transitive dependencies are expanded automatically — picking `blablador` or `kisski` also pulls in `opencode`.
 
+### Custom LLM endpoint providers
+
+An endpoint provider is runtime configuration, not an agent installed in an
+image. Put each definition in `~/.config/terok/providers/<name>.yaml` (or
+`$XDG_CONFIG_HOME/terok/providers/<name>.yaml` when that variable is set); the
+filename stem is the provider name and uses lowercase ASCII letters and digits.
+For example, `rossendorf.yaml` can be:
+
+```yaml
+label: Rossendorf
+upstream: https://chat.fz-rossendorf.de
+
+auth:
+  api_key: {}               # defaults to Authorization: Bearer <key>
+
+serves:
+  openai-chat: /api/v1
+
+default_model: deepseek-v4-flash
+models:
+  deepseek-v4-flash:
+    name: Rossendorf DeepSeek-V4-Flash
+    limit:
+      context: 120000
+```
+
+Override `auth.api_key.header` or `auth.api_key.prefix` only when the endpoint
+does not use bearer authentication. For compatibility with older definitions,
+once `header` is explicit, an omitted `prefix` means no prefix; declare
+`prefix: "Bearer "` too if that is still required. `models` is optional; when
+it is non-empty, the declaration is authoritative and OpenCode and Pi skip
+`/models` discovery.
+This is useful for endpoints without a model-list API. `limit.context` and
+`limit.output` are optional positive token counts. Pi uses either value and
+fills an omitted one with its harness default. OpenCode emits its `limit` only
+when both values are known, because its config schema requires the pair.
+
+Authenticate on the host, then start a fresh task and select the endpoint from
+either compatible harness:
+
+```bash
+terok auth rossendorf
+terok task run myproj
+
+# Inside the task:
+opencode --provider rossendorf
+pi --provider rossendorf
+```
+
+Successful authentication regenerates the vault routes automatically, and task
+launch checks them again; no manual `terok vault routes` is needed. Provider-only
+definitions like this install no files, so adding or changing one needs no image
+rebuild. The chosen harness must already be installed, for example:
+
+```yaml
+image:
+  agents: "opencode,pi"     # not "rossendorf"
+```
+
+Only adding a missing harness requires an L1 rebuild. Credentials and provider
+handles are fixed when a task container is created, so a provider authenticated
+later appears in new tasks, not an already-running one. Restart a long-running
+Terok TUI after editing provider YAML so it reloads the roster.
+
+For migration, the legacy `~/.config/terok/agent/providers/` directory and its
+full `opencode:` blocks remain supported. A same-named file in the canonical
+`~/.config/terok/providers/` directory has higher priority. Run
+`terok config paths` to see the canonical directory resolved on your host.
+
 ### Step 6: Initialize SSH (for private repos)
 
 ```bash
@@ -666,8 +735,8 @@ Useful for CI/CD pipelines, batch tasks, or scripted workflows.
 
 Supported agents (`--agent`): `claude`, `codex`, `copilot`, `opencode`,
 `pi`, `vibe`.  Endpoint providers such as `blablador`, `kisski`, or
-`openrouter` are selected with `--provider` and route a harness agent
-(OpenCode) to a different LLM endpoint.
+`openrouter` are selected with `--provider` and route a compatible harness
+agent (OpenCode or Pi) to a different LLM endpoint.
 
 ### Basic Usage
 
@@ -715,7 +784,7 @@ default_agent: claude
 | Structured log output | Yes | No | No | No | No | No |
 
 Endpoint providers (`blablador`, `kisski`, …) inherit the capabilities of
-the harness agent (OpenCode) they ride on.
+the harness agent (OpenCode or Pi) selected for the run.
 
 ### Per-Provider Config Values
 
