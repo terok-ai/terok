@@ -2396,9 +2396,9 @@ requires-dist = [
     { name = "rich", specifier = "~=15.0" },
     { name = "ruamel-yaml", specifier = "==0.19.1" },
     { name = "terok-clearance", url = "https://github.com/terok-ai/terok-clearance/releases/download/v0.8.0a8/terok_clearance-0.8.0a8-py3-none-any.whl" },
-    { name = "terok-executor", url = "https://github.com/terok-ai/terok-executor/releases/download/v0.4.0a21/terok_executor-0.4.0a21-py3-none-any.whl" },
-    { name = "terok-sandbox", url = "https://github.com/terok-ai/terok-sandbox/releases/download/v0.5.0a22/terok_sandbox-0.5.0a22-py3-none-any.whl" },
-    { name = "terok-shield", url = "https://github.com/terok-ai/terok-shield/releases/download/v0.8.0a9/terok_shield-0.8.0a9-py3-none-any.whl" },
+    { name = "terok-executor", git = "https://github.com/sliwowitz/terok-executor.git?rev=feat%2Fposture-vocabulary" },
+    { name = "terok-sandbox", git = "https://github.com/sliwowitz/terok-sandbox.git?rev=feat%2Fposture-vocabulary" },
+    { name = "terok-shield", git = "https://github.com/sliwowitz/terok-shield.git?rev=feat%2Fposture-vocabulary" },
     { name = "terok-util", url = "https://github.com/terok-ai/terok-util/releases/download/v0.3.1a5/terok_util-0.3.1a5-py3-none-any.whl" },
     { name = "textual", extras = ["syntax"], specifier = "~=8.2.8" },
     { name = "textual-serve", specifier = "~=1.1" },
@@ -2462,8 +2462,8 @@ requires-dist = [
 
 [[package]]
 name = "terok-executor"
-version = "0.4.0a21"
-source = { url = "https://github.com/terok-ai/terok-executor/releases/download/v0.4.0a21/terok_executor-0.4.0a21-py3-none-any.whl" }
+version = "0.4.0a22.dev470+g321e26b07"
+source = { git = "https://github.com/sliwowitz/terok-executor.git?rev=feat%2Fposture-vocabulary#321e26b07a1515da832d3f93b01e70bbd65fc3e7" }
 dependencies = [
     { name = "agent-client-protocol" },
     { name = "jinja2" },
@@ -2475,27 +2475,11 @@ dependencies = [
     { name = "terok-util" },
     { name = "tomli-w" },
 ]
-wheels = [
-    { url = "https://github.com/terok-ai/terok-executor/releases/download/v0.4.0a21/terok_executor-0.4.0a21-py3-none-any.whl", hash = "sha256:e5f79f1e57f77dcf913fae59d0d566cf99adb86210a902a17f86ca1bfdb4f1d6" },
-]
-
-[package.metadata]
-requires-dist = [
-    { name = "agent-client-protocol", specifier = "==0.12.0" },
-    { name = "jinja2", specifier = "~=3.1" },
-    { name = "prompt-toolkit", specifier = "~=3.0" },
-    { name = "pydantic", specifier = "~=2.13" },
-    { name = "rich", specifier = "~=15.0" },
-    { name = "ruamel-yaml", specifier = "==0.19.1" },
-    { name = "terok-sandbox", url = "https://github.com/terok-ai/terok-sandbox/releases/download/v0.5.0a22/terok_sandbox-0.5.0a22-py3-none-any.whl" },
-    { name = "terok-util", url = "https://github.com/terok-ai/terok-util/releases/download/v0.3.1a5/terok_util-0.3.1a5-py3-none-any.whl" },
-    { name = "tomli-w", specifier = "~=1.2" },
-]
 
 [[package]]
 name = "terok-sandbox"
-version = "0.5.0a22"
-source = { url = "https://github.com/terok-ai/terok-sandbox/releases/download/v0.5.0a22/terok_sandbox-0.5.0a22-py3-none-any.whl" }
+version = "0.5.0a23.dev463+g52f28b45f"
+source = { git = "https://github.com/sliwowitz/terok-sandbox.git?rev=feat%2Fposture-vocabulary#52f28b45f346ecd0f6e745fa80a28674486b2c6e" }
 dependencies = [
     { name = "aiohttp" },
     { name = "cryptography" },
@@ -2511,45 +2495,15 @@ dependencies = [
     { name = "terok-shield" },
     { name = "terok-util" },
 ]
-wheels = [
-    { url = "https://github.com/terok-ai/terok-sandbox/releases/download/v0.5.0a22/terok_sandbox-0.5.0a22-py3-none-any.whl", hash = "sha256:d51c13e2671de9a0b32b480edc3149e76047486bc3bfa59fe85236119d496018" },
-]
-
-[package.metadata]
-requires-dist = [
-    { name = "aiohttp", specifier = "~=3.14.1" },
-    { name = "cryptography", specifier = ">=49,<51" },
-    { name = "jinja2", specifier = "~=3.1" },
-    { name = "keyring", specifier = "~=25.7" },
-    { name = "packaging", specifier = "~=26.2" },
-    { name = "platformdirs", specifier = "~=4.10" },
-    { name = "prompt-toolkit", specifier = "~=3.0" },
-    { name = "pydantic", specifier = "~=2.13" },
-    { name = "ruamel-yaml", specifier = "==0.19.1" },
-    { name = "sqlcipher3", specifier = "==0.6.2" },
-    { name = "terok-clearance", url = "https://github.com/terok-ai/terok-clearance/releases/download/v0.8.0a8/terok_clearance-0.8.0a8-py3-none-any.whl" },
-    { name = "terok-shield", url = "https://github.com/terok-ai/terok-shield/releases/download/v0.8.0a9/terok_shield-0.8.0a9-py3-none-any.whl" },
-    { name = "terok-util", url = "https://github.com/terok-ai/terok-util/releases/download/v0.3.1a5/terok_util-0.3.1a5-py3-none-any.whl" },
-]
 
 [[package]]
 name = "terok-shield"
-version = "0.8.0a9"
-source = { url = "https://github.com/terok-ai/terok-shield/releases/download/v0.8.0a9/terok_shield-0.8.0a9-py3-none-any.whl" }
+version = "0.8.0a10.dev361+g941098acd"
+source = { git = "https://github.com/sliwowitz/terok-shield.git?rev=feat%2Fposture-vocabulary#941098acd193e701c01e05a83d60a29e6dba7319" }
 dependencies = [
     { name = "pydantic" },
     { name = "pyyaml" },
     { name = "terok-util" },
-]
-wheels = [
-    { url = "https://github.com/terok-ai/terok-shield/releases/download/v0.8.0a9/terok_shield-0.8.0a9-py3-none-any.whl", hash = "sha256:f3425bdb9e9f01c65f10543bdc9a12306757ea98c1bd50dbbf01cb88340fb503" },
-]
-
-[package.metadata]
-requires-dist = [
-    { name = "pydantic", specifier = "~=2.13" },
-    { name = "pyyaml", specifier = "~=6.0" },
-    { name = "terok-util", url = "https://github.com/terok-ai/terok-util/releases/download/v0.3.1a5/terok_util-0.3.1a5-py3-none-any.whl" },
 ]
 
 [[package]]

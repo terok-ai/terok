@@ -29,7 +29,7 @@ from .config import (
     get_global_hooks,
     get_global_section,
     get_services_mode,
-    get_shield_drop_on_task_run,
+    get_shield_down_on_task_run,
     get_shield_on_task_restart,
     projects_dir,
     sandbox_live_dir,
@@ -157,9 +157,9 @@ def _parse_project_yaml(cfg_path: Path) -> RawProjectYaml:
 def _resolve_shield_config(raw: RawProjectYaml) -> tuple[bool, str]:
     """Resolve shield settings with project-overrides-global fallback."""
     drop = (
-        raw.shield.drop_on_task_run
-        if raw.shield.drop_on_task_run is not None
-        else get_shield_drop_on_task_run()
+        raw.shield.down_on_task_run
+        if raw.shield.down_on_task_run is not None
+        else get_shield_down_on_task_run()
     )
     restart = raw.shield.on_task_restart or get_shield_on_task_restart()
     return drop, restart
@@ -220,7 +220,7 @@ def _build_project_config(
 
     agent_cfg = dict(raw.agent)
 
-    shield_drop, shield_restart = _resolve_shield_config(raw)
+    shield_down, shield_restart = _resolve_shield_config(raw)
     validate_egress_sets(raw.shield.sets)
     hook_pre, hook_post, hook_ready, hook_stop = _resolve_hooks(raw)
 
@@ -286,7 +286,7 @@ def _build_project_config(
         timezone=raw.run.timezone,
         task_name_categories=raw.tasks.name_categories,
         services_mode=raw.services.mode or get_services_mode(),
-        shield_drop_on_task_run=shield_drop,
+        shield_down_on_task_run=shield_down,
         shield_on_task_restart=shield_restart,
         shield_sets=None if raw.shield.sets is None else tuple(raw.shield.sets),
         shield_allow=tuple(raw.shield.allow),

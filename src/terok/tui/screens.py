@@ -2207,11 +2207,11 @@ class TaskDetailsScreen(screen.Screen[str | None]):
             options.append(None)
             from ..lib.api import get_config
 
-            options.append(Option("shield \\[d]own (bypass)", id="shield_down"))
+            options.append(Option("shield \\[d]own (allow egress)", id="shield_down"))
             options.append(
-                Option("shield \\[D]own --all (+ private ranges)", id="shield_disengaged")
+                Option("shield \\[D]isengage (+ private ranges)", id="shield_disengaged")
             )
-            if not get_config().shield_bypass_firewall_no_protection:
+            if not get_config().shield_disable_firewall_no_protection:
                 options.append(Option("\\[s]hield up (deny-all)", id="shield_up"))
             options.append(
                 Option("shield \\[i]nteractive (verdict handler)", id="shield_interactive")
@@ -2332,7 +2332,7 @@ _SHIELD_HEALTH_STYLES: dict[str, str] = {
     "ok": "green",
     "setup-needed": "red",
     "stale-hooks": "yellow",
-    "bypass": "yellow",
+    "disabled": "yellow",
 }
 
 
@@ -2377,7 +2377,7 @@ def render_shield_status(
         lines.append(Text(""))
         lines.append(Text("Issues:"))
         for issue in env_check.issues:
-            style = Style(color="red", bold=True) if "bypass" in issue else Style()
+            style = Style(color="red", bold=True) if "disable_firewall" in issue else Style()
             lines.append(Text(f"  - {issue}", style=style))
 
     if env_check.setup_hint:

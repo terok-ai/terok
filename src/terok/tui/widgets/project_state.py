@@ -188,7 +188,7 @@ def render_project_details(
             "ok": success_color,
             "setup-needed": error_color,
             "stale-hooks": warning_color,
-            "bypass": error_color,
+            "disabled": error_color,
         }
         shield_color = _shield_colors.get(shield_env.health, error_color)
         shield_s = Text(shield_env.health, style=Style(color=shield_color))

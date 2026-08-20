@@ -130,17 +130,17 @@ class TestApplyShieldPolicy:
     def _make_project(self, *, drop: bool = True, on_restart: str = "retain") -> MagicMock:
         """Return a mock ProjectConfig with shield fields set."""
         p = MagicMock()
-        p.shield_drop_on_task_run = drop
+        p.shield_down_on_task_run = drop
         p.shield_on_task_restart = on_restart
         return p
 
     def test_fresh_skips_when_drop_disabled(self, tmp_path: Path) -> None:
-        """No shield_down call when drop_on_task_run is False."""
+        """No shield_down call when down_on_task_run is False."""
         from terok.lib.orchestration.task_runners.shield import _apply_shield_policy
 
         project = self._make_project(drop=False)
         with patch(
-            "terok.lib.orchestration.task_runners.shield.get_shield_bypass_firewall_no_protection",
+            "terok.lib.orchestration.task_runners.shield.get_shield_disable_firewall_no_protection",
             return_value=False,
         ):
             _apply_shield_policy(project, "ctr", tmp_path, is_restart=False)
@@ -153,7 +153,7 @@ class TestApplyShieldPolicy:
         project = self._make_project(drop=True)
         with (
             patch(
-                "terok.lib.orchestration.task_runners.shield.get_shield_bypass_firewall_no_protection",
+                "terok.lib.orchestration.task_runners.shield.get_shield_disable_firewall_no_protection",
                 return_value=False,
             ),
             patch("terok.lib.orchestration.task_runners.shield.ShieldManager") as mock_down,
@@ -172,7 +172,7 @@ class TestApplyShieldPolicy:
 
         project = self._make_project(drop=True)
         with patch(
-            "terok.lib.orchestration.task_runners.shield.get_shield_bypass_firewall_no_protection",
+            "terok.lib.orchestration.task_runners.shield.get_shield_disable_firewall_no_protection",
             return_value=True,
         ):
             _apply_shield_policy(project, "ctr", MOCK_TASK_DIR, is_restart=False)
@@ -185,7 +185,7 @@ class TestApplyShieldPolicy:
         project = self._make_project(on_restart="retain")
         with (
             patch(
-                "terok.lib.orchestration.task_runners.shield.get_shield_bypass_firewall_no_protection",
+                "terok.lib.orchestration.task_runners.shield.get_shield_disable_firewall_no_protection",
                 return_value=False,
             ),
             patch("terok.lib.orchestration.task_runners.shield.ShieldManager") as mock_down,
@@ -195,7 +195,7 @@ class TestApplyShieldPolicy:
             ),
         ):
             _apply_shield_policy(project, "ctr", tmp_path, is_restart=True)
-        mock_down.return_value.down.assert_called_once_with("ctr", "cafef00d", allow_all=False)
+        mock_down.return_value.down.assert_called_once_with("ctr", "cafef00d", disengaged=False)
 
     def test_restart_retain_restores_disengaged(self, tmp_path: Path) -> None:
         """Restart with retain policy restores a saved 'disengaged' state."""
@@ -205,7 +205,7 @@ class TestApplyShieldPolicy:
         project = self._make_project(on_restart="retain")
         with (
             patch(
-                "terok.lib.orchestration.task_runners.shield.get_shield_bypass_firewall_no_protection",
+                "terok.lib.orchestration.task_runners.shield.get_shield_disable_firewall_no_protection",
                 return_value=False,
             ),
             patch("terok.lib.orchestration.task_runners.shield.ShieldManager") as mock_down,
@@ -215,7 +215,7 @@ class TestApplyShieldPolicy:
             ),
         ):
             _apply_shield_policy(project, "ctr", tmp_path, is_restart=True)
-        mock_down.return_value.down.assert_called_once_with("ctr", "cafef00d", allow_all=True)
+        mock_down.return_value.down.assert_called_once_with("ctr", "cafef00d", disengaged=True)
 
     def test_restart_retain_noop_when_up(self, tmp_path: Path) -> None:
         """Restart with retain + saved 'up' does nothing (hook already applied UP)."""
@@ -225,7 +225,7 @@ class TestApplyShieldPolicy:
         project = self._make_project(on_restart="retain")
         with (
             patch(
-                "terok.lib.orchestration.task_runners.shield.get_shield_bypass_firewall_no_protection",
+                "terok.lib.orchestration.task_runners.shield.get_shield_disable_firewall_no_protection",
                 return_value=False,
             ),
             patch("terok.lib.orchestration.task_runners.shield.ShieldManager") as mock_down,
@@ -243,7 +243,7 @@ class TestApplyShieldPolicy:
         project = self._make_project(on_restart="retain")
         with (
             patch(
-                "terok.lib.orchestration.task_runners.shield.get_shield_bypass_firewall_no_protection",
+                "terok.lib.orchestration.task_runners.shield.get_shield_disable_firewall_no_protection",
                 return_value=False,
             ),
             pytest.raises(ValueError, match="corrupt shield-state file"),
@@ -258,7 +258,7 @@ class TestApplyShieldPolicy:
         project = self._make_project(on_restart="up")
         with (
             patch(
-                "terok.lib.orchestration.task_runners.shield.get_shield_bypass_firewall_no_protection",
+                "terok.lib.orchestration.task_runners.shield.get_shield_disable_firewall_no_protection",
                 return_value=False,
             ),
             patch("terok.lib.orchestration.task_runners.shield.ShieldManager") as mock_down,
@@ -274,7 +274,7 @@ class TestApplyShieldPolicy:
         project = self._make_project(drop=True)
         with (
             patch(
-                "terok.lib.orchestration.task_runners.shield.get_shield_bypass_firewall_no_protection",
+                "terok.lib.orchestration.task_runners.shield.get_shield_disable_firewall_no_protection",
                 return_value=False,
             ),
             patch(
@@ -299,11 +299,11 @@ class TestApplyShieldPolicy:
         project.shutdown_timeout = 7
         with (
             patch(
-                "terok.lib.orchestration.task_runners.shield.get_shield_bypass_firewall_no_protection",
+                "terok.lib.orchestration.task_runners.shield.get_shield_disable_firewall_no_protection",
                 return_value=False,
             ),
             patch(
-                "terok.lib.orchestration.task_runners.shield._drop_shield_on_creation",
+                "terok.lib.orchestration.task_runners.shield._shield_down_on_creation",
                 side_effect=RuntimeError("nft missing"),
             ),
             pytest.raises(RuntimeError, match="nft missing"),
@@ -323,11 +323,11 @@ class TestApplyShieldPolicy:
         mock_runtime.container.return_value.stop.side_effect = RuntimeError("podman gone")
         with (
             patch(
-                "terok.lib.orchestration.task_runners.shield.get_shield_bypass_firewall_no_protection",
+                "terok.lib.orchestration.task_runners.shield.get_shield_disable_firewall_no_protection",
                 return_value=False,
             ),
             patch(
-                "terok.lib.orchestration.task_runners.shield._drop_shield_on_creation",
+                "terok.lib.orchestration.task_runners.shield._shield_down_on_creation",
                 side_effect=RuntimeError("nft missing"),
             ),
             pytest.raises(RuntimeError, match="nft missing"),
@@ -342,7 +342,7 @@ class TestApplyShieldPolicy:
         project = self._make_project(on_restart="retain")
         with (
             patch(
-                "terok.lib.orchestration.task_runners.shield.get_shield_bypass_firewall_no_protection",
+                "terok.lib.orchestration.task_runners.shield.get_shield_disable_firewall_no_protection",
                 return_value=False,
             ),
             patch("terok.lib.orchestration.task_runners.shield.ShieldManager") as mock_down,
@@ -359,7 +359,7 @@ class TestApplyShieldPolicy:
         project = self._make_project(on_restart="retain")
         with (
             patch(
-                "terok.lib.orchestration.task_runners.shield.get_shield_bypass_firewall_no_protection",
+                "terok.lib.orchestration.task_runners.shield.get_shield_disable_firewall_no_protection",
                 return_value=False,
             ),
             patch(
@@ -377,7 +377,7 @@ class TestApplyShieldPolicy:
         project = self._make_project(on_restart="bogus")
         with (
             patch(
-                "terok.lib.orchestration.task_runners.shield.get_shield_bypass_firewall_no_protection",
+                "terok.lib.orchestration.task_runners.shield.get_shield_disable_firewall_no_protection",
                 return_value=False,
             ),
             pytest.raises(ValueError, match="Unknown shield.on_task_restart"),
@@ -557,7 +557,7 @@ class TestRefreshShieldTiers:
         with (
             patch(
                 "terok.lib.orchestration.task_runners.shield."
-                "get_shield_bypass_firewall_no_protection",
+                "get_shield_disable_firewall_no_protection",
                 return_value=False,
             ),
             patch("terok.lib.integrations.executor.AgentRoster") as roster_cls,
@@ -594,7 +594,7 @@ class TestRefreshShieldTiers:
         with (
             patch(
                 "terok.lib.orchestration.task_runners.shield."
-                "get_shield_bypass_firewall_no_protection",
+                "get_shield_disable_firewall_no_protection",
                 return_value=False,
             ),
             patch("terok.lib.integrations.executor.AgentRoster"),
@@ -909,7 +909,7 @@ class TestRunContainer:
                 "terok.lib.orchestration.task_runners.container._agent_runner"
             ) as sandbox_factory,
             patch(
-                "terok.lib.orchestration.task_runners.shield.get_shield_bypass_firewall_no_protection",
+                "terok.lib.orchestration.task_runners.shield.get_shield_disable_firewall_no_protection",
                 return_value=False,
             ),
         ):
@@ -937,7 +937,7 @@ class TestRunContainer:
                 "terok.lib.orchestration.task_runners.container._agent_runner"
             ) as sandbox_factory,
             patch(
-                "terok.lib.orchestration.task_runners.shield.get_shield_bypass_firewall_no_protection",
+                "terok.lib.orchestration.task_runners.shield.get_shield_disable_firewall_no_protection",
                 return_value=False,
             ),
         ):
@@ -966,7 +966,7 @@ class TestRunContainer:
                 "terok.lib.orchestration.task_runners.container._agent_runner"
             ) as sandbox_factory,
             patch(
-                "terok.lib.orchestration.task_runners.shield.get_shield_bypass_firewall_no_protection",
+                "terok.lib.orchestration.task_runners.shield.get_shield_disable_firewall_no_protection",
                 return_value=False,
             ),
         ):
@@ -991,7 +991,7 @@ class TestRunContainer:
                 "terok.lib.orchestration.task_runners.container._agent_runner"
             ) as sandbox_factory,
             patch(
-                "terok.lib.orchestration.task_runners.shield.get_shield_bypass_firewall_no_protection",
+                "terok.lib.orchestration.task_runners.shield.get_shield_disable_firewall_no_protection",
                 return_value=False,
             ),
         ):

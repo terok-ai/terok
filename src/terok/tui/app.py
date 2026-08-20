@@ -1983,8 +1983,8 @@ if _HAS_TEXTUAL:
             """Handle the container-stop confirmation after panic lockdown."""
             if not confirmed:
                 pr = getattr(self, "_last_panic_result", None)
-                if pr and pr.shield_bypassed:
-                    self.notify("Containers left running (shields BYPASSED — no firewall)")
+                if pr and pr.shield_disabled:
+                    self.notify("Containers left running (shields DISABLED — no firewall)")
                 elif pr and pr.shield_errors:
                     self.notify("Containers left running (some shields failed)")
                 else:

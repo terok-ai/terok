@@ -286,10 +286,10 @@ class TestSandboxRunShieldIntegration:
 
         assert "--security-opt" not in captured_cmd
 
-    def _run_bypass_spec(
+    def _run_disabled_spec(
         self, shield_env: TerokShieldIntegrationEnv, network_mode: str
     ) -> list[str]:
-        """Helper: run Sandbox.run with bypass active and given network mode."""
+        """Helper: run Sandbox.run with the kill-switch active and given network mode."""
         from terok_sandbox import RunSpec, Sandbox, SandboxConfig
 
         captured_cmd: list[str] = []
@@ -299,14 +299,14 @@ class TestSandboxRunShieldIntegration:
 
         task_dir = shield_env.task_dir
         spec = RunSpec(
-            container_name="bypass-test-ctr",
+            container_name="unshielded-test-ctr",
             image="alpine:latest",
             env={},
             volumes=(),
             command=(),
             task_dir=task_dir,
         )
-        sandbox = Sandbox(config=SandboxConfig(shield_bypass=True))
+        sandbox = Sandbox(config=SandboxConfig(shield_disabled=True))
 
         with (
             patch("os.geteuid", return_value=1000),
@@ -316,7 +316,7 @@ class TestSandboxRunShieldIntegration:
                 "terok_sandbox.runtime.podman._detect_rootless_network_mode",
                 return_value=network_mode,
             ),
-            # Shield must NOT be called at all when bypass is active
+            # Shield must NOT be called at all when the kill-switch is active
             patch(
                 "terok_sandbox.integrations.shield.ShieldManager.pre_start",
                 side_effect=AssertionError("shield must not be called"),
@@ -326,9 +326,9 @@ class TestSandboxRunShieldIntegration:
 
         return captured_cmd
 
-    def test_bypass_uses_pasta_networking(self, shield_env: TerokShieldIntegrationEnv) -> None:
-        """Bypass on pasta: injects --network=pasta:--map-host-loopback and --add-host."""
-        cmd = self._run_bypass_spec(shield_env, "pasta")
+    def test_disabled_uses_pasta_networking(self, shield_env: TerokShieldIntegrationEnv) -> None:
+        """Kill-switch on pasta: injects --network=pasta:--map-host-loopback and --add-host."""
+        cmd = self._run_disabled_spec(shield_env, "pasta")
         assert any("--map-host-loopback" in c for c in cmd)
         assert any(PASTA_HOST_LOOPBACK_MAP in c for c in cmd)
         assert "--add-host" in cmd
@@ -338,11 +338,11 @@ class TestSandboxRunShieldIntegration:
         assert "--annotation" not in cmd
         assert "--cap-drop" not in cmd
 
-    def test_bypass_uses_slirp4netns_networking(
+    def test_disabled_uses_slirp4netns_networking(
         self, shield_env: TerokShieldIntegrationEnv
     ) -> None:
-        """Bypass on slirp4netns: injects --network=slirp4netns:... and --add-host."""
-        cmd = self._run_bypass_spec(shield_env, "slirp4netns")
+        """Kill-switch on slirp4netns: injects --network=slirp4netns:... and --add-host."""
+        cmd = self._run_disabled_spec(shield_env, "slirp4netns")
         assert "slirp4netns:allow_host_loopback=true" in cmd
         assert "--add-host" in cmd
         host_idx = cmd.index("--add-host")

@@ -98,7 +98,7 @@ def _persist_desired_state(cmd_name: str, task_dir: Path, kwargs: dict) -> None:
     if cmd_name == "up":
         value = "up"
     elif cmd_name == "down":
-        value = "disengaged" if kwargs.get("allow_all") else "down"
+        value = "disengaged" if kwargs.get("disengaged") else "down"
     else:
         return
     try:

@@ -35,7 +35,7 @@ def project_yaml(
     *,
     security_class: str | None = None,
     authorship: str | None = None,
-    shield_drop_on_task_run: bool | None = None,
+    shield_down_on_task_run: bool | None = None,
     shield_on_task_restart: str | None = None,
     services_mode: str | None = None,
     timezone: str | None = None,
@@ -50,8 +50,8 @@ def project_yaml(
     if authorship is not None:
         lines.append(f"  authorship: {authorship}")
     shield_lines: list[str] = []
-    if shield_drop_on_task_run is not None:
-        shield_lines.append(f"  drop_on_task_run: {str(shield_drop_on_task_run).lower()}")
+    if shield_down_on_task_run is not None:
+        shield_lines.append(f"  down_on_task_run: {str(shield_down_on_task_run).lower()}")
     if shield_on_task_restart is not None:
         shield_lines.append(f"  on_task_restart: {shield_on_task_restart}")
     if shield_lines:
@@ -625,26 +625,26 @@ class TestProject:
             ("proj-shield-default", project_yaml("proj-shield-default"), True),
             (
                 "proj-shield-drop",
-                project_yaml("proj-shield-drop", shield_drop_on_task_run=True),
+                project_yaml("proj-shield-drop", shield_down_on_task_run=True),
                 True,
             ),
             (
                 "proj-shield-no-drop",
-                project_yaml("proj-shield-no-drop", shield_drop_on_task_run=False),
+                project_yaml("proj-shield-no-drop", shield_down_on_task_run=False),
                 False,
             ),
         ],
         ids=["default", "enabled", "disabled"],
     )
-    def test_shield_drop_on_task_run(
+    def test_shield_down_on_task_run(
         self,
         project_name: str,
         yaml_text: str,
         expected: bool,
     ) -> None:
-        """Project-level drop_on_task_run overrides global default."""
+        """Project-level down_on_task_run overrides global default."""
         with project_env(yaml_text, project_name=project_name):
-            assert load_project(project_name).shield_drop_on_task_run is expected
+            assert load_project(project_name).shield_down_on_task_run is expected
 
     @pytest.mark.parametrize(
         ("project_name", "yaml_text", "expected"),

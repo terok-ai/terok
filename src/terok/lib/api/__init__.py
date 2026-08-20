@@ -466,7 +466,7 @@ class Config:
     global_config_path: Path
     # Settings
     public_host: str
-    shield_bypass_firewall_no_protection: bool
+    shield_disable_firewall_no_protection: bool
     tui_default_tmux: bool
     tui_external_editor: bool
     # Presentation hints
@@ -492,7 +492,7 @@ def get_config() -> Config:
         user_projects_dir=_config.user_projects_dir(),
         global_config_path=_config.global_config_path(),
         public_host=_config.get_public_host(),
-        shield_bypass_firewall_no_protection=_config.get_shield_bypass_firewall_no_protection(),
+        shield_disable_firewall_no_protection=_config.get_shield_disable_firewall_no_protection(),
         tui_default_tmux=_config.get_tui_default_tmux(),
         tui_external_editor=_config.get_tui_external_editor(),
         tui_theme=_config.get_tui_theme(),

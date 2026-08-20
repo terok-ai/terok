@@ -139,7 +139,7 @@ def render_task_details(
             # UP (enforcing): primary/blue — the normal, trusted state.
             # DOWN (relaxed): success/green — operator-chosen, safe by
             # virtue of private-range protection still in place.
-            # DISENGAGED (full bypass): warning/yellow — operator
+            # DISENGAGED (private ranges open too): warning/yellow — operator
             # consciously stepped further out of the safe zone.
             # QUARANTINE/OFFLINE/DISABLED/ERROR: error/red — emergency
             # mode, not-present, or invalid.
