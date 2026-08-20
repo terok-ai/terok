@@ -537,7 +537,7 @@ class TaskEnvironment:
         """Compose env + volumes + egress projection for the task container.
 
         Delegates shared config mounts, base env vars, workspace volume,
-        git identity, and OpenCode provider env to
+        git identity, and harness-provider env to
         [`terok_executor.assemble_container_env`][terok_executor.assemble_container_env],
         then layers terok-specific concerns: ``PROJECT_NAME``, gate
         server URLs, and the full vault (OAuth, socket transport, SSH
