@@ -429,6 +429,36 @@ class TestRenderHelpers:
         assert "shield-security" in text
         assert "ready" not in text
 
+    def test_render_task_details_shows_degraded_dns_warning(self) -> None:
+        """A degraded DNS tier renders a DNS line naming the tier and its explanation."""
+        from terok.lib.core.task_display import dns_tier_warning
+
+        warn = dns_tier_warning("dig")
+        assert_rendered_needles(
+            render_task_details_text(task_id="99", shield_state="DOWN", dns_tier_warning=warn),
+            ["DNS:", "dig (degraded)", "resolved statically at launch"],
+            [],
+        )
+
+    def test_render_task_details_no_dns_line_when_healthy(self) -> None:
+        """A task with no degraded-tier warning renders no DNS line."""
+        assert "DNS:" not in render_task_details_text(task_id="99", shield_state="UP")
+
+    def test_render_shield_status_marks_degraded_dns_tier(self) -> None:
+        """The host shield screen shows the DNS tier, flagged when degraded."""
+        screens, _ = import_screens()
+        base = {
+            "health": "ok",
+            "podman_version": (6, 0, 2),
+            "hooks": "per-container",
+            "issues": [],
+            "setup_hint": "",
+        }
+        degraded = str(screens.render_shield_status(SimpleNamespace(dns_tier="dig", **base)))
+        assert "DNS:" in degraded and "dig (degraded)" in degraded
+        healthy = str(screens.render_shield_status(SimpleNamespace(dns_tier="dnsmasq", **base)))
+        assert "dnsmasq" in healthy and "degraded" not in healthy
+
     @pytest.mark.parametrize(
         ("overrides", "present", "absent"),
         [

@@ -62,6 +62,7 @@ if _HAS_TEXTUAL:
         needs_setup,
     )
     from terok.lib.api.shield import RecoveryStatus, ShieldManager
+    from terok.lib.api.task import dns_tier_warning
     from terok.lib.api.vault import PassphraseChangeResult, RunningTask, VaultStatus
 
     from ..lib.api import (
@@ -1639,21 +1640,25 @@ if _HAS_TEXTUAL:
             )
 
         @staticmethod
-        def _load_shield_state(project_name: str, task: TaskMeta) -> tuple[str, str, str | None]:
-            """Query shield state for a task (runs in thread)."""
+        def _load_shield_state(
+            project_name: str, task: TaskMeta
+        ) -> tuple[str, str, str | None, str | None]:
+            """Query shield state and recorded DNS tier for a task (runs in thread)."""
             try:
                 project = load_project(project_name)
                 mode = task.mode or "cli"
                 cname = container_name(project_name, mode, task.task_id)
                 task_dir = project.tasks_root / str(task.task_id)
-                st = ShieldManager(task_dir).state(cname)
+                manager = ShieldManager(task_dir)
+                st = manager.state(cname)
                 # ``ShieldManager.state`` returns an Any-annotated
                 # ShieldState (importlinter keeps terok_shield out of
                 # this layer); the runtime value is an enum whose
-                # ``.name`` is the display string.
-                return project_name, task.task_id, st.name
+                # ``.name`` is the display string.  ``dns_tier`` is the
+                # tier this task launched with (a cheap file read).
+                return project_name, task.task_id, st.name, manager.dns_tier
             except Exception:
-                return project_name, task.task_id, None
+                return project_name, task.task_id, None, None
 
         # ---------- Selection handlers (from widgets) ----------
 
@@ -1900,12 +1905,13 @@ if _HAS_TEXTUAL:
                 result = worker.result
                 if not result:
                     return
-                project_name, task_id, shield_st = result
+                project_name, task_id, shield_st, dns_tier = result
                 if project_name != self.current_project_name:
                     return
                 if not self.current_task or self.current_task.task_id != task_id:
                     return
                 self.current_task.shield_state = shield_st
+                self.current_task.dns_tier_warning = dns_tier_warning(dns_tier)
                 details = self.query_one("#task-details", TaskDetails)
                 details.set_task(self.current_task, image_old=self._last_image_old)
                 return

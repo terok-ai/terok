@@ -95,3 +95,46 @@ def mode_info(mode: str | None) -> ModeInfo:
     """Return the display info for a task mode string."""
     info = MODE_DISPLAY.get(mode if isinstance(mode, str) else None)
     return info if info else MODE_DISPLAY[None]
+
+
+# ── DNS tier degradation ───────────────────────────────────────────────
+
+#: DNS tiers that resolve the egress allowlist statically at launch, with no
+#: live IP-rotation handling.  A task on one of these gets an operator warning
+#: next to its shield posture.  The healthy tier is ``dnsmasq``.
+DEGRADED_DNS_TIERS = ("dig", "getent")
+
+
+@dataclass(frozen=True)
+class DnsTierWarning:
+    """A degraded-DNS-tier warning for one task.
+
+    This task's egress allowlist resolved statically at launch (``dig`` or
+    ``getent``), so there is no live IP-rotation handling.  ``detail`` is
+    the operator-facing explanation.
+    """
+
+    tier: str
+    detail: str
+
+    @property
+    def headline(self) -> str:
+        """Compact one-line summary: the degraded tier."""
+        return f"{self.tier} (degraded)"
+
+
+def dns_tier_warning(task_tier: str | None) -> DnsTierWarning | None:
+    """Flag a task on a degraded DNS tier, or ``None`` when it is healthy.
+
+    A degraded *task_tier* (``dig``/``getent``) means this task's egress
+    allowlist resolved statically at launch, with no live IP-rotation
+    handling.  The healthy tier is ``dnsmasq``.  The warning is scoped to
+    the task; why its tier degraded (e.g. AppArmor-confined dnsmasq) is in
+    the task log and shield status, not asserted here.
+    """
+    if task_tier not in DEGRADED_DNS_TIERS:
+        return None
+    return DnsTierWarning(
+        tier=task_tier,
+        detail="egress allowlist resolved statically at launch (no live IP-rotation)",
+    )

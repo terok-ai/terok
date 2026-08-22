@@ -24,11 +24,14 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from terok.lib.core.task_display import (
         DEBUG_BADGE as DEBUG_BADGE,
+        DEGRADED_DNS_TIERS as DEGRADED_DNS_TIERS,
         GPU_DISPLAY as GPU_DISPLAY,
         SECURITY_CLASS_DISPLAY as SECURITY_CLASS_DISPLAY,
         STATUS_DISPLAY as STATUS_DISPLAY,
+        DnsTierWarning as DnsTierWarning,
         ModeInfo as ModeInfo,
         StatusInfo as StatusInfo,
+        dns_tier_warning as dns_tier_warning,
         mode_info as mode_info,
     )
     from terok.lib.core.task_state import (
@@ -86,6 +89,8 @@ _LAZY: dict[str, str] = {
     "CONTAINER_MODES": "terok.lib.core.task_state",
     "ContainerEventStream": "terok.lib.orchestration.tasks",
     "DEBUG_BADGE": "terok.lib.core.task_display",
+    "DEGRADED_DNS_TIERS": "terok.lib.core.task_display",
+    "DnsTierWarning": "terok.lib.core.task_display",
     "GPU_DISPLAY": "terok.lib.core.task_display",
     "HeadlessRunRequest": "terok.lib.orchestration.task_runners",
     "LogViewOptions": "terok.lib.domain.task_logs",
@@ -99,6 +104,7 @@ _LAZY: dict[str, str] = {
     "agent_config_dir": "terok.lib.orchestration.tasks",
     "container_event_stream": "terok.lib.orchestration.tasks",
     "container_name": "terok.lib.core.task_state",
+    "dns_tier_warning": "terok.lib.core.task_display",
     "effective_status": "terok.lib.core.task_state",
     "ensure_task_running": "terok.lib.orchestration.task_runners",
     "generate_task_name": "terok.lib.orchestration.tasks",

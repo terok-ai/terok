@@ -165,6 +165,19 @@ def render_task_details(
                         style=Style(color=error_color),
                     )
                 )
+    if task.dns_tier_warning:
+        # Degraded DNS tier (dig/getent): the task's egress allowlist resolves
+        # statically at launch, without IP-rotation handling.  Shown red, next
+        # to the shield posture.
+        warn = task.dns_tier_warning
+        dns_error_color = variables.get("error", "red")
+        lines.append(
+            Text.assemble(
+                "DNS:       ",
+                Text(warn.headline, style=Style(color=dns_error_color, bold=True)),
+            )
+        )
+        lines.append(Text(f"           {warn.detail}", style=Style(color=dns_error_color)))
     if task.mode == "run":
         if task.exit_code is not None:
             lines.append(Text(f"Exit code: {task.exit_code}"))

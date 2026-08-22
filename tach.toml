@@ -756,6 +756,9 @@ expose = [
     "ISOLATION_DISPLAY",
     "GPU_DISPLAY",
     "mode_info",
+    "DEGRADED_DNS_TIERS",
+    "DnsTierWarning",
+    "dns_tier_warning",
 ]
 from = ["terok.lib.core.task_display"]
 

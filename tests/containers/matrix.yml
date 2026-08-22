@@ -50,6 +50,8 @@ slots:
     extra-packages: [openssh, dbus, dbus-devel, glib-devel, pkgconf, meson, libkeyutils]
   mageia:
     extra-packages: [openssh-clients, dbus, dbus-devel, glib2-devel, pkgconf, meson, lib64keyutils1]
+  manjaro:
+    extra-packages: [openssh, dbus, glib2, pkgconf, meson, keyutils]
   nix:
     groups: [test, docs]
     expect: []

@@ -2336,6 +2336,22 @@ _SHIELD_HEALTH_STYLES: dict[str, str] = {
 }
 
 
+def _shield_dns_line(dns_tier: str) -> Text:
+    """The shield-status DNS line: the active tier, red when degraded.
+
+    A degraded tier (``dig``/``getent``) resolves the egress allowlist
+    statically, with no IP-rotation handling; its host-wide reason shows
+    under Issues below.  The healthy tier is ``dnsmasq``.
+    """
+    from ..lib.api import DEGRADED_DNS_TIERS
+
+    label = dns_tier or "unknown"
+    degraded = dns_tier in DEGRADED_DNS_TIERS
+    style = Style(color="red", bold=True) if degraded else Style()
+    suffix = " (degraded)" if degraded else ""
+    return Text.assemble("DNS:       ", Text(f"{label}{suffix}", style=style))
+
+
 def render_shield_status(
     env_check: EnvironmentCheck | None, shield_info: dict | None = None
 ) -> Text:
@@ -2363,6 +2379,7 @@ def render_shield_status(
         Text(f"Podman:    {podman_str}"),
         Text.assemble("Health:    ", health_s),
         Text(f"Hooks:     {env_check.hooks}"),
+        _shield_dns_line(getattr(env_check, "dns_tier", "") or ""),
     ]
 
     # Config details from shield_info (mode, audit, profiles)

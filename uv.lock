@@ -4,14 +4,14 @@ requires-python = ">=3.12, <3.15"
 
 [[package]]
 name = "agent-client-protocol"
-version = "0.12.0"
+version = "0.12.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "pydantic" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/f8/50/65bfb4e3e13f350a52c368cbfc4bc36a1b3b3f34a6b3f5a2e3551e1bd63b/agent_client_protocol-0.12.0.tar.gz", hash = "sha256:4d42ac680388556b038cb6dd58dbbbd1561f9e545a334c1a352cc055f98b1c79", size = 135037, upload-time = "2026-08-01T15:58:22.35Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/9d/95/2c28ca34e545ce0282e88272aa3a8abdf8f3f926a0492f567ea11acd071b/agent_client_protocol-0.12.1.tar.gz", hash = "sha256:9963ccb590ed96d7dc542c9c023e90676fc76b1c6562e21a9ee112f4fbcb0095", size = 130605, upload-time = "2026-08-16T14:08:22.545Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/9c/c7/b84b8698879464bd8f869551bac31454bed14a3a22910f65d9693f3701bd/agent_client_protocol-0.12.0-py3-none-any.whl", hash = "sha256:233626748034896214de118f5cf5a319484ad2186705fd595219afee92237ccc", size = 92992, upload-time = "2026-08-01T15:58:21.216Z" },
+    { url = "https://files.pythonhosted.org/packages/21/61/0a2186c8ca53cf464767d4c4fb7fd9e23f48ce4547c2fa0d1c83a4d52410/agent_client_protocol-0.12.1-py3-none-any.whl", hash = "sha256:aaf3cc301ed87d9e2c4ccb91adfe1cd58784355f6ce7e513f50e7ca2391862ef", size = 85929, upload-time = "2026-08-16T14:08:21.307Z" },
 ]
 
 [[package]]
@@ -1610,11 +1610,11 @@ wheels = [
 
 [[package]]
 name = "packaging"
-version = "26.2"
+version = "26.3"
 source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/d7/f1/e7a6dd94a8d4a5626c03e4e99c87f241ba9e350cd9e6d75123f992427270/packaging-26.2.tar.gz", hash = "sha256:ff452ff5a3e828ce110190feff1178bb1f2ea2281fa2075aadb987c2fb221661", size = 228134, upload-time = "2026-04-24T20:15:23.917Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/7d/fa/3944b40b07da9ce895c0e6303a5ab7d53da063554f534556b134a54d6093/packaging-26.3.tar.gz", hash = "sha256:94edc256424af38762eb31306eed28beb9f0efc50a8837492c9d6fd6004aed79", size = 313412, upload-time = "2026-08-04T18:15:28.737Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/df/b2/87e62e8c3e2f4b32e5fe99e0b86d576da1312593b39f47d8ceef365e95ed/packaging-26.2-py3-none-any.whl", hash = "sha256:5fc45236b9446107ff2415ce77c807cee2862cb6fac22b8a73826d0693b0980e", size = 100195, upload-time = "2026-04-24T20:15:22.081Z" },
+    { url = "https://files.pythonhosted.org/packages/63/34/ba1c580383c9eada3711951fef0795c80b829a078d72188184bcab9dd527/packaging-26.3-py3-none-any.whl", hash = "sha256:d7193f7c8e4e93f444fde0262bf90af30e16fa0ad0ad44cb553c87339b23cd1c", size = 129956, upload-time = "2026-08-04T18:15:27.159Z" },
 ]
 
 [[package]]
@@ -2390,16 +2390,16 @@ test = [
 requires-dist = [
     { name = "argcomplete", specifier = "~=3.7" },
     { name = "jinja2", specifier = "~=3.1" },
-    { name = "platformdirs", specifier = "~=4.10" },
+    { name = "platformdirs", specifier = "~=4.11" },
     { name = "pydantic", specifier = "~=2.13" },
     { name = "requests", specifier = "~=2.34" },
     { name = "rich", specifier = "~=15.0" },
     { name = "ruamel-yaml", specifier = "==0.19.1" },
-    { name = "terok-clearance", url = "https://github.com/terok-ai/terok-clearance/releases/download/v0.8.0a8/terok_clearance-0.8.0a8-py3-none-any.whl" },
-    { name = "terok-executor", url = "https://github.com/terok-ai/terok-executor/releases/download/v0.4.0a22/terok_executor-0.4.0a22-py3-none-any.whl" },
-    { name = "terok-sandbox", url = "https://github.com/terok-ai/terok-sandbox/releases/download/v0.5.0a23/terok_sandbox-0.5.0a23-py3-none-any.whl" },
-    { name = "terok-shield", url = "https://github.com/terok-ai/terok-shield/releases/download/v0.8.0a10/terok_shield-0.8.0a10-py3-none-any.whl" },
-    { name = "terok-util", url = "https://github.com/terok-ai/terok-util/releases/download/v0.3.1a5/terok_util-0.3.1a5-py3-none-any.whl" },
+    { name = "terok-clearance", git = "https://github.com/sliwowitz/terok-clearance.git?rev=test%2Fmatrix-manjaro-slot" },
+    { name = "terok-executor", git = "https://github.com/sliwowitz/terok-executor.git?rev=test%2Fmatrix-manjaro-slot" },
+    { name = "terok-sandbox", git = "https://github.com/sliwowitz/terok-sandbox.git?rev=fix%2Fapparmor-dnsmasq-glob-and-manjaro-matrix" },
+    { name = "terok-shield", git = "https://github.com/sliwowitz/terok-shield.git?rev=fix%2Fdns-fallback-resolv-and-manjaro-matrix" },
+    { name = "terok-util", git = "https://github.com/sliwowitz/terok-util.git?rev=feat%2Fmatrix-manjaro-slot" },
     { name = "textual", extras = ["syntax"], specifier = "~=8.2.8" },
     { name = "textual-serve", specifier = "~=1.1" },
     { name = "unique-namer", specifier = "~=1.6" },
@@ -2416,7 +2416,7 @@ dev = [
     { name = "mypy", specifier = ">=2.2.0,<3.0" },
     { name = "pre-commit", specifier = ">=4.0" },
     { name = "reuse", specifier = ">=6.2.0,<7" },
-    { name = "ruff", specifier = ">=0.15.21" },
+    { name = "ruff", specifier = "~=0.16.0" },
     { name = "tach", specifier = ">=0.35.0,<0.36" },
     { name = "textual-dev", specifier = ">=1.8.0,<2" },
     { name = "vulture", specifier = ">=2.12" },
@@ -2440,30 +2440,19 @@ test = [
 
 [[package]]
 name = "terok-clearance"
-version = "0.8.0a8"
-source = { url = "https://github.com/terok-ai/terok-clearance/releases/download/v0.8.0a8/terok_clearance-0.8.0a8-py3-none-any.whl" }
+version = "0.8.0a9.dev222+ge10e8b752"
+source = { git = "https://github.com/sliwowitz/terok-clearance.git?rev=test%2Fmatrix-manjaro-slot#e10e8b752a03d00932206b49494dcf898e88da75" }
 dependencies = [
     { name = "asyncvarlink" },
     { name = "dbus-fast" },
     { name = "pyyaml" },
     { name = "terok-util" },
 ]
-wheels = [
-    { url = "https://github.com/terok-ai/terok-clearance/releases/download/v0.8.0a8/terok_clearance-0.8.0a8-py3-none-any.whl", hash = "sha256:ee2d98a0011dde0197c7e14c61db38f6cd6235ccb8626f045dcbeef974301648" },
-]
-
-[package.metadata]
-requires-dist = [
-    { name = "asyncvarlink", specifier = "==0.3.2" },
-    { name = "dbus-fast", specifier = "~=5.0" },
-    { name = "pyyaml", specifier = "~=6.0" },
-    { name = "terok-util", url = "https://github.com/terok-ai/terok-util/releases/download/v0.3.1a5/terok_util-0.3.1a5-py3-none-any.whl" },
-]
 
 [[package]]
 name = "terok-executor"
-version = "0.4.0a22"
-source = { url = "https://github.com/terok-ai/terok-executor/releases/download/v0.4.0a22/terok_executor-0.4.0a22-py3-none-any.whl" }
+version = "0.4.0a23.dev470+g22ba951bd"
+source = { git = "https://github.com/sliwowitz/terok-executor.git?rev=test%2Fmatrix-manjaro-slot#22ba951bd5c06f9f0dc3af7e28a57e34d3e71530" }
 dependencies = [
     { name = "agent-client-protocol" },
     { name = "jinja2" },
@@ -2475,27 +2464,11 @@ dependencies = [
     { name = "terok-util" },
     { name = "tomli-w" },
 ]
-wheels = [
-    { url = "https://github.com/terok-ai/terok-executor/releases/download/v0.4.0a22/terok_executor-0.4.0a22-py3-none-any.whl", hash = "sha256:d4009453ac20fcb46dbd05a083e5d1b696688f6d82f39b1ee0181fb3627d25cb" },
-]
-
-[package.metadata]
-requires-dist = [
-    { name = "agent-client-protocol", specifier = "==0.12.0" },
-    { name = "jinja2", specifier = "~=3.1" },
-    { name = "prompt-toolkit", specifier = "~=3.0" },
-    { name = "pydantic", specifier = "~=2.13" },
-    { name = "rich", specifier = "~=15.0" },
-    { name = "ruamel-yaml", specifier = "==0.19.1" },
-    { name = "terok-sandbox", url = "https://github.com/terok-ai/terok-sandbox/releases/download/v0.5.0a23/terok_sandbox-0.5.0a23-py3-none-any.whl" },
-    { name = "terok-util", url = "https://github.com/terok-ai/terok-util/releases/download/v0.3.1a5/terok_util-0.3.1a5-py3-none-any.whl" },
-    { name = "tomli-w", specifier = "~=1.2" },
-]
 
 [[package]]
 name = "terok-sandbox"
-version = "0.5.0a23"
-source = { url = "https://github.com/terok-ai/terok-sandbox/releases/download/v0.5.0a23/terok_sandbox-0.5.0a23-py3-none-any.whl" }
+version = "0.5.0a24.dev463+ga4ce6f601"
+source = { git = "https://github.com/sliwowitz/terok-sandbox.git?rev=fix%2Fapparmor-dnsmasq-glob-and-manjaro-matrix#a4ce6f6011b5925fd9843370e52ac25424f5f91d" }
 dependencies = [
     { name = "aiohttp" },
     { name = "cryptography" },
@@ -2511,65 +2484,25 @@ dependencies = [
     { name = "terok-shield" },
     { name = "terok-util" },
 ]
-wheels = [
-    { url = "https://github.com/terok-ai/terok-sandbox/releases/download/v0.5.0a23/terok_sandbox-0.5.0a23-py3-none-any.whl", hash = "sha256:e85f8565c35ab441bd508fac2e523b78d6bfc4ad1ba9424208547e1cd5ff16ab" },
-]
-
-[package.metadata]
-requires-dist = [
-    { name = "aiohttp", specifier = "~=3.14.1" },
-    { name = "cryptography", specifier = ">=49,<51" },
-    { name = "jinja2", specifier = "~=3.1" },
-    { name = "keyring", specifier = "~=25.7" },
-    { name = "packaging", specifier = "~=26.2" },
-    { name = "platformdirs", specifier = "~=4.10" },
-    { name = "prompt-toolkit", specifier = "~=3.0" },
-    { name = "pydantic", specifier = "~=2.13" },
-    { name = "ruamel-yaml", specifier = "==0.19.1" },
-    { name = "sqlcipher3", specifier = "==0.6.2" },
-    { name = "terok-clearance", url = "https://github.com/terok-ai/terok-clearance/releases/download/v0.8.0a8/terok_clearance-0.8.0a8-py3-none-any.whl" },
-    { name = "terok-shield", url = "https://github.com/terok-ai/terok-shield/releases/download/v0.8.0a10/terok_shield-0.8.0a10-py3-none-any.whl" },
-    { name = "terok-util", url = "https://github.com/terok-ai/terok-util/releases/download/v0.3.1a5/terok_util-0.3.1a5-py3-none-any.whl" },
-]
 
 [[package]]
 name = "terok-shield"
-version = "0.8.0a10"
-source = { url = "https://github.com/terok-ai/terok-shield/releases/download/v0.8.0a10/terok_shield-0.8.0a10-py3-none-any.whl" }
+version = "0.8.0a11.dev362+g5b442e5f1"
+source = { git = "https://github.com/sliwowitz/terok-shield.git?rev=fix%2Fdns-fallback-resolv-and-manjaro-matrix#5b442e5f128d09d29176bb0a5e418496c22d6460" }
 dependencies = [
     { name = "pydantic" },
     { name = "pyyaml" },
     { name = "terok-util" },
 ]
-wheels = [
-    { url = "https://github.com/terok-ai/terok-shield/releases/download/v0.8.0a10/terok_shield-0.8.0a10-py3-none-any.whl", hash = "sha256:a589e80024e1e4336348eb19561a827c8f010825363075630a0f007bc22c7421" },
-]
-
-[package.metadata]
-requires-dist = [
-    { name = "pydantic", specifier = "~=2.13" },
-    { name = "pyyaml", specifier = "~=6.0" },
-    { name = "terok-util", url = "https://github.com/terok-ai/terok-util/releases/download/v0.3.1a5/terok_util-0.3.1a5-py3-none-any.whl" },
-]
 
 [[package]]
 name = "terok-util"
-version = "0.3.1a5"
-source = { url = "https://github.com/terok-ai/terok-util/releases/download/v0.3.1a5/terok_util-0.3.1a5-py3-none-any.whl" }
+version = "0.3.1a6.dev97+ga587ca364"
+source = { git = "https://github.com/sliwowitz/terok-util.git?rev=feat%2Fmatrix-manjaro-slot#a587ca364b11ca09f3836aa48fdba57fb8263303" }
 dependencies = [
     { name = "jinja2" },
     { name = "platformdirs" },
     { name = "ruamel-yaml" },
-]
-wheels = [
-    { url = "https://github.com/terok-ai/terok-util/releases/download/v0.3.1a5/terok_util-0.3.1a5-py3-none-any.whl", hash = "sha256:7be655245a7cf5589909cf2e02b9d85a8a2241db59658808b4043b74de8ec699" },
-]
-
-[package.metadata]
-requires-dist = [
-    { name = "jinja2", specifier = "~=3.1" },
-    { name = "platformdirs", specifier = "~=4.10" },
-    { name = "ruamel-yaml", specifier = "==0.19.1" },
 ]
 
 [[package]]

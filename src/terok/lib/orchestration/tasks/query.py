@@ -13,6 +13,7 @@ from typing import Any, Protocol
 
 from ...core.project_model import is_valid_project_name
 from ...core.projects import load_project
+from ...core.task_display import DnsTierWarning
 from ...core.task_state import TaskState, container_name, effective_status
 from ...core.work_status import read_work_status
 from ..container_exec import container_git_diff
@@ -98,6 +99,11 @@ class TaskMeta(TaskState):
     work_status: str | None = None
     work_message: str | None = None
     shield_state: str | None = None
+    dns_tier_warning: DnsTierWarning | None = None
+    """Degraded-DNS-tier warning for this task, or ``None`` when the task runs
+    on the healthy ``dnsmasq`` tier (or its tier is not yet known).  Populated
+    at runtime by the TUI's shield-state worker, never persisted — like
+    [`shield_state`][terok.lib.orchestration.tasks.query.TaskMeta.shield_state]."""
     created_at: str | None = None
 
     @property
