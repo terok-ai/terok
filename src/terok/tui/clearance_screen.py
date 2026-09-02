@@ -38,7 +38,7 @@ from textual.app import App, ComposeResult
 from textual.message import Message
 from textual.widgets import Footer, ListItem, ListView, RichLog, Static
 
-from .screens import _modal_binding
+from .screens import _footer_binding, _modal_binding
 
 try:  # pragma: no cover - optional import for test stubs
     from textual.css.query import NoMatches
@@ -146,11 +146,15 @@ def _render_notification(message: NotificationPosted) -> str:
 class ClearanceScreen(screen.Screen[None]):
     """Full-page screen for live D-Bus shield clearance verdicts."""
 
+    #: The keys *are* this screen's interface — a verdict is what the
+    #: operator came here to give — so they carry into the footer.  Only
+    #: one of the two "Back" keys is shown; both in the bar would spend a
+    #: third of it saying the same thing twice.
     BINDINGS = [
         _modal_binding("escape", "dismiss_screen", "Back"),
-        _modal_binding("q", "dismiss_screen", "Back"),
-        _modal_binding("a", "allow_selected", "Allow"),
-        _modal_binding("x", "deny_selected", "Deny"),
+        _footer_binding("q", "dismiss_screen", "Back"),
+        _footer_binding("a", "allow_selected", "Allow"),
+        _footer_binding("x", "deny_selected", "Deny"),
     ]
 
     CSS = """
@@ -309,6 +313,12 @@ class ClearanceScreen(screen.Screen[None]):
             item = ListItem(label)
             item.clearance_nid = message.nid  # type: ignore[attr-defined]
             pending_list.append(item)
+            # Highlight the first arrival.  ``append`` leaves ``index`` at
+            # ``None``, and every verdict action reads
+            # ``highlighted_child`` — so without this the operator sees a
+            # request, presses Allow, and is told nothing is selected.
+            if getattr(pending_list, "index", None) is None:
+                pending_list.index = 0
             # The style alone communicates "this is a block" — drop the redundant
             # "BLOCKED  " prefix that used to double up with the "Blocked:" title.
             log.write(Text(rendered, style=_STYLE_BLOCKED))

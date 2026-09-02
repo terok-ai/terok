@@ -83,6 +83,20 @@ def _modal_binding(key: str, action: str, description: str) -> Any:
     return Binding(key, action, description, show=False)
 
 
+def _footer_binding(key: str, action: str, description: str) -> Any:
+    """Like [`_modal_binding`][terok.tui.screens._modal_binding], but shown in the footer.
+
+    A screen whose keys are its whole interface has to advertise them:
+    the ``Footer`` renders only bindings with ``show=True``, so a screen
+    built entirely from ``_modal_binding`` presents an empty bar and
+    leaves the operator guessing.  Use this for the few keys that *are*
+    the screen's interface, and ``_modal_binding`` for the rest.
+    """
+    if Binding is None:
+        return (key, action, description)
+    return Binding(key, action, description, show=True)
+
+
 # ---------------------------------------------------------------------------
 # Shared CSS for full-page detail screens
 # ---------------------------------------------------------------------------

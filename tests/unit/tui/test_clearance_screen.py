@@ -255,6 +255,58 @@ class TestOnNotificationPosted:
         log.write.assert_called_once()
         assert "Pending (1)" in pending_list.border_title
 
+    def _blocked(self, mod: Any, nid: int = 42) -> Any:
+        """One blocked-connection notification, the kind that queues a request."""
+        return mod.NotificationPosted(
+            nid=nid,
+            summary="Blocked: seznam.cz:80",
+            body="Container: my-task\nProtocol: TCP",
+            actions=[("allow", "Allow"), ("deny", "Deny")],
+            replaces_id=0,
+            container_id="fa0905d97a1c",
+            container_name="my-task",
+        )
+
+    def test_the_verdict_keys_reach_the_footer(self) -> None:
+        """A ``Footer`` renders only ``show=True`` bindings, and these keys are the screen.
+
+        Every binding here used to be built with ``_modal_binding``
+        (``show=False``), so the bar came up empty and the operator was
+        left to guess that a verdict is given with ``a`` or ``x``.
+        """
+        mod = _import_clearance()
+        shown = {
+            binding._stub_args[0]: binding._stub_args[2]
+            for binding in mod.ClearanceScreen.BINDINGS
+            if binding._stub_kwargs.get("show")
+        }
+        assert shown == {"q": "Back", "a": "Allow", "x": "Deny"}
+
+    def test_first_pending_request_is_highlighted(self) -> None:
+        """Every verdict action reads ``highlighted_child``, so something must be highlighted.
+
+        ``ListView.append`` leaves ``index`` at ``None``.  Without this the
+        operator sees a request, presses Allow, and is told that nothing is
+        selected — with no cue that a selection was ever needed.
+        """
+        mod = _import_clearance()
+        screen, _log, pending_list = self._screen_with_mocked_queries(mod)
+        pending_list.index = None
+
+        screen.on_notification_posted(self._blocked(mod))
+
+        assert pending_list.index == 0
+
+    def test_a_standing_highlight_survives_a_new_request(self) -> None:
+        """A request arriving must not move the selection out from under a keypress."""
+        mod = _import_clearance()
+        screen, _log, pending_list = self._screen_with_mocked_queries(mod)
+        pending_list.index = 3
+
+        screen.on_notification_posted(self._blocked(mod, nid=43))
+
+        assert pending_list.index == 3
+
     def test_verdict_applied_clears_pending_and_logs(self) -> None:
         """A notification with ``replaces_id`` matching a pending entry resolves it."""
         mod = _import_clearance()
