@@ -51,6 +51,18 @@ run:
   # comma-separate to combine.
   gpus: "{{GPUS}}"
 {%- endif %}
+{%- if SHIELD_SETS != "none" %}
+
+shield:
+  # Curated egress sets granted while the shield is up; `recommended` is
+  # every curated set.  List them with `terok shield sets`.
+  sets: [{{SHIELD_SETS}}]
+{%- else %}
+
+# shield:
+#   sets: [recommended]   # uncomment to grant the curated egress sets while
+#                         # the shield is up — see `terok shield sets`.
+{%- endif %}
 {%- if SECURITY_CLASS == "gatekeeping" %}
 
 # The gate polls upstream every 5 minutes; uncomment to change the

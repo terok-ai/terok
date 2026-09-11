@@ -105,6 +105,8 @@ async def test_wizard_form_submit_returns_collected_dict() -> None:
     # through to the slug, not the label.
     assert app.result["security_class"] == _question("security_class").resolve_choices()[0].slug
     assert app.result["base"] == _question("base").default
+    # The wizard offers the recommended egress sets: their radio comes first.
+    assert app.result["egress_sets"] == "recommended"
     # Optional fields default to empty strings.
     assert app.result["upstream_url"] == ""
     assert app.result["default_branch"] == ""
@@ -407,6 +409,7 @@ def test_touched_wizard_yaml_survives_roundtrip() -> None:
         "default_branch": "main",
         "agents": "all",
         "user_snippet": "",
+        "egress_sets": "recommended",
     }
     rendered = render_project_yaml(values)
     with (

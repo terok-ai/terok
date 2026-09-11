@@ -34,10 +34,11 @@ run:
 # Egress firewall (shield) per-project policy.
 # shield:
 #   # Curated egress sets granted to this project's tasks (t40 allow tier).
-#   # Unset = the generous default (every curated set, including ones added
-#   # in future releases); [] disables all curated content.  List the
-#   # available names with `terok shield sets`.
-#   sets: [git-hosting, python, os-packages]
+#   # `recommended` grants every curated set, including ones added in future
+#   # releases; unset or [] grants none.  List the available names with
+#   # `terok shield sets`, or freeze a selection such as
+#   # [git-hosting, python, os-packages].
+#   sets: [recommended]
 #   # Extra hosts allowed while the shield is up (below the security-deny).
 #   allow:
 #     - ftp.mirror.example.org

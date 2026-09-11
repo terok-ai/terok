@@ -30,6 +30,7 @@ if TYPE_CHECKING:
     from terok.lib.core.egress_sets import (
         EGRESS_SETS as EGRESS_SETS,
         OS_PACKAGES_SUMMARY as OS_PACKAGES_SUMMARY,
+        RECOMMENDED_SET as RECOMMENDED_SET,
         describe_egress_sets as describe_egress_sets,
         selected_egress_sets as selected_egress_sets,
     )
@@ -95,6 +96,7 @@ _LAZY: dict[str, str] = {
     "BASE_GPU_VENDOR": "terok.lib.domain.wizards.new_project",
     "EGRESS_SETS": "terok.lib.core.egress_sets",
     "OS_PACKAGES_SUMMARY": "terok.lib.core.egress_sets",
+    "RECOMMENDED_SET": "terok.lib.core.egress_sets",
     "CUSTOM_BASE": "terok.lib.domain.wizards.new_project",
     "CUSTOM_IMAGE_WARNING": "terok.lib.domain.wizards.new_project",
     "BrokenProject": "terok.lib.core.projects",

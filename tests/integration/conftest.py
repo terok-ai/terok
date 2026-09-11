@@ -339,13 +339,12 @@ def shield_env(tmp_path: Path) -> TerokShieldIntegrationEnv:
 
 @pytest.fixture()
 def shield_config(shield_env: TerokShieldIntegrationEnv) -> ShieldConfig:
-    """Standard ShieldConfig for integration tests with per-task state_dir."""
+    """ShieldConfig mirroring a terok task: per-task state_dir, gate loopback port, no profile."""
     if ShieldConfig is None or ShieldMode is None:
         pytest.skip(SHIELD_MISSING_SKIP_REASON)
     return ShieldConfig(
         state_dir=shield_env.state_dir,
         mode=ShieldMode.HOOK,
-        default_profiles=("dev-standard",),
         loopback_ports=(GATE_PORT,),
         audit_enabled=True,
     )

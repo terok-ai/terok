@@ -92,7 +92,8 @@ class TestPreStartIntegration:
 
         assert "--annotation" in args
         ann_idx = args.index("--annotation")
-        assert "terok.shield.profiles=dev-standard" in args[ann_idx + 1]
+        # No profile is named, yet the key the OCI hook matches is still set.
+        assert args[ann_idx + 1] == "terok.shield.profiles="
 
         # Global hooks mode: --hooks-dir gated to podman >= 99 (per-container
         # hooks don't survive restart even on 5.8.0, see PR#123)
@@ -117,7 +118,6 @@ class TestPreStartIntegration:
         config = ShieldConfig(
             state_dir=shield_env.state_dir,
             mode=ShieldMode.HOOK,
-            default_profiles=("dev-standard",),
             loopback_ports=(GATE_PORT, 8080),
         )
         args = _pre_start_with_mocks("test-ctr", config)
@@ -130,7 +130,6 @@ class TestPreStartIntegration:
         config = ShieldConfig(
             state_dir=shield_env.state_dir,
             mode=ShieldMode.HOOK,
-            default_profiles=("dev-standard",),
             loopback_ports=(),
         )
         args = _pre_start_with_mocks("test-ctr", config)
@@ -142,7 +141,6 @@ class TestPreStartIntegration:
         config = ShieldConfig(
             state_dir=shield_env.state_dir,
             mode=ShieldMode.HOOK,
-            default_profiles=("dev-standard",),
             loopback_ports=(GATE_PORT,),
         )
         args = _pre_start_with_mocks("test-ctr", config, euid=0)
@@ -194,8 +192,8 @@ class TestProfilesIntegration:
 class TestSandboxRunShieldIntegration:
     """Verify the full path from Sandbox.run() through real shield.
 
-    Now that _run_container() delegates to Sandbox.run(), these tests
-    exercise the sandbox executor directly with real shield pre_start.
+    _run_container() delegates to Sandbox.run(), so these tests exercise
+    the sandbox executor directly with real shield pre_start.
     """
 
     def test_sandbox_run_includes_shield_args(self, shield_env: TerokShieldIntegrationEnv) -> None:
@@ -222,7 +220,6 @@ class TestSandboxRunShieldIntegration:
             ShieldConfig(
                 state_dir=shield_env.state_dir,
                 mode=ShieldMode.HOOK,
-                default_profiles=("dev-standard",),
                 loopback_ports=(GATE_PORT,),
             ),
             runner=MockRunner(),

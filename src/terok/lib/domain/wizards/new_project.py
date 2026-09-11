@@ -42,6 +42,7 @@ from terok.lib.integrations.sandbox import (
 from terok.ui_utils.editor import open_in_editor
 
 from ...core.config import user_projects_dir
+from ...core.egress_sets import RECOMMENDED_SET
 from ...core.project_model import validate_project_name
 
 # ── Vocabulary ────────────────────────────────────────────────────────
@@ -478,6 +479,25 @@ QUESTIONS: tuple[Question, ...] = (
         ),
         required=True,
     ),
+    Question(
+        key="egress_sets",
+        kind="choice",
+        prompt="Curated egress sets while the shield is up",
+        help=(
+            "Recommended covers git hosting, language package registries, "
+            "container registries, and OS package repos.  With none, a task "
+            "reaches only its git remote and its agent's provider endpoints.  "
+            "Change this later with ``terok shield sets`` or the project screen."
+        ),
+        choices=(
+            Choice(
+                RECOMMENDED_SET,
+                f"{RECOMMENDED_SET}: git hosting, package and container registries, OS repos",
+            ),
+            Choice("none", "none: only the git remote and the agent's provider endpoints"),
+        ),
+        required=True,
+    ),
 )
 
 
@@ -786,6 +806,9 @@ def render_project_yaml(values: dict) -> str:
         # template — it matches the runtime default, so writing it back
         # would just add noise to every freshly-created project file.
         "CREDENTIALS_SCOPE": values.get("credentials_scope", "shared"),
+        # ``"none"`` renders a commented hint instead of a ``shield:``
+        # block — an unset ``shield.sets`` grants no curated set.
+        "SHIELD_SETS": values["egress_sets"],
     }
     with resources.as_file(_TEMPLATE_DIR / _TEMPLATE_NAME) as template_path:
         # ``StrictUndefined`` upgrades silent ``{{TYPO}}`` to a hard

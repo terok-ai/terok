@@ -512,12 +512,24 @@ def test_compose_shield_tiers_folds_in_curated_sets() -> None:
     assert "pypi.org" in project_allow  # custom shield.allow rides along
 
 
-def test_compose_shield_tiers_default_sets_include_family_repos() -> None:
-    """Unset ``shield.sets`` applies the generous default, keyed on the image family."""
+def test_compose_shield_tiers_unset_sets_author_no_curated_hosts() -> None:
+    """Unset ``shield.sets`` grants no curated set: t40 holds only the git remote host."""
+    from terok.lib.orchestration.task_runners.container import _compose_shield_tiers
+
+    project = _tier_project(
+        upstream_url="https://github.com/foo/bar.git", shield_sets=None, known_family="deb"
+    )
+
+    assert _compose_shield_tiers(project) == (("github.com",), ())
+
+
+def test_compose_shield_tiers_recommended_includes_family_repos() -> None:
+    """``[recommended]`` grants every curated set, keyed on the image family."""
+    from terok.lib.core.egress_sets import RECOMMENDED_SET
     from terok.lib.integrations.executor import package_repo_hosts
     from terok.lib.orchestration.task_runners.container import _compose_shield_tiers
 
-    project = _tier_project(shield_sets=None, known_family="deb")
+    project = _tier_project(shield_sets=(RECOMMENDED_SET,), known_family="deb")
 
     project_allow, _ = _compose_shield_tiers(project)
 

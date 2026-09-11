@@ -4,9 +4,9 @@
 """Tests for the [`ShieldSetsScreen`][terok.tui.shield_sets_screen.ShieldSetsScreen] egress-set picker.
 
 Pins the dismissal contract the Project Details caller relies on:
-``DEFAULT_SELECTION`` for the master-"All" (generous default) state, an
-explicit tuple otherwise (empty = curated content disabled), ``None`` on
-cancel — plus the master/item cascade shared with the agents picker.
+``("recommended",)`` for the master "Recommended" state, an explicit tuple
+otherwise (empty = no curated sets), ``None`` on cancel — plus the
+master/item cascade.
 """
 
 from __future__ import annotations
@@ -15,11 +15,16 @@ import pytest
 from textual.app import App
 from textual.widgets import Checkbox
 
-from terok.lib.api import EGRESS_SETS
-from terok.tui.shield_sets_screen import DEFAULT_SELECTION, ShieldSetsScreen
+from terok.lib.api import EGRESS_SETS, RECOMMENDED_SET
+from terok.tui.shield_sets_screen import ShieldSetsScreen
 
 _SENTINEL_PENDING = object()
 _SLUGS = tuple(EGRESS_SETS)
+_HOLDS_RECOMMENDED = [
+    pytest.param((RECOMMENDED_SET,), id="alone"),
+    pytest.param((RECOMMENDED_SET, _SLUGS[0]), id="before-a-set"),
+    pytest.param((_SLUGS[0], RECOMMENDED_SET), id="after-a-set"),
+]
 
 
 class _Host(App):
@@ -38,7 +43,7 @@ class _Host(App):
 
 
 def _master(screen: ShieldSetsScreen) -> Checkbox:
-    return screen.query_one("#shield-sets-all", Checkbox)
+    return screen.query_one("#shield-sets-recommended", Checkbox)
 
 
 def _item(screen: ShieldSetsScreen, slug: str) -> Checkbox:
@@ -46,9 +51,24 @@ def _item(screen: ShieldSetsScreen, slug: str) -> Checkbox:
 
 
 @pytest.mark.asyncio
-async def test_unset_initial_is_master_on() -> None:
-    """``initial=None`` (generous default) → master checked, every item checked."""
-    app = _Host(ShieldSetsScreen(initial=None))
+@pytest.mark.parametrize("initial", [None, ()], ids=["unset", "empty"])
+async def test_no_selection_initial_checks_nothing(initial: tuple[str, ...] | None) -> None:
+    """Unset or empty ``shield.sets`` → master off, every item off."""
+    app = _Host(ShieldSetsScreen(initial=initial))
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        screen = app.screen
+        assert isinstance(screen, ShieldSetsScreen)
+        assert _master(screen).value is False
+        for slug in _SLUGS:
+            assert _item(screen, slug).value is False
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("initial", _HOLDS_RECOMMENDED)
+async def test_recommended_initial_arms_master_and_every_item(initial: tuple[str, ...]) -> None:
+    """A selection holding ``recommended`` → master checked, every item checked."""
+    app = _Host(ShieldSetsScreen(initial=initial))
     async with app.run_test() as pilot:
         await pilot.pause()
         screen = app.screen
@@ -73,9 +93,24 @@ async def test_explicit_initial_seeds_named_items_only() -> None:
 
 
 @pytest.mark.asyncio
-async def test_unchecking_item_flips_master_off() -> None:
-    """Removing one set with master on means the snapshot diverges from the default."""
+async def test_toggling_master_sets_every_item() -> None:
+    """Arming master checks every set; disarming it clears them all."""
     app = _Host(ShieldSetsScreen(initial=None))
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        screen = app.screen
+        _master(screen).value = True
+        await pilot.pause()
+        assert all(_item(screen, slug).value for slug in _SLUGS)
+        _master(screen).value = False
+        await pilot.pause()
+        assert not any(_item(screen, slug).value for slug in _SLUGS)
+
+
+@pytest.mark.asyncio
+async def test_unchecking_item_flips_master_off() -> None:
+    """Removing one set with master on turns the selection into an enumeration."""
+    app = _Host(ShieldSetsScreen(initial=(RECOMMENDED_SET,)))
     async with app.run_test() as pilot:
         await pilot.pause()
         screen = app.screen
@@ -85,14 +120,31 @@ async def test_unchecking_item_flips_master_off() -> None:
 
 
 @pytest.mark.asyncio
-async def test_save_with_master_emits_default_sentinel() -> None:
-    """Save with master on returns ``DEFAULT_SELECTION`` — written as null (inherit)."""
+async def test_checking_every_item_by_hand_leaves_master_off() -> None:
+    """Enumerating today's sets freezes that list — it is not ``recommended``."""
     app = _Host(ShieldSetsScreen(initial=None))
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        screen = app.screen
+        for slug in _SLUGS:
+            _item(screen, slug).value = True
+        await pilot.pause()
+        assert _master(screen).value is False
+        await pilot.click("#shield-sets-save")
+        await pilot.pause()
+    assert app.result == _SLUGS
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("initial", _HOLDS_RECOMMENDED)
+async def test_save_with_master_emits_recommended(initial: tuple[str, ...]) -> None:
+    """Save with master on returns the meta-set alone, by name."""
+    app = _Host(ShieldSetsScreen(initial=initial))
     async with app.run_test() as pilot:
         await pilot.pause()
         await pilot.click("#shield-sets-save")
         await pilot.pause()
-    assert app.result == DEFAULT_SELECTION
+    assert app.result == (RECOMMENDED_SET,)
 
 
 @pytest.mark.asyncio
@@ -108,8 +160,8 @@ async def test_save_with_subset_emits_tuple() -> None:
 
 @pytest.mark.asyncio
 async def test_save_with_nothing_selected_emits_empty_tuple() -> None:
-    """Unlike agents, an empty selection is valid: curated content deliberately off."""
-    app = _Host(ShieldSetsScreen(initial=()))
+    """Unlike agents, an empty selection is valid: explicitly no curated sets."""
+    app = _Host(ShieldSetsScreen(initial=None))
     async with app.run_test() as pilot:
         await pilot.pause()
         await pilot.click("#shield-sets-save")

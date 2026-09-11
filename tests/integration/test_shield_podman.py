@@ -58,7 +58,7 @@ class TestShieldEndToEnd:
         container_info = inspect_container_json(shielded_container)
         annotations = container_info.get("Config", {}).get("Annotations", {})
         assert "terok.shield.profiles" in annotations
-        assert "dev-standard" in annotations["terok.shield.profiles"]
+        assert annotations["terok.shield.profiles"] == ""
 
     def test_shield_rules_returns_ruleset(
         self, shielded_container: str, real_shield: Shield

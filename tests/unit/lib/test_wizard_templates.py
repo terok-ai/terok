@@ -52,6 +52,7 @@ def _full_variables(*, security_class: str, base: str, **overrides: str) -> dict
         "AGENTS": overrides.get("agents", "all"),
         "CREDENTIALS_SCOPE": overrides.get("credentials_scope", "shared"),
         "GPUS": overrides.get("gpus", ""),
+        "SHIELD_SETS": overrides.get("shield_sets", "recommended"),
     }
 
 
@@ -76,8 +77,16 @@ class TestProjectTemplate:
 
     @pytest.mark.parametrize("security_class", [c.slug for c in SECURITY_CLASSES])
     @pytest.mark.parametrize("base", [c.slug for c in BASES])
-    def test_renders_for_every_combination(self, security_class: str, base: str) -> None:
-        rendered = _render(security_class, base, project_name=f"proj-{security_class}-{base}")
+    @pytest.mark.parametrize("shield_sets", ["recommended", "none"])
+    def test_renders_for_every_combination(
+        self, security_class: str, base: str, shield_sets: str
+    ) -> None:
+        rendered = _render(
+            security_class,
+            base,
+            project_name=f"proj-{security_class}-{base}",
+            shield_sets=shield_sets,
+        )
         # Every placeholder must be substituted away.
         assert "{{" not in rendered
         assert "{%" not in rendered
@@ -158,6 +167,23 @@ class TestProjectTemplate:
         rendered = _render("online", "ubuntu", credentials_scope="project")
         parsed = yaml.safe_load(rendered)
         assert parsed["credentials"] == {"scope": "project"}
+
+    def test_recommended_shield_sets_renders_an_active_block(self) -> None:
+        """``recommended`` writes ``shield.sets: [recommended]``, which the project schema loads."""
+        from terok.lib.core.egress_sets import RECOMMENDED_SET, validate_egress_sets
+        from terok.lib.core.yaml_schema import RawProjectYaml
+
+        parsed = yaml.safe_load(_render("online", "ubuntu", shield_sets="recommended"))
+        raw = RawProjectYaml.model_validate(parsed)
+        assert raw.shield.sets == [RECOMMENDED_SET]
+        validate_egress_sets(raw.shield.sets)
+
+    def test_none_shield_sets_renders_only_a_commented_hint(self) -> None:
+        """``none`` leaves ``shield.sets`` unset — no curated set applies — with a hint to opt in."""
+        rendered = _render("online", "ubuntu", shield_sets="none")
+        assert "shield" not in yaml.safe_load(rendered)
+        assert "# shield:" in rendered
+        assert "terok shield sets" in rendered
 
     def test_multi_line_user_snippet_keeps_block_scalar_valid(self) -> None:
         """Lines 2+ of USER_SNIPPET must inherit the block scalar's indent."""

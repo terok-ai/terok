@@ -126,30 +126,32 @@ def _resolved_commands() -> tuple[CommandDef, ...]:
 
 
 def _print_set_registry() -> None:
-    """List every curated set with the hosts it grants."""
-    from terok.lib.api import EGRESS_SETS, OS_PACKAGES_SUMMARY
+    """List every curated set with the hosts it grants, then what ``recommended`` expands to."""
+    from terok.lib.api import (
+        EGRESS_SETS,
+        OS_PACKAGES_SUMMARY,
+        RECOMMENDED_SET,
+        selected_egress_sets,
+    )
 
-    print("Curated egress sets (project.yml shield.sets; unset = all):")
+    print("Curated egress sets (project.yml shield.sets; unset = none):")
     for name, hosts in EGRESS_SETS.items():
         print(f"  {name}: {', '.join(hosts) or OS_PACKAGES_SUMMARY}")
+    print(f"  {RECOMMENDED_SET}: {', '.join(selected_egress_sets((RECOMMENDED_SET,)))}")
 
 
 def _print_project_sets(project_name: str) -> None:
-    """Show a project's effective selection and where it comes from."""
-    from terok.lib.api import load_project, selected_egress_sets
+    """Show a project's ``shield.sets`` as authored and the concrete sets it grants."""
+    from terok.lib.api import describe_egress_sets, load_project, selected_egress_sets
 
     sets = load_project(project_name).shield_sets
-    origin = "default: all sets" if sets is None else "from project.yml"
-    print(f"Active egress sets for {project_name} ({origin}):")
-    print("  " + (", ".join(selected_egress_sets(sets)) or "none (curated content disabled)"))
+    print(f"shield.sets for {project_name}: {describe_egress_sets(sets)}")
+    print(f"Active egress sets: {describe_egress_sets(selected_egress_sets(sets))}")
 
 
-def _parse_set_selection(selection: str) -> tuple[str, ...] | None:
-    """Map a ``--set`` value onto ``shield.sets``: 'default' → unset, 'none' → empty."""
-    word = selection.strip().lower()
-    if word == "default":
-        return None
-    if word == "none":
+def _parse_set_selection(selection: str) -> tuple[str, ...]:
+    """Map a ``--set`` value onto ``shield.sets``: 'none' → empty, else the listed names."""
+    if selection.strip().lower() == "none":
         return ()
     return tuple(s.strip() for s in selection.split(",") if s.strip())
 
@@ -167,10 +169,11 @@ def _write_project_sets(project_name: str, selection: str) -> None:
 def _handle_sets(project_name: str | None, selection: str | None) -> None:
     """List the curated egress sets; show or replace a project's selection.
 
-    Without a project: the registry with each set's hosts.  With a project:
-    its effective selection (the generous default when ``shield.sets`` is
-    unset).  With ``--set``: replace the selection (``none`` → explicit
-    empty list) and remind that running containers pick it up on restart.
+    Without a project: the registry with each set's hosts and what
+    ``recommended`` expands to.  With a project: its ``shield.sets`` and
+    the sets it grants (none when unset).  With ``--set``: replace the
+    selection (``none`` → explicit empty list) and remind that running
+    containers pick it up on restart.
     """
     if selection is not None and project_name is None:
         print("Error: --set requires a project name", file=sys.stderr)
@@ -236,8 +239,8 @@ def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) ->
         metavar="SET[,SET…]",
         help=(
             "Replace the project's shield.sets with this comma-separated selection "
-            "('none' disables every curated set, 'default' restores the generous "
-            "default; requires a project name)"
+            "('recommended' grants every curated set, 'none' grants none; "
+            "requires a project name)"
         ),
     )
 

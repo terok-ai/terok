@@ -119,10 +119,14 @@ def _generate() -> str:
         "| Package | Reads | Validation |\n"
         "| --- | --- | --- |\n"
         '| **terok** | All sections | Pydantic `extra="forbid"` — catches typos everywhere |\n'
-        "| **terok-sandbox** | `paths:` only | Raw YAML — ignores unknown top-level keys |\n"
-        "| **terok-executor** | Delegates to sandbox | No direct config file reading |\n\n"
+        "| **terok-executor** | `image:` plus every sandbox section | "
+        "Owned sections strict; unknown top-level sections pass through |\n"
+        "| **terok-sandbox** | `paths:`, `credentials:`, `vault:`, `gate_server:`, "
+        "`services:`, `shield:`, `network:`, `ssh:`, `run:` | "
+        "Each section strict; an invalid section falls back to its defaults with a "
+        "warning; unknown top-level sections pass through |\n\n"
         "This means sandbox and executor never reject terok-only sections "
-        "(`ui:`, `tui:`, `hooks:`, etc.), while terok catches all typos.\n"
+        "(`tui:`, `logs:`, `tasks:`, `git:`), while terok catches all typos.\n"
     )
 
     return buf.getvalue()

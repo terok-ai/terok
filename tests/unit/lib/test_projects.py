@@ -728,10 +728,10 @@ class TestProject:
         ]
 
     def test_shield_sets_load_and_default(self) -> None:
-        """An explicit ``shield.sets`` loads as a tuple; unset stays ``None`` (default)."""
-        yaml_text = project_yaml("proj-shield-sets") + ("shield:\n  sets: [python]\n")
+        """``shield.sets`` loads as authored, ``recommended`` included; unset stays ``None``."""
+        yaml_text = project_yaml("proj-shield-sets") + ("shield:\n  sets: [recommended, python]\n")
         with project_env(yaml_text, project_name="proj-shield-sets"):
-            assert load_project("proj-shield-sets").shield_sets == ("python",)
+            assert load_project("proj-shield-sets").shield_sets == ("recommended", "python")
         with project_env(project_yaml("proj-shield-nosets"), project_name="proj-shield-nosets"):
             assert load_project("proj-shield-nosets").shield_sets is None
 
@@ -743,17 +743,18 @@ class TestProject:
                 load_project("proj-shield-badset")
 
     def test_set_project_shield_sets_round_trips(self) -> None:
-        """The writer persists explicit, empty, and back-to-default selections."""
+        """The writer persists the recommended meta-set, an explicit, and an empty selection."""
+        from terok.lib.core.egress_sets import RECOMMENDED_SET
         from terok.lib.core.projects import set_project_shield_sets
 
         name = "proj-shield-write"
         with project_env(project_yaml(name), project_name=name):
+            set_project_shield_sets(name, (RECOMMENDED_SET,))
+            assert load_project(name).shield_sets == (RECOMMENDED_SET,)
             set_project_shield_sets(name, ("python", "git-hosting"))
             assert load_project(name).shield_sets == ("python", "git-hosting")
             set_project_shield_sets(name, ())
             assert load_project(name).shield_sets == ()
-            set_project_shield_sets(name, None)
-            assert load_project(name).shield_sets is None
 
     def test_set_project_shield_sets_validates_names(self) -> None:
         """The writer refuses unknown names before touching project.yml."""

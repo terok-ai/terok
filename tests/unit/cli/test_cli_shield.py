@@ -161,22 +161,27 @@ def test_dispatch_returns_false_for_non_shield_commands() -> None:
 
 
 def test_dispatch_sets_lists_registry() -> None:
-    """Bare ``shield sets`` prints every curated set name."""
-    from terok.lib.api import EGRESS_SETS
+    """Bare ``shield sets`` prints every curated set and what ``recommended`` expands to."""
+    from terok.lib.api import EGRESS_SETS, RECOMMENDED_SET
 
     args = argparse.Namespace(
         cmd="shield", shield_cmd="sets", project_name=None, sets_selection=None
     )
     with patch("sys.stdout", new_callable=StringIO) as out:
         assert dispatch(args)
+    lines = [line.strip() for line in out.getvalue().splitlines()]
     for name in EGRESS_SETS:
-        assert name in out.getvalue()
+        assert any(line.startswith(f"{name}:") for line in lines)
+    recommended_line = next(line for line in lines if line.startswith(f"{RECOMMENDED_SET}:"))
+    assert all(name in recommended_line for name in EGRESS_SETS)
 
 
 def test_dispatch_sets_shows_project_selection() -> None:
-    """``shield sets <project>`` reports the project's effective selection."""
+    """``shield sets <project>`` reports ``shield.sets`` as authored and the sets it grants."""
+    from terok.lib.api import EGRESS_SETS, RECOMMENDED_SET
+
     project = MagicMock()
-    project.shield_sets = ("python",)
+    project.shield_sets = (RECOMMENDED_SET,)
     args = argparse.Namespace(
         cmd="shield", shield_cmd="sets", project_name="proj", sets_selection=None
     )
@@ -185,8 +190,27 @@ def test_dispatch_sets_shows_project_selection() -> None:
         patch("sys.stdout", new_callable=StringIO) as out,
     ):
         assert dispatch(args)
-    assert "python" in out.getvalue()
-    assert "from project.yml" in out.getvalue()
+    authored, active = out.getvalue().splitlines()
+    assert authored.endswith(f": {RECOMMENDED_SET}")
+    assert active.endswith(", ".join(EGRESS_SETS))
+
+
+def test_dispatch_sets_unset_project_grants_no_sets() -> None:
+    """An unset ``shield.sets`` lists no curated set, in the shared no-sets wording."""
+    from terok.lib.api import EGRESS_SETS, describe_egress_sets
+
+    project = MagicMock()
+    project.shield_sets = None
+    args = argparse.Namespace(
+        cmd="shield", shield_cmd="sets", project_name="proj", sets_selection=None
+    )
+    with (
+        patch("terok.lib.api.load_project", return_value=project),
+        patch("sys.stdout", new_callable=StringIO) as out,
+    ):
+        assert dispatch(args)
+    assert describe_egress_sets(None) in out.getvalue()
+    assert not any(name in out.getvalue() for name in EGRESS_SETS)
 
 
 def test_dispatch_sets_writes_selection() -> None:
@@ -205,12 +229,12 @@ def test_dispatch_sets_writes_selection() -> None:
 @pytest.mark.parametrize(
     ("token", "expected"),
     [
-        pytest.param("none", (), id="none-disables"),
-        pytest.param("default", None, id="default-restores"),
+        pytest.param("none", (), id="none-grants-nothing"),
+        pytest.param("recommended", ("recommended",), id="recommended-by-name"),
     ],
 )
 def test_dispatch_sets_special_tokens(token: str, expected: object) -> None:
-    """``--set none`` writes an empty list; ``--set default`` writes null."""
+    """``--set none`` writes an empty list; ``--set recommended`` names the meta-set."""
     args = argparse.Namespace(
         cmd="shield", shield_cmd="sets", project_name="proj", sets_selection=token
     )
@@ -220,6 +244,15 @@ def test_dispatch_sets_special_tokens(token: str, expected: object) -> None:
     ):
         assert dispatch(args)
     writer.assert_called_once_with("proj", expected)
+
+
+def test_dispatch_sets_rejects_unknown_set_name() -> None:
+    """``--set`` with an unknown set name fails before touching project.yml."""
+    args = argparse.Namespace(
+        cmd="shield", shield_cmd="sets", project_name="proj", sets_selection="pythn"
+    )
+    with pytest.raises(SystemExit, match="Unknown shield.sets entry: 'pythn'"):
+        dispatch(args)
 
 
 def test_dispatch_sets_set_requires_project() -> None:

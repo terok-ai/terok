@@ -58,7 +58,7 @@ def _compose_shield_tiers(project: ProjectConfig) -> tuple[tuple[str, ...], tupl
 
     t40 = the upstream git host (so the agent can reach its own remote once
     the shield is UP), the project's curated egress sets (``shield.sets``,
-    defaulting generously to every set; ``os-packages`` resolves by the
+    none unless the project selects them; ``os-packages`` resolves by the
     image's package family), and its custom ``shield.allow`` hosts.  t10 =
     the project's break-glass ``shield.override`` hosts, dropping any whose
     ``expires`` date is in the past.  Both are de-duplicated, order-preserving.

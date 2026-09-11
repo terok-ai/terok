@@ -161,9 +161,9 @@ class ProjectConfig(BaseModel):
     shield_sets: tuple[str, ...] | None = None
     """Curated egress sets granted to tasks (t40).
 
-    ``None`` applies the generous default (every curated set in
-    [`EGRESS_SETS`][terok.lib.core.egress_sets.EGRESS_SETS]); an empty
-    tuple disables all curated content."""
+    ``None`` (unset) and an empty tuple grant no curated set;
+    [`RECOMMENDED_SET`][terok.lib.core.egress_sets.RECOMMENDED_SET] grants
+    every set in [`EGRESS_SETS`][terok.lib.core.egress_sets.EGRESS_SETS]."""
     shield_allow: tuple[str, ...] = ()
     """Extra hosts allowed at egress — shield's t40 project-allow tier."""
     shield_override: tuple[ShieldOverride, ...] = ()

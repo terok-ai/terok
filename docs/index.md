@@ -42,7 +42,7 @@ Terok was started at the
 ### Hardening
 
 - **Rootless Podman** — no daemon, no privileged user namespace
-- **Default-deny egress firewall** with curated allowlist profiles
+- **Default-deny egress firewall** with opt-in curated egress sets
   and per-container audit logs (via
   [terok-shield](https://github.com/terok-ai/terok-shield))
 - **Credential vault** — secrets stay on the host

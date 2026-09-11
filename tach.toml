@@ -551,7 +551,7 @@ path = "terok.lib.core.project_model"
 layer = "core"
 depends_on = []
 
-# Curated egress allowlist sets (shield t40 default content)
+# Curated egress allowlist sets (shield t40 content a project opts into)
 [[modules]]
 path = "terok.lib.core.egress_sets"
 layer = "core"
@@ -718,10 +718,10 @@ from = ["terok.lib.core.project_model"]
 
 [[interfaces]]
 expose = [
-    "DEFAULT_EGRESS_SETS",
     "EGRESS_SETS",
     "OS_PACKAGES_SET",
     "OS_PACKAGES_SUMMARY",
+    "RECOMMENDED_SET",
     "describe_egress_sets",
     "resolve_egress_sets",
     "selected_egress_sets",

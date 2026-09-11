@@ -57,6 +57,7 @@ def wizard_values(
     agents: str | None = None,
     user_snippet: str = "",
     credentials_scope: str = "shared",
+    egress_sets: str = "recommended",
     gpus: str = "",
 ) -> dict[str, object]:
     """Build a wizard value dict with sensible defaults."""
@@ -68,6 +69,7 @@ def wizard_values(
         "default_branch": default_branch,
         "user_snippet": user_snippet,
         "credentials_scope": credentials_scope,
+        "egress_sets": egress_sets,
         "gpus": gpus,
     }
     if agents is not None:
@@ -102,13 +104,21 @@ def test_validate_project_name(project_name: str, valid: bool) -> None:
     ("inputs", "expected"),
     [
         pytest.param(
-            # sec, base, pid, upstream, branch, snippet-y/N, creds-scope, override-agents-y/N
-            ["1", "3", "myproj", "https://example.com/r.git", "main", "n", "1", "n"],
+            # sec, base, pid, upstream, branch, snippet-y/N, creds-scope, egress-sets,
+            # override-agents-y/N
+            ["1", "3", "myproj", "https://example.com/r.git", "main", "n", "1", "1", "n"],
             wizard_values(project_name="myproj", upstream_url="https://example.com/r.git"),
             id="collect-all-values-no-override",
         ),
         pytest.param(
-            ["2", "3", "gkproj", "git@host:r.git", "", "n", "1", "n"],
+            ["1", "3", "proj", "https://example.com/r.git", "main", "n", "1", "2", "n"],
+            wizard_values(
+                project_name="proj", upstream_url="https://example.com/r.git", egress_sets="none"
+            ),
+            id="no-curated-egress-sets",
+        ),
+        pytest.param(
+            ["2", "3", "gkproj", "git@host:r.git", "", "n", "1", "1", "n"],
             wizard_values(
                 security_class="gatekeeping",
                 project_name="gkproj",
@@ -118,7 +128,7 @@ def test_validate_project_name(project_name: str, valid: bool) -> None:
             id="gatekeeping-selection",
         ),
         pytest.param(
-            ["1", "5", "proj", "https://example.com/r.git", "", "n", "1", "n"],
+            ["1", "5", "proj", "https://example.com/r.git", "", "n", "1", "1", "n"],
             wizard_values(
                 base="nvidia",
                 project_name="proj",
@@ -128,7 +138,8 @@ def test_validate_project_name(project_name: str, valid: bool) -> None:
             id="empty-default-branch",
         ),
         pytest.param(
-            # ... snippet=n, creds-scope=project, override-agents=y, then a comma-list selection
+            # ... snippet=n, creds-scope=project, egress-sets=recommended, override-agents=y,
+            # then a comma-list selection
             [
                 "1",
                 "5",
@@ -137,6 +148,7 @@ def test_validate_project_name(project_name: str, valid: bool) -> None:
                 "dev",
                 "n",
                 "2",
+                "1",
                 "y",
                 "claude,vibe",
             ],
@@ -151,12 +163,12 @@ def test_validate_project_name(project_name: str, valid: bool) -> None:
             id="opt-in-agents-override",
         ),
         pytest.param(
-            ["1", "3", "!!!", "good-id", "https://example.com/r.git", "main", "n", "1", "n"],
+            ["1", "3", "!!!", "good-id", "https://example.com/r.git", "main", "n", "1", "1", "n"],
             wizard_values(project_name="good-id", upstream_url="https://example.com/r.git"),
             id="retry-invalid-project-name",
         ),
         pytest.param(
-            ["1", "3", "proj", "", "main", "n", "1", "n"],
+            ["1", "3", "proj", "", "main", "n", "1", "1", "n"],
             wizard_values(project_name="proj", upstream_url=""),
             id="empty-upstream-url-accepted",
         ),
@@ -196,7 +208,17 @@ def test_collect_wizard_inputs_lowercases_project_name() -> None:
     with (
         patch(
             "builtins.input",
-            side_effect=["1", "3", "MyProject", "https://example.com/r.git", "main", "", "1", "n"],
+            side_effect=[
+                "1",
+                "3",
+                "MyProject",
+                "https://example.com/r.git",
+                "main",
+                "",
+                "1",
+                "1",
+                "n",
+            ],
         ),
         patch("builtins.print") as mock_print,
     ):
@@ -734,6 +756,32 @@ class TestQuestionsRegistry:
         assert AGENTS_QUESTION.kind == "multichoice"
         assert AGENTS_QUESTION.choices_loader is not None
         assert AGENTS_QUESTION.resolve_choices()  # loader returns the live roster
+
+
+class TestEgressSetsQuestion:
+    """The curated egress-set choice both presenters ask after the credentials scope."""
+
+    def test_recommended_is_offered_first(self) -> None:
+        """The first choice is the one the TUI preselects — the recommended meta-set."""
+        from terok.lib.core.egress_sets import RECOMMENDED_SET
+
+        choices = _q("egress_sets").resolve_choices()
+        assert [c.slug for c in choices] == [RECOMMENDED_SET, "none"]
+        assert all(c.label.startswith(f"{c.slug}:") for c in choices)
+
+    @pytest.mark.parametrize(
+        ("answer", "shield"),
+        [
+            pytest.param("recommended", {"sets": ["recommended"]}, id="recommended"),
+            pytest.param("none", None, id="none"),
+        ],
+    )
+    def test_render_maps_answer_to_shield_sets(self, answer: str, shield: object) -> None:
+        """``recommended`` writes ``shield.sets: [recommended]``; ``none`` leaves it unset."""
+        import yaml
+
+        parsed = yaml.safe_load(render_project_yaml(wizard_values(egress_sets=answer)))
+        assert parsed.get("shield") == shield
 
 
 # ---------------------------------------------------------------------------

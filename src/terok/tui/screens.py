@@ -317,21 +317,19 @@ class ProjectDetailsScreen(screen.Screen[str | None]):
             self._on_shield_sets_modal_result,
         )
 
-    def _on_shield_sets_modal_result(self, selection: str | tuple[str, ...] | None) -> None:
+    def _on_shield_sets_modal_result(self, selection: tuple[str, ...] | None) -> None:
         """Persist the new selection to ``project.yml``; ``None`` = no change."""
         if selection is None:
             return
         from terok.lib.api import describe_egress_sets, set_project_shield_sets
-        from terok.tui.shield_sets_screen import DEFAULT_SELECTION
 
-        chosen = None if selection == DEFAULT_SELECTION else tuple(selection)
-        path = set_project_shield_sets(self._project.name, chosen)
+        path = set_project_shield_sets(self._project.name, selection)
         # Keep the cached config in sync so a re-open of the modal in
         # this same screen instance seeds from the freshly-saved value.
         # ``ProjectConfig`` is frozen, hence the model_copy.
-        self._project = self._project.model_copy(update={"shield_sets": chosen})
+        self._project = self._project.model_copy(update={"shield_sets": selection})
         self.notify(
-            f"Wrote shield.sets = {describe_egress_sets(chosen)} to {path}\n"
+            f"Wrote shield.sets = {describe_egress_sets(selection)} to {path}\n"
             "Tasks pick it up at their next (re)start.",
             severity="information",
         )
@@ -2394,14 +2392,12 @@ def render_shield_status(
         _shield_dns_line(getattr(env_check, "dns_tier", "") or ""),
     ]
 
-    # Config details from shield_info (mode, audit, profiles)
+    # Config details from shield_info (mode, audit)
     if shield_info:
         mode = shield_info.get("mode", "hook")
         audit = "enabled" if shield_info.get("audit_enabled", True) else "disabled"
-        profiles = shield_info.get("profiles", [])
         lines.append(Text(f"Mode:      {mode}"))
         lines.append(Text(f"Audit:     {audit}"))
-        lines.append(Text(f"Profiles:  {', '.join(profiles) or '(none)'}"))
     if env_check.issues:
         lines.append(Text(""))
         lines.append(Text("Issues:"))
@@ -2479,7 +2475,7 @@ class ShieldScreen(screen.Screen[str | None]):
         self._start_refresh()
 
     def _load_shield_info(self) -> None:
-        """Fetch shield config (mode, audit, profiles) for display."""
+        """Fetch shield config (mode, audit) for display."""
         import tempfile
         from pathlib import Path
 

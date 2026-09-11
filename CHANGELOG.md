@@ -8,6 +8,18 @@
   security-deny tier, which always wins.  Use the new per-project
   `shield.override` break-glass entry (host + reason + optional expiry)
   instead — see the Shield Security guide.
+* **Behavior change — nothing applied implicitly**: terok tasks compose no
+  shield profile, and no curated egress set unless `shield.sets` names
+  one.  While the shield is up, a project without `shield.sets` reaches
+  only its git remote, its agents' provider endpoints, and its own
+  `shield.allow` hosts.  Add `shield.sets: [recommended]` to `project.yml`
+  (or run `terok shield sets <project> --set recommended`) for git
+  hosting, language and container registries, and OS package repos; the
+  new-project wizard offers it.  Move hosts from a customized shield
+  profile under `~/.config/terok/shield/profiles` to `shield.allow`.
+  `config.yml` rejects the `shield.profiles` key, which never took
+  effect: remove it, because terok falls back to defaults for the whole
+  file when `config.yml` fails validation.
 * **Upgrade contract**: containers created by a different shield-bundle
   generation refuse to resume (`terok task restart` fails fast before
   anything is stopped; `terok sickbay` diagnoses them).  Re-create the task

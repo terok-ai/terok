@@ -124,15 +124,19 @@ container registries, and `os-packages` — the distro package repos,
 resolved automatically from the project image's package family
 (`dnf` vs `apt`).  Run `terok shield sets` to list them.
 
-The default is **generous**: every curated set.  Narrow a project via
-`shield.sets` in `project.yml` (the TUI project screen's *Egress sets*
-picker or `terok shield sets <project> --set …` write it):
+No curated set applies unless the project selects it in `shield.sets`
+in `project.yml`; without a selection, the project-allow tier holds only
+the git remote host and the project's own `shield.allow` entries.
+`recommended` names every curated set, including sets added in future
+releases, and the new-project wizard offers it.  The TUI project
+screen's *Egress sets* picker and `terok shield sets <project> --set …`
+write the selection:
 
 ```yaml
 shield:
-  sets: [git-hosting, python, os-packages]   # freeze this exact selection
-  # sets: []                                 # disable all curated content
-  # (unset/null: the generous default — every set, including future ones)
+  sets: [recommended]                          # every curated set, including future ones
+  # sets: [git-hosting, python, os-packages]   # freeze this exact selection
+  # sets: []                                   # explicitly no curated sets, as when unset
 ```
 
 Two caveats worth knowing:
@@ -180,7 +184,7 @@ shield:
 ```
 
 - **`shield.allow`** entries join the project-allow tier alongside the
-  project's git remote host and the configured allow profiles.  They are
+  project's git remote host and its selected curated sets.  They are
   ordinary allows: a security-deny still wins over them.
 - **`shield.override`** entries sit *above* the security-deny — the only
   way to reach a host terok deliberately denies, such as a vault-relayed
@@ -198,10 +202,11 @@ The policy tiers are recomputed from the current roster and project
 config on every launch **and every plain restart**, so config edits reach
 a stopped task the next time it starts.
 
-> **Migration note (0.9):** adding a vault-protected provider endpoint to
-> a custom allowlist profile no longer re-enables direct access — profile
-> entries compose below the security-deny, which always wins.  Use a
-> `shield.override` entry (with its auditable reason and expiry) instead.
+> **Migration note (0.9):** terok tasks compose no shield profile.  Move
+> hosts from a customized profile under `~/.config/terok/shield/profiles`
+> to `shield.allow`.  A vault-protected provider endpoint needs a
+> `shield.override` entry (with its auditable reason and expiry), because
+> allows compose below the security-deny, which always wins.
 
 ---
 

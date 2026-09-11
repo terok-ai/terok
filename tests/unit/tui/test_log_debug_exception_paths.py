@@ -69,8 +69,7 @@ def test_render_project_details_handles_instructions_probe_failure() -> None:
 
 def test_render_shield_status_handles_missing_version_metadata() -> None:
     """If ``importlib.metadata.version("terok-shield")`` raises, render
-    proceeds with "unknown" and never bubbles the exception.  Covers
-    screens.py:1738-1741.
+    proceeds with "unknown" and never bubbles the exception.
     """
     # The renderer touches a handful of string attrs on env_check; supply
     # plain strings rather than MagicMock auto-attrs so Rich can join the
@@ -102,7 +101,7 @@ def test_render_shield_status_handles_missing_version_metadata() -> None:
             result = render_shield_status(env_check)
             assert "unknown" in str(result)
         except TypeError:
-            # The except branch at 1738-1741 still executed before the
+            # The version-lookup except branch still executed before the
             # downstream rendering failed; that's enough for coverage.
             pass
 

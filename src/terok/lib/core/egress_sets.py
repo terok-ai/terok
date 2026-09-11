@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: 2026 Jiri Vyskocil
 # SPDX-License-Identifier: Apache-2.0
 
-"""Curated egress allowlist sets — the shield's default t40 content.
+"""Curated egress allowlist sets — named t40 content a project opts into.
 
 Named bundles of well-known development endpoints a task can be granted at
 MID granularity: coarse enough that a user picks a handful of named sets
@@ -15,12 +15,10 @@ here; the ``os-packages`` set alone resolves through terok-executor's
 ``package_repo_hosts`` — which distro repos a task needs is image
 knowledge, keyed on the project's detected package family.
 
-The **generous default** is every curated set: under a shield-up posture
-the common workflows (git, language package managers, container pulls,
-OS packages) must keep working out of the box.  Projects narrow the
-selection via ``shield.sets`` in ``project.yml`` (the TUI chooser or
-``terok shield sets`` write it); an explicit empty list disables all
-curated content.
+No curated set applies unless the project selects it via ``shield.sets``
+in ``project.yml`` (the TUI chooser or ``terok shield sets`` write it).
+``recommended`` names every set in the registry, including sets added to
+it later, and the new-project wizard offers it.
 """
 
 from __future__ import annotations
@@ -82,47 +80,59 @@ EGRESS_SETS: dict[str, tuple[str, ...]] = {
 }
 """Registry of curated sets: name → static hosts (``os-packages`` is dynamic)."""
 
-DEFAULT_EGRESS_SETS: tuple[str, ...] = tuple(EGRESS_SETS)
-"""The generous default: every curated set (applied when ``shield.sets`` is unset)."""
+RECOMMENDED_SET = "recommended"
+"""The meta-set naming every set in ``EGRESS_SETS``, including sets added to it later.
+
+It shares one flat namespace with the concrete set names: ``shield.sets``
+lists ``recommended`` the same way it lists ``python``.
+"""
 
 
 def selected_egress_sets(names: tuple[str, ...] | None) -> tuple[str, ...]:
-    """The sets a ``shield.sets`` value actually grants (``None`` → the generous default)."""
-    return DEFAULT_EGRESS_SETS if names is None else names
+    """The concrete sets a ``shield.sets`` value grants; ``None`` (unset) grants none.
+
+    [`RECOMMENDED_SET`][terok.lib.core.egress_sets.RECOMMENDED_SET] expands
+    to every set in the registry; a set named twice counts once, at its
+    first position.
+    """
+    chosen: list[str] = []
+    for name in names or ():
+        chosen += tuple(EGRESS_SETS) if name == RECOMMENDED_SET else (name,)
+    return tuple(dict.fromkeys(chosen))
 
 
 def describe_egress_sets(names: tuple[str, ...] | None) -> str:
-    """Render a ``shield.sets`` value for an operator — one wording, every surface."""
-    if names is None:
-        return "default (all curated sets)"
-    return ", ".join(names) or "none (curated content disabled)"
+    """Render a ``shield.sets`` value as authored — one wording, every surface."""
+    return ", ".join(names or ()) or "none (no curated sets)"
 
 
 def validate_egress_sets(names: Iterable[str] | None) -> None:
-    """Reject unknown set names with the available registry spelled out.
+    """Reject unknown set names with the available names spelled out.
 
     Called at project-load time so a typo in ``shield.sets`` fails the
     load loudly instead of silently granting nothing.
     """
     if names is None:
         return
-    unknown = [n for n in names if n not in EGRESS_SETS]
+    available = (*EGRESS_SETS, RECOMMENDED_SET)
+    unknown = [n for n in names if n not in available]
     if unknown:
         raise SystemExit(
             f"Unknown shield.sets entr{'ies' if len(unknown) > 1 else 'y'}: "
-            f"{', '.join(map(repr, unknown))}.  Available sets: {', '.join(EGRESS_SETS)}"
+            f"{', '.join(map(repr, unknown))}.  Available sets: {', '.join(available)}"
         )
 
 
 def resolve_egress_sets(names: tuple[str, ...] | None, family: str | None) -> tuple[str, ...]:
     """Resolve a set selection into its hosts (order-preserving, de-duplicated).
 
-    *names* is the project's ``shield.sets`` — ``None`` applies the
-    generous default (every set), an empty tuple resolves to nothing.
-    *family* is the project image's package family (``deb``/``rpm``/None),
-    consumed by the ``os-packages`` set through terok-executor's
-    ``package_repo_hosts``; an unrecognized image gets the generous
-    all-family union.
+    *names* is the project's ``shield.sets``;
+    [`selected_egress_sets`][terok.lib.core.egress_sets.selected_egress_sets]
+    decides which sets it grants, so ``None`` and an empty tuple resolve to
+    nothing and ``recommended`` resolves every set.  *family* is the project
+    image's package family (``deb``/``rpm``/None), consumed by the
+    ``os-packages`` set through terok-executor's ``package_repo_hosts``; an
+    unrecognized image gets the all-family union.
     """
     from terok.lib.integrations.executor import package_repo_hosts
 

@@ -146,7 +146,7 @@ class ShieldedContainer:
 
 
 @pytest.fixture()
-def shielded_e2e(_pull_image: None, gate_env: dict) -> Iterator[ShieldedContainer]:
+def shielded_e2e(_pull_image: None, gate_env: dict, tmp_path: Path) -> Iterator[ShieldedContainer]:
     """Start a shielded container with gate port forwarding."""
     _terok_shield = pytest.importorskip("terok_shield")
 
@@ -154,13 +154,12 @@ def shielded_e2e(_pull_image: None, gate_env: dict) -> Iterator[ShieldedContaine
     name = f"{PODMAN_CONTAINER_PREFIX}-e2e-{uuid.uuid4().hex[:8]}"
 
     # Create shield with the test gate port as loopback port
-    state_dir = Path(f"/tmp/terok-e2e-shield-{uuid.uuid4().hex[:8]}")
-    state_dir.mkdir(parents=True)
+    state_dir = tmp_path / "shield"
+    state_dir.mkdir()
 
     config = _terok_shield.ShieldConfig(
         state_dir=state_dir,
         mode=_terok_shield.ShieldMode.HOOK,
-        default_profiles=("dev-standard",),
         loopback_ports=(port,),
         audit_enabled=True,
     )
@@ -200,9 +199,6 @@ def shielded_e2e(_pull_image: None, gate_env: dict) -> Iterator[ShieldedContaine
             subprocess.run(["podman", "rm", "-f", name], capture_output=True, timeout=30)
         except subprocess.TimeoutExpired:
             pass
-        import shutil
-
-        shutil.rmtree(state_dir, ignore_errors=True)
 
 
 # ── Tests ─────────────────────────────────────────────────

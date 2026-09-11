@@ -3,12 +3,15 @@
 
 """Picks a project's curated egress sets (``shield.sets``) via a TUI modal.
 
-Dismisses with ``DEFAULT_SELECTION`` (master "All" armed — the generous
-default that inherits sets added in future releases), a tuple of set
-names (an explicit, frozen selection; empty = curated content disabled),
-or ``None`` on cancel.  Mirrors the agents picker's master-checkbox
-cascade: turning any item off un-arms master, because an enumeration is
-a different commitment than "all, including future ones".
+Dismisses with a tuple of set names, or ``None`` on cancel.  With the
+master "Recommended" checkbox armed the tuple holds just
+[`RECOMMENDED_SET`][terok.lib.core.egress_sets.RECOMMENDED_SET] — every
+curated set, including sets added in future releases; otherwise it holds
+the checked sets, an explicit and frozen selection (empty = no curated
+sets).  Mirrors the agents picker's master-checkbox cascade: turning any
+item off un-arms master.  Checking every item by hand leaves master off,
+because an enumeration is a different commitment than "recommended,
+including future sets".
 """
 
 from __future__ import annotations
@@ -20,10 +23,7 @@ from textual.containers import Horizontal, Vertical, VerticalScroll
 from textual.screen import ModalScreen
 from textual.widgets import Button, Checkbox, Label, Rule
 
-DEFAULT_SELECTION = "default"  # nosec: B105 — selection token, not a secret
-"""Dismiss value for the master-"All" state → ``shield.sets`` written as null."""
-
-_MASTER_ID = "shield-sets-all"
+_MASTER_ID = "shield-sets-recommended"
 _ITEM_PREFIX = "shield-sets-item-"
 
 
@@ -31,11 +31,13 @@ def _item_id(slug: str) -> str:
     return f"{_ITEM_PREFIX}{slug}"
 
 
-class ShieldSetsScreen(ModalScreen[str | tuple[str, ...] | None]):
+class ShieldSetsScreen(ModalScreen[tuple[str, ...] | None]):
     """Modal picker for a project's curated egress sets.
 
-    *initial* is the project's current ``shield.sets`` — ``None``
-    (the unset generous default) preselects the master "All" checkbox.
+    *initial* is the project's current ``shield.sets``: a selection that
+    holds ``recommended`` arms master and checks every set; any other
+    selection checks exactly its sets; ``None`` or an empty selection
+    checks nothing.
     """
 
     BINDINGS = [
@@ -103,29 +105,35 @@ class ShieldSetsScreen(ModalScreen[str | tuple[str, ...] | None]):
 
     def compose(self) -> ComposeResult:
         """Render the master + per-set checkboxes and footer buttons."""
-        from terok.lib.api import EGRESS_SETS, OS_PACKAGES_SUMMARY
+        from terok.lib.api import (
+            EGRESS_SETS,
+            OS_PACKAGES_SUMMARY,
+            RECOMMENDED_SET,
+            selected_egress_sets,
+        )
 
         self._choices = tuple(EGRESS_SETS)
-        is_all = self._initial is None
-        preset = set(self._choices if self._initial is None else self._initial)
+        is_recommended = RECOMMENDED_SET in (self._initial or ())
+        preset = set(selected_egress_sets(self._initial))
 
         dialog = Vertical(id="shield-sets-dialog")
         dialog.border_title = self._title
         with dialog:
             yield Label(
                 "Curated egress allowlists granted to this project's tasks while the "
-                "shield is up.  An explicit selection freezes the set; unchecking "
-                "everything disables curated content entirely.",
+                "shield is up.  Recommended grants every curated set, including sets "
+                "added in future releases; an explicit selection freezes the set; "
+                "unchecking everything grants no curated sets.",
                 classes="shield-sets-help",
             )
             with VerticalScroll(id="shield-sets-scroll"):
                 with Vertical(classes="shield-sets-list"):
                     yield Checkbox(
-                        "All sets (default — inherit sets added in future releases)",
-                        value=is_all,
+                        "Recommended (every curated set, including future ones)",
+                        value=is_recommended,
                         id=_MASTER_ID,
                         classes="shield-sets-master",
-                        name=DEFAULT_SELECTION,
+                        name=RECOMMENDED_SET,
                     )
                     yield Rule(line_style="dashed", classes="shield-sets-sep")
                     for slug, hosts in EGRESS_SETS.items():
@@ -168,12 +176,14 @@ class ShieldSetsScreen(ModalScreen[str | tuple[str, ...] | None]):
 
     @on(Button.Pressed, "#shield-sets-save")
     def _on_save(self) -> None:
-        """Dismiss with the default sentinel or the explicit (possibly empty) tuple."""
+        """Dismiss with the recommended meta-set or the explicit (possibly empty) tuple."""
+        from terok.lib.api import RECOMMENDED_SET
+
         master = self._master_cb
         if master is not None and master.value:
-            self.dismiss(DEFAULT_SELECTION)
+            self.dismiss((RECOMMENDED_SET,))
             return
         self.dismiss(tuple(slug for slug, cb in self._item_cbs.items() if cb.value))
 
 
-__all__ = ["DEFAULT_SELECTION", "ShieldSetsScreen"]
+__all__ = ["ShieldSetsScreen"]

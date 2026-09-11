@@ -366,8 +366,8 @@ class RawShieldProjectSection(BaseModel):
         default=None,
         description=(
             "Curated egress sets granted to this project's tasks (t40).  "
-            "Unset applies the generous default (every curated set); an "
-            "empty list disables all curated content.  "
+            "``recommended`` grants every curated set; unset or an empty "
+            "list grants none.  "
             "See ``terok shield sets`` for the available names"
         ),
     )

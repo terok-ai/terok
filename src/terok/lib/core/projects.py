@@ -613,20 +613,20 @@ def set_project_image_agents(project_name: str, selection: str) -> Path:
     return cfg_path
 
 
-def set_project_shield_sets(project_name: str, sets: tuple[str, ...] | None) -> Path:
+def set_project_shield_sets(project_name: str, sets: tuple[str, ...]) -> Path:
     """Write *sets* into the project's ``project.yml`` under ``shield.sets``.
 
     Validates the names against the curated registry first (raising
-    ``SystemExit`` with the available names on a typo).  The three states
-    are all expressible: ``None`` writes an explicit null — back to the
-    generous default, inheriting sets added in future releases; an empty
-    tuple writes ``[]`` — curated content deliberately disabled; a
-    non-empty tuple freezes that exact selection.  Returns the project.yml
-    path written.
+    ``SystemExit`` with the available names on a typo).  Three selections
+    are expressible: a tuple holding ``recommended`` grants every curated
+    set, including sets added to the registry later; any other non-empty
+    tuple freezes that exact selection; an empty tuple writes ``[]`` —
+    explicitly no curated sets, the same effect as leaving the key unset.
+    Returns the project.yml path written.
     """
     from terok.lib.integrations.sandbox import yaml_update_section
 
     validate_egress_sets(sets)
     cfg_path = _find_project_root(project_name) / _PROJECT_YML
-    yaml_update_section(cfg_path, "shield", {"sets": None if sets is None else list(sets)})
+    yaml_update_section(cfg_path, "shield", {"sets": list(sets)})
     return cfg_path
