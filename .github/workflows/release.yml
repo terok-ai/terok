@@ -33,7 +33,7 @@ jobs:
     needs: no-git-deps
     permissions:
       contents: read
-    uses: terok-ai/terok-util/.github/workflows/fleet-release-build.yml@v0.3.1a7
+    uses: terok-ai/terok-util/.github/workflows/fleet-release-build.yml@v0.3.1
 
   github-release:
     needs: build
