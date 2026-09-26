@@ -28,9 +28,10 @@ Per-project operations live under the ``project`` group in
 from __future__ import annotations
 
 import argparse
-import shutil
 import sys
 from typing import TYPE_CHECKING
+
+from terok_util import find_host_tool
 
 from terok.lib.api import bold, red, stage_line, yellow
 
@@ -137,6 +138,9 @@ def dispatch(args: argparse.Namespace) -> bool:
     show = getattr(args, "show", False)
     if component is not None or show:
         _run_component_setup(component, show=show, args=args)
+    from terok.lib.api.setup import preflight_setup
+
+    preflight_setup()
     with tee_output("setup"):
         cmd_setup(
             no_desktop_entry=getattr(args, "no_desktop_entry", False),
@@ -189,8 +193,10 @@ def _run_component_setup(component: str | None, *, show: bool, args: argparse.Na
             f"{', '.join(passed)} belongs to the full 'terok setup', "
             f"not to 'terok setup {component}'"
         )
-    from terok.lib.api.setup import handle_setup_component
+    from terok.lib.api.setup import handle_setup_component, preflight_setup
 
+    if not show:
+        preflight_setup()
     sys.exit(handle_setup_component(component, show_only=show))
 
 
@@ -206,9 +212,8 @@ def cmd_setup(
 
     Exits non-zero if the sandbox aggregator fails (one or more service
     phases unreachable) or if a requested image build fails.  The
-    desktop entry step is non-fatal when xdg-utils is missing — the
-    built-in fallback covers spec-compliant hosts and the warning is
-    a WARN, not a FAIL.
+    desktop entry can be skipped when optional xdg-utils is missing;
+    a failed installation never receives a successful setup receipt.
 
     Desktop-entry policy resolution: ``--no-desktop-entry`` /
     ``--install-desktop-entry`` (mutually exclusive) override the
@@ -222,62 +227,46 @@ def cmd_setup(
     front for a known fleet.  ``family`` overrides package-family
     detection for that build.
     """
-    from terok.lib.api.agents import ensure_sandbox_ready
+    from terok.lib.api import make_sandbox_config
+    from terok.lib.api.agents import ensure_sandbox_ready, load_auth_providers
+    from terok.lib.api.setup import (
+        EXIT_MANUAL_STEP_NEEDED,
+        complete_setup,
+        invalidate_setup,
+        preflight_setup,
+    )
 
+    preflight_setup()
     print(bold("\nSetting up terok host services\n"))
-
-    from terok.lib.api.setup import EXIT_MANUAL_STEP_NEEDED
-
-    sandbox_failed = False
-    manual_step = False
     try:
-        ensure_sandbox_ready(passphrase_tier=passphrase_tier)
+        ensure_sandbox_ready(cfg=make_sandbox_config(), passphrase_tier=passphrase_tier)
     except SystemExit as exc:
         if exc.code == EXIT_MANUAL_STEP_NEEDED:
-            # Not a failure: every install phase passed and one manual
-            # host step (named in the hint above) remains.  The code is
-            # forwarded as-is because the TUI keys its remediation offer
-            # on it.
-            manual_step = True
             print(bold(yellow("Sandbox setup finished; one manual host step remains (see above).")))
+            raise
+        if isinstance(exc.code, str):
+            print(exc.code)
+            print(bold(red("Sandbox aggregator reported failures.")))
         else:
-            sandbox_failed = True
-            if isinstance(exc.code, str):
-                # A refusal message, not a numeric code — print it
-                # verbatim on its own lines instead of inlining a whole
-                # multi-line operator hint into "(exit …)".
-                print(exc.code)
-                print(bold(red("Sandbox aggregator reported failures.")))
-            else:
-                print(bold(red(f"Sandbox aggregator reported failures (exit {exc.code}).")))
+            print(bold(red(f"Sandbox aggregator reported failures (exit {exc.code}).")))
+        print(bold(red("Setup failed — see service stage lines above.")))
+        raise SystemExit(1) from exc
 
-    images_failed = False
-    if with_images and not sandbox_failed:
-        # Skip the (slow) image build when the service stack is already
-        # broken — the user needs to fix setup before anything that
-        # depends on images will be useful anyway.
-        images_failed = not _run_image_build(base=with_images, family=family)
+    if with_images and not _run_image_build(base=with_images, family=family):
+        print(bold(red("Image build failed — see above.")))
+        raise SystemExit(1)
 
     desktop_policy = _resolve_desktop_policy(
         no_desktop_entry=no_desktop_entry,
         install_desktop_entry=install_desktop_entry,
     )
-    desktop_ok = _ensure_desktop_entry(policy=desktop_policy)
+    invalidate_setup()
+    if not _ensure_desktop_entry(policy=desktop_policy):
+        print(bold(red("Desktop entry install reported errors (see above).")))
+        raise SystemExit(1)
     _ensure_shell_completions()
-
-    print()
-    if not sandbox_failed and not images_failed and desktop_ok and manual_step:
-        print(bold(yellow("Setup complete except one manual host step — see the hint above.")))
-    elif not sandbox_failed and not images_failed and desktop_ok:
-        print(bold("Setup complete."))
-    elif sandbox_failed:
-        print(bold(red("Setup failed — see service stage lines above.")))
-    elif images_failed:
-        print(bold(red("Image build failed — see above.")))
-    else:
-        print(bold(yellow("Desktop entry install reported errors (see above).")))
-
-    from terok.lib.api.agents import load_auth_providers
+    complete_setup()
+    print(bold("\nSetup complete."))
 
     providers = ", ".join(load_auth_providers())
     print(
@@ -286,11 +275,6 @@ def cmd_setup(
         f"  terok project wizard                       Create your first project\n"
         f"  terok task run <project>                   Start a CLI task (attaches on TTY)\n"
     )
-
-    if sandbox_failed or images_failed:
-        sys.exit(1)
-    if manual_step:
-        sys.exit(EXIT_MANUAL_STEP_NEEDED)
 
 
 # ── Image factory phase (delegates to terok-executor) ─────────────────
@@ -377,7 +361,7 @@ def _ensure_desktop_entry(*, policy: str) -> bool:
         # pipx installs go under ~/.local/bin which isn't on the setup-run
         # PATH everywhere; fall back to the bare name so an updated PATH
         # picks it up at launcher time.
-        bin_path = shutil.which("terok-tui") or "terok-tui"
+        bin_path = find_host_tool("terok-tui") or "terok-tui"
         try:
             backend = install_desktop_entry(bin_path)
         except Exception as exc:  # noqa: BLE001

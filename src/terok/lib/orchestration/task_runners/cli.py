@@ -19,6 +19,7 @@ from terok.lib.integrations.sandbox import Sharing, VolumeSpec
 from ...core import runtime as _rt
 from ...core.images import project_cli_image
 from ...core.projects import load_project
+from ...core.setup import validate_host_setup
 from ...util.ansi import green as _green, red as _red, supports_color as _supports_color
 from ...util.logging_utils import _log_debug, timed_phase
 from ..agent_config import resolve_agent_config
@@ -53,6 +54,7 @@ def task_run_cli(
     ``running`` and the user is shown login instructions.
     """
     project = load_project(project_name)
+    validate_host_setup()
     meta, meta_path = load_task_meta(project.name, task_id, "cli")
 
     cname = container_name(project.name, "cli", task_id)

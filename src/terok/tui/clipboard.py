@@ -4,10 +4,11 @@
 """System clipboard integration for the TUI."""
 
 import os
-import shutil
 import subprocess
 import sys
 from dataclasses import dataclass
+
+from terok_util import find_host_tool
 
 #: Hard cap on a single clipboard-helper invocation.  wl-copy in
 #: particular forks a daemon that holds the X/Wayland selection alive
@@ -92,7 +93,7 @@ def get_clipboard_helper_status() -> ClipboardHelperStatus:
     """Return which clipboard helpers are available on this machine."""
 
     candidates = _clipboard_candidates()
-    available = tuple(name for name, cmd in candidates if shutil.which(cmd[0]))
+    available = tuple(name for name, cmd in candidates if find_host_tool(cmd[0]))
     if available:
         return ClipboardHelperStatus(available=available)
 
@@ -164,7 +165,11 @@ def copy_to_clipboard_detailed(text: str) -> ClipboardCopyResult:
         return ClipboardCopyResult(ok=False, error="Nothing to copy.")
 
     candidates = _clipboard_candidates()
-    available = [(name, cmd) for name, cmd in candidates if shutil.which(cmd[0])]
+    available = [
+        (name, [executable, *cmd[1:]])
+        for name, cmd in candidates
+        if (executable := find_host_tool(cmd[0]))
+    ]
     if not available:
         hint = _clipboard_install_hint()
         return ClipboardCopyResult(

@@ -44,10 +44,10 @@ dependencies = [
     "unique-namer~=1.6",
     "textual-serve~=1.1",
     "jinja2~=3.1",
-    "terok-executor @ https://github.com/terok-ai/terok-executor/releases/download/v0.4.1a2/terok_executor-0.4.1a2-py3-none-any.whl",
-    "terok-sandbox @ https://github.com/terok-ai/terok-sandbox/releases/download/v0.5.1a2/terok_sandbox-0.5.1a2-py3-none-any.whl",
-    "terok-shield>=0.8.0,<0.9.0",
-    "terok-clearance>=0.8.0,<0.9.0",
+    "terok-executor @ git+https://github.com/sliwowitz/terok-executor@fix/nixos-path-setup",
+    "terok-sandbox @ git+https://github.com/sliwowitz/terok-sandbox@fix/nixos-path-setup",
+    "terok-shield @ git+https://github.com/sliwowitz/terok-shield@fix/nixos-path-setup",
+    "terok-clearance @ git+https://github.com/sliwowitz/terok-clearance@fix/nixos-path-setup",
     "terok-util @ git+https://github.com/sliwowitz/terok-util@fix/nixos-path-setup",
 ]
 
@@ -124,7 +124,7 @@ default-groups = ["dev", "test"]
 
 [tool.hatch.version]
 source = "vcs"
-fallback-version = "0.9.0"
+fallback-version = "0.9.1.dev0"
 
 # The sibling terok-* release wheels are pinned by direct URL (see the
 # pinning policy in AGENTS.md); hatchling requires an explicit opt-in

@@ -11,11 +11,21 @@ lives in the executor / sandbox test suites.
 
 from __future__ import annotations
 
-from unittest.mock import patch
+from types import SimpleNamespace
+from unittest.mock import Mock, patch
 
 import pytest
+from terok_util import SetupCheck, SetupDowngradeError, SetupStatus
 
 from terok.cli.commands.setup import cmd_setup, dispatch
+
+
+@pytest.fixture(autouse=True)
+def _ready_dependencies():
+    """Keep command tests independent of real host provisioning."""
+    with patch("terok.lib.core.setup.executor", SimpleNamespace(check_setup=Mock(return_value=()))):
+        yield
+
 
 # ── dispatch wiring ──────────────────────────────────────────────────
 
@@ -222,6 +232,9 @@ class TestCmdSetup:
         ):
             cmd_setup(no_desktop_entry=True)
         desktop.assert_called_once_with(policy="skip")
+        from terok.lib.core.setup import check_setup
+
+        assert check_setup()[0].status is SetupStatus.READY
 
     def test_install_desktop_entry_resolves_to_install_policy(self) -> None:
         """``--install-desktop-entry`` resolves to ``policy="install"``."""
@@ -319,36 +332,38 @@ class TestCmdSetup:
         assert exc.value.code == 1
         assert "Setup failed" in capsys.readouterr().out
 
-    def test_sandbox_failure_still_runs_desktop_phase(
-        self, capsys: pytest.CaptureFixture[str]
-    ) -> None:
-        """A sandbox failure must not short-circuit the desktop-entry phase.
-
-        The desktop entry is independent of the sandbox; an operator
-        with a broken sandbox install (missing SELinux policy, say)
-        should still get their application launcher so the next
-        ``terok setup`` re-run from the menu works.
-        """
+    def test_sandbox_failure_prevents_upper_writes(self) -> None:
+        """A failed dependency never permits desktop writes or upper certification."""
         with (
             patch("terok.lib.api.agents.ensure_sandbox_ready", side_effect=SystemExit(1)),
-            patch("terok_executor.container.build.build_base_images"),
-            patch("terok.cli.commands.setup._ensure_desktop_entry", return_value=True) as desktop,
+            patch("terok.cli.commands.setup._ensure_desktop_entry") as desktop,
+            patch("terok.cli.commands.setup._ensure_shell_completions") as completions,
+            patch("terok.lib.api.setup.invalidate_setup") as invalidate,
+            patch("terok.lib.api.setup.complete_setup") as complete,
+            pytest.raises(SystemExit),
         ):
-            with pytest.raises(SystemExit):
-                cmd_setup()
-        desktop.assert_called_once()
+            cmd_setup()
+        desktop.assert_not_called()
+        completions.assert_not_called()
+        invalidate.assert_not_called()
+        complete.assert_not_called()
 
-    def test_desktop_failure_reports_warn(self, capsys: pytest.CaptureFixture[str]) -> None:
-        """Desktop entry failing is a WARN, not a FAIL — doesn't flip exit code."""
+    def test_desktop_failure_prevents_receipt(self, capsys: pytest.CaptureFixture[str]) -> None:
+        """An explicitly requested desktop install must succeed before certification."""
+        from terok.lib.core.setup import _receipt
+
+        _receipt().write()
         with (
             patch("terok.lib.api.agents.ensure_sandbox_ready"),
-            patch("terok_executor.container.build.build_base_images"),
             patch("terok.cli.commands.setup._ensure_desktop_entry", return_value=False),
-            patch("terok.cli.commands.setup._ensure_shell_completions"),
+            patch("terok.cli.commands.setup._ensure_shell_completions") as completions,
+            pytest.raises(SystemExit) as exc,
         ):
-            cmd_setup()  # no SystemExit
-        out = capsys.readouterr().out
-        assert "reported errors" in out
+            cmd_setup(install_desktop_entry=True)
+        assert exc.value.code == 1
+        assert "reported errors" in capsys.readouterr().out
+        assert _receipt().check().status is SetupStatus.MISSING
+        completions.assert_not_called()
 
 
 # ── Desktop entry phase ──────────────────────────────────────────────
@@ -396,7 +411,7 @@ class TestEnsureDesktopEntry:
                 "terok.cli.commands._desktop_entry.xdg_utils_available",
                 return_value=True,
             ),
-            patch("terok.cli.commands.setup.shutil.which", return_value="/usr/bin/terok-tui"),
+            patch("terok.cli.commands.setup.find_host_tool", return_value="/usr/bin/terok-tui"),
             patch(
                 "terok.cli.commands._desktop_entry.install_desktop_entry",
                 return_value=DesktopBackend.XDG_UTILS,
@@ -418,7 +433,7 @@ class TestEnsureDesktopEntry:
                 "terok.cli.commands._desktop_entry.xdg_utils_available",
                 return_value=False,
             ),
-            patch("terok.cli.commands.setup.shutil.which", return_value="/usr/bin/terok-tui"),
+            patch("terok.cli.commands.setup.find_host_tool", return_value="/usr/bin/terok-tui"),
             patch(
                 "terok.cli.commands._desktop_entry.install_desktop_entry",
                 return_value=DesktopBackend.FALLBACK,
@@ -432,7 +447,7 @@ class TestEnsureDesktopEntry:
         from terok.cli.commands.setup import _ensure_desktop_entry
 
         with (
-            patch("terok.cli.commands.setup.shutil.which", return_value="/usr/bin/terok-tui"),
+            patch("terok.cli.commands.setup.find_host_tool", return_value="/usr/bin/terok-tui"),
             patch(
                 "terok.cli.commands._desktop_entry.install_desktop_entry",
                 side_effect=PermissionError("read-only xdg dir"),
@@ -455,7 +470,7 @@ class TestEnsureDesktopEntry:
             return DesktopBackend.XDG_UTILS
 
         with (
-            patch("terok.cli.commands.setup.shutil.which", return_value=None),
+            patch("terok.cli.commands.setup.find_host_tool", return_value=None),
             patch(
                 "terok.cli.commands._desktop_entry.install_desktop_entry",
                 side_effect=_record,
@@ -528,12 +543,8 @@ class TestCmdSetupManualStepExitCode:
             cmd_setup()
         assert exc_info.value.code == EXIT_MANUAL_STEP_NEEDED
 
-    def test_manual_step_still_builds_requested_images(self) -> None:
-        """Exit-manual-step is partial SUCCESS — a --with-images build proceeds.
-
-        The policy install is independent of the image factory; skipping
-        the slow build would force a full re-run after the sudo step.
-        """
+    def test_manual_step_defers_upper_setup_and_requested_images(self) -> None:
+        """Incomplete lower setup is repaired before any upper setup work."""
         from terok.lib.api.setup import EXIT_MANUAL_STEP_NEEDED
 
         with (
@@ -541,13 +552,15 @@ class TestCmdSetupManualStepExitCode:
                 "terok.lib.api.agents.ensure_sandbox_ready",
                 side_effect=SystemExit(EXIT_MANUAL_STEP_NEEDED),
             ),
-            patch("terok.cli.commands.setup._run_image_build", return_value=True) as build,
-            patch("terok.cli.commands.setup._ensure_desktop_entry", return_value=True),
-            patch("terok.cli.commands.setup._ensure_shell_completions"),
+            patch("terok.cli.commands.setup._run_image_build") as build,
+            patch("terok.cli.commands.setup._ensure_desktop_entry") as desktop,
+            patch("terok.lib.api.setup.complete_setup") as complete,
             pytest.raises(SystemExit),
         ):
             cmd_setup(with_images="fedora:44")
-        build.assert_called_once()
+        build.assert_not_called()
+        desktop.assert_not_called()
+        complete.assert_not_called()
 
     def test_manual_step_reads_as_partial_success_not_failure(
         self, capsys: pytest.CaptureFixture[str]
@@ -568,31 +581,6 @@ class TestCmdSetupManualStepExitCode:
         out = capsys.readouterr().out
         assert "one manual host step" in out
         assert "Setup failed" not in out
-
-    def test_failed_image_build_exits_one_even_with_a_manual_step(
-        self, capsys: pytest.CaptureFixture[str]
-    ) -> None:
-        """An image failure is a failure — it must not be reported as the manual step.
-
-        Exit 5 is the TUI's cue to offer the SELinux remediation; letting
-        an unrelated image-build failure carry that code fired the wrong
-        remedy for the wrong problem.
-        """
-        from terok.lib.api.setup import EXIT_MANUAL_STEP_NEEDED
-
-        with (
-            patch(
-                "terok.lib.api.agents.ensure_sandbox_ready",
-                side_effect=SystemExit(EXIT_MANUAL_STEP_NEEDED),
-            ),
-            patch("terok.cli.commands.setup._run_image_build", return_value=False),
-            patch("terok.cli.commands.setup._ensure_desktop_entry", return_value=True),
-            patch("terok.cli.commands.setup._ensure_shell_completions"),
-            pytest.raises(SystemExit) as exc_info,
-        ):
-            cmd_setup(with_images="fedora:44")
-        assert exc_info.value.code == 1
-        assert "Image build failed" in capsys.readouterr().out
 
     def test_falsy_exit_code_still_fails_with_one(self) -> None:
         """A raised SystemExit(0) is a failure — the old nonzero invariant holds."""
@@ -638,6 +626,34 @@ class TestCmdSetupStringExitCode:
 
 class TestSetupOutputPersistence:
     """``setup`` runs under the output-capture tee (terok#1188)."""
+
+    def test_downgrade_precedes_even_the_output_tee(self) -> None:
+        """A lower downgrade cannot create a setup log, routes, or desktop artifacts."""
+        import argparse
+
+        checks = [SetupCheck("child", "receipt", SetupStatus.DOWNGRADE)]
+        with (
+            patch("terok.lib.core.setup.check_setup", return_value=checks),
+            patch("terok.cli.commands.setup.tee_output") as tee,
+            patch("terok.cli.commands.setup.cmd_setup") as command,
+            pytest.raises(SetupDowngradeError),
+        ):
+            dispatch(argparse.Namespace(cmd="setup"))
+        tee.assert_not_called()
+        command.assert_not_called()
+
+    def test_direct_setup_preflights_before_child_writes(self) -> None:
+        """Direct callers receive the same closure preflight as the CLI dispatcher."""
+        checks = [SetupCheck("child", "receipt", SetupStatus.DOWNGRADE)]
+        with (
+            patch("terok.lib.core.setup.check_setup", return_value=checks),
+            patch("terok.lib.api.agents.ensure_sandbox_ready") as dependency,
+            patch("terok.lib.api.setup.invalidate_setup") as invalidate,
+            pytest.raises(SetupDowngradeError),
+        ):
+            cmd_setup()
+        dependency.assert_not_called()
+        invalidate.assert_not_called()
 
     def test_setup_dispatch_tees_its_output(self) -> None:
         import argparse

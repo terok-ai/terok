@@ -14,6 +14,7 @@ to desktop-entry removal and optional credential-DB purge; the
 
 from __future__ import annotations
 
+from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -24,6 +25,16 @@ from terok.cli.commands.uninstall import (
     _uninstall_sandbox_stack,
     cmd_uninstall,
 )
+
+
+@pytest.fixture(autouse=True)
+def _ready_dependencies():
+    """Uninstall command tests never probe real host dependencies."""
+    with patch(
+        "terok.lib.core.setup.executor", SimpleNamespace(check_setup=MagicMock(return_value=()))
+    ):
+        yield
+
 
 # ── Individual phase helpers ─────────────────────────────────────────────
 
@@ -100,6 +111,25 @@ class TestPurgeCredentialDb:
 
 class TestCmdUninstall:
     """``cmd_uninstall`` runs desktop → sandbox-stack → [credentials] in order."""
+
+    def test_uninstall_invalidates_receipt_before_teardown(self) -> None:
+        """Even a failed removal leaves no success certificate for partial artifacts."""
+        from terok.lib.core.setup import _receipt
+
+        _receipt().write()
+
+        def fail_after_invalidation():
+            assert not _receipt().path.exists()
+            return False
+
+        with (
+            patch(
+                "terok.cli.commands.uninstall._uninstall_desktop_entry",
+                side_effect=fail_after_invalidation,
+            ),
+            pytest.raises(SystemExit),
+        ):
+            cmd_uninstall(no_sandbox=True)
 
     def test_default_runs_desktop_and_sandbox(self) -> None:
         with (

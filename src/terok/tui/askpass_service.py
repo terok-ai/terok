@@ -33,12 +33,12 @@ import asyncio
 import contextlib
 import logging
 import os
-import shutil
 import socket as _socket
 from collections.abc import Mapping
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from terok_util import find_host_tool
 from textual.app import ComposeResult
 from textual.binding import Binding
 from textual.containers import Horizontal, Vertical
@@ -120,7 +120,7 @@ def default_socket_path(*, pid: int | None = None) -> Path:
 
 def locate_helper_bin() -> Path:
     """Find ``terok-askpass`` on ``PATH``, raising if it isn't installed."""
-    found = shutil.which("terok-askpass")
+    found = find_host_tool("terok-askpass")
     if not found:
         raise RuntimeError(
             "terok-askpass helper not found on PATH — was the package installed "

@@ -10,6 +10,26 @@ import sys
 from unittest.mock import patch
 
 import pytest
+from terok_util import SetupDowngradeError, SetupRequiredError
+
+
+@pytest.mark.parametrize("error,code", [(SetupRequiredError, 3), (SetupDowngradeError, 4)])
+def test_setup_errors_render_without_tracebacks(
+    error: type[SetupRequiredError], code: int, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Setup and late launch errors retain typed exit codes at the CLI boundary."""
+    from terok.cli.main import main
+
+    with (
+        patch("terok.cli.commands.info.dispatch", side_effect=error("owner setup diagnostic")),
+        patch("sys.argv", ["terok", "config", "paths"]),
+        pytest.raises(SystemExit) as exc,
+    ):
+        main()
+    assert exc.value.code == code
+    diagnostic = capsys.readouterr().err
+    assert "owner setup diagnostic" in diagnostic
+    assert ("terok setup" in diagnostic) is (code == 3)
 
 
 def _run_cli(*args: str, check: bool = False) -> subprocess.CompletedProcess[str]:

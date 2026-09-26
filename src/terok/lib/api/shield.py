@@ -32,9 +32,6 @@ if TYPE_CHECKING:
         ShieldHooks as ShieldHooks,
         ShieldManager as ShieldManager,
         ShieldSetupError as ShieldSetupError,
-        installed_versions as installed_versions,
-        read_stamp as read_stamp,
-        stamp_path as stamp_path,
     )
     from terok.lib.integrations.shield import (
         COMMANDS as SHIELD_COMMANDS,
@@ -58,12 +55,9 @@ _LAZY: dict[str, str] = {
     "ShieldHooks": "terok.lib.integrations.sandbox",
     "ShieldManager": "terok.lib.integrations.sandbox",
     "ShieldSetupError": "terok.lib.integrations.sandbox",
-    "installed_versions": "terok.lib.integrations.sandbox",
-    "read_stamp": "terok.lib.integrations.sandbox",
     "shield_is_container_arg": "terok.lib.integrations.shield:is_container_arg",
     "shield_needs_container": "terok.lib.integrations.shield:needs_container",
     "shield_standalone_only": "terok.lib.integrations.shield:standalone_only",
-    "stamp_path": "terok.lib.integrations.sandbox",
 }
 
 __all__ = [
@@ -75,12 +69,9 @@ __all__ = [
     "ShieldCommandDef",
     "ShieldManager",
     "ShieldSetupError",
-    "installed_versions",
-    "read_stamp",
     "shield_is_container_arg",
     "shield_needs_container",
     "shield_standalone_only",
-    "stamp_path",
 ]
 
 

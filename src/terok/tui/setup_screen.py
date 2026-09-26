@@ -3,18 +3,18 @@
 
 """Verdict + decision modal for the first-run / re-run host setup flow.
 
-Renders the current [`terok_sandbox.SetupVerdict`][terok_sandbox.SetupVerdict] with a
+Renders the current [`terok_util.SetupStatus`][terok_util.SetupStatus] with a
 contextual blurb and a Run / Skip choice — no subprocess plumbing here.
 The actual ``terok setup`` invocation rides on top of
 [`WorkerLogScreen`][terok.tui.worker_log_screen.WorkerLogScreen], pushed by the
 TUI's first-run flow worker after this screen dismisses with
 [`SetupOutcome.SHOULD_RUN`][terok.tui.setup_screen.SetupOutcome.SHOULD_RUN].
 
-The verdict probe (``terok_sandbox.needs_setup``) is the same one
+The verdict probe (``terok.lib.core.setup.check_setup``) is the same one
 ``terok task run`` enforces in
 `terok.cli.commands.task._setup_verdict_or_exit` — so a verdict
-of ``OK`` short-circuits with a banner instead of nudging the user
-toward a slow re-run, and a ``STALE_AFTER_DOWNGRADE`` refuses outright
+of ``READY`` short-circuits with a banner instead of nudging the user
+toward a slow re-run, and a ``DOWNGRADE`` refuses outright
 with the same wording the CLI uses.
 """
 
@@ -29,7 +29,7 @@ from textual.containers import Horizontal, Vertical
 from textual.screen import ModalScreen
 from textual.widgets import Button, Label, Static
 
-from terok.lib.api.setup import SetupVerdict, needs_setup
+from terok.lib.api.setup import SetupStatus, check_setup, setup_status
 
 
 class SetupOutcome(enum.Enum):
@@ -44,7 +44,7 @@ class SetupOutcome(enum.Enum):
       view over the returned entry.
     - ``SKIPPED`` — user dismissed before running; the caller leaves
       the host alone.
-    - ``REFUSED`` — verdict is ``STALE_AFTER_DOWNGRADE``; the only
+    - ``REFUSED`` — verdict is ``DOWNGRADE``; the only
       available exit, mirroring the CLI exit-4 contract.
     - ``CANCELLED`` — Esc on the pre-run screen; treated as a soft
       skip but distinguishable for telemetry.
@@ -56,16 +56,12 @@ class SetupOutcome(enum.Enum):
     CANCELLED = "cancelled"
 
 
-_VERDICT_HEADLINE: dict[SetupVerdict, str] = {
-    SetupVerdict.OK: "Host services are already set up — re-running is safe but optional.",
-    SetupVerdict.FIRST_RUN: "First run detected — host services have not been initialised yet.",
-    SetupVerdict.STALE_AFTER_UPDATE: (
-        "Package versions changed since the last setup — re-run to apply."
-    ),
-    SetupVerdict.STAMP_CORRUPT: "Setup stamp is unreadable — re-run setup to refresh it.",
-    SetupVerdict.STALE_AFTER_DOWNGRADE: (
-        "Downgrade detected — terok refuses to run until the stamp is reconciled."
-    ),
+_VERDICT_HEADLINE: dict[SetupStatus, str] = {
+    SetupStatus.READY: "Host services are already set up — re-running is safe but optional.",
+    SetupStatus.MISSING: "First run detected — host services have not been initialised yet.",
+    SetupStatus.STALE: ("Package versions or setup inputs changed — re-run setup to apply."),
+    SetupStatus.INVALID: "Setup state is invalid — re-run setup to refresh it.",
+    SetupStatus.DOWNGRADE: ("Downgrade detected — upgrade back before running setup."),
 }
 
 
@@ -126,7 +122,7 @@ class SetupScreen(ModalScreen[SetupOutcome]):
     }
     """
 
-    def __init__(self, verdict: SetupVerdict | None = None) -> None:
+    def __init__(self, verdict: SetupStatus | None = None) -> None:
         """Build the screen with an optional pre-fetched verdict.
 
         Verdict probing is normally done on the main thread before the
@@ -136,7 +132,12 @@ class SetupScreen(ModalScreen[SetupOutcome]):
         when no caller pre-fetched it.
         """
         super().__init__()
-        self._verdict = verdict if verdict is not None else needs_setup()
+        if verdict is None:
+            try:
+                verdict = setup_status(check_setup())
+            except Exception:
+                verdict = SetupStatus.INVALID
+        self._verdict = verdict
 
     # ── Layout ──────────────────────────────────────────────────────────
 
@@ -151,13 +152,12 @@ class SetupScreen(ModalScreen[SetupOutcome]):
                 yield from self._buttons_for(self._verdict)
 
     @staticmethod
-    def _blurb_for(verdict: SetupVerdict) -> str:
+    def _blurb_for(verdict: SetupStatus) -> str:
         """Return the per-verdict explanation rendered below the headline."""
-        if verdict is SetupVerdict.STALE_AFTER_DOWNGRADE:
+        if verdict is SetupStatus.DOWNGRADE:
             return (
-                "Older code may not read newer state correctly.  Either "
-                "re-upgrade terok, or remove the setup stamp at your own "
-                "risk and re-run setup manually from a shell."
+                "Older code may not read newer state correctly. Upgrade back "
+                "to the installed setup version. Downgrades are not supported."
             )
         return (
             "Installs the sandbox stack (shield + vault + gate + clearance) "
@@ -166,9 +166,9 @@ class SetupScreen(ModalScreen[SetupOutcome]):
         )
 
     @staticmethod
-    def _buttons_for(verdict: SetupVerdict) -> Iterator[Button]:
+    def _buttons_for(verdict: SetupStatus) -> Iterator[Button]:
         """Render the button row, refusing the run on a downgrade."""
-        if verdict is SetupVerdict.STALE_AFTER_DOWNGRADE:
+        if verdict is SetupStatus.DOWNGRADE:
             yield Button("Refused", id="setup-refused", variant="error", disabled=True)
             yield Button("Close", id="setup-close", variant="default")
             return
@@ -183,7 +183,7 @@ class SetupScreen(ModalScreen[SetupOutcome]):
 
     def _cancel_outcome(self) -> SetupOutcome:
         """Pick the right outcome for an Esc / Close press given the verdict."""
-        if self._verdict is SetupVerdict.STALE_AFTER_DOWNGRADE:
+        if self._verdict is SetupStatus.DOWNGRADE:
             return SetupOutcome.REFUSED
         return SetupOutcome.CANCELLED
 

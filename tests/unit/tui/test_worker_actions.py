@@ -311,11 +311,11 @@ def test_selinux_install_policy_runs_sudo_bash() -> None:
             "terok.lib.api.setup.selinux_install_script",
             return_value=Path("/bundled/install_policy.sh"),
         ),
-        mock.patch("shutil.which", side_effect=_which),
+        mock.patch("terok_util.find_host_tool", side_effect=_which),
         mock.patch("subprocess.run") as m_run,
     ):
         worker_actions.selinux_install_policy()
-    # Absolute paths from ``shutil.which`` — no partial-path lookup at
+    # Absolute paths from ``find_host_tool`` — no partial-path lookup at
     # exec time (bandit B607 / Sonar partial-path).
     m_run.assert_called_once_with(
         ["/usr/bin/sudo", "/usr/bin/bash", "/bundled/install_policy.sh"], check=True
@@ -326,7 +326,7 @@ def test_selinux_install_policy_aborts_when_sudo_missing() -> None:
     """A missing ``sudo`` surfaces as SystemExit with the binary name."""
     import pytest as _pytest
 
-    with mock.patch("shutil.which", return_value=None):
+    with mock.patch("terok_util.find_host_tool", return_value=None):
         with _pytest.raises(SystemExit, match="sudo not on PATH"):
             worker_actions.selinux_install_policy()
 
@@ -338,7 +338,7 @@ def test_selinux_install_policy_aborts_when_bash_missing() -> None:
     def _which(name: str) -> str | None:
         return "/usr/bin/sudo" if name == "sudo" else None
 
-    with mock.patch("shutil.which", side_effect=_which):
+    with mock.patch("terok_util.find_host_tool", side_effect=_which):
         with _pytest.raises(SystemExit, match="bash not on PATH"):
             worker_actions.selinux_install_policy()
 

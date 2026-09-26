@@ -67,13 +67,13 @@ def test_launch_in_tmux_creates_or_forks(
     marker_args: tuple[str, ...],
 ) -> None:
     """With no session running, launch creates the shared (or a forked) marked session."""
-    import shutil
+    import terok_util
 
     from terok.tui import app, tmux_session
 
     monkeypatch.delenv("TMUX", raising=False)
-    # ``_launch_in_tmux`` does a local ``import shutil``; patch the real module.
-    monkeypatch.setattr(shutil, "which", lambda _cmd: "/usr/bin/tmux")
+    # The launcher imports its lookup helper locally.
+    monkeypatch.setattr(terok_util, "find_host_tool", lambda _cmd: "/usr/bin/tmux")
     monkeypatch.setattr(tmux_session, "session_exists", lambda: False)
     monkeypatch.setattr(tmux_session, "session_marker_args", lambda: marker_args)
 
@@ -122,12 +122,12 @@ def test_launch_in_tmux_resumes_existing_session(
     expected_argv: list[str],
 ) -> None:
     """Resume lands on the stamped TUI window, reviving the TUI when none is stamped."""
-    import shutil
+    import terok_util
 
     from terok.tui import app, tmux_session
 
     monkeypatch.delenv("TMUX", raising=False)
-    monkeypatch.setattr(shutil, "which", lambda _cmd: "/usr/bin/tmux")
+    monkeypatch.setattr(terok_util, "find_host_tool", lambda _cmd: "/usr/bin/tmux")
     monkeypatch.setattr(tmux_session, "session_exists", lambda: True)
     monkeypatch.setattr(tmux_session, "find_main_window", lambda: main_window)
     # Modern-tmux placement args; the version split itself is pinned in

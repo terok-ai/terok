@@ -17,6 +17,8 @@ from datetime import date
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from terok_util import SetupRequiredError
+
 from terok.lib.core.config import is_experimental
 from terok.lib.integrations.executor import (
     AgentRunner,
@@ -87,6 +89,8 @@ def _podman_start(project: ProjectConfig, cname: str) -> None:
         _sandbox(project).start(cname)
     except FileNotFoundError:
         raise SystemExit("podman not found; please install podman")
+    except SetupRequiredError:
+        raise
     except RuntimeError as exc:
         raise SystemExit(f"Failed to start container:\n{exc}")
 

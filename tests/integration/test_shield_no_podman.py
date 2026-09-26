@@ -1,4 +1,5 @@
 # SPDX-FileCopyrightText: 2025 Jiri Vyskocil
+# SPDX-FileCopyrightText: 2026 Jiri Vyskocil
 # SPDX-License-Identifier: Apache-2.0
 
 """Tier 1 integration tests: real terok_shield library, mock runner.
@@ -59,13 +60,13 @@ def _pre_start_with_mocks(
 ) -> list[str]:
     """Call ``shield.pre_start`` with a mock runner.
 
-    Patches ``has_global_hooks`` so mock-based tests don't depend on
-    real hook filesystem state.
+    Patches installed-hook readiness so mock-based tests don't depend on
+    host setup artifacts or tools.
     """
     shield = _make_shield(config, rootless_mode=rootless_mode)
     with (
         patch("os.geteuid", return_value=euid),
-        patch("terok_shield.hooks.mode.has_global_hooks", return_value=True),
+        patch("terok_shield.HooksInstaller.check_setup", return_value=()),
     ):
         return shield.pre_start(container)
 
@@ -94,8 +95,7 @@ class TestPreStartIntegration:
         ann_idx = args.index("--annotation")
         assert "terok.shield.profiles=dev-standard" in args[ann_idx + 1]
 
-        # Global hooks mode: --hooks-dir gated to podman >= 99 (per-container
-        # hooks don't survive restart even on 5.8.0, see PR#123)
+        # Setup-owned global hooks also protect bare Podman restarts.
         assert "--hooks-dir" not in args
         assert "--cap-drop" in args
         cap_drops = [args[i + 1] for i, v in enumerate(args) if v == "--cap-drop"]
@@ -233,12 +233,13 @@ class TestSandboxRunShieldIntegration:
             patch("terok_sandbox.paths.state_root", return_value=shield_env.state_dir),
             patch("os.geteuid", return_value=1000),
             patch("terok_sandbox.sandbox.podman_userns_args", return_value=_USERNS_ARGS),
+            patch("terok_sandbox.sandbox.check_setup", return_value=()),
             patch("subprocess.run", side_effect=capture_run),
             patch(
                 "terok_sandbox.integrations.shield.ShieldManager.shield",
                 new=fake_shield,
             ),
-            patch("terok_shield.hooks.mode.has_global_hooks", return_value=True),
+            patch("terok_shield.HooksInstaller.check_setup", return_value=()),
         ):
             sandbox = Sandbox()
             sandbox.run(spec)
@@ -278,6 +279,7 @@ class TestSandboxRunShieldIntegration:
         with (
             patch("os.geteuid", return_value=1000),
             patch("terok_sandbox.sandbox.podman_userns_args", return_value=_USERNS_ARGS),
+            patch("terok_sandbox.sandbox.check_setup", return_value=()),
             patch("subprocess.run", side_effect=capture_run),
             patch("terok_sandbox.integrations.shield.ShieldManager.pre_start", return_value=[]),
         ):
@@ -311,6 +313,7 @@ class TestSandboxRunShieldIntegration:
         with (
             patch("os.geteuid", return_value=1000),
             patch("terok_sandbox.sandbox.podman_userns_args", return_value=_USERNS_ARGS),
+            patch("terok_sandbox.sandbox.check_setup", return_value=()),
             patch("subprocess.run", side_effect=capture_run),
             patch(
                 "terok_sandbox.runtime.podman._detect_rootless_network_mode",

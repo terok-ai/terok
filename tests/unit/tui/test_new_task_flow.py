@@ -12,6 +12,7 @@ from typing import Any
 from unittest import mock
 
 import pytest
+from terok_util import SetupRequiredError
 
 from tests.unit.tui.tui_test_helpers import import_app, import_screens
 
@@ -19,6 +20,25 @@ from tests.unit.tui.tui_test_helpers import import_app, import_screens
 def run(coro: object) -> object:
     """Run an async test coroutine."""
     return asyncio.run(coro)
+
+
+@pytest.mark.parametrize("mode", ["cli", "toad"])
+def test_launch_checks_host_before_creating_task(mode: str) -> None:
+    """A missing host tool must not leave a newly allocated task behind."""
+    from terok.tui.task_actions import TaskActionsMixin
+
+    app = types.SimpleNamespace(current_project_name="project", notify=mock.Mock())
+    start = getattr(TaskActionsMixin, f"_start_{mode}_task_background")
+    with (
+        mock.patch(
+            "terok.tui.task_actions.validate_host_setup",
+            side_effect=SetupRequiredError("missing host tool"),
+        ),
+        mock.patch("terok.tui.task_actions.task_new") as create,
+    ):
+        run(start(app, "task"))
+    create.assert_not_called()
+    assert "missing host tool" in app.notify.call_args.args[0]
 
 
 # ---------------------------------------------------------------------------
@@ -769,6 +789,7 @@ class TestBackgroundLaunchCompletion:
             action_globals,
             {
                 "task_new": mock.Mock(return_value="5"),
+                "validate_host_setup": mock.Mock(),
                 "load_project": mock.Mock(return_value=fake_project),
                 "container_name": lambda *a: "terok-proj1-cli-5",
             },
@@ -1337,6 +1358,7 @@ class TestStartCliTaskBackgroundPassesName:
             action_globals,
             {
                 "task_new": mock.Mock(return_value="7"),
+                "validate_host_setup": mock.Mock(),
                 "load_project": mock.Mock(return_value=fake_project),
                 "container_name": lambda *a: "terok-proj1-cli-7",
             },
@@ -1389,6 +1411,7 @@ class TestStartCliTaskBackgroundLoadFailure:
             action_globals,
             {
                 "task_new": mock.Mock(return_value="9"),
+                "validate_host_setup": mock.Mock(),
                 "load_project": mock.Mock(side_effect=RuntimeError("boom")),
                 "container_name": lambda *a: "terok-proj1-cli-9",
             },

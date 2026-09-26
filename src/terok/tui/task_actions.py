@@ -12,6 +12,7 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
+from terok.lib.api.setup import validate_host_setup
 from terok.lib.api.shield import ShieldManager
 
 from ..lib.api import (
@@ -215,6 +216,7 @@ class TaskActionsMixin(_MixinBase):
         if not pid:
             return
         try:
+            await asyncio.to_thread(validate_host_setup)
             task_id = task_new(pid, name=name)
         except (SystemExit, Exception) as e:
             self.notify(f"Failed to create task: {e}")
@@ -377,6 +379,7 @@ class TaskActionsMixin(_MixinBase):
         if not pid:
             return
         try:
+            await asyncio.to_thread(validate_host_setup)
             task_id = task_new(pid, name=name)
         except (SystemExit, Exception) as e:
             self.notify(f"Failed to create task: {e}")

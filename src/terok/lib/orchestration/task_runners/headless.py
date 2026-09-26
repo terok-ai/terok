@@ -27,6 +27,7 @@ from terok.lib.integrations.sandbox import Sharing, VolumeSpec
 from ...core import runtime as _rt
 from ...core.images import project_cli_image, require_agent_installed
 from ...core.projects import load_project
+from ...core.setup import validate_host_setup
 from ...util.ansi import (
     blue as _blue,
     green as _green,
@@ -188,6 +189,7 @@ def task_run_headless(request: HeadlessRunRequest) -> str:
     )
 
     project = load_project(request.project_name)
+    validate_host_setup()
     resolved = get_agent(request.agent, default_agent=project.default_agent)
     require_agent_installed(project, resolved.name)
 
@@ -386,6 +388,7 @@ def task_followup_headless(
     from terok.lib.integrations.executor import AGENTS
 
     project = load_project(project_name)
+    validate_host_setup()
     meta, meta_path = load_task_meta(project.name, task_id)
 
     mode = meta.get("mode")

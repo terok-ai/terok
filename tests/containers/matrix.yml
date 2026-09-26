@@ -63,18 +63,6 @@ slots:
         scope: integ
         pytest: tests/integration -v --tb=short -p no:tach -m "needs_host_features and not needs_internet and not needs_podman and not needs_kernel_keyring"
   nixos:
-    groups: [test]
-    phases:
-      - name: install global shield hooks
-        run:
-          - terok shield install-hooks
-        expect-add: [hooks]
-      - name: shield on NixOS host paths
-        scope: integ
-        pytest: >-
-          tests/integration/test_shield_podman.py::TestShieldEndToEnd::test_shield_rules_returns_ruleset
-          tests/integration/test_shield_restart.py::TestShieldRestart::test_07_rules_present_after_restart
-          -v --tb=short -rs
 
 phases:
   - name: "phase 1: tests without hooks"

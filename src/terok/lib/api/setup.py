@@ -3,13 +3,9 @@
 
 """First-run setup, env check, sandbox-uninstall, sickbay primitives — public API surface.
 
-Re-export catalog for the host-side bootstrap pieces (and the sickbay
-diagnostic surface that lives on top of them).  Source:
-[`terok.lib.integrations.sandbox`][terok.lib.integrations.sandbox] —
-terok-sandbox owns the bootstrap logic; terok presents it.  The
-``namespace_state_dir`` path resolver flows from
-[`terok_util`][terok_util] — the foundation library — not through the
-sandbox adapter.
+[`terok.lib.core.setup`][terok.lib.core.setup] owns terok's receipt and
+composes checks from its dependencies. Sandbox provisioning and diagnostic
+primitives come through [`terok.lib.integrations.sandbox`][terok.lib.integrations.sandbox].
 """
 
 from __future__ import annotations
@@ -19,9 +15,18 @@ from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from terok_util import (
+        SetupStatus as SetupStatus,
         namespace_state_dir as namespace_state_dir,
+        setup_status as setup_status,
     )
 
+    from terok.lib.core.setup import (
+        check_setup as check_setup,
+        complete_setup as complete_setup,
+        invalidate_setup as invalidate_setup,
+        preflight_setup as preflight_setup,
+        validate_host_setup as validate_host_setup,
+    )
     from terok.lib.integrations.sandbox import (
         BUNDLE_VERSION as BUNDLE_VERSION,
         EXIT_MANUAL_STEP_NEEDED as EXIT_MANUAL_STEP_NEEDED,
@@ -30,7 +35,6 @@ if TYPE_CHECKING:
         SETUP_COMPONENTS as SETUP_COMPONENTS,
         EnvironmentCheck as EnvironmentCheck,
         SelinuxStatus as SelinuxStatus,
-        SetupVerdict as SetupVerdict,
         ShieldAnnotations as ShieldAnnotations,
         ShieldHooks as ShieldHooks,
         check_environment as check_environment,
@@ -39,7 +43,6 @@ if TYPE_CHECKING:
         handle_setup_component as handle_setup_component,
         is_ssh_url as is_ssh_url,
         make_kernel_keyring_quota_check as make_kernel_keyring_quota_check,
-        needs_setup as needs_setup,
         public_line_of as public_line_of,
         resolve_container_annotations as resolve_container_annotations,
         resolve_container_shield_version as resolve_container_shield_version,
@@ -52,10 +55,16 @@ if TYPE_CHECKING:
 
 #: Public name -> defining module (PEP 562 lazy resolution).
 _LAZY: dict[str, str] = {
+    "SetupStatus": "terok_util",
+    "setup_status": "terok_util",
+    "check_setup": "terok.lib.core.setup",
+    "complete_setup": "terok.lib.core.setup",
+    "invalidate_setup": "terok.lib.core.setup",
+    "preflight_setup": "terok.lib.core.setup",
+    "validate_host_setup": "terok.lib.core.setup",
     "EnvironmentCheck": "terok.lib.integrations.sandbox",
     "SERVICES_TCP_OPTOUT_YAML": "terok.lib.integrations.sandbox",
     "SelinuxStatus": "terok.lib.integrations.sandbox",
-    "SetupVerdict": "terok.lib.integrations.sandbox",
     "ShieldHooks": "terok.lib.integrations.sandbox",
     "check_environment": "terok.lib.integrations.sandbox",
     "make_kernel_keyring_quota_check": "terok.lib.integrations.sandbox",
@@ -67,7 +76,6 @@ _LAZY: dict[str, str] = {
     "handle_setup_component": "terok.lib.integrations.sandbox",
     "is_ssh_url": "terok.lib.integrations.sandbox",
     "namespace_state_dir": "terok_util",
-    "needs_setup": "terok.lib.integrations.sandbox",
     "public_line_of": "terok.lib.integrations.sandbox",
     "BUNDLE_VERSION": "terok.lib.integrations.sandbox",
     "ShieldAnnotations": "terok.lib.integrations.sandbox",
@@ -81,10 +89,16 @@ _LAZY: dict[str, str] = {
 }
 
 __all__ = [
+    "SetupStatus",
+    "setup_status",
+    "check_setup",
+    "complete_setup",
+    "invalidate_setup",
+    "preflight_setup",
+    "validate_host_setup",
     "EnvironmentCheck",
     "SERVICES_TCP_OPTOUT_YAML",
     "SelinuxStatus",
-    "SetupVerdict",
     "ShieldHooks",
     "check_environment",
     "make_kernel_keyring_quota_check",
@@ -95,7 +109,6 @@ __all__ = [
     "git_http_backend",
     "handle_setup_component",
     "is_ssh_url",
-    "needs_setup",
     "public_line_of",
     "BUNDLE_VERSION",
     "ShieldAnnotations",

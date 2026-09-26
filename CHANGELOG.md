@@ -1,4 +1,11 @@
 # Changelog
+
+## [Unreleased] — 0.9.1
+
+- Compose package-owned setup checks and stop unsafe launches before changing task state.
+- Resolve host tools consistently from the launching environment, including NixOS.
+- Rerun `terok setup` after upgrading; recreate containers prepared by the older Shield bundle.
+
 ## [0.9.0] — Past Prologue — 2026-09-11
 
 ### Added
@@ -182,4 +189,3 @@ smoother: event-driven task tracking replaces polling, so changes made outside t
 
 
 **Full Changelog**: https://github.com/terok-ai/terok/compare/v0.7.9...v0.8.0
-

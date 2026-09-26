@@ -184,7 +184,7 @@ def main(prog: str = "terok") -> None:
     # stack.  Command modules are loaded lazily too — only the invoked verb's
     # module (see ``_load_own_commands``) — so ``terok <verb>`` imports one
     # command module instead of all fourteen.
-    from terok_util import configure
+    from terok_util import SetupDowngradeError, SetupRequiredError, configure
 
     from terok.lib.core.config import declare_setup_invocation, set_experimental
 
@@ -343,6 +343,12 @@ def main(prog: str = "terok") -> None:
         for dispatch in dispatchers:
             if dispatch(args):
                 return
+    except SetupDowngradeError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        sys.exit(4)
+    except SetupRequiredError as exc:
+        print(f"error: {exc}\nhint: run `terok setup`.", file=sys.stderr)
+        sys.exit(3)
     except NoPassphraseError as exc:
         # sandbox#278 stripped CLI-hint text from the library raise sites so
         # they stay diagnostic-only.  We're the operator-facing surface, so
