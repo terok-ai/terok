@@ -63,9 +63,10 @@ if _HAS_TEXTUAL:
     from terok.lib.api.setup import (
         EXIT_MANUAL_STEP_NEEDED as _EXIT_MANUAL_STEP_NEEDED,
         EnvironmentCheck,
-        SetupVerdict,
+        SetupStatus,
         check_environment as _shield_check_environment,
-        needs_setup,
+        check_setup,
+        setup_status,
     )
     from terok.lib.api.shield import DnsTier, RecoveryStatus, ShieldManager
     from terok.lib.api.vault import PassphraseChangeResult, RunningTask, VaultStatus
@@ -558,11 +559,11 @@ if _HAS_TEXTUAL:
             self._maybe_warn_recovery_unconfirmed()
 
             # First-run nudge: drive setup → wizard on a fresh install,
-            # but also re-prompt for setup whenever a stale stamp is
+            # but also re-prompt for setup whenever stale setup is
             # detected (e.g. after a package upgrade).  The dismissed
             # flag persists through ``terok-state.json`` so a user who
             # closes both screens isn't nagged again — but a non-OK
-            # verdict overrides the flag, since a stale stamp is
+            # verdict overrides the flag, since stale setup is
             # actionable feedback the user shouldn't be allowed to mute
             # indefinitely.
             await self._maybe_show_first_run_flow()
@@ -603,12 +604,12 @@ if _HAS_TEXTUAL:
             """Probe the setup verdict and decide whether to drive the first-run flow."""
             empty_install = not self._projects_by_id and not self._broken_by_id
             try:
-                verdict = needs_setup()
+                verdict = setup_status(check_setup())
             except Exception:
-                verdict = SetupVerdict.OK  # keep the TUI usable on probe failure
+                verdict = SetupStatus.INVALID
 
             already_dismissed = getattr(self, "_first_run_dismissed", False)
-            if verdict is SetupVerdict.OK and (already_dismissed or not empty_install):
+            if verdict is SetupStatus.READY and (already_dismissed or not empty_install):
                 return
 
             self._first_run_dismissed = True
@@ -616,7 +617,7 @@ if _HAS_TEXTUAL:
             self._run_first_run_flow(verdict=verdict, empty_install=empty_install)
 
         @work(exclusive=True, group="first-run-flow", exit_on_error=False)
-        async def _run_first_run_flow(self, *, verdict: SetupVerdict, empty_install: bool) -> None:
+        async def _run_first_run_flow(self, *, verdict: SetupStatus, empty_install: bool) -> None:
             """Drive setup → wizard sequencing on a single worker.
 
             Runs the setup flow first when the verdict is non-OK, then
@@ -638,7 +639,7 @@ if _HAS_TEXTUAL:
                 )
                 raise
 
-        async def _run_setup_flow(self, verdict: SetupVerdict, *, force: bool = False) -> bool:
+        async def _run_setup_flow(self, verdict: SetupStatus, *, force: bool = False) -> bool:
             """Show the setup screen + worker log; return True if the wizard may follow.
 
             ``True`` covers both "setup completed cleanly" and "verdict
@@ -655,7 +656,7 @@ if _HAS_TEXTUAL:
             asked for the dialog, so honour it — re-running setup is
             idempotent and the screen's headline already says so).
             """
-            if verdict is SetupVerdict.OK and not force:
+            if verdict is SetupStatus.READY and not force:
                 return True
 
             outcome = await self.push_screen_wait(SetupScreen(verdict=verdict))
@@ -671,9 +672,8 @@ if _HAS_TEXTUAL:
                     )
                 case SetupOutcome.REFUSED:
                     self.notify(
-                        "Setup refused due to a downgrade.  Re-upgrade or remove "
-                        "the setup stamp; see ``terok setup`` from a shell for "
-                        "details.",
+                        "Setup refused due to a downgrade. Upgrade back to the "
+                        "installed setup version; downgrades are not supported.",
                         severity="error",
                         timeout=15,
                     )
@@ -1215,9 +1215,9 @@ if _HAS_TEXTUAL:
             ``push_screen_wait``, which requires a worker context.
             """
             try:
-                verdict = needs_setup()
+                verdict = setup_status(check_setup())
             except Exception:
-                verdict = SetupVerdict.FIRST_RUN
+                verdict = SetupStatus.INVALID
             await self._run_setup_flow(verdict, force=True)
 
         def _log_layout_debug(self) -> None:
@@ -2622,7 +2622,7 @@ if _HAS_TEXTUAL:
         flags to preserve — rebuilt by ``_restart_flags`` from parsed
         values, never echoed from raw ``sys.argv``.
         """
-        import shutil
+        from terok_util import find_host_tool
 
         # Must precede the app: tmux honours a pane's focus-reporting
         # request only if the option is on when Textual makes it.
@@ -2630,7 +2630,7 @@ if _HAS_TEXTUAL:
         result = TerokTUI().run()
         if result != _RESTART_EXIT_RESULT:
             return
-        exe = shutil.which("terok-tui")
+        exe = find_host_tool("terok-tui")
         if not exe:
             print("terok-tui not found on PATH — restart it manually to pick up the update.")
             return
@@ -2667,9 +2667,9 @@ if _HAS_TEXTUAL:
             _run_tui(restart_flags)
             return
 
-        import shutil
+        from terok_util import find_host_tool
 
-        if not shutil.which("tmux"):
+        if not find_host_tool("tmux"):
             print(
                 "Error: tmux is not installed.\n"
                 "Install it (e.g. 'apt install tmux' or 'brew install tmux') "

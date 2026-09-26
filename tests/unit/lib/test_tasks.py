@@ -6,6 +6,7 @@ import json
 import os
 import re
 import subprocess
+import sys
 import unittest.mock
 from contextlib import redirect_stdout
 from datetime import datetime, timedelta
@@ -103,7 +104,7 @@ class TestTask:
 
     def test_copy_to_clipboard_no_helpers_provides_install_hint(self) -> None:
         with unittest.mock.patch.dict(os.environ, {"XDG_SESSION_TYPE": "x11", "DISPLAY": ":0"}):
-            with unittest.mock.patch("terok.tui.clipboard.shutil.which", return_value=None):
+            with unittest.mock.patch("terok.tui.clipboard.find_host_tool", return_value=None):
                 result = copy_to_clipboard_detailed("hello")
         assert not result.ok
         assert result.hint is not None
@@ -115,7 +116,7 @@ class TestTask:
 
         with unittest.mock.patch.dict(os.environ, {"XDG_SESSION_TYPE": "x11", "DISPLAY": ":0"}):
             with unittest.mock.patch(
-                "terok.tui.clipboard.shutil.which", side_effect=which_side_effect
+                "terok.tui.clipboard.find_host_tool", side_effect=which_side_effect
             ):
                 with unittest.mock.patch("terok.tui.clipboard.subprocess.run") as run_mock:
                     run_mock.return_value = subprocess.CompletedProcess(args=[], returncode=0)
@@ -749,7 +750,7 @@ class TestTask:
             os.environ, {"XDG_SESSION_TYPE": "wayland", "WAYLAND_DISPLAY": "wayland-0"}
         ):
             with unittest.mock.patch(
-                "terok.tui.clipboard.shutil.which", return_value="/usr/bin/wl-copy"
+                "terok.tui.clipboard.find_host_tool", return_value="/usr/bin/wl-copy"
             ):
                 with unittest.mock.patch("terok.tui.clipboard.subprocess.run") as run_mock:
                     run_mock.return_value = subprocess.CompletedProcess(args=[], returncode=0)
@@ -759,7 +760,7 @@ class TestTask:
 
                     run_mock.assert_called_once()
                     args, kwargs = run_mock.call_args
-                    assert args[0][0] == "wl-copy"
+                    assert args[0][0] == "/usr/bin/wl-copy"
                     assert kwargs["input"] == "test content"
                     assert kwargs["check"]
                     assert kwargs["text"]
@@ -777,7 +778,7 @@ class TestTask:
 
         with unittest.mock.patch.dict(os.environ, env, clear=False):
             with unittest.mock.patch(
-                "terok.tui.clipboard.shutil.which", return_value="/usr/bin/xclip"
+                "terok.tui.clipboard.find_host_tool", return_value="/usr/bin/xclip"
             ):
                 with unittest.mock.patch("terok.tui.clipboard.subprocess.run") as run_mock:
                     run_mock.return_value = subprocess.CompletedProcess(args=[], returncode=0)
@@ -787,13 +788,13 @@ class TestTask:
 
                     run_mock.assert_called_once()
                     args, _kwargs = run_mock.call_args
-                    assert args[0][0] == "xclip"
+                    assert args[0][0] == "/usr/bin/xclip"
 
     def test_copy_to_clipboard_fallback_to_pbcopy(self) -> None:
         """Test copy_to_clipboard_detailed uses pbcopy on macOS and sets method field."""
         with unittest.mock.patch("terok.tui.clipboard.sys.platform", "darwin"):
             with unittest.mock.patch(
-                "terok.tui.clipboard.shutil.which", return_value="/usr/bin/pbcopy"
+                "terok.tui.clipboard.find_host_tool", return_value="/usr/bin/pbcopy"
             ):
                 with unittest.mock.patch("terok.tui.clipboard.subprocess.run") as run_mock:
                     run_mock.return_value = subprocess.CompletedProcess(args=[], returncode=0)
@@ -804,7 +805,42 @@ class TestTask:
 
                     run_mock.assert_called_once()
                     args, _kwargs = run_mock.call_args
-                    assert args[0][0] == "pbcopy"
+                    assert args[0][0] == "/usr/bin/pbcopy"
+
+    def test_clipboard_executes_absolute_match_not_relative_shadow(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """The executable selected by safe lookup is also the one launched."""
+        output = tmp_path / "clipboard.json"
+        for directory in (tmp_path / "relative", tmp_path / "absolute tools"):
+            directory.mkdir()
+            helper = directory / "wl-copy"
+            helper.write_text(
+                f"#!{sys.executable}\n"
+                "import json, sys\n"
+                "from pathlib import Path\n"
+                f"Path({str(output)!r}).write_text(json.dumps(["
+                f"{directory.name!r}, sys.stdin.read(), *sys.argv[1:]]))\n"
+            )
+            helper.chmod(0o700)
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.setenv("PATH", f"relative:{tmp_path / 'absolute tools'}")
+        monkeypatch.setenv("XDG_SESSION_TYPE", "wayland")
+        monkeypatch.setenv("WAYLAND_DISPLAY", "wayland-0")
+        monkeypatch.delenv("DISPLAY", raising=False)
+        monkeypatch.setattr("terok.tui.clipboard.sys.platform", "linux")
+
+        result = copy_to_clipboard_detailed("test content")
+
+        assert result.ok
+        assert result.method == "wl-copy"
+        assert get_clipboard_helper_status().available == ("wl-copy",)
+        assert json.loads(output.read_text()) == [
+            "absolute tools",
+            "test content",
+            "--type",
+            "text/plain",
+        ]
 
     def test_copy_to_clipboard_all_fail(self) -> None:
         """Test copy_to_clipboard_detailed returns proper error when all clipboard utilities fail."""
@@ -816,7 +852,7 @@ class TestTask:
                 return None
 
             with unittest.mock.patch(
-                "terok.tui.clipboard.shutil.which", side_effect=which_side_effect
+                "terok.tui.clipboard.find_host_tool", side_effect=which_side_effect
             ):
                 with unittest.mock.patch("terok.tui.clipboard.subprocess.run") as run_mock:
                     run_mock.side_effect = subprocess.CalledProcessError(
@@ -845,7 +881,7 @@ class TestTask:
             os.environ, {"XDG_SESSION_TYPE": "wayland", "WAYLAND_DISPLAY": "wayland-0"}
         ):
             with unittest.mock.patch(
-                "terok.tui.clipboard.shutil.which", return_value="/usr/bin/wl-copy"
+                "terok.tui.clipboard.find_host_tool", return_value="/usr/bin/wl-copy"
             ):
                 with unittest.mock.patch("terok.tui.clipboard.subprocess.run") as run_mock:
                     run_mock.side_effect = subprocess.TimeoutExpired(cmd=["wl-copy"], timeout=3.0)
@@ -864,7 +900,7 @@ class TestTask:
         """Test get_clipboard_helper_status returns available helpers on macOS."""
         with unittest.mock.patch("terok.tui.clipboard.sys.platform", "darwin"):
             with unittest.mock.patch(
-                "terok.tui.clipboard.shutil.which", return_value="/usr/bin/pbcopy"
+                "terok.tui.clipboard.find_host_tool", return_value="/usr/bin/pbcopy"
             ):
                 status = get_clipboard_helper_status()
                 assert status.available
@@ -876,7 +912,7 @@ class TestTask:
         with unittest.mock.patch.dict(
             os.environ, {"XDG_SESSION_TYPE": "wayland", "WAYLAND_DISPLAY": "wayland-0"}
         ):
-            with unittest.mock.patch("terok.tui.clipboard.shutil.which", return_value=None):
+            with unittest.mock.patch("terok.tui.clipboard.find_host_tool", return_value=None):
                 status = get_clipboard_helper_status()
                 assert status.available == ()
                 assert status.hint is not None
@@ -885,7 +921,7 @@ class TestTask:
     def test_get_clipboard_helper_status_no_helpers_x11(self) -> None:
         """Test get_clipboard_helper_status returns hint for X11 when no helpers available."""
         with unittest.mock.patch.dict(os.environ, {"XDG_SESSION_TYPE": "x11", "DISPLAY": ":0"}):
-            with unittest.mock.patch("terok.tui.clipboard.shutil.which", return_value=None):
+            with unittest.mock.patch("terok.tui.clipboard.find_host_tool", return_value=None):
                 status = get_clipboard_helper_status()
                 assert status.available == ()
                 assert status.hint is not None

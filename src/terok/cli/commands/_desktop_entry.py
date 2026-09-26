@@ -6,9 +6,8 @@
 ``terok setup`` calls `install_desktop_entry` (or the matching
 `uninstall_desktop_entry`) as a default-on phase, so the TUI
 appears as *Terok* in GNOME / KDE / XFCE application menus without the
-operator knowing the template layout.  Every step soft-fails so a
-headless host without ``.local/share`` or without ``xdg-utils`` never
-kills the wider ``terok setup`` flow.
+operator knowing the template layout. Missing optional desktop tools use
+the built-in fallback; installation failures are reported to the caller.
 
 Preferred path for the ``.desktop`` file is ``xdg-utils`` —
 ``xdg-desktop-menu install`` runs ``desktop-file-install`` (validates
@@ -44,7 +43,6 @@ from __future__ import annotations
 
 import logging
 import os
-import shutil
 import subprocess  # nosec B404 — cache refresh binaries are trusted
 import tempfile
 from enum import StrEnum
@@ -53,6 +51,7 @@ from importlib.resources.abc import Traversable
 from pathlib import Path
 
 import jinja2
+from terok_util import find_host_tool
 
 _log = logging.getLogger(__name__)
 
@@ -118,7 +117,7 @@ def install_desktop_entry(bin_path: str | Path) -> DesktopBackend:
         bin_path: Absolute path (or bare name) to ``terok-tui``.  The
             freedesktop ``Exec=`` / ``TryExec=`` keys need this — the
             launcher's minimal PATH often misses ``~/.local/bin``, so
-            ``shutil.which("terok-tui")``'s absolute result is preferred
+            ``find_host_tool("terok-tui")``'s absolute result is preferred
             over the short name.
 
     Returns:
@@ -169,7 +168,7 @@ def is_desktop_entry_installed() -> bool:
 
 def xdg_utils_available() -> bool:
     """Return True when xdg-desktop-menu is on PATH (icon side is always manual)."""
-    return bool(shutil.which(_XDG_MENU_BINARY))
+    return bool(find_host_tool(_XDG_MENU_BINARY))
 
 
 def _install_via_xdg_utils(desktop_contents: str, logo_bytes: bytes) -> bool:
@@ -235,7 +234,7 @@ def _run_xdg(binary: str, *args: str) -> bool:
     return value lets `_install_via_xdg_utils` decide whether to
     hand off to the manual fallback.
     """
-    found = shutil.which(binary)
+    found = find_host_tool(binary)
     if not found:  # pragma: no cover — gated by xdg_utils_available
         return False
     # nosec B603 — argv is our own literal binary path plus subcommand/arg tokens.
@@ -349,7 +348,7 @@ def _render_desktop_file(bin_str: str) -> str:
     # where vanilla glib wouldn't pick ptyxis anyway, but that's fine
     # — the user installed Ptyxis on purpose; the shim gives them the
     # container-tabs UI they want.
-    if shutil.which("ptyxis"):
+    if find_host_tool("ptyxis"):
         shim = str(_resource_dir().joinpath(_PTYXIS_SHIM_NAME))
         # ``TryExec`` points at the binary, not the shim: pipx (and any
         # PEP 517 wheel installer) ships package data without the
@@ -370,7 +369,7 @@ def _render_desktop_file(bin_str: str) -> str:
     # so refuse any value with a C0/DEL/C1 character before substitution —
     # a stray control byte in ``Exec=`` / ``TryExec=`` corrupts the
     # launcher's key syntax and the unvalidated path lands as-is.  In
-    # practice the values come from ``shutil.which`` results (path
+    # practice the values come from ``find_host_tool`` results (path
     # strings), but the cost of the guard is zero compared to debugging
     # a silently-broken launcher.
     for key, value in variables.items():
@@ -410,7 +409,7 @@ def _refresh_icon_cache() -> None:
 
 def _run_cache_refresh(binary: str, args: list[str | Path]) -> None:
     """Invoke *binary* with *args*, swallow every failure — caches are optional."""
-    found = shutil.which(binary)
+    found = find_host_tool(binary)
     if not found:
         return
     # nosec B603 — argv is a literal + controlled Path; no shell, no user input.

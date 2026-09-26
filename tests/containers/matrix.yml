@@ -62,6 +62,7 @@ slots:
       - name: host-only integration tests
         scope: integ
         pytest: tests/integration -v --tb=short -p no:tach -m "needs_host_features and not needs_internet and not needs_podman and not needs_kernel_keyring"
+  nixos:
 
 phases:
   - name: "phase 1: tests without hooks"

@@ -5,10 +5,11 @@
 
 import os
 import shlex
-import shutil
 import subprocess
 import sys
 from pathlib import Path
+
+from terok_util import find_host_tool
 
 
 def open_in_editor(file_path: Path) -> bool:
@@ -44,13 +45,12 @@ def _resolve_editor() -> str | None:
     env_editor = os.environ.get("EDITOR", "").strip()
     if env_editor:
         # Handle EDITOR with arguments (e.g., "nano -w")
-        # Only validate the first token (the actual command)
-        editor_cmd = shlex.split(env_editor)[0]
-        if shutil.which(editor_cmd):
-            return env_editor
+        editor_cmd, *args = shlex.split(env_editor)
+        if executable := find_host_tool(editor_cmd):
+            return shlex.join([executable, *args])
 
     for fallback in ("nano", "vi"):
-        if shutil.which(fallback):
-            return fallback
+        if executable := find_host_tool(fallback):
+            return shlex.join([executable])
 
     return None

@@ -5,7 +5,10 @@
 
 from __future__ import annotations
 
+import json
+import shlex
 import subprocess
+import sys
 from collections.abc import Callable
 from pathlib import Path
 from unittest.mock import patch
@@ -13,14 +16,15 @@ from unittest.mock import patch
 import pytest
 
 from terok.ui_utils.editor import _resolve_editor, open_in_editor
+from tests.testfs import MOCK_BASE
 
 
 def which_for(*available: str) -> Callable[[str], str | None]:
-    """Return a ``shutil.which`` side effect for the given available commands."""
+    """Return a ``find_host_tool`` side effect for the given available commands."""
     available_set = set(available)
 
     def _which(cmd: str) -> str | None:
-        return cmd if cmd in available_set else None
+        return str(MOCK_BASE / "bin" / cmd) if cmd in available_set else None
 
     return _which
 
@@ -41,10 +45,22 @@ def config_path(tmp_path: Path) -> Path:
             "/usr/bin/custom-editor",
             id="prefers-editor-env",
         ),
-        pytest.param("", which_for("nano"), "nano", id="falls-back-to-nano"),
-        pytest.param("", which_for("vi"), "vi", id="falls-back-to-vi"),
-        pytest.param("   ", which_for("nano"), "nano", id="ignores-whitespace-editor"),
-        pytest.param("nonexistent", which_for("nano"), "nano", id="invalid-editor-env-falls-back"),
+        pytest.param(
+            "", which_for("nano"), str(MOCK_BASE / "bin" / "nano"), id="falls-back-to-nano"
+        ),
+        pytest.param("", which_for("vi"), str(MOCK_BASE / "bin" / "vi"), id="falls-back-to-vi"),
+        pytest.param(
+            "   ",
+            which_for("nano"),
+            str(MOCK_BASE / "bin" / "nano"),
+            id="ignores-whitespace-editor",
+        ),
+        pytest.param(
+            "nonexistent",
+            which_for("nano"),
+            str(MOCK_BASE / "bin" / "nano"),
+            id="invalid-editor-env-falls-back",
+        ),
     ],
 )
 def test_resolve_editor_prefers_env_then_fallbacks(
@@ -55,7 +71,7 @@ def test_resolve_editor_prefers_env_then_fallbacks(
 ) -> None:
     """Editor resolution prefers ``$EDITOR`` and otherwise falls back to common editors."""
     monkeypatch.setenv("EDITOR", editor)
-    with patch("shutil.which", side_effect=which_side_effect):
+    with patch("terok.ui_utils.editor.find_host_tool", side_effect=which_side_effect):
         assert _resolve_editor() == expected
 
 
@@ -64,8 +80,48 @@ def test_resolve_editor_returns_none_when_no_editor(
 ) -> None:
     """Editor resolution returns ``None`` when nothing usable is found."""
     monkeypatch.setenv("EDITOR", "")
-    with patch("shutil.which", return_value=None):
+    with patch("terok.ui_utils.editor.find_host_tool", return_value=None):
         assert _resolve_editor() is None
+
+
+def test_editor_uses_current_absolute_path_entries(tmp_path, monkeypatch) -> None:
+    """Shared lookup rejects relative search entries and retains the selected executable."""
+    editor = tmp_path / "fixture-editor"
+    editor.write_text("fixture")
+    editor.chmod(0o700)
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("EDITOR", "fixture-editor -w")
+    monkeypatch.setenv("PATH", ".")
+    assert _resolve_editor() is None
+    monkeypatch.setenv("PATH", str(tmp_path))
+    assert _resolve_editor() == shlex.join([str(editor), "-w"])
+
+
+@pytest.mark.parametrize("configured", [True, False], ids=["editor-env", "fallback"])
+def test_editor_executes_absolute_match_not_relative_shadow(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, configured: bool
+) -> None:
+    """Execution keeps the safe lookup result and the editor's quoted arguments."""
+    name = "fixture-editor" if configured else "nano"
+    for directory in (tmp_path / "relative", tmp_path / "absolute tools"):
+        directory.mkdir()
+        editor = directory / name
+        editor.write_text(
+            f"#!{sys.executable}\n"
+            "import json, sys\n"
+            "from pathlib import Path\n"
+            "Path(sys.argv[-1]).write_text(json.dumps(["
+            f"{directory.name!r}, *sys.argv[1:-1]]))\n"
+        )
+        editor.chmod(0o700)
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("PATH", f"relative:{tmp_path / 'absolute tools'}")
+    monkeypatch.setenv("EDITOR", f"{name} -w 'argument with spaces'" if configured else "")
+    target = config_path(tmp_path)
+
+    assert open_in_editor(target)
+    expected_args = ["-w", "argument with spaces"] if configured else []
+    assert json.loads(target.read_text()) == ["absolute tools", *expected_args]
 
 
 @pytest.mark.parametrize(

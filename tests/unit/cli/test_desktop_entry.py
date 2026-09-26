@@ -25,19 +25,19 @@ def xdg_data_home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
 
 
 def _which_no_xdg_utils(name: str) -> str | None:
-    """``shutil.which`` side-effect: xdg-utils missing, manual cache bins present."""
+    """``find_host_tool`` side-effect: xdg-utils missing, manual cache bins present."""
     if name == "xdg-desktop-menu":
         return None
     return f"/usr/bin/{name}"
 
 
 def _which_nothing(name: str) -> str | None:
-    """``shutil.which`` side-effect: nothing on PATH at all."""
+    """``find_host_tool`` side-effect: nothing on PATH at all."""
     return None
 
 
 def _which_everything(name: str) -> str:
-    """``shutil.which`` side-effect: every probed binary reports present."""
+    """``find_host_tool`` side-effect: every probed binary reports present."""
     return f"/usr/bin/{name}"
 
 
@@ -61,7 +61,7 @@ class TestInstallViaXdgUtils:
 
         with (
             mock.patch(
-                "terok.cli.commands._desktop_entry.shutil.which",
+                "terok.cli.commands._desktop_entry.find_host_tool",
                 side_effect=_which_everything,
             ),
             mock.patch("terok.cli.commands._desktop_entry.subprocess.run", side_effect=record),
@@ -94,7 +94,7 @@ class TestInstallViaXdgUtils:
 
         with (
             mock.patch(
-                "terok.cli.commands._desktop_entry.shutil.which",
+                "terok.cli.commands._desktop_entry.find_host_tool",
                 side_effect=_which_everything,
             ),
             mock.patch(
@@ -119,7 +119,7 @@ class TestInstallViaXdgUtils:
         fake_proc = subprocess.CompletedProcess(args=[], returncode=0, stdout=b"", stderr=b"")
         with (
             mock.patch(
-                "terok.cli.commands._desktop_entry.shutil.which",
+                "terok.cli.commands._desktop_entry.find_host_tool",
                 side_effect=_which_everything,
             ),
             mock.patch("terok.cli.commands._desktop_entry.subprocess.run", return_value=fake_proc),
@@ -131,7 +131,7 @@ class TestInstallViaXdgUtils:
         fake_proc = subprocess.CompletedProcess(args=[], returncode=0, stdout=b"", stderr=b"")
         with (
             mock.patch(
-                "terok.cli.commands._desktop_entry.shutil.which",
+                "terok.cli.commands._desktop_entry.find_host_tool",
                 side_effect=_which_everything,
             ),
             mock.patch("terok.cli.commands._desktop_entry.subprocess.run", return_value=fake_proc),
@@ -147,7 +147,7 @@ class TestInstallViaXdgUtils:
         """
         # Seed the XDG tree the way a prior install would have.
         with mock.patch(
-            "terok.cli.commands._desktop_entry.shutil.which", side_effect=_which_nothing
+            "terok.cli.commands._desktop_entry.find_host_tool", side_effect=_which_nothing
         ):
             desktop.install_desktop_entry("terok-tui")
         assert desktop.is_desktop_entry_installed()
@@ -160,7 +160,7 @@ class TestInstallViaXdgUtils:
         )
         with (
             mock.patch(
-                "terok.cli.commands._desktop_entry.shutil.which",
+                "terok.cli.commands._desktop_entry.find_host_tool",
                 side_effect=_which_everything,
             ),
             mock.patch("terok.cli.commands._desktop_entry.subprocess.run", return_value=failing),
@@ -178,7 +178,7 @@ class TestInstallViaXdgUtils:
 
         with (
             mock.patch(
-                "terok.cli.commands._desktop_entry.shutil.which",
+                "terok.cli.commands._desktop_entry.find_host_tool",
                 side_effect=_which_everything,
             ),
             mock.patch(
@@ -203,7 +203,7 @@ class TestInstallViaXdgUtils:
         """A hung / broken xdg-utils front-end must not raise."""
         with (
             mock.patch(
-                "terok.cli.commands._desktop_entry.shutil.which",
+                "terok.cli.commands._desktop_entry.find_host_tool",
                 side_effect=_which_everything,
             ),
             mock.patch(
@@ -229,7 +229,7 @@ class TestInstallViaXdgUtils:
         )
         with (
             mock.patch(
-                "terok.cli.commands._desktop_entry.shutil.which",
+                "terok.cli.commands._desktop_entry.find_host_tool",
                 side_effect=_which_everything,
             ),
             mock.patch(
@@ -261,7 +261,7 @@ class TestInstallViaXdgUtils:
         )
         with (
             mock.patch(
-                "terok.cli.commands._desktop_entry.shutil.which",
+                "terok.cli.commands._desktop_entry.find_host_tool",
                 side_effect=_which_everything,
             ),
             mock.patch("terok.cli.commands._desktop_entry.subprocess.run", return_value=failing),
@@ -280,7 +280,7 @@ class TestInstallManualFallback:
     def test_writes_desktop_file_with_templated_bin(self, xdg_data_home: Path) -> None:
         """``{{BIN}}`` / ``{{TRY_EXEC}}`` land as the resolved binary path."""
         with mock.patch(
-            "terok.cli.commands._desktop_entry.shutil.which", side_effect=_which_nothing
+            "terok.cli.commands._desktop_entry.find_host_tool", side_effect=_which_nothing
         ):
             desktop.install_desktop_entry("/usr/local/bin/terok-tui")
         content = (xdg_data_home / "applications" / "terok.desktop").read_text()
@@ -295,7 +295,7 @@ class TestInstallManualFallback:
     def test_writes_icon_into_hicolor_tree(self, xdg_data_home: Path) -> None:
         """The bundled SVG ends up under hicolor/symbolic/apps/terok-symbolic.svg."""
         with mock.patch(
-            "terok.cli.commands._desktop_entry.shutil.which", side_effect=_which_nothing
+            "terok.cli.commands._desktop_entry.find_host_tool", side_effect=_which_nothing
         ):
             desktop.install_desktop_entry("terok-tui")
         icon = xdg_data_home / "icons" / "hicolor" / "symbolic" / "apps" / "terok-symbolic.svg"
@@ -310,7 +310,7 @@ class TestInstallManualFallback:
 
         with (
             mock.patch(
-                "terok.cli.commands._desktop_entry.shutil.which",
+                "terok.cli.commands._desktop_entry.find_host_tool",
                 side_effect=_which_no_xdg_utils,
             ),
             mock.patch(
@@ -327,7 +327,7 @@ class TestInstallManualFallback:
     def test_install_returns_fallback_backend(self, xdg_data_home: Path) -> None:
         """With xdg-utils absent the return value says so — drives the setup warning."""
         with mock.patch(
-            "terok.cli.commands._desktop_entry.shutil.which", side_effect=_which_nothing
+            "terok.cli.commands._desktop_entry.find_host_tool", side_effect=_which_nothing
         ):
             assert desktop.install_desktop_entry("terok-tui") is desktop.DesktopBackend.FALLBACK
 
@@ -335,7 +335,7 @@ class TestInstallManualFallback:
         """Nothing on PATH at all → no subprocess fired, install still succeeds."""
         with (
             mock.patch(
-                "terok.cli.commands._desktop_entry.shutil.which", side_effect=_which_nothing
+                "terok.cli.commands._desktop_entry.find_host_tool", side_effect=_which_nothing
             ),
             mock.patch("terok.cli.commands._desktop_entry.subprocess.run") as run,
         ):
@@ -346,7 +346,7 @@ class TestInstallManualFallback:
         """A hung / broken cache refresh binary can't derail the install."""
         with (
             mock.patch(
-                "terok.cli.commands._desktop_entry.shutil.which",
+                "terok.cli.commands._desktop_entry.find_host_tool",
                 side_effect=_which_no_xdg_utils,
             ),
             mock.patch(
@@ -373,7 +373,7 @@ class TestInstallManualFallback:
         )
         with (
             mock.patch(
-                "terok.cli.commands._desktop_entry.shutil.which",
+                "terok.cli.commands._desktop_entry.find_host_tool",
                 side_effect=_which_no_xdg_utils,
             ),
             mock.patch("terok.cli.commands._desktop_entry.subprocess.run", return_value=failing),
@@ -388,7 +388,7 @@ class TestUninstallDesktopEntry:
 
     def test_unlinks_desktop_file_and_icon(self, xdg_data_home: Path) -> None:
         with mock.patch(
-            "terok.cli.commands._desktop_entry.shutil.which", side_effect=_which_nothing
+            "terok.cli.commands._desktop_entry.find_host_tool", side_effect=_which_nothing
         ):
             desktop.install_desktop_entry("terok-tui")
             assert desktop.is_desktop_entry_installed()
@@ -398,7 +398,7 @@ class TestUninstallDesktopEntry:
     def test_uninstall_when_not_installed_is_noop(self, xdg_data_home: Path) -> None:
         """Running the teardown on a clean host doesn't raise."""
         with mock.patch(
-            "terok.cli.commands._desktop_entry.shutil.which", side_effect=_which_nothing
+            "terok.cli.commands._desktop_entry.find_host_tool", side_effect=_which_nothing
         ):
             desktop.uninstall_desktop_entry()
         assert not desktop.is_desktop_entry_installed()
@@ -417,7 +417,7 @@ class TestIsDesktopEntryInstalled:
 
     def test_returns_true_when_both_present(self, xdg_data_home: Path) -> None:
         with mock.patch(
-            "terok.cli.commands._desktop_entry.shutil.which", side_effect=_which_nothing
+            "terok.cli.commands._desktop_entry.find_host_tool", side_effect=_which_nothing
         ):
             desktop.install_desktop_entry("terok-tui")
         assert desktop.is_desktop_entry_installed() is True
@@ -433,7 +433,7 @@ class TestBackendSelection:
         def only_menu(name: str) -> str | None:
             return "/usr/bin/xdg-desktop-menu" if name == "xdg-desktop-menu" else None
 
-        with mock.patch("terok.cli.commands._desktop_entry.shutil.which", side_effect=only_menu):
+        with mock.patch("terok.cli.commands._desktop_entry.find_host_tool", side_effect=only_menu):
             assert desktop.xdg_utils_available() is True
 
     def test_xdg_desktop_icon_alone_is_not_enough(self) -> None:
@@ -448,7 +448,7 @@ class TestBackendSelection:
             return "/usr/bin/xdg-desktop-icon" if name == "xdg-desktop-icon" else None
 
         with mock.patch(
-            "terok.cli.commands._desktop_entry.shutil.which",
+            "terok.cli.commands._desktop_entry.find_host_tool",
             side_effect=only_wrong_icon_tool,
         ):
             assert desktop.xdg_utils_available() is False
@@ -456,7 +456,7 @@ class TestBackendSelection:
     def test_returns_false_when_xdg_desktop_menu_missing(self) -> None:
         """Without xdg-desktop-menu on PATH → manual fallback for .desktop too."""
         with mock.patch(
-            "terok.cli.commands._desktop_entry.shutil.which", side_effect=_which_nothing
+            "terok.cli.commands._desktop_entry.find_host_tool", side_effect=_which_nothing
         ):
             assert desktop.xdg_utils_available() is False
 
@@ -465,7 +465,7 @@ class TestBackendSelection:
 
 
 def _which_only(present: set[str]) -> object:
-    """``shutil.which`` side-effect: report only the names in *present*."""
+    """``find_host_tool`` side-effect: report only the names in *present*."""
     return lambda name: f"/usr/bin/{name}" if name in present else None
 
 
@@ -489,7 +489,7 @@ class TestPtyxisGate:
         present: set[str],
     ) -> None:
         with mock.patch(
-            "terok.cli.commands._desktop_entry.shutil.which",
+            "terok.cli.commands._desktop_entry.find_host_tool",
             side_effect=_which_only(present),
         ):
             desktop.install_desktop_entry("/usr/local/bin/terok-tui")
@@ -510,7 +510,7 @@ class TestPtyxisGate:
         present: set[str],
     ) -> None:
         with mock.patch(
-            "terok.cli.commands._desktop_entry.shutil.which",
+            "terok.cli.commands._desktop_entry.find_host_tool",
             side_effect=_which_only(present),
         ):
             desktop.install_desktop_entry("/usr/local/bin/terok-tui")

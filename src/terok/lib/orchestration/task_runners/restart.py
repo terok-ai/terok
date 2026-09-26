@@ -20,6 +20,7 @@ from ...core import runtime as _rt
 from ...core.config import get_public_host
 from ...core.images import project_cli_image
 from ...core.projects import load_project
+from ...core.setup import validate_host_setup
 from ...util.ansi import (
     blue as _blue,
     green as _green,
@@ -110,6 +111,7 @@ def _make_running(
     recreate fallbacks, the headless refusal — is identical.
     """
     project = load_project(project_name)
+    validate_host_setup()
     meta, meta_path = load_task_meta(project.name, task_id)
 
     mode = mode_override or meta.get("mode")

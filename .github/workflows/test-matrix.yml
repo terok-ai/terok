@@ -11,12 +11,17 @@ on:
         description: Space-separated slot subset (default = all declared)
         required: false
         default: ""
+      krun:
+        description: Run the whole matrix with krun (requires a capable runner)
+        type: boolean
+        default: false
 
 permissions:
   contents: read
 
 jobs:
   matrix:
-    uses: terok-ai/terok-util/.github/workflows/fleet-test-matrix.yml@v0.3.1
+    uses: sliwowitz/terok-util/.github/workflows/fleet-test-matrix.yml@663587dfa8649c7de4e288c44f109a6b1fc44c63
     with:
       slots: ${{ inputs.slots }}
+      krun: ${{ inputs.krun }}

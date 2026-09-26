@@ -182,12 +182,12 @@ class TestRunTui:
 
     def test_restart_sentinel_re_execs_entry_point(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """The freshly resolved ``terok-tui`` replaces the process, flags preserved."""
-        import shutil
+        import terok_util
 
         monkeypatch.setattr(
             app_mod, "TerokTUI", lambda: SimpleNamespace(run=lambda: _RESTART_EXIT_RESULT)
         )
-        monkeypatch.setattr(shutil, "which", lambda _cmd: "/usr/local/bin/terok-tui")
+        monkeypatch.setattr(terok_util, "find_host_tool", lambda _cmd: "/usr/local/bin/terok-tui")
         execs: list[tuple[str, list[str]]] = []
         monkeypatch.setattr(app_mod.os, "execv", lambda f, argv: execs.append((f, argv)))
 
@@ -211,12 +211,12 @@ class TestRunTui:
         self, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
     ) -> None:
         """The entry point vanishing between which() and exec (upgrade in flight) exits cleanly."""
-        import shutil
+        import terok_util
 
         monkeypatch.setattr(
             app_mod, "TerokTUI", lambda: SimpleNamespace(run=lambda: _RESTART_EXIT_RESULT)
         )
-        monkeypatch.setattr(shutil, "which", lambda _cmd: "/usr/local/bin/terok-tui")
+        monkeypatch.setattr(terok_util, "find_host_tool", lambda _cmd: "/usr/local/bin/terok-tui")
 
         def broken_execv(_file: str, _argv: list[str]) -> None:
             raise OSError("gone")
@@ -231,12 +231,12 @@ class TestRunTui:
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """No ``terok-tui`` on PATH ⇒ exit normally instead of exec'ing a guess."""
-        import shutil
+        import terok_util
 
         monkeypatch.setattr(
             app_mod, "TerokTUI", lambda: SimpleNamespace(run=lambda: _RESTART_EXIT_RESULT)
         )
-        monkeypatch.setattr(shutil, "which", lambda _cmd: None)
+        monkeypatch.setattr(terok_util, "find_host_tool", lambda _cmd: None)
         execs: list[object] = []
         monkeypatch.setattr(app_mod.os, "execv", lambda f, argv: execs.append((f, argv)))
 

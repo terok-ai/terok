@@ -10,12 +10,21 @@ import os
 import re
 from pathlib import Path
 from typing import Any
+from unittest.mock import patch
 
 import pytest
+from terok_sandbox import CredentialDB
+from terok_sandbox.setup import check_artifacts, setup_receipt
+from terok_sandbox.supervisor.install import install_supervisor_hooks
+from terok_util import require_setup
 
+from terok.lib.api import make_sandbox_config
+from terok.lib.core.setup import complete_setup
+from terok.lib.integrations.executor import ensure_sandbox_ready
 from tests.test_utils import assert_task_id
 from tests.testnet import EXAMPLE_UPSTREAM_URL, LOCALHOST, localhost_url
 
+from ..conftest import _reset_layered_config_caches
 from ..helpers import TerokIntegrationEnv, write_fake_podman
 
 pytestmark = pytest.mark.needs_host_features
@@ -31,11 +40,9 @@ git:
   upstream_url: {EXAMPLE_UPSTREAM_URL}
 """
 
-GLOBAL_CONFIG = """
+DISABLED_SHIELD_CONFIG = """
 shield:
   disable_firewall_no_protection: true
-vault:
-  bypass_no_secret_protection: true
 """
 
 
@@ -43,18 +50,30 @@ def _configure_fake_runtime(
     terok_env: TerokIntegrationEnv,
     tmp_path: Path,
 ) -> tuple[Path, dict[str, str]]:
-    """Install a fake podman shim and a config that bypasses real shield hooks."""
+    """Provision checked setup artifacts around a fake, unshielded Podman runtime."""
     bin_dir = tmp_path / "bin"
     bin_dir.mkdir()
     state_path = tmp_path / "fake-podman-state.json"
     write_fake_podman(bin_dir, state_path)
 
-    config_dir = terok_env.xdg_config_home / "terok"
-    config_dir.mkdir(parents=True, exist_ok=True)
-    (config_dir / "config.yml").write_text(GLOBAL_CONFIG.strip() + "\n", encoding="utf-8")
+    config_file = terok_env.xdg_config_home / "terok" / "config.yml"
+    with config_file.open("a", encoding="utf-8") as config:
+        config.write(DISABLED_SHIELD_CONFIG)
+    _reset_layered_config_caches()
 
     path = os.environ.get("PATH", "")
-    return state_path, {"PATH": f"{bin_dir}{os.pathsep}{path}" if path else str(bin_dir)}
+    extra_env = {"PATH": f"{bin_dir}{os.pathsep}{path}" if path else str(bin_dir)}
+    with patch.dict(os.environ, extra_env):
+        cfg = make_sandbox_config()
+        install_supervisor_hooks(root=cfg.state_dir)
+        CredentialDB(cfg.db_path, passphrase=cfg.resolve_passphrase()).close()
+        require_setup(check_artifacts(cfg, live=True))
+        setup_receipt(cfg).write()
+        # Artifacts are real and isolated; do not stop or reconfigure host services.
+        with patch("terok_executor.integrations.sandbox._handle_sandbox_setup"):
+            ensure_sandbox_ready(cfg=cfg)
+        complete_setup()
+    return state_path, extra_env
 
 
 def _load_fake_podman_state(state_path: Path) -> dict[str, Any]:

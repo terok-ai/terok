@@ -236,6 +236,7 @@ path = "terok.lib.api.setup"
 layer = "domain"
 depends_on = [
     "terok.lib.integrations.sandbox",
+    "terok.lib.core.setup",
 ]
 
 [[modules]]
@@ -418,6 +419,7 @@ depends_on = [
     "terok.lib.util.ansi",
     "terok.lib.util.net",
     "terok.lib.util.yaml",
+    "terok.lib.core.setup",
 ]
 
 # Task metadata, lifecycle, and queries — package: meta / identity /
@@ -1115,3 +1117,12 @@ expose = [
     "installed_dist_version",
 ]
 from = ["terok.lib.core.version"]
+
+[[modules]]
+path = "terok.lib.core.setup"
+layer = "core"
+depends_on = ["terok.lib.core.config", "terok.lib.core.paths", "terok.lib.integrations.executor"]
+
+[[interfaces]]
+expose = ["check_setup", "preflight_setup", "invalidate_setup", "complete_setup", "validate_host_setup"]
+from = ["terok.lib.core.setup"]

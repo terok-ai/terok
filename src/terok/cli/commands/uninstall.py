@@ -91,6 +91,10 @@ def cmd_uninstall(
     than it survives losing its shield hooks, so the aggregator's
     order keeps shield-hooks last.
     """
+    from terok.lib.api.setup import invalidate_setup, preflight_setup
+
+    preflight_setup()
+    invalidate_setup()
     print(bold("\nUninstalling terok host services\n"))
 
     all_ok = True

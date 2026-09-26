@@ -152,6 +152,12 @@ def _mock_infrastructure() -> Iterator[None]:
             "terok.lib.core.config.get_vault_bypass",
             return_value=True,
         ),
+        patch("terok.lib.orchestration.task_runners.cli.validate_host_setup"),
+        patch("terok.lib.orchestration.task_runners.toad.validate_host_setup"),
+        patch("terok.lib.orchestration.task_runners.headless.validate_host_setup"),
+        patch("terok.lib.orchestration.task_runners.restart.validate_host_setup"),
+        patch("terok_sandbox.sandbox.check_setup", return_value=()),
+        patch("terok_sandbox.launch.check_setup", return_value=()),
     ):
         yield
 

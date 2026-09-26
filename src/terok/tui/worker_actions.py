@@ -284,19 +284,18 @@ def selinux_install_policy() -> None:
     (including any sudo prompt) lands in the captured-log view so the
     operator can authenticate inline.
 
-    ``sudo`` and ``bash`` are looked up via [`shutil.which`][shutil.which]
-    so the subprocess gets an absolute executable path — keeps
-    bandit (B607 partial-path), SonarCloud, and a hostile ``PATH``
-    all out of the picture.  Failing either lookup turns into a clear
+    ``sudo`` and ``bash`` are looked up via [`find_host_tool`][terok_util.host_tools.find_host_tool]
+    using the current absolute PATH entries. Failing either lookup turns into a clear
     [`SystemExit`][SystemExit] rather than a confusing ``FileNotFoundError``.
     """
-    import shutil
     import subprocess  # noqa: S404 — running sudo to load a bundled SELinux policy is the whole point of this verb  # nosec B404
+
+    from terok_util import find_host_tool
 
     from terok.lib.api.setup import selinux_install_script
 
-    sudo = shutil.which("sudo")
-    bash = shutil.which("bash")
+    sudo = find_host_tool("sudo")
+    bash = find_host_tool("bash")
     if sudo is None or bash is None:
         missing = "sudo" if sudo is None else "bash"
         raise SystemExit(

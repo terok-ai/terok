@@ -1533,6 +1533,7 @@ class TestActionSelection:
             action_globals,
             {
                 "task_new": fake_task_new,
+                "validate_host_setup": mock.Mock(),
                 "load_project": fake_load_project,
                 "container_name": lambda *a: "terok-proj1-cli-42",
             },

@@ -19,11 +19,11 @@ hadn't fired at all.
 from __future__ import annotations
 
 from types import SimpleNamespace
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from terok_util import SetupStatus
 
-from terok.lib.integrations.sandbox import SetupVerdict
 from terok.tui.app import TerokTUI
 from terok.tui.setup_screen import SetupOutcome, SetupScreen
 
@@ -36,7 +36,7 @@ async def test_ok_verdict_skips_dialog_without_force() -> None:
         _run_setup_subprocess=AsyncMock(),
         notify=MagicMock(),
     )
-    result = await TerokTUI._run_setup_flow(stub, SetupVerdict.OK)
+    result = await TerokTUI._run_setup_flow(stub, SetupStatus.READY)
     assert result is True
     stub.push_screen_wait.assert_not_called()
     stub._run_setup_subprocess.assert_not_called()
@@ -55,7 +55,7 @@ async def test_ok_verdict_shows_dialog_when_forced() -> None:
         push_screen_wait=AsyncMock(return_value=SetupOutcome.SKIPPED),
         notify=MagicMock(),
     )
-    await TerokTUI._run_setup_flow(stub, SetupVerdict.OK, force=True)
+    await TerokTUI._run_setup_flow(stub, SetupStatus.READY, force=True)
     stub.push_screen_wait.assert_awaited_once()
     pushed = stub.push_screen_wait.await_args.args[0]
     assert isinstance(pushed, SetupScreen)
@@ -69,7 +69,7 @@ async def test_ok_verdict_forced_dispatch_runs_subprocess() -> None:
         _run_setup_subprocess=AsyncMock(return_value=True),
         notify=MagicMock(),
     )
-    result = await TerokTUI._run_setup_flow(stub, SetupVerdict.OK, force=True)
+    result = await TerokTUI._run_setup_flow(stub, SetupStatus.READY, force=True)
     assert result is True
     stub._run_setup_subprocess.assert_awaited_once()
 
@@ -81,5 +81,36 @@ async def test_non_ok_verdict_shows_dialog_without_force() -> None:
         push_screen_wait=AsyncMock(return_value=SetupOutcome.SKIPPED),
         notify=MagicMock(),
     )
-    await TerokTUI._run_setup_flow(stub, SetupVerdict.FIRST_RUN)
+    await TerokTUI._run_setup_flow(stub, SetupStatus.MISSING)
     stub.push_screen_wait.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_unexpected_probe_error_cannot_hide_setup_warning() -> None:
+    """Broken readiness probes are invalid, never silently interpreted as ready."""
+    stub = SimpleNamespace(
+        _projects_by_id={"existing": object()},
+        _broken_by_id={},
+        _first_run_dismissed=True,
+        _save_selection_state=MagicMock(),
+        _run_first_run_flow=MagicMock(),
+    )
+    with patch("terok.tui.app.check_setup", side_effect=OSError("unreadable")):
+        await TerokTUI._maybe_show_first_run_flow(stub)
+    stub._run_first_run_flow.assert_called_once_with(
+        verdict=SetupStatus.INVALID, empty_install=False
+    )
+
+
+def test_setup_screen_probe_error_is_invalid() -> None:
+    """A directly opened setup screen also refuses to treat probe errors as success."""
+    with patch("terok.tui.setup_screen.check_setup", side_effect=OSError("unreadable")):
+        assert SetupScreen()._verdict is SetupStatus.INVALID
+
+
+def test_downgrade_screen_has_no_override_action() -> None:
+    """The UI offers no receipt deletion or forced setup escape hatch."""
+    buttons = list(SetupScreen._buttons_for(SetupStatus.DOWNGRADE))
+    assert [button.id for button in buttons] == ["setup-refused", "setup-close"]
+    assert buttons[0].disabled
+    assert "Downgrades are not supported" in SetupScreen._blurb_for(SetupStatus.DOWNGRADE)

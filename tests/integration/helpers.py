@@ -13,6 +13,7 @@ import subprocess
 import sys
 import textwrap
 from dataclasses import dataclass
+from itertools import pairwise
 from pathlib import Path
 from typing import Literal
 
@@ -25,6 +26,8 @@ PODMAN_BASE_IMAGE = "docker.io/library/alpine:latest"
 PODMAN_TEST_IMAGE = "terok-itest:latest"
 PODMAN_CONTAINER_PREFIX = "terok-itest"
 PODMAN_SLEEP_COMMAND = ("sleep", "300")
+SHIELD_STATE_DIR_ANNOTATION = "terok.shield.state_dir"
+SHIELD_HOOK_ERROR_LOG = "hook-error.log"
 
 type ProjectScope = Literal["user", "system"]
 
@@ -253,24 +256,25 @@ class TerokIntegrationEnv:
 
 
 def _hook_diagnostics(extra_args: list[str]) -> str:
-    """Gather OCI hook diagnostics from shield extra args."""
+    """Read the hook error log from the annotated per-task shield state."""
+    prefix = f"{SHIELD_STATE_DIR_ANNOTATION}="
+    state_dir = next(
+        (
+            value.removeprefix(prefix)
+            for option, value in pairwise(extra_args)
+            if option == "--annotation" and value.startswith(prefix)
+        ),
+        "",
+    )
+    if not state_dir:
+        return f"\n  [diag] missing {SHIELD_STATE_DIR_ANNOTATION} annotation"
+
+    log_path = Path(state_dir) / SHIELD_HOOK_ERROR_LOG
     try:
-        hooks_index = extra_args.index("--hooks-dir")
-        hooks_dir = Path(extra_args[hooks_index + 1])
-        hook_json = hooks_dir / "terok-shield-createRuntime.json"
-        if not hook_json.exists():
-            return f"\n  [diag] hook JSON missing: {hook_json}"
-        data = json.loads(hook_json.read_text(encoding="utf-8"))
-        entrypoint = Path(data["hook"]["path"])
-        parts = [f"entrypoint={entrypoint}", f"exists={entrypoint.exists()}"]
-        if entrypoint.exists():
-            parts.append(f"executable={os.access(entrypoint, os.X_OK)}")
-            parts.append(f"content={entrypoint.read_text(encoding='utf-8').strip()!r}")
-        return f"\n  [diag] {', '.join(parts)}"
-    except ValueError:
-        return "\n  [diag] --hooks-dir missing from podman extra args"
-    except Exception as exc:  # pragma: no cover - diagnostic fallback
-        return f"\n  [diag] error: {exc}"
+        contents = log_path.read_text(encoding="utf-8", errors="replace")
+    except OSError as exc:
+        return f"\n  [diag] cannot read {log_path}: {exc}"
+    return f"\n  [diag] {log_path}: {contents.strip()!r}"
 
 
 def start_shielded_container(
