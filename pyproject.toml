@@ -44,11 +44,11 @@ dependencies = [
     "unique-namer~=1.6",
     "textual-serve~=1.1",
     "jinja2~=3.1",
-    "terok-executor @ https://github.com/terok-ai/terok-executor/releases/download/v0.5.0a2/terok_executor-0.5.0a2-py3-none-any.whl",
-    "terok-sandbox @ https://github.com/terok-ai/terok-sandbox/releases/download/v0.6.0a2/terok_sandbox-0.6.0a2-py3-none-any.whl",
-    "terok-shield @ https://github.com/terok-ai/terok-shield/releases/download/v0.9.0a2/terok_shield-0.9.0a2-py3-none-any.whl",
-    "terok-clearance @ https://github.com/terok-ai/terok-clearance/releases/download/v0.8.1a2/terok_clearance-0.8.1a2-py3-none-any.whl",
-    "terok-util @ https://github.com/terok-ai/terok-util/releases/download/v0.4.0a2/terok_util-0.4.0a2-py3-none-any.whl",
+    "terok-executor>=0.5.0,<0.6.0",
+    "terok-sandbox>=0.6.0,<0.7.0",
+    "terok-shield>=0.9.0,<0.10.0",
+    "terok-clearance>=0.8.1,<0.9.0",
+    "terok-util>=0.4.0,<0.5.0",
 ]
 
 [project.urls]
@@ -124,7 +124,7 @@ default-groups = ["dev", "test"]
 
 [tool.hatch.version]
 source = "vcs"
-fallback-version = "0.9.1.dev0"
+fallback-version = "0.9.1"
 
 # The sibling terok-* release wheels are pinned by direct URL (see the
 # pinning policy in AGENTS.md); hatchling requires an explicit opt-in

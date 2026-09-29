@@ -44,6 +44,15 @@
 
 [0.9.0]: https://github.com/terok-ai/terok/compare/v0.8.5...v0.9.0
 
+## v0.9.1 — At Your Service
+
+## What's Changed
+* Expose SSH key defaults and public keys in CLI and TUI in https://github.com/terok-ai/terok/pull/1297
+* Package-owned setup and host PATH on NixOS in https://github.com/terok-ai/terok/pull/1296
+* Enable Codex HTTPS connection via the vault in https://github.com/terok-ai/terok-executor/pull/552
+
+**Full Changelog**: https://github.com/terok-ai/terok/compare/v0.9.0...v0.9.1
+
 ## v0.9.0 — Past Prologue
 
 ## Breaking Changes
