@@ -366,8 +366,7 @@ def make_sandbox_config(project: ProjectConfig | None = None) -> SandboxConfig:
     """Construct a `SandboxConfig` for sandbox operations.
 
     *project* overlays the per-project settings a launch must honour —
-    today just ``services_mode`` ([`ProjectConfig.services_mode`]
-    [terok.lib.core.project_model.ProjectConfig.services_mode]).  Omit it
+    including ``services_mode`` and ``aslr_control``. Omit it
     for project-agnostic operations (vault, state paths, sickbay host
     checks), which read the global config alone.
 
@@ -410,7 +409,13 @@ def make_sandbox_config(project: ProjectConfig | None = None) -> SandboxConfig:
         shield_audit=get_shield_audit(),
         shield_dnsmasq_path=get_shield_dnsmasq_path(),
         services_mode=project.services_mode if project is not None else get_services_mode(),
+        aslr_control=project.aslr_control if project is not None else get_global_aslr_control(),
     )
+
+
+def get_global_aslr_control() -> bool:
+    """Return the global ``run.aslr_control`` opt-in; projects may override it."""
+    return _load_validated().run.aslr_control
 
 
 def get_global_human_name() -> str | None:

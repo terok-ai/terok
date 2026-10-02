@@ -2418,8 +2418,8 @@ requires-dist = [
     { name = "rich", specifier = "~=15.0" },
     { name = "ruamel-yaml", specifier = "==0.19.1" },
     { name = "terok-clearance", specifier = ">=0.8.1,<0.9.0" },
-    { name = "terok-executor", url = "https://github.com/terok-ai/terok-executor/releases/download/v0.5.1a1/terok_executor-0.5.1a1-py3-none-any.whl" },
-    { name = "terok-sandbox", url = "https://github.com/terok-ai/terok-sandbox/releases/download/v0.7.0a1/terok_sandbox-0.7.0a1-py3-none-any.whl" },
+    { name = "terok-executor", git = "https://github.com/sliwowitz/terok-executor?rev=feat%2Faslr-control" },
+    { name = "terok-sandbox", git = "https://github.com/sliwowitz/terok-sandbox?rev=feat%2Faslr-control" },
     { name = "terok-shield", url = "https://github.com/terok-ai/terok-shield/releases/download/v0.10.0a1/terok_shield-0.10.0a1-py3-none-any.whl" },
     { name = "terok-util", specifier = ">=0.4.0,<0.5.0" },
     { name = "textual", extras = ["syntax"], specifier = "~=8.2.8" },
@@ -2477,8 +2477,8 @@ wheels = [
 
 [[package]]
 name = "terok-executor"
-version = "0.5.1a1"
-source = { url = "https://github.com/terok-ai/terok-executor/releases/download/v0.5.1a1/terok_executor-0.5.1a1-py3-none-any.whl" }
+version = "0.5.1a2.dev505+g18d92db4d"
+source = { git = "https://github.com/sliwowitz/terok-executor?rev=feat%2Faslr-control#18d92db4d60f2a03e6a8206086c1872c7db2f469" }
 dependencies = [
     { name = "agent-client-protocol" },
     { name = "jinja2" },
@@ -2490,27 +2490,11 @@ dependencies = [
     { name = "terok-util" },
     { name = "tomli-w" },
 ]
-wheels = [
-    { url = "https://github.com/terok-ai/terok-executor/releases/download/v0.5.1a1/terok_executor-0.5.1a1-py3-none-any.whl", hash = "sha256:6f2a566901cb7f8651935ecdb48ca82744990ec6b15be4b4432af7dc9d3f5465" },
-]
-
-[package.metadata]
-requires-dist = [
-    { name = "agent-client-protocol", specifier = "==0.12.1" },
-    { name = "jinja2", specifier = "~=3.1" },
-    { name = "prompt-toolkit", specifier = "~=3.0" },
-    { name = "pydantic", specifier = "~=2.13" },
-    { name = "rich", specifier = "~=15.0" },
-    { name = "ruamel-yaml", specifier = "==0.19.1" },
-    { name = "terok-sandbox", url = "https://github.com/terok-ai/terok-sandbox/releases/download/v0.7.0a1/terok_sandbox-0.7.0a1-py3-none-any.whl" },
-    { name = "terok-util", specifier = ">=0.4.0,<0.5.0" },
-    { name = "tomli-w", specifier = "~=1.2" },
-]
 
 [[package]]
 name = "terok-sandbox"
-version = "0.7.0a1"
-source = { url = "https://github.com/terok-ai/terok-sandbox/releases/download/v0.7.0a1/terok_sandbox-0.7.0a1-py3-none-any.whl" }
+version = "0.7.0a2.dev505+g8265a0266"
+source = { git = "https://github.com/sliwowitz/terok-sandbox?rev=feat%2Faslr-control#8265a02662ba93d746fe5b9e9c1bce27c814d5bd" }
 dependencies = [
     { name = "aiohttp" },
     { name = "cryptography" },
@@ -2525,26 +2509,6 @@ dependencies = [
     { name = "terok-clearance" },
     { name = "terok-shield" },
     { name = "terok-util" },
-]
-wheels = [
-    { url = "https://github.com/terok-ai/terok-sandbox/releases/download/v0.7.0a1/terok_sandbox-0.7.0a1-py3-none-any.whl", hash = "sha256:a94cad16d5e69dce2d8c97b550cf607ad379eab06795d869a0895549c3011422" },
-]
-
-[package.metadata]
-requires-dist = [
-    { name = "aiohttp", specifier = "~=3.14.3" },
-    { name = "cryptography", specifier = "~=50.0" },
-    { name = "jinja2", specifier = "~=3.1" },
-    { name = "keyring", specifier = "~=25.7" },
-    { name = "packaging", specifier = "~=26.3" },
-    { name = "platformdirs", specifier = "~=4.12" },
-    { name = "prompt-toolkit", specifier = "~=3.0" },
-    { name = "pydantic", specifier = "~=2.13" },
-    { name = "ruamel-yaml", specifier = "==0.19.1" },
-    { name = "sqlcipher3", specifier = "==0.6.2" },
-    { name = "terok-clearance", specifier = ">=0.8.1,<0.9.0" },
-    { name = "terok-shield", url = "https://github.com/terok-ai/terok-shield/releases/download/v0.10.0a1/terok_shield-0.10.0a1-py3-none-any.whl" },
-    { name = "terok-util", specifier = ">=0.4.0,<0.5.0" },
 ]
 
 [[package]]

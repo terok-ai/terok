@@ -67,6 +67,31 @@ def project_yaml(
     return "\n".join(lines) + "\n"
 
 
+@pytest.mark.parametrize("global_value", [None, False, True])
+@pytest.mark.parametrize("project_value", [None, False, True])
+def test_aslr_control_reaches_sandbox(
+    tmp_path: Path,
+    global_value: bool | None,
+    project_value: bool | None,
+) -> None:
+    """Project overrides, including explicit false, reach sandbox's typed config."""
+    global_config = tmp_path / "config.yml"
+    global_config.write_text(
+        "" if global_value is None else f"run:\n  aslr_control: {str(global_value).lower()}\n"
+    )
+    yaml = project_yaml("aslr-test")
+    if project_value is not None:
+        yaml += f"run:\n  aslr_control: {str(project_value).lower()}\n"
+    with project_env(
+        yaml, project_name="aslr-test", extra_env={"TEROK_CONFIG_FILE": str(global_config)}
+    ):
+        project = load_project("aslr-test")
+        expected = project_value if project_value is not None else bool(global_value)
+        assert project.aslr_control is expected
+        assert make_sandbox_config(project).aslr_control is expected
+        assert make_sandbox_config().aslr_control is bool(global_value)
+
+
 class TestProject:
     """Tests for project loading/listing."""
 
