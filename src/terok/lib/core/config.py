@@ -409,6 +409,7 @@ def make_sandbox_config(project: ProjectConfig | None = None) -> SandboxConfig:
         shield_disabled=get_shield_disable_firewall_no_protection(),
         shield_audit=get_shield_audit(),
         shield_dnsmasq_path=get_shield_dnsmasq_path(),
+        shield_bypass_duration=get_shield_bypass_duration(),
         services_mode=project.services_mode if project is not None else get_services_mode(),
     )
 
@@ -647,6 +648,11 @@ def get_shield_audit() -> bool:
 def get_shield_dnsmasq_path() -> Path | None:
     """Return the dnsmasq binary configured as ``shield.dnsmasq_path``, if any."""
     return _load_validated().shield.dnsmasq_path
+
+
+def get_shield_bypass_duration() -> str:
+    """Return how long ``shield.bypass_duration`` keeps the timed allow-all window open."""
+    return _load_validated().shield.bypass_duration
 
 
 def get_public_host() -> str:

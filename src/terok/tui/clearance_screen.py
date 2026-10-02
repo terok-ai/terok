@@ -72,6 +72,10 @@ class _PendingRequest:
     nid: int
     summary: str
     body: str
+    container_id: str = ""
+    """Short container id — the hub socket's directory, which mute is addressed to."""
+    container_name: str = ""
+    """The name that container's hub knows it by, which its events carry."""
 
 
 class NotificationPosted(Message):
@@ -155,6 +159,7 @@ class ClearanceScreen(screen.Screen[None]):
         _footer_binding("q", "dismiss_screen", "Back"),
         _footer_binding("a", "allow_selected", "Allow"),
         _footer_binding("x", "deny_selected", "Deny"),
+        _footer_binding("m", "mute_selected", "Mute task"),
     ]
 
     CSS = """
@@ -307,7 +312,13 @@ class ClearanceScreen(screen.Screen[None]):
             log.write(Text(rendered, style=style))
         elif message.actions:
             # New blocked connection — add to pending
-            req = _PendingRequest(nid=message.nid, summary=message.summary, body=message.body)
+            req = _PendingRequest(
+                nid=message.nid,
+                summary=message.summary,
+                body=message.body,
+                container_id=message.container_id,
+                container_name=message.container_name,
+            )
             self._pending[message.nid] = req
             label = Static(rendered, markup=False)
             item = ListItem(label)
@@ -361,6 +372,49 @@ class ClearanceScreen(screen.Screen[None]):
     def action_deny_selected(self) -> None:
         """Send a ``deny`` verdict for the highlighted pending request."""
         self._send_verdict("deny")
+
+    def action_mute_selected(self) -> None:
+        """Stop prompting for the highlighted request's task.
+
+        Mute silences the question, not the shield: this connection stays
+        refused, later ones stay refused, and every one of them is still
+        recorded in the task's audit log.  Unmute from the task's action list.
+        """
+        request = self._highlighted_request()
+        if request is None:
+            return
+        if self._subscriber is None or not request.container_id:
+            self.app.notify("Clearance hub not connected — cannot mute.")
+            return
+        self.run_worker(
+            self._mute(request.container_id, request.container_name),
+            name=f"clearance-mute:{request.container_id}",
+            group="clearance-mute",
+            exit_on_error=False,
+        )
+
+    async def _mute(self, container_id: str, container_name: str) -> None:
+        """Ask this container's hub to stop prompting, and say what happened."""
+        muted = await self._subscriber.set_mute(container_id, container_name, True)
+        name = container_name or container_id
+        self.app.notify(
+            f"Muted {name} — refusals are still enforced and logged"
+            if muted
+            else f"Could not mute {name} (no live clearance socket)"
+        )
+
+    def _highlighted_request(self) -> _PendingRequest | None:
+        """Return the highlighted pending request, or ``None`` with a notice."""
+        try:
+            pending_list = self.query_one(_ID_PENDING, ListView)
+        except NoMatches:
+            return None
+        item = pending_list.highlighted_child
+        if item is None:
+            self.app.notify("No pending request selected.")
+            return None
+        nid = getattr(item, "clearance_nid", None)
+        return self._pending.get(nid) if nid is not None else None
 
     def _send_verdict(self, action: str) -> None:
         """Invoke the notifier callback for the currently highlighted item."""

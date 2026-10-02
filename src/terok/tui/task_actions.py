@@ -106,6 +106,29 @@ def _shield_down(cname: str, task_dir: Path, *, disengaged: bool = False) -> Non
     ShieldManager(task_dir).down(cname, resolve_container_uuid(cname), disengaged=disengaged)
 
 
+def _shield_bypass(cname: str, task_dir: Path, *, duration: str | None = None) -> None:
+    """Open this task's timed allow-all window for *duration*.
+
+    No container UUID: the window is an nft element, not a posture, so nothing
+    is announced to the hub.
+    """
+    ShieldManager(task_dir).bypass(cname, duration)
+
+
+def _shield_bypass_off(cname: str, task_dir: Path) -> None:
+    """Close this task's timed allow-all window before its timeout runs out."""
+    ShieldManager(task_dir).bypass_off(cname)
+
+
+def _clearance_socket(container_uuid: str) -> Path:
+    """Path of *container_uuid*'s clearance hub socket.
+
+    The supervisor names the directory for podman's 12-character short id —
+    ``sun_path`` is 108 bytes, which a 64-character UUID would blow past.
+    """
+    return get_config().runtime_dir / "clearance" / container_uuid[:12] / "hub.sock"
+
+
 class TaskActionsMixin(_MixinBase):
     """Task-related action handlers for the TerokTUI application.
 
@@ -885,6 +908,92 @@ class TaskActionsMixin(_MixinBase):
         if self._notify_shield_disabled():
             return
         self._action_shield_toggle("down", lambda c, d: _shield_down(c, d, disengaged=True))
+
+    async def _action_shield_bypass(self) -> None:
+        """Ask for a duration, then open (or close) the timed allow-all window."""
+        if self._notify_shield_disabled():
+            return
+        if not self.current_project_name or not self.current_task:
+            self.notify("No task selected.")
+            return
+        from .shield_bypass_screen import ShieldBypassScreen
+
+        await self.push_screen(
+            ShieldBypassScreen(get_config().shield_bypass_duration),
+            self._on_shield_bypass_result,
+        )
+
+    def _on_shield_bypass_result(self, duration: str | None) -> None:
+        """Open the window for *duration*, or close it when the field came back empty."""
+        if duration is None:
+            return
+        if duration:
+            self._action_shield_toggle(
+                "bypass", lambda c, d: _shield_bypass(c, d, duration=duration)
+            )
+        else:
+            self._action_shield_toggle("bypass-off", _shield_bypass_off)
+
+    async def _action_shield_harvest(self) -> None:
+        """Review what this task reached for — refusals, and what a window let through."""
+        if not self.current_project_name or not self.current_task:
+            self.notify("No task selected.")
+            return
+        pid = self.current_project_name
+        task = self.current_task
+        tid = task.task_id
+        try:
+            task_dir = load_project(pid).tasks_root / str(tid)
+            entries = ShieldManager(task_dir).harvest()
+        except Exception as exc:
+            self.notify(f"Could not read the audit log: {exc}")
+            return
+
+        from .shield_harvest_screen import ShieldHarvestScreen
+
+        await self.push_screen(ShieldHarvestScreen(f"{pid}:{tid}", entries))
+
+    def _action_clearance_mute(self) -> None:
+        """Stop prompting for this task's refusals; they stay refused and logged."""
+        self._set_clearance_mute(True)
+
+    def _action_clearance_unmute(self) -> None:
+        """Ask again about this task's refusals."""
+        self._set_clearance_mute(False)
+
+    def _set_clearance_mute(self, muted: bool) -> None:
+        """Send one mute/unmute to this task's clearance hub, in a worker.
+
+        Explicit rather than a toggle: the hub holds the mute in memory and
+        terok cannot see it, so a toggle would eventually flip the wrong way
+        after a hub restart.  Saying which state you want always lands.
+        """
+        if not self.current_project_name or not self.current_task:
+            self.notify("No task selected.")
+            return
+        pid = self.current_project_name
+        task = self.current_task
+        tid = task.task_id
+        cname = container_name(pid, task.mode or "cli", tid)
+
+        def work() -> None:
+            """Resolve the container, then call the hub over a one-shot connection."""
+            import asyncio
+
+            from terok.lib.api.clearance import set_container_mute
+
+            from ..lib.orchestration.task_runners import resolve_container_uuid
+
+            socket = _clearance_socket(resolve_container_uuid(cname))
+            asyncio.run(set_container_mute(socket, cname, muted))
+
+        self.run_worker(
+            work,
+            name=f"clearance-mute:{pid}:{tid}",
+            group="clearance-mute",
+            thread=True,
+            exit_on_error=False,
+        )
 
     async def _action_shield_interactive(self) -> None:
         """Open the native shield clearance screen for live verdict handling.
