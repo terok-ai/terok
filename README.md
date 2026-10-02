@@ -125,7 +125,9 @@ TUI plus shell completions for your detected shell.
 
 Interactive runs prompt for where the credentials-DB passphrase is
 stored; non-interactive hosts without systemd-creds must choose with
-`terok setup --passphrase-tier <keyring|session-file|config>`.
+`terok setup --passphrase-tier <systemd-creds|desktop-keyring|session-cache>`.
+The desktop keyring stores the passphrase persistently. The session cache
+uses the kernel keyring or a tmpfs session file and never survives reboot.
 
 To remove everything later:
 

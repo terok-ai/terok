@@ -15,8 +15,8 @@ the sandbox-owned [`VaultStatus`][terok_sandbox.VaultStatus] snapshot
 (state classification + warning catalog) under terok's effective
 config — one immutable value the TUI / CLI render.
 
-The passphrase-management verbs ``vault seal`` and ``vault
-to-keyring`` are operator-driven and ship from the sandbox CLI;
+The passphrase-management verbs ``vault passphrase seal`` and
+``vault passphrase to-desktop-keyring`` are operator-driven and ship from the sandbox CLI;
 the matching handler entrypoints are re-exported here for the TUI
 worker actions.
 """
@@ -54,9 +54,9 @@ if TYPE_CHECKING:
         WrongPassphraseError as WrongPassphraseError,
         change_passphrase as change_passphrase,
         credentials_provisioned as credentials_provisioned,
+        desktop_keyring_backend_available as desktop_keyring_backend_available,
         handle_vault_seal as handle_vault_seal,
-        handle_vault_to_keyring as handle_vault_to_keyring,
-        keyring_backend_available as keyring_backend_available,
+        handle_vault_to_desktop_keyring as handle_vault_to_desktop_keyring,
         plan_provisioning as plan_provisioning,
         provision_passphrase_tier as provision_passphrase_tier,
         provision_session_passphrase as provision_session_passphrase,
@@ -89,8 +89,8 @@ _LAZY: dict[str, str] = {
     "find_db_holders": "terok.lib.domain.vault_rekey",
     "find_running_tasks": "terok.lib.domain.vault_rekey",
     "handle_vault_seal": "terok.lib.integrations.sandbox",
-    "handle_vault_to_keyring": "terok.lib.integrations.sandbox",
-    "keyring_backend_available": "terok.lib.integrations.sandbox",
+    "handle_vault_to_desktop_keyring": "terok.lib.integrations.sandbox",
+    "desktop_keyring_backend_available": "terok.lib.integrations.sandbox",
     "plan_provisioning": "terok.lib.integrations.sandbox",
     "provision_passphrase_tier": "terok.lib.integrations.sandbox",  # nosec: B105 — export-map path, not a secret
     "provision_session_passphrase": "terok.lib.integrations.sandbox",
@@ -142,8 +142,8 @@ __all__ = [
     "find_db_holders",
     "find_running_tasks",
     "handle_vault_seal",
-    "handle_vault_to_keyring",
-    "keyring_backend_available",
+    "handle_vault_to_desktop_keyring",
+    "desktop_keyring_backend_available",
     "load_vault_status",
     "plan_provisioning",
     "provision_passphrase_tier",

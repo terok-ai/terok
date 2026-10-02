@@ -308,8 +308,8 @@ def _stop_vault() -> tuple[bool, str | None]:
     """Hard-lock the vault: destroy every stored copy of the passphrase.
 
     Panic assumes the worst, so a half-measure won't do.  Wiping only
-    the session file would leave a machine-bound tier (sealed
-    systemd-creds, keyring, plaintext config) that auto-unlocks the vault
+    the temporary cache would leave a durable tier (sealed
+    systemd-creds, desktop keyring, passphrase-command) that auto-unlocks the vault
     on the *next* access — the lock would be theatre.  So panic evicts
     every tier via
     [`purge_passphrase_tiers`][terok_sandbox.purge_passphrase_tiers], with
