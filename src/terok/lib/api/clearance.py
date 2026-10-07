@@ -33,6 +33,7 @@ if TYPE_CHECKING:
         MultiSocketSubscriber as MultiSocketSubscriber,
         Notification as Notification,
         create_notifier as create_notifier,
+        set_container_mute as set_container_mute,
     )
 
 #: Public name -> defining module (PEP 562 lazy resolution).
@@ -46,6 +47,7 @@ _LAZY: dict[str, str] = {
     "NOTIFY_VERDICT": "terok.lib.integrations.clearance",
     "Notification": "terok.lib.integrations.clearance",
     "create_notifier": "terok.lib.integrations.clearance",
+    "set_container_mute": "terok.lib.integrations.clearance",
 }
 
 __all__ = [
@@ -53,6 +55,7 @@ __all__ = [
     "CallbackNotifier",
     "MultiSocketSubscriber",
     "Notification",
+    "set_container_mute",
 ]
 
 
