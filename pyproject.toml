@@ -44,11 +44,11 @@ dependencies = [
     "unique-namer~=1.6",
     "textual-serve~=1.1",
     "jinja2~=3.1",
-    "terok-executor @ https://github.com/terok-ai/terok-executor/releases/download/v0.5.1a1/terok_executor-0.5.1a1-py3-none-any.whl",
-    "terok-sandbox @ https://github.com/terok-ai/terok-sandbox/releases/download/v0.7.0a1/terok_sandbox-0.7.0a1-py3-none-any.whl",
+    "terok-executor @ git+https://github.com/sliwowitz/terok-executor@fix/desktop-keyring-transfer",
+    "terok-sandbox @ git+https://github.com/sliwowitz/terok-sandbox@fix/desktop-keyring-transfer",
     "terok-shield @ https://github.com/terok-ai/terok-shield/releases/download/v0.10.0a1/terok_shield-0.10.0a1-py3-none-any.whl",
     "terok-clearance>=0.8.1,<0.9.0",
-    "terok-util>=0.4.0,<0.5.0",
+    "terok-util @ git+https://github.com/sliwowitz/terok-util@fix/desktop-keyring-transfer",
 ]
 
 [project.urls]

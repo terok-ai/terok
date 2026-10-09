@@ -91,7 +91,6 @@ def test_config_equality_contract(tmp_path: Path) -> None:
 
         _reset_config_caches_for_tests()
         _sandbox_config._shield_section.cache_clear()
-        _sandbox_config._credentials_section.cache_clear()
 
         from terok_sandbox import SandboxConfig
 
@@ -462,8 +461,8 @@ def test_terok_doctor_checks_emits_port_drift_in_tcp_mode() -> None:
     [
         (None, False, None),
         ("", False, None),
-        ("keyring", False, "passphrase via keyring"),
-        ("kernel-keyring", False, "passphrase via kernel-keyring"),
+        ("desktop-keyring", False, "passphrase via desktop keyring"),
+        ("session-cache", False, "passphrase via session cache"),
         ("systemd-creds", False, "passphrase via systemd-creds"),
         ("systemd-creds", True, "passphrase via systemd-creds (+TPM2)"),
     ],

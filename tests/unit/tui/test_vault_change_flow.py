@@ -209,7 +209,9 @@ class TestRunVaultChangeFlow:
     ) -> None:
         """A failed tier rewrite must not scroll past — and the re-ack still runs."""
         flow_stub.push_screen_wait.return_value = "typed-new"
-        problem = SimpleNamespace(tier="keyring", ok=False, detail="keyring write failed")
+        problem = SimpleNamespace(
+            tier="desktop-keyring", ok=False, detail="desktop keyring write failed"
+        )
         with (
             patch(
                 "terok.lib.api.vault.load_vault_status",
@@ -222,7 +224,7 @@ class TestRunVaultChangeFlow:
         ):
             await _change_flow(flow_stub)
         assert flow_stub.notify.call_args.kwargs["severity"] == "error"
-        assert "keyring write failed" in flow_stub.notify.call_args.args[0]
+        assert "desktop keyring write failed" in flow_stub.notify.call_args.args[0]
         flow_stub._reveal_new_passphrase.assert_awaited_once()
 
 

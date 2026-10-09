@@ -288,15 +288,15 @@ def test_vault_seal_calls_handle_with_key_auto() -> None:
     m_seal.assert_called_once_with(cfg=cfg, key="auto")
 
 
-def test_vault_to_keyring_calls_handle_with_cfg() -> None:
-    """``vault_to_keyring`` defers to the sandbox helper with terok's cfg."""
+def test_vault_to_desktop_keyring_calls_handle_with_cfg() -> None:
+    """``vault_to_desktop_keyring`` defers to the sandbox helper with terok's cfg."""
     cfg = mock.Mock()
     with (
         mock.patch("terok.lib.api.make_sandbox_config", return_value=cfg),
-        mock.patch("terok.lib.api.vault.handle_vault_to_keyring") as m_to_keyring,
+        mock.patch("terok.lib.api.vault.handle_vault_to_desktop_keyring") as m_to_desktop_keyring,
     ):
-        worker_actions.vault_to_keyring()
-    m_to_keyring.assert_called_once_with(cfg=cfg)
+        worker_actions.vault_to_desktop_keyring()
+    m_to_desktop_keyring.assert_called_once_with(cfg=cfg)
 
 
 def test_selinux_install_policy_runs_sudo_bash() -> None:

@@ -234,7 +234,7 @@ if TYPE_CHECKING:
         VaultStatus as VaultStatus,
         WrongPassphraseError as WrongPassphraseError,
         handle_vault_seal as handle_vault_seal,
-        handle_vault_to_keyring as handle_vault_to_keyring,
+        handle_vault_to_desktop_keyring as handle_vault_to_desktop_keyring,
         load_vault_status as load_vault_status,
         vault_db as vault_db,
     )
@@ -367,7 +367,7 @@ _LAZY: dict[str, str] = {
     "get_tasks": "terok.lib.api.task",
     "get_workspace_git_diff": "terok.lib.api.task",
     "handle_vault_seal": "terok.lib.api.vault",
-    "handle_vault_to_keyring": "terok.lib.api.vault",
+    "handle_vault_to_desktop_keyring": "terok.lib.api.vault",
     "has_gpu": "terok.lib.api.task",
     "installed_agents": "terok.lib.api.agents",
     "installed_agents_for_project": "terok.lib.api.agents",

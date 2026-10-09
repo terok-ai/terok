@@ -10,7 +10,7 @@
 # Extra packages per slot: openssh for the SSH signer path, dbus + the
 # meson/glib toolchain for dbus-python (the `stories` dependency group);
 # the keyutils runtime library (libkeyutils.so.1) so the vault's
-# kernel-keyring passphrase tier loads for real — the package name varies
+# kernel keyring cache backing loads for real — the package name varies
 # per family (libkeyutils1 on apt, keyutils-libs on dnf/apk, libkeyutils
 # on xbps, lib64keyutils1 on Mageia); alpine additionally needs
 # git-daemon for the gate's git:// tests.
@@ -19,7 +19,7 @@
 # `[sys.executable, "-m", "terok…"]` re-entry keeps working (#717); it
 # runs the GitHub-Actions flavour of the suite (unit + host-only
 # integration) under its own phases.  Its base image ships no keyutils,
-# so the kernel-keyring story test is deselected there (needs_kernel_keyring).
+# so the session-cache story test is deselected there (needs_kernel_keyring).
 
 image-prefix: terok-test
 flavor: podman
