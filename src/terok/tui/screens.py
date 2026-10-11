@@ -2225,9 +2225,19 @@ class TaskDetailsScreen(screen.Screen[str | None]):
             if not get_config().shield_disable_firewall_no_protection:
                 options.append(Option("\\[s]hield up (deny-all)", id="shield_up"))
             options.append(
+                Option("shield \\[b]ypass window (accept everything, briefly)", id="shield_bypass")
+            )
+            options.append(
+                Option("shield \\[h]arvest (what this task reached for)", id="shield_harvest")
+            )
+            options.append(
                 Option("shield \\[i]nteractive (verdict handler)", id="shield_interactive")
             )
             options.append(Option("shield \\[W]atch (event stream)", id="shield_watch"))
+            options.append(
+                Option("clearance \\[m]ute (stop asking, keep refusing)", id="clearance_mute")
+            )
+            options.append(Option("clearance un\\[M]ute (ask again)", id="clearance_unmute"))
             options.append(Option("shield \\[C]learance (live D-Bus)", id="show_clearance"))
 
         yield OptionList(*options, id="actions-list")
@@ -2286,10 +2296,11 @@ class TaskDetailsScreen(screen.Screen[str | None]):
             "X": "delete",
             "D": "shield_disengaged",
             "W": "shield_watch",
+            "M": "clearance_unmute",
             "C": "show_clearance",
         }
         if key in shift_map:
-            if key in ("R", "H", "P", "X", "D", "W", "C") and not self._has_tasks:
+            if key in ("R", "H", "P", "X", "D", "W", "C", "M") and not self._has_tasks:
                 return
             self.dismiss(shift_map[key])
             event.stop()
@@ -2312,6 +2323,9 @@ class TaskDetailsScreen(screen.Screen[str | None]):
             "l": "login",
             "u": "followup",
             "n": "rename",
+            "b": "shield_bypass",
+            "h": "shield_harvest",
+            "m": "clearance_mute",
             "i": "shield_interactive",
             "d": "shield_down",
             "s": "shield_up",

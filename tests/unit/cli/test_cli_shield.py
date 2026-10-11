@@ -145,6 +145,39 @@ def test_register_parses_shield_subcommands(
             assert getattr(args, key) == value
 
 
+@pytest.mark.parametrize(
+    ("argv", "expected"),
+    [
+        pytest.param(
+            ["shield", "bypass", "proj", "task1"],
+            {"duration": None, "off": False},
+            id="bare-reports-the-countdown",
+        ),
+        pytest.param(
+            ["shield", "bypass", "proj", "task1", "--for", "5m"],
+            {"duration": "5m", "off": False},
+            id="for-opens-the-window",
+        ),
+        pytest.param(
+            ["shield", "bypass", "proj", "task1", "--off"],
+            {"duration": None, "off": True},
+            id="off-closes-it",
+        ),
+    ],
+)
+def test_bypass_comes_from_the_shield_registry(
+    shield_parser: argparse.ArgumentParser,
+    argv: list[str],
+    expected: dict[str, object],
+) -> None:
+    """The window verb needs no terok-side plumbing — the registry generates it."""
+    args = shield_parser.parse_args(argv)
+    assert args.shield_cmd == "bypass"
+    assert (args.project_name, args.task_id) == ("proj", "task1")
+    for key, value in expected.items():
+        assert getattr(args, key) == value
+
+
 @pytest.mark.parametrize("command", ["prepare", "run", "resolve"])
 def test_register_excludes_standalone_only_commands(
     shield_parser: argparse.ArgumentParser,
