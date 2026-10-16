@@ -1932,9 +1932,9 @@ wheels = [
 
 [[package]]
 name = "pydevd-pycharm"
-version = "263.6259.38"
+version = "263.6800.43"
 source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/a8/89/293218e358907eef91a8d2d7d3b20c43da6378c08ff715fab1cc59be04e4/pydevd_pycharm-263.6259.38.tar.gz", hash = "sha256:fb3991c2df9882837f25fddca59fc9633c2ab83d1e83b6e0bf7ace90991189e4", size = 7636922, upload-time = "2026-10-01T13:23:44.581Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/95/fd/1e42dfe82c63faabe51de8a7be5331ef6ac30582644352ad30d052ba998b/pydevd_pycharm-263.6800.43.tar.gz", hash = "sha256:de0b868de92d915a570902b6c584d55ceca3290dcbeb9fa463a0873c7cff4dd5", size = 7636590, upload-time = "2026-10-13T06:01:15.879Z" }
 
 [[package]]
 name = "pydot"
@@ -2453,7 +2453,7 @@ docs = [
     { name = "mkdocstrings", extras = ["python"], specifier = ">=1.0.5" },
     { name = "properdocs", specifier = ">=1.6.7" },
 ]
-ide = [{ name = "pydevd-pycharm", specifier = "==263.6259.38" }]
+ide = [{ name = "pydevd-pycharm", specifier = "==263.6800.43" }]
 stories = [{ name = "python-dbusmock", specifier = ">=0.32" }]
 test = [
     { name = "pytest", specifier = ">=9.1.1" },
