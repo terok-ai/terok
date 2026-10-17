@@ -544,7 +544,7 @@ def test_make_sandbox_config_project_overlay_pins_services_mode(
     from types import SimpleNamespace
 
     monkeypatch.setenv("TEROK_CONFIG_FILE", str(write_config(tmp_path, "")))
-    project = SimpleNamespace(services_mode="tcp")
+    project = SimpleNamespace(services_mode="tcp", aslr_control=False)
     assert cfg.make_sandbox_config(project).services_mode == "tcp"  # type: ignore[arg-type]
     assert cfg.make_sandbox_config().services_mode == "socket"
 
