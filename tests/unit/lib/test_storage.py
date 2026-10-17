@@ -4,25 +4,31 @@
 """Tests for the storage usage aggregation domain layer.
 
 The domain module is the bridge between raw queries (agent, sandbox)
-and the CLI presentation.  Tests verify classification, aggregation,
-and the size parser — all with mocked sub-package calls.
+and the CLI presentation.  Tests verify lazy measurement, classification,
+aggregation, and the size parser with isolated files and mocked containers.
 """
 
 from __future__ import annotations
 
-from unittest.mock import patch
+from unittest.mock import MagicMock, PropertyMock, call, patch
 
+import pytest
+
+from terok.lib.core.task_state import CONTAINER_MODES, container_name
 from terok.lib.domain.image_cleanup import ImageInfo
 from terok.lib.domain.storage import (
     ORPHAN_PROJECT_NAME,
     ProjectSummary,
     StorageOverview,
     _is_global_image,
+    discover_project_storage,
+    discover_storage_overview,
     format_bytes,
     get_project_storage_detail,
     get_storage_overview,
     parse_image_size,
 )
+from terok.lib.integrations.executor import SharedMountStorageInfo, TaskStorageInfo
 from tests.testfs import MOCK_BASE
 
 # ---------------------------------------------------------------------------
@@ -225,6 +231,90 @@ class TestGetStorageOverview:
         overview = get_storage_overview()
         assert all(p.project_name != ORPHAN_PROJECT_NAME for p in overview.projects)
 
+    @pytest.mark.parametrize("scope, credential_bytes", [("shared", 0), ("project", 20)])
+    def test_counts_private_credentials_without_rebilling_shared_mounts(
+        self, tmp_path, scope, credential_bytes
+    ):
+        """Shared credentials belong globally; only private credentials belong to a project."""
+        shared_root = tmp_path / "shared"
+        shared_mount = shared_root / "_claude-config"
+        shared_mount.mkdir(parents=True)
+        (shared_mount / "config").write_bytes(b"s" * 10)
+        project = _fake_project("myproject")
+        project.tasks_root = tmp_path / "tasks"
+        workspace = project.tasks_root / "abc" / "workspace-dangerous"
+        workspace.mkdir(parents=True)
+        (workspace / "code").write_bytes(b"w" * 17)
+        project.credentials_scope = scope
+        project.project_mounts_dir = shared_root if scope == "shared" else tmp_path / "private"
+        if scope == "project":
+            private_mount = project.project_mounts_dir / "_claude-config"
+            private_mount.mkdir(parents=True)
+            (private_mount / "config").write_bytes(b"p" * 20)
+
+        with (
+            patch("terok.lib.domain.storage.sandbox_live_mounts_dir", return_value=shared_root),
+            patch("terok.lib.domain.storage.list_images", return_value=_MOCK_IMAGES),
+            patch("terok.lib.domain.storage.list_projects", return_value=[project]),
+        ):
+            overview = get_storage_overview()
+
+        assert overview.shared_mounts_bytes == 10
+        assert overview.projects == [
+            ProjectSummary("myproject", 3_000_000_000, 17, 1, credential_bytes)
+        ]
+        assert overview.grand_total == 4_000_000_000 + 10 + 17 + credential_bytes
+
+
+class TestDiscoverStorageOverview:
+    """Discover labels first; measure only the selected mount or project."""
+
+    def test_defers_directory_measurements_and_keeps_rows_independent(self, tmp_path):
+        shared_root = tmp_path / "shared"
+        for name in ("_beta-config", "_alpha-config"):
+            (shared_root / name).mkdir(parents=True)
+        (shared_root / "not-a-mount").touch()
+        projects = [_fake_project(name) for name in ("first", "second")]
+        with (
+            patch("terok.lib.domain.storage.sandbox_live_mounts_dir", return_value=shared_root),
+            patch("terok.lib.domain.storage.list_images", return_value=_MOCK_IMAGES),
+            patch("terok.lib.domain.storage.list_projects", return_value=projects),
+            patch.object(
+                SharedMountStorageInfo, "measure", wraps=SharedMountStorageInfo.measure
+            ) as measure_mount,
+            patch.object(TaskStorageInfo, "measure_all", return_value=[]) as measure_tasks,
+        ):
+            pending = discover_storage_overview()
+
+            assert pending.global_images == [_MOCK_IMAGES[0]]
+            assert [row.name for row in pending.shared_mounts] == ["Alpha config", "Beta config"]
+            assert [row.name for row in pending.projects] == [
+                "first",
+                "second",
+                ORPHAN_PROJECT_NAME,
+            ]
+            measure_mount.assert_not_called()
+            measure_tasks.assert_not_called()
+
+            assert pending.shared_mounts[1].measure().name == "_beta-config"
+            measure_mount.assert_called_once_with(shared_root / "_beta-config")
+            assert pending.shared_mounts[0].measure().name == "_alpha-config"
+            assert measure_mount.call_args_list == [
+                call(shared_root / "_beta-config"),
+                call(shared_root / "_alpha-config"),
+            ]
+            assert pending.projects[1].measure().project_name == "second"
+            measure_tasks.assert_called_once_with(projects[1].tasks_root)
+            assert pending.projects[0].measure().project_name == "first"
+            assert measure_tasks.call_args_list == [
+                call(projects[1].tasks_root),
+                call(projects[0].tasks_root),
+            ]
+            assert pending.projects[2].measure() == ProjectSummary(
+                ORPHAN_PROJECT_NAME, 3_000_000_000, 0, 0
+            )
+            assert measure_tasks.call_count == 2
+
 
 # ---------------------------------------------------------------------------
 # get_project_storage_detail — zooming in
@@ -234,15 +324,144 @@ class TestGetStorageOverview:
 class TestGetProjectStorageDetail:
     """Detail mode queries per-task sizes and overlay data."""
 
-    @patch("terok.lib.domain.storage.TaskStorageInfo.measure_all", return_value=[])
     @patch("terok.lib.domain.storage.list_images", return_value=[])
     @patch("terok.lib.core.projects.load_project")
-    def test_returns_project_detail(self, mock_load, _imgs, _tasks, mock_runtime):
-        mock_runtime.container_rw_sizes.return_value = {"abc": 1024}
-        mock_load.return_value = _fake_project("myproject")
+    def test_returns_project_detail(self, mock_load, _imgs, mock_runtime, tmp_path):
+        container = MagicMock()
+        container.name = container_name("myproject", "cli", "abc")
+        container.rw_size = 1024
+        mock_runtime.containers_with_prefix.return_value = [container]
+        project = _fake_project("myproject")
+        project.tasks_root = tmp_path / "missing-tasks"
+        mock_load.return_value = project
         detail = get_project_storage_detail("myproject")
         assert detail.project_name == "myproject"
         assert detail.overlays == {"abc": 1024}
+        assert detail.tasks == [TaskStorageInfo("abc", 0, 0)]
+        assert detail.total_bytes == 1024
+
+    def test_collects_workspace_and_overlay_bytes_under_the_same_task_id(
+        self, tmp_path, mock_runtime
+    ):
+        """Every displayed task row contributes the same bytes to the aggregate totals."""
+        project = _fake_project("myproject")
+        project.tasks_root = tmp_path / "tasks"
+        workspace = project.tasks_root / "abc" / "workspace-dangerous"
+        workspace.mkdir(parents=True)
+        (workspace / "code").write_bytes(b"w" * 17)
+        agent_config = project.tasks_root / "abc" / "agent-config"
+        agent_config.mkdir()
+        (agent_config / "config").write_bytes(b"c" * 5)
+        containers = []
+        for mode in CONTAINER_MODES:
+            container = MagicMock()
+            container.name = container_name(project.name, mode, "abc")
+            container.rw_size = 100
+            containers.append(container)
+        mock_runtime.containers_with_prefix.return_value = containers
+        images = [ImageInfo("myproject", "l2-cli", "id", "3GB", "1d ago")]
+
+        with (
+            patch("terok.lib.core.projects.load_project", return_value=project),
+            patch("terok.lib.domain.storage.list_images", return_value=images),
+        ):
+            detail = get_project_storage_detail(project.name)
+
+        assert detail.images == images
+        assert detail.tasks == [TaskStorageInfo("abc", 17, 5)]
+        assert detail.overlays == {"abc": 100 * len(CONTAINER_MODES)}
+        assert detail.workspace_bytes == 17
+        assert detail.overlay_bytes == 100 * len(CONTAINER_MODES)
+        assert detail.total_bytes == 3_000_000_000 + 17 + 100 * len(CONTAINER_MODES)
+
+
+class TestDiscoverProjectStorage:
+    """Task discovery leaves filesystem walks and container size queries for each row."""
+
+    def test_defers_measurements_and_inspects_each_container_once(self, tmp_path, mock_runtime):
+        project = _fake_project("myproject")
+        project.tasks_root = tmp_path / "tasks"
+        for task_id in ("beta", "alpha"):
+            (project.tasks_root / task_id).mkdir(parents=True)
+        (project.tasks_root / "not-a-task").touch()
+        project.credentials_scope = "project"
+        project.project_mounts_dir = tmp_path / "private"
+        containers, size_queries = [], []
+        for mode in CONTAINER_MODES:
+            container = MagicMock()
+            container.name = container_name(project.name, mode, "alpha")
+            size_query = PropertyMock(return_value=100)
+            type(container).rw_size = size_query
+            containers.append(container)
+            size_queries.append(size_query)
+        beta = MagicMock()
+        beta.name = container_name(project.name, "cli", "beta")
+        beta_size = PropertyMock(return_value=None)
+        type(beta).rw_size = beta_size
+        containers.append(beta)
+        mock_runtime.containers_with_prefix.return_value = containers
+        with (
+            patch("terok.lib.core.projects.load_project", return_value=project),
+            patch("terok.lib.domain.storage.list_images", return_value=[]),
+            patch.object(TaskStorageInfo, "measure", wraps=TaskStorageInfo.measure) as measure_task,
+            patch.object(
+                SharedMountStorageInfo,
+                "measure_all",
+                return_value=[SharedMountStorageInfo("_claude-config", "Claude config", 20)],
+            ) as measure_credentials,
+        ):
+            pending = discover_project_storage(project.name)
+
+            assert [row.name for row in pending.tasks] == ["alpha", "beta"]
+            measure_task.assert_not_called()
+            measure_credentials.assert_not_called()
+            for query in (*size_queries, beta_size):
+                query.assert_not_called()
+
+            assert pending.tasks[0].measure() == (
+                TaskStorageInfo("alpha", 0, 0),
+                100 * len(CONTAINER_MODES),
+            )
+            measure_task.assert_called_once_with(project.tasks_root / "alpha")
+            for query in size_queries:
+                query.assert_called_once_with()
+            beta_size.assert_not_called()
+            assert pending.tasks[1].measure() == (TaskStorageInfo("beta", 0, 0), 0)
+            beta_size.assert_called_once_with()
+            measure_credentials.assert_not_called()
+            assert pending.measure_credentials() == 20
+            measure_credentials.assert_called_once_with(project.project_mounts_dir)
+
+    @pytest.mark.parametrize(
+        "name",
+        [
+            "myproject-other-cli-abc",
+            "myproject-cli-cli-abc",
+            "myproject-auth",
+            "myproject-cli-..",
+            "myproject-cli-.",
+            "myproject-cli-",
+            "other-cli-abc",
+        ],
+    )
+    def test_ignores_non_task_containers(self, name, tmp_path, mock_runtime):
+        container = MagicMock()
+        container.name = name
+        size_query = PropertyMock(side_effect=AssertionError("Unrelated container was measured"))
+        type(container).rw_size = size_query
+        mock_runtime.containers_with_prefix.return_value = [container]
+        project = _fake_project("myproject")
+        project.tasks_root = tmp_path / "missing-tasks"
+
+        with (
+            patch("terok.lib.core.projects.load_project", return_value=project),
+            patch("terok.lib.domain.storage.list_images", return_value=[]),
+        ):
+            detail = get_project_storage_detail(project.name)
+
+        assert detail.tasks == []
+        assert detail.overlays == {}
+        size_query.assert_not_called()
 
 
 # ---------------------------------------------------------------------------
@@ -252,9 +471,8 @@ class TestGetProjectStorageDetail:
 
 def _fake_project(pid: str):
     """Minimal stand-in for ProjectConfig."""
-    from unittest.mock import MagicMock
-
     p = MagicMock()
     p.name = pid
     p.tasks_root = MOCK_BASE / "tasks" / pid
+    p.credentials_scope = "shared"
     return p
