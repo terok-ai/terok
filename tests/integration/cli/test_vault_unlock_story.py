@@ -1,20 +1,20 @@
 # SPDX-FileCopyrightText: 2026 Jiri Vyskocil
 # SPDX-License-Identifier: Apache-2.0
 
-"""End-to-end story: locked vault → CLI hint → unlock via kernel-keyring → CLI succeeds.
+"""End-to-end story: locked vault → CLI hint → unlock via session cache → CLI succeeds.
 
 Walks the full operator journey introduced in terok#877 / sandbox#278:
 
 1. A real SQLCipher-encrypted credentials DB exists on disk with a
    known passphrase but no resolver tier has it (fixture
-   passphrase_command removed, keyring/systemd-creds disabled, no
-   cached kernel-keyring passphrase).
+   passphrase_command removed, desktop keyring/systemd-creds disabled, no
+   session-cached passphrase).
 2. A real CLI verb (``terok project derive``) that opens the vault
    via [`vault_db`][terok.lib.domain.vault.vault_db] is exercised in a
    subprocess and surfaces the actionable hint installed by PR #936
    instead of crashing with a raw traceback.
 3. ``terok vault unlock`` caches the right passphrase in the
-   kernel-keyring tier.
+   session-cache tier.
 4. The same CLI verb (different target name, since the previous
    half-derive succeeded for the filesystem step) succeeds — the
    vault opens and no vault-locked surfaces appear in the output.
@@ -60,15 +60,15 @@ class TestVaultUnlockStory:
 
     @pytest.fixture(autouse=True)
     def _forget_kernel_keyring_key(self, terok_env: TerokIntegrationEnv) -> Iterator[None]:
-        """Drop this vault's kernel-keyring key after the test.
+        """Drop any kernel-keyring copy cached for this vault after the test.
 
-        ``vault unlock`` caches the passphrase in the per-uid ``@u``
-        keyring, which no ``tmp_path`` redirection can isolate.  The key is
+        When the session cache uses the per-uid ``@u`` kernel keyring,
+        no ``tmp_path`` redirection can isolate that backing.  The key is
         scoped to ``(hostname, DB path)``, so this teardown only ever
         clears *this* container's key — never a concurrent matrix slot's
         (different container hostname) nor the operator's real vault
         (different path).  Without it a shared-uid host would slowly accrue
-        orphaned test keys against the keyring quota.
+        orphaned test keys against the kernel-keyring quota.
         """
         yield
         from terok_sandbox.vault.store import kernel_keyring
@@ -82,7 +82,7 @@ class TestVaultUnlockStory:
         secret file into the user config so most integration tests can
         open the DB without a real daemon.  This story needs the
         *opposite* — a locked vault that no tier can unseal — so we
-        undo that helper deliberately (keyring explicitly off: it
+        undo that helper deliberately (desktop keyring explicitly off: it
         defaults on now, and a CI host's real Secret Service must not
         unlock the story's vault).
         """
@@ -92,7 +92,7 @@ class TestVaultUnlockStory:
         CredentialDB(db_path, passphrase=self._STORY_PASSPHRASE).close()
 
         (terok_env.xdg_config_home / "terok" / "config.yml").write_text(
-            "credentials:\n  use_keyring: false\n",
+            "credentials:\n  use_desktop_keyring: false\n",
             encoding="utf-8",
         )
         (terok_env.system_config_root / "config.yml").write_text(
@@ -100,7 +100,7 @@ class TestVaultUnlockStory:
             encoding="utf-8",
         )
 
-    def test_locked_then_unlocked_via_kernel_keyring(
+    def test_locked_then_unlocked_via_session_cache(
         self,
         terok_env: TerokIntegrationEnv,
         tmp_path: Path,
@@ -141,8 +141,7 @@ class TestVaultUnlockStory:
 
         # --- Act 2: cache the right passphrase via ``terok vault unlock``,
         # which validates it against the DB and stores it in the
-        # kernel-keyring tier (the volatile session-file tier it replaced
-        # had no equivalent plant-a-file handoff).
+        # session cache (kernel keyring or tmpfs session file).
         terok_env.run_cli(
             "vault",
             "unlock",
@@ -168,7 +167,7 @@ class TestVaultUnlockStory:
             f"stdout:\n{unlocked.stdout}\nstderr:\n{unlocked.stderr}"
         )
         # The dispatch-loop hint owned by terok must stay silent once the
-        # kernel-keyring tier resolves cleanly — absence is the contract,
+        # session-cache tier resolves cleanly — absence is the contract,
         # not the absence of any specific sandbox-side wording.
         assert "terok vault unlock" not in unlocked.stderr
         # The derived project lives where the CLI says it should.

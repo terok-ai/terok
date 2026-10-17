@@ -60,7 +60,9 @@ class TestMaybeWarnRecoveryUnconfirmed:
         monkeypatch.setattr(
             RecoveryStatus,
             "load",
-            classmethod(lambda cls, cfg=None: _status(acknowledged=False, source="keyring")),
+            classmethod(
+                lambda cls, cfg=None: _status(acknowledged=False, source="desktop-keyring")
+            ),
         )
         _maybe_warn_recovery_unconfirmed(color=False)
         out = capsys.readouterr().out
@@ -72,7 +74,7 @@ class TestMaybeWarnRecoveryUnconfirmed:
     def test_unacknowledged_volatile_only_escalates(
         self, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
     ) -> None:
-        """Marker missing + kernel-keyring source → loud ``error`` footer.
+        """Marker missing + session-cache source → loud ``error`` footer.
 
         The volatile tier is wiped on the next reboot, so this state is
         a genuinely different severity from the durable-tier warning.
@@ -84,7 +86,7 @@ class TestMaybeWarnRecoveryUnconfirmed:
         monkeypatch.setattr(
             RecoveryStatus,
             "load",
-            classmethod(lambda cls, cfg=None: _status(acknowledged=False, source="kernel-keyring")),
+            classmethod(lambda cls, cfg=None: _status(acknowledged=False, source="session-cache")),
         )
         _maybe_warn_recovery_unconfirmed(color=False)
         out = capsys.readouterr().out

@@ -1151,7 +1151,7 @@ class ProjectActionsMixin(_MixinBase):
     # install / uninstall / start / stop.
 
     async def _action_vault_unlock(self) -> None:
-        """Prompt for the SQLCipher passphrase and cache it in the kernel-keyring tier.
+        """Prompt for the SQLCipher passphrase and store it in the session cache.
 
         Re-uses the same modal as the on-mount probe, then funnels the
         result through ``_on_vault_unlock_result`` so the write +
@@ -1181,8 +1181,8 @@ class ProjectActionsMixin(_MixinBase):
     async def _action_vault_lock(self) -> None:
         """Lock the vault — clear every stored copy of the passphrase.
 
-        Locking removes the session file *and* every durable tier
-        (keyring, sealed systemd-creds, plaintext config): against a
+        Locking removes the temporary cache and saved desktop keyring /
+        systemd-creds copies, and disconnects passphrase-command: against a
         machine-bound tier a soft-lock would just auto-unlock on the next
         access (the BitLocker-Suspend trap), so the only honest lock is
         eviction.  Reversible only by re-supplying the passphrase, so it's
@@ -1195,13 +1195,15 @@ class ProjectActionsMixin(_MixinBase):
             ConfirmDestructiveScreen(
                 message=(
                     "This clears EVERY stored copy of the vault passphrase — the "
-                    "session file, the OS keyring, and the sealed systemd-creds "
-                    "credential.\n\n"
+                    "kernel keyring / tmpfs session cache, desktop keyring entry, "
+                    "and sealed systemd-creds credential. It also disconnects "
+                    "passphrase-command without deleting the helper's secret.\n\n"
+                    "Running services stay open; this does not revoke their access.\n\n"
                     "You will need your saved passphrase to unlock again. If you "
                     "have not saved it off-host, the vault becomes unrecoverable."
                 ),
-                title="Lock vault",
-                confirm_label="Lock",
+                title="Lock vault — delete saved passphrases",
+                confirm_label="Delete saved passphrases",
             ),
             self._on_vault_lock_confirmed,
         )
@@ -1230,19 +1232,18 @@ class ProjectActionsMixin(_MixinBase):
             refresh="vault_status",
         )
 
-    async def _action_vault_to_keyring(self) -> None:
-        """Move the currently resolved passphrase into the OS keyring.
+    async def _action_vault_to_desktop_keyring(self) -> None:
+        """Move the currently resolved passphrase into the desktop keyring.
 
-        Defers to sandbox's ``handle_vault_to_keyring``: resolves the
-        passphrase from whichever tier currently holds it, writes to
-        the keyring, flips ``credentials.use_keyring: true``, drops
-        any plaintext fallbacks, and removes the session/sealed copies.
-        The next container's supervisor resolves the keyring tier afresh.
-        The shell-side equivalent of ``terok vault passphrase to-keyring``.
+        Defers to sandbox's ``handle_vault_to_desktop_keyring``: validates and
+        stores the passphrase, verifies desktop-keyring readback, then
+        enables that tier and removes the prior copies and helper wiring.
+        The next container's supervisor resolves the desktop keyring afresh.
+        The shell-side equivalent of ``terok vault passphrase to-desktop-keyring``.
         """
         self._run_console_action(
-            "terok.tui.worker_actions:vault_to_keyring",
-            title="Moving vault passphrase to OS keyring",
+            "terok.tui.worker_actions:vault_to_desktop_keyring",
+            title="Moving vault passphrase to desktop keyring",
             refresh="vault_status",
         )
 

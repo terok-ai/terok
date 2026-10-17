@@ -2419,10 +2419,10 @@ requires-dist = [
     { name = "rich", specifier = "~=15.0" },
     { name = "ruamel-yaml", specifier = "==0.19.1" },
     { name = "terok-clearance", specifier = ">=0.8.1,<0.9.0" },
-    { name = "terok-executor", url = "https://github.com/terok-ai/terok-executor/releases/download/v0.5.1a1/terok_executor-0.5.1a1-py3-none-any.whl" },
-    { name = "terok-sandbox", url = "https://github.com/terok-ai/terok-sandbox/releases/download/v0.7.0a1/terok_sandbox-0.7.0a1-py3-none-any.whl" },
+    { name = "terok-executor", git = "https://github.com/sliwowitz/terok-executor?rev=fix%2Fdesktop-keyring-transfer" },
+    { name = "terok-sandbox", git = "https://github.com/sliwowitz/terok-sandbox?rev=fix%2Fdesktop-keyring-transfer" },
     { name = "terok-shield", url = "https://github.com/terok-ai/terok-shield/releases/download/v0.10.0a1/terok_shield-0.10.0a1-py3-none-any.whl" },
-    { name = "terok-util", specifier = ">=0.4.0,<0.5.0" },
+    { name = "terok-util", git = "https://github.com/sliwowitz/terok-util?rev=fix%2Fdesktop-keyring-transfer" },
     { name = "textual", extras = ["syntax"], specifier = "~=8.2.8" },
     { name = "textual-serve", specifier = "~=1.1" },
     { name = "unique-namer", specifier = "~=1.6" },
@@ -2478,8 +2478,8 @@ wheels = [
 
 [[package]]
 name = "terok-executor"
-version = "0.5.1a1"
-source = { url = "https://github.com/terok-ai/terok-executor/releases/download/v0.5.1a1/terok_executor-0.5.1a1-py3-none-any.whl" }
+version = "0.5.1a2.dev506+g5a592ca89"
+source = { git = "https://github.com/sliwowitz/terok-executor?rev=fix%2Fdesktop-keyring-transfer#5a592ca89b81e73eb457c594630f97bee70fc66e" }
 dependencies = [
     { name = "agent-client-protocol" },
     { name = "jinja2" },
@@ -2491,27 +2491,11 @@ dependencies = [
     { name = "terok-util" },
     { name = "tomli-w" },
 ]
-wheels = [
-    { url = "https://github.com/terok-ai/terok-executor/releases/download/v0.5.1a1/terok_executor-0.5.1a1-py3-none-any.whl", hash = "sha256:6f2a566901cb7f8651935ecdb48ca82744990ec6b15be4b4432af7dc9d3f5465" },
-]
-
-[package.metadata]
-requires-dist = [
-    { name = "agent-client-protocol", specifier = "==0.12.1" },
-    { name = "jinja2", specifier = "~=3.1" },
-    { name = "prompt-toolkit", specifier = "~=3.0" },
-    { name = "pydantic", specifier = "~=2.13" },
-    { name = "rich", specifier = "~=15.0" },
-    { name = "ruamel-yaml", specifier = "==0.19.1" },
-    { name = "terok-sandbox", url = "https://github.com/terok-ai/terok-sandbox/releases/download/v0.7.0a1/terok_sandbox-0.7.0a1-py3-none-any.whl" },
-    { name = "terok-util", specifier = ">=0.4.0,<0.5.0" },
-    { name = "tomli-w", specifier = "~=1.2" },
-]
 
 [[package]]
 name = "terok-sandbox"
-version = "0.7.0a1"
-source = { url = "https://github.com/terok-ai/terok-sandbox/releases/download/v0.7.0a1/terok_sandbox-0.7.0a1-py3-none-any.whl" }
+version = "0.7.0a2.dev506+g083a6df24"
+source = { git = "https://github.com/sliwowitz/terok-sandbox?rev=fix%2Fdesktop-keyring-transfer#083a6df24b752d9156ccd6463ac27a28c4f0a3b1" }
 dependencies = [
     { name = "aiohttp" },
     { name = "cryptography" },
@@ -2526,26 +2510,6 @@ dependencies = [
     { name = "terok-clearance" },
     { name = "terok-shield" },
     { name = "terok-util" },
-]
-wheels = [
-    { url = "https://github.com/terok-ai/terok-sandbox/releases/download/v0.7.0a1/terok_sandbox-0.7.0a1-py3-none-any.whl", hash = "sha256:a94cad16d5e69dce2d8c97b550cf607ad379eab06795d869a0895549c3011422" },
-]
-
-[package.metadata]
-requires-dist = [
-    { name = "aiohttp", specifier = "~=3.14.3" },
-    { name = "cryptography", specifier = "~=50.0" },
-    { name = "jinja2", specifier = "~=3.1" },
-    { name = "keyring", specifier = "~=25.7" },
-    { name = "packaging", specifier = "~=26.3" },
-    { name = "platformdirs", specifier = "~=4.12" },
-    { name = "prompt-toolkit", specifier = "~=3.0" },
-    { name = "pydantic", specifier = "~=2.13" },
-    { name = "ruamel-yaml", specifier = "==0.19.1" },
-    { name = "sqlcipher3", specifier = "==0.6.2" },
-    { name = "terok-clearance", specifier = ">=0.8.1,<0.9.0" },
-    { name = "terok-shield", url = "https://github.com/terok-ai/terok-shield/releases/download/v0.10.0a1/terok_shield-0.10.0a1-py3-none-any.whl" },
-    { name = "terok-util", specifier = ">=0.4.0,<0.5.0" },
 ]
 
 [[package]]
@@ -2570,17 +2534,13 @@ requires-dist = [
 
 [[package]]
 name = "terok-util"
-version = "0.4.0"
-source = { registry = "https://pypi.org/simple" }
+version = "0.4.1.dev127+gf93eee62d"
+source = { git = "https://github.com/sliwowitz/terok-util?rev=fix%2Fdesktop-keyring-transfer#f93eee62d83e714d53cd061b07fcfb69b3e50800" }
 dependencies = [
     { name = "jinja2" },
     { name = "packaging" },
     { name = "platformdirs" },
     { name = "ruamel-yaml" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/b7/33/0e510df33e177b6ae1ab7e182147ad19cd33dacebf4a863ba3b931a13758/terok_util-0.4.0.tar.gz", hash = "sha256:f1cc2f48ba533ab81637004930533d745f6fa16a238f2390932ed816032594a2", size = 271279, upload-time = "2026-09-29T06:09:16.21Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/d3/df/68c7f2ce096f7ebfc5d4664ee1ba9dbf043ca6e7777b6701bfd25ed2300c/terok_util-0.4.0-py3-none-any.whl", hash = "sha256:6b2956b3e407feaefc037aa6d7c92368cd434295538464be2833f06079b4d2d9", size = 122313, upload-time = "2026-09-29T06:09:14.569Z" },
 ]
 
 [[package]]

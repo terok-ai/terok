@@ -21,7 +21,7 @@ MOCK_VAULT_DB = MOCK_BASE / "vault" / "credentials.db"
 def _make_vault_snapshot(
     *,
     state: str = "unlocked",
-    source: str | None = "keyring",
+    source: str | None = "desktop-keyring",
     providers: tuple[str, ...] | None = ("claude", "gh"),
     warnings: tuple[object, ...] = (),
     lock_reason: str | None = None,
