@@ -14,12 +14,19 @@ Two entry points mirror two levels of detail:
   one-liners (no per-container podman ``--size`` queries)
 - [`get_project_storage_detail`][terok.lib.domain.storage.get_project_storage_detail] — per-task breakdown for one
   project, including the expensive overlay size computation
+
+The discovery queries expose named, deferred measurements so text reports
+can identify each row before its filesystem walk or overlay inspection starts.
 """
 
 from __future__ import annotations
 
 import re
+from collections.abc import Callable
 from dataclasses import dataclass
+from functools import partial
+from pathlib import Path
+from typing import TYPE_CHECKING
 
 from terok.lib.integrations.executor import (
     SharedMountStorageInfo,
@@ -28,7 +35,12 @@ from terok.lib.integrations.executor import (
 
 from ..core.config import sandbox_live_mounts_dir
 from ..core.projects import list_projects
+from ..core.task_state import CONTAINER_MODES, container_name
 from .image_cleanup import ImageInfo, list_images
+
+if TYPE_CHECKING:
+    from ..core.project_model import ProjectConfig
+    from ..integrations.sandbox import Container
 
 # ---------------------------------------------------------------------------
 # Size parsing — translate podman's human-readable strings to bytes
@@ -67,11 +79,7 @@ def parse_image_size(text: str) -> int:
 
 
 def format_bytes(n: int) -> str:
-    """Format bytes as a right-aligned human-readable string.
-
-    Uses SI units (1000-based) to match podman's output convention.
-    Always returns a fixed-width string suitable for column alignment.
-    """
+    """Format bytes in SI units (1000-based), leaving column padding to the view."""
     for unit, threshold in (("TB", 1e12), ("GB", 1e9), ("MB", 1e6), ("KB", 1e3)):
         if n >= threshold:
             return f"{n / threshold:.1f} {unit}"
@@ -176,6 +184,7 @@ class ProjectDetail:
     images: list[ImageInfo]
     tasks: list[TaskStorageInfo]
     overlays: dict[str, int]
+    """Writable-layer bytes keyed by task ID, summed across container modes."""
     credential_mounts_bytes: int = 0
     """Bytes occupied by per-project agent-config mounts when
     ``credentials_scope == "project"``; zero otherwise (the shared-tree
@@ -212,18 +221,46 @@ class ProjectDetail:
 # ---------------------------------------------------------------------------
 
 
-def get_storage_overview() -> StorageOverview:
-    """Gather global summary — fast, no per-container podman queries.
+@dataclass(frozen=True)
+class StorageMeasurement[T]:
+    """A named storage row whose expensive measurement has not started."""
 
-    Iterates all projects, sums workspace sizes via terok-executor, and
-    classifies images into global vs per-project.
-    """
+    name: str
+    measure: Callable[[], T]
+
+
+@dataclass(frozen=True)
+class OverviewMeasurements:
+    """Global images and pending mount/project rows, in report order."""
+
+    global_images: list[ImageInfo]
+    shared_mounts: list[StorageMeasurement[SharedMountStorageInfo]]
+    projects: list[StorageMeasurement[ProjectSummary]]
+
+
+@dataclass(frozen=True)
+class ProjectMeasurements:
+    """Project images and pending task rows, including their overlay bytes."""
+
+    images: list[ImageInfo]
+    tasks: list[StorageMeasurement[tuple[TaskStorageInfo, int]]]
+    measure_credentials: Callable[[], int]
+
+
+def get_storage_overview() -> StorageOverview:
+    """Collect the global storage report without presentation side effects."""
+    pending = discover_storage_overview()
+    return StorageOverview(
+        global_images=pending.global_images,
+        shared_mounts=[row.measure() for row in pending.shared_mounts],
+        projects=[row.measure() for row in pending.projects],
+    )
+
+
+def discover_storage_overview() -> OverviewMeasurements:
+    """Discover row names without walking workspaces or shared mount trees."""
     all_images = list_images()
     global_images = [img for img in all_images if _is_global_image(img)]
-
-    shared_mounts = SharedMountStorageInfo.measure_all(sandbox_live_mounts_dir())
-
-    # Per-project: sum image sizes + workspace sizes
     projects_conf = list_projects()
     project_image_bytes: dict[str, int] = {}
     for img in all_images:
@@ -231,80 +268,115 @@ def get_storage_overview() -> StorageOverview:
         if pid:
             project_image_bytes[pid] = project_image_bytes.get(pid, 0) + parse_image_size(img.size)
 
-    summaries = []
-    for proj in projects_conf:
-        tasks = TaskStorageInfo.measure_all(proj.tasks_root)
-        # Per-project credential mounts are billed to the project they
-        # belong to.  Shared-credential projects (``credentials_scope ==
-        # "shared"``) leave their bytes in ``shared_mounts`` to avoid
-        # double-counting the single global tree across every project.
-        cred_mounts_bytes = 0
-        if proj.credentials_scope == "project" and proj.project_mounts_dir.is_dir():
-            cred_mounts_bytes = sum(
-                m.bytes for m in SharedMountStorageInfo.measure_all(proj.project_mounts_dir)
-            )
-        summaries.append(
-            ProjectSummary(
-                project_name=proj.name,
-                image_bytes=project_image_bytes.get(proj.name, 0),
-                workspace_bytes=sum(t.workspace_bytes for t in tasks),
-                task_count=len(tasks),
-                credential_mounts_bytes=cred_mounts_bytes,
-            )
+    projects = [
+        StorageMeasurement(
+            proj.name, partial(_measure_project, proj, project_image_bytes.get(proj.name, 0))
         )
+        for proj in projects_conf
+    ]
 
     # Surface L2 images whose project is no longer configured so they roll up
     # into the grand total instead of vanishing from the overview.
     known_ids = {p.name for p in projects_conf}
     orphan_bytes = sum(b for pid, b in project_image_bytes.items() if pid not in known_ids)
     if orphan_bytes:
-        summaries.append(
-            ProjectSummary(
-                project_name=ORPHAN_PROJECT_NAME,
-                image_bytes=orphan_bytes,
-                workspace_bytes=0,
-                task_count=0,
+        projects.append(
+            StorageMeasurement(
+                ORPHAN_PROJECT_NAME,
+                partial(ProjectSummary, ORPHAN_PROJECT_NAME, orphan_bytes, 0, 0),
             )
         )
 
-    return StorageOverview(
+    return OverviewMeasurements(
         global_images=global_images,
-        shared_mounts=shared_mounts,
-        projects=summaries,
+        shared_mounts=[
+            StorageMeasurement(
+                SharedMountStorageInfo.label_for(path.name),
+                partial(SharedMountStorageInfo.measure, path),
+            )
+            for path in _directories(sandbox_live_mounts_dir())
+        ],
+        projects=projects,
     )
 
 
 def get_project_storage_detail(project_name: str) -> ProjectDetail:
-    """Detailed view for one project, including overlay sizes.
+    """Collect per-task filesystem and overlay sizes for one project."""
+    pending = discover_project_storage(project_name)
+    measured = [row.measure() for row in pending.tasks]
+    return ProjectDetail(
+        project_name=project_name,
+        images=pending.images,
+        tasks=[task for task, _ in measured],
+        overlays={task.task_id: overlay for task, overlay in measured},
+        credential_mounts_bytes=pending.measure_credentials(),
+    )
 
-    This triggers ``podman ps --size`` for the project's containers —
-    expect a brief pause while podman computes overlay diffs.
+
+def discover_project_storage(project_name: str) -> ProjectMeasurements:
+    """Discover task rows without measuring their workspaces or overlays.
+
+    Container-only tasks remain visible when their host directory is gone.
+    Each row measures all of its container modes exactly once.
     """
     from ..core import runtime as _rt
     from ..core.projects import load_project
 
     project = load_project(project_name)
     project_images = [img for img in list_images(project_name) if not _is_global_image(img)]
-    tasks = TaskStorageInfo.measure_all(project.tasks_root)
     runtime = _rt.resolve_runtime(project)
-    # ``container_rw_sizes`` is podman-specific; not every backend exposes it.
-    overlays = (
-        runtime.container_rw_sizes(project_name) if hasattr(runtime, "container_rw_sizes") else {}
+    task_containers: dict[str, list[Container]] = {}
+    for container in runtime.containers_with_prefix(project_name):
+        task_id = container.name.rsplit("-", 1)[-1]
+        if task_id.isalnum() and any(
+            container.name == container_name(project_name, mode, task_id)
+            for mode in CONTAINER_MODES
+        ):
+            task_containers.setdefault(task_id, []).append(container)
+    task_ids = {path.name for path in _directories(project.tasks_root)} | task_containers.keys()
+    return ProjectMeasurements(
+        images=project_images,
+        tasks=[
+            StorageMeasurement(
+                task_id,
+                partial(
+                    _measure_task, project.tasks_root / task_id, task_containers.get(task_id, [])
+                ),
+            )
+            for task_id in sorted(task_ids)
+        ],
+        measure_credentials=partial(_credential_mount_bytes, project),
     )
 
-    # Per-project credential mounts (only present when scope=project).
-    # Keep the calculation in lockstep with ``get_storage_overview`` so the
-    # two views can't disagree on the same project's bytes.
-    cred_mounts_bytes = 0
-    if project.credentials_scope == "project" and project.project_mounts_dir.is_dir():
-        cred_mounts_bytes = sum(
-            m.bytes for m in SharedMountStorageInfo.measure_all(project.project_mounts_dir)
-        )
 
-    return ProjectDetail(
-        project_name=project_name,
-        images=project_images,
-        tasks=tasks,
-        overlays=overlays,
-        credential_mounts_bytes=cred_mounts_bytes,
+def _directories(root: Path) -> list[Path]:
+    """List immediate directories in name order without traversing their contents."""
+    return sorted(path for path in root.iterdir() if path.is_dir()) if root.is_dir() else []
+
+
+def _measure_project(project: ProjectConfig, image_bytes: int) -> ProjectSummary:
+    """Measure one project's workspaces and private credential mounts."""
+    tasks = TaskStorageInfo.measure_all(project.tasks_root)
+    return ProjectSummary(
+        project_name=project.name,
+        image_bytes=image_bytes,
+        workspace_bytes=sum(task.workspace_bytes for task in tasks),
+        task_count=len(tasks),
+        credential_mounts_bytes=_credential_mount_bytes(project),
+    )
+
+
+def _measure_task(task_dir: Path, containers: list[Container]) -> tuple[TaskStorageInfo, int]:
+    """Measure one task's host directories and all of its container overlays."""
+    return TaskStorageInfo.measure(task_dir), sum(
+        container.rw_size or 0 for container in containers
+    )
+
+
+def _credential_mount_bytes(project: ProjectConfig) -> int:
+    """Bill private credentials to their project, shared credentials only globally."""
+    if project.credentials_scope != "project":
+        return 0
+    return sum(
+        mount.bytes for mount in SharedMountStorageInfo.measure_all(project.project_mounts_dir)
     )

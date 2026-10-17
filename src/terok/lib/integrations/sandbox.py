@@ -132,6 +132,7 @@ if TYPE_CHECKING:
         yaml_update_section as yaml_update_section,
         yellow as yellow,
     )
+    from terok_sandbox.runtime import Container as Container
     from terok_sandbox.supervisor.install import (
         kill_all_supervisors as kill_all_supervisors,
     )
@@ -145,6 +146,7 @@ _LAZY: dict[str, str] = {
     "CONTAINER_GATE_SOCKET": "terok_sandbox",
     "CONTAINER_RUNTIME_DIR": "terok_sandbox",
     "CONTAINER_VAULT_SOCKET": "terok_sandbox",
+    "Container": "terok_sandbox.runtime",
     "ContainerRuntime": "terok_sandbox",
     "CredentialDB": "terok_sandbox",
     "DEFAULT_GUEST_SSHD_PORT": "terok_sandbox",
@@ -252,6 +254,7 @@ __all__ = [
     "CONTAINER_GATE_SOCKET",
     "CONTAINER_RUNTIME_DIR",
     "CONTAINER_VAULT_SOCKET",
+    "Container",
     "ContainerRuntime",
     "CredentialDB",
     "DEFAULT_GUEST_SSHD_PORT",

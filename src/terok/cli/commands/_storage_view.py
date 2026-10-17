@@ -14,6 +14,8 @@ from typing import TYPE_CHECKING
 from ...lib.util.ansi import blue, bold, color, supports_color
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
+
     from ...lib.domain.storage import ProjectDetail, StorageOverview
 
 # ---------------------------------------------------------------------------
@@ -21,6 +23,8 @@ if TYPE_CHECKING:
 # ---------------------------------------------------------------------------
 
 _TABLE_WIDTH = 50
+_SIZE_WIDTH = 10
+_TASK_COUNT_WIDTH = 5
 
 
 def _c(enabled: bool) -> bool:
@@ -66,91 +70,104 @@ def _heavy_separator(enabled: bool) -> str:
 
 
 def cmd_overview(*, json_output: bool = False) -> None:
-    """Print the global storage overview."""
-    from ...lib.domain.storage import format_bytes, get_storage_overview
-
-    overview = get_storage_overview()
+    """Print each overview row as it is measured, or collect a JSON report."""
+    from ...lib.domain.storage import (
+        StorageOverview,
+        discover_storage_overview,
+        format_bytes,
+        get_storage_overview,
+    )
 
     if json_output:
-        _json_overview(overview)
+        _json_overview(get_storage_overview())
         return
 
     c = _c(supports_color())
-
-    # ── Global section ──
-    print(_section("Global", c))
+    print(_section("Global", c), flush=True)
+    pending = discover_storage_overview()
+    overview = StorageOverview(pending.global_images, [], [])
 
     # Images
     if overview.global_images:
-        print(_sub_header("Images:", c))
-        name_w = max(len(img.full_name) for img in overview.global_images)
-        size_w = max(len(img.size) for img in overview.global_images)
+        print(_sub_header("Images:", c), flush=True)
+        name_w = max(len("NAME"), *(len(img.full_name) for img in overview.global_images))
+        total = format_bytes(overview.global_images_bytes)
+        size_w = max(len("SIZE"), len(total), *(len(img.size) for img in overview.global_images))
         print(
-            f"  {bold('NAME', c):<{name_w + 10}}  {bold('SIZE', c):>{size_w + 10}}  {bold('CREATED', c)}"
+            f"  {bold(f'{"NAME":<{name_w}}', c)}  "
+            f"{bold(f'{"SIZE":>{size_w}}', c)}  {bold('CREATED', c)}",
+            flush=True,
         )
         for img in overview.global_images:
             print(
                 f"  {img.full_name:<{name_w}}  "
                 f"{_size(f'{img.size:>{size_w}}', c)}  "
-                f"{_dim(img.created, c)}"
+                f"{_dim(img.created, c)}",
+                flush=True,
             )
-        total = format_bytes(overview.global_images_bytes)
-        print(f"  {'':<{name_w}}  {_separator(size_w, c)}")
-        print(f"  {'':<{name_w}}  {_size(bold(f'{total:>{size_w}}', c), c)}")
+        print(f"  {'':<{name_w}}  {_separator(size_w, c)}", flush=True)
+        print(f"  {'':<{name_w}}  {_size(bold(f'{total:>{size_w}}', c), c)}", flush=True)
 
     # Shared mounts
-    if overview.shared_mounts:
-        print(_sub_header("Shared mounts:", c))
-        label_w = max(len(m.label) for m in overview.shared_mounts)
-        sizes = [format_bytes(m.bytes) for m in overview.shared_mounts]
-        size_w = max(len(s) for s in sizes)
-        for m, s in zip(overview.shared_mounts, sizes, strict=True):
-            print(f"  {m.label:<{label_w}}  {_size(f'{s:>{size_w}}', c)}")
+    if pending.shared_mounts:
+        print(_sub_header("Shared mounts:", c), flush=True)
+        label_w = max(len(row.name) for row in pending.shared_mounts)
+        size_w = _SIZE_WIDTH
+        for mount_row in pending.shared_mounts:
+            mount = _measure(f"  {mount_row.name:<{label_w}}  ", mount_row.measure)
+            overview.shared_mounts.append(mount)
+            size = format_bytes(mount.bytes)
+            print(_size(f"{size:>{size_w}}", c), flush=True)
         total = format_bytes(overview.shared_mounts_bytes)
-        print(f"  {'':<{label_w}}  {_separator(size_w, c)}")
-        print(f"  {'':<{label_w}}  {_size(bold(f'{total:>{size_w}}', c), c)}")
+        print(f"  {'':<{label_w}}  {_separator(size_w, c)}", flush=True)
+        print(f"  {'':<{label_w}}  {_size(bold(f'{total:>{size_w}}', c), c)}", flush=True)
 
     # ── Projects section ──
-    if overview.projects:
-        print(_section("Projects", c))
-        pid_w = max(len(p.project_name) for p in overview.projects)
-        img_sizes = [format_bytes(p.image_bytes) for p in overview.projects]
-        ws_sizes = [format_bytes(p.workspace_bytes) for p in overview.projects]
-        img_w = max(len(s) for s in img_sizes + ["IMAGES"])
-        ws_w = max(len(s) for s in ws_sizes + ["WORKSPACES"])
-        task_w = max(len(str(p.task_count)) for p in overview.projects)
-        task_w = max(task_w, len("TASKS"))
+    if pending.projects:
+        print(_section("Projects", c), flush=True)
+        pid_w = max(len("PROJECT"), *(len(row.name) for row in pending.projects))
+        img_w = ws_w = _SIZE_WIDTH
+        task_w = _TASK_COUNT_WIDTH
 
         print(
-            f"  {bold('PROJECT', c):<{pid_w + 10}}  "
-            f"{bold('IMAGES', c):>{img_w + 10}}  "
-            f"{bold('WORKSPACES', c):>{ws_w + 10}}  "
-            f"{bold('TASKS', c):>{task_w + 10}}"
+            f"  {bold(f'{"PROJECT":<{pid_w}}', c)}  "
+            f"{bold(f'{"IMAGES":>{img_w}}', c)}  "
+            f"{bold(f'{"WORKSPACES":>{ws_w}}', c)}  "
+            f"{bold(f'{"TASKS":>{task_w}}', c)}",
+            flush=True,
         )
-        for p, img_s, ws_s in zip(overview.projects, img_sizes, ws_sizes, strict=True):
+        for project_row in pending.projects:
+            project = _measure(f"  {project_row.name:<{pid_w}}  ", project_row.measure)
+            overview.projects.append(project)
+            img_s = format_bytes(project.image_bytes)
+            ws_s = format_bytes(project.workspace_bytes)
             print(
-                f"  {p.project_name:<{pid_w}}  "
                 f"{_size(f'{img_s:>{img_w}}', c)}  "
                 f"{_size(f'{ws_s:>{ws_w}}', c)}  "
-                f"{p.task_count:>{task_w}}"
+                f"{project.task_count:>{task_w}}",
+                flush=True,
             )
 
         total_img = format_bytes(sum(p.image_bytes for p in overview.projects))
         total_ws = format_bytes(sum(p.workspace_bytes for p in overview.projects))
         total_tasks = sum(p.task_count for p in overview.projects)
-        print(f"  {'':<{pid_w}}  {_separator(img_w, c)}  {_separator(ws_w, c)}")
+        print(f"  {'':<{pid_w}}  {_separator(img_w, c)}  {_separator(ws_w, c)}", flush=True)
         print(
             f"  {'':<{pid_w}}  "
             f"{_size(bold(f'{total_img:>{img_w}}', c), c)}  "
             f"{_size(bold(f'{total_ws:>{ws_w}}', c), c)}  "
-            f"{bold(f'{total_tasks:>{task_w}}', c)}"
+            f"{bold(f'{total_tasks:>{task_w}}', c)}",
+            flush=True,
         )
 
     # ── Grand total ──
-    print(_heavy_separator(c))
+    print(_heavy_separator(c), flush=True)
     gt = format_bytes(overview.grand_total)
     label = "Grand total"
-    print(f"{bold(label, c)}  {_size(bold(f'{gt:>{_TABLE_WIDTH - len(label) - 2}}', c), c)}")
+    print(
+        f"{bold(label, c)}  {_size(bold(f'{gt:>{_TABLE_WIDTH - len(label) - 2}}', c), c)}",
+        flush=True,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -159,61 +176,80 @@ def cmd_overview(*, json_output: bool = False) -> None:
 
 
 def cmd_detail(project_name: str, *, json_output: bool = False) -> None:
-    """Print per-task storage detail for one project."""
-    from ...lib.domain.storage import format_bytes, get_project_storage_detail
-
-    detail = get_project_storage_detail(project_name)
+    """Print each task's name before measuring its workspace and overlays."""
+    from ...lib.domain.storage import (
+        ProjectDetail,
+        discover_project_storage,
+        format_bytes,
+        get_project_storage_detail,
+    )
 
     if json_output:
-        _json_detail(detail)
+        _json_detail(get_project_storage_detail(project_name))
         return
 
     c = _c(supports_color())
-    print(_section(project_name, c))
+    print(_section(project_name, c), flush=True)
+    pending = discover_project_storage(project_name)
+    detail = ProjectDetail(project_name, pending.images, [], {})
 
     # Images
     if detail.images:
-        print(_sub_header("Images:", c))
+        print(_sub_header("Images:", c), flush=True)
         name_w = max(len(img.full_name) for img in detail.images)
         size_w = max(len(img.size) for img in detail.images)
         for img in detail.images:
-            print(f"  {img.full_name:<{name_w}}  {_size(f'{img.size:>{size_w}}', c)}")
+            print(f"  {img.full_name:<{name_w}}  {_size(f'{img.size:>{size_w}}', c)}", flush=True)
 
     # Tasks with overlay sizes
-    if detail.tasks:
-        print(_sub_header("Tasks:", c))
-        tid_w = max(len(t.task_id) for t in detail.tasks)
-        ws_strs = [format_bytes(t.workspace_bytes) for t in detail.tasks]
-        ws_w = max(len(s) for s in ws_strs + ["WORKSPACE"])
-        ov_strs = [format_bytes(detail.overlays.get(t.task_id, 0)) for t in detail.tasks]
-        ov_w = max(len(s) for s in ov_strs + ["OVERLAY"])
+    if pending.tasks:
+        print(_sub_header("Tasks:", c), flush=True)
+        tid_w = max(len("ID"), *(len(row.name) for row in pending.tasks))
+        ws_w = ov_w = _SIZE_WIDTH
 
         print(
-            f"  {bold('ID', c):<{tid_w + 10}}  "
-            f"{bold('WORKSPACE', c):>{ws_w + 10}}  "
-            f"{bold('OVERLAY', c):>{ov_w + 10}}"
+            f"  {bold(f'{"ID":<{tid_w}}', c)}  "
+            f"{bold(f'{"WORKSPACE":>{ws_w}}', c)}  "
+            f"{bold(f'{"OVERLAY":>{ov_w}}', c)}",
+            flush=True,
         )
-        for t, ws_s, ov_s in zip(detail.tasks, ws_strs, ov_strs, strict=True):
+        for row in pending.tasks:
+            task, overlay = _measure(f"  {row.name:<{tid_w}}  ", row.measure)
+            detail.tasks.append(task)
+            detail.overlays[task.task_id] = overlay
+            ws_s = format_bytes(task.workspace_bytes)
+            ov_s = format_bytes(overlay)
             print(
-                f"  {t.task_id:<{tid_w}}  "
-                f"{_size(f'{ws_s:>{ws_w}}', c)}  "
-                f"{_size(f'{ov_s:>{ov_w}}', c)}"
+                f"{_size(f'{ws_s:>{ws_w}}', c)}  {_size(f'{ov_s:>{ov_w}}', c)}",
+                flush=True,
             )
 
         total_ws = format_bytes(detail.workspace_bytes)
         total_ov = format_bytes(detail.overlay_bytes)
-        print(f"  {'':<{tid_w}}  {_separator(ws_w, c)}  {_separator(ov_w, c)}")
+        print(f"  {'':<{tid_w}}  {_separator(ws_w, c)}  {_separator(ov_w, c)}", flush=True)
         print(
             f"  {'':<{tid_w}}  "
             f"{_size(bold(f'{total_ws:>{ws_w}}', c), c)}  "
-            f"{_size(bold(f'{total_ov:>{ov_w}}', c), c)}"
+            f"{_size(bold(f'{total_ov:>{ov_w}}', c), c)}",
+            flush=True,
         )
 
     # Project total
-    print(_separator(_TABLE_WIDTH, c))
-    gt = format_bytes(detail.total_bytes)
+    print(_separator(_TABLE_WIDTH, c), flush=True)
     label = "Project total"
-    print(f"{bold(label, c)}  {_size(bold(f'{gt:>{_TABLE_WIDTH - len(label) - 2}}', c), c)}")
+    credentials = _measure(f"{bold(label, c)}  ", pending.measure_credentials)
+    gt = format_bytes(detail.total_bytes + credentials)
+    print(_size(bold(f"{gt:>{_TABLE_WIDTH - len(label) - 2}}", c), c), flush=True)
+
+
+def _measure[T](prefix: str, measure: Callable[[], T]) -> T:
+    """Flush the row label before counting; terminate partial lines on failure."""
+    print(prefix, end="", flush=True)
+    try:
+        return measure()
+    except BaseException:
+        print(flush=True)
+        raise
 
 
 # ---------------------------------------------------------------------------
