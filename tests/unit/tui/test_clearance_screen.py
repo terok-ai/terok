@@ -281,7 +281,7 @@ class TestOnNotificationPosted:
             for binding in mod.ClearanceScreen.BINDINGS
             if binding._stub_kwargs.get("show")
         }
-        assert shown == {"q": "Back", "a": "Allow", "x": "Deny"}
+        assert shown == {"q": "Back", "a": "Allow", "x": "Deny", "m": "Mute task"}
 
     def test_first_pending_request_is_highlighted(self) -> None:
         """Every verdict action reads ``highlighted_child``, so something must be highlighted.

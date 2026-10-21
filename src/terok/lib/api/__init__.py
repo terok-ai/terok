@@ -474,6 +474,7 @@ class Config:
     # Defaulted late additions — hand-built Config literals in tests
     # predate them, so new fields land here with a default.
     tui_theme: str | None = None
+    shield_bypass_duration: str = "5m"
 
 
 def get_config() -> Config:
@@ -497,6 +498,7 @@ def get_config() -> Config:
         tui_external_editor=_config.get_tui_external_editor(),
         tui_theme=_config.get_tui_theme(),
         shield_security_hint=_config.SHIELD_SECURITY_HINT,
+        shield_bypass_duration=_config.get_shield_bypass_duration(),
     )
 
 

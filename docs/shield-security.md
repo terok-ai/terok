@@ -210,6 +210,102 @@ a stopped task the next time it starts.
 
 ---
 
+## The Bypass Window — a Timed Allow-All
+
+A task sometimes needs a host the policy does not name yet, and reaching for
+`terok shield down` to get it tends to become permanent.  The bypass window is
+the bounded alternative:
+
+```bash
+terok shield bypass <project> <task>               # how long is left
+terok shield bypass <project> <task> --for 5m      # open it
+terok shield bypass <project> <task> --off         # close it now
+```
+
+In the TUI it is `b` on the task's action list, which states what the window
+does before asking how long to open it for; an empty duration closes it.
+
+While the window is open every destination is accepted **and logged**.  Two
+things stay true:
+
+- The hard-deny floor still refuses link-local and cloud-metadata addresses.
+  A window is not a disengage.
+- Every connection it admits is recorded in the task's `audit.jsonl` as
+  `bypass`, one line per destination per 30 seconds, so what the task actually
+  needed can be read back afterwards — and moved into `shield.sets`,
+  `shield.allow` or a `shield.override` where it belongs.
+
+The window lives in the kernel, as an nftables element carrying a timeout.  It
+closes itself when the time runs out, and a `shield up`, a task restart, or a
+host process that dies closes it **sooner** — there is no host-side deadline to
+outlive the shield, and nothing renews it.  `shield.bypass_duration` in
+`config.yml` (default `5m`) sets the duration used when none is named:
+
+```yaml
+shield:
+  bypass_duration: 5m   # an nft timeout: a count and one unit (30s, 5m, 2h)
+```
+
+---
+
+## Muting the Prompts, Not the Shield
+
+A task that keeps knocking on the same closed door produces the same
+Allow/Deny prompt over and over, and an operator who cannot silence it will
+silence the shield instead — which is the outcome this whole design exists to
+avoid.  So the prompts can be muted per task:
+
+- In the clearance screen, `m` mutes the task the highlighted request came
+  from — one key, at the moment the noise is in front of you.
+- In a task's action list, `m` mutes and `M` un-mutes.  They are separate
+  verbs rather than a toggle: the hub holds the mute in memory, terok cannot
+  read it back, and a toggle would eventually flip the wrong way.
+
+What muting does **not** do:
+
+- It does not allow anything.  The connection was refused in the kernel
+  before the clearance hub ever saw it, and later ones are refused the same
+  way.
+- It does not deny anything either.  A mute is not a verdict; nothing becomes
+  sticky.
+- It does not hide anything.  Every refusal is still written to the task's
+  `audit.jsonl`, so a muted task is silent, not invisible.  Lifecycle events
+  — shield down, container exited — are never muted.
+
+The mute lives in that container's clearance hub, so it lasts as long as the
+task's supervisor.  A hub restart brings the prompts back, and a re-created
+task starts audible.
+
+---
+
+## Reading Back What a Task Needed
+
+A deny-by-default box is only workable if you can find out what the policy
+refused and decide whether it should have.  That record already exists — the
+shield writes one line per refusal, and one per accept through a bypass window,
+into the task's `audit.jsonl` — so `harvest` reads it back:
+
+```bash
+terok shield harvest <project> <task>          # refusals first, then window accepts
+terok shield harvest <project> <task> --json   # the same entries, machine-readable
+```
+
+In the TUI it is `h` on the task's action list, which groups the entries by
+what the shield did: refusals are candidates for a `shield.allow` entry or a
+curated set, while window accepts are things the task already proved it needed.
+
+Entries are keyed by **target** — the domain when the shield recovered one from
+DNS, the address otherwise — because an allowlist entry for a rotating CDN is
+worth nothing as an IP.  The count is a floor on attempts rather than a
+connection count: at most one line is recorded per target per 30 seconds.
+
+`harvest` changes nothing.  Acting on what it shows stays an explicit act, and
+the tier that refused a host still decides what is possible: a host denied by
+the security tier can never be promoted into the project allowlist — it takes a
+`shield.override`, with its reason and expiry, or nothing.
+
+---
+
 ## Mitigations When Shield is Down or Missing
 
 If you must operate without the shield, consider these compensating controls:
