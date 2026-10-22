@@ -359,6 +359,8 @@ depends_on = [
     "terok.lib.core.config",
     "terok.lib.core.projects",
     "terok.lib.core.runtime",
+    "terok.lib.core.task_state",
+    "terok.lib.core.project_model",
 ]
 
 # Agent config resolution (terok-specific stack composition)
@@ -893,7 +895,7 @@ expose = ["list_images", "find_orphaned_images", "cleanup_images", "remove_image
 from = ["terok.lib.domain.image_cleanup"]
 
 [[interfaces]]
-expose = ["StorageOverview", "ProjectDetail", "ProjectSummary", "get_storage_overview", "get_project_storage_detail", "format_bytes", "parse_image_size", "ORPHAN_PROJECT_NAME"]
+expose = ["StorageOverview", "ProjectDetail", "ProjectSummary", "get_storage_overview", "get_project_storage_detail", "discover_storage_overview", "discover_project_storage", "format_bytes", "parse_image_size", "ORPHAN_PROJECT_NAME"]
 from = ["terok.lib.domain.storage"]
 
 [[interfaces]]
