@@ -115,6 +115,12 @@ class ProjectConfig(BaseModel):
     only, and only when the host's ``kernel.perf_event_paranoid``
     sysctl is ≤ 2 (the launch path warns when it isn't).
     """
+    aslr_control: bool = False
+    """Allow processes to disable ASLR for sanitizer/debugging runs.
+
+    Resolved from ``run.aslr_control`` (project overrides global); sandbox owns
+    the narrow seccomp policy and receives this through ``SandboxConfig``.
+    """
     podman_args: list[str] = Field(default_factory=list)
     """Freeform extra ``podman run`` flags from ``run.podman_args``.
 

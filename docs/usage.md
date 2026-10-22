@@ -1424,6 +1424,34 @@ and kernel-side samples are structurally unavailable to rootless tasks.
 
 ---
 
+## ThreadSanitizer and ASLR Control
+
+LLVM ThreadSanitizer may need to disable address-space randomization (ASLR)
+and re-execute to obtain a compatible shadow-memory layout. Enable the
+narrow personality syscall grant in `project.yml`:
+
+```yaml
+run:
+  aslr_control: true
+```
+
+The default is `false`. A global `config.yml` value applies unless the
+project overrides it, including an explicit `false`. This grants permission
+to disable ASLR; it does not disable ASLR automatically for every process.
+
+`terok-sandbox` extends the host's configured Podman seccomp profile and
+preserves its other rules. It refuses a missing/unreadable profile or a
+conflicting explicit personality denial rather than removing confinement.
+The option supports conventional containers, not `run.runtime: krun`.
+
+**Security cost:** processes that disable ASLR lose an exploit mitigation.
+Use this opt-in for sanitizer/debugging tasks, not service containers.
+Recreate existing task containers to change their seccomp policy; a restart
+alone does not apply the new setting. In a newly created task, check with
+`setarch --addr-no-randomize true`, then run your TSan-instrumented tests.
+
+---
+
 ## Custom Podman Flags (`run.podman_args`)
 
 An expert escape hatch for launch flags terok has no dedicated knob

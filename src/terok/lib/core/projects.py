@@ -23,6 +23,7 @@ from ..util.yaml import YAMLError, dump as _yaml_dump, load as _yaml_load
 from .config import (
     build_dir,
     gate_repos_dir,
+    get_global_aslr_control,
     get_global_default_agent,
     get_global_default_provider,
     get_global_default_shell,
@@ -285,6 +286,11 @@ def _build_project_config(
         gpus=raw.run.gpus,
         nested_containers=raw.run.nested_containers,
         perf=raw.run.perf,
+        aslr_control=(
+            raw.run.aslr_control
+            if "aslr_control" in raw.run.model_fields_set
+            else get_global_aslr_control()
+        ),
         podman_args=raw.run.podman_args,
         runtime=raw.run.runtime,
         timezone=raw.run.timezone,
