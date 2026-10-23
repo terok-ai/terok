@@ -20,7 +20,7 @@ def vault_db(
     """Open the shared vault ``CredentialDB`` and close it on exit.
 
     Routes through ``SandboxConfig.open_credential_db`` so the passphrase
-    resolution chain (systemd-creds → keyring → kernel keyring →
+    resolution chain (systemd-creds → desktop keyring → temporary cache →
     passphrase-command → optional prompt) runs.  Daemons and background workers
     leave ``prompt_on_tty=False`` so a locked vault fails fast with a
     clear ``NoPassphraseError`` instead of stalling on stdin; CLI

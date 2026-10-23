@@ -17,8 +17,8 @@ kernel keyring subsystem returning `EDQUOT`.
 ## Root cause
 
 The OCI runtime (`crun`) creates a new
-[session keyring](https://man7.org/linux/man-pages/man7/keyrings.7.html)
-for every container it starts.  These keyrings are not reliably cleaned up
+[kernel session keyring](https://man7.org/linux/man-pages/man7/keyrings.7.html)
+for every container it starts.  These kernel keyrings are not reliably cleaned up
 when the container is removed, so they accumulate until the per-user quota
 is exhausted.
 
@@ -44,11 +44,11 @@ Kernel keyrings are also
 they are separated by UID only, not by container.  Rootless user namespaces
 and seccomp (both active in terok) provide the real isolation.
 
-Disabling keyring creation has no effect on terok's functionality.
+Disabling kernel-keyring creation has no effect on terok's functionality.
 
 ## Workaround
 
-Podman does not support disabling keyring creation per container — the
+Podman does not support disabling kernel-keyring creation per container — the
 setting is global in `containers.conf`.  This means the workaround
 affects **all** containers on the host, not just terok's.  If you run
 other workloads that depend on kernel keyrings (Kerberos, dm-crypt, etc.),
@@ -66,7 +66,7 @@ keyring = false
 
 ## References
 
-- [containers/podman#13363](https://github.com/containers/podman/issues/13363) — original keyring leak report
+- [containers/podman#13363](https://github.com/containers/podman/issues/13363) — original kernel-keyring leak report
 - [containers/podman#23784](https://github.com/containers/podman/issues/23784) — recurring "Disk quota exceeded"
 - [containers/podman#8384](https://github.com/containers/podman/issues/8384) — `keyring` config option request
 - [containers.conf(5)](https://github.com/containers/common/blob/main/docs/containers.conf.5.md) — configuration reference

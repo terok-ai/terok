@@ -39,7 +39,7 @@ from terok.lib.api.setup import (
     systemd_creds_has_tpm2,
 )
 from terok.lib.api.shield import DnsTier
-from terok.lib.api.vault import VaultState, load_vault_status
+from terok.lib.api.vault import PassphraseTier, VaultState, load_vault_status
 
 from ...lib.core import runtime as _rt
 from ...lib.core.config import get_services_mode, global_config_path
@@ -187,7 +187,7 @@ def _passphrase_tier_label(source: str | None) -> str | None:
     """
     if not source:
         return None
-    label = f"passphrase via {source}"
+    label = f"passphrase via {PassphraseTier(source).display_name}"
     if source == "systemd-creds":
         # ``systemd-creds has-tpm2`` is best-effort — a missing binary
         # or a hung probe must not break the sickbay row.  Suppress
@@ -710,9 +710,9 @@ def _check_recovery_acknowledged() -> _CheckResult:
     bundle).
 
     Two severity bands when the marker is missing: an ``error`` when
-    the resolver lands on the volatile kernel-keyring cache (the
-    passphrase is wiped at logout and the vault becomes unrecoverable
-    then), a ``warn`` for any durable tier (machine-bound; needs an
+    the resolver lands on the temporary cache (kernel keyring or tmpfs
+    session file): cache loss makes the vault unrecoverable without a
+    saved copy. A ``warn`` applies to any durable tier (machine-bound; needs an
     off-host copy for hardware-failure DR).
     """
     label = "Recovery key acknowledged"
@@ -733,8 +733,9 @@ def _check_recovery_acknowledged() -> _CheckResult:
             "error",
             label,
             "vault recovery key UNCONFIRMED and the passphrase lives ONLY"
-            " in the kernel-keyring cache — it will be wiped at logout"
-            " and your vault becomes UNRECOVERABLE then."
+            " in the temporary cache (kernel keyring or tmpfs session file)"
+            " — lost at reboot or earlier. Without a saved copy, cache loss"
+            " makes your vault UNRECOVERABLE."
             f" Run {reveal} NOW and save the value off-host,"
             f" or {ack} if you already captured it.",
         )
@@ -752,7 +753,7 @@ def _check_kernel_keyring_quota() -> _CheckResult:
     """Warn when the per-uid kernel keyring is nearly full.
 
     A host-level gauge (the quota is per-uid, not per-task): the OCI
-    runtime leaks a session keyring per container, so a busy host drifts
+    runtime leaks a kernel session keyring per container, so a busy host drifts
     toward the key quota and then fails to launch with a misleading
     "Disk quota exceeded".  Sandbox owns the reading and the threshold;
     this row renders its verdict, quiet until near the edge.

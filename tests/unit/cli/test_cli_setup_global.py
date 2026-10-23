@@ -111,7 +111,7 @@ class TestComponentSubcommands:
         import argparse
 
         ns = argparse.Namespace(
-            cmd="setup", component="selinux", show=False, passphrase_tier="keyring"
+            cmd="setup", component="selinux", show=False, passphrase_tier="desktop-keyring"
         )
         with (
             patch("terok.lib.api.setup.handle_setup_component") as handler,

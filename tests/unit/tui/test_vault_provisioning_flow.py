@@ -40,7 +40,9 @@ def flow_stub() -> SimpleNamespace:
 
 def _provision_result(*, generated: bool) -> SimpleNamespace:
     """A ``TierProvisionResult`` stand-in (the flow reads three fields)."""
-    return SimpleNamespace(passphrase="minted-or-typed", source="keyring", generated=generated)
+    return SimpleNamespace(
+        passphrase="minted-or-typed", source="desktop-keyring", generated=generated
+    )
 
 
 def _plan(
@@ -53,7 +55,7 @@ def _plan(
     return SimpleNamespace(
         provisioned=provisioned,
         auto_tier=auto_tier,
-        choices=("keyring", "kernel-keyring"),
+        choices=("desktop-keyring", "session-cache"),
         unavailable=unavailable or {},
     )
 
@@ -84,7 +86,9 @@ class TestEnsureCredentialsProvisioned:
             assert await TerokTUI._ensure_credentials_provisioned(flow_stub) is True
         flow_stub.push_screen_wait.assert_not_awaited()
         assert provision.call_args.kwargs == {"tier": "systemd-creds", "passphrase": None}
-        flow_stub._reveal_new_passphrase.assert_awaited_once_with("minted-or-typed", "keyring")
+        flow_stub._reveal_new_passphrase.assert_awaited_once_with(
+            "minted-or-typed", "desktop-keyring"
+        )
 
     async def test_chooser_cancel_skips_setup(self, flow_stub: SimpleNamespace) -> None:
         """Esc in the tier chooser → False, nothing provisioned, one warning."""
@@ -99,7 +103,7 @@ class TestEnsureCredentialsProvisioned:
 
     async def test_create_cancel_skips_setup(self, flow_stub: SimpleNamespace) -> None:
         """Tier chosen but Esc in the create modal → False, nothing provisioned."""
-        flow_stub.push_screen_wait.side_effect = ["keyring", None]
+        flow_stub.push_screen_wait.side_effect = ["desktop-keyring", None]
         with (
             patch("terok.lib.api.vault.plan_provisioning", return_value=_plan()),
             patch("terok.lib.api.vault.provision_passphrase_tier") as provision,
@@ -110,7 +114,7 @@ class TestEnsureCredentialsProvisioned:
 
     async def test_generate_choice_mints_and_reveals(self, flow_stub: SimpleNamespace) -> None:
         """The recommended path: empty-string sentinel → mint → reveal + ack."""
-        flow_stub.push_screen_wait.side_effect = ["keyring", ""]
+        flow_stub.push_screen_wait.side_effect = ["desktop-keyring", ""]
         with (
             patch("terok.lib.api.vault.plan_provisioning", return_value=_plan()),
             patch(
@@ -119,7 +123,7 @@ class TestEnsureCredentialsProvisioned:
             ) as provision,
         ):
             assert await TerokTUI._ensure_credentials_provisioned(flow_stub) is True
-        assert provision.call_args.kwargs == {"tier": "keyring", "passphrase": None}
+        assert provision.call_args.kwargs == {"tier": "desktop-keyring", "passphrase": None}
         flow_stub._reveal_new_passphrase.assert_awaited_once()
         flow_stub._refresh_vault_status.assert_awaited()
 
@@ -127,7 +131,7 @@ class TestEnsureCredentialsProvisioned:
         self, flow_stub: SimpleNamespace
     ) -> None:
         """A twice-confirmed typed value is something the operator knows — no reveal."""
-        flow_stub.push_screen_wait.side_effect = ["kernel-keyring", "hunter2-hunter2"]
+        flow_stub.push_screen_wait.side_effect = ["session-cache", "hunter2-hunter2"]
         with (
             patch("terok.lib.api.vault.plan_provisioning", return_value=_plan()),
             patch(
@@ -137,7 +141,7 @@ class TestEnsureCredentialsProvisioned:
         ):
             assert await TerokTUI._ensure_credentials_provisioned(flow_stub) is True
         assert provision.call_args.kwargs == {
-            "tier": "kernel-keyring",
+            "tier": "session-cache",
             "passphrase": "hunter2-hunter2",
         }
         flow_stub._reveal_new_passphrase.assert_not_awaited()
@@ -145,18 +149,18 @@ class TestEnsureCredentialsProvisioned:
     async def test_provisioning_failure_notifies_and_blocks(
         self, flow_stub: SimpleNamespace
     ) -> None:
-        """A dead keyring backend surfaces as an error notify, setup does not run."""
-        flow_stub.push_screen_wait.side_effect = ["keyring", ""]
+        """A dead desktop-keyring backend surfaces as an error notify, setup does not run."""
+        flow_stub.push_screen_wait.side_effect = ["desktop-keyring", ""]
         with (
             patch("terok.lib.api.vault.plan_provisioning", return_value=_plan()),
             patch(
                 "terok.lib.api.vault.provision_passphrase_tier",
-                side_effect=RuntimeError("OS keyring is unreachable"),
+                side_effect=RuntimeError("desktop keyring is unreachable"),
             ),
         ):
             assert await TerokTUI._ensure_credentials_provisioned(flow_stub) is False
         messages = [str(c.args[0]) for c in flow_stub.notify.call_args_list]
-        assert any("OS keyring is unreachable" in m for m in messages)
+        assert any("desktop keyring is unreachable" in m for m in messages)
 
 
 class TestSetupSubprocessGating:
@@ -250,8 +254,8 @@ class TestTierChooserModalRouting:
     @pytest.mark.parametrize(
         ("button_id", "expected"),
         [
-            ("vault-tier-keyring", "keyring"),
-            ("vault-tier-kernel", "kernel-keyring"),
+            ("vault-tier-desktop-keyring", "desktop-keyring"),
+            ("vault-tier-session-cache", "session-cache"),
             ("vault-tier-cancel", None),
         ],
     )
@@ -269,7 +273,7 @@ class TestTierChooserModalRouting:
         from terok.tui.screens import VaultTierChooserModal
 
         modal = VaultTierChooserModal(
-            unavailable={"keyring": "no OS keyring backend is reachable on this host"}
+            unavailable={"desktop-keyring": "no desktop keyring backend is reachable on this host"}
         )
         modal.dismiss = MagicMock()
         modal.action_cancel()
@@ -340,7 +344,7 @@ class TestRevealAndSkipHelpers:
             patch("terok.tui.app.RecoveryStatus") as recovery,
             patch("terok.lib.core.config.make_sandbox_config"),
         ):
-            await TerokTUI._reveal_new_passphrase(stub, "minted", "keyring")
+            await TerokTUI._reveal_new_passphrase(stub, "minted", "desktop-keyring")
         recovery.acknowledge.assert_called_once()
         stub._refresh_vault_status.assert_awaited_once()
 
@@ -351,7 +355,7 @@ class TestRevealAndSkipHelpers:
             _refresh_vault_status=AsyncMock(),
         )
         with patch("terok.tui.app.RecoveryStatus") as recovery:
-            await TerokTUI._reveal_new_passphrase(stub, "minted", "keyring")
+            await TerokTUI._reveal_new_passphrase(stub, "minted", "desktop-keyring")
         recovery.acknowledge.assert_not_called()
         stub._refresh_vault_status.assert_not_awaited()
 
@@ -392,31 +396,40 @@ def _modal_host(modal):  # noqa: ANN001, ANN202 — Textual App subclass built p
 class TestTierChooserModalPilot:
     """The chooser rendered in a real Textual app."""
 
-    async def test_keyring_button_dismisses_with_tier(self) -> None:
+    async def test_desktop_keyring_button_dismisses_with_tier(self) -> None:
+        from textual.widgets import Button
+
         from terok.tui.screens import VaultTierChooserModal
 
-        app = _modal_host(VaultTierChooserModal(unavailable={}))
+        modal = VaultTierChooserModal(unavailable={})
+        app = _modal_host(modal)
         async with app.run_test() as pilot:
             await pilot.pause()
-            await pilot.click("#vault-tier-keyring")
+            assert str(modal.query_one("#vault-tier-desktop-keyring", Button).label) == (
+                "Desktop keyring (recommended)"
+            )
+            assert (
+                str(modal.query_one("#vault-tier-session-cache", Button).label) == "Session cache"
+            )
+            await pilot.click("#vault-tier-desktop-keyring")
             await pilot.pause()
-        assert app.result == "keyring"
+        assert app.result == "desktop-keyring"
 
-    async def test_unreachable_keyring_disables_the_recommended_button(self) -> None:
+    async def test_unreachable_desktop_keyring_disables_the_recommended_button(self) -> None:
         from textual.widgets import Button
 
         from terok.tui.screens import VaultTierChooserModal
 
         modal = VaultTierChooserModal(
-            unavailable={"keyring": "no OS keyring backend is reachable on this host"}
+            unavailable={"desktop-keyring": "no desktop keyring backend is reachable on this host"}
         )
         app = _modal_host(modal)
         async with app.run_test() as pilot:
             await pilot.pause()
-            assert modal.query_one("#vault-tier-keyring", Button).disabled
-            await pilot.click("#vault-tier-kernel")
+            assert modal.query_one("#vault-tier-desktop-keyring", Button).disabled
+            await pilot.click("#vault-tier-session-cache")
             await pilot.pause()
-        assert app.result == "kernel-keyring"
+        assert app.result == "session-cache"
 
 
 class TestCreatePassphraseModalPilot:

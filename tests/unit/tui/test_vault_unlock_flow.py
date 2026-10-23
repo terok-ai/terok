@@ -53,8 +53,12 @@ class TestOnVaultUnlockResult:
         assert any("unlocked" in str(c.args[0]) for c in unlock_stub.notify.call_args_list)
         unlock_stub._refresh_vault_status.assert_awaited_once()
 
+    @pytest.mark.parametrize(
+        ("source", "label"),
+        [("systemd-creds", "systemd-creds"), ("desktop-keyring", "desktop keyring")],
+    )
     async def test_durable_shadow_refused_informs_no_write(
-        self, unlock_stub: SimpleNamespace
+        self, unlock_stub: SimpleNamespace, source: str, label: str
     ) -> None:
         """When a durable tier already resolves, the writer refuses → info notify, no refresh.
 
@@ -63,12 +67,12 @@ class TestOnVaultUnlockResult:
         """
         with patch(
             "terok.lib.api.vault.provision_session_passphrase",
-            return_value=self._result(written=False, shadowed_durable="systemd-creds"),
+            return_value=self._result(written=False, shadowed_durable=source),
         ):
             await TerokTUI._on_vault_unlock_result(unlock_stub, "redundant")
         messages = [str(c.args[0]) for c in unlock_stub.notify.call_args_list]
-        assert any("already auto-unlocks via systemd-creds" in m for m in messages)
-        assert not any("unlocked for this session" in m for m in messages)
+        assert any(f"already auto-unlocks via {label}" in m for m in messages)
+        assert not any("unlocked with a temporary cache" in m for m in messages)
         unlock_stub._refresh_vault_status.assert_not_awaited()
 
     async def test_wrong_passphrase_notifies_and_writes_nothing(
@@ -143,8 +147,8 @@ class TestStatusPillLockReason:
 class TestVaultPoll:
     """Focus-gated adaptive poll keeps the pill live across external unlock/lock.
 
-    The inotify session-dir watcher was removed with the volatile
-    session-file tier — the kernel-keyring cache has no watchable file.
+    The session cache can use the kernel keyring, which has no watchable
+    file. File watching alone therefore cannot cover every backing.
     A focus-driven interval poll replaces it: blur pauses the backstop
     timer, focus resumes it and fires an immediate re-probe, and each
     tick runs an exclusive ``vault-poll`` worker over
@@ -210,7 +214,7 @@ class TestVaultProbeOffTheLoop:
 
     ``load_vault_status`` opens the credentials DB and walks the
     passphrase chain, and the chain can stall on host facilities.  A
-    locked OS keyring's unlock prompt froze the whole TUI on a headless
+    locked desktop keyring's unlock prompt froze the whole TUI on a headless
     host.  The refresh must hand the probe to a thread, so the loop
     keeps painting whatever the chain does.
     """

@@ -212,17 +212,18 @@ def shield_setup() -> None:
 #
 # Every container's supervisor embeds its own vault proxy, so there's
 # no host-side daemon to operate — no install / uninstall / start / stop
-# verbs.  The vault actions here are passphrase management — lock the
-# session tier, move it between tiers, seal it into systemd-creds — all
+# verbs. The vault actions here manage passphrases — remove saved copies,
+# move them between tiers, seal into systemd-creds — all
 # DB-side, no IPC.
 
 
 def vault_lock() -> None:
     """Lock the vault — clear every stored copy of the passphrase.
 
-    Removes the session file *and* every durable tier (keyring, sealed
-    systemd-creds, plaintext config): against a machine-bound tier a
-    soft-lock would just auto-unlock on the next access.  Reversible only
+    Removes the temporary cache, desktop keyring and systemd-creds
+    copies, and passphrase-command wiring. Running services stay open.
+    A machine-bound tier would auto-unlock on the next access after a
+    soft-lock.  Reversible only
     by re-supplying the passphrase — the action gates this behind a
     confirmation modal (see ``_action_vault_lock``), so this worker runs
     only after the operator has agreed.
@@ -241,12 +242,12 @@ def vault_seal() -> None:
     handle_vault_seal(cfg=make_sandbox_config(), key="auto")
 
 
-def vault_to_keyring() -> None:
-    """Move the resolved passphrase from its current tier into the OS keyring."""
+def vault_to_desktop_keyring() -> None:
+    """Move the resolved passphrase from its current tier into the desktop keyring."""
     from terok.lib.api import make_sandbox_config
-    from terok.lib.api.vault import handle_vault_to_keyring
+    from terok.lib.api.vault import handle_vault_to_desktop_keyring
 
-    handle_vault_to_keyring(cfg=make_sandbox_config())
+    handle_vault_to_desktop_keyring(cfg=make_sandbox_config())
 
 
 def vault_rekey_restart_tasks(tasks: list[list[str]]) -> None:
