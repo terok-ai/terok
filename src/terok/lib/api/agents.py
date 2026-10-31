@@ -27,6 +27,11 @@ if TYPE_CHECKING:
         installed_agents as installed_agents,
         installed_agents_for_project as installed_agents_for_project,
     )
+    from terok.lib.core.instructions import (
+        global_instructions_path as global_instructions_path,
+        inherits_instructions as inherits_instructions,
+        set_instructions_inherit as set_instructions_inherit,
+    )
     from terok.lib.domain.auth import (
         auth_provider_aliases as auth_provider_aliases,
         authenticate as authenticate,
@@ -100,6 +105,8 @@ _LAZY: dict[str, str] = {
     "find_host_auth_image": "terok.lib.domain.auth",
     "generate_dockerfiles": "terok.lib.orchestration.image",
     "get_agent": "terok.lib.integrations.executor",
+    "global_instructions_path": "terok.lib.core.instructions",
+    "inherits_instructions": "terok.lib.core.instructions",
     "load_auth_providers": "terok.lib.integrations.executor",
     "installed_agents": "terok.lib.core.images",
     "installed_agents_for_project": "terok.lib.core.images",
@@ -109,6 +116,7 @@ _LAZY: dict[str, str] = {
     "resolve_auth_provider": "terok.lib.domain.auth",
     "resolve_credential_routing": "terok.lib.domain.auth",
     "resolve_instructions": "terok.lib.integrations.executor",
+    "set_instructions_inherit": "terok.lib.core.instructions",
     "store_api_key": "terok.lib.integrations.executor",
 }
 
@@ -130,10 +138,13 @@ __all__ = [
     "bundled_default_instructions",
     "ensure_sandbox_ready",
     "get_agent",
+    "global_instructions_path",
+    "inherits_instructions",
     "load_auth_providers",
     "providers_config_dir",
     "resolve_auth_provider",
     "resolve_instructions",
+    "set_instructions_inherit",
 ]
 
 

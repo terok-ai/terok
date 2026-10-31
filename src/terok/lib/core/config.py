@@ -90,14 +90,13 @@ def _config_layers() -> list[tuple[str, Path]]:
 
     etc_cfg = Path("/etc/terok/config.yml")
     sp_cfg = Path(sys.prefix) / "etc" / "terok" / "config.yml"
-    xdg_home = os.environ.get("XDG_CONFIG_HOME")
-    user_cfg = (Path(xdg_home) if xdg_home else Path.home() / ".config") / "terok" / "config.yml"
+    user_cfg = global_config_path()
 
     layers: list[tuple[str, Path]] = [("system", etc_cfg)]
     if sp_cfg.resolve() != etc_cfg.resolve():
         layers.append(("prefix", sp_cfg))
-    layers.append(("user", user_cfg))
-    return layers
+    # As root, the user file is the /etc one: it keeps the user layer's place on top.
+    return [*(layer for layer in layers if layer[1] != user_cfg), ("user", user_cfg)]
 
 
 def global_config_search_paths() -> list[Path]:
@@ -117,13 +116,16 @@ def global_config_path() -> Path:
     files (e.g. ``instructions.md``) in the user's config directory.
 
     When ``TEROK_CONFIG_FILE`` is set, returns that path directly.
-    Otherwise, returns ``~/.config/terok/config.yml`` (or XDG equivalent).
+    Otherwise, returns ``~/.config/terok/config.yml`` (or XDG equivalent),
+    and ``/etc/terok/config.yml`` for root: the file the sibling packages
+    write to, so every writer agrees.
     """
     env_file = os.environ.get("TEROK_CONFIG_FILE")
     if env_file:
         return Path(env_file).expanduser().resolve()
-    xdg_home = os.environ.get("XDG_CONFIG_HOME")
-    return (Path(xdg_home) if xdg_home else Path.home() / ".config") / "terok" / "config.yml"
+    from terok_util import namespace_config_dir
+
+    return namespace_config_dir() / "config.yml"
 
 
 # ---------- Global config (cached) ----------
@@ -515,10 +517,12 @@ def get_tui_default_tmux() -> bool:
 
 
 def get_tui_external_editor() -> bool:
-    """Return whether TUI text editing should prefer ``$EDITOR`` over the integrated editor.
+    """Return whether TUI text editing goes straight to ``$EDITOR``.
 
-    Default ``True``; the TUI still only honours it on a local-terminal
-    session — the web TUI always uses the integrated editor.
+    Default ``False``, as a set ``$EDITOR`` is not always the operator's
+    choice: some distributions set it by default.  The integrated editor
+    then offers ``$EDITOR`` on a button.  The TUI only honours this on a
+    local-terminal session — the web TUI always uses the integrated editor.
     """
     return _load_validated().tui.external_editor
 

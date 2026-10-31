@@ -46,6 +46,7 @@ if TYPE_CHECKING:
 
     from ..lib.api import AuthSession
     from .console_log import ConsoleLogEntry
+    from .text_screens import EditedText
     from .wizard_screens import ProjectReviewScreen
 
     _MixinBase = App
@@ -98,6 +99,14 @@ def _terminal_pollution_guard() -> Iterator[None]:
 
 
 @dataclass(frozen=True)
+class InheritCheckbox:
+    """The setting in *config_file* that keeps or replaces the instructions below a layer."""
+
+    label: str
+    config_file: Path
+
+
+@dataclass(frozen=True)
 class EditableText:
     """A text the operator edits from the TUI, and how it is read, checked and saved."""
 
@@ -111,6 +120,10 @@ class EditableText:
     """Returns why a text must not be saved, or ``None`` when it may be."""
     language: str | None = None
     """Syntax highlighting in the integrated editor; ``None`` is plain text."""
+    reference: Callable[[], str] | None = None
+    """Returns the Markdown options reference the integrated editor shows for a config file."""
+    inherit: InheritCheckbox | None = None
+    """The inherit setting the integrated editor shows next to an instructions text."""
 
     @classmethod
     def from_file(
@@ -120,6 +133,8 @@ class EditableText:
         title: str,
         validate: Callable[[str], str | None] | None = None,
         language: str | None = None,
+        reference: Callable[[], str] | None = None,
+        inherit: InheritCheckbox | None = None,
     ) -> EditableText:
         """A text stored in the file at *path* — empty until the first save creates the file."""
         return cls(
@@ -129,7 +144,24 @@ class EditableText:
             save=partial(write_config_file, path),
             validate=validate,
             language=language,
+            reference=reference,
+            inherit=inherit,
         )
+
+
+def _inherit_setting(text: EditableText) -> bool | None:
+    """Return the inherit setting *text*'s editor shows, or ``None`` when it shows none."""
+    from ..lib.api.agents import inherits_instructions
+
+    return inherits_instructions(text.inherit.config_file) if text.inherit else None
+
+
+def _save_inherit_setting(text: EditableText, inherit: bool | None) -> None:
+    """Write the inherit setting from *text*'s editor to its config file."""
+    from ..lib.api.agents import set_instructions_inherit
+
+    if text.inherit is not None and inherit is not None:
+        set_instructions_inherit(text.inherit.config_file, inherit)
 
 
 def _read_draft(
@@ -867,16 +899,17 @@ class ProjectActionsMixin(_MixinBase):
         done_msg: str,
         after_save: Callable[[], object] | None = None,
     ) -> None:
-        """Edit *text* in ``$EDITOR`` or the integrated editor, and save an accepted change.
+        """Edit *text* in the integrated editor or ``$EDITOR``, and save an accepted change.
 
-        ``$EDITOR`` is used when it is set, the ``tui.external_editor``
-        preference is on (the default), and the TUI is *not* web-served
-        — the editor takes over the terminal, and a web TUI has none.
-        Otherwise the text opens in the integrated
-        [`TextEditorScreen`][terok.tui.text_screens.TextEditorScreen].
-        Both ways, nothing is written until the text's validator accepts
-        it, and a failed write keeps the edit.  *after_save* runs after a
-        save; it may return an awaitable.
+        The text opens in the integrated
+        [`TextEditorScreen`][terok.tui.text_screens.TextEditorScreen],
+        which offers ``$EDITOR`` on a button.  With the
+        ``tui.external_editor`` preference on, it goes straight to
+        ``$EDITOR`` — as long as ``$EDITOR`` is set and the TUI is *not*
+        web-served, as the editor takes over the terminal and a web TUI
+        has none.  Both ways, nothing is written until the text's
+        validator accepts it, and a failed write keeps the edit.
+        *after_save* runs after a save; it may return an awaitable.
         """
         self._run_text_edit(text, done_msg, after_save)
 
@@ -903,17 +936,25 @@ class ProjectActionsMixin(_MixinBase):
         except (OSError, UnicodeDecodeError) as exc:
             self.notify(f"Cannot read {text.title}: {exc}", severity="error", markup=False)
             return
+        from .text_screens import EditedText
+
         editor = self._external_editor()
-        draft = original
+        draft = EditedText(original, None if editor else _inherit_setting(text))
+        saved_setting = draft.checked
         while True:
             edited = await self._edit_once(text, draft, editor)
             if edited is None:
                 return
-            if edited == original:
+            if edited.text == original and edited.checked == saved_setting:
                 self.notify("No changes to save.")
                 return
             try:
-                text.save(edited)
+                if edited.text != original:
+                    text.save(edited.text)
+                    original = edited.text
+                if edited.checked != saved_setting:
+                    _save_inherit_setting(text, edited.checked)
+                    saved_setting = edited.checked
                 break
             except (OSError, SystemExit, ValueError) as exc:
                 reason = f"Cannot save {text.title}: {exc}"
@@ -926,28 +967,49 @@ class ProjectActionsMixin(_MixinBase):
         if after_save is not None and inspect.isawaitable(pending := after_save()):
             await pending
 
-    async def _edit_once(self, text: EditableText, draft: str, editor: str | None) -> str | None:
+    async def _edit_once(
+        self, text: EditableText, draft: EditedText, editor: str | None
+    ) -> EditedText | None:
         """Edit *draft* once, in *editor* or the integrated editor; ``None`` when abandoned."""
-        if editor is not None:
-            return await self._edit_in_external_editor(
-                editor, draft, draft_name=text.draft_name, title=text.title, validate=text.validate
-            )
-        from .text_screens import TextEditorScreen
+        from .text_screens import EditedText, TextEditorScreen
 
+        if editor is not None:
+            edited = await self._edit_in_external_editor(
+                editor,
+                draft.text,
+                draft_name=text.draft_name,
+                title=text.title,
+                validate=text.validate,
+            )
+            return None if edited is None else EditedText(edited)
+
+        show_checkbox = draft.checked is not None
         return await self.push_screen_wait(
             TextEditorScreen(
-                draft, title=text.title, language=text.language, validate=text.validate
+                draft.text,
+                title=text.title,
+                language=text.language,
+                validate=text.validate,
+                reference=text.reference,
+                edit_externally=self._external_edit_hook(
+                    draft_name=text.draft_name, title=text.title, validate=text.validate
+                ),
+                checkbox_label=text.inherit.label if text.inherit and show_checkbox else None,
+                checked=bool(draft.checked),
             )
         )
 
-    def _external_editor(self) -> str | None:
-        """Return the ``$EDITOR`` command that edits go to, or ``None`` for the integrated editor."""
+    def _available_editor(self) -> str | None:
+        """Return the ``$EDITOR`` command where a terminal can run it, or ``None``."""
         if self.is_web:
             return None
+        return os.environ.get("EDITOR", "").strip() or None
+
+    def _external_editor(self) -> str | None:
+        """Return the ``$EDITOR`` command that edits go straight to, or ``None``."""
         from ..lib.api import get_config
 
-        editor = os.environ.get("EDITOR", "").strip()
-        return editor if editor and get_config().tui_external_editor else None
+        return self._available_editor() if get_config().tui_external_editor else None
 
     async def _edit_in_external_editor(
         self,
@@ -966,7 +1028,7 @@ class ProjectActionsMixin(_MixinBase):
         that exits non-zero abandons the edit; an unchanged draft comes
         back as it is.  A refused text shows why and goes back to the
         editor, unless the operator discards it.  Local-terminal only —
-        ``_external_editor`` never picks ``$EDITOR`` under
+        ``_available_editor`` never offers ``$EDITOR`` under
         ``App.is_web``, so the ``suspend()`` always has a real terminal
         to suspend *to*.
         """
@@ -1003,14 +1065,23 @@ class ProjectActionsMixin(_MixinBase):
         if not self.current_project_name:
             self.notify("No project selected.")
             return
+        from .text_screens import MARKDOWN
+
         pid = self.current_project_name
         try:
-            instr_path = load_project(pid).root / "instructions.md"
+            root = load_project(pid).root
         except SystemExit as exc:
             self.notify(str(exc), severity="error", markup=False)
             return
         self._edit_text(
-            EditableText.from_file(instr_path, title=f"Instructions — {pid}"),
+            EditableText.from_file(
+                root / "instructions.md",
+                title=f"Instructions — {pid}",
+                language=MARKDOWN,
+                inherit=InheritCheckbox(
+                    "Include the global and bundled default instructions", root / "project.yml"
+                ),
+            ),
             done_msg=f"Instructions updated for {pid}",
             after_save=self._refresh_project_state,
         )
@@ -1028,7 +1099,7 @@ class ProjectActionsMixin(_MixinBase):
         Also the repair path for a broken project: a valid save re-scans
         the project list, which turns the project healthy again.
         """
-        from ..lib.api import project_config_path, validate_project_yaml
+        from ..lib.api import project_config_path, project_config_reference, validate_project_yaml
 
         try:
             path = project_config_path(project_name)
@@ -1041,6 +1112,7 @@ class ProjectActionsMixin(_MixinBase):
                 title=f"project.yml — {project_name}",
                 validate=partial(validate_project_yaml, project_name),
                 language="yaml",
+                reference=project_config_reference,
             ),
             done_msg=f"Saved {path}",
             after_save=self.refresh_projects,
@@ -1093,7 +1165,7 @@ class ProjectActionsMixin(_MixinBase):
 
     async def _action_edit_global_config(self) -> None:
         """Edit the user config file; a valid save offers the restart that applies it."""
-        from ..lib.api import get_config, validate_global_config
+        from ..lib.api import get_config, global_config_reference, validate_global_config
 
         path = get_config().global_config_path
         self._edit_text(
@@ -1102,56 +1174,36 @@ class ProjectActionsMixin(_MixinBase):
                 title=f"Global config — {path}",
                 validate=validate_global_config,
                 language="yaml",
+                reference=global_config_reference,
             ),
             done_msg=f"Saved {path}",
             after_save=self._offer_restart_for_config,
         )
 
     async def _action_toggle_instructions_inherit(self) -> None:
-        """Toggle YAML instructions between inherit and override mode."""
+        """Toggle the project's instructions between inherit and override."""
         if not self.current_project_name:
             self.notify("No project selected.")
             return
-        pid = self.current_project_name
+        from ..lib.api import project_config_path
+        from ..lib.api.agents import inherits_instructions, set_instructions_inherit
 
         try:
-            from ..lib.util.yaml import dump as _yaml_dump, load as _yaml_load
-
-            project = load_project(pid)
-            project_yml = project.root / "project.yml"
+            project_yml = project_config_path(self.current_project_name)
             if not project_yml.is_file():
                 self.notify("No project.yml found.")
                 return
-            raw = _yaml_load(project_yml.read_text(encoding="utf-8")) or {}
-            agent = raw.setdefault("agent", {})
-            current = agent.get("instructions")
-
-            # Determine current mode and toggle, preserving existing custom entries
-            if current is None:
-                # Implicit inherit → explicit custom-only (empty)
-                agent["instructions"] = []
-                mode_label = "custom only (defaults disabled)"
-            elif isinstance(current, list):
-                items = [item for item in current if item != "_inherit"]
-                if "_inherit" in current:
-                    # Disable inheritance, keep existing custom entries
-                    agent["instructions"] = items
-                    mode_label = "custom only (defaults disabled)"
-                else:
-                    # Enable inheritance, preserve existing custom entries
-                    agent["instructions"] = ["_inherit", *items]
-                    mode_label = "inheriting defaults"
-            else:
-                # Scalar/dict forms — not safe to toggle automatically
+            inherit = inherits_instructions(project_yml)
+            if inherit is None:
                 self.notify(
                     "Toggle supports list/implicit instructions only; "
                     "edit project.yml manually for this form.",
                     severity="warning",
                 )
                 return
-
-            write_config_file(project_yml, _yaml_dump(raw))
-            self.notify(f"Instructions: {mode_label}")
+            set_instructions_inherit(project_yml, not inherit)
+            mode = "custom only (defaults disabled)" if inherit else "inheriting defaults"
+            self.notify(f"Instructions: {mode}")
         except Exception as e:
             self.notify(f"Toggle failed: {e}")
         self._refresh_project_state()
@@ -1166,7 +1218,7 @@ class ProjectActionsMixin(_MixinBase):
         from terok.lib.api.agents import get_agent, resolve_instructions
 
         from ..lib.api import resolve_agent_config
-        from .text_screens import TextViewScreen
+        from .text_screens import MARKDOWN, TextViewScreen
 
         project = load_project(pid)
         effective = resolve_agent_config(
@@ -1176,15 +1228,40 @@ class ProjectActionsMixin(_MixinBase):
         text = resolve_instructions(
             effective, provider.name, project_root=project.root, family=project.known_family
         )
-        await self.push_screen(TextViewScreen(text, title=f"Resolved instructions — {pid}"))
+        await self.push_screen(
+            TextViewScreen(text, title=f"Resolved instructions — {pid}", language=MARKDOWN)
+        )
+
+    async def _action_show_instructions(self) -> None:
+        """Open the screen for the instructions every project starts from."""
+        from .instructions_screen import InstructionsScreen
+
+        await self.push_screen(InstructionsScreen(), self._on_instructions_choice)
+
+    async def _on_instructions_choice(self, choice: str | None) -> None:
+        """Run the action picked on the instructions screen."""
+        from .instructions_screen import EDIT_GLOBAL, SHOW_DEFAULT
+
+        if choice == EDIT_GLOBAL:
+            await self._action_edit_global_instructions()
+        elif choice == SHOW_DEFAULT:
+            await self._action_show_default_instructions()
 
     async def _action_edit_global_instructions(self) -> None:
         """Edit the global instructions.md."""
         from ..lib.api import get_config
+        from ..lib.api.agents import global_instructions_path
+        from .text_screens import MARKDOWN
 
-        global_instr = get_config().global_config_path.parent / "instructions.md"
         self._edit_text(
-            EditableText.from_file(global_instr, title="Global instructions"),
+            EditableText.from_file(
+                global_instructions_path(),
+                title="Global instructions",
+                language=MARKDOWN,
+                inherit=InheritCheckbox(
+                    "Include the bundled default instructions", get_config().global_config_path
+                ),
+            ),
             done_msg="Global instructions updated",
             after_save=self._refresh_project_state,
         )
@@ -1193,10 +1270,12 @@ class ProjectActionsMixin(_MixinBase):
         """Display the bundled default instructions (read-only)."""
         from terok.lib.api.agents import bundled_default_instructions
 
-        from .text_screens import TextViewScreen
+        from .text_screens import MARKDOWN, TextViewScreen
 
         text = bundled_default_instructions()
-        await self.push_screen(TextViewScreen(text, title="Bundled default instructions"))
+        await self.push_screen(
+            TextViewScreen(text, title="Bundled default instructions", language=MARKDOWN)
+        )
 
     # ---------- OpenCode config import ----------
 
@@ -1325,7 +1404,7 @@ class ProjectActionsMixin(_MixinBase):
         Initialize is refused for a text that would not load as the new
         project — the check every other ``project.yml`` editor applies.
         """
-        from ..lib.api import validate_project_yaml
+        from ..lib.api import project_config_reference, validate_project_yaml
         from .wizard_screens import ProjectReviewScreen
 
         validate = partial(validate_project_yaml, project_name)
@@ -1333,6 +1412,7 @@ class ProjectActionsMixin(_MixinBase):
             project_name,
             rendered,
             validate=validate,
+            reference=project_config_reference,
             edit_externally=self._external_edit_hook(
                 draft_name="project.yml", title=f"project.yml — {project_name}", validate=validate
             ),
@@ -1345,8 +1425,8 @@ class ProjectActionsMixin(_MixinBase):
         title: str,
         validate: Callable[[str], str | None] | None = None,
     ) -> Callable[[str], Awaitable[str | None]] | None:
-        """Return the ``$EDITOR`` round-trip for a wizard text, or ``None`` where edits stay in the TUI."""
-        editor = self._external_editor()
+        """Return the ``$EDITOR`` round-trip for a text, or ``None`` where no editor can run."""
+        editor = self._available_editor()
         if editor is None:
             return None
         return partial(

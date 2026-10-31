@@ -5,11 +5,18 @@
 
 import importlib
 import importlib.util
+import inspect
 import sys
 import types
 from collections.abc import Callable
 from typing import Any
 from unittest import mock
+
+
+def discard_worker(work: object, **_: object) -> None:
+    """Stand in for ``run_worker``: close a coroutine that nothing will run."""
+    if inspect.iscoroutine(work):
+        work.close()
 
 
 def build_textual_stubs() -> dict[str, types.ModuleType]:

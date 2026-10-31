@@ -1104,3 +1104,25 @@ async def test_init_screen_esc_cancels_mid_run() -> None:
             # The host's capture callback receives the dismissed outcome —
             # confirms dismiss() actually fired (not just the outcome set).
             assert app.result is InitOutcome.CANCELLED
+
+
+@pytest.mark.asyncio
+async def test_review_options_button_opens_the_reference() -> None:
+    """The wizard's review is a project.yml editor, so it offers the same reference."""
+    from terok.tui.text_screens import ConfigReferenceScreen
+    from terok.tui.wizard_screens import ProjectReviewScreen
+
+    screen = ProjectReviewScreen("demo", "project:\n  id: demo\n", reference=lambda: "## Section")
+    async with _WizardHost(screen).run_test(size=(120, 40)) as pilot:
+        await pilot.click("#wizard-review-options")
+        await pilot.pause()
+        assert isinstance(pilot.app.screen, ConfigReferenceScreen)
+
+
+@pytest.mark.asyncio
+async def test_review_without_a_reference_has_no_options_button() -> None:
+    from terok.tui.wizard_screens import ProjectReviewScreen
+
+    screen = ProjectReviewScreen("demo", "project:\n  id: demo\n")
+    async with _WizardHost(screen).run_test() as pilot:
+        assert not pilot.app.screen.query("#wizard-review-options")

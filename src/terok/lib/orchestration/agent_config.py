@@ -17,6 +17,7 @@ from terok_util import ConfigStack
 from terok_util.config_stack import ConfigScope
 
 from terok.lib.core.config import get_global_agent_config
+from terok.lib.core.instructions import with_global_instructions
 
 
 def build_agent_config_stack(
@@ -39,8 +40,8 @@ def build_agent_config_stack(
     """
     stack = ConfigStack()
 
-    # 1. Global agent config
-    global_cfg = get_global_agent_config()
+    # 1. Global agent config, with the global instructions.md
+    global_cfg = with_global_instructions(get_global_agent_config())
     if global_cfg:
         stack.push(ConfigScope("global", None, global_cfg))
 

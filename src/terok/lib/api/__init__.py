@@ -256,6 +256,10 @@ if TYPE_CHECKING:
         set_experimental as set_experimental,
         validate_global_config as validate_global_config,
     )
+    from terok.lib.core.config_reference import (
+        global_config_reference as global_config_reference,
+        project_config_reference as project_config_reference,
+    )
     from terok.lib.integrations.sandbox import (
         PodmanRuntime as PodmanRuntime,
         SandboxConfig as SandboxConfig,
@@ -387,6 +391,7 @@ _LAZY: dict[str, str] = {
     "get_task_meta": "terok.lib.api.task",
     "get_tasks": "terok.lib.api.task",
     "get_workspace_git_diff": "terok.lib.api.task",
+    "global_config_reference": "terok.lib.core.config_reference",
     "handle_vault_seal": "terok.lib.api.vault",
     "handle_vault_to_desktop_keyring": "terok.lib.api.vault",
     "has_gpu": "terok.lib.api.task",
@@ -427,6 +432,7 @@ _LAZY: dict[str, str] = {
     "set_project_shield_sets": "terok.lib.api.project",
     "set_project_snippet_inline": "terok.lib.api.project",
     "project_config_path": "terok.lib.api.project",
+    "project_config_reference": "terok.lib.core.config_reference",
     "stage_line": "terok.lib.integrations.sandbox",
     "store_api_key": "terok.lib.api.agents",
     "summarize_ssh_init": "terok.lib.api.project",
@@ -611,6 +617,7 @@ __all__ = [
     "get_task_meta",
     "get_tasks",
     "get_workspace_git_diff",
+    "global_config_reference",
     "has_gpu",
     "installed_agents",
     "installed_agents_for_project",
@@ -627,6 +634,7 @@ __all__ = [
     "mode_info",
     "panic_stop_containers",
     "project_config_path",
+    "project_config_reference",
     "project_image_exists",
     "red",
     "remove_images",

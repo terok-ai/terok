@@ -180,6 +180,9 @@ earlier ones, key by key):
 2. `sys.prefix/etc/terok/config.yml` (pip/venv installs)
 3. `${XDG_CONFIG_HOME:-~/.config}/terok/config.yml` (user override)
 
+For root, `/etc/terok/config.yml` is the user file, and it stays the top
+layer.
+
 Setting `TEROK_CONFIG_FILE=/path/to/config.yml` disables layering and
 uses only that file.  `terok config paths` prints the merge order.
 
@@ -1040,10 +1043,13 @@ terok provides layered agent instructions that describe the container environmen
 
 ### How It Works
 
-Every task container receives instructions explaining the workspace layout, available tools, sudo access, git workflow, and conventions. Two independent layers control what a task receives:
+Every task container receives instructions explaining the workspace layout, available tools, sudo access, git workflow, and conventions. Instructions build up in layers: the bundled default, the global layer, then the project layer.
 
-1. **YAML `instructions` key** — controls the inheritance chain via config stack. Uses `_inherit` in list form to splice the bundled default at that position. Absent = bundled default.
-2. **Standalone `instructions.md` file** in the project root — always appended at the end of whatever the YAML chain resolved. Purely additive. If empty or absent, nothing is appended.
+1. **YAML `instructions` key** — in the `agent:` section of `config.yml` and `project.yml`. It decides what a layer keeps of the layers below it. A list that holds `_inherit` keeps them at that position, and a list without it replaces them. No key at all keeps them.
+2. **Global `instructions.md` file** — next to `config.yml`. It joins the global layer as its last entry, so a project that replaces the layers below it drops this file too. If empty or absent, nothing is added.
+3. **Project `instructions.md` file** in the project root — always appended at the end of whatever the layers above resolved. Purely additive. If empty or absent, nothing is appended.
+
+Without any settings, a task receives the bundled default, then the global file, then the project file.
 
 - **Claude**: injected via `--append-system-prompt` (system-level context)
 - **Codex**: loaded from `/home/dev/.terok/instructions.md` via `-c model_instructions_file=...`
@@ -1127,6 +1133,14 @@ Override all config-stack instructions with a file:
 terok task run myproj "Fix the bug" --instructions path/to/instructions.md
 ```
 
+The `agent:` section of `config.yml` takes the same key, and decides whether the global layer keeps the bundled default:
+
+```yaml
+# config.yml — replace the bundled default with the global instructions.md
+agent:
+  instructions: []
+```
+
 ### TUI
 
 The project details panel shows an **Instruct:** badge with three states:
@@ -1139,13 +1153,12 @@ Available actions from the project details screen:
 
 - **Shift+I** — edit project `instructions.md` (see
   [Editing Configuration in the TUI](#editing-configuration-in-the-tui))
-- **t** — toggle instructions inheritance (include/exclude bundled defaults)
+- **t** — toggle instructions inheritance (include/exclude the global and bundled instructions)
 - **v** — view fully resolved instructions as a task would receive them
 
-Command palette (`Ctrl+P`) actions:
+The command palette (`Ctrl+P`) entry **Instructions** opens a screen for the instructions every project starts from. It shows how the layers combine, sets whether the global layer keeps the bundled default, edits the global `instructions.md` and shows the bundled default (read-only).
 
-- **Edit global instructions** — edit the global `instructions.md`
-- **Show default instructions** — view the bundled default instructions (read-only)
+The integrated editor has the same setting as a checkbox next to the instructions text, saved with the text. `$EDITOR` has no such checkbox, so use **t** or the **Instructions** screen with it.
 
 #### Theme
 
@@ -1290,18 +1303,20 @@ The TUI edits these files:
 | the project's Docker snippet | project details screen → **Shift+S** |
 | the project's `instructions.md` | project details screen → **Shift+I** |
 | `config.yml`, the user config file | command palette (`Ctrl+P`) → **Edit global config** |
-| the global `instructions.md` | command palette → **Edit global instructions** |
+| the global `instructions.md` | command palette → **Instructions** |
 
-A file opens in `$EDITOR` when `$EDITOR` is set, `tui.external_editor`
-is on (the default), and the TUI runs in a local terminal.  Otherwise it
-opens in the integrated editor: **Ctrl+S** saves, **Esc** cancels.  The
-web TUI always uses the integrated editor, because it has no terminal for
-`$EDITOR`.
+A file opens in the integrated editor: **Ctrl+S** saves, **Esc** cancels.
+When `$EDITOR` is set and the TUI runs in a local terminal, a button opens
+the text in that editor and names it, for example **Edit in vim**.  The
+text comes back to the integrated editor, and **Save** writes it.  Set
+`tui.external_editor: true` to open every text straight in `$EDITOR`.  The
+web TUI always uses the integrated editor and shows no such button,
+because it has no terminal for `$EDITOR`.
 
 `$EDITOR` edits a draft copy, not the file.  When the editor exits with
-status 0, terok checks the draft and writes it to the file only if the
-check passes.  An editor that exits with an error, such as vim's `:cq`,
-discards the draft.  `$EDITOR` must wait until you close the file, as for
+status 0, terok checks the draft, and the text only goes on if the check
+passes.  An editor that exits with an error, such as vim's `:cq`, discards
+the draft.  `$EDITOR` must wait until you close the file, as for
 `git commit`: set a GUI editor to wait, for example `EDITOR="code --wait"`.
 
 terok checks `project.yml` and `config.yml` before it writes them:
@@ -1310,6 +1325,11 @@ terok checks `project.yml` and `config.yml` before it writes them:
   refuses a save that would break the project.
 - `config.yml` is merged with the lower config layers and validated as at
   startup.  terok refuses a save that would make it fall back to defaults.
+
+The integrated editor lists every option of `project.yml` and `config.yml`
+with its type, default and description: press **F1** or **Options**.  The
+list is generated from the config schema, and **Esc** goes back to your
+text.
 
 A refused save keeps your text.  The integrated editor shows the reason
 under the text.  With `$EDITOR`, a dialog shows the reason: **Cancel**

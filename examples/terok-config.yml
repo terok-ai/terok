@@ -69,15 +69,16 @@ tui:
   # default_tmux: true
 
   # Texts edited from the TUI — instructions, project.yml, config.yml, Docker
-  # snippets, and the new-project wizard's texts — open in $EDITOR when it is
-  # set. $EDITOR gets a draft copy, checked when the editor exits; a text that
-  # would not load is refused and the real file stays unchanged. $EDITOR must
-  # wait until you close the file (e.g. "code --wait"). Honoured only on a
-  # local-terminal TUI — the web TUI (terok-web / textual serve) always uses
-  # the integrated text editor, since there is no terminal to suspend to. Set
-  # false to always use the integrated editor, even when $EDITOR is set.
-  # Default: true.
-  # external_editor: false
+  # snippets, and the new-project wizard's texts — open in the integrated text
+  # editor, which offers $EDITOR on a button when $EDITOR is set. Set true to
+  # open them straight in $EDITOR. $EDITOR gets a draft copy, checked when the
+  # editor exits; a text that would not load is refused and the real file stays
+  # unchanged. $EDITOR must wait until you close the file (e.g. "code --wait").
+  # Honoured only on a local-terminal TUI — the web TUI (terok-web / textual
+  # serve) always uses the integrated text editor, since there is no terminal
+  # to suspend to.
+  # Default: false.
+  # external_editor: true
 
   # Textual theme applied at TUI startup (e.g. textual-dark, textual-light,
   # ansi-dark — the latter uses your terminal's own colors and default

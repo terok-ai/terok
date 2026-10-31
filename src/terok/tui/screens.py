@@ -158,7 +158,13 @@ def _join_hints(*segments: str | None) -> str:
 
 
 class ProjectDetailsScreen(screen.Screen[str | None]):
-    """Full-page detail screen for a project with categorized actions."""
+    """Full-page detail screen for a project with categorized actions.
+
+    The agents and egress-set pickers write ``project.yml`` from here,
+    and this screen covers the main view while they do.  They record the
+    change in ``config_changed``, for the app to reload the projects
+    when this screen closes.
+    """
 
     BINDINGS = [
         _modal_binding("escape", "dismiss", "Back"),
@@ -207,6 +213,7 @@ class ProjectDetailsScreen(screen.Screen[str | None]):
         self._task_count = task_count
         self._staleness = staleness
         self._review_lag = review_lag
+        self.config_changed = False
 
     def compose(self) -> ComposeResult:
         """Build the detail pane and categorized action list for a project."""
@@ -301,11 +308,16 @@ class ProjectDetailsScreen(screen.Screen[str | None]):
             return
         from terok.lib.api import set_project_image_agents
 
-        path = set_project_image_agents(self._project.name, selection)
+        try:
+            path = set_project_image_agents(self._project.name, selection)
+        except (SystemExit, OSError) as exc:
+            self.notify(f"image.agents not written: {exc}", severity="error", markup=False)
+            return
         # Keep the cached config in sync so a re-open of the modal in
         # this same screen instance seeds from the freshly-saved value.
         # ``ProjectConfig`` is frozen, hence the model_copy.
         self._project = self._project.model_copy(update={"agents": selection})
+        self.config_changed = True
         self.notify(
             f"Wrote image.agents = {selection!r} to {path}",
             severity="information",
@@ -343,6 +355,7 @@ class ProjectDetailsScreen(screen.Screen[str | None]):
         # this same screen instance seeds from the freshly-saved value.
         # ``ProjectConfig`` is frozen, hence the model_copy.
         self._project = self._project.model_copy(update={"shield_sets": selection})
+        self.config_changed = True
         self.notify(
             f"Wrote shield.sets = {describe_egress_sets(selection)} to {path}\n"
             "Tasks pick it up at their next (re)start.",

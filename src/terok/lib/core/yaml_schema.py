@@ -477,6 +477,16 @@ class RawProjectImageSection(RawImageSection):
 # ---------------------------------------------------------------------------
 
 
+_DEFAULT_AGENT_DESCRIPTION = "Default agent provider (e.g. ``claude``, ``codex``)"
+_DEFAULT_PROVIDER_DESCRIPTION = (
+    "Default LLM endpoint provider the agent routes to (e.g. ``openrouter``)"
+)
+_DEFAULT_SHELL_DESCRIPTION = (
+    "What the new-task dialog selects to log in to: ``bash`` or an installed "
+    "agent (default: ``bash``)"
+)
+
+
 class RawProjectYaml(BaseModel):
     """Validated structure of a ``project.yml`` file."""
 
@@ -493,14 +503,9 @@ class RawProjectYaml(BaseModel):
     services: RawServicesProjectSection = Field(default_factory=RawServicesProjectSection)
     image: RawProjectImageSection = Field(default_factory=RawProjectImageSection)
     credentials: RawCredentialsSection = Field(default_factory=RawCredentialsSection)
-    default_agent: str | None = Field(
-        default=None, description="Default agent provider (e.g. ``claude``, ``codex``)"
-    )
-    default_provider: str | None = Field(
-        default=None,
-        description="Default LLM endpoint provider the agent routes to (e.g. ``openrouter``)",
-    )
-    default_shell: str | None = None
+    default_agent: str | None = Field(default=None, description=_DEFAULT_AGENT_DESCRIPTION)
+    default_provider: str | None = Field(default=None, description=_DEFAULT_PROVIDER_DESCRIPTION)
+    default_shell: str | None = Field(default=None, description=_DEFAULT_SHELL_DESCRIPTION)
     shared_dir: bool | str | None = Field(
         default=None,
         description="Shared directory for multi-agent IPC (``true`` = auto-create under tasks root, or absolute path)",
@@ -564,19 +569,18 @@ class RawTUISection(BaseModel):
         ),
     )
     external_editor: bool = Field(
-        default=True,
+        default=False,
         description=(
-            "Edit texts from the TUI — instructions, ``project.yml``, "
-            "``config.yml`` and Docker snippets — in ``$EDITOR`` when it is "
-            "set, instead of the integrated text editor.  The editor gets a "
-            "draft copy; a text that would not load is refused when the "
-            "editor exits, and the real file stays unchanged.  ``$EDITOR`` "
-            "must wait until the file is closed (e.g. ``code --wait``).  "
-            "Honoured only "
-            "on a local-terminal TUI — the web TUI (``terok-web`` / "
-            "textual-serve) always uses the integrated editor, as there is "
-            "no terminal to suspend to.  Set ``false`` to always use the "
-            "integrated editor."
+            "Open texts from the TUI — instructions, ``project.yml``, "
+            "``config.yml`` and Docker snippets — straight in ``$EDITOR`` "
+            "when it is set, instead of the integrated text editor.  With "
+            "this off, the integrated editor offers ``$EDITOR`` on a button.  "
+            "The editor gets a draft copy; a text that would not load is "
+            "refused when the editor exits, and the real file stays "
+            "unchanged.  ``$EDITOR`` must wait until the file is closed "
+            "(e.g. ``code --wait``).  Honoured only on a local-terminal TUI "
+            "— the web TUI (``terok-web`` / textual-serve) always uses the "
+            "integrated editor, as there is no terminal to suspend to."
         ),
     )
     desktop_entry: Literal["auto", "skip", "install"] = Field(
@@ -663,10 +667,19 @@ class RawGlobalConfig(ExecutorConfigView):
     logs: RawLogsSection = Field(default_factory=RawLogsSection)
     tasks: RawTasksGlobalSection = Field(default_factory=RawTasksGlobalSection)
     git: RawGlobalGitSection = Field(default_factory=RawGlobalGitSection)
-    default_agent: str | None = None
-    default_provider: str | None = None
-    default_shell: str | None = None
-    agent: dict[str, Any] = Field(default_factory=dict)
+    default_agent: str | None = Field(default=None, description=_DEFAULT_AGENT_DESCRIPTION)
+    default_provider: str | None = Field(default=None, description=_DEFAULT_PROVIDER_DESCRIPTION)
+    default_shell: str | None = Field(default=None, description=_DEFAULT_SHELL_DESCRIPTION)
+    agent: dict[str, Any] = Field(
+        default_factory=dict,
+        description=(
+            "Agent configuration for every project (model, timeout, instructions, "
+            "etc.); a project's ``agent:`` section is merged over it.  In "
+            "``instructions``, a list that holds ``_inherit`` keeps the bundled "
+            "default and a list without it replaces the default.  The "
+            "``instructions.md`` next to this file joins this layer as its last entry."
+        ),
+    )
 
     _SECTION_KEYS: ClassVar[frozenset[str]] = frozenset(
         {

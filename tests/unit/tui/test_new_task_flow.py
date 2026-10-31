@@ -14,7 +14,7 @@ from unittest import mock
 import pytest
 from terok_util import SetupRequiredError
 
-from tests.unit.tui.tui_test_helpers import import_app, import_screens
+from tests.unit.tui.tui_test_helpers import discard_worker, import_app, import_screens
 
 
 def run(coro: object) -> object:
@@ -786,7 +786,7 @@ class TestBackgroundLaunchCompletion:
         instance.notify = mock.Mock()
         instance.push_screen = mock.AsyncMock()
         instance.refresh_tasks = mock.AsyncMock()
-        instance.run_worker = mock.Mock()
+        instance.run_worker = mock.Mock(side_effect=discard_worker)
         instance._mark_launching = mock.Mock()
         instance._unmark_launching = mock.Mock()
 
@@ -1366,7 +1366,7 @@ class TestStartCliTaskBackgroundPassesName:
         instance.push_screen = mock.AsyncMock()
         instance.refresh_tasks = mock.AsyncMock()
         instance._mark_launching = mock.Mock()
-        instance.run_worker = mock.Mock()
+        instance.run_worker = mock.Mock(side_effect=discard_worker)
 
         fake_project = mock.Mock()
         fake_project.default_shell = "claude"
@@ -1421,7 +1421,7 @@ class TestStartCliTaskBackgroundLoadFailure:
         instance.push_screen = mock.AsyncMock()
         instance.refresh_tasks = mock.AsyncMock()
         instance._mark_launching = mock.Mock()
-        instance.run_worker = mock.Mock()
+        instance.run_worker = mock.Mock(side_effect=discard_worker)
         instance._log_debug = mock.Mock()
 
         action_globals = app_class._start_cli_task_background.__globals__

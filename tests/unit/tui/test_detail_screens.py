@@ -19,6 +19,7 @@ from rich.text import Text
 from tests.testfs import MOCK_BASE, MOCK_CONFIG_ROOT
 from tests.testnet import TEST_EGRESS_URL, TEST_UPSTREAM_URL
 from tests.unit.tui.tui_test_helpers import (
+    discard_worker,
     import_app,
     import_screens,
     import_widgets,
@@ -121,7 +122,7 @@ def make_creation_app(app_class: type) -> object:
     instance.refresh_tasks = mock.AsyncMock()
     instance.push_screen = fake_push_screen
     instance._mark_launching = mock.Mock()
-    instance.run_worker = mock.Mock()
+    instance.run_worker = mock.Mock(side_effect=discard_worker)
     return instance
 
 
@@ -609,6 +610,34 @@ class TestScreenConstruction:
         screen.notify.assert_called_once()
         call = screen.notify.call_args
         assert "claude,vibe" in call.args[0]
+
+    def test_project_details_records_a_written_selection(self) -> None:
+        """A written selection is remembered, so the app reloads when the screen closes."""
+        screens, _ = import_screens()
+        project = make_project(name="proj1", agents="all", shield_sets=())
+        for write, record in (
+            ("set_project_image_agents", lambda s: s._on_agents_modal_result("claude")),
+            ("set_project_shield_sets", lambda s: s._on_shield_sets_modal_result(("python",))),
+        ):
+            screen = screens.ProjectDetailsScreen(project=project, state=None, task_count=0)
+            screen.notify = mock.Mock()
+            assert screen.config_changed is False
+            with mock.patch(f"terok.lib.api.{write}", return_value="/tmp/terok-testing/p.yml"):
+                record(screen)
+            assert screen.config_changed is True
+
+    def test_project_details_agents_refusal_is_a_notice_not_a_crash(self) -> None:
+        """A ``project.yml`` that stopped loading fails the write — and says so."""
+        screens, _ = import_screens()
+        project = make_project(name="proj1", agents="all")
+        screen = screens.ProjectDetailsScreen(project=project, state=None, task_count=0)
+        screen.notify = mock.Mock()
+        refusal = SystemExit("Invalid project.yml")
+        with mock.patch("terok.lib.api.set_project_image_agents", side_effect=refusal):
+            screen._on_agents_modal_result("claude")
+        assert screen.notify.call_args.kwargs["severity"] == "error"
+        assert screen.config_changed is False
+        assert screen._project is project
 
     def test_project_details_agents_modal_cancel_is_noop(self) -> None:
         """``None`` from the modal must NOT touch project.yml."""
@@ -1782,8 +1811,7 @@ class TestCommandPalette:
         ("title", "action"),
         [
             ("Edit global config", "action_edit_global_config"),
-            ("Edit global instructions", "action_edit_global_instructions"),
-            ("Show default instructions", "action_show_default_instructions"),
+            ("Instructions", "action_show_instructions"),
         ],
     )
     def test_get_system_commands_includes_global_editors(self, title: str, action: str) -> None:
@@ -1797,6 +1825,23 @@ class TestCommandPalette:
             commands = list(app_class.get_system_commands(instance, screen=mock.Mock()))
         callbacks = {cmd.title: cmd.callback for cmd in commands}
         assert callbacks[title] == getattr(instance, action)
+
+
+class TestProjectDetailsClosed:
+    """The app shows what the details screen wrote, once that screen is out of the way."""
+
+    @pytest.mark.parametrize("changed", [True, False], ids=["changed", "unchanged"])
+    async def test_reloads_only_after_a_write(self, changed: bool) -> None:
+        from tests.unit.tui.tui_test_helpers import build_textual_stubs
+
+        _, app_class = import_app(build_textual_stubs())
+        instance = app_class()
+        instance.refresh_projects = mock.AsyncMock()
+        instance._on_project_action_screen_result = mock.AsyncMock()
+        details = mock.Mock(config_changed=changed)
+        await app_class._on_project_details_closed(instance, details, "build")
+        assert instance.refresh_projects.await_count == int(changed)
+        instance._on_project_action_screen_result.assert_awaited_once_with("build")
 
 
 class TestDefaultAgentsAction:

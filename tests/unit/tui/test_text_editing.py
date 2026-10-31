@@ -20,7 +20,14 @@ from unittest import mock
 
 import pytest
 
-from terok.tui.project_actions import EditableText, ProjectActionsMixin, _snippet_texts
+from terok.lib.core.instructions import inherits_instructions
+from terok.tui.project_actions import (
+    EditableText,
+    InheritCheckbox,
+    ProjectActionsMixin,
+    _snippet_texts,
+)
+from terok.tui.text_screens import MARKDOWN, EditedText
 from tests.testfs import MOCK_BASE
 
 
@@ -34,6 +41,7 @@ def _instance(*, is_web: bool = False) -> mock.Mock:
     instance._run_suspended = mock.AsyncMock(return_value=0)
     instance._edit_in_external_editor = mock.AsyncMock()
     instance._external_editor = mock.Mock(return_value=None)
+    instance._available_editor = mock.Mock(return_value=None)
     # The real steps between them, so a test drives the composed flow.
     instance._edit_once = partial(ProjectActionsMixin._edit_once, instance)
     instance._external_edit_hook = partial(ProjectActionsMixin._external_edit_hook, instance)
@@ -50,6 +58,7 @@ def _text(
     save: mock.Mock | None = None,
     validate: object = None,
     language: str | None = None,
+    inherit: InheritCheckbox | None = None,
 ) -> EditableText:
     """An in-memory editable text."""
     return EditableText(
@@ -59,6 +68,7 @@ def _text(
         save=save or mock.Mock(),
         validate=validate,  # type: ignore[arg-type]
         language=language,
+        inherit=inherit,
     )
 
 
@@ -81,6 +91,7 @@ class TestExternalEditorChoice:
 
     def _choice(self, *, is_web: bool, environ: dict[str, str], preferred: bool) -> str | None:
         instance = _instance(is_web=is_web)
+        instance._available_editor = partial(ProjectActionsMixin._available_editor, instance)
         with (
             mock.patch.dict("terok.tui.project_actions.os.environ", environ, clear=True),
             mock.patch(
@@ -103,6 +114,39 @@ class TestExternalEditorChoice:
         assert self._choice(is_web=False, environ={}, preferred=True) is None
 
 
+class TestAvailableEditor:
+    """The button needs a set ``$EDITOR`` and a terminal, whatever the preference says."""
+
+    def _available(self, *, is_web: bool, environ: dict[str, str]) -> str | None:
+        instance = _instance(is_web=is_web)
+        with mock.patch.dict("terok.tui.project_actions.os.environ", environ, clear=True):
+            return ProjectActionsMixin._available_editor(instance)
+
+    def test_set_editor_is_available_with_the_preference_off(self) -> None:
+        assert self._available(is_web=False, environ={"EDITOR": "vim"}) == "vim"
+
+    @pytest.mark.parametrize("environ", [{}, {"EDITOR": ""}, {"EDITOR": "  "}], ids=str)
+    def test_unset_or_blank_editor_is_not_available(self, environ: dict[str, str]) -> None:
+        assert self._available(is_web=False, environ=environ) is None
+
+    def test_web_tui_has_none(self) -> None:
+        assert self._available(is_web=True, environ={"EDITOR": "vim"}) is None
+
+    async def test_integrated_editor_gets_the_round_trip(self) -> None:
+        instance = _instance()
+        instance._available_editor.return_value = "vim"
+        instance.push_screen_wait.return_value = None
+        with mock.patch("terok.tui.text_screens.TextEditorScreen") as screen_cls:
+            await ProjectActionsMixin._edit_and_save(
+                instance, _text(), done_msg="ok", after_save=None
+            )
+        hook = screen_cls.call_args.kwargs["edit_externally"]
+        await hook("draft")
+        instance._edit_in_external_editor.assert_awaited_once_with(
+            "vim", "draft", draft_name="draft.yml", title="T", validate=None
+        )
+
+
 # ── Edit and save ─────────────────────────────────────────────────────
 
 
@@ -116,12 +160,21 @@ class TestEditAndSave:
         text = _text(validate=validator, language="yaml")
         with mock.patch("terok.tui.text_screens.TextEditorScreen") as screen_cls:
             await ProjectActionsMixin._edit_and_save(instance, text, done_msg="ok", after_save=None)
-        screen_cls.assert_called_once_with("body", title="T", language="yaml", validate=validator)
+        screen_cls.assert_called_once_with(
+            "body",
+            title="T",
+            language="yaml",
+            validate=validator,
+            reference=None,
+            edit_externally=None,
+            checkbox_label=None,
+            checked=False,
+        )
         instance.push_screen_wait.assert_awaited_once_with(screen_cls.return_value)
 
     async def test_changed_text_is_saved_then_reported_and_followed_up(self) -> None:
         instance = _instance()
-        instance.push_screen_wait.return_value = "new body"
+        instance.push_screen_wait.return_value = EditedText("new body")
         save, after_save = mock.Mock(), mock.AsyncMock()
         await ProjectActionsMixin._edit_and_save(
             instance, _text(save=save), done_msg="saved!", after_save=after_save
@@ -132,7 +185,7 @@ class TestEditAndSave:
 
     async def test_plain_function_runs_after_save(self) -> None:
         instance = _instance()
-        instance.push_screen_wait.return_value = "new body"
+        instance.push_screen_wait.return_value = EditedText("new body")
         after_save = mock.Mock(return_value=None)
         await ProjectActionsMixin._edit_and_save(
             instance, _text(), done_msg="saved!", after_save=after_save
@@ -153,7 +206,7 @@ class TestEditAndSave:
     async def test_unchanged_text_is_not_written_and_says_so(self) -> None:
         """A forking GUI editor returns at once; the notice shows that nothing was saved."""
         instance = _instance()
-        instance.push_screen_wait.return_value = "body"
+        instance.push_screen_wait.return_value = EditedText("body")
         save, after_save = mock.Mock(), mock.Mock()
         await ProjectActionsMixin._edit_and_save(
             instance, _text(save=save), done_msg="saved!", after_save=after_save
@@ -194,7 +247,7 @@ class TestEditAndSave:
     ) -> None:
         """A write that fails keeps the edit: the integrated editor opens again on it."""
         instance = _instance()
-        instance.push_screen_wait.side_effect = ["new body", None]
+        instance.push_screen_wait.side_effect = [EditedText("new body"), None]
         after_save = mock.Mock()
         save = mock.Mock(side_effect=error)
         with mock.patch("terok.tui.text_screens.TextEditorScreen") as screen_cls:
@@ -205,6 +258,94 @@ class TestEditAndSave:
         assert "Cannot save T" in instance.notify.call_args.args[0]
         assert instance.notify.call_args.kwargs == {"severity": "error", "markup": False}
         after_save.assert_not_called()
+
+    async def test_integrated_editor_shows_the_inherit_setting(self, tmp_path: Path) -> None:
+        instance = _instance()
+        instance.push_screen_wait.return_value = None
+        text = _text(inherit=InheritCheckbox("Include", tmp_path / "project.yml"))
+        with mock.patch("terok.tui.text_screens.TextEditorScreen") as screen_cls:
+            await ProjectActionsMixin._edit_and_save(instance, text, done_msg="ok", after_save=None)
+        assert screen_cls.call_args.kwargs["checkbox_label"] == "Include"
+        assert screen_cls.call_args.kwargs["checked"] is True
+
+    async def test_changed_setting_alone_is_saved(self, tmp_path: Path) -> None:
+        """Only the checkbox changed: that is a change to save, and the text stays unwritten."""
+        project_yml = tmp_path / "project.yml"
+        instance = _instance()
+        instance.push_screen_wait.return_value = EditedText("body", checked=False)
+        save = mock.Mock()
+        await ProjectActionsMixin._edit_and_save(
+            instance,
+            _text(save=save, inherit=InheritCheckbox("Include", project_yml)),
+            done_msg="saved!",
+            after_save=None,
+        )
+        save.assert_not_called()
+        instance.notify.assert_called_once_with("saved!", markup=False)
+        assert inherits_instructions(project_yml) is False
+
+    async def test_unchanged_setting_is_not_written(self, tmp_path: Path) -> None:
+        project_yml = tmp_path / "project.yml"
+        instance = _instance()
+        instance.push_screen_wait.return_value = EditedText("body", checked=True)
+        await ProjectActionsMixin._edit_and_save(
+            instance,
+            _text(inherit=InheritCheckbox("Include", project_yml)),
+            done_msg="ok",
+            after_save=None,
+        )
+        instance.notify.assert_called_once_with("No changes to save.")
+        assert not project_yml.exists()
+
+    async def test_setting_that_cannot_be_switched_shows_no_checkbox(self, tmp_path: Path) -> None:
+        project_yml = tmp_path / "project.yml"
+        project_yml.write_text("agent:\n  instructions: flat text\n", encoding="utf-8")
+        instance = _instance()
+        instance.push_screen_wait.return_value = None
+        text = _text(inherit=InheritCheckbox("Include", project_yml))
+        with mock.patch("terok.tui.text_screens.TextEditorScreen") as screen_cls:
+            await ProjectActionsMixin._edit_and_save(instance, text, done_msg="ok", after_save=None)
+        assert screen_cls.call_args.kwargs["checkbox_label"] is None
+
+    async def test_refused_setting_keeps_the_saved_text_and_the_choice(
+        self, tmp_path: Path
+    ) -> None:
+        """The text saved and the setting did not: the editor reopens without saving it twice."""
+        project_yml = tmp_path / "project.yml"
+        instance = _instance()
+        instance.push_screen_wait.side_effect = [EditedText("new", checked=False), None]
+        save = mock.Mock()
+        with (
+            mock.patch("terok.tui.text_screens.TextEditorScreen") as screen_cls,
+            mock.patch(
+                "terok.lib.api.agents.set_instructions_inherit", side_effect=OSError("read-only")
+            ),
+        ):
+            await ProjectActionsMixin._edit_and_save(
+                instance,
+                _text(save=save, inherit=InheritCheckbox("Include", project_yml)),
+                done_msg="ok",
+                after_save=None,
+            )
+        save.assert_called_once_with("new")
+        assert screen_cls.call_args.args[0] == "new"
+        assert screen_cls.call_args.kwargs["checked"] is False
+        assert "Cannot save T" in instance.notify.call_args.args[0]
+
+    async def test_external_editor_leaves_the_setting_alone(self, tmp_path: Path) -> None:
+        project_yml = tmp_path / "project.yml"
+        instance = _instance()
+        instance._external_editor.return_value = "vim"
+        instance._edit_in_external_editor.return_value = "new body"
+        save = mock.Mock()
+        await ProjectActionsMixin._edit_and_save(
+            instance,
+            _text(save=save, inherit=InheritCheckbox("Include", project_yml)),
+            done_msg="ok",
+            after_save=None,
+        )
+        save.assert_called_once_with("new body")
+        assert not project_yml.exists()
 
     async def test_failed_write_with_editor_offers_discard_or_edit_again(self) -> None:
         """With ``$EDITOR``, the reason shows in the discard dialog; Cancel edits again."""
@@ -478,7 +619,10 @@ class TestEditActions:
             "after_save": instance._refresh_project_state,
         }
 
-    async def test_global_instructions_sit_next_to_the_config_file(self, tmp_path: Path) -> None:
+    async def test_global_instructions_sit_next_to_the_config_file(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setenv("TEROK_CONFIG_FILE", str(tmp_path / "config.yml"))
         instance = _instance()
         with mock.patch(
             "terok.lib.api.get_config",
@@ -489,6 +633,99 @@ class TestEditActions:
         (tmp_path / "instructions.md").write_text("global", encoding="utf-8")
         assert text.load() == "global"
         assert kwargs["done_msg"] == "Global instructions updated"
+
+    async def test_global_instructions_are_markdown_with_the_global_setting(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        config_yml = tmp_path / "config.yml"
+        monkeypatch.setenv("TEROK_CONFIG_FILE", str(config_yml))
+        instance = _instance()
+        with mock.patch(
+            "terok.lib.api.get_config", return_value=mock.Mock(global_config_path=config_yml)
+        ):
+            await ProjectActionsMixin._action_edit_global_instructions(instance)
+        text, _ = self._edited(instance)
+        assert text.language == MARKDOWN
+        assert text.inherit == InheritCheckbox(
+            "Include the bundled default instructions", config_yml
+        )
+
+    async def test_project_instructions_are_markdown_with_the_project_setting(
+        self, tmp_path: Path
+    ) -> None:
+        instance = _instance()
+        instance.current_project_name = "demo"
+        with mock.patch(
+            "terok.tui.project_actions.load_project", return_value=mock.Mock(root=tmp_path)
+        ):
+            await ProjectActionsMixin._action_edit_instructions(instance)
+        text, _ = self._edited(instance)
+        assert text.language == MARKDOWN
+        assert text.inherit is not None
+        assert text.inherit.config_file == tmp_path / "project.yml"
+
+    async def test_yaml_configs_carry_their_options_reference(self, tmp_path: Path) -> None:
+        instance = _instance()
+        instance.current_project_name = "demo"
+        with (
+            mock.patch("terok.lib.api.project_config_path", return_value=tmp_path / "project.yml"),
+            mock.patch(
+                "terok.lib.api.get_config",
+                return_value=mock.Mock(global_config_path=tmp_path / "config.yml"),
+            ),
+        ):
+            ProjectActionsMixin._edit_project_yml(instance, "demo")
+            project_text = instance._edit_text.call_args.args[0]
+            await ProjectActionsMixin._action_edit_global_config(instance)
+            global_text = instance._edit_text.call_args.args[0]
+        assert "\n## default_agent\n" in project_text.reference()
+        assert "\n## external_editor\n" in global_text.reference()
+
+    async def test_toggle_flips_the_project_setting(self, tmp_path: Path) -> None:
+        project_yml = tmp_path / "project.yml"
+        project_yml.write_text("agent:\n  instructions: [_inherit, extra]\n", encoding="utf-8")
+        instance = _instance()
+        instance.current_project_name = "demo"
+        with mock.patch("terok.lib.api.project_config_path", return_value=project_yml):
+            await ProjectActionsMixin._action_toggle_instructions_inherit(instance)
+            assert inherits_instructions(project_yml) is False
+            await ProjectActionsMixin._action_toggle_instructions_inherit(instance)
+            assert inherits_instructions(project_yml) is True
+        assert "extra" in project_yml.read_text(encoding="utf-8")
+        instance._refresh_project_state.assert_called()
+
+    async def test_toggle_refuses_a_form_it_cannot_switch(self, tmp_path: Path) -> None:
+        project_yml = tmp_path / "project.yml"
+        project_yml.write_text("agent:\n  instructions: flat text\n", encoding="utf-8")
+        instance = _instance()
+        instance.current_project_name = "demo"
+        with mock.patch("terok.lib.api.project_config_path", return_value=project_yml):
+            await ProjectActionsMixin._action_toggle_instructions_inherit(instance)
+        assert instance.notify.call_args.kwargs == {"severity": "warning"}
+        assert "flat text" in project_yml.read_text(encoding="utf-8")
+
+    @pytest.mark.parametrize(
+        ("choice", "action"),
+        [
+            ("edit_global", "_action_edit_global_instructions"),
+            ("show_default", "_action_show_default_instructions"),
+        ],
+    )
+    async def test_instructions_screen_choice_runs_its_action(
+        self, choice: str, action: str
+    ) -> None:
+        instance = _instance()
+        setattr(instance, action, mock.AsyncMock())
+        await ProjectActionsMixin._on_instructions_choice(instance, choice)
+        getattr(instance, action).assert_awaited_once_with()
+
+    async def test_closed_instructions_screen_runs_nothing(self) -> None:
+        instance = _instance()
+        instance._action_edit_global_instructions = mock.AsyncMock()
+        instance._action_show_default_instructions = mock.AsyncMock()
+        await ProjectActionsMixin._on_instructions_choice(instance, None)
+        instance._action_edit_global_instructions.assert_not_awaited()
+        instance._action_show_default_instructions.assert_not_awaited()
 
     @pytest.mark.parametrize(
         "action",
@@ -566,7 +803,7 @@ class TestWizardReviewScreen:
 
     async def test_offers_the_editor_round_trip_where_edits_go_there(self) -> None:
         instance = _instance()
-        instance._external_editor.return_value = "vim"
+        instance._available_editor.return_value = "vim"
         kwargs = self._review(instance)
         edit_externally = kwargs["edit_externally"]
         await edit_externally("draft")  # type: ignore[operator]
@@ -580,7 +817,7 @@ class TestWizardReviewScreen:
 
 
 class TestExternalEditHook:
-    """``_external_edit_hook`` gives a wizard text its ``$EDITOR`` round-trip, where edits go there."""
+    """``_external_edit_hook`` gives a text its ``$EDITOR`` round-trip, where one can run."""
 
     def test_no_hook_where_edits_stay_in_the_tui(self) -> None:
         hook = ProjectActionsMixin._external_edit_hook(
@@ -590,7 +827,7 @@ class TestExternalEditHook:
 
     async def test_hook_edits_a_named_draft_without_a_check(self) -> None:
         instance = _instance()
-        instance._external_editor.return_value = "vim"
+        instance._available_editor.return_value = "vim"
         hook = ProjectActionsMixin._external_edit_hook(
             instance, draft_name="snippet.dockerfile", title="Docker snippet"
         )

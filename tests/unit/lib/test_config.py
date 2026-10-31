@@ -109,11 +109,11 @@ def test_tui_default_tmux(
 @pytest.mark.parametrize(
     ("config_text", "expected"),
     [
-        ("", True),
+        ("", False),
         ("tui:\n  external_editor: true\n", True),
         ("tui:\n  external_editor: false\n", False),
     ],
-    ids=["default-true", "explicit-true", "explicit-false"],
+    ids=["default-false", "explicit-true", "explicit-false"],
 )
 def test_tui_external_editor(
     monkeypatch: pytest.MonkeyPatch,
@@ -1205,6 +1205,26 @@ class TestLayeredConfig:
         labels = [label for label, _ in layers]
         assert labels[0] == "system"
         assert labels[-1] == "user"
+
+
+class TestRootConfigFile:
+    """Root keeps its user config in ``/etc/terok``, where the sibling packages write it."""
+
+    @pytest.fixture(autouse=True)
+    def _as_root(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.delenv("TEROK_CONFIG_FILE", raising=False)
+        monkeypatch.setattr("terok_util.paths._is_root", lambda: True)
+
+    def test_path_is_the_one_the_executor_writes(self) -> None:
+        from terok_executor.config import writable_config_path
+
+        assert cfg.global_config_path() == writable_config_path()
+
+    def test_user_file_stays_the_top_layer_once(self) -> None:
+        """An editor replaces the top layer, so root's file has to be the top one."""
+        layers = cfg._config_layers()
+        assert layers[-1] == ("user", cfg.global_config_path())
+        assert [path for _, path in layers].count(cfg.global_config_path()) == 1
 
 
 # ---------- TUI theme persistence (tui.theme) ----------

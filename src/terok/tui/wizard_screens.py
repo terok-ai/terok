@@ -67,7 +67,13 @@ from .agents_screen import AgentsSelectScreen
 from .askpass_service import build_askpass_env, gui_askpass_usable
 from .gpu_screen import GpuSelectScreen
 from .ssh_key_screens import ShowSshKeyScreen, SshKeyCommentScreen
-from .text_screens import ValidationErrorLine, code_text_area, edit_externally_into
+from .text_screens import (
+    ValidationErrorLine,
+    code_text_area,
+    edit_externally_into,
+    external_editor_label,
+    show_config_reference,
+)
 from .widgets.ansi_log import AnsiLog
 
 # ── Step 1: the form ──────────────────────────────────────────────────
@@ -216,7 +222,7 @@ class WizardFormScreen(ModalScreen["dict[str, str] | None"]):
                 yield TextArea(preset, id=self._widget_id(q), language=None)
                 if self._edit_externally is not None:
                     yield Button(
-                        "Edit in $EDITOR",
+                        external_editor_label(),
                         name=q.key,
                         classes="wizard-external-edit",
                         variant="default",
@@ -477,12 +483,14 @@ class ProjectReviewScreen(ModalScreen["str | object | None"]):
     ``None``; Initialize is refused while it reports a problem, and the
     reason shows under the text.  *edit_externally* sends the text
     through ``$EDITOR`` and returns the accepted text (``None`` when the
-    operator abandons the edit); when it is set, an "Edit in $EDITOR"
-    button offers that round-trip.
+    operator abandons the edit); when it is set, a button naming the
+    editor offers that round-trip.  *reference* returns the Markdown
+    options reference that the Options button and F1 open.
     """
 
     BINDINGS = [
         Binding("escape", "cancel", "Cancel"),
+        Binding("f1", "show_options", "Options"),
     ]
 
     CSS = """
@@ -512,6 +520,7 @@ class ProjectReviewScreen(ModalScreen["str | object | None"]):
 
     #wizard-review-buttons Button {
         margin-left: 1;
+        min-width: 10;
     }
     """
 
@@ -522,6 +531,7 @@ class ProjectReviewScreen(ModalScreen["str | object | None"]):
         *,
         validate: Callable[[str], str | None] | None = None,
         edit_externally: Callable[[str], Awaitable[str | None]] | None = None,
+        reference: Callable[[], str] | None = None,
     ) -> None:
         """Create the review screen with the initial rendered YAML text."""
         super().__init__()
@@ -529,6 +539,7 @@ class ProjectReviewScreen(ModalScreen["str | object | None"]):
         self._rendered = rendered
         self._validate = validate
         self._edit_externally = edit_externally
+        self._reference = reference
 
     def compose(self) -> ComposeResult:
         """Build the editable YAML pane, the error line and the Back/Initialize buttons."""
@@ -538,14 +549,34 @@ class ProjectReviewScreen(ModalScreen["str | object | None"]):
             yield code_text_area(self._rendered, language="yaml", widget_id="wizard-review-yaml")
             yield ValidationErrorLine(self._validate)
             with Horizontal(id="wizard-review-buttons"):
+                if self._reference is not None:
+                    yield Button("Options", id="wizard-review-options", variant="default")
                 if self._edit_externally is not None:
-                    yield Button("Edit in $EDITOR", id="wizard-review-external", variant="default")
+                    yield Button(
+                        external_editor_label(), id="wizard-review-external", variant="default"
+                    )
                 yield Button("Back", id="wizard-review-back", variant="default")
                 yield Button("Initialize project", id="wizard-review-init", variant="primary")
 
     def action_cancel(self) -> None:
         """Escape abandons the wizard — dismiss with ``None``."""
         self.dismiss(None)
+
+    def check_action(self, action: str, parameters: tuple[object, ...]) -> bool | None:
+        """F1 exists only with an options reference."""
+        return self._reference is not None if action == "show_options" else True
+
+    def action_show_options(self) -> None:
+        """F1 / Options — open the options reference over the review."""
+        if self._reference is not None:
+            show_config_reference(
+                self.app, self._reference, title=f"project.yml — {self._project_name}"
+            )
+
+    @on(Button.Pressed, "#wizard-review-options")
+    def _on_options(self) -> None:
+        """Options button — same as F1."""
+        self.action_show_options()
 
     @on(Button.Pressed, "#wizard-review-back")
     def _on_back(self) -> None:

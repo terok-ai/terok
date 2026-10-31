@@ -425,12 +425,16 @@ in `l1.agent-cli.Dockerfile.template` (terok-executor), and
 
 ## Agent Instructions Architecture
 
-Two-layer pattern, resolved by terok-executor
-(`provider/instructions.py`, `resolve_instructions()`):
+Resolved by terok-executor (`provider/instructions.py`,
+`resolve_instructions()`), from what terok's config stack hands it:
 
 1. **YAML `instructions` key** — selects the base (bundled default,
    custom string, or a list).  Absent = bundled default.
-2. **Standalone `instructions.md`** in the project root — always appended
+2. **Global `instructions.md`** next to `config.yml` — terok adds it to
+   the global scope of the config stack
+   (`lib/core/instructions.py`, `with_global_instructions()`), so a
+   project that replaces the layers below it drops this file as well.
+3. **Standalone `instructions.md`** in the project root — always appended
    after the YAML chain.  Purely additive.
 
 In list form, the `_inherit` sentinel is *spliced* — replaced with the

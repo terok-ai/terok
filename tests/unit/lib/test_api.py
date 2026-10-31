@@ -91,13 +91,13 @@ class TestGetConfig:
             archive_dir_mock,
             vault_dir_mock,
             user_projects_dir_mock,
-            global_config_path_mock,
             get_public_host_mock,
             get_shield_disable_firewall_no_protection_mock,
             get_tui_default_tmux_mock,
             get_tui_external_editor_mock,
         ):
             getter_mock.assert_called_once()
+        global_config_path_mock.assert_called()  # the config layers ask for it as well
 
     def test_config_is_immutable(self) -> None:
         """``Config`` is frozen — callers can't mutate the snapshot."""
