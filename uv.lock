@@ -2489,11 +2489,11 @@ requires-dist = [
     { name = "requests", specifier = "~=2.34" },
     { name = "rich", specifier = "~=15.0" },
     { name = "ruamel-yaml", specifier = "==0.19.1" },
-    { name = "terok-clearance", url = "https://github.com/terok-ai/terok-clearance/releases/download/v0.8.2a1/terok_clearance-0.8.2a1-py3-none-any.whl" },
-    { name = "terok-executor", url = "https://github.com/terok-ai/terok-executor/releases/download/v0.5.1a10/terok_executor-0.5.1a10-py3-none-any.whl" },
-    { name = "terok-sandbox", url = "https://github.com/terok-ai/terok-sandbox/releases/download/v0.7.0a5/terok_sandbox-0.7.0a5-py3-none-any.whl" },
-    { name = "terok-shield", url = "https://github.com/terok-ai/terok-shield/releases/download/v0.10.0a2/terok_shield-0.10.0a2-py3-none-any.whl" },
-    { name = "terok-util", url = "https://github.com/terok-ai/terok-util/releases/download/v0.5.0a1/terok_util-0.5.0a1-py3-none-any.whl" },
+    { name = "terok-clearance", git = "https://github.com/sliwowitz/terok-clearance?rev=fix%2F1315-rootless-storage" },
+    { name = "terok-executor", git = "https://github.com/sliwowitz/terok-executor?rev=fix%2F1315-rootless-storage" },
+    { name = "terok-sandbox", git = "https://github.com/sliwowitz/terok-sandbox?rev=fix%2F1315-rootless-storage" },
+    { name = "terok-shield", git = "https://github.com/sliwowitz/terok-shield?rev=fix%2F1315-rootless-storage" },
+    { name = "terok-util", git = "https://github.com/sliwowitz/terok-util?rev=fix%2F1315-rootless-storage" },
     { name = "textual", extras = ["syntax"], specifier = "~=8.2.8" },
     { name = "textual-serve", specifier = "~=1.1" },
     { name = "unique-namer", specifier = "~=1.6" },
@@ -2534,30 +2534,19 @@ test = [
 
 [[package]]
 name = "terok-clearance"
-version = "0.8.2a1"
-source = { url = "https://github.com/terok-ai/terok-clearance/releases/download/v0.8.2a1/terok_clearance-0.8.2a1-py3-none-any.whl" }
+version = "0.8.2a2.dev259+g2678097e7"
+source = { git = "https://github.com/sliwowitz/terok-clearance?rev=fix%2F1315-rootless-storage#2678097e7682211bd00e81a4dda87fe679ce0a02" }
 dependencies = [
     { name = "asyncvarlink" },
     { name = "dbus-fast" },
     { name = "pyyaml" },
     { name = "terok-util" },
 ]
-wheels = [
-    { url = "https://github.com/terok-ai/terok-clearance/releases/download/v0.8.2a1/terok_clearance-0.8.2a1-py3-none-any.whl", hash = "sha256:bc8dc6ed7415d1967f62e2b2a9d4bccd8015a1590c48e33b7c80e42c48452465" },
-]
-
-[package.metadata]
-requires-dist = [
-    { name = "asyncvarlink", specifier = "==0.3.3" },
-    { name = "dbus-fast", specifier = "~=5.0" },
-    { name = "pyyaml", specifier = "~=6.0" },
-    { name = "terok-util", url = "https://github.com/terok-ai/terok-util/releases/download/v0.5.0a1/terok_util-0.5.0a1-py3-none-any.whl" },
-]
 
 [[package]]
 name = "terok-executor"
-version = "0.5.1a10"
-source = { url = "https://github.com/terok-ai/terok-executor/releases/download/v0.5.1a10/terok_executor-0.5.1a10-py3-none-any.whl" }
+version = "0.5.1a11.dev530+g3c4c69306"
+source = { git = "https://github.com/sliwowitz/terok-executor?rev=fix%2F1315-rootless-storage#3c4c69306d047b0431210f7d0d1f555f486af91a" }
 dependencies = [
     { name = "agent-client-protocol" },
     { name = "jinja2" },
@@ -2569,27 +2558,11 @@ dependencies = [
     { name = "terok-util" },
     { name = "tomli-w" },
 ]
-wheels = [
-    { url = "https://github.com/terok-ai/terok-executor/releases/download/v0.5.1a10/terok_executor-0.5.1a10-py3-none-any.whl", hash = "sha256:e0551e6522bd67e8cbc807fec31783789cd3e137ff56749aee62ef810f70c55e" },
-]
-
-[package.metadata]
-requires-dist = [
-    { name = "agent-client-protocol", specifier = "==0.12.1" },
-    { name = "jinja2", specifier = "~=3.1" },
-    { name = "prompt-toolkit", specifier = "~=3.0" },
-    { name = "pydantic", specifier = "~=2.13" },
-    { name = "rich", specifier = "~=15.0" },
-    { name = "ruamel-yaml", specifier = "==0.19.1" },
-    { name = "terok-sandbox", url = "https://github.com/terok-ai/terok-sandbox/releases/download/v0.7.0a5/terok_sandbox-0.7.0a5-py3-none-any.whl" },
-    { name = "terok-util", url = "https://github.com/terok-ai/terok-util/releases/download/v0.5.0a1/terok_util-0.5.0a1-py3-none-any.whl" },
-    { name = "tomli-w", specifier = "~=1.2" },
-]
 
 [[package]]
 name = "terok-sandbox"
-version = "0.7.0a5"
-source = { url = "https://github.com/terok-ai/terok-sandbox/releases/download/v0.7.0a5/terok_sandbox-0.7.0a5-py3-none-any.whl" }
+version = "0.7.0a6.dev530+g7e60c3838"
+source = { git = "https://github.com/sliwowitz/terok-sandbox?rev=fix%2F1315-rootless-storage#7e60c383822aa5fc0bf9da88d69faa302d5ef095" }
 dependencies = [
     { name = "aiohttp" },
     { name = "cryptography" },
@@ -2605,67 +2578,26 @@ dependencies = [
     { name = "terok-shield" },
     { name = "terok-util" },
 ]
-wheels = [
-    { url = "https://github.com/terok-ai/terok-sandbox/releases/download/v0.7.0a5/terok_sandbox-0.7.0a5-py3-none-any.whl", hash = "sha256:b9d70b9c968e71c5e30fcc0037d0f659fa633a2e3f7a3660fdebdb731179c102" },
-]
-
-[package.metadata]
-requires-dist = [
-    { name = "aiohttp", specifier = "~=3.14.3" },
-    { name = "cryptography", specifier = "~=50.0" },
-    { name = "jinja2", specifier = "~=3.1" },
-    { name = "keyring", specifier = "~=25.7" },
-    { name = "packaging", specifier = "~=26.3" },
-    { name = "platformdirs", specifier = "~=4.12" },
-    { name = "prompt-toolkit", specifier = "~=3.0" },
-    { name = "pydantic", specifier = "~=2.13" },
-    { name = "ruamel-yaml", specifier = "==0.19.1" },
-    { name = "sqlcipher3", specifier = "==0.6.4" },
-    { name = "terok-clearance", url = "https://github.com/terok-ai/terok-clearance/releases/download/v0.8.2a1/terok_clearance-0.8.2a1-py3-none-any.whl" },
-    { name = "terok-shield", url = "https://github.com/terok-ai/terok-shield/releases/download/v0.10.0a2/terok_shield-0.10.0a2-py3-none-any.whl" },
-    { name = "terok-util", url = "https://github.com/terok-ai/terok-util/releases/download/v0.5.0a1/terok_util-0.5.0a1-py3-none-any.whl" },
-]
 
 [[package]]
 name = "terok-shield"
-version = "0.10.0a2"
-source = { url = "https://github.com/terok-ai/terok-shield/releases/download/v0.10.0a2/terok_shield-0.10.0a2-py3-none-any.whl" }
+version = "0.10.0a3.dev414+ge3f1511fd"
+source = { git = "https://github.com/sliwowitz/terok-shield?rev=fix%2F1315-rootless-storage#e3f1511fd4f6b173a4f71fa8b23d9316f5dfe3ec" }
 dependencies = [
     { name = "pydantic" },
     { name = "pyyaml" },
     { name = "terok-util" },
 ]
-wheels = [
-    { url = "https://github.com/terok-ai/terok-shield/releases/download/v0.10.0a2/terok_shield-0.10.0a2-py3-none-any.whl", hash = "sha256:cee18903e7c049807d742461c69b1b091db5fba17de19cc1241b86df785faebc" },
-]
-
-[package.metadata]
-requires-dist = [
-    { name = "pydantic", specifier = "~=2.13" },
-    { name = "pyyaml", specifier = "~=6.0" },
-    { name = "terok-util", url = "https://github.com/terok-ai/terok-util/releases/download/v0.5.0a1/terok_util-0.5.0a1-py3-none-any.whl" },
-]
 
 [[package]]
 name = "terok-util"
-version = "0.5.0a1"
-source = { url = "https://github.com/terok-ai/terok-util/releases/download/v0.5.0a1/terok_util-0.5.0a1-py3-none-any.whl" }
+version = "0.5.0a2.dev161+g89255169a"
+source = { git = "https://github.com/sliwowitz/terok-util?rev=fix%2F1315-rootless-storage#89255169a2b518f8a5b25f3dedbc6632094956f7" }
 dependencies = [
     { name = "jinja2" },
     { name = "packaging" },
     { name = "platformdirs" },
     { name = "ruamel-yaml" },
-]
-wheels = [
-    { url = "https://github.com/terok-ai/terok-util/releases/download/v0.5.0a1/terok_util-0.5.0a1-py3-none-any.whl", hash = "sha256:4621ba4564fb17d56f017cacadf09c9fbe91271ae400ee56e006935cc3707a17" },
-]
-
-[package.metadata]
-requires-dist = [
-    { name = "jinja2", specifier = "~=3.1" },
-    { name = "packaging", specifier = "~=26.3" },
-    { name = "platformdirs", specifier = "~=4.12" },
-    { name = "ruamel-yaml", specifier = "==0.19.1" },
 ]
 
 [[package]]
