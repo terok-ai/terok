@@ -14,7 +14,6 @@ from __future__ import annotations
 from datetime import UTC, datetime
 
 from terok.lib.integrations.executor import resolve_agent_value
-from terok.lib.integrations.sandbox import Sharing, VolumeSpec
 
 from ...core import runtime as _rt
 from ...core.images import project_cli_image
@@ -26,7 +25,6 @@ from ..agent_config import resolve_agent_config
 from ..environment import build_task_env_and_volumes
 from ..hooks import run_hook
 from ..tasks import (
-    CONTAINER_TEROK_CONFIG,
     container_name,
     load_task_meta,
     write_task_state,
@@ -63,11 +61,11 @@ def task_run_cli(
     runtime = _rt.resolve_runtime(project)
     _refuse_existing_container(runtime, project.name, cname, task_id)
 
-    env, volumes, egress = build_task_env_and_volumes(project, task_id)
-
     # Resolve layered agent config (global → project → CLI overrides)
     agent_config_dir = _prepare_agent_config(project, project_name, task_id)
-    volumes.append(VolumeSpec(agent_config_dir, CONTAINER_TEROK_CONFIG, sharing=Sharing.PRIVATE))
+    env, volumes, egress = build_task_env_and_volumes(
+        project, task_id, agent_config_dir=agent_config_dir
+    )
 
     # Resolve unrestricted mode: CLI flag → config → default (True)
     if unrestricted is None:

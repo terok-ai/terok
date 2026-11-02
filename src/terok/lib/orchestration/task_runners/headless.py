@@ -22,7 +22,6 @@ from terok.lib.integrations.executor import (
     resolve_agent_value,
     resolve_instructions,
 )
-from terok.lib.integrations.sandbox import Sharing, VolumeSpec
 
 from ...core import runtime as _rt
 from ...core.images import project_cli_image, require_agent_installed
@@ -41,7 +40,6 @@ from ..container_exec import container_git_diff
 from ..environment import build_task_env_and_volumes, project_mounts_dir
 from ..hooks import run_hook
 from ..tasks import (
-    CONTAINER_TEROK_CONFIG,
     container_name,
     load_task_meta,
     task_new,
@@ -257,14 +255,13 @@ def task_run_headless(request: HeadlessRunRequest) -> str:
         unrestricted = _str_to_bool(cfg_val) if cfg_val is not None else True
 
     # Build env and volumes (per-run --provider overrides the project/global default)
-    env, volumes, egress = build_task_env_and_volumes(project, task_id, provider=request.provider)
+    env, volumes, egress = build_task_env_and_volumes(
+        project, task_id, provider=request.provider, agent_config_dir=agent_config_dir
+    )
 
     # Set TEROK_UNRESTRICTED for the wrapper functions inside the container
     if unrestricted:
         _apply_unrestricted_env(env)
-
-    # Mount agent-config dir to /home/dev/.terok
-    volumes.append(VolumeSpec(agent_config_dir, CONTAINER_TEROK_CONFIG, sharing=Sharing.PRIVATE))
 
     # Build headless command via provider registry
     headless_cmd = resolved.build_headless_command(

@@ -110,6 +110,9 @@ CONTAINER_TEROK_DIR = CONTAINER_HOME / ".terok"
 CONTAINER_INSTRUCTIONS_PATH = CONTAINER_TEROK_DIR / "instructions.md"
 """Container instructions file path injected into agent configs."""
 
+CONTAINER_VIBE_INSTRUCTIONS_PATH = CONTAINER_HOME / ".vibe" / "AGENTS.md"
+"""Vibe's user instruction path masked by the task's instructions."""
+
 CONTAINER_CLAUDE_SESSION_PATH = CONTAINER_TEROK_DIR / "claude-session.txt"
 """Container Claude session file path used by session-hook assertions."""
 

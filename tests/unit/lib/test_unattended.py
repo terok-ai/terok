@@ -28,10 +28,14 @@ from terok.lib.core.projects import load_project
 from terok.lib.orchestration.task_runners import (
     HeadlessRunRequest,
     task_followup_headless,
+    task_run_cli,
     task_run_headless,
+    task_run_toad,
 )
-from terok.lib.orchestration.tasks import task_rename
+from terok.lib.orchestration.tasks import task_new, task_rename
 from tests.test_utils import assert_task_id, captured_runspec, mock_git_config, write_project
+from tests.testfs import CONTAINER_TEROK_DIR, CONTAINER_VIBE_INSTRUCTIONS_PATH
+from tests.testnet import FAKE_PEER_PORT
 
 
 @dataclass
@@ -289,6 +293,64 @@ class TestAgentConfigProject:
                     p = load_project("proj_agent")
                 assert p.agent_config["model"] == "opus"
                 assert p.agent_config["timeout"] == 900
+
+
+class TestTaskInstructionMounts:
+    """All launch modes delegate instruction mounts to the executor."""
+
+    @pytest.mark.parametrize("mode", ["cli", "headless", "toad"])
+    @pytest.mark.parametrize("isolation", ["shared", "sealed"])
+    def test_vibe_receives_task_instructions(
+        self, tmp_path: Path, mock_runtime, mode: str, isolation: str
+    ) -> None:
+        """Vibe gets a private system-context file even when not the default agent."""
+        project_name = "proj_instruction_mount"
+        instructions = "Follow the task-specific environment instructions."
+        config_file = write_runner_project(
+            tmp_path,
+            project_name,
+            f"  isolation: {isolation}\nagent:\n  instructions: {instructions}\n",
+        )
+        mock_runtime.container.return_value.state = None
+        mock_runtime.container.return_value.running = True
+        with (
+            unittest.mock.patch.dict(
+                os.environ, runner_env_vars(tmp_path, config_file), clear=True
+            ),
+            mock_git_config(),
+            unittest.mock.patch(
+                "terok.lib.orchestration.task_runners.container._agent_runner"
+            ) as runner,
+            unittest.mock.patch(
+                "terok.lib.orchestration.task_runners.toad.assign_web_port",
+                return_value=FAKE_PEER_PORT,
+            ),
+            unittest.mock.patch("terok.lib.orchestration.task_runners.headless._print_run_summary"),
+            unittest.mock.patch("terok.lib.orchestration.task_runners.cli._assert_running"),
+        ):
+            if mode == "headless":
+                task_id = task_run_headless(HeadlessRunRequest(project_name, "Test instructions"))
+            else:
+                task_id = task_new(project_name)
+                launch = task_run_cli if mode == "cli" else task_run_toad
+                launch(project_name, task_id)
+
+            config_dir = load_project(project_name).tasks_root / task_id / "agent-config"
+            spec = captured_runspec(runner)
+            assert spec.sealed is (isolation == "sealed")
+            volumes = spec.volumes
+            config_mounts = [v for v in volumes if v.container_path == str(CONTAINER_TEROK_DIR)]
+            assert len(config_mounts) == 1
+            assert config_mounts[0].host_path == config_dir
+            vibe_mounts = [
+                v for v in volumes if v.container_path == str(CONTAINER_VIBE_INSTRUCTIONS_PATH)
+            ]
+            assert len(vibe_mounts) == 1
+            mount = vibe_mounts[0]
+            assert mount.host_path == config_dir / "instructions.md"
+            assert mount.host_path.read_text() == instructions
+            assert mount.read_only
+            assert mount.sharing == "private"
 
 
 class TestTaskRunHeadless:

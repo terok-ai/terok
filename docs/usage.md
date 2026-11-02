@@ -1054,6 +1054,13 @@ Without any settings, a task receives the bundled default, then the global file,
 - **Claude**: injected via `--append-system-prompt` (system-level context)
 - **Codex**: loaded from `/home/dev/.terok/instructions.md` via `-c model_instructions_file=...`
   in the wrapper
+- **Vibe**: the task's instructions file is mounted read-only at `~/.vibe/AGENTS.md`,
+  which Vibe loads as system context in CLI, headless, and ACP sessions. Sealed
+  tasks receive a private copy at the same path. Profiles
+  and Vibe's `include_project_context` opt-out remain unchanged. Native user-level
+  Vibe instructions at that path are masked, not merged; terok warns when they
+  contain instructions. Use terok's global/project instruction configuration or
+  the TUI Instructions screen instead. Repository `AGENTS.md` files are unaffected.
 - **Other providers**: prepended to the task prompt (headless `terok task run`)
 
 ### Scenarios
