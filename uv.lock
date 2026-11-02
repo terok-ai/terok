@@ -2545,8 +2545,8 @@ dependencies = [
 
 [[package]]
 name = "terok-executor"
-version = "0.5.1a11.dev530+g3c4c69306"
-source = { git = "https://github.com/sliwowitz/terok-executor?rev=fix%2F1315-rootless-storage#3c4c69306d047b0431210f7d0d1f555f486af91a" }
+version = "0.5.1a11.dev531+g01507670c"
+source = { git = "https://github.com/sliwowitz/terok-executor?rev=fix%2F1315-rootless-storage#01507670ca20b43549cf8b1aaa5ac9ba0b3091e2" }
 dependencies = [
     { name = "agent-client-protocol" },
     { name = "jinja2" },
@@ -2561,8 +2561,8 @@ dependencies = [
 
 [[package]]
 name = "terok-sandbox"
-version = "0.7.0a6.dev530+g7e60c3838"
-source = { git = "https://github.com/sliwowitz/terok-sandbox?rev=fix%2F1315-rootless-storage#7e60c383822aa5fc0bf9da88d69faa302d5ef095" }
+version = "0.7.0a7.dev536+gca1b1f53e"
+source = { git = "https://github.com/sliwowitz/terok-sandbox?rev=fix%2F1315-rootless-storage#ca1b1f53ec69c18b6a306ee2fdc99c372fa5881e" }
 dependencies = [
     { name = "aiohttp" },
     { name = "cryptography" },
