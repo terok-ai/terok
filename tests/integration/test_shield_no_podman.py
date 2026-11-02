@@ -17,7 +17,8 @@ from unittest.mock import patch
 #: Stand-in for ``terok_util.podman_userns_args()``: since terok-util
 #: 0.3.1a2 the real helper probes ``podman version`` through
 #: ``subprocess.run`` — which these tests replace with argv recorders
-#: that return ``None``, so the probe must never run here.
+#: that return ``None``, so the probe must never run here.  The tests stub
+#: ``podman_hosts_file_args()`` for the same reason.
 _USERNS_ARGS = ["--userns=keep-id:uid=1000,gid=1000"]
 
 import pytest
@@ -299,6 +300,7 @@ class TestSandboxRunShieldIntegration:
             patch("terok_sandbox.paths.state_root", return_value=shield_env.state_dir),
             patch("os.geteuid", return_value=1000),
             patch("terok_sandbox.sandbox.podman_userns_args", return_value=_USERNS_ARGS),
+            patch("terok_sandbox.sandbox.podman_hosts_file_args", return_value=[]),
             patch("terok_sandbox.sandbox.check_setup", return_value=()),
             patch("subprocess.run", side_effect=capture_run),
             patch(
@@ -345,6 +347,7 @@ class TestSandboxRunShieldIntegration:
         with (
             patch("os.geteuid", return_value=1000),
             patch("terok_sandbox.sandbox.podman_userns_args", return_value=_USERNS_ARGS),
+            patch("terok_sandbox.sandbox.podman_hosts_file_args", return_value=[]),
             patch("terok_sandbox.sandbox.check_setup", return_value=()),
             patch("subprocess.run", side_effect=capture_run),
             patch("terok_sandbox.integrations.shield.ShieldManager.pre_start", return_value=[]),
@@ -379,6 +382,7 @@ class TestSandboxRunShieldIntegration:
         with (
             patch("os.geteuid", return_value=1000),
             patch("terok_sandbox.sandbox.podman_userns_args", return_value=_USERNS_ARGS),
+            patch("terok_sandbox.sandbox.podman_hosts_file_args", return_value=[]),
             patch("terok_sandbox.sandbox.check_setup", return_value=()),
             patch("subprocess.run", side_effect=capture_run),
             patch(

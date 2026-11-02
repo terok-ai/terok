@@ -95,6 +95,29 @@ def test_aslr_control_reaches_sandbox(
         assert make_sandbox_config().aslr_control is bool(global_value)
 
 
+@pytest.mark.parametrize("global_value", [None, "image"])
+@pytest.mark.parametrize("project_value", [None, "none", "image"])
+def test_hosts_file_reaches_sandbox(
+    tmp_path: Path, global_value: str | None, project_value: str | None
+) -> None:
+    """A project value overrides the global one, and the unset default is ``none``."""
+    global_config = tmp_path / "config.yml"
+    global_config.write_text(
+        "" if global_value is None else f"run:\n  hosts_file: {global_value}\n"
+    )
+    yaml = project_yaml("hosts-test")
+    if project_value is not None:
+        yaml += f"run:\n  hosts_file: {project_value}\n"
+    with project_env(
+        yaml, project_name="hosts-test", extra_env={"TEROK_CONFIG_FILE": str(global_config)}
+    ):
+        project = load_project("hosts-test")
+        expected = project_value or global_value or "none"
+        assert project.hosts_file == expected
+        assert make_sandbox_config(project).hosts_file == expected
+        assert make_sandbox_config().hosts_file == (global_value or "none")
+
+
 @pytest.mark.parametrize("global_value", [None, "prompt", "mute", "off"])
 @pytest.mark.parametrize("project_value", [None, "prompt", "mute", "off"])
 def test_clearance_resolves_project_then_global_then_prompt(

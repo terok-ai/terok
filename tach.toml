@@ -1029,6 +1029,7 @@ expose = [
     "get_global_hooks",
     "get_global_run_runtime",
     "get_global_aslr_control",
+    "get_global_hosts_file",
     "get_claude_allow_oauth",
     "get_claude_expose_oauth_token",
     "is_claude_oauth_proxied",
