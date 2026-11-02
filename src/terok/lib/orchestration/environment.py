@@ -673,6 +673,9 @@ class TaskEnvironment:
     Falls back to [`ProjectConfig.default_provider`][terok.lib.core.project_model.ProjectConfig]
     (already global-resolved) when ``None``."""
 
+    agent_config_dir: Path | None = None
+    """Prepared task instructions and wrappers for executor-managed mounts."""
+
     def materialize(self) -> tuple[dict, list[VolumeSpec], EgressProjection]:
         """Create the environment, volumes, and egress configuration for the task.
 
@@ -747,6 +750,7 @@ class TaskEnvironment:
                 task_id=task_id,
                 agent_name=project.default_agent or "claude",
                 provider=self.provider_override or project.default_provider,
+                agent_config_dir=self.agent_config_dir,
                 workspace_host_path=repo_dir,
                 code_repo=sec_env.get("CODE_REPO"),
                 clone_from=sec_env.get("CLONE_FROM"),
@@ -811,7 +815,13 @@ class TaskEnvironment:
 
 
 def build_task_env_and_volumes(
-    project: ProjectConfig, task_id: str, *, provider: str | None = None
+    project: ProjectConfig,
+    task_id: str,
+    *,
+    provider: str | None = None,
+    agent_config_dir: Path | None = None,
 ) -> tuple[dict, list[VolumeSpec], EgressProjection]:
     """Shim around [`TaskEnvironment.materialize`][terok.lib.orchestration.environment.TaskEnvironment.materialize]."""
-    return TaskEnvironment(project, task_id, provider_override=provider).materialize()
+    return TaskEnvironment(
+        project, task_id, provider_override=provider, agent_config_dir=agent_config_dir
+    ).materialize()

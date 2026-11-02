@@ -18,7 +18,6 @@ from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
 from terok.lib.integrations.executor import resolve_agent_value
-from terok.lib.integrations.sandbox import Sharing, VolumeSpec
 
 from ...core import runtime as _rt
 from ...core.config import get_public_host
@@ -40,7 +39,6 @@ from ..environment import build_task_env_and_volumes
 from ..hooks import run_hook
 from ..ports import assign_web_port
 from ..tasks import (
-    CONTAINER_TEROK_CONFIG,
     container_name,
     load_task_meta,
     write_task_state,
@@ -158,10 +156,10 @@ def task_run_toad(
     port = assign_web_port(project.name, task_id)
     meta["web_port"] = port
 
-    env, volumes, egress = build_task_env_and_volumes(project, task_id)
-
     agent_config_dir = _prepare_agent_config(project, project_name, task_id)
-    volumes.append(VolumeSpec(agent_config_dir, CONTAINER_TEROK_CONFIG, sharing=Sharing.PRIVATE))
+    env, volumes, egress = build_task_env_and_volumes(
+        project, task_id, agent_config_dir=agent_config_dir
+    )
 
     token = _ensure_toad_token(agent_config_dir)
     meta["web_token"] = token
