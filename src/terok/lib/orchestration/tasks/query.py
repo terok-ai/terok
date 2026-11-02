@@ -16,7 +16,6 @@ from ...core.project_model import is_valid_project_name
 from ...core.projects import load_project
 from ...core.task_state import TaskState, container_name, effective_status
 from ...core.work_status import read_work_status
-from ..container_exec import container_git_diff
 from .identity import is_task_id
 from .meta import _is_safe_id_segment, iter_task_ids, read_task_meta, tasks_meta_dir
 
@@ -232,38 +231,6 @@ def get_task_meta(project_name: str, task_id: str) -> TaskMeta:
     )
 
 
-def get_workspace_git_diff(project_name: str, task_id: str, against: str = "HEAD") -> str | None:
-    """Get git diff from a task's workspace via container exec.
-
-    Runs ``git diff`` **inside** the task container rather than on the host,
-    so that even poisoned git hooks only execute within the container sandbox.
-
-    Args:
-        project_name: The project name
-        task_id: The task ID
-        against: What to diff against (``"HEAD"`` or ``"PREV"``)
-
-    Returns:
-        The git diff output as a string, or ``None`` if failed
-    """
-    try:
-        load_project(project_name)  # validate project exists
-        meta_dir = tasks_meta_dir(project_name)
-        meta = read_task_meta(meta_dir, task_id)
-        if meta is None:
-            return None
-        mode = meta.get("mode")
-        if not mode:
-            return None
-
-        if against == "PREV":
-            return container_git_diff(project_name, task_id, mode, "HEAD~1", "HEAD")
-        return container_git_diff(project_name, task_id, mode, "HEAD")
-
-    except (Exception, SystemExit):
-        return None
-
-
 def _get_tasks(project_name: str, reverse: bool = False) -> list[TaskMeta]:
     """Return all task metadata for *project_name*, sorted by task ID."""
     meta_dir = tasks_meta_dir(project_name)
@@ -459,7 +426,6 @@ __all__ = [
     "get_task_container_state",
     "get_task_meta",
     "get_tasks",
-    "get_workspace_git_diff",
     "lookup_container_by_pt",
     "task_list",
 ]

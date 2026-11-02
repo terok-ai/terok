@@ -219,7 +219,7 @@ class ProjectConfig(BaseModel):
     @computed_field  # type: ignore[prop-decorator]
     @property
     def is_sealed(self) -> bool:
-        """Whether this project uses sealed isolation (zero bind mounts)."""
+        """Whether this project copies task data, retaining only narrow live IPC/input mounts."""
         return self.isolation == "sealed"
 
     # Plain ``@property`` (not ``@computed_field``) so model_dump() does NOT

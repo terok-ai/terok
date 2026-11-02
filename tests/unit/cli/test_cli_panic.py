@@ -9,7 +9,7 @@ from unittest.mock import patch
 
 import pytest
 
-from terok.cli.commands.panic import _cmd_clear, _cmd_panic, _stop_remaining, dispatch
+from terok.cli.commands.panic import _cmd_clear, _cmd_panic, dispatch
 from terok.lib.domain.panic import PanicResult
 
 
@@ -27,7 +27,7 @@ class TestDispatch:
         from argparse import Namespace
 
         with patch("terok.cli.commands.panic._cmd_clear") as mock_clear:
-            dispatch(Namespace(cmd="panic", clear=True, stop=False))
+            dispatch(Namespace(cmd="panic", clear=True))
             mock_clear.assert_called_once()
 
     def test_routes_to_panic(self):
@@ -35,8 +35,8 @@ class TestDispatch:
         from argparse import Namespace
 
         with patch("terok.cli.commands.panic._cmd_panic") as mock_panic:
-            dispatch(Namespace(cmd="panic", clear=False, stop=True))
-            mock_panic.assert_called_once_with(stop=True)
+            dispatch(Namespace(cmd="panic", clear=False))
+            mock_panic.assert_called_once_with()
 
 
 class TestCmdClear:
@@ -69,7 +69,7 @@ class TestCmdPanic:
     def test_success_no_running(self, _fmt, mock_exec, capsys):
         """Clean panic with no running containers exits 0."""
         mock_exec.return_value = PanicResult(vault_stopped=True)
-        _cmd_panic(stop=False)
+        _cmd_panic()
         out = capsys.readouterr().out
         assert "report" in out
 
@@ -79,60 +79,12 @@ class TestCmdPanic:
         """Exits 1 when has_errors is True."""
         mock_exec.return_value = PanicResult(vault_error="fail")
         with pytest.raises(SystemExit, match="1"):
-            _cmd_panic(stop=False)
+            _cmd_panic()
 
     @patch("terok.cli.commands.panic.execute_panic")
-    @patch("terok.cli.commands.panic.format_panic_report", return_value="report")
-    @patch("builtins.input", return_value="y")
-    @patch("terok.cli.commands.panic._stop_remaining")
-    def test_prompts_stop_on_running(self, mock_stop, _inp, _fmt, mock_exec, capsys):
-        """Prompts to stop containers when some are running."""
-        mock_exec.return_value = PanicResult(vault_stopped=True, total_running=2)
-        _cmd_panic(stop=False)
-        mock_stop.assert_called_once()
-
-    @patch("terok.cli.commands.panic.execute_panic")
-    @patch("terok.cli.commands.panic.format_panic_report", return_value="report")
-    @patch("builtins.input", return_value="n")
-    @patch("terok.cli.commands.panic._stop_remaining")
-    def test_skips_stop_on_decline(self, mock_stop, _inp, _fmt, mock_exec, capsys):
-        """Does not stop containers when user declines."""
-        mock_exec.return_value = PanicResult(vault_stopped=True, total_running=2)
-        _cmd_panic(stop=False)
-        mock_stop.assert_not_called()
-
-    @patch("terok.cli.commands.panic.execute_panic")
-    @patch("terok.cli.commands.panic.format_panic_report", return_value="report")
-    @patch("builtins.input", side_effect=EOFError)
-    @patch("terok.cli.commands.panic._stop_remaining")
-    def test_handles_eof_on_prompt(self, mock_stop, _inp, _fmt, mock_exec, capsys):
-        """Handles EOF on stop prompt gracefully."""
-        mock_exec.return_value = PanicResult(vault_stopped=True, total_running=1)
-        _cmd_panic(stop=False)
-        mock_stop.assert_not_called()
-
-
-class TestStopRemaining:
-    """Tests for _stop_remaining."""
-
-    @patch("terok.lib.domain.panic.panic_stop_containers", return_value=(["c1", "c2"], []))
-    def test_stops_successfully(self, _s, capsys):
-        """Prints success count."""
-        result = PanicResult()
-        _stop_remaining(result)
-        assert result.containers_stopped == ["c1", "c2"]
-        assert "Killed 2" in capsys.readouterr().out
-
-    @patch("terok.lib.domain.panic.panic_stop_containers", return_value=([], [("c1", "fail")]))
-    def test_reports_errors(self, _s, capsys):
-        """Prints failure details."""
-        result = PanicResult()
-        _stop_remaining(result)
-        assert "FAILED" in capsys.readouterr().out
-
-    @patch("terok.lib.domain.panic.panic_stop_containers", return_value=([], []))
-    def test_no_containers(self, _s, capsys):
-        """Prints nothing-to-stop when empty."""
-        result = PanicResult()
-        _stop_remaining(result)
-        assert "No running containers" in capsys.readouterr().out
+    @patch("builtins.input", side_effect=AssertionError("panic must never ask"))
+    def test_never_prompts_with_running_containers(self, _input, execute):
+        """Firing the kill-switch is the only confirmation needed."""
+        execute.return_value = PanicResult(vault_stopped=True, total_running=2)
+        _cmd_panic()
+        execute.assert_called_once_with()

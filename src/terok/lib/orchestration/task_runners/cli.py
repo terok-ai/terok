@@ -63,7 +63,7 @@ def task_run_cli(
 
     # Resolve layered agent config (global → project → CLI overrides)
     agent_config_dir = _prepare_agent_config(project, project_name, task_id)
-    env, volumes, egress = build_task_env_and_volumes(
+    env, volumes, egress, broker_context = build_task_env_and_volumes(
         project, task_id, agent_config_dir=agent_config_dir
     )
 
@@ -108,6 +108,7 @@ def task_run_cli(
         command=["bash", "-lc", "init-ssh-and-repo.sh && echo __CLI_READY__; tail -f /dev/null"],
         allow_debugger=debug,
         egress=egress,
+        broker_context=broker_context,
     )
     _apply_shield_policy(project, cname, task_dir, is_restart=False)
     run_hook(

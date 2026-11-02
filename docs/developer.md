@@ -546,3 +546,32 @@ The release workflow on `v*` tags builds the wheel/sdist and attaches
 them.  Between releases, `hatch-vcs` derives PEP 440
 versions from git; the TUI title bar shows `vX.Y.Z+` past a release and
 `vX.Y.Z` at the tag.
+
+## Host/container file boundary
+
+The host is trusted; the whole task container is the authorization unit. Shared
+agent directories are not safe places for authoritative host state. Use
+`terok_util.read_untrusted_text` (with an explicit byte limit),
+`write_untrusted_text` and `remove_untrusted_file` for host I/O there. These hold
+no-follow directory descriptors, reject linked/special files and publish writes
+through fresh inodes. Do not replace them with `is_symlink()` followed by an open.
+
+Executor owns the three-mount task protocol: writable `agent-config`, read-only
+live `agent-inputs`, and narrow writable live `agent-events`. Terok owns headless
+history and `host-control` outside all mounts. Agent status is telemetry, not an
+input to emergency container discovery. Initial-prompt delivery is an atomic
+empty-marker claim, not an exactly-once guarantee of provider processing.
+
+`ContainerEnvResult.broker_context` must travel unchanged from token issuance to
+`AgentRunner.launch_prepared`. Public provider markers select a provider; they
+are not credentials. The broker requires a live grant for its exact task scope,
+subject and selected credential set, for API keys and OAuth alike. Default and
+project sets never fall back to each other. This protects our container-boundary
+path; it does not censor a provider legitimately returning its own credential,
+or promise secrecy in an explicitly enabled exposed-token mode.
+
+Panic inventories actual runtime containers and identifies this installation via
+host-created dossier-path annotations without reading dossier contents, task
+metadata, status or sidecars. Independent deadline-bounded actions kill containers
+by full runtime ID, quarantine networks, kill supervisors, purge passphrases and
+write the restart interlock. No failed action may prevent the others.

@@ -232,6 +232,10 @@ def mock_runtime() -> Iterator[MagicMock]:
     fake.images.return_value = []
     fake.force_remove.return_value = []
     container = fake.container.return_value
+    from tests.testfs import CURRENT_CONTAINER_PROTOCOL, CURRENT_INPUT_LABELS
+
+    container.env = {"TEROK_CONTAINER_PROTOCOL": CURRENT_CONTAINER_PROTOCOL}
+    container.image.labels.return_value = dict(CURRENT_INPUT_LABELS)
     container.wait.return_value = 0
     container.login_command.return_value = ["podman", "exec", "-it", "ctr", "bash"]
     container.stream_initial_logs.return_value = True

@@ -10,6 +10,7 @@ import pytest
 from terok_util import SetupRequiredError
 
 from terok.lib.orchestration.task_runners import cli, container, headless, restart, toad
+from tests.testfs import CURRENT_CONTAINER_PROTOCOL, CURRENT_INPUT_LABELS
 
 
 @pytest.mark.parametrize(
@@ -69,7 +70,10 @@ def test_setup_failure_during_start_never_recreates(tmp_path) -> None:
         patch.object(restart, "_recreate_in_place") as recreate,
         pytest.raises(SetupRequiredError) as raised,
     ):
-        runtime.return_value.container.return_value.state = "exited"
+        retained = runtime.return_value.container.return_value
+        retained.state = "exited"
+        retained.env = {"TEROK_CONTAINER_PROTOCOL": CURRENT_CONTAINER_PROTOCOL}
+        retained.image.labels.return_value = dict(CURRENT_INPUT_LABELS)
         restart.task_restart("project", "1")
     assert raised.value is fault
     recreate.assert_not_called()

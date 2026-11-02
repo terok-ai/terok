@@ -382,6 +382,7 @@ def _write_sidecar(name: str, **fields: object) -> Path:
     payload = {
         "container_name": name,
         "ipc_mode": "socket",
+        "broker_context": {"scope": _PROJECT, "subject": _TASK, "credential_set": "default"},
         "db_path": str(Path(MOCK_BASE) / "vault.db"),
         "runtime_dir": str(_RUNTIME),
         **fields,

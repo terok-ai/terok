@@ -15,6 +15,10 @@ from __future__ import annotations
 import sys
 from typing import TYPE_CHECKING
 
+from terok.lib.integrations.executor import (
+    require_image_input_protocol,
+    require_task_input_protocol,
+)
 from terok.lib.integrations.sandbox import BUNDLE_VERSION, resolve_container_shield_version
 
 from ...core import runtime as _rt
@@ -122,7 +126,14 @@ def _make_running(
     cname = container_name(project.name, mode, task_id)
     container_state = _rt.resolve_runtime(project).container(cname).state
 
-    if not bounce and container_state == "running":
+    protocol_reason = None
+    if container_state is not None:
+        try:
+            require_task_input_protocol(_rt.resolve_runtime(project).container(cname))
+        except RuntimeError as exc:
+            protocol_reason = str(exc)
+
+    if not bounce and container_state == "running" and protocol_reason is None:
         # Ensure never disturbs a live container — stale image or not.
         _validate_restart_preconditions(project, task_id, mode, meta, cname)
         print(f"Task {task_id} is already running: {_green(cname, _supports_color())}")
@@ -132,7 +143,15 @@ def _make_running(
     if bounce:
         print(f"Restarting task {project_name}/{task_id} ({mode})...")
 
-    reason = _recreate_reason(container_state, fresh=fresh)
+    reason = protocol_reason or _recreate_reason(container_state, fresh=fresh)
+
+    if protocol_reason and mode != "run":
+        try:
+            require_image_input_protocol(
+                _rt.resolve_runtime(project).image(project_cli_image(project.name))
+            )
+        except RuntimeError as exc:
+            raise SystemExit(str(exc)) from exc
 
     if container_state is not None:
         _validate_restart_preconditions(project, task_id, mode, meta, cname)
@@ -174,6 +193,10 @@ def _refresh_before_resume(project: ProjectConfig, cname: str, task_dir: Path) -
     ``SystemExit`` from the gate or the tier refresh, with the container
     untouched; the clearance refresh only warns.
     """
+    try:
+        require_task_input_protocol(_rt.resolve_runtime(project).container(cname))
+    except RuntimeError as exc:
+        raise SystemExit(str(exc)) from exc
     _validate_shield_bundle_version(cname)
     _refresh_shield_tiers(project, cname, task_dir)
     _refresh_clearance_mode(project, cname)

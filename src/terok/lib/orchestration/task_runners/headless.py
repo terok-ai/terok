@@ -16,8 +16,11 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 
+from terok_util import read_untrusted_text, write_untrusted_text
+
 from terok.lib.integrations.executor import (
     AgentConfigSpec,
+    agent_input_dir,
     prepare_agent_config_dir,
     resolve_agent_value,
     resolve_instructions,
@@ -36,7 +39,6 @@ from ...util.ansi import (
 from ...util.host_cmd import WORKSPACE_DANGEROUS_DIRNAME
 from ...util.yaml import load as _yaml_load
 from ..agent_config import resolve_agent_config
-from ..container_exec import container_git_diff
 from ..environment import build_task_env_and_volumes, project_mounts_dir
 from ..hooks import run_hook
 from ..tasks import (
@@ -51,11 +53,13 @@ from .container import _assert_running, _podman_start, _run_container
 from .restart import _refresh_before_resume
 from .shield import _apply_shield_policy
 
-#: Agent-config volume filename holding the current follow-up prompt.
+#: Read-only task input holding the current headless prompt.
 _PROMPT_FILENAME = "prompt.txt"
 
-#: Agent-config volume filename the prior prompt is archived to on follow-up.
+#: Host-only task-root file archiving earlier headless prompts.
 _PROMPT_HISTORY_FILENAME = "prompt-history.txt"
+_MAX_PROMPT_BYTES = 1024 * 1024
+_MAX_HISTORY_BYTES = 16 * 1024 * 1024
 
 
 @dataclass(frozen=True)
@@ -104,23 +108,6 @@ def _print_detached_summary(summary: DetachedSummary) -> None:
     )
 
 
-def _print_run_summary(project_name: str, task_id: str, mode: str, workspace: Path) -> None:
-    """Print a summary of changes made by the headless agent.
-
-    Runs ``git diff --stat`` **inside** the task container to avoid executing
-    potentially poisoned git hooks on the host.
-    """
-    diff_stat = container_git_diff(project_name, task_id, mode, "--stat", "HEAD@{1}..HEAD")
-    if diff_stat is not None:
-        stripped = diff_stat.strip()
-        if stripped:
-            print("\n── Changes ──────────────────────────────")
-            print(stripped)
-        else:
-            print("\n── No changes committed ──────────────────")
-    print(f"  Workspace: {workspace}")
-
-
 def _build_cli_overrides(config_path: str | None) -> dict:
     """Load the optional ``--config`` agent-config file into an overrides dict.
 
@@ -153,7 +140,7 @@ def _report_headless_result(
     color_enabled = _supports_color()
     if follow:
         exit_code = _rt.resolve_runtime(load_project(project_name)).container(cname).wait()
-        _print_run_summary(project_name, task_id, "run", task_dir / WORKSPACE_DANGEROUS_DIRNAME)
+        print(f"  Workspace: {task_dir / WORKSPACE_DANGEROUS_DIRNAME}")
         update_task_exit_code(project_name, task_id, exit_code)
         if exit_code != 0:
             print(f"\n{label} exited with code {_red(str(exit_code), color_enabled)}")
@@ -255,7 +242,7 @@ def task_run_headless(request: HeadlessRunRequest) -> str:
         unrestricted = _str_to_bool(cfg_val) if cfg_val is not None else True
 
     # Build env and volumes (per-run --provider overrides the project/global default)
-    env, volumes, egress = build_task_env_and_volumes(
+    env, volumes, egress, broker_context = build_task_env_and_volumes(
         project, task_id, provider=request.provider, agent_config_dir=agent_config_dir
     )
 
@@ -294,6 +281,7 @@ def task_run_headless(request: HeadlessRunRequest) -> str:
         command=["bash", "-lc", headless_cmd],
         allow_debugger=request.debug,
         egress=egress,
+        broker_context=broker_context,
     )
     _apply_shield_policy(project, cname, task_dir, is_restart=False)
     run_hook(
@@ -330,29 +318,27 @@ def task_run_headless(request: HeadlessRunRequest) -> str:
     return task_id
 
 
-def _inject_followup_prompt(
-    *, is_sealed: bool, cname: str, agent_config_dir: Path, prompt: str
-) -> None:
-    """Hand the follow-up *prompt* to the (stopped) task container.
+def _inject_followup_prompt(*, task_dir: Path, prompt: str) -> None:
+    """Replace the read-only input and archive only host-authored prior prompts.
 
-    Sealed projects get it copied straight in via ``podman cp``; unsealed
-    ones replace ``prompt.txt`` on the agent-config volume, archiving the
-    prior prompt to ``prompt-history.txt`` so the agent only ever sees
-    the current instruction.
+    History stays outside all container mounts. Both sealed and shared tasks
+    see the current prompt through the same live, read-only input directory.
     """
-    if is_sealed:
-        from terok.lib.integrations.executor import inject_prompt
-
-        inject_prompt(cname, prompt)
-        return
-
-    prompt_path = agent_config_dir / _PROMPT_FILENAME
-    history_path = agent_config_dir / _PROMPT_HISTORY_FILENAME
-    existing = prompt_path.read_text(encoding="utf-8") if prompt_path.is_file() else ""
+    if len(prompt.encode("utf-8")) > _MAX_PROMPT_BYTES:
+        raise ValueError("Headless prompt exceeds the one-megabyte limit")
+    prompt_path = agent_input_dir(task_dir) / _PROMPT_FILENAME
+    history_path = task_dir / _PROMPT_HISTORY_FILENAME
+    existing = read_untrusted_text(prompt_path, max_bytes=_MAX_PROMPT_BYTES)
+    try:
+        history = read_untrusted_text(history_path, max_bytes=_MAX_HISTORY_BYTES)
+    except FileNotFoundError:
+        history = ""
     if existing:
-        with history_path.open("a", encoding="utf-8") as hf:
-            hf.write(f"{existing}\n\n---\n\n")
-    prompt_path.write_text(prompt, encoding="utf-8")
+        history = f"{history}{existing}\n\n---\n\n"
+        if len(history.encode("utf-8")) > _MAX_HISTORY_BYTES:
+            raise ValueError("Headless prompt history exceeds 16 MiB; archive it before continuing")
+        write_untrusted_text(history_path, history)
+    write_untrusted_text(prompt_path, prompt)
 
 
 def task_followup_headless(
@@ -435,9 +421,7 @@ def task_followup_headless(
     # is handed over, so a refusal here leaves the task as it was.
     _refresh_before_resume(project, cname, task_dir)
     _inject_followup_prompt(
-        is_sealed=project.is_sealed,
-        cname=cname,
-        agent_config_dir=task_dir / "agent-config",
+        task_dir=task_dir,
         prompt=prompt,
     )
 

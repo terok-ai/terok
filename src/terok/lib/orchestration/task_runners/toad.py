@@ -12,12 +12,13 @@ the token/URL helpers here (``_ensure_toad_token``, ``_toad_browser_url``,
 
 from __future__ import annotations
 
-import os
 import secrets
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
-from terok.lib.integrations.executor import resolve_agent_value
+from terok_util import write_untrusted_text
+
+from terok.lib.integrations.executor import agent_input_dir, resolve_agent_value
 
 from ...core import runtime as _rt
 from ...core.config import get_public_host
@@ -62,42 +63,9 @@ _TOAD_TOKEN_FILE_NAME = "toad.token"  # nosec B105 - filename, not a credential
 
 
 def _ensure_toad_token(agent_config_dir: Path, existing: str | None = None) -> str:
-    """Per-task auth token for Caddy, written 0600 to ``toad.token`` and returned.
-
-    Reuses *existing* (restart path) or mints a fresh 32-byte urlsafe
-    string.  The write goes through a same-directory temp file + atomic
-    ``os.replace``: ``agent-config`` is a bind mount, and a stopped
-    container could pre-stage a symlink *or a hardlink* at
-    ``toad.token`` — ``O_NOFOLLOW`` protects against the former, but
-    only a rename that never touches the destination inode protects
-    against the latter (truncating a hardlink clobbers the peer's
-    content).
-    """
+    """Publish Caddy's host-authored token in the task's read-only input directory."""
     token = existing or secrets.token_urlsafe(32)
-    dir_fd = os.open(agent_config_dir, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
-    tmp_name = f".{_TOAD_TOKEN_FILE_NAME}.{secrets.token_hex(8)}"
-    try:
-        fd = os.open(
-            tmp_name,
-            os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW,
-            0o600,
-            dir_fd=dir_fd,
-        )
-        try:
-            os.write(fd, token.encode())
-        finally:
-            os.close(fd)
-        try:
-            os.replace(tmp_name, _TOAD_TOKEN_FILE_NAME, src_dir_fd=dir_fd, dst_dir_fd=dir_fd)
-        except BaseException:
-            # Clean up the temp file if replace failed for any reason.
-            try:
-                os.unlink(tmp_name, dir_fd=dir_fd)
-            except FileNotFoundError:
-                pass
-            raise
-    finally:
-        os.close(dir_fd)
+    write_untrusted_text(agent_input_dir(agent_config_dir.parent) / _TOAD_TOKEN_FILE_NAME, token)
     return token
 
 
@@ -112,7 +80,7 @@ def _agent_config_dir(project: ProjectConfig, task_id: str) -> Path:
 
 
 def _rehydrate_toad_token(project: ProjectConfig, task_id: str, meta: dict, cname: str) -> str:
-    """Saved toad token from *meta*, rewritten to ``agent-config/toad.token``.
+    """Saved toad token from *meta*, rewritten to ``agent-inputs/toad.token``.
 
     The file may have been cleaned up between runs even when the token
     persists in metadata; rewriting on every reuse is cheap insurance.
@@ -157,7 +125,7 @@ def task_run_toad(
     meta["web_port"] = port
 
     agent_config_dir = _prepare_agent_config(project, project_name, task_id)
-    env, volumes, egress = build_task_env_and_volumes(
+    env, volumes, egress, broker_context = build_task_env_and_volumes(
         project, task_id, agent_config_dir=agent_config_dir
     )
 
@@ -225,6 +193,7 @@ def task_run_toad(
         command=["bash", "-lc", toad_cmd],
         allow_debugger=debug,
         egress=egress,
+        broker_context=broker_context,
     )
     _apply_shield_policy(project, cname, task_dir, is_restart=False)
     run_hook(

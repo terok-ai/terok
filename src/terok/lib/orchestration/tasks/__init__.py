@@ -85,7 +85,6 @@ from .query import (  # noqa: F401 - re-exported public API
     get_task_container_state,
     get_task_meta,
     get_tasks,
-    get_workspace_git_diff,
     lookup_container_by_pt,
     task_list,
 )
@@ -109,7 +108,6 @@ __all__ = [
     "get_task_container_state",
     "get_task_meta",
     "get_tasks",
-    "get_workspace_git_diff",
     "is_task_id",
     "iter_task_ids",
     "list_archived_tasks",

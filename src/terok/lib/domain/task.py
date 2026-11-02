@@ -42,7 +42,6 @@ from ..orchestration.task_runners import (
 from ..orchestration.tasks import (
     TaskMeta,
     get_login_command,
-    get_workspace_git_diff,
     task_delete,
     task_login,
     task_rename,
@@ -164,10 +163,6 @@ class Task:
     def get_login_command(self) -> list[str]:
         """Return the podman exec command for login."""
         return get_login_command(self._config.name, self.id)
-
-    def get_workspace_diff(self, against: str = "HEAD") -> str | None:
-        """Get git diff from the task's workspace."""
-        return get_workspace_git_diff(self._config.name, self.id, against=against)
 
     def show_status(self) -> None:
         """Print live task status with container state diagnostics.

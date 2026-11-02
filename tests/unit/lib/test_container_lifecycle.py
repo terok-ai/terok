@@ -26,7 +26,7 @@ from terok.lib.orchestration.tasks import (
     write_task_meta,
 )
 from tests.test_utils import mock_git_config, project_env
-from tests.testfs import MOCK_BASE
+from tests.testfs import CURRENT_CONTAINER_PROTOCOL, CURRENT_INPUT_LABELS, MOCK_BASE
 
 
 def project_config(project_name: str, *, shutdown_timeout: int | None = None) -> str:
@@ -77,6 +77,7 @@ def _mock_container(state: str | None = None, **method_overrides: object) -> Moc
     container = Mock()
     container.state = state
     container.running = state == "running"
+    container.env = {"TEROK_CONTAINER_PROTOCOL": CURRENT_CONTAINER_PROTOCOL}
     for method, value in method_overrides.items():
         getattr(container, method).return_value = value
     return container
@@ -92,6 +93,7 @@ def _mock_runtime(container: Mock, *, image_id: str = "img-current") -> Mock:
     """
     image = Mock()
     image.id = image_id
+    image.labels.return_value = dict(CURRENT_INPUT_LABELS)
     container.image = image
     runtime = Mock(spec=PodmanRuntime)
     runtime.container.return_value = container

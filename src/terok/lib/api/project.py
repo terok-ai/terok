@@ -63,7 +63,6 @@ if TYPE_CHECKING:
     from terok.lib.domain.panic import (
         execute_panic as execute_panic,
         format_panic_report as format_panic_report,
-        panic_stop_containers as panic_stop_containers,
     )
     from terok.lib.domain.project import (
         DeleteProjectResult as DeleteProjectResult,
@@ -137,7 +136,6 @@ _LAZY: dict[str, str] = {
     "list_images": "terok.lib.domain.image_cleanup",
     "list_projects": "terok.lib.domain.project",
     "load_project": "terok.lib.core.projects",
-    "panic_stop_containers": "terok.lib.domain.panic",
     "project_image_exists": "terok.lib.domain.project",
     "remove_images": "terok.lib.domain.image_cleanup",
     "render_project_yaml": "terok.lib.domain.wizards.new_project",

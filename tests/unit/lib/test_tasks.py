@@ -33,7 +33,6 @@ from terok.lib.orchestration.tasks import (
     TaskDeleteResult,
     dossier_path,
     get_tasks,
-    get_workspace_git_diff,
     load_task_meta,
     read_task_meta,
     task_delete,
@@ -380,7 +379,7 @@ class TestTask:
             with_gate=True,
         ):
             _seed_task_meta(project_name, "7")
-            env, volumes, egress = build_task_env_and_volumes(
+            env, volumes, egress, _context = build_task_env_and_volumes(
                 project=load_project(project_name),
                 task_id="7",
             )
@@ -421,7 +420,7 @@ class TestTask:
             )
 
             _seed_task_meta(project_name, "9")
-            env, volumes, _ = build_task_env_and_volumes(
+            env, volumes, _, _context = build_task_env_and_volumes(
                 project=load_project(project_name),
                 task_id="9",
             )
@@ -451,7 +450,9 @@ class TestTask:
             )
 
             _seed_task_meta(project_name, "8")
-            env, volumes, _ = build_task_env_and_volumes(load_project(project_name), task_id="8")
+            env, volumes, _, _context = build_task_env_and_volumes(
+                load_project(project_name), task_id="8"
+            )
             assert env["CODE_REPO"] == "https://example.com/repo.git"
             assert env["GIT_BRANCH"] == "main"
             assert env["TEROK_GIT_AUTHORSHIP"] == "agent-human"
@@ -468,7 +469,9 @@ class TestTask:
             f"project:\n  id: {project_name}\n  security_class: online\ngit:\n  upstream_url: https://example.com/repo.git\n  authorship: human-agent\n",
             project_name=project_name,
         ):
-            env, _volumes, _ = build_task_env_and_volumes(load_project(project_name), task_id="1")
+            env, _volumes, _, _context = build_task_env_and_volumes(
+                load_project(project_name), task_id="1"
+            )
             assert env["TEROK_GIT_AUTHORSHIP"] == "human-agent"
 
     def test_task_run_cli_colors_login_lines_when_tty(self, mock_runtime) -> None:
@@ -730,92 +733,6 @@ class TestTask:
                 meta = read_task_meta(meta_dir, tid) or {}
                 assert meta["mode"] == "cli"
 
-    def test_get_workspace_git_diff_no_task(self) -> None:
-        """Test get_workspace_git_diff returns None when task doesn't exist."""
-        project_name = "proj_diff_1"
-        with project_env(
-            f"project:\n  id: {project_name}\n",
-            project_name=project_name,
-        ):
-            result = get_workspace_git_diff(project_name, "999")
-            assert result is None
-
-    def test_get_workspace_git_diff_no_mode(self) -> None:
-        """Test get_workspace_git_diff returns None when task has no mode set."""
-        project_name = "proj_diff_2"
-        with project_env(
-            f"project:\n  id: {project_name}\n",
-            project_name=project_name,
-        ):
-            tid = task_new(project_name)
-            # Task exists but has never been run (mode=None)
-            result = get_workspace_git_diff(project_name, tid)
-            assert result is None
-
-    def test_get_workspace_git_diff_delegates_to_container(self) -> None:
-        """Test get_workspace_git_diff delegates to container_git_diff."""
-        project_name = "proj_diff_3"
-        with project_env(
-            f"project:\n  id: {project_name}\n",
-            project_name=project_name,
-        ):
-            tid = task_new(project_name)
-            meta_dir = tasks_meta_dir(project_name)
-            meta = read_task_meta(meta_dir, tid) or {}
-            meta["mode"] = "cli"
-            write_task_meta(dossier_path(meta_dir, tid), meta)
-
-            expected = "diff --git a/f.txt b/f.txt\n+line\n"
-            with unittest.mock.patch(
-                "terok.lib.orchestration.tasks.query.container_git_diff",
-                return_value=expected,
-            ) as mock_diff:
-                result = get_workspace_git_diff(project_name, tid, "HEAD")
-                assert result == expected
-                mock_diff.assert_called_once_with(project_name, tid, "cli", "HEAD")
-
-    def test_get_workspace_git_diff_prev_commit(self) -> None:
-        """Test get_workspace_git_diff with PREV option passes HEAD~1..HEAD."""
-        project_name = "proj_diff_5"
-        with project_env(
-            f"project:\n  id: {project_name}\n",
-            project_name=project_name,
-        ):
-            tid = task_new(project_name)
-            meta_dir = tasks_meta_dir(project_name)
-            meta = read_task_meta(meta_dir, tid) or {}
-            meta["mode"] = "run"
-            write_task_meta(dossier_path(meta_dir, tid), meta)
-
-            expected = "diff --git a/f.txt b/f.txt\n+prev\n"
-            with unittest.mock.patch(
-                "terok.lib.orchestration.tasks.query.container_git_diff",
-                return_value=expected,
-            ) as mock_diff:
-                result = get_workspace_git_diff(project_name, tid, "PREV")
-                assert result == expected
-                mock_diff.assert_called_once_with(project_name, tid, "run", "HEAD~1", "HEAD")
-
-    def test_get_workspace_git_diff_container_failure(self) -> None:
-        """Test get_workspace_git_diff returns None when container exec fails."""
-        project_name = "proj_diff_6"
-        with project_env(
-            f"project:\n  id: {project_name}\n",
-            project_name=project_name,
-        ):
-            tid = task_new(project_name)
-            meta_dir = tasks_meta_dir(project_name)
-            meta = read_task_meta(meta_dir, tid) or {}
-            meta["mode"] = "cli"
-            write_task_meta(dossier_path(meta_dir, tid), meta)
-
-            with unittest.mock.patch(
-                "terok.lib.orchestration.tasks.query.container_git_diff",
-                return_value=None,
-            ):
-                result = get_workspace_git_diff(project_name, tid)
-                assert result is None
-
     def test_copy_to_clipboard_empty_text(self) -> None:
         """Test copy_to_clipboard_detailed returns failure for empty text."""
         result = copy_to_clipboard_detailed("")
@@ -1018,7 +935,7 @@ class TestTask:
             with_gate=True,
         ):
             _seed_task_meta(project_name, "10")
-            env, _, _ = build_task_env_and_volumes(
+            env, _, _, _context = build_task_env_and_volumes(
                 project=load_project(project_name),
                 task_id="10",
             )
@@ -1043,7 +960,7 @@ class TestTask:
             with_gate=True,
         ):
             _seed_task_meta(project_name, "11")
-            env, _, _ = build_task_env_and_volumes(
+            env, _, _, _context = build_task_env_and_volumes(
                 project=load_project(project_name),
                 task_id="11",
             )
@@ -1067,7 +984,7 @@ class TestTask:
             with_gate=True,
         ):
             _seed_task_meta(project_name, "12")
-            env, _, _ = build_task_env_and_volumes(
+            env, _, _, _context = build_task_env_and_volumes(
                 project=load_project(project_name),
                 task_id="12",
             )
@@ -1098,7 +1015,7 @@ class TestTask:
             with_gate=True,
         ):
             _seed_task_meta(project_name, "13")
-            env, _, _ = build_task_env_and_volumes(
+            env, _, _, _context = build_task_env_and_volumes(
                 project=load_project(project_name),
                 task_id="13",
             )
@@ -1128,8 +1045,8 @@ class TestToadHelpers:
 
     def test_ensure_toad_token_creates_file_with_0600(self, tmp_path: Path) -> None:
         """Fresh call mints a urlsafe token, writes it 0600, returns it."""
-        token = _ensure_toad_token(tmp_path)
-        path = tmp_path / "toad.token"
+        token = _ensure_toad_token(tmp_path / "agent-config")
+        path = tmp_path / "agent-inputs" / "toad.token"
         import stat as _stat
 
         assert path.read_text() == token
@@ -1140,43 +1057,27 @@ class TestToadHelpers:
 
     def test_ensure_toad_token_reuses_existing(self, tmp_path: Path) -> None:
         """Passing *existing* rewrites the same value (restart path)."""
-        token = _ensure_toad_token(tmp_path, existing="deadbeef")
+        token = _ensure_toad_token(tmp_path / "agent-config", existing="deadbeef")
         assert token == "deadbeef"
-        assert (tmp_path / "toad.token").read_text() == "deadbeef"
+        assert (tmp_path / "agent-inputs" / "toad.token").read_text() == "deadbeef"
 
-    def test_ensure_toad_token_replaces_symlink_without_clobbering_victim(
-        self, tmp_path: Path
+    @pytest.mark.parametrize("link", ["symlink", "hardlink"])
+    def test_ensure_toad_token_refuses_link_without_clobbering_victim(
+        self, tmp_path: Path, link: str
     ) -> None:
-        """A pre-staged symlink at the token path is atomically replaced — victim untouched."""
+        """Even a linked host input is refused rather than silently accepted."""
+        from terok_util import UnsafePathError
+
         victim = tmp_path / "victim"
         victim.write_text("sensitive")
-        (tmp_path / "toad.token").symlink_to(victim)
-
-        token = _ensure_toad_token(tmp_path)
-
-        # The symlink is gone, replaced by a real 0600 regular file.
-        import stat as _stat
-
-        st = (tmp_path / "toad.token").lstat()
-        assert _stat.S_ISREG(st.st_mode)
-        assert _stat.S_IMODE(st.st_mode) == 0o600
-        assert (tmp_path / "toad.token").read_text() == token
-        # Crucially, the victim's content stayed intact (no truncation).
-        assert victim.read_text() == "sensitive"
-
-    def test_ensure_toad_token_replaces_hardlink_without_clobbering_peer(
-        self, tmp_path: Path
-    ) -> None:
-        """A pre-staged hardlink at the token path doesn't leak into the peer."""
-        victim = tmp_path / "victim"
-        victim.write_text("sensitive")
-        os.link(victim, tmp_path / "toad.token")
-
-        token = _ensure_toad_token(tmp_path)
-
-        assert (tmp_path / "toad.token").read_text() == token
-        # The peer file (another hardlink to the original inode) still holds
-        # its own content — the atomic rename gave us a fresh inode.
+        target = tmp_path / "agent-inputs" / "toad.token"
+        target.parent.mkdir()
+        if link == "symlink":
+            target.symlink_to(victim)
+        else:
+            os.link(victim, target)
+        with pytest.raises(UnsafePathError):
+            _ensure_toad_token(tmp_path / "agent-config")
         assert victim.read_text() == "sensitive"
 
     def test_rehydrate_toad_token_writes_file_from_metadata(self, tmp_path: Path) -> None:
@@ -1197,7 +1098,9 @@ class TestToadHelpers:
                 project, task_id, {"web_token": "persisted-value"}, cname="c1"
             )
             assert out == "persisted-value"
-            assert (agent_cfg / "toad.token").read_text() == "persisted-value"
+            assert (
+                agent_cfg.parent / "agent-inputs" / "toad.token"
+            ).read_text() == "persisted-value"
 
     def test_rehydrate_toad_token_requires_metadata(self) -> None:
         """Missing ``web_token`` raises a clear SystemExit — tells the user to re-create."""
@@ -1254,7 +1157,7 @@ class TestEnsureToadRunning:
             # Token file rehydrated even though the container was already up.
             project = load_project(project_name)
             assert (
-                project.tasks_root / str(tid) / "agent-config" / "toad.token"
+                project.tasks_root / str(tid) / "agent-inputs" / "toad.token"
             ).read_text() == "tok-running"
 
     def test_stopped_container_restarts_and_prints_url(self, mock_runtime) -> None:
