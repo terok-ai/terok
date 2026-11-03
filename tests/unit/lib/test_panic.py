@@ -109,8 +109,12 @@ def test_inventory_failure_does_not_skip_global_shutdown(emergency):
     ],
 )
 def test_empty_exception_message_is_still_a_reported_failure(
-    emergency, monkeypatch, action, field, exception
-):
+    emergency: MagicMock,
+    monkeypatch: pytest.MonkeyPatch,
+    action: str,
+    field: str,
+    exception: type[BaseException],
+) -> None:
     """Silent exceptions still make panic fail visibly instead of reporting success."""
     if action == "inventory":
         emergency.inventory.side_effect = exception()
@@ -125,7 +129,9 @@ def test_empty_exception_message_is_still_a_reported_failure(
 
 
 @pytest.mark.parametrize("absolute", [False, True])
-def test_raise_shield_refuses_invalid_annotation(tmp_path, monkeypatch, absolute):
+def test_raise_shield_refuses_invalid_annotation(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, absolute: bool
+) -> None:
     """Relative paths and unrelated directories cannot select a quarantine manager."""
     manager = MagicMock()
     monkeypatch.setattr("terok.lib.integrations.sandbox.ShieldManager", manager)
@@ -138,7 +144,9 @@ def test_raise_shield_refuses_invalid_annotation(tmp_path, monkeypatch, absolute
     manager.assert_not_called()
 
 
-def test_raise_shield_quarantines_exact_runtime_id(tmp_path, monkeypatch):
+def test_raise_shield_quarantines_exact_runtime_id(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     """The validated shield directory selects its parent and the immutable runtime ID."""
     manager = MagicMock()
     monkeypatch.setattr("terok.lib.integrations.sandbox.ShieldManager", manager)
@@ -150,7 +158,9 @@ def test_raise_shield_quarantines_exact_runtime_id(tmp_path, monkeypatch):
     manager.return_value.quarantine.assert_called_once_with(target.id)
 
 
-def test_kill_and_quarantine_successes_are_both_collected(emergency, tmp_path):
+def test_kill_and_quarantine_successes_are_both_collected(
+    emergency: MagicMock, tmp_path: Path
+) -> None:
     """One container's independent shutdown actions both appear in the final report."""
     target = _container(tmp_path, **{panic._SHIELD_ANNOTATION: str(tmp_path / "shield")})
     emergency.inventory.return_value = [target]
@@ -162,7 +172,9 @@ def test_kill_and_quarantine_successes_are_both_collected(emergency, tmp_path):
     assert not result.has_errors
 
 
-def test_expired_discovery_does_not_start_more_workers(tmp_path, monkeypatch):
+def test_expired_discovery_does_not_start_more_workers(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     """Targets discovered at the overall deadline are explicit failures, not new work."""
     target = _container(tmp_path)
     start = MagicMock()
@@ -222,7 +234,9 @@ def test_transitional_live_states_are_also_killed(emergency, tmp_path, state):
 
 
 @pytest.mark.parametrize("message", ["cannot start worker", ""])
-def test_worker_start_failure_does_not_skip_other_actions(emergency, monkeypatch, message):
+def test_worker_start_failure_does_not_skip_other_actions(
+    emergency: MagicMock, monkeypatch: pytest.MonkeyPatch, message: str
+) -> None:
     """Thread resource failures are per-action errors rather than aborting panic."""
     original = threading.Thread.start
 

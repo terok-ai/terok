@@ -6,6 +6,7 @@
 from __future__ import annotations
 
 import os
+from pathlib import Path
 from unittest.mock import patch
 
 import pytest
@@ -132,7 +133,9 @@ def test_headless_limits_fail_before_either_file_changes(tmp_path, monkeypatch, 
 
 @pytest.mark.parametrize("character", ["a", "é"])
 @pytest.mark.parametrize("oversized", [False, True])
-def test_followup_prompt_uses_the_shared_utf8_byte_limit(tmp_path, character, oversized):
+def test_followup_prompt_uses_the_shared_utf8_byte_limit(
+    tmp_path: Path, character: str, oversized: bool
+) -> None:
     """The argv-safe budget counts encoded bytes and refuses before publishing either file."""
     from terok.lib.integrations.executor import MAX_PROMPT_BYTES
 

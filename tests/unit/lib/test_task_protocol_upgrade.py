@@ -3,7 +3,7 @@
 
 """Retained task containers cannot resume the obsolete writable-input protocol."""
 
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
@@ -114,24 +114,63 @@ def test_current_running_container_is_not_recreated(upgrade_task: SimpleNamespac
     task.toad.assert_not_called()
 
 
-@pytest.mark.parametrize("entrypoint", [restart.ensure_task_running, restart.task_restart])
+@pytest.mark.parametrize(
+    ("entrypoint", "fresh"),
+    [
+        (restart.ensure_task_running, False),
+        (restart.task_restart, False),
+        (restart.task_restart, True),
+    ],
+)
 @pytest.mark.parametrize("mode", ["cli", "toad"])
-def test_legacy_upgrade_requires_replacement_image_before_teardown(
-    upgrade_task: SimpleNamespace, entrypoint, mode: str
+@pytest.mark.parametrize("state", ["running", "exited"])
+def test_recreation_requires_replacement_image_before_teardown(
+    upgrade_task: SimpleNamespace,
+    entrypoint: Callable[..., None],
+    fresh: bool,
+    mode: str,
+    state: str,
 ) -> None:
-    """Missing rebuilt images leave the retained container and start inputs untouched."""
+    """Legacy upgrades and explicit recreation both preflight before touching retained state."""
     task = upgrade_task
     task.meta["mode"] = mode
-    task.container.state = "running"
-    task.container.env = {}
+    task.container.state = state
+    if not fresh:
+        task.container.env = {}
     task.image_protocol.side_effect = RuntimeError("Rebuild replacement image first")
 
     with pytest.raises(SystemExit, match="Rebuild replacement image"):
-        entrypoint(task.project.name, "1")
+        entrypoint(task.project.name, "1", **({"fresh": True} if fresh else {}))
 
     task.image_protocol.assert_called_once()
     task.preconditions.assert_not_called()
     task.container.start.assert_not_called()
+    task.container.stop.assert_not_called()
+    task.sandbox.rm.assert_not_called()
+    task.cli.assert_not_called()
+    task.toad.assert_not_called()
+
+
+@pytest.mark.parametrize("mode", ["cli", "toad", "run"])
+def test_failed_resume_preserves_container_when_recreation_is_unsafe(
+    upgrade_task: SimpleNamespace, mode: str
+) -> None:
+    """A failed start cannot bypass replacement preflight or the headless replay refusal."""
+    task = upgrade_task
+    task.meta["mode"] = mode
+    task.container.state = "exited"
+    task.image_protocol.side_effect = RuntimeError("Rebuild replacement image first")
+    expected = "never recreated" if mode == "run" else "Rebuild replacement image"
+    with (
+        patch.object(restart, "_validate_shield_bundle_version"),
+        patch.object(restart, "_refresh_shield_tiers"),
+        patch.object(restart, "_refresh_clearance_mode"),
+        patch.object(restart, "_start_and_report_restart", side_effect=SystemExit("start failed")),
+        pytest.raises(SystemExit, match=expected),
+    ):
+        restart.task_restart(task.project.name, "1")
+
+    assert task.image_protocol.call_count == (0 if mode == "run" else 1)
     task.container.stop.assert_not_called()
     task.sandbox.rm.assert_not_called()
     task.cli.assert_not_called()

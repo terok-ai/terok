@@ -536,6 +536,7 @@ def test_task_restart_recreate_on_image_drift_upgrades() -> None:
         runtime_mock = _mock_runtime(container)
         rebuilt = Mock()
         rebuilt.id = "img-rebuilt"
+        rebuilt.labels.return_value = dict(CURRENT_INPUT_LABELS)
         runtime_mock.image.return_value = rebuilt
         with (
             mock_git_config(),

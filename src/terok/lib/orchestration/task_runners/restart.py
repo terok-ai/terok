@@ -149,11 +149,8 @@ def _make_running(
 
     reason = protocol_reason or _recreate_reason(container_state, fresh=fresh)
 
-    if protocol_reason and mode != "run":
-        try:
-            require_image_input_protocol(runtime.image(project_cli_image(project.name)))
-        except RuntimeError as exc:
-            raise SystemExit(str(exc)) from exc
+    if reason is not None and mode != "run":
+        _preflight_replacement_image(project, runtime)
 
     if container_state is not None:
         _validate_restart_preconditions(project, task_id, mode, meta, cname)
@@ -176,10 +173,20 @@ def _make_running(
             return
         except SystemExit as exc:
             reason = str(exc) or "podman start failed"
+            if mode != "run":
+                _preflight_replacement_image(project, runtime)
 
     _recreate_in_place(
         project, task_id, mode, cname, meta, meta_path, reason, unrestricted=unrestricted
     )
+
+
+def _preflight_replacement_image(project: ProjectConfig, runtime: ContainerRuntime) -> None:
+    """Reject obsolete replacement images before any recreation tears down a task."""
+    try:
+        require_image_input_protocol(runtime.image(project_cli_image(project.name)))
+    except RuntimeError as exc:
+        raise SystemExit(str(exc)) from exc
 
 
 def _refresh_before_resume(
