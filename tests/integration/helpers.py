@@ -17,6 +17,8 @@ from itertools import pairwise
 from pathlib import Path
 from typing import Literal
 
+from tests.testfs import CURRENT_INPUT_LABELS
+
 ROOT = Path(__file__).resolve().parents[2]
 SRC_DIR = ROOT / "src"
 PROJECT_FILENAME = "project.yml"
@@ -414,8 +416,12 @@ def write_fake_podman(bin_dir: Path, state_path: Path) -> Path:
                 save_state(state)
                 raise SystemExit(0)
 
-            if args[:2] == ["inspect", "-f"]:
+            if args[:2] in (["inspect", "-f"], ["inspect", "--format"]):
                 fmt, name = args[2], args[3]
+                if fmt == "{{{{json .Config.Labels}}}}":
+                    print(json.dumps({CURRENT_INPUT_LABELS!r}))
+                    save_state(state)
+                    raise SystemExit(0)
                 container = state["containers"].get(name)
                 if container is None:
                     save_state(state)
@@ -424,6 +430,14 @@ def write_fake_podman(bin_dir: Path, state_path: Path) -> Path:
                     print(container["status"])
                 elif fmt == "{{{{.State.Running}}}}":
                     print("true" if container["status"] == "running" else "false")
+                elif fmt == "{{{{.Image}}}}":
+                    print("fake-image-id")
+                elif fmt == "{{{{json .Config.Env}}}}":
+                    run_args = container["args"]
+                    print(json.dumps([
+                        run_args[index + 1]
+                        for index, arg in enumerate(run_args[:-1]) if arg == "-e"
+                    ]))
                 save_state(state)
                 raise SystemExit(0)
 
