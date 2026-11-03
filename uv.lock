@@ -1,5 +1,5 @@
 version = 1
-revision = 5
+revision = 3
 requires-python = ">=3.12, <3.15"
 
 [[package]]
@@ -2424,7 +2424,6 @@ wheels = [
 [[package]]
 name = "terok"
 source = { editable = "." }
-default-groups = ["dev", "test"]
 dependencies = [
     { name = "argcomplete" },
     { name = "jinja2" },
@@ -2489,11 +2488,11 @@ requires-dist = [
     { name = "requests", specifier = "~=2.34" },
     { name = "rich", specifier = "~=15.0" },
     { name = "ruamel-yaml", specifier = "==0.19.1" },
-    { name = "terok-clearance", git = "https://github.com/sliwowitz/terok-clearance.git?rev=feat%2Ftask-hosts-file" },
-    { name = "terok-executor", git = "https://github.com/sliwowitz/terok-executor.git?rev=feat%2Ftask-hosts-file" },
-    { name = "terok-sandbox", git = "https://github.com/sliwowitz/terok-sandbox.git?rev=feat%2Ftask-hosts-file" },
-    { name = "terok-shield", git = "https://github.com/sliwowitz/terok-shield.git?rev=feat%2Ftask-hosts-file" },
-    { name = "terok-util", git = "https://github.com/sliwowitz/terok-util.git?rev=feat%2Ftask-hosts-file" },
+    { name = "terok-clearance", url = "https://github.com/terok-ai/terok-clearance/releases/download/v0.8.2a3/terok_clearance-0.8.2a3-py3-none-any.whl" },
+    { name = "terok-executor", url = "https://github.com/terok-ai/terok-executor/releases/download/v0.5.1a13/terok_executor-0.5.1a13-py3-none-any.whl" },
+    { name = "terok-sandbox", url = "https://github.com/terok-ai/terok-sandbox/releases/download/v0.7.0a8/terok_sandbox-0.7.0a8-py3-none-any.whl" },
+    { name = "terok-shield", url = "https://github.com/terok-ai/terok-shield/releases/download/v0.10.0a4/terok_shield-0.10.0a4-py3-none-any.whl" },
+    { name = "terok-util", url = "https://github.com/terok-ai/terok-util/releases/download/v0.5.0a3/terok_util-0.5.0a3-py3-none-any.whl" },
     { name = "textual", extras = ["syntax"], specifier = "~=8.2.8" },
     { name = "textual-serve", specifier = "~=1.1" },
     { name = "unique-namer", specifier = "~=1.6" },
@@ -2534,19 +2533,30 @@ test = [
 
 [[package]]
 name = "terok-clearance"
-version = "0.8.2a3.dev261+g59b4c0979"
-source = { git = "https://github.com/sliwowitz/terok-clearance.git?rev=feat%2Ftask-hosts-file#59b4c09794354c37d92dcafaf083328b0ffc6395" }
+version = "0.8.2a3"
+source = { url = "https://github.com/terok-ai/terok-clearance/releases/download/v0.8.2a3/terok_clearance-0.8.2a3-py3-none-any.whl" }
 dependencies = [
     { name = "asyncvarlink" },
     { name = "dbus-fast" },
     { name = "pyyaml" },
     { name = "terok-util" },
 ]
+wheels = [
+    { url = "https://github.com/terok-ai/terok-clearance/releases/download/v0.8.2a3/terok_clearance-0.8.2a3-py3-none-any.whl", hash = "sha256:38f399e9bce60ac3ff0dd0bea1413a41ff3cca0e27d2ad8ad7d8f746902c9bc1" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "asyncvarlink", specifier = "==0.3.3" },
+    { name = "dbus-fast", specifier = "~=5.0" },
+    { name = "pyyaml", specifier = "~=6.0" },
+    { name = "terok-util", url = "https://github.com/terok-ai/terok-util/releases/download/v0.5.0a3/terok_util-0.5.0a3-py3-none-any.whl" },
+]
 
 [[package]]
 name = "terok-executor"
-version = "0.5.1a13.dev534+g796c287c8"
-source = { git = "https://github.com/sliwowitz/terok-executor.git?rev=feat%2Ftask-hosts-file#796c287c8f69a29f1586debdc5b21f21b66b815e" }
+version = "0.5.1a13"
+source = { url = "https://github.com/terok-ai/terok-executor/releases/download/v0.5.1a13/terok_executor-0.5.1a13-py3-none-any.whl" }
 dependencies = [
     { name = "agent-client-protocol" },
     { name = "jinja2" },
@@ -2558,11 +2568,27 @@ dependencies = [
     { name = "terok-util" },
     { name = "tomli-w" },
 ]
+wheels = [
+    { url = "https://github.com/terok-ai/terok-executor/releases/download/v0.5.1a13/terok_executor-0.5.1a13-py3-none-any.whl", hash = "sha256:2f84383a21f82950ab0fc7d66fcfbe341be165492b7d115bea9f9bbdecf7ca75" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "agent-client-protocol", specifier = "==0.12.1" },
+    { name = "jinja2", specifier = "~=3.1" },
+    { name = "prompt-toolkit", specifier = "~=3.0" },
+    { name = "pydantic", specifier = "~=2.13" },
+    { name = "rich", specifier = "~=15.0" },
+    { name = "ruamel-yaml", specifier = "==0.19.1" },
+    { name = "terok-sandbox", url = "https://github.com/terok-ai/terok-sandbox/releases/download/v0.7.0a8/terok_sandbox-0.7.0a8-py3-none-any.whl" },
+    { name = "terok-util", url = "https://github.com/terok-ai/terok-util/releases/download/v0.5.0a3/terok_util-0.5.0a3-py3-none-any.whl" },
+    { name = "tomli-w", specifier = "~=1.2" },
+]
 
 [[package]]
 name = "terok-sandbox"
-version = "0.7.0a8.dev536+g778ff9f5b"
-source = { git = "https://github.com/sliwowitz/terok-sandbox.git?rev=feat%2Ftask-hosts-file#778ff9f5bc9e090be53c7a227284ddf931069a79" }
+version = "0.7.0a8"
+source = { url = "https://github.com/terok-ai/terok-sandbox/releases/download/v0.7.0a8/terok_sandbox-0.7.0a8-py3-none-any.whl" }
 dependencies = [
     { name = "aiohttp" },
     { name = "cryptography" },
@@ -2578,26 +2604,67 @@ dependencies = [
     { name = "terok-shield" },
     { name = "terok-util" },
 ]
+wheels = [
+    { url = "https://github.com/terok-ai/terok-sandbox/releases/download/v0.7.0a8/terok_sandbox-0.7.0a8-py3-none-any.whl", hash = "sha256:49314291b416731b22955c932aa72de75d2173e6dae44f3bc8291d1523817660" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "aiohttp", specifier = "~=3.14.3" },
+    { name = "cryptography", specifier = "~=50.0" },
+    { name = "jinja2", specifier = "~=3.1" },
+    { name = "keyring", specifier = "~=25.7" },
+    { name = "packaging", specifier = "~=26.3" },
+    { name = "platformdirs", specifier = "~=4.12" },
+    { name = "prompt-toolkit", specifier = "~=3.0" },
+    { name = "pydantic", specifier = "~=2.13" },
+    { name = "ruamel-yaml", specifier = "==0.19.1" },
+    { name = "sqlcipher3", specifier = "==0.6.4" },
+    { name = "terok-clearance", url = "https://github.com/terok-ai/terok-clearance/releases/download/v0.8.2a3/terok_clearance-0.8.2a3-py3-none-any.whl" },
+    { name = "terok-shield", url = "https://github.com/terok-ai/terok-shield/releases/download/v0.10.0a4/terok_shield-0.10.0a4-py3-none-any.whl" },
+    { name = "terok-util", url = "https://github.com/terok-ai/terok-util/releases/download/v0.5.0a3/terok_util-0.5.0a3-py3-none-any.whl" },
+]
 
 [[package]]
 name = "terok-shield"
-version = "0.10.0a4.dev416+ge1ccdfcc7"
-source = { git = "https://github.com/sliwowitz/terok-shield.git?rev=feat%2Ftask-hosts-file#e1ccdfcc7df76d76782075e36d9be34ceb0dee6c" }
+version = "0.10.0a4"
+source = { url = "https://github.com/terok-ai/terok-shield/releases/download/v0.10.0a4/terok_shield-0.10.0a4-py3-none-any.whl" }
 dependencies = [
     { name = "pydantic" },
     { name = "pyyaml" },
     { name = "terok-util" },
 ]
+wheels = [
+    { url = "https://github.com/terok-ai/terok-shield/releases/download/v0.10.0a4/terok_shield-0.10.0a4-py3-none-any.whl", hash = "sha256:52d38a6386dd569655489ec1480785f4d123849fbe8022c4c3ae415e7c949fcb" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "pydantic", specifier = "~=2.13" },
+    { name = "pyyaml", specifier = "~=6.0" },
+    { name = "terok-util", url = "https://github.com/terok-ai/terok-util/releases/download/v0.5.0a3/terok_util-0.5.0a3-py3-none-any.whl" },
+]
 
 [[package]]
 name = "terok-util"
-version = "0.5.0a3.dev166+gd56891608"
-source = { git = "https://github.com/sliwowitz/terok-util.git?rev=feat%2Ftask-hosts-file#d568916082d928baa27e315d525a4e65e0aebea6" }
+version = "0.5.0a3"
+source = { url = "https://github.com/terok-ai/terok-util/releases/download/v0.5.0a3/terok_util-0.5.0a3-py3-none-any.whl" }
 dependencies = [
     { name = "jinja2" },
     { name = "packaging" },
     { name = "platformdirs" },
     { name = "ruamel-yaml" },
+]
+wheels = [
+    { url = "https://github.com/terok-ai/terok-util/releases/download/v0.5.0a3/terok_util-0.5.0a3-py3-none-any.whl", hash = "sha256:5689768c676495af9276d81d15ed6032db485a35c849f583a654f3c5637cee84" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "jinja2", specifier = "~=3.1" },
+    { name = "packaging", specifier = "~=26.3" },
+    { name = "platformdirs", specifier = "~=4.12" },
+    { name = "ruamel-yaml", specifier = "==0.19.1" },
 ]
 
 [[package]]
