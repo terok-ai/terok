@@ -432,9 +432,9 @@ def make_sandbox_config(project: ProjectConfig | None = None) -> SandboxConfig:
     """Construct a `SandboxConfig` for sandbox operations.
 
     *project* overlays the per-project settings a launch must honour —
-    including ``services_mode``, ``clearance`` and ``aslr_control``. Omit it
-    for project-agnostic operations (vault, state paths, sickbay host
-    checks), which read the global config alone.
+    including ``services_mode``, ``clearance``, ``aslr_control`` and
+    ``hosts_file``. Omit it for project-agnostic operations (vault, state
+    paths, sickbay host checks), which read the global config alone.
 
     Bridges terok's config layer (env vars → config.yml → XDG defaults) to
     sandbox's plain dataclass.  Sandbox uses its own ``state_dir`` default
@@ -478,12 +478,18 @@ def make_sandbox_config(project: ProjectConfig | None = None) -> SandboxConfig:
         services_mode=project.services_mode if project is not None else get_services_mode(),
         clearance=project.clearance if project is not None else get_services_clearance(),
         aslr_control=project.aslr_control if project is not None else get_global_aslr_control(),
+        hosts_file=project.hosts_file if project is not None else get_global_hosts_file(),
     )
 
 
 def get_global_aslr_control() -> bool:
     """Return the global ``run.aslr_control`` opt-in; projects may override it."""
     return _load_validated().run.aslr_control
+
+
+def get_global_hosts_file() -> str:
+    """Return the global ``run.hosts_file`` value; projects may override it."""
+    return _load_validated().run.hosts_file
 
 
 def get_global_human_name() -> str | None:

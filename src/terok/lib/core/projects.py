@@ -46,6 +46,7 @@ from .config import (
     get_global_default_provider,
     get_global_default_shell,
     get_global_hooks,
+    get_global_hosts_file,
     get_global_section,
     get_services_clearance,
     get_services_mode,
@@ -344,6 +345,11 @@ def _build_project_config(
             raw.run.aslr_control
             if "aslr_control" in raw.run.model_fields_set
             else get_global_aslr_control()
+        ),
+        hosts_file=(
+            raw.run.hosts_file
+            if "hosts_file" in raw.run.model_fields_set
+            else get_global_hosts_file()
         ),
         podman_args=raw.run.podman_args,
         runtime=raw.run.runtime,

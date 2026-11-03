@@ -122,6 +122,11 @@ class ProjectConfig(BaseModel):
     Resolved from ``run.aslr_control`` (project overrides global); sandbox owns
     the narrow seccomp policy and receives this through ``SandboxConfig``.
     """
+    hosts_file: str = "none"
+    """Base of the task's ``/etc/hosts``, passed to podman as ``--hosts-file``.
+
+    Resolved from ``run.hosts_file`` (project overrides global).
+    """
     podman_args: list[str] = Field(default_factory=list)
     """Freeform extra ``podman run`` flags from ``run.podman_args``.
 

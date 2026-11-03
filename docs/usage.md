@@ -1609,6 +1609,40 @@ alone does not apply the new setting. In a newly created task, check with
 
 ---
 
+## Host Names in Tasks (`run.hosts_file`)
+
+Podman builds a container's `/etc/hosts` from a base file, and its default
+base is the host's `/etc/hosts`. That copies your private host names into
+the task. terok sets the base to `none`, so these names stay on the host.
+Podman still adds `localhost`, the task's own name, and each `--add-host`
+entry.
+
+To give a task one private name, add it to `run.podman_args`:
+
+```yaml
+run:
+  podman_args:
+    - "--add-host"
+    - "my.model.example:10.0.0.5"
+```
+
+To copy all the host's names into tasks again, set the base in `config.yml`
+or `project.yml`:
+
+```yaml
+run:
+  hosts_file: /etc/hosts
+```
+
+terok gives the value to `podman run --hosts-file` unchanged: `none`, `image`,
+or an absolute host path. A project value overrides the `config.yml` value.
+Recreate existing task containers to apply a change.
+
+Podman older than 5.4 has no `--hosts-file` flag. On those releases terok
+omits the flag, prints a notice, and the task copies the host's file.
+
+---
+
 ## Custom Podman Flags (`run.podman_args`)
 
 An expert escape hatch for launch flags terok has no dedicated knob

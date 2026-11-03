@@ -544,7 +544,9 @@ def test_make_sandbox_config_project_overlay_pins_services_mode(
     from types import SimpleNamespace
 
     monkeypatch.setenv("TEROK_CONFIG_FILE", str(write_config(tmp_path, "")))
-    project = SimpleNamespace(services_mode="tcp", clearance="prompt", aslr_control=False)
+    project = SimpleNamespace(
+        services_mode="tcp", clearance="prompt", aslr_control=False, hosts_file="none"
+    )
     assert cfg.make_sandbox_config(project).services_mode == "tcp"  # type: ignore[arg-type]
     assert cfg.make_sandbox_config().services_mode == "socket"
 
@@ -558,7 +560,9 @@ def test_make_sandbox_config_carries_the_clearance_mode(
     monkeypatch.setenv(
         "TEROK_CONFIG_FILE", str(write_config(tmp_path, "services:\n  clearance: mute\n"))
     )
-    project = SimpleNamespace(services_mode="socket", clearance="off", aslr_control=False)
+    project = SimpleNamespace(
+        services_mode="socket", clearance="off", aslr_control=False, hosts_file="none"
+    )
     assert cfg.make_sandbox_config(project).clearance == "off"  # type: ignore[arg-type]
     assert cfg.make_sandbox_config().clearance == "mute"
     assert cfg.get_services_clearance() == "mute"
