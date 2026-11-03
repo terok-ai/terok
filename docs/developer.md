@@ -562,6 +562,15 @@ history and `host-control` outside all mounts. Agent status is telemetry, not an
 input to emergency container discovery. Initial-prompt delivery is an atomic
 empty-marker claim, not an exactly-once guarantee of provider processing.
 
+Destructive restart decisions use strict runtime inspection snapshots, not the
+best-effort properties used for display. Only a confirmed `InputProtocolMismatch`
+allows an automatic protocol upgrade; inspection errors preserve the retained
+container. Before recreation, the retained mount snapshot determines whether the
+task's host workspace backs `/workspace`, regardless of the current isolation
+setting. Container-only work produces a discard warning, not a confirmation or
+workflow gate. Sealed isolation is an explicit operator choice; work is not
+exported automatically.
+
 `ContainerEnvResult.broker_context` must travel unchanged from token issuance to
 `AgentRunner.launch_prepared`. Public provider markers select a provider; they
 are not credentials. The broker requires a live grant for its exact task scope,

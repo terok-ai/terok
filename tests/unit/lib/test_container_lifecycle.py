@@ -14,8 +14,9 @@ from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
 import pytest
-from terok_sandbox import PodmanRuntime
+from terok_sandbox import ContainerInspection, ImageInspection, PodmanRuntime
 
+from terok.lib.core.projects import load_project
 from terok.lib.orchestration.task_runners import ensure_task_running, task_restart
 from terok.lib.orchestration.tasks import (
     get_task_container_state,
@@ -25,8 +26,9 @@ from terok.lib.orchestration.tasks import (
     task_stop,
     write_task_meta,
 )
+from terok.lib.util.host_cmd import WORKSPACE_DANGEROUS_DIRNAME
 from tests.test_utils import mock_git_config, project_env
-from tests.testfs import CURRENT_CONTAINER_PROTOCOL, CURRENT_INPUT_LABELS, MOCK_BASE
+from tests.testfs import CURRENT_CONTAINER_PROTOCOL, CURRENT_INPUT_LABELS, MOCK_BASE, WORKSPACE_ROOT
 
 
 def project_config(project_name: str, *, shutdown_timeout: int | None = None) -> str:
@@ -72,18 +74,50 @@ def run_podman_args(run_mock: Mock, *, call_index: int = 0) -> list[str]:
     return run_mock.call_args_list[call_index].args[0]
 
 
+def _mock_image(image_id: str = "img-current") -> Mock:
+    """Return image metadata and strict inspection from the same mutable fixture."""
+    image = Mock()
+    image.id = image_id
+    image.ref = image_id
+    image.labels.return_value = dict(CURRENT_INPUT_LABELS)
+    image.inspect.side_effect = lambda: (
+        None if image.id is None else ImageInspection(image.id, dict(image.labels()))
+    )
+    return image
+
+
 def _mock_container(state: str | None = None, **method_overrides: object) -> Mock:
     """Return a Mock that quacks like a `Container` handle."""
     container = Mock()
+    container.id = "container-current"
     container.state = state
     container.running = state == "running"
     container.env = {"TEROK_CONTAINER_PROTOCOL": CURRENT_CONTAINER_PROTOCOL}
+    container.image = _mock_image()
+    container.mounts = []
+
+    def inspect_container() -> ContainerInspection | None:
+        """Capture mutable container metadata with one state observation."""
+        observed_state = container.state
+        if observed_state is None:
+            return None
+        return ContainerInspection(
+            container.id,
+            observed_state,
+            container.image,
+            dict(container.env),
+            tuple(container.mounts),
+        )
+
+    container.inspect.side_effect = inspect_container
     for method, value in method_overrides.items():
         getattr(container, method).return_value = value
     return container
 
 
-def _mock_runtime(container: Mock, *, image_id: str = "img-current") -> Mock:
+def _mock_runtime(
+    container: Mock, *, image_id: str = "img-current", workspace: Path | None = None
+) -> Mock:
     """Runtime mock whose container and project image share *image_id*.
 
     Restart's image-drift probe compares the two IDs; auto-created Mock
@@ -91,10 +125,10 @@ def _mock_runtime(container: Mock, *, image_id: str = "img-current") -> Mock:
     model image identity explicitly (diverge it to exercise the
     recreate rung).
     """
-    image = Mock()
-    image.id = image_id
-    image.labels.return_value = dict(CURRENT_INPUT_LABELS)
+    image = _mock_image(image_id)
     container.image = image
+    if workspace is not None:
+        container.mounts = [(str(workspace), str(WORKSPACE_ROOT))]
     runtime = Mock(spec=PodmanRuntime)
     runtime.container.return_value = container
     runtime.image.return_value = image
@@ -443,7 +477,10 @@ def test_task_restart_fresh_skips_resume_and_recreates() -> None:
         container_name = f"{project_name}-cli-{task_id}"
 
         container = _mock_container(state="running")
-        runtime_mock = _mock_runtime(container)
+        runtime_mock = _mock_runtime(
+            container,
+            workspace=load_project(project_name).tasks_root / task_id / WORKSPACE_DANGEROUS_DIRNAME,
+        )
         with (
             mock_git_config(),
             patch("terok.lib.core.runtime.resolve_runtime", return_value=runtime_mock),
@@ -475,7 +512,10 @@ def test_task_restart_fresh_survives_wedged_stop() -> None:
 
         container = _mock_container(state="running")
         container.stop.side_effect = RuntimeError("podman stop aborted: cleanup wedged")
-        runtime_mock = _mock_runtime(container)
+        runtime_mock = _mock_runtime(
+            container,
+            workspace=load_project(project_name).tasks_root / task_id / WORKSPACE_DANGEROUS_DIRNAME,
+        )
         with (
             mock_git_config(),
             patch("terok.lib.core.runtime.resolve_runtime", return_value=runtime_mock),
@@ -505,8 +545,7 @@ def test_task_restart_image_drift_warns_and_resumes() -> None:
         container.login_command.return_value = ["podman", "exec", "-it", container_name, "bash"]
         container.start.side_effect = lambda: setattr(container, "state", "running")
         runtime_mock = _mock_runtime(container)
-        rebuilt = Mock()
-        rebuilt.id = "img-rebuilt"
+        rebuilt = _mock_image("img-rebuilt")
         runtime_mock.image.return_value = rebuilt
         with (
             mock_git_config(),
@@ -533,10 +572,11 @@ def test_task_restart_recreate_on_image_drift_upgrades() -> None:
         container_name = f"{project_name}-cli-{task_id}"
 
         container = _mock_container(state="exited")
-        runtime_mock = _mock_runtime(container)
-        rebuilt = Mock()
-        rebuilt.id = "img-rebuilt"
-        rebuilt.labels.return_value = dict(CURRENT_INPUT_LABELS)
+        runtime_mock = _mock_runtime(
+            container,
+            workspace=load_project(project_name).tasks_root / task_id / WORKSPACE_DANGEROUS_DIRNAME,
+        )
+        rebuilt = _mock_image("img-rebuilt")
         runtime_mock.image.return_value = rebuilt
         with (
             mock_git_config(),
@@ -586,8 +626,7 @@ def test_task_restart_headless_ignores_image_drift() -> None:
         container = _mock_container(state="exited")
         container.start.side_effect = lambda: setattr(container, "state", "running")
         runtime_mock = _mock_runtime(container)
-        rebuilt = Mock()
-        rebuilt.id = "img-rebuilt"
+        rebuilt = _mock_image("img-rebuilt")
         runtime_mock.image.return_value = rebuilt
         with (
             mock_git_config(),
@@ -607,7 +646,10 @@ def test_task_restart_start_failure_falls_back_to_recreate() -> None:
 
         container = _mock_container(state="exited")
         container.start.side_effect = RuntimeError("layer missing")
-        runtime_mock = _mock_runtime(container)
+        runtime_mock = _mock_runtime(
+            container,
+            workspace=load_project(project_name).tasks_root / task_id / WORKSPACE_DANGEROUS_DIRNAME,
+        )
         with (
             mock_git_config(),
             patch("terok.lib.core.runtime.resolve_runtime", return_value=runtime_mock),
@@ -747,7 +789,10 @@ def test_task_restart_fresh_ignores_stale_bundle() -> None:
         task_id = create_task_with_mode(ctx, project_name)
 
         container = _mock_container(state="running")
-        runtime_mock = _mock_runtime(container)
+        runtime_mock = _mock_runtime(
+            container,
+            workspace=load_project(project_name).tasks_root / task_id / WORKSPACE_DANGEROUS_DIRNAME,
+        )
         with (
             mock_git_config(),
             patch("terok.lib.core.runtime.resolve_runtime", return_value=runtime_mock),

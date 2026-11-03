@@ -718,7 +718,7 @@ class TestTask:
             # share the handle so the resume rung stays open.
             mock_runtime.image.return_value = mock_runtime.container.return_value.image
             with (
-                _set_state_sequence(mock_runtime, ["exited", "running"]),
+                _set_state_sequence(mock_runtime, ["exited", "exited", "running"]),
                 mock_git_config(),
             ):
                 buffer = StringIO()

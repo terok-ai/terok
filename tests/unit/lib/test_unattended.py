@@ -213,11 +213,12 @@ def run_followup_request(
 
     state_patch: contextlib.AbstractContextManager
     if isinstance(container_state, list):
+        # Existence and protocol inspection both precede the start transition.
         state_patch = unittest.mock.patch.object(
             type(container),
             "state",
             new_callable=unittest.mock.PropertyMock,
-            side_effect=iter(container_state).__next__,
+            side_effect=iter([container_state[0], *container_state]).__next__,
             create=True,
         )
     else:
@@ -865,7 +866,7 @@ class TestTaskFollowupHeadless:
                     type(container_mock),
                     "state",
                     new_callable=unittest.mock.PropertyMock,
-                    side_effect=iter(["exited", "exited"]).__next__,
+                    side_effect=iter(["exited", "exited", "exited"]).__next__,
                     create=True,
                 ),
                 unittest.mock.patch.dict(
@@ -902,7 +903,7 @@ class TestTaskFollowupHeadless:
                     type(container_mock),
                     "state",
                     new_callable=unittest.mock.PropertyMock,
-                    side_effect=iter(["exited", "running"]).__next__,
+                    side_effect=iter(["exited", "exited", "running"]).__next__,
                     create=True,
                 ),
                 unittest.mock.patch.dict(

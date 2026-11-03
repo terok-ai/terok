@@ -874,8 +874,14 @@ than following links. Shared vendor configuration remains untrusted agent state;
 sharing it is not a security boundary between tasks.
 
 After upgrading from the old writable-input layout, rebuild agent/project images.
-CLI/Toad restart recreates obsolete containers while retaining workspaces and
-shared vendor state. Old headless containers cannot safely replay a task-writable
+CLI/Toad restart recreates confirmed obsolete containers; inspection failures
+abort restart without removing the container. Host-backed workspaces and shared
+vendor state remain intact. Sealed workspaces live inside the retained container:
+recreation discards unexported changes and prints a warning. This applies to automatic
+upgrades, explicit recreation and failed-resume fallbacks, without extra confirmation
+or a sealed-mode workflow restriction. No automatic workspace export is performed.
+Ordinary restart can still resume a compatible sealed container without recreating
+it. Old headless containers cannot safely replay a task-writable
 prompt: create a new headless task with an explicit prompt instead. Legacy prompt
 contents are not promoted into trusted host instructions.
 
