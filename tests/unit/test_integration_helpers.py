@@ -1,19 +1,113 @@
 # SPDX-FileCopyrightText: 2026 Jiri Vyskocil
 # SPDX-License-Identifier: Apache-2.0
 
-"""Shield startup failures expose hook logs without requiring real containers."""
+"""Integration fixtures satisfy runtime contracts without requiring real containers."""
 
+import runpy
 import subprocess
+import sys
+from collections.abc import Callable
+from contextlib import redirect_stderr, redirect_stdout
+from io import StringIO
 from pathlib import Path
 from unittest.mock import Mock, patch
 
 import pytest
+from terok_executor import require_image_input_protocol, require_task_input_protocol
+from terok_sandbox.runtime import podman
 
 from tests.integration import helpers
+from tests.testfs import CURRENT_CONTAINER_PROTOCOL, CURRENT_INPUT_LABELS, WORKSPACE_ROOT
 
 CONTAINER_NAME = f"{helpers.PODMAN_CONTAINER_PREFIX}-diagnostics"
 HOOK_ERROR = "terok-shield hook: missing nsenter"
 PODMAN_ERROR = "crun: error executing hook"
+
+
+@pytest.fixture
+def fake_podman(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> Callable[..., subprocess.CompletedProcess[str]]:
+    """Execute only the generated Python shim in-process, never a Podman subprocess."""
+    script = helpers.write_fake_podman(tmp_path, tmp_path / "runtime.json")
+
+    def run(argv: list[str], **_kwargs: object) -> subprocess.CompletedProcess[str]:
+        """Adapt the shim's output and exit status to the runtime's process interface."""
+        output, error = StringIO(), StringIO()
+        with (
+            patch.object(sys, "argv", [str(script), *argv[1:]]),
+            redirect_stdout(output),
+            redirect_stderr(error),
+            pytest.raises(SystemExit) as exited,
+        ):
+            runpy.run_path(str(script), run_name="__main__")
+        return subprocess.CompletedProcess(
+            argv, exited.value.code, output.getvalue(), error.getvalue()
+        )
+
+    monkeypatch.setattr(podman, "require_host_tool", lambda _name: str(script))
+    monkeypatch.setattr(podman.subprocess, "run", run)
+    return run
+
+
+def test_fake_image_satisfies_strict_inspection(
+    fake_podman: Callable[..., subprocess.CompletedProcess[str]],
+) -> None:
+    """The fixture's labels and full image identity pass the production protocol preflight."""
+    image = podman.PodmanRuntime().image(helpers.PODMAN_TEST_IMAGE)
+
+    observed = image.inspect()
+
+    assert observed is not None
+    assert observed.labels == CURRENT_INPUT_LABELS
+    require_image_input_protocol(image)
+    by_id = podman.PodmanRuntime().image(observed.id).inspect()
+    assert by_id == observed
+
+
+def test_fake_container_satisfies_strict_inspection(
+    fake_podman: Callable[..., subprocess.CompletedProcess[str]], tmp_path: Path
+) -> None:
+    """Creation inputs and subsequent lifecycle changes survive strict snapshot inspection."""
+    workspace = tmp_path / "workspace"
+    created = fake_podman(
+        [
+            "podman",
+            "run",
+            "--name",
+            CONTAINER_NAME,
+            "-e",
+            f"TEROK_CONTAINER_PROTOCOL={CURRENT_CONTAINER_PROTOCOL}",
+            "-v",
+            f"{workspace}:{WORKSPACE_ROOT}:rw",
+            helpers.PODMAN_TEST_IMAGE,
+        ]
+    )
+    container = podman.PodmanRuntime().container(CONTAINER_NAME)
+
+    observed = container.inspect()
+
+    assert observed is not None
+    assert observed.id == created.stdout.strip()
+    assert observed.state == "running"
+    assert observed.env == {"TEROK_CONTAINER_PROTOCOL": CURRENT_CONTAINER_PROTOCOL}
+    assert observed.mounts == ((str(workspace), str(WORKSPACE_ROOT)),)
+    require_task_input_protocol(container, inspection=observed)
+    for operation, state in (("stop", "exited"), ("start", "running")):
+        fake_podman(["podman", operation, CONTAINER_NAME])
+        updated = container.inspect()
+        assert updated is not None
+        assert updated.state == state
+        assert updated.id == observed.id
+        assert updated.env == observed.env
+        assert updated.mounts == observed.mounts
+
+
+def test_fake_absent_container_is_confirmed_by_exists(
+    fake_podman: Callable[..., subprocess.CompletedProcess[str]],
+) -> None:
+    """Missing inspection returns absence only through a failing existence probe."""
+    assert podman.PodmanRuntime().container(CONTAINER_NAME).inspect() is None
 
 
 @pytest.fixture
