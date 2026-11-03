@@ -76,12 +76,10 @@ def test_each_failure_is_independent(emergency, tmp_path, monkeypatch):
         monkeypatch.setattr(panic, name, MagicMock(side_effect=SystemExit(name)))
     result = panic.execute_panic()
     assert result.containers_stopped == ["task"]
-    assert (
-        result.lock_error
-        and result.vault_error
-        and result.supervisor_errors
-        and result.shield_errors
-    )
+    assert result.lock_error
+    assert result.vault_error
+    assert result.supervisor_errors
+    assert result.shield_errors
     assert result.has_errors
     report = panic.format_panic_report(result)
     assert "Containers killed: 1" in report
@@ -218,9 +216,11 @@ def test_hung_actions_have_one_deadline(emergency, tmp_path, monkeypatch):
     assert not result.vault_stopped
 
 
-def test_supervisor_partial_failure_is_reported(emergency):
+def test_supervisor_partial_failure_is_reported(emergency, monkeypatch):
     """Preserve the per-supervisor success and failure rows."""
-    panic._kill_supervisors.return_value = [("first", None), ("second", "refused")]
+    monkeypatch.setattr(
+        panic._kill_supervisors, "return_value", [("first", None), ("second", "refused")]
+    )
     result = panic.execute_panic()
     assert result.supervisors_killed == ["first"]
     assert result.supervisor_errors == [("second", "refused")]

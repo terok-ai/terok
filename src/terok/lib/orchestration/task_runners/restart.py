@@ -44,7 +44,7 @@ from .toad import _rehydrate_toad_token, _toad_browser_url, task_run_toad
 if TYPE_CHECKING:
     from pathlib import Path
 
-    from terok.lib.integrations.sandbox import ContainerRuntime
+    from terok.lib.integrations.sandbox import Container, ContainerRuntime
 
     from ...core.project_model import ProjectConfig
 
@@ -130,14 +130,9 @@ def _make_running(
     container = runtime.container(cname)
     container_state = container.state
 
-    protocol_reason = None
-    if container_state is not None:
-        try:
-            require_task_input_protocol(container)
-        except RuntimeError as exc:
-            protocol_reason = str(exc)
+    reason = _recreate_reason(container, container_state, fresh=fresh)
 
-    if not bounce and container_state == "running" and protocol_reason is None:
+    if not bounce and container_state == "running" and reason is None:
         # Ensure never disturbs a live container — stale image or not.
         _validate_restart_preconditions(project, task_id, mode, meta, cname)
         print(f"Task {task_id} is already running: {_green(cname, _supports_color())}")
@@ -146,8 +141,6 @@ def _make_running(
 
     if bounce:
         print(f"Restarting task {project_name}/{task_id} ({mode})...")
-
-    reason = protocol_reason or _recreate_reason(container_state, fresh=fresh)
 
     if reason is not None and mode != "run":
         _preflight_replacement_image(project, runtime)
@@ -168,17 +161,32 @@ def _make_running(
         _refresh_before_resume(project, cname, project.tasks_root / str(task_id), runtime=runtime)
         if container_state == "running":
             _stop_running_container(project, task_id, mode, cname, meta_path)
-        try:
-            _start_and_report_restart(project, task_id, mode, cname, meta, meta_path)
+        reason = _resume_failure_reason(project, task_id, mode, cname, meta, meta_path, runtime)
+        if reason is None:
             return
-        except SystemExit as exc:
-            reason = str(exc) or "podman start failed"
-            if mode != "run":
-                _preflight_replacement_image(project, runtime)
 
     _recreate_in_place(
         project, task_id, mode, cname, meta, meta_path, reason, unrestricted=unrestricted
     )
+
+
+def _resume_failure_reason(
+    project: ProjectConfig,
+    task_id: str,
+    mode: str,
+    cname: str,
+    meta: dict,
+    meta_path: Path,
+    runtime: ContainerRuntime,
+) -> str | None:
+    """Resume the retained container or preflight its replacement after a failed start."""
+    try:
+        _start_and_report_restart(project, task_id, mode, cname, meta, meta_path)
+    except SystemExit as exc:
+        if mode != "run":
+            _preflight_replacement_image(project, runtime)
+        return str(exc) or "podman start failed"
+    return None
 
 
 def _preflight_replacement_image(project: ProjectConfig, runtime: ContainerRuntime) -> None:
@@ -244,7 +252,9 @@ def _refresh_clearance_mode(project: ProjectConfig, cname: str) -> None:
         )
 
 
-def _recreate_reason(container_state: str | None, *, fresh: bool) -> str | None:
+def _recreate_reason(
+    container: Container, container_state: str | None, *, fresh: bool
+) -> str | None:
     """First reason the resume rung can't be taken, or ``None`` to resume.
 
     Image drift is deliberately *not* a reason: a plain restart keeps a
@@ -253,6 +263,11 @@ def _recreate_reason(container_state: str | None, *, fresh: bool) -> str | None:
     Picking up a rebuilt image is the explicit job of *fresh* — the
     "recreate + restart" the caller asked for.
     """
+    if container_state is not None:
+        try:
+            require_task_input_protocol(container)
+        except RuntimeError as exc:
+            return str(exc)
     if fresh:
         return "recreate requested"
     if container_state is None:

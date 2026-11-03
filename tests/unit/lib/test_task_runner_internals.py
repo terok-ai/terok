@@ -1278,6 +1278,7 @@ class TestRunContainer:
         container launch.
         """
         project = self._make_project()
+        broker_context = BrokerContext("test", "task", "default")
         with (
             patch(
                 "terok.lib.orchestration.task_runners.container._agent_runner"
@@ -1290,7 +1291,7 @@ class TestRunContainer:
             sandbox_factory.return_value.launch_prepared.side_effect = BuildError("CDI broken")
             with pytest.raises(SystemExit, match="CDI broken"):
                 _run_container(
-                    broker_context=BrokerContext("test", "task", "default"),
+                    broker_context=broker_context,
                     task_id="t1",
                     cname="gpu-ctr",
                     image="nvidia:latest",
@@ -1307,6 +1308,7 @@ class TestRunContainer:
         is caught here instead of crashing with a bare traceback.
         """
         project = self._make_project()
+        broker_context = BrokerContext("test", "task", "default")
         with (
             patch(
                 "terok.lib.orchestration.task_runners.container._agent_runner"
@@ -1321,7 +1323,7 @@ class TestRunContainer:
             )
             with pytest.raises(SystemExit, match="podman not found"):
                 _run_container(
-                    broker_context=BrokerContext("test", "task", "default"),
+                    broker_context=broker_context,
                     task_id="t1",
                     cname="ctr",
                     image="img",
@@ -1572,6 +1574,7 @@ class TestRunContainer:
     def test_podman_args_managed_flag_refused_at_launch(self) -> None:
         """The launch path re-runs sandbox's gate on programmatic configs."""
         project = self._make_project()
+        broker_context = BrokerContext("test", "task", "default")
         project.podman_args = ["--cap-add", "perfmon"]
         with (
             patch(
@@ -1580,7 +1583,7 @@ class TestRunContainer:
             pytest.raises(SystemExit, match="--cap-add"),
         ):
             _run_container(
-                broker_context=BrokerContext("test", "task", "default"),
+                broker_context=broker_context,
                 task_id="t1",
                 cname="bad-ctr",
                 image="alpine:latest",

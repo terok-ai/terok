@@ -125,7 +125,7 @@ def _run_action(
     """Deliver a worker outcome without mutating the collector's result."""
     try:
         completed.put((kind, label, action(), None))
-    except (Exception, SystemExit) as exc:
+    except (Exception, SystemExit) as exc:  # NOSONAR(S5754) - worker exits are failures
         completed.put((kind, label, None, str(exc) or type(exc).__name__))
 
 
