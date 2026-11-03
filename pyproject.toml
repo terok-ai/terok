@@ -48,7 +48,7 @@ dependencies = [
     "terok-sandbox @ git+https://github.com/sliwowitz/terok-sandbox@fix/container-boundaries",
     "terok-shield @ git+https://github.com/sliwowitz/terok-shield@fix/container-boundaries",
     "terok-clearance @ git+https://github.com/sliwowitz/terok-clearance@fix/container-boundaries",
-    "terok-util @ git+https://github.com/sliwowitz/terok-util@fix/container-boundaries",
+    "terok-util @ https://github.com/terok-ai/terok-util/releases/download/v0.5.0a4/terok_util-0.5.0a4-py3-none-any.whl",
 ]
 
 [project.urls]

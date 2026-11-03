@@ -3,7 +3,7 @@
 # body — including every pwn-request mitigation and the reviewed
 # ``allow-unsafe-pr-checkout`` opt-in — lives in terok-util's
 # fleet-sonar-pr.yml (reusable across the package family), pinned here by
-# reviewed branch.
+# release tag.
 name: Sonar PR
 
 on:
@@ -17,6 +17,6 @@ permissions:
 
 jobs:
   sonar:
-    uses: sliwowitz/terok-util/.github/workflows/fleet-sonar-pr.yml@fix/container-boundaries
+    uses: terok-ai/terok-util/.github/workflows/fleet-sonar-pr.yml@v0.5.0a4
     secrets:
       SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}

@@ -1,6 +1,6 @@
 # Same-repo SonarQube Cloud scan.  The job body lives in terok-util's
 # fleet-sonar.yml (reusable across the package family), pinned here by
-# reviewed branch.  Fork PRs are handled by sonar_pr.yml via workflow_run in
+# release tag.  Fork PRs are handled by sonar_pr.yml via workflow_run in
 # the trusted base-repo context, because GitHub does not expose
 # SONAR_TOKEN to runs originating from forks.
 name: SonarQube Cloud
@@ -18,6 +18,6 @@ permissions:
 
 jobs:
   sonar:
-    uses: sliwowitz/terok-util/.github/workflows/fleet-sonar.yml@fix/container-boundaries
+    uses: terok-ai/terok-util/.github/workflows/fleet-sonar.yml@v0.5.0a4
     secrets:
       SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
