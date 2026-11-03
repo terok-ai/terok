@@ -67,6 +67,7 @@ if TYPE_CHECKING:
         providers_config_dir as providers_config_dir,
         resolve_instructions as resolve_instructions,
         store_api_key as store_api_key,
+        write_initial_prompt as write_initial_prompt,
     )
     from terok.lib.orchestration.agent_config import (
         resolve_agent_config as resolve_agent_config,
@@ -111,6 +112,7 @@ _LAZY: dict[str, str] = {
     "installed_agents": "terok.lib.core.images",
     "installed_agents_for_project": "terok.lib.core.images",
     "prepare_login_session": "terok.lib.integrations.executor",
+    "write_initial_prompt": "terok.lib.integrations.executor",
     "providers_config_dir": "terok.lib.integrations.executor",
     "resolve_agent_config": "terok.lib.orchestration.agent_config",
     "resolve_auth_provider": "terok.lib.domain.auth",
@@ -138,6 +140,7 @@ __all__ = [
     "bundled_default_instructions",
     "ensure_sandbox_ready",
     "get_agent",
+    "write_initial_prompt",
     "global_instructions_path",
     "inherits_instructions",
     "load_auth_providers",

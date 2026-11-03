@@ -14,7 +14,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 
-from terok_util import ensure_dir
+from terok_util import ensure_dir, open_untrusted_directory, write_untrusted_text
 
 from terok.lib.integrations.executor import AgentRunner
 from terok.lib.integrations.sandbox import Sandbox, container_diagnostics, remove_container_state
@@ -33,7 +33,7 @@ from ...util.ansi import (
 )
 from ...util.emoji import render_emoji
 from ...util.fs import archive_timestamp, create_archive_dir
-from ...util.host_cmd import WORKSPACE_DANGEROUS_DIRNAME
+from ...util.host_cmd import WORKSPACE_DANGEROUS_DIRNAME, WORKSPACE_SEED_PENDING
 from ...util.logging_utils import _log_debug
 from .identity import _generate_unique_id
 from .meta import (
@@ -99,10 +99,11 @@ def _task_new(project: ProjectConfig, *, name: str | None = None) -> str:
     ensure_dir(ws)
 
     workspace_dir = ws / WORKSPACE_DANGEROUS_DIRNAME
-    ensure_dir(workspace_dir)
-    workspace_dir.chmod(0o700)
+    with open_untrusted_directory(workspace_dir, create=True) as workspace_fd:
+        os.fchmod(workspace_fd, 0o700)
     marker_path = workspace_dir / ".new-task-marker"
-    marker_path.write_text(
+    write_untrusted_text(
+        marker_path,
         "# This marker signals that the workspace should be reset to the latest remote HEAD.\n"
         "# It is created by 'terok task new' and removed by init-ssh-and-repo.sh"
         " after reset.\n"
@@ -110,6 +111,7 @@ def _task_new(project: ProjectConfig, *, name: str | None = None) -> str:
         encoding="utf-8",
     )
 
+    (ws / WORKSPACE_SEED_PENDING).touch(exist_ok=False)
     _write_task_readme(ws)
 
     meta = {

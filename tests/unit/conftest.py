@@ -232,6 +232,35 @@ def mock_runtime() -> Iterator[MagicMock]:
     fake.images.return_value = []
     fake.force_remove.return_value = []
     container = fake.container.return_value
+    from terok_sandbox import ContainerInspection, ImageInspection
+
+    from tests.testfs import CURRENT_CONTAINER_PROTOCOL, CURRENT_INPUT_LABELS
+
+    container.id = "container-current"
+    container.mounts = []
+    container.env = {"TEROK_CONTAINER_PROTOCOL": CURRENT_CONTAINER_PROTOCOL}
+    for image in (container.image, fake.image.return_value):
+        image.id = "img-current"
+        image.ref = "image-current"
+        image.labels.return_value = dict(CURRENT_INPUT_LABELS)
+        image.inspect.side_effect = lambda image=image: (
+            None if image.id is None else ImageInspection(image.id, dict(image.labels()))
+        )
+
+    def inspect_container() -> ContainerInspection | None:
+        """Capture mutable container metadata with one state observation."""
+        state = container.state
+        if state is None:
+            return None
+        return ContainerInspection(
+            container.id,
+            state,
+            container.image,
+            dict(container.env),
+            tuple(container.mounts),
+        )
+
+    container.inspect.side_effect = inspect_container
     container.wait.return_value = 0
     container.login_command.return_value = ["podman", "exec", "-it", "ctr", "bash"]
     container.stream_initial_logs.return_value = True

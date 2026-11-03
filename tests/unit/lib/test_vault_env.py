@@ -336,7 +336,7 @@ def test_materialize_uses_one_fresh_roster_snapshot(tmp_path: Path) -> None:
     )
     roster = object()
     egress = object()
-    assembled = SimpleNamespace(env={}, volumes=(), egress=egress)
+    assembled = SimpleNamespace(env={}, volumes=(), egress=egress, broker_context=object())
 
     with (
         patch("terok.lib.orchestration.environment.make_sandbox_config"),
@@ -358,12 +358,13 @@ def test_materialize_uses_one_fresh_roster_snapshot(tmp_path: Path) -> None:
             return_value=frozenset(),
         ),
     ):
-        _env, _volumes, actual_egress = TaskEnvironment(project, "1").materialize()
+        _env, _volumes, actual_egress, actual_context = TaskEnvironment(project, "1").materialize()
 
     load.assert_called_once_with()
     assert patch_sets.call_args.args[0] is roster
     assert assemble.call_args.args[1] is roster
     assert actual_egress is egress
+    assert actual_context is assembled.broker_context
 
 
 def test_materialize_with_the_vault_on_warns_about_an_unrouted_claude_login(tmp_path: Path) -> None:
@@ -387,7 +388,7 @@ def test_materialize_with_the_vault_on_warns_about_an_unrouted_claude_login(tmp_
         timezone=None,
     )
     roster = object()
-    assembled = SimpleNamespace(env={}, volumes=(), egress=object())
+    assembled = SimpleNamespace(env={}, volumes=(), egress=object(), broker_context=object())
     env_module = "terok.lib.orchestration.environment"
 
     with (

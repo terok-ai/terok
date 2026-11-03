@@ -833,6 +833,62 @@ passphrase tier (temporary cache *and* persistent tiers), so nothing can
 auto-unlock the vault afterwards.  Recovery means re-supplying the
 escrowed recovery passphrase.
 
+PANIC also immediately kills every live managed container, without a second
+confirmation, and independently attempts network quarantine and supervisor
+termination. It does not parse task status files. A failed or hung step cannot
+prevent the others; the report names failures and timeouts. Containers are not
+removed. `terok panic --clear` clears only the panic marker — it does not
+restore credentials or restart anything. The marker does not block task launches.
+Save work before testing this button.
+
+The deadline bounds how long PANIC waits, not how long a stuck operation can run.
+In a long-lived TUI or API process, timed-out workers can still purge credentials,
+stop supervisors or write the marker later. Clearing the marker does not wait for
+or cancel those workers. Before restoring credentials or starting tasks, verify
+that shutdown has finished; after a timeout, exit the old application and check
+for remaining shutdown operations before recovery.
+
+### Task inputs and writable state
+
+Shared vendor agent directories remain supported. Terok's own instructions,
+wrappers, initial prompt, current headless prompt, review status and Toad token
+live in a separate `agent-inputs` directory, mounted read-only at
+`/home/dev/.terok/input`. Per-task credential overlays are snapshotted there too:
+their mount sources never point into task-writable vendor files. Initial prompts
+are immutable. A separate empty
+`/home/dev/.terok/events/initial-prompt.consumed` marker acknowledges consumption;
+wrappers and the login banner check that marker rather than renaming the prompt.
+The writable marker is delivery state, not proof an agent obeyed the instruction.
+
+These two narrow input/acknowledgement channels stay live even in sealed mode.
+Vendor configuration and sessions keep their existing sealed-copy isolation.
+Headless prompt history stays on the host, outside every task mount. Prompts
+are limited to 120 KiB of UTF-8 bytes so they fit the agent CLIs' argument transport;
+archive the host history before it reaches 16 MiB. Work status
+is bounded, untrusted display data; pending phase commands instead live in the
+host-only `host-control` directory beside `agent-config`.
+
+Host I/O refuses symlinks, hardlinks and special files in shared configuration
+paths, including linked ancestor directories. Unsafe paths produce errors rather
+than following links. Shared vendor configuration remains untrusted agent state;
+sharing it is not a security boundary between tasks.
+
+After upgrading from the old writable-input layout, rebuild agent/project images.
+CLI/Toad restart recreates confirmed obsolete containers; inspection failures
+abort restart without removing the container. Host-backed workspaces and shared
+vendor state remain intact. Sealed workspaces live inside the retained container:
+recreation discards unexported changes and prints a warning. This applies to automatic
+upgrades, explicit recreation and failed-resume fallbacks, without extra confirmation
+or a sealed-mode workflow restriction. No automatic workspace export is performed.
+Ordinary restart can still resume a compatible sealed container without recreating
+it. Old headless containers cannot safely replay a task-writable
+prompt: create a new headless task with an explicit prompt instead. Legacy prompt
+contents are not promoted into trusted host instructions.
+
+The former workspace **view/copy diff** actions and headless diff statistics have
+been removed. Review agent changes through the git gate; terok does not execute
+git in the task workspace on the host or copy task-generated diffs to the clipboard.
+
 ---
 
 ## Headless Agent Runs (Unattended)
@@ -1052,7 +1108,7 @@ Every task container receives instructions explaining the workspace layout, avai
 Without any settings, a task receives the bundled default, then the global file, then the project file.
 
 - **Claude**: injected via `--append-system-prompt` (system-level context)
-- **Codex**: loaded from `/home/dev/.terok/instructions.md` via `-c model_instructions_file=...`
+- **Codex**: loaded from `/home/dev/.terok/input/instructions.md` via `-c model_instructions_file=...`
   in the wrapper
 - **Vibe**: the task's instructions file is mounted read-only at `~/.vibe/AGENTS.md`,
   which Vibe loads as system context in CLI, headless, and ACP sessions. Sealed
@@ -1177,7 +1233,7 @@ then looks exactly as it would running the command directly in your terminal.
 
 ### Debugging
 
-Resolved instructions are always written to `<tasks_root>/<task_id>/agent-config/instructions.md` on the host for inspection.
+Resolved instructions are always written to `<tasks_root>/<task_id>/agent-inputs/instructions.md` on the host for inspection.
 
 ---
 

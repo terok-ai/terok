@@ -10,9 +10,8 @@ Scans all ``.py`` files under ``src/terok/`` and flags any function that both:
 2. References the ``"workspace-dangerous"`` string literal **or** the
    ``WORKSPACE_DANGEROUS_DIRNAME`` constant name
 
-There should be **zero** co-occurrences — all legitimate git operations
-targeting agent workspaces now go through ``podman exec`` in
-``container_exec.py``, never through host-side subprocess calls.
+There should be **zero** co-occurrences — review uses the git gate, never host-side subprocess calls against
+agent-controlled workspaces.
 """
 
 import ast
@@ -73,5 +72,5 @@ def test_no_subprocess_in_dangerous_workspace() -> None:
 
     assert not violations, (
         "Host-side subprocess calls must NEVER target workspace-dangerous directories.\n"
-        "Use container_exec.container_git_diff() instead.\n\n" + "\n".join(violations)
+        "Review through the git gate instead.\n\n" + "\n".join(violations)
     )

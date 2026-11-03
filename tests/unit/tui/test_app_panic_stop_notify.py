@@ -1,45 +1,21 @@
 # SPDX-FileCopyrightText: 2026 Jiri Vyskocil
 # SPDX-License-Identifier: Apache-2.0
 
-"""``TerokTUI._on_panic_stop_confirmed`` when the operator keeps the containers running.
-
-The notification names why the containers are still exposed: the shield
-kill-switch, or shields that failed during the lockdown.
-"""
-
-from __future__ import annotations
+"""The armed TUI panic button starts the full kill-switch, without a second dialog."""
 
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 
 import pytest
 
+from terok.lib.api import execute_panic
 from terok.tui.app import TerokTUI
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize(
-    ("panic_result", "expected"),
-    [
-        pytest.param(
-            SimpleNamespace(shield_disabled=True, shield_errors=[]),
-            "shields DISABLED",
-            id="disabled",
-        ),
-        pytest.param(
-            SimpleNamespace(shield_disabled=False, shield_errors=["ctr: nft missing"]),
-            "some shields failed",
-            id="errors",
-        ),
-    ],
-)
-async def test_declined_stop_names_the_exposure(
-    panic_result: SimpleNamespace, expected: str
-) -> None:
-    """Declining the stop after a panic notifies with the reason the shields are not protecting."""
-    stub = SimpleNamespace(notify=MagicMock(), _last_panic_result=panic_result)
-
-    await TerokTUI._on_panic_stop_confirmed(stub, False)
-
-    stub.notify.assert_called_once()
-    assert expected in stub.notify.call_args.args[0]
+async def test_panic_worker_executes_the_whole_shutdown():
+    """There is no separate stop phase to decline or accidentally skip."""
+    stub = SimpleNamespace(run_worker=MagicMock())
+    await TerokTUI._execute_panic(stub)
+    assert stub.run_worker.call_args.args == (execute_panic,)
+    assert stub.run_worker.call_args.kwargs["thread"] is True

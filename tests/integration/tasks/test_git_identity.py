@@ -94,7 +94,7 @@ def _build_runner_env(
 
     mounts_base = mounts_dir()
     mounts_base.mkdir(parents=True, exist_ok=True)
-    env, _volumes, _ = build_task_env_and_volumes(project, "1")
+    env, _volumes, _egress, _broker_context = build_task_env_and_volumes(project, "1")
     return env
 
 

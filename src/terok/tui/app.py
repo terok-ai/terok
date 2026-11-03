@@ -96,7 +96,6 @@ if _HAS_TEXTUAL:
         get_tasks,
         load_project,
         make_git_gate,
-        panic_stop_containers,
         save_tui_theme,
         set_experimental,
     )
@@ -250,8 +249,6 @@ if _HAS_TEXTUAL:
         "restart": "_action_restart_task",
         "recreate": "_action_recreate_task",
         "followup": "_action_task_followup",
-        "diff_head": "action_copy_diff_head",
-        "diff_prev": "action_copy_diff_prev",
         "login": "_action_login",
         "follow_logs": "_action_follow_logs",
         "rename": "_action_rename_task",
@@ -2103,7 +2100,6 @@ if _HAS_TEXTUAL:
                 panic_result = worker.result
                 if not panic_result:
                     return
-                self._last_panic_result = panic_result
                 report = format_panic_report(panic_result)
                 severity: Literal["error", "warning"] = (
                     "error" if panic_result.has_errors else "warning"
@@ -2111,30 +2107,6 @@ if _HAS_TEXTUAL:
                 self.notify(report, severity=severity, timeout=30)
                 await self.refresh_tasks()
                 self._refresh_project_state()
-                if panic_result.total_running > 0:
-                    await self.push_screen(
-                        ConfirmDestructiveScreen(
-                            "Resource access has been cut.\n\nAlso kill all containers?",
-                            title="Kill Containers?",
-                            confirm_label="Kill",
-                        ),
-                        self._on_panic_stop_confirmed,
-                    )
-                return
-
-            if worker.group == "panic-stop":
-                stop_result = worker.result
-                if not stop_result:
-                    return
-                stopped, errors = stop_result
-                if errors:
-                    self.notify(
-                        f"Killed {len(stopped)} container(s), {len(errors)} failed",
-                        severity="error",
-                    )
-                else:
-                    self.notify(f"Killed {len(stopped)} container(s)")
-                await self.refresh_tasks()
                 return
 
         # ---------- Actions (keys + called from buttons) ----------
@@ -2161,33 +2133,14 @@ if _HAS_TEXTUAL:
 
         async def on_panic_button_fired(self, _event: PanicButton.Fired) -> None:
             """Handle the panic button completing its arm-then-fire sequence."""
-            await self._execute_panic_phase1()
+            await self._execute_panic()
 
-        async def _execute_panic_phase1(self) -> None:
-            """Launch Phase 1 panic: shields up, stop proxy and gate."""
+        async def _execute_panic(self) -> None:
+            """Kill containers and their access paths without another confirmation."""
             self.run_worker(
-                lambda: execute_panic(stop_containers=False),
+                execute_panic,
                 name="panic-lockdown",
                 group="panic",
-                thread=True,
-                exit_on_error=False,
-            )
-
-        async def _on_panic_stop_confirmed(self, confirmed: bool | None) -> None:
-            """Handle the container-stop confirmation after panic lockdown."""
-            if not confirmed:
-                pr = getattr(self, "_last_panic_result", None)
-                if pr and pr.shield_disabled:
-                    self.notify("Containers left running (shields DISABLED — no firewall)")
-                elif pr and pr.shield_errors:
-                    self.notify("Containers left running (some shields failed)")
-                else:
-                    self.notify("Containers left running (shields are up)")
-                return
-            self.run_worker(
-                panic_stop_containers,
-                name="panic-stop-containers",
-                group="panic-stop",
                 thread=True,
                 exit_on_error=False,
             )

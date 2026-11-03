@@ -13,27 +13,27 @@ handle them.
 
 This module also handles **pending-phase** files (``pending-phase.yml``), used
 by external tools (e.g. kanban-tui) to queue deferred phase transitions on
-running tasks.
+running tasks. These commands live in the host-only ``host-control`` sibling,
+never in the task-writable telemetry directory.
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
-from tempfile import NamedTemporaryFile
+
+from terok_util import read_untrusted_text, remove_untrusted_file, write_untrusted_text
 
 from ..util.yaml import YAMLError, dump as _yaml_dump, load as _yaml_load
+
+_MAX_STATUS_BYTES = 64 * 1024
+_MAX_PHASE_BYTES = 1024 * 1024
+_HOST_CONTROL_DIR = "host-control"
 
 
 def _write_yaml_atomic(path: Path, data: dict[str, str]) -> None:
     """Write *data* as YAML to *path* atomically via temp-file + replace."""
-    payload = _yaml_dump(data)
-    with NamedTemporaryFile(
-        "w", encoding="utf-8", dir=path.parent, suffix=".tmp", delete=False
-    ) as tmp:
-        tmp.write(payload)
-        tmp_path = Path(tmp.name)
-    tmp_path.replace(path)
+    write_untrusted_text(path, _yaml_dump(data))
 
 
 STATUS_FILE_NAME = "work-status.yml"
@@ -94,11 +94,9 @@ def read_work_status(agent_config_dir: Path) -> WorkStatus:
     status-only value.
     """
     status_path = agent_config_dir / STATUS_FILE_NAME
-    if not status_path.is_file():
-        return WorkStatus()
     try:
-        raw = _yaml_load(status_path.read_text(encoding="utf-8"))
-    except (YAMLError, OSError, UnicodeDecodeError) as exc:
+        raw = _yaml_load(read_untrusted_text(status_path, max_bytes=_MAX_STATUS_BYTES))
+    except (YAMLError, OSError, ValueError, RecursionError) as exc:
         from ..util.logging_utils import _log_debug
 
         _log_debug(f"Cannot read work status {status_path}: {exc}")
@@ -126,13 +124,12 @@ def write_work_status(
     """
     path = agent_config_dir / STATUS_FILE_NAME
     if status is None:
-        path.unlink(missing_ok=True)
+        remove_untrusted_file(path)
         return
     if not isinstance(status, str) or not status:
         raise ValueError("status must be a non-empty string")
     if message is not None and not isinstance(message, str):
         raise ValueError("message must be a string or None")
-    agent_config_dir.mkdir(parents=True, exist_ok=True)
     data: dict[str, str] = {"status": status}
     if message is not None:
         data["message"] = message
@@ -151,16 +148,14 @@ class PendingPhase:
 
 
 def read_pending_phase(agent_config_dir: Path) -> PendingPhase | None:
-    """Read ``pending-phase.yml`` from *agent_config_dir*.
+    """Read a host-authored pending phase from the task's host-only control directory.
 
     Returns ``None`` if the file is missing, empty, or malformed.
     """
-    phase_path = agent_config_dir / PENDING_PHASE_FILE
-    if not phase_path.is_file():
-        return None
+    phase_path = agent_config_dir.parent / _HOST_CONTROL_DIR / PENDING_PHASE_FILE
     try:
-        raw = _yaml_load(phase_path.read_text(encoding="utf-8"))
-    except (YAMLError, OSError, UnicodeDecodeError) as exc:
+        raw = _yaml_load(read_untrusted_text(phase_path, max_bytes=_MAX_PHASE_BYTES))
+    except (YAMLError, OSError, ValueError, RecursionError) as exc:
         from ..util.logging_utils import _log_debug
 
         _log_debug(f"Cannot read pending phase {phase_path}: {exc}")
@@ -177,18 +172,17 @@ def read_pending_phase(agent_config_dir: Path) -> PendingPhase | None:
 
 
 def write_pending_phase(agent_config_dir: Path, phase: str, prompt: str) -> None:
-    """Write ``pending-phase.yml`` into *agent_config_dir*."""
+    """Publish a host-authored pending phase outside every container mount."""
     if not isinstance(phase, str) or not phase:
         raise ValueError("phase must be a non-empty string")
     if not isinstance(prompt, str):
         raise ValueError("prompt must be a string")
-    agent_config_dir.mkdir(parents=True, exist_ok=True)
-    phase_path = agent_config_dir / PENDING_PHASE_FILE
+    phase_path = agent_config_dir.parent / _HOST_CONTROL_DIR / PENDING_PHASE_FILE
     data = {"phase": phase, "prompt": prompt}
     _write_yaml_atomic(phase_path, data)
 
 
 def clear_pending_phase(agent_config_dir: Path) -> None:
-    """Delete ``pending-phase.yml`` from *agent_config_dir* if it exists."""
-    phase_path = agent_config_dir / PENDING_PHASE_FILE
-    phase_path.unlink(missing_ok=True)
+    """Remove a pending command from the host-only control directory."""
+    phase_path = agent_config_dir.parent / _HOST_CONTROL_DIR / PENDING_PHASE_FILE
+    remove_untrusted_file(phase_path)

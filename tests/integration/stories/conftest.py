@@ -15,11 +15,14 @@ import json
 from collections.abc import AsyncIterator, Iterator
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import pytest
 
 from tests.integration.helpers import TerokIntegrationEnv
+
+if TYPE_CHECKING:
+    from terok_sandbox import BrokerContext
 
 # ── Mock upstream API ───────────────────────────────────────
 
@@ -133,8 +136,16 @@ def vault_routes(tmp_path: Path, mock_upstream_api: MockUpstreamState) -> Path:
 
 
 @pytest.fixture
+def vault_broker_context() -> BrokerContext:
+    """Bind the story's live credential grant and broker to the same task."""
+    from terok_sandbox import BrokerContext
+
+    return BrokerContext(scope="project-x", subject="task-42", credential_set="default")
+
+
+@pytest.fixture
 def populated_vault_db(
-    terok_env: TerokIntegrationEnv, tmp_path: Path
+    terok_env: TerokIntegrationEnv, tmp_path: Path, vault_broker_context: BrokerContext
 ) -> tuple[Path, str, dict[str, Any]]:
     """Create a CredentialDB with one API-key credential + one phantom token.
 
@@ -153,8 +164,13 @@ def populated_vault_db(
     real_credential = {"type": "api_key", "key": "sk-ant-real-secret-001"}
 
     db = CredentialDB(db_path, passphrase="integration-test-passphrase")
-    db.store_credential("default", "claude", real_credential)
-    phantom_token = db.create_token("project-x", "task-42", "default", "claude")
+    db.store_credential(vault_broker_context.credential_set, "claude", real_credential)
+    phantom_token = db.create_token(
+        vault_broker_context.scope,
+        vault_broker_context.subject,
+        vault_broker_context.credential_set,
+        "claude",
+    )
     db.close()
 
     return db_path, phantom_token, real_credential
@@ -163,6 +179,7 @@ def populated_vault_db(
 @pytest.fixture
 async def running_token_broker(
     populated_vault_db: tuple[Path, str, dict[str, Any]],
+    vault_broker_context: BrokerContext,
     vault_routes: Path,
     mock_upstream_api: MockUpstreamState,
 ) -> AsyncIterator[VaultEnv]:
@@ -181,7 +198,7 @@ async def running_token_broker(
     from terok_sandbox.vault.daemon.token_broker import _build_app
 
     db_path, phantom_token, real_credential = populated_vault_db
-    app = _build_app(str(db_path), str(vault_routes))
+    app = _build_app(str(db_path), str(vault_routes), broker_context=vault_broker_context)
 
     runner = web.AppRunner(app)
     await runner.setup()
@@ -216,6 +233,7 @@ class VaultSocketEnv:
 @pytest.fixture
 async def running_token_broker_socket(
     populated_vault_db: tuple[Path, str, dict[str, Any]],
+    vault_broker_context: BrokerContext,
     vault_routes: Path,
     mock_upstream_api: MockUpstreamState,
     tmp_path: Path,
@@ -237,7 +255,7 @@ async def running_token_broker_socket(
     from terok_sandbox.vault.daemon.token_broker import _build_app
 
     db_path, phantom_token, real_credential = populated_vault_db
-    app = _build_app(str(db_path), str(vault_routes))
+    app = _build_app(str(db_path), str(vault_routes), broker_context=vault_broker_context)
 
     socket_path = tmp_path / "vault.sock"
     runner = web.AppRunner(app)

@@ -6,7 +6,7 @@
 Prevents accidental host-side command execution in bind-mounted workspace
 directories that agents have full write access to.  A compromised
 ``.git/hooks/`` could execute arbitrary code on the host — all legitimate
-git operations should go through ``podman exec`` instead.
+review should use the host-owned git gate instead.
 """
 
 from pathlib import Path
@@ -14,6 +14,9 @@ from pathlib import Path
 WORKSPACE_DANGEROUS_DIRNAME = "workspace-dangerous"
 """Sentinel directory name for agent-writable workspaces that must never be
 targeted by host-side subprocess calls."""
+
+WORKSPACE_SEED_PENDING = ".workspace-seed-pending"
+"""Host-only one-shot permission to seed a newly allocated workspace."""
 
 SHARED_DIRNAME = "_shared"
 """Default directory name for per-project shared task IPC under ``tasks_root``."""

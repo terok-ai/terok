@@ -25,6 +25,7 @@ if TYPE_CHECKING:
 
 
 from terok.lib.core.projects import load_project
+from terok.lib.integrations.executor import agent_input_dir
 from terok.lib.orchestration.task_runners import (
     HeadlessRunRequest,
     task_followup_headless,
@@ -180,7 +181,6 @@ def run_headless_request(
             unittest.mock.patch(
                 "terok.lib.orchestration.task_runners.container._agent_runner"
             ) as sandbox_factory,
-            unittest.mock.patch("terok.lib.orchestration.task_runners.headless._print_run_summary"),
         ):
             buffer = StringIO()
             with redirect_stdout(buffer):
@@ -213,11 +213,12 @@ def run_followup_request(
 
     state_patch: contextlib.AbstractContextManager
     if isinstance(container_state, list):
+        # Existence and protocol inspection both precede the start transition.
         state_patch = unittest.mock.patch.object(
             type(container),
             "state",
             new_callable=unittest.mock.PropertyMock,
-            side_effect=iter(container_state).__next__,
+            side_effect=iter([container_state[0], *container_state]).__next__,
             create=True,
         )
     else:
@@ -230,7 +231,6 @@ def run_followup_request(
             os.environ, runner_env_vars(base, base / "config.yml"), clear=True
         ),
         mock_git_config(),
-        unittest.mock.patch("terok.lib.orchestration.task_runners.headless._print_run_summary"),
     ):
         buffer = StringIO()
         with redirect_stdout(buffer):
@@ -325,7 +325,6 @@ class TestTaskInstructionMounts:
                 "terok.lib.orchestration.task_runners.toad.assign_web_port",
                 return_value=FAKE_PEER_PORT,
             ),
-            unittest.mock.patch("terok.lib.orchestration.task_runners.headless._print_run_summary"),
             unittest.mock.patch("terok.lib.orchestration.task_runners.cli._assert_running"),
         ):
             if mode == "headless":
@@ -347,7 +346,7 @@ class TestTaskInstructionMounts:
             ]
             assert len(vibe_mounts) == 1
             mount = vibe_mounts[0]
-            assert mount.host_path == config_dir / "instructions.md"
+            assert mount.host_path == agent_input_dir(config_dir.parent) / "instructions.md"
             assert mount.host_path.read_text() == instructions
             assert mount.read_only
             assert mount.sharing == "private"
@@ -368,7 +367,7 @@ class TestTaskRunHeadless:
 
             assert_task_id(result.task_id)
             agent_config_dir, meta_path = task_paths(base, "proj_hl", result.task_id)
-            prompt_file = agent_config_dir / "prompt.txt"
+            prompt_file = agent_input_dir(agent_config_dir.parent) / "prompt.txt"
             assert prompt_file.is_file()
             assert prompt_file.read_text() == "Fix the auth bug"
 
@@ -397,7 +396,10 @@ class TestTaskRunHeadless:
                 HeadlessRunRequest("proj_wrap", "test"),
             )
 
-            wrapper = task_paths(base, "proj_wrap", result.task_id)[0] / "terok-executor.sh"
+            wrapper = (
+                agent_input_dir(task_paths(base, "proj_wrap", result.task_id)[0].parent)
+                / "terok-executor.sh"
+            )
             assert wrapper.is_file()
             content = wrapper.read_text()
             assert "claude()" in content
@@ -432,7 +434,10 @@ class TestTaskRunHeadless:
             assert "--model opus" in bash_cmd
             assert "--terok-timeout" in bash_cmd
 
-            wrapper = task_paths(base, "proj_flags", result.task_id)[0] / "terok-executor.sh"
+            wrapper = (
+                agent_input_dir(task_paths(base, "proj_flags", result.task_id)[0].parent)
+                / "terok-executor.sh"
+            )
             content = wrapper.read_text()
             assert "--model" not in content
             assert "--terok-timeout" in content
@@ -616,8 +621,10 @@ class TestTaskFollowupHeadless:
             )
 
             agent_cfg, meta_path = task_paths(base, "proj_fu", task_id)
-            assert (agent_cfg / "prompt.txt").read_text() == "fix the remaining tests"
-            history = (agent_cfg / "prompt-history.txt").read_text()
+            assert (
+                agent_input_dir(agent_cfg.parent) / "prompt.txt"
+            ).read_text() == "fix the remaining tests"
+            history = (agent_cfg.parent / "prompt-history.txt").read_text()
             assert "initial prompt" in history
             assert "---" in history
 
@@ -702,7 +709,9 @@ class TestTaskFollowupHeadless:
                 )
 
             agent_cfg, _meta_path = task_paths(base, "proj_stale", task_id)
-            assert (agent_cfg / "prompt.txt").read_text() == "initial prompt"
+            assert (
+                agent_input_dir(agent_cfg.parent) / "prompt.txt"
+            ).read_text() == "initial prompt"
             mock_runtime.container.return_value.start.assert_not_called()
 
     def test_followup_rejects_non_run_mode(self) -> None:
@@ -857,7 +866,7 @@ class TestTaskFollowupHeadless:
                     type(container_mock),
                     "state",
                     new_callable=unittest.mock.PropertyMock,
-                    side_effect=iter(["exited", "exited"]).__next__,
+                    side_effect=iter(["exited", "exited", "exited"]).__next__,
                     create=True,
                 ),
                 unittest.mock.patch.dict(
@@ -869,8 +878,8 @@ class TestTaskFollowupHeadless:
                     task_followup_headless("proj_startfail", task_id, "test")
                 assert "failed to start" in str(ctx.value)
 
-    def test_sealed_followup_uses_inject_prompt(self, mock_runtime) -> None:
-        """Sealed projects inject the follow-up prompt via podman cp, not host files."""
+    def test_sealed_followup_updates_live_readonly_input(self, mock_runtime) -> None:
+        """Sealed follow-ups replace the live read-only prompt and archive host-only history."""
         with tempfile.TemporaryDirectory() as td:
             base = Path(td)
 
@@ -894,38 +903,20 @@ class TestTaskFollowupHeadless:
                     type(container_mock),
                     "state",
                     new_callable=unittest.mock.PropertyMock,
-                    side_effect=iter(["exited", "running"]).__next__,
+                    side_effect=iter(["exited", "exited", "running"]).__next__,
                     create=True,
                 ),
                 unittest.mock.patch.dict(
                     os.environ, runner_env_vars(base, config_file), clear=True
                 ),
                 mock_git_config(),
-                unittest.mock.patch(
-                    "terok.lib.orchestration.task_runners.headless._print_run_summary"
-                ),
-                # ``inject_prompt`` is terok-executor code; it lazily imports
-                # ``Sandbox`` from its own ``integrations.sandbox`` adapter,
-                # so the patch targets the rebind site rather than the
-                # ``terok_sandbox`` wheel (where the symbol still lives but
-                # isn't the binding the consumer reads at call time).
-                unittest.mock.patch(
-                    "terok_executor.integrations.sandbox.Sandbox"
-                ) as mock_sandbox_cls,
             ):
                 buffer = StringIO()
                 with redirect_stdout(buffer):
                     task_followup_headless("proj_sealed", task_id, "sealed follow-up")
 
-                    # inject_prompt should have been called via Sandbox.copy_to
-                    mock_sandbox_cls.return_value.copy_to.assert_called_once()
-                    call_args = mock_sandbox_cls.return_value.copy_to.call_args[0]
-                    assert call_args[2] == "/home/dev/.terok/prompt.txt"
-
-                    # prompt.txt on host should NOT have been updated (sealed skips it)
-                    agent_cfg = (
-                        base / "sandbox-live" / "tasks" / "proj_sealed" / task_id / "agent-config"
-                    )
-                    if (agent_cfg / "prompt.txt").exists():
-                        # If file exists, it should still contain the original prompt
-                        assert (agent_cfg / "prompt.txt").read_text() == "initial prompt"
+                    agent_cfg, _ = task_paths(base, "proj_sealed", task_id)
+                    assert (
+                        agent_input_dir(agent_cfg.parent) / "prompt.txt"
+                    ).read_text() == "sealed follow-up"
+                    assert "initial prompt" in (agent_cfg.parent / "prompt-history.txt").read_text()

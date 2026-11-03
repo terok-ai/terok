@@ -29,6 +29,7 @@ from terok.lib.integrations.executor import (
 from terok.lib.integrations.sandbox import (
     DEFAULT_GUEST_SSHD_PORT,
     DEFAULT_SSH_HOST,
+    BrokerContext,
     LifecycleHooks,
     PodmanRuntime,
     Sandbox,
@@ -285,6 +286,7 @@ def _run_container(
     project: ProjectConfig,
     task_id: str,
     task_dir: Path,
+    broker_context: BrokerContext,
     extra_args: list[str] | None = None,
     command: list[str] | None = None,
     hooks: LifecycleHooks | None = None,
@@ -382,6 +384,7 @@ def _run_container(
                 dossier_path=task_dossier_path,
                 allow_debugger=allow_debugger,
                 egress=egress,
+                broker_context=broker_context,
                 project_allow=project_allow,
                 override=override,
             )

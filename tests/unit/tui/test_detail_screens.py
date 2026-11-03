@@ -743,8 +743,6 @@ class TestTaskScreenKeyBinding:
             pytest.param("c", False, "task_start_cli", None, True, id="lower-c"),
             pytest.param("w", False, "task_start_toad", None, True, id="lower-w"),
             pytest.param("U", False, "task_start_unattended", None, True, id="shift-u"),
-            pytest.param("H", True, "diff_head", None, None, id="shift-h"),
-            pytest.param("P", True, "diff_prev", None, None, id="shift-p"),
             pytest.param("X", True, "delete", None, None, id="shift-x"),
             pytest.param("r", True, "restart", None, None, id="lower-r"),
             pytest.param("t", True, "stop", None, None, id="lower-t"),

@@ -23,6 +23,7 @@ from typing import TYPE_CHECKING
 
 from terok.lib.integrations.sandbox import (
     CONTAINER_GATE_SOCKET,
+    BrokerContext,
     SandboxConfig,
     VolumeSpec,
     mint_gate_token,
@@ -34,7 +35,7 @@ from ..core.config import (
     sandbox_live_mounts_dir,
 )
 from ..core.projects import ProjectConfig
-from ..util.host_cmd import WORKSPACE_DANGEROUS_DIRNAME
+from ..util.host_cmd import WORKSPACE_DANGEROUS_DIRNAME, WORKSPACE_SEED_PENDING
 
 if TYPE_CHECKING:
     # Type-only import: terok_executor doesn't re-export AgentRoster at the
@@ -613,13 +614,15 @@ def _report_leaked_credentials(mounts_dir: Path) -> None:
 
 
 def _seed_workspace_cache(repo_dir: Path, project_name: str, code_repo: str | None) -> None:
-    """Pre-populate *repo_dir* from the clone cache (best-effort).
+    """Spend the host-only fresh-workspace grant before attempting cache seeding.
 
-    Only acts when the workspace has a ``.new-task-marker`` (new task)
-    and no existing ``.git``.  Failures are logged and swallowed — the
-    container falls back to a full ``git clone``.
+    The container's reset marker is not authority to make host filesystem
+    changes. Old and reused workspaces have no host grant and are never seeded.
+    A failed seed falls back to the normal in-container clone.
     """
-    if (repo_dir / ".git").is_dir() or not (repo_dir / ".new-task-marker").is_file():
+    try:
+        (repo_dir.parent / WORKSPACE_SEED_PENDING).unlink()
+    except FileNotFoundError:
         return
 
     try:
@@ -651,8 +654,8 @@ class TaskEnvironment:
     [`materialize`][terok.lib.orchestration.environment.TaskEnvironment.materialize]
     walks the full pipeline — gate-URL resolution, workspace cache
     seeding, git-identity resolution, executor-shared assembly,
-    terok-specific env overlays — and returns ``(env, volumes)`` ready
-    for ``RunSpec`` construction.
+    terok-specific env overlays — and returns environment, volumes, egress and
+    the exact broker context used during credential issuance.
 
     In **sealed** isolation mode (``project.is_sealed``) volumes are
     injected via ``podman cp`` instead of bind mounts — the sandbox
@@ -676,7 +679,7 @@ class TaskEnvironment:
     agent_config_dir: Path | None = None
     """Prepared task instructions and wrappers for executor-managed mounts."""
 
-    def materialize(self) -> tuple[dict, list[VolumeSpec], EgressProjection]:
+    def materialize(self) -> tuple[dict, list[VolumeSpec], EgressProjection, BrokerContext]:
         """Create the environment, volumes, and egress configuration for the task.
 
         [`terok_executor.assemble_container_env`][terok_executor.assemble_container_env]
@@ -711,7 +714,7 @@ class TaskEnvironment:
         )
 
         # Seed workspace from clone cache (fast-start optimisation).
-        # Only for new tasks (marker present, no .git yet).  The in-container
+        # Only once for tasks with a host-created seed grant. The in-container
         # init script then does fetch+reset instead of a full git clone.
         # In sealed mode the seeded dir is podman-cp'd into the container.
         _seed_workspace_cache(repo_dir, project.name, sec_env.get("CODE_REPO"))
@@ -750,7 +753,7 @@ class TaskEnvironment:
                 task_id=task_id,
                 agent_name=project.default_agent or "claude",
                 provider=self.provider_override or project.default_provider,
-                agent_config_dir=self.agent_config_dir,
+                agent_config_dir=self.agent_config_dir or task_dir / "agent-config",
                 workspace_host_path=repo_dir,
                 code_repo=sec_env.get("CODE_REPO"),
                 clone_from=sec_env.get("CLONE_FROM"),
@@ -811,7 +814,7 @@ class TaskEnvironment:
         # Executor's roster egress projection (shield's generated t20 / t30 tiers)
         # rides alongside env/volumes to the launch path — terok forwards it
         # opaquely; it owns no egress logic itself.
-        return env, volumes, result.egress
+        return env, volumes, result.egress, result.broker_context
 
 
 def build_task_env_and_volumes(
@@ -820,7 +823,7 @@ def build_task_env_and_volumes(
     *,
     provider: str | None = None,
     agent_config_dir: Path | None = None,
-) -> tuple[dict, list[VolumeSpec], EgressProjection]:
+) -> tuple[dict, list[VolumeSpec], EgressProjection, BrokerContext]:
     """Shim around [`TaskEnvironment.materialize`][terok.lib.orchestration.environment.TaskEnvironment.materialize]."""
     return TaskEnvironment(
         project, task_id, provider_override=provider, agent_config_dir=agent_config_dir

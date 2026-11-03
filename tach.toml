@@ -447,7 +447,6 @@ depends_on = [
     "terok.lib.integrations.executor",
     "terok.lib.integrations.sandbox",
     "terok.lib.orchestration.agent_config",
-    "terok.lib.orchestration.container_exec",
     "terok.lib.orchestration.environment",
     "terok.lib.orchestration.hooks",
     "terok.lib.orchestration.ports",
@@ -472,7 +471,6 @@ layer = "orchestration"
 depends_on = [
     "terok.lib.integrations.executor",
     "terok.lib.integrations.sandbox",
-    "terok.lib.orchestration.container_exec",
     "terok.lib.orchestration.hooks",
     "terok.lib.orchestration.ports",
     "terok.lib.core.config",
@@ -525,16 +523,6 @@ depends_on = []
 path = "terok.lib.orchestration.hooks"
 layer = "orchestration"
 depends_on = ["terok.lib.util.yaml"]
-
-# Container-based command execution (sandboxed git via podman exec)
-[[modules]]
-path = "terok.lib.orchestration.container_exec"
-layer = "orchestration"
-depends_on = [
-    "terok.lib.core.runtime",
-    "terok.lib.core.task_state",
-    "terok.lib.util.logging_utils",
-]
 
 # In-container health checks (layered doctor protocol via podman exec)
 [[modules]]
@@ -916,7 +904,6 @@ expose = [
     "ContainerEventStream",
     "get_login_command",
     "get_task_meta",
-    "get_workspace_git_diff",
     "mark_task_deleting",
     "update_task_exit_code",
     "load_task_meta",
@@ -986,7 +973,7 @@ expose = ["StorageOverview", "ProjectDetail", "ProjectSummary", "get_storage_ove
 from = ["terok.lib.domain.storage"]
 
 [[interfaces]]
-expose = ["PanicResult", "execute_panic", "panic_stop_containers", "is_panicked", "clear_panic_lock", "format_panic_report"]
+expose = ["PanicResult", "execute_panic", "is_panicked", "clear_panic_lock", "format_panic_report"]
 from = ["terok.lib.domain.panic"]
 
 # Core module interfaces
@@ -1195,12 +1182,8 @@ from = ["terok.lib.domain.task"]
 # Utility interfaces
 
 [[interfaces]]
-expose = ["SHARED_DIRNAME", "WORKSPACE_DANGEROUS_DIRNAME", "is_in_dangerous_workspace", "assert_not_in_dangerous_workspace"]
+expose = ["SHARED_DIRNAME", "WORKSPACE_DANGEROUS_DIRNAME", "WORKSPACE_SEED_PENDING", "is_in_dangerous_workspace", "assert_not_in_dangerous_workspace"]
 from = ["terok.lib.util.host_cmd"]
-
-[[interfaces]]
-expose = ["container_git_diff"]
-from = ["terok.lib.orchestration.container_exec"]
 
 [[interfaces]]
 expose = ["ContainerDoctor", "run_container_doctor"]

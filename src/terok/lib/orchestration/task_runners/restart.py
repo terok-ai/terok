@@ -13,8 +13,14 @@ not.
 from __future__ import annotations
 
 import sys
+from pathlib import Path
 from typing import TYPE_CHECKING
 
+from terok.lib.integrations.executor import (
+    InputProtocolMismatch,
+    require_image_input_protocol,
+    require_task_input_protocol,
+)
 from terok.lib.integrations.sandbox import BUNDLE_VERSION, resolve_container_shield_version
 
 from ...core import runtime as _rt
@@ -29,6 +35,7 @@ from ...util.ansi import (
     supports_color as _supports_color,
     yellow as _yellow,
 )
+from ...util.host_cmd import WORKSPACE_DANGEROUS_DIRNAME
 from ..hooks import run_hook
 from ..ports import assign_web_port, release_web_port
 from ..tasks import container_name, load_task_meta
@@ -38,9 +45,11 @@ from .shield import _apply_shield_policy, _refresh_shield_tiers
 from .toad import _rehydrate_toad_token, _toad_browser_url, task_run_toad
 
 if TYPE_CHECKING:
-    from pathlib import Path
+    from terok.lib.integrations.sandbox import Container, ContainerInspection, ContainerRuntime
 
     from ...core.project_model import ProjectConfig
+
+_WORKSPACE_MOUNT = "/workspace"
 
 
 def task_restart(project_name: str, task_id: str, *, fresh: bool = False) -> None:
@@ -53,7 +62,7 @@ def task_restart(project_name: str, task_id: str, *, fresh: bool = False) -> Non
     ``_warn_if_stale_image``).
     When the resume rung is gone — the container no longer exists or
     podman refuses to start it — recreate the container through the
-    normal launch path: same task and container name, workspace reused
+    normal launch path: same task and container name, host-backed workspace reused
     as-is (never re-seeded), project config re-read, the task's
     persistent gate token reused (the workspace's origin URL embeds it,
     so it must survive the recreate), per-task settings carried over
@@ -62,6 +71,10 @@ def task_restart(project_name: str, task_id: str, *, fresh: bool = False) -> Non
     *fresh* skips straight to the recreate rung — the explicit
     "recreate + restart" that picks up a rebuilt image, upgrading a task
     that a plain restart deliberately left on its old image.
+
+    Recreation warns when the retained workspace is not backed by the task's
+    host directory: container-only changes are discarded, not exported. Sealed
+    mode does not add confirmation or block the operator's restart workflow.
 
     Headless tasks (mode ``run``) only ever take the resume rung:
     recreating one would replay its original prompt against the
@@ -120,9 +133,14 @@ def _make_running(
         raise SystemExit(f"Task {task_id} has never been run (no mode set)")
 
     cname = container_name(project.name, mode, task_id)
-    container_state = _rt.resolve_runtime(project).container(cname).state
+    runtime = _rt.resolve_runtime(project)
+    container = runtime.container(cname)
+    inspection = _inspect_container(container)
+    container_state = inspection.state if inspection is not None else None
 
-    if not bounce and container_state == "running":
+    reason = _recreate_reason(container, inspection, fresh=fresh)
+
+    if not bounce and container_state == "running" and reason is None:
         # Ensure never disturbs a live container — stale image or not.
         _validate_restart_preconditions(project, task_id, mode, meta, cname)
         print(f"Task {task_id} is already running: {_green(cname, _supports_color())}")
@@ -132,7 +150,8 @@ def _make_running(
     if bounce:
         print(f"Restarting task {project_name}/{task_id} ({mode})...")
 
-    reason = _recreate_reason(container_state, fresh=fresh)
+    if reason is not None and mode != "run":
+        _preflight_replacement_image(project, runtime)
 
     if container_state is not None:
         _validate_restart_preconditions(project, task_id, mode, meta, cname)
@@ -147,21 +166,78 @@ def _make_running(
         # it gates on the bundle version — a recreate builds a fresh bundle
         # and must never be blocked by a stale one — and refreshes both from
         # the current roster/config before anything is torn down.
-        _refresh_before_resume(project, cname, project.tasks_root / str(task_id))
+        _refresh_before_resume(project, cname, project.tasks_root / str(task_id), runtime=runtime)
         if container_state == "running":
             _stop_running_container(project, task_id, mode, cname, meta_path)
-        try:
-            _start_and_report_restart(project, task_id, mode, cname, meta, meta_path)
+        reason = _resume_failure_reason(project, task_id, mode, cname, meta, meta_path, runtime)
+        if reason is None:
             return
-        except SystemExit as exc:
-            reason = str(exc) or "podman start failed"
 
     _recreate_in_place(
         project, task_id, mode, cname, meta, meta_path, reason, unrestricted=unrestricted
     )
 
 
-def _refresh_before_resume(project: ProjectConfig, cname: str, task_dir: Path) -> None:
+def _resume_failure_reason(
+    project: ProjectConfig,
+    task_id: str,
+    mode: str,
+    cname: str,
+    meta: dict,
+    meta_path: Path,
+    runtime: ContainerRuntime,
+) -> str | None:
+    """Resume the retained container or preflight its replacement after a failed start."""
+    try:
+        _start_and_report_restart(project, task_id, mode, cname, meta, meta_path)
+    except SystemExit as exc:
+        if mode != "run":
+            _preflight_replacement_image(project, runtime)
+        return str(exc) or "podman start failed"
+    return None
+
+
+def _inspect_container(container: Container) -> ContainerInspection | None:
+    """Observe retained state without mistaking runtime failures for absence."""
+    try:
+        return container.inspect()
+    except RuntimeError as exc:
+        raise SystemExit(str(exc)) from exc
+
+
+def _warn_container_only_workspace(
+    project: ProjectConfig, task_id: str, inspection: ContainerInspection | None
+) -> None:
+    """Explain discarded container-only work without gating an opted-in isolation mode."""
+    if inspection is None:
+        return
+    expected = project.tasks_root / str(task_id) / WORKSPACE_DANGEROUS_DIRNAME
+    backing = [
+        Path(source) for source, destination in inspection.mounts if destination == _WORKSPACE_MOUNT
+    ]
+    if backing != [expected]:
+        print(
+            _yellow(
+                f"Warning: recreating task {task_id} will discard container-only workspace changes. "
+                f"Its retained workspace is not backed by {expected}. "
+                "Sealed workspaces are not exported automatically.",
+                _supports_color(),
+            ),
+            file=sys.stderr,
+        )
+
+
+def _preflight_replacement_image(project: ProjectConfig, runtime: ContainerRuntime) -> None:
+    """Reject obsolete replacement images before any recreation tears down a task."""
+    try:
+        require_image_input_protocol(runtime.image(project_cli_image(project.name)))
+    except RuntimeError as exc:
+        raise SystemExit(str(exc)) from exc
+
+
+def _refresh_before_resume(
+    project: ProjectConfig, cname: str, task_dir: Path, *, runtime: ContainerRuntime
+) -> None:
     """Bring an existing container's start-time inputs up to today's config, before it starts.
 
     ``podman start`` replays what the container was created with: its shield
@@ -174,6 +250,10 @@ def _refresh_before_resume(project: ProjectConfig, cname: str, task_dir: Path) -
     ``SystemExit`` from the gate or the tier refresh, with the container
     untouched; the clearance refresh only warns.
     """
+    try:
+        require_task_input_protocol(runtime.container(cname))
+    except RuntimeError as exc:
+        raise SystemExit(str(exc)) from exc
     _validate_shield_bundle_version(cname)
     _refresh_shield_tiers(project, cname, task_dir)
     _refresh_clearance_mode(project, cname)
@@ -210,7 +290,9 @@ def _refresh_clearance_mode(project: ProjectConfig, cname: str) -> None:
         )
 
 
-def _recreate_reason(container_state: str | None, *, fresh: bool) -> str | None:
+def _recreate_reason(
+    container: Container, inspection: ContainerInspection | None, *, fresh: bool
+) -> str | None:
     """First reason the resume rung can't be taken, or ``None`` to resume.
 
     Image drift is deliberately *not* a reason: a plain restart keeps a
@@ -219,9 +301,16 @@ def _recreate_reason(container_state: str | None, *, fresh: bool) -> str | None:
     Picking up a rebuilt image is the explicit job of *fresh* — the
     "recreate + restart" the caller asked for.
     """
+    if inspection is not None:
+        try:
+            require_task_input_protocol(container, inspection=inspection)
+        except InputProtocolMismatch as exc:
+            return str(exc)
+        except RuntimeError as exc:
+            raise SystemExit(str(exc)) from exc
     if fresh:
         return "recreate requested"
-    if container_state is None:
+    if inspection is None:
         return "the container no longer exists"
     return None
 
@@ -419,7 +508,7 @@ def _recreate_in_place(
     """Tear the old container down and relaunch the task into the same name.
 
     The mode runner's launch path re-reads project config and reuses the
-    task's persistent gate token; the workspace is reused as-is — with no
+    task's persistent gate token; a host-backed workspace is reused as-is — with no
     new-task marker the init script fetches without resetting — and the task's
     ``unrestricted`` choice (caller override, else saved metadata)
     overrides the runner's config resolution.
@@ -438,14 +527,16 @@ def _recreate_in_place(
             f'  terok task run {project.name} "<prompt>" --mode headless'
         )
 
-    print(_yellow(f"Recreating container {cname}: {reason}", _supports_color()))
     runtime = _rt.resolve_runtime(project)
-    if runtime.container(cname).state == "running":
+    inspection = _inspect_container(runtime.container(cname))
+    _warn_container_only_workspace(project, task_id, inspection)
+    print(_yellow(f"Recreating container {cname}: {reason}", _supports_color()))
+    if inspection is not None and inspection.state == "running":
         # The container is destroyed on the next line — the grace
         # period would be pure latency, so kill outright, and let the
         # force-remove clean up after a stop that failed anyway.
         _stop_running_container(project, task_id, mode, cname, meta_path, timeout=0, fatal=False)
-    if runtime.container(cname).state is not None:
+    if inspection is not None:
         _sandbox(project).rm([cname])
     if unrestricted is None:
         unrestricted = meta.get("unrestricted")

@@ -111,11 +111,6 @@ class TestTaskObservation:
             assert _task().get_login_command() == ["podman", "exec"]
         assert m.call_args == mock.call(_PROJ, _TID)
 
-    def test_get_workspace_diff_passes_through(self) -> None:
-        with mock.patch("terok.lib.domain.task.get_workspace_git_diff", return_value="diff") as m:
-            assert _task().get_workspace_diff(against="main") == "diff"
-        assert m.call_args == mock.call(_PROJ, _TID, against="main")
-
     def test_wait_for_exit_builds_container_name(self) -> None:
         with (
             mock.patch("terok.lib.core.task_state.container_name", return_value="cname") as cn,

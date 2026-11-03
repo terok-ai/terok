@@ -2342,8 +2342,6 @@ class TaskDetailsScreen(screen.Screen[str | None]):
             ):
                 options.append(Option("follow \\[u]p with new prompt", id="followup"))
             options.append(None)
-            options.append(Option("Copy diff vs \\[H]EAD", id="diff_head"))
-            options.append(Option("Copy diff vs \\[P]REV", id="diff_prev"))
             options.append(None)
             options.append(Option("re\\[n]ame task", id="rename"))
             options.append(Option("delete task  \\[X]", id="delete"))
@@ -2429,8 +2427,6 @@ class TaskDetailsScreen(screen.Screen[str | None]):
         shift_map: dict[str, str] = {
             "U": "task_start_unattended",
             "R": "recreate",
-            "H": "diff_head",
-            "P": "diff_prev",
             "X": "delete",
             "D": "shield_disengaged",
             "W": "shield_watch",

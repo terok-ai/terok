@@ -4,7 +4,7 @@
 """TaskActionsMixin — task lifecycle operations for TerokTUI.
 
 Handles task creation, deletion, renaming, running (CLI/toad/unattended),
-login, restart, follow-up, log viewing, and diff copying.
+login, restart, follow-up, and log viewing.
 """
 
 import asyncio
@@ -12,6 +12,7 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
+from terok.lib.api.agents import write_initial_prompt
 from terok.lib.api.setup import validate_host_setup
 from terok.lib.api.shield import task_shield_manager
 
@@ -24,7 +25,6 @@ from ..lib.api import (
     get_config,
     get_container_state,
     get_login_command,
-    get_workspace_git_diff,
     load_project,
     mark_task_deleting,
     task_delete,
@@ -34,7 +34,6 @@ from ..lib.api import (
     task_run_headless,
     wait_for_container_exit,
 )
-from .clipboard import copy_to_clipboard_detailed
 from .screens import (
     AgentSelectionScreen,
     LoginProgressScreen,
@@ -62,24 +61,10 @@ else:
     _MixinBase = object
 
 
-# Per-task file the agent wrappers (terok-executor) consume one-shot, and the
-# bashrc banner (also from terok-executor) displays after the help banner.
-# Filename is the contract; the wrapper hard-codes the same path.
-_INITIAL_PROMPT_FILENAME = "initial-prompt.txt"
-
-
 def _save_initial_prompt(project_name: str, task_id: str, prompt: str | None) -> None:
-    """Persist the user's initial prompt to the task's mounted agent-config dir.
-
-    Saved on Login *and* on Dismiss — and Dismiss can land before the
-    background container start has populated the agent-config dir, so create
-    it here rather than assume the runner got there first.
-    """
-    if not prompt:
-        return
-    config_dir = agent_config_dir(project_name, task_id)
-    config_dir.mkdir(parents=True, exist_ok=True)
-    (config_dir / _INITIAL_PROMPT_FILENAME).write_text(prompt + "\n", encoding="utf-8")
+    """Publish host-owned instructions without ever rewriting task-authored state."""
+    if prompt:
+        write_initial_prompt(agent_config_dir(project_name, task_id).parent, prompt)
 
 
 def _login_title(project_name: str, task_id: str, task_name: str) -> str:
@@ -365,13 +350,13 @@ class TaskActionsMixin(_MixinBase):
 
         pid, tid, task_name, cname, agent, prompt = result
 
-        # Stash the prompt where the agent wrappers (terok-executor) and the
-        # interactive bash banner can pick it up — on Login *and* on Dismiss,
-        # since the container is already starting either way.  Bash displays it
-        # after `hilfe --kurz`; the per-provider wrapper consumes it one-shot on
-        # bare invocation and renames the file so subsequent runs --resume the
-        # saved session instead of replaying the prompt.
-        _save_initial_prompt(pid, tid, prompt)
+        # The read-only input mount sees atomic publication even after launch.
+        # Consumption is a separate writable acknowledgement, not a rename.
+        try:
+            _save_initial_prompt(pid, tid, prompt)
+        except (OSError, ValueError) as exc:
+            self.notify(f"Could not publish initial prompt: {exc}", severity="error")
+            return
 
         # Dismissed without choosing an agent: the prompt is saved for the next
         # manual login, and there is no terminal session to open.
@@ -840,46 +825,6 @@ class TaskActionsMixin(_MixinBase):
         await asyncio.to_thread(rename_login_window, cname, _login_title(pid, tid, name))
         self.notify(f"Task {tid} renamed.")
         await self.refresh_tasks()
-
-    async def _copy_diff_to_clipboard(self, git_ref: str, label: str) -> None:
-        """Common helper to copy a git diff to the clipboard."""
-        if not self.current_project_name or not self.current_task:
-            self.notify("No task selected.")
-            return
-
-        task_id = self.current_task.task_id
-        diff = get_workspace_git_diff(self.current_project_name, task_id, git_ref)
-
-        if diff is None:
-            self.notify("Failed to get git diff. Is this a git repository?")
-            return
-
-        if diff == "":
-            self.notify("No changes to copy (working tree clean).")
-            return
-
-        import asyncio
-
-        # Clipboard helpers (wl-copy in particular) can block briefly or
-        # misbehave in niche scenarios; the helper has its own timeout
-        # but we hop off the UI thread so even that timeout can't stall
-        # the event loop.
-        result = await asyncio.to_thread(copy_to_clipboard_detailed, diff)
-        if result.ok:
-            self.notify(f"Git diff vs {label} copied to clipboard ({len(diff)} characters)")
-        else:
-            msg = result.error or "Failed to copy to clipboard."
-            if result.hint:
-                msg = f"{msg}\n{result.hint}"
-            self.notify(msg)
-
-    async def action_copy_diff_head(self) -> None:
-        """Copy git diff vs HEAD to clipboard."""
-        await self._copy_diff_to_clipboard("HEAD", "HEAD")
-
-    async def action_copy_diff_prev(self) -> None:
-        """Copy git diff vs previous commit to clipboard."""
-        await self._copy_diff_to_clipboard("PREV", "PREV")
 
     # --- Shield actions ---
 

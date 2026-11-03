@@ -17,6 +17,8 @@ from itertools import pairwise
 from pathlib import Path
 from typing import Literal
 
+from tests.testfs import CURRENT_INPUT_LABELS
+
 ROOT = Path(__file__).resolve().parents[2]
 SRC_DIR = ROOT / "src"
 PROJECT_FILENAME = "project.yml"
@@ -383,11 +385,33 @@ def write_fake_podman(bin_dir: Path, state_path: Path) -> Path:
         textwrap.dedent(
             f"""\
             #!/usr/bin/env python3
+            import hashlib
             import json
             import sys
             from pathlib import Path
 
             state_path = Path({str(state_path)!r})
+            image_id = "sha256:" + hashlib.sha256(b"fake-podman-image").hexdigest()
+
+            def container_id(name: str) -> str:
+                return hashlib.sha256(name.encode()).hexdigest()
+
+            def option_values(args: list[str], option: str) -> list[str]:
+                return [args[index + 1] for index, arg in enumerate(args[:-1]) if arg == option]
+
+            def inspect_container(name: str, container: dict) -> dict:
+                run_args = container["args"]
+                mounts = []
+                for volume in option_values(run_args, "-v"):
+                    source, destination, *_ = volume.split(":")
+                    mounts.append({{"Source": source, "Destination": destination}})
+                return {{
+                    "Id": container_id(name),
+                    "State": {{"Status": container["status"]}},
+                    "Image": image_id,
+                    "Config": {{"Env": option_values(run_args, "-e")}},
+                    "Mounts": mounts,
+                }}
 
             def load_state() -> dict:
                 if state_path.exists():
@@ -409,14 +433,41 @@ def write_fake_podman(bin_dir: Path, state_path: Path) -> Path:
             state = load_state()
             state["commands"].append(args)
 
+            if args[:2] == ["image", "inspect"]:
+                print(json.dumps([{{"Id": image_id, "Config": {{"Labels": {CURRENT_INPUT_LABELS!r}}}}}]))
+                save_state(state)
+                raise SystemExit(0)
+
+            if args[:2] == ["container", "inspect"]:
+                name = args[-1]
+                container = state["containers"].get(name)
+                save_state(state)
+                if container is None:
+                    raise SystemExit(1)
+                print(json.dumps([inspect_container(name, container)]))
+                raise SystemExit(0)
+
+            if args[:2] in (["image", "exists"], ["container", "exists"]):
+                present = args[0] == "image" or args[-1] in state["containers"]
+                save_state(state)
+                raise SystemExit(0 if present else 1)
+
             if args[:2] == ["info", "-f"]:
                 print("pasta")
                 save_state(state)
                 raise SystemExit(0)
 
-            if args[:2] == ["inspect", "-f"]:
+            if args[:2] in (["inspect", "-f"], ["inspect", "--format"]):
                 fmt, name = args[2], args[3]
+                if fmt == "{{{{json .Config.Labels}}}}":
+                    print(json.dumps({CURRENT_INPUT_LABELS!r}))
+                    save_state(state)
+                    raise SystemExit(0)
                 container = state["containers"].get(name)
+                if fmt == "{{{{.Id}}}}":
+                    print(container_id(name) if container is not None else image_id)
+                    save_state(state)
+                    raise SystemExit(0)
                 if container is None:
                     save_state(state)
                     raise SystemExit(1)
@@ -424,6 +475,10 @@ def write_fake_podman(bin_dir: Path, state_path: Path) -> Path:
                     print(container["status"])
                 elif fmt == "{{{{.State.Running}}}}":
                     print("true" if container["status"] == "running" else "false")
+                elif fmt == "{{{{.Image}}}}":
+                    print(image_id)
+                elif fmt == "{{{{json .Config.Env}}}}":
+                    print(json.dumps(option_values(container["args"], "-e")))
                 save_state(state)
                 raise SystemExit(0)
 
@@ -456,7 +511,7 @@ def write_fake_podman(bin_dir: Path, state_path: Path) -> Path:
                     "marker": ready_marker(args),
                     "args": args,
                 }}
-                print("fake-container-id")
+                print(container_id(name))
                 save_state(state)
                 raise SystemExit(0)
 

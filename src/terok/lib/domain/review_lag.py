@@ -27,6 +27,7 @@ to make the state impossible to miss, not actionable.
 from __future__ import annotations
 
 import json
+import logging
 import subprocess  # nosec B404 - forge queries go through the operator's own gh/glab CLIs
 from collections.abc import Iterable
 from dataclasses import dataclass
@@ -34,8 +35,9 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 from urllib.parse import quote, urlsplit
 
-from terok_util import require_host_tool
+from terok_util import require_host_tool, write_untrusted_text
 
+from terok.lib.integrations.executor import agent_input_dir
 from terok.lib.orchestration.tasks import agent_config_dir, iter_task_ids, tasks_meta_dir
 from terok.lib.util.net import git_remote_host
 
@@ -192,27 +194,28 @@ def format_review_status(entries: list[ReviewLagEntry]) -> str:
     return "".join(f"{entry}\n" for entry in entries)
 
 
-#: File written into each task's agent-config dir (``~/.terok`` inside the
-#: container); the container tmux status line and the agent both read it.
+#: Host-written input (``~/.terok/input/review-status`` in the container),
+#: read by the tmux status line and the agent.
 REVIEW_STATUS_FILENAME = "review-status"
 
 
 def write_review_status_files(agent_config_dirs: Iterable[Path], content: str) -> None:
-    """Write *content* into every agent-config dir's review-status file.
+    """Write *content* into every task's read-only review-status input.
 
     Empty content is still written — the warning is level-triggered, so
     clearing it (operator pushed, MR merged) matters as much as raising
-    it.  Writes are atomic; a task dir that vanished mid-iteration is
-    skipped, not an error.
+    it. Writes are atomic; failures are logged without interrupting the other
+    tasks' updates.
     """
     for config_dir in agent_config_dirs:
         try:
-            config_dir.mkdir(parents=True, exist_ok=True)
-            tmp = config_dir / f".{REVIEW_STATUS_FILENAME}.tmp"
-            tmp.write_text(content, encoding="utf-8")
-            tmp.replace(config_dir / REVIEW_STATUS_FILENAME)
-        except OSError:
-            continue
+            write_untrusted_text(
+                agent_input_dir(config_dir.parent) / REVIEW_STATUS_FILENAME, content
+            )
+        except OSError as exc:
+            logging.getLogger(__name__).warning(
+                "Cannot publish review status for %s: %s", config_dir, exc
+            )
 
 
 def refresh_review_lag(project: ProjectConfig) -> list[ReviewLagEntry] | None:

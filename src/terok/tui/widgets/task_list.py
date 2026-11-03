@@ -40,8 +40,6 @@ class TaskList(ListView):
     BINDINGS = [
         ("enter", "app.show_task_actions", "Task\u2026"),
         ("t", "app.create_task_from_main", "New"),
-        ("H", "app.copy_diff_head", "Diff HEAD"),
-        ("P", "app.copy_diff_prev", "Diff PREV"),
         ("U", "app.run_unattended_from_main", "Unattended"),
         ("c", "app.run_cli_from_main", "CLI"),
         ("w", "app.run_toad_from_main", "Toad"),

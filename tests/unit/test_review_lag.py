@@ -206,11 +206,13 @@ class TestSurfacing:
         dirs = [tmp_path / "t1" / "agent-config", tmp_path / "t2" / "agent-config"]
         write_review_status_files(dirs, "!42 feat/x +3\n")
         for config_dir in dirs:
-            assert (config_dir / "review-status").read_text() == "!42 feat/x +3\n"
+            assert (
+                config_dir.parent / "agent-inputs" / "review-status"
+            ).read_text() == "!42 feat/x +3\n"
 
         write_review_status_files(dirs, "")
         for config_dir in dirs:
-            assert (config_dir / "review-status").read_text() == ""
+            assert (config_dir.parent / "agent-inputs" / "review-status").read_text() == ""
 
     def test_unwritable_dir_is_skipped(self, tmp_path: Path) -> None:
         good = tmp_path / "good" / "agent-config"
@@ -221,7 +223,7 @@ class TestSurfacing:
             write_review_status_files([blocked / "agent-config", good], "warning\n")
         finally:
             blocked.chmod(0o755)
-        assert (good / "review-status").read_text() == "warning\n"
+        assert (good.parent / "agent-inputs" / "review-status").read_text() == "warning\n"
 
 
 # ---------------------------------------------------------------------------
@@ -270,7 +272,9 @@ class TestRefreshReviewLag:
         ):
             entries = review_lag.refresh_review_lag(_project())
         assert [str(entry) for entry in entries] == ["!42 feat/x +2"]
-        assert (config_dir / "review-status").read_text() == "!42 feat/x +2\n"
+        assert (
+            config_dir.parent / "agent-inputs" / "review-status"
+        ).read_text() == "!42 feat/x +2\n"
 
     def test_surfacing_disabled_skips_files(self, tmp_path: Path) -> None:
         gate = _fake_gate({"feat/x": "new"}, {"feat/x": 2})

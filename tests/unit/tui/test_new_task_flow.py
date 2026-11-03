@@ -714,7 +714,9 @@ class TestSaveInitialPrompt:
         config_dir = tmp_path / "p" / "1" / "agent-config"
         with mock.patch.dict(g, {"agent_config_dir": mock.Mock(return_value=config_dir)}):
             g["_save_initial_prompt"]("p", "1", "remember this")
-        assert (config_dir / "initial-prompt.txt").read_text() == "remember this\n"
+        assert (
+            config_dir.parent / "agent-inputs" / "initial-prompt.txt"
+        ).read_text() == "remember this\n"
 
     def test_blank_prompt_writes_nothing(self, tmp_path: Any) -> None:
         g = self._save_fn()

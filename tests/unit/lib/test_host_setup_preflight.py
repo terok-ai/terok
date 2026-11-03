@@ -10,6 +10,7 @@ import pytest
 from terok_util import SetupRequiredError
 
 from terok.lib.orchestration.task_runners import cli, container, headless, restart, toad
+from tests.testfs import CURRENT_CONTAINER_PROTOCOL, CURRENT_INPUT_LABELS
 
 
 @pytest.mark.parametrize(
@@ -53,14 +54,14 @@ def test_start_preserves_typed_setup_failure() -> None:
     assert raised.value is fault
 
 
-def test_setup_failure_during_start_never_recreates(tmp_path) -> None:
+def test_setup_failure_during_start_never_recreates(tmp_path, mock_runtime) -> None:
     """A late setup fault passes through the restart ladder without deleting the task."""
     project = SimpleNamespace(name="project", tasks_root=tmp_path)
     fault = SetupRequiredError("Setup changed after preflight")
     with (
         patch.object(restart, "load_project", return_value=project),
         patch.object(restart, "load_task_meta", return_value=({"mode": "cli"}, tmp_path)),
-        patch.object(restart._rt, "resolve_runtime") as runtime,
+        patch.object(restart._rt, "resolve_runtime", return_value=mock_runtime) as runtime,
         patch.object(restart, "_validate_restart_preconditions"),
         patch.object(restart, "_validate_shield_bundle_version"),
         patch.object(restart, "_refresh_shield_tiers"),
@@ -69,7 +70,10 @@ def test_setup_failure_during_start_never_recreates(tmp_path) -> None:
         patch.object(restart, "_recreate_in_place") as recreate,
         pytest.raises(SetupRequiredError) as raised,
     ):
-        runtime.return_value.container.return_value.state = "exited"
+        retained = runtime.return_value.container.return_value
+        retained.state = "exited"
+        retained.env = {"TEROK_CONTAINER_PROTOCOL": CURRENT_CONTAINER_PROTOCOL}
+        retained.image.labels.return_value = dict(CURRENT_INPUT_LABELS)
         restart.task_restart("project", "1")
     assert raised.value is fault
     recreate.assert_not_called()

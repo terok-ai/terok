@@ -22,6 +22,7 @@ from terok.lib.api import make_sandbox_config
 from terok.lib.core.setup import complete_setup
 from terok.lib.integrations.executor import ensure_sandbox_ready
 from tests.test_utils import assert_task_id
+from tests.testfs import CURRENT_CONTAINER_PROTOCOL
 from tests.testnet import EXAMPLE_UPSTREAM_URL, LOCALHOST, localhost_url
 
 from ..conftest import _reset_layered_config_caches
@@ -138,6 +139,7 @@ class TestLaunchWorkflows:
         assert state["containers"][cli_container]["marker"] == "__CLI_READY__"
         assert "--name" in args and args[args.index("--name") + 1] == cli_container
         assert f"{PROJECT_NAME}:l2-cli" in args
+        assert f"TEROK_CONTAINER_PROTOCOL={CURRENT_CONTAINER_PROTOCOL}" in _env_entries(args)
         assert "-p" not in args
         assert meta["mode"] == "cli"
         assert meta["name"] == "fix-login-bug"

@@ -40,6 +40,9 @@ EXPECTED_WORK_STATUSES = {
 def write_payload(base_dir: Path, filename: str, payload: object | str) -> None:
     """Write raw text or a YAML-serializable payload into *filename* under *base_dir*."""
     text = payload if isinstance(payload, str) else yaml_dump(payload)
+    if filename == PENDING_PHASE_FILE:
+        base_dir = base_dir.parent / "host-control"
+        base_dir.mkdir(exist_ok=True)
     (base_dir / filename).write_text(text, encoding="utf-8")
 
 
@@ -226,8 +229,8 @@ def test_read_pending_phase_parses_supported_payloads(
     expected: PendingPhase,
 ) -> None:
     """Supported pending-phase payloads deserialize into ``PendingPhase``."""
-    write_payload(tmp_path, PENDING_PHASE_FILE, payload)
-    assert read_pending_phase(tmp_path) == expected
+    write_payload(tmp_path / "agent-config", PENDING_PHASE_FILE, payload)
+    assert read_pending_phase(tmp_path / "agent-config") == expected
 
 
 @pytest.mark.parametrize(
@@ -245,8 +248,8 @@ def test_read_pending_phase_returns_none_for_invalid_payloads(
     payload: object | str,
 ) -> None:
     """Invalid pending-phase payloads are ignored."""
-    write_payload(tmp_path, PENDING_PHASE_FILE, payload)
-    assert read_pending_phase(tmp_path) is None
+    write_payload(tmp_path / "agent-config", PENDING_PHASE_FILE, payload)
+    assert read_pending_phase(tmp_path / "agent-config") is None
 
 
 @pytest.mark.parametrize(
@@ -258,13 +261,15 @@ def test_read_pending_phase_returns_none_for_invalid_payloads(
 )
 def test_read_pending_phase_returns_none_when_missing(tmp_path: Path, path_factory) -> None:
     """Missing pending-phase files or directories read as ``None``."""
-    assert read_pending_phase(path_factory(tmp_path)) is None
+    assert read_pending_phase(path_factory(tmp_path) / "agent-config") is None
 
 
 def test_write_pending_phase_round_trips(tmp_path: Path) -> None:
     """Writing pending phase persists a readable payload."""
-    write_pending_phase(tmp_path, "reviewing", "Review changes")
-    assert read_pending_phase(tmp_path) == PendingPhase("reviewing", "Review changes")
+    write_pending_phase(tmp_path / "agent-config", "reviewing", "Review changes")
+    assert read_pending_phase(tmp_path / "agent-config") == PendingPhase(
+        "reviewing", "Review changes"
+    )
 
 
 def test_write_pending_phase_creates_parent_dirs(tmp_path: Path) -> None:
@@ -290,7 +295,7 @@ def test_write_pending_phase_rejects_invalid_values(
 ) -> None:
     """Invalid ``write_pending_phase`` inputs raise a clear ``ValueError``."""
     with pytest.raises(ValueError, match=error_message):
-        write_pending_phase(tmp_path, phase, prompt)  # type: ignore[arg-type]
+        write_pending_phase(tmp_path / "agent-config", phase, prompt)  # type: ignore[arg-type]
 
 
 @pytest.mark.parametrize(
@@ -303,12 +308,12 @@ def test_write_pending_phase_rejects_invalid_values(
 def test_clear_pending_phase_removes_file_when_present(tmp_path: Path, prepare: bool) -> None:
     """Clearing pending phase is idempotent."""
     if prepare:
-        write_pending_phase(tmp_path, "testing", "Run tests")
+        write_pending_phase(tmp_path / "agent-config", "testing", "Run tests")
 
-    clear_pending_phase(tmp_path)
+    clear_pending_phase(tmp_path / "agent-config")
 
-    assert read_pending_phase(tmp_path) is None
-    assert not (tmp_path / PENDING_PHASE_FILE).exists()
+    assert read_pending_phase(tmp_path / "agent-config") is None
+    assert not (tmp_path / "host-control" / PENDING_PHASE_FILE).exists()
 
 
 def test_pending_phase_dataclass_is_frozen() -> None:

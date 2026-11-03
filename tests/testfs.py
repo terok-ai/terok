@@ -143,3 +143,9 @@ STATE_ROOT_NAME = "state"
 def mock_wizard_project_file(project_name: str) -> Path:
     """Return a fake wizard output path for ``project_name``."""
     return FAKE_WIZARD_PROJECTS_DIR / project_name / "project.yml"
+
+
+# Task input protocol expected by newly created containers.
+CURRENT_CONTAINER_PROTOCOL = "4"
+CURRENT_INPUT_LABELS = {"ai.terok.inputs-protocol": "1"}
+CONTAINER_AGENT_INPUTS = CONTAINER_TEROK_DIR / "input"

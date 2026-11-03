@@ -1,76 +1,41 @@
 # SPDX-FileCopyrightText: 2026 Jiri Vyskocil
 # SPDX-License-Identifier: Apache-2.0
 
-"""Emergency panic — immediately cut all resource access across all projects.
+"""Destructive emergency shutdown, independent of task metadata and telemetry.
 
-Three-step sequence: quarantine → kill supervisors → (optionally) kill
-the containers themselves.  Quarantine alone is not enough: each
-container's supervisor talks to its container over a bind-mounted
-unix socket, and nft sees no traffic there.  Killing the host-side
-supervisor process is what actually denies the container any more
-vault / clearance / signer cycles.
-
-Phase 1 (always): in parallel,
-
-  * **Quarantine** every running container's shield (nft blackhole).
-  * **Kill every supervisor** via the per-container PID files under
-    ``state_root()/pids/`` — SIGKILL, no graceful TERM, because panic
-    targets misbehaving containers and the SIGTERM grace period
-    would just hand the supervisor more time to answer socket calls.
-    The gate runs inside each container's supervisor, so this
-    same kill stops the gate too — there is no separate host gate
-    daemon to stop.
-  * **Hard-lock the vault** by destroying every stored passphrase
-    tier — session file and persistent tiers alike — so nothing can
-    auto-unlock it afterwards.  Recovery is by re-supplying the
-    escrowed recovery passphrase (see ``_stop_vault``).
-
-Phase 2 (optional, ``stop_containers=True``): SIGKILL each container
-via ``podman stop --time 0``.  Containers are *not* removed.
-
-Token revocation is deliberately excluded — it is irreversible and
-shields + dead supervisors already cut access.
+Container kills, network quarantine, supervisor kills, vault hard-lock and the
+panic marker are independent best-effort actions. No failed or hung action
+may postpone another. Containers remain on disk; recovery requires the escrowed
+vault passphrase and an explicit clearing of the panic marker.
 """
 
 from __future__ import annotations
 
-import logging
 import threading
 import time
-from concurrent.futures import Future, ThreadPoolExecutor, as_completed
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
+from functools import partial
 from pathlib import Path
+from queue import Empty, Queue
 from typing import Any
 
-from terok.lib.integrations.sandbox import PodmanRuntime
+from terok.lib.integrations.sandbox import PodmanRuntime, RuntimeContainer
 
-from ..core.config import get_shield_disable_firewall_no_protection
 from ..core.paths import core_state_dir
-from ..core.projects import list_projects
-from ..orchestration.tasks import (
-    container_name,
-    get_all_task_states,
-    get_tasks,
-)
-
-logger = logging.getLogger(__name__)
 
 _LOCK_FILENAME = "panic.lock"
-_PHASE2_TIMEOUT_S = 15
-
-# (project_name, task_id, mode, cname, task_dir)
-type _Target = tuple[str, str, str, str, Path]
-
-
-# ---------------------------------------------------------------------------
-# Public API
-# ---------------------------------------------------------------------------
+_PANIC_TIMEOUT_S = 15
+_RUNTIME_TIMEOUT_S = 10
+_DOSSIER_ANNOTATION = "dossier.meta_path"
+_SHIELD_ANNOTATION = "terok.shield.state_dir"
+_DOSSIER_SUFFIX = "_dossier.json"
 
 
 @dataclass
 class PanicResult:
-    """Outcome of an [`execute_panic`][terok.lib.domain.panic.execute_panic] invocation."""
+    """Completed actions and explicit failures, including deadline expiry."""
 
     shields_raised: list[str] = field(default_factory=list)
     shield_errors: list[tuple[str, str]] = field(default_factory=list)
@@ -80,313 +45,235 @@ class PanicResult:
     vault_error: str | None = None
     containers_stopped: list[str] = field(default_factory=list)
     container_stop_errors: list[tuple[str, str]] = field(default_factory=list)
-    shield_disabled: bool = False
+    discovery_error: str | None = None
+    lock_error: str | None = None
     total_running: int = 0
 
     @property
     def has_errors(self) -> bool:
-        """Return whether any operation failed."""
+        """Return whether any action failed or did not finish in time."""
         return bool(
             self.shield_errors
             or self.supervisor_errors
             or self.vault_error
             or self.container_stop_errors
+            or self.discovery_error
+            or self.lock_error
         )
 
 
-def execute_panic(
-    *,
-    stop_containers: bool = False,
-) -> PanicResult:
-    """Execute the full panic sequence.
+def execute_panic() -> PanicResult:
+    """Immediately attempt every shutdown action, within one overall deadline.
 
-    Discovers every running container, then (in parallel) raises shields,
-    kills the per-container supervisors (which also stops each container's
-    embedded gate), and destroys every stored copy of the vault
-    passphrase (hard-lock).  If *stop_containers*,
-    also SIGKILLs the containers afterwards (they are not removed).
+    Only host-created runtime annotations identify managed containers. Neither
+    task status, dossier contents, project configuration nor supervisor sidecar
+    files are prerequisites for killing a container. Workers are daemon threads:
+    a wedged library call cannot hold this command or Python shutdown hostage.
+    Only this collecting thread changes the returned result.
     """
     result = PanicResult()
-    targets = _discover_targets()
-    result.total_running = len(targets)
-    result.shield_disabled = get_shield_disable_firewall_no_protection()
+    runtime = PodmanRuntime()
+    deadline = time.monotonic() + _PANIC_TIMEOUT_S
+    completed: Queue[tuple[str, str, Any, str | None]] = Queue()
+    pending: set[tuple[str, str]] = set()
 
-    _phase1_lockdown(result, targets)
-    _write_panic_lock()
+    def start(kind: str, label: str, action: Callable[[], Any]) -> None:
+        """Start one independent action and deliver its outcome to the collector."""
+        pending.add((kind, label))
 
-    # Phase 2: optional container kill
-    if stop_containers and targets:
-        result.containers_stopped, result.container_stop_errors = _stop_containers(targets)
+        try:
+            threading.Thread(
+                target=_run_action,
+                args=(kind, label, action, completed),
+                daemon=True,
+                name=f"panic-{kind}-{label}",
+            ).start()
+        except (RuntimeError, OSError) as exc:
+            pending.remove((kind, label))
+            _record_failure(result, kind, label, str(exc) or type(exc).__name__)
 
+    start("lock", "", _write_panic_lock)
+    start("supervisors", "", _kill_supervisors)
+    start("vault", "", _stop_vault)
+    start("discovery", "", lambda: _discover_targets(runtime))
+    while pending and time.monotonic() < deadline:
+        try:
+            kind, label, value, error = completed.get(timeout=max(0, deadline - time.monotonic()))
+        except Empty:
+            break
+        pending.remove((kind, label))
+        if error is not None:
+            _record_failure(result, kind, label, error)
+        elif kind == "discovery":
+            result.total_running = len(value)
+            result.container_stop_errors.extend(
+                _start_container_shutdown(runtime, value, start, deadline)
+            )
+        else:
+            _record_success(result, kind, label, value)
+    for kind, label in sorted(pending):
+        _record_failure(result, kind, label, f"timed out after {_PANIC_TIMEOUT_S}s")
     return result
 
 
-def panic_stop_containers() -> tuple[list[str], list[tuple[str, str]]]:
-    """Discover and SIGKILL all running containers (Phase 2 standalone)."""
-    return _stop_containers(_discover_targets())
-
-
-def is_panicked() -> bool:
-    """Return whether the panic lock file exists."""
-    return (core_state_dir() / _LOCK_FILENAME).is_file()
-
-
-def clear_panic_lock() -> None:
-    """Remove the panic lock file if it exists."""
-    (core_state_dir() / _LOCK_FILENAME).unlink(missing_ok=True)
-
-
-def format_panic_report(result: PanicResult) -> str:
-    """Format a human-readable summary of the panic result."""
-    sup = f"Supervisors killed: {len(result.supervisors_killed)}"
-    if result.supervisor_errors:
-        sup += f" ({len(result.supervisor_errors)} failed)"
-    lines = [
-        f"Containers found: {result.total_running}",
-        _format_shield_status(result),
-        sup,
-        f"Vault: {'passphrase destroyed (re-supply to unlock)' if result.vault_stopped else 'FAILED'}",
-    ]
-
-    if result.containers_stopped:
-        lines.append(f"Containers killed: {len(result.containers_stopped)}")
-
-    if result.has_errors:
-        lines += ["", "Errors:", *_format_errors(result)]
-
-    return "\n".join(lines)
-
-
-# ---------------------------------------------------------------------------
-# Internals
-# ---------------------------------------------------------------------------
-
-
-def _phase1_lockdown(result: PanicResult, targets: list[_Target]) -> None:
-    """Run Phase 1: shields + supervisor-kill + vault stop in parallel."""
-    with ThreadPoolExecutor(max_workers=max(len(targets) + 3, 4)) as pool:
-        # Future → (kind, label); label is the container name for shields, "" otherwise.
-        futs: dict[Future[Any], tuple[str, str]] = {}
-
-        if not result.shield_disabled:
-            for t in targets:
-                futs[pool.submit(_raise_shield, t)] = ("shield", t[3])
-
-        futs[pool.submit(_kill_supervisors)] = ("supervisors", "")
-        futs[pool.submit(_stop_vault)] = ("vault", "")
-
-        for fut in as_completed(futs):
-            kind, label = futs[fut]
-            _collect_phase1_result(result, kind, label, fut)
-
-
-def _collect_phase1_result(result: PanicResult, kind: str, label: str, fut: Future[Any]) -> None:
-    """Collect a single Phase 1 future result into the PanicResult."""
+def _run_action(
+    kind: str,
+    label: str,
+    action: Callable[[], Any],
+    completed: Queue[tuple[str, str, Any, str | None]],
+) -> None:
+    """Deliver a worker outcome without mutating the collector's result."""
     try:
-        res = fut.result(timeout=60)
-    except Exception as exc:
-        _record_phase1_failure(result, kind, label, str(exc))
-        return
-    _record_phase1_success(result, kind, res)
+        completed.put((kind, label, action(), None))
+    except (Exception, SystemExit) as exc:  # NOSONAR(S5754) - worker exits are failures
+        completed.put((kind, label, None, str(exc) or type(exc).__name__))
 
 
-def _record_phase1_failure(result: PanicResult, kind: str, label: str, err: str) -> None:
-    """Treat an unhandled exception as failure for this kind."""
-    if kind == "shield":
-        result.shield_errors.append((label, err))
-    elif kind == "supervisors":
-        result.supervisor_errors.append(("*", err))
-    else:  # vault
-        result.vault_stopped = False
-        result.vault_error = err
-
-
-def _record_phase1_success(result: PanicResult, kind: str, res: Any) -> None:
-    """Fold a completed Phase 1 future's payload into the PanicResult."""
-    if kind == "shield":
-        cname, err = res
-        if err:
-            result.shield_errors.append((cname, err))
-        else:
-            result.shields_raised.append(cname)
-    elif kind == "supervisors":
-        for container_id, err in res:
-            if err:
-                result.supervisor_errors.append((container_id, err))
-            else:
-                result.supervisors_killed.append(container_id)
-    else:  # vault
-        stopped, err = res
-        result.vault_stopped = bool(stopped)
-        result.vault_error = err
-
-
-def _format_shield_status(result: PanicResult) -> str:
-    """Format the shield status line for the panic report."""
-    if result.shield_disabled:
-        return "Shields: DISABLED (egress firewall off)"
-    s = f"Shields raised: {len(result.shields_raised)}"
-    if result.shield_errors:
-        s += f" ({len(result.shield_errors)} failed)"
-    return s
-
-
-def _format_errors(result: PanicResult) -> list[str]:
-    """Collect all error lines for the panic report."""
-    lines = [f"  shield {cname}: {err}" for cname, err in result.shield_errors]
-    lines += [f"  supervisor {cid}: {err}" for cid, err in result.supervisor_errors]
-    if result.vault_error:
-        lines.append(f"  vault: {result.vault_error}")
-    lines += [f"  kill {cname}: {err}" for cname, err in result.container_stop_errors]
-    return lines
-
-
-def _discover_targets() -> list[_Target]:
-    """Find every running or paused container across all projects."""
-    targets: list[_Target] = []
-    for cfg in list_projects():
-        try:
-            tasks = get_tasks(cfg.name)
-            if not tasks:
-                continue
-            states = get_all_task_states(cfg.name, tasks)
-        except Exception:
-            logger.debug("panic: failed to list tasks for %s", cfg.name, exc_info=True)
+def _start_container_shutdown(
+    runtime: PodmanRuntime,
+    targets: list[RuntimeContainer],
+    start: Callable[[str, str, Callable[[], Any]], None],
+    deadline: float,
+) -> list[tuple[str, str]]:
+    """Launch independent kills and quarantines, reporting any expired kill attempts."""
+    errors = []
+    for target in targets:
+        if time.monotonic() >= deadline:
+            errors.append((target.name, "deadline expired before kill"))
             continue
-        if states is None:
-            # No live states means no way to tell running from stopped —
-            # same outcome as the pre-#1134 empty dict (nothing matches
-            # "running"/"paused" below), but logged instead of silent.
-            logger.debug("panic: container state query failed for %s", cfg.name)
-            continue
-        targets.extend(
-            (
-                cfg.name,
-                t.task_id,
-                t.mode,
-                container_name(cfg.name, t.mode, t.task_id),
-                cfg.tasks_root / str(t.task_id),
-            )
-            for t in tasks
-            if t.mode and states.get(t.task_id) in ("running", "paused")
+        start(
+            "kill", target.name, partial(runtime.force_stop, target.id, timeout=_RUNTIME_TIMEOUT_S)
         )
+        if _SHIELD_ANNOTATION in target.annotations:
+            start("shield", target.name, partial(_raise_shield, target))
+    return errors
+
+
+def _discover_targets(runtime: PodmanRuntime) -> list[RuntimeContainer]:
+    """Find live managed containers without opening any task-owned files."""
+    root = core_state_dir() / "projects"
+    targets = []
+    for container in runtime.inventory(timeout=_RUNTIME_TIMEOUT_S):
+        if container.state not in {"running", "paused", "stopping", "restarting"}:
+            continue
+        path = Path(container.annotations.get(_DOSSIER_ANNOTATION, ""))
+        try:
+            parts = path.relative_to(root).parts
+        except ValueError:
+            continue
+        if (
+            len(parts) == 3
+            and parts[0] != ".."
+            and parts[1] == "tasks"
+            and parts[2].endswith(_DOSSIER_SUFFIX)
+            and parts[2] != _DOSSIER_SUFFIX
+        ):
+            targets.append(container)
     return targets
 
 
-def _raise_shield(target: _Target) -> tuple[str, str | None]:
-    """Block all traffic for one container (total blackout)."""
+def _raise_shield(target: RuntimeContainer) -> None:
+    """Attempt network blackout independently of the immediate container kill."""
     from terok.lib.integrations.sandbox import ShieldManager
 
-    _, _, _, cname, task_dir = target
-    try:
-        ShieldManager(task_dir).quarantine(cname)
-        return cname, None
-    except Exception as exc:
-        return cname, str(exc)
+    state_dir = Path(target.annotations[_SHIELD_ANNOTATION])
+    if not state_dir.is_absolute() or state_dir.name != "shield":
+        raise ValueError(f"Invalid shield state directory: {state_dir}")
+    ShieldManager(state_dir.parent).quarantine(target.id)
 
 
 def _kill_supervisors() -> list[tuple[str, str | None]]:
-    """SIGKILL every host-side per-container supervisor process.
-
-    The supervisor is the access point that survives nft quarantine —
-    the container talks to it over a bind-mounted unix socket, which
-    nft never sees.  Quarantine + supervisor-kill together deny both
-    network egress and on-host IPC; without the supervisor-kill the
-    container could keep talking to its vault / clearance / signer
-    until the operator's optional ``stop_containers`` step.
-
-    Returns one row per pid file ``(container_id, error_or_None)`` —
-    same shape as terok-sandbox's library function so the caller can
-    surface partial failures.
-    """
+    """Kill host-side vault, gate and signer services, including Unix-socket access."""
     from terok.lib.integrations.sandbox import kill_all_supervisors
 
     return kill_all_supervisors()
 
 
-def _stop_vault() -> tuple[bool, str | None]:
-    """Hard-lock the vault: destroy every stored copy of the passphrase.
-
-    Panic assumes the worst, so a half-measure won't do.  Wiping only
-    the temporary cache would leave a durable tier (sealed
-    systemd-creds, desktop keyring, passphrase-command) that auto-unlocks the vault
-    on the *next* access — the lock would be theatre.  So panic evicts
-    every tier via
-    [`purge_passphrase_tiers`][terok_sandbox.purge_passphrase_tiers], with
-    no confirmation: the operator was told to save the recovery passphrase
-    off-host (the escrow-before-enable gate enforces it), so the vault is
-    recoverable by re-supplying it — but until then it is genuinely shut.
-    """
+def _stop_vault() -> None:
+    """Destroy all cached and persistent passphrase tiers without confirmation."""
     from ..core.config import make_sandbox_config
     from ..integrations.sandbox import purge_passphrase_tiers
 
-    try:
-        purge_passphrase_tiers(make_sandbox_config())
-        return True, None
-    except Exception as exc:
-        return False, str(exc)
+    purge_passphrase_tiers(make_sandbox_config())
 
 
-def _stop_containers(targets: list[_Target]) -> tuple[list[str], list[tuple[str, str]]]:
-    """SIGKILL each discovered container in parallel; do not remove them.
-
-    Uses ``podman stop --time 0`` rather than a graceful stop: panic
-    targets runaway containers, so the default 10 s SIGTERM window
-    would just hand a misbehaving process more time to misbehave.
-
-    Panic crosses projects (possibly under different runtimes); plain
-    ``PodmanRuntime`` is correct here because the kill is a
-    podman-level operation that works identically regardless of which
-    OCI runtime booted any individual container.
-    """
-    if not targets:
-        return [], []
-
-    runtime = PodmanRuntime()
-    results: dict[str, str | None] = {}
-
-    def _worker(cname: str) -> None:
-        results[cname] = _kill_container(runtime, cname)
-
-    # Daemon threads so a wedged ``podman stop`` past the panic budget
-    # doesn't pin Python's atexit, letting ``terok panic`` return to the
-    # operator's shell within ``_PHASE2_TIMEOUT_S`` regardless of the
-    # subprocess state.
-    threads = [
-        threading.Thread(target=_worker, args=(t[3],), daemon=True, name=f"panic-stop-{t[3]}")
-        for t in targets
-    ]
-    for th in threads:
-        th.start()
-    deadline = time.monotonic() + _PHASE2_TIMEOUT_S
-    for th in threads:
-        th.join(timeout=max(0.0, deadline - time.monotonic()))
-
-    stopped: list[str] = []
-    errors: list[tuple[str, str]] = []
-    for t in targets:
-        cname = t[3]
-        if cname not in results:
-            # Worker thread didn't finish within the budget.
-            errors.append((cname, f"timed out after {_PHASE2_TIMEOUT_S}s"))
-        elif (err := results[cname]) is not None:
-            errors.append((cname, err))
-        else:
-            stopped.append(cname)
-    return stopped, errors
+def _record_success(result: PanicResult, kind: str, label: str, value: Any) -> None:
+    """Collect completed actions, including individual supervisor failures."""
+    match kind:
+        case "supervisors":
+            for container_id, error in value:
+                if error:
+                    result.supervisor_errors.append((container_id, error))
+                else:
+                    result.supervisors_killed.append(container_id)
+        case "vault":
+            result.vault_stopped = True
+        case "kill":
+            result.containers_stopped.append(label)
+        case "shield":
+            result.shields_raised.append(label)
 
 
-def _kill_container(runtime: PodmanRuntime, cname: str) -> str | None:
-    """SIGKILL one container without removing it (``podman stop --time 0``)."""
-    try:
-        runtime.container(cname).stop(timeout=0)
-        return None
-    except Exception as exc:
-        return str(exc)
+def _record_failure(result: PanicResult, kind: str, label: str, error: str) -> None:
+    """Keep every independent failure visible in the final report."""
+    match kind:
+        case "shield":
+            result.shield_errors.append((label, error))
+        case "kill":
+            result.container_stop_errors.append((label, error))
+        case "supervisors":
+            result.supervisor_errors.append(("*", error))
+        case "vault":
+            result.vault_error = error
+        case "discovery":
+            result.discovery_error = error
+        case "lock":
+            result.lock_error = error
+
+
+def is_panicked() -> bool:
+    """Return whether the panic marker exists."""
+    return (core_state_dir() / _LOCK_FILENAME).is_file()
+
+
+def clear_panic_lock() -> None:
+    """Remove the panic marker without waiting for workers or restarting services."""
+    (core_state_dir() / _LOCK_FILENAME).unlink(missing_ok=True)
 
 
 def _write_panic_lock() -> None:
-    """Write the panic lock file with current timestamp."""
+    """Record panic state for the operator; launch paths do not enforce this marker."""
     path = core_state_dir() / _LOCK_FILENAME
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(datetime.now(UTC).isoformat() + "\n")
+
+
+def format_panic_report(result: PanicResult) -> str:
+    """Summarize completed emergency actions without claiming failed actions worked."""
+    lines = [
+        f"Containers found: {result.total_running}",
+        f"Containers killed: {len(result.containers_stopped)}",
+        f"Shields raised: {len(result.shields_raised)}",
+        f"Supervisors killed: {len(result.supervisors_killed)}",
+        f"Vault: {'passphrase destroyed (re-supply to unlock)' if result.vault_stopped else 'FAILED'}",
+    ]
+    errors = [
+        *(f"  shield {name}: {error}" for name, error in result.shield_errors),
+        *(f"  supervisor {name}: {error}" for name, error in result.supervisor_errors),
+        *(f"  kill {name}: {error}" for name, error in result.container_stop_errors),
+    ]
+    for action, error in (
+        ("discovery", result.discovery_error),
+        ("vault", result.vault_error),
+        ("panic marker", result.lock_error),
+    ):
+        if error:
+            errors.append(f"  {action}: {error}")
+    if errors:
+        lines += ["", "Errors:", *errors]
+        lines += [
+            "",
+            "Shutdown work may still be running; --clear does not wait for or cancel it.",
+            "Verify shutdown has finished before restoring credentials or starting tasks.",
+        ]
+    return "\n".join(lines)
