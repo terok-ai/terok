@@ -139,7 +139,7 @@ def test_legacy_upgrade_requires_replacement_image_before_teardown(
 
 
 def test_resume_protocol_guard_runs_before_mutating_start_inputs(
-    upgrade_task: SimpleNamespace,
+    upgrade_task: SimpleNamespace, mock_runtime: MagicMock
 ) -> None:
     """The headless-follow-up guard refuses legacy inputs before any refresh."""
     task = upgrade_task
@@ -150,10 +150,38 @@ def test_resume_protocol_guard_runs_before_mutating_start_inputs(
         patch.object(restart, "_refresh_clearance_mode") as clearance,
         pytest.raises(SystemExit, match="obsolete input protocol") as error,
     ):
-        restart._refresh_before_resume(task.project, "legacy", task.project.tasks_root / "1")
+        restart._refresh_before_resume(
+            task.project, "legacy", task.project.tasks_root / "1", runtime=mock_runtime
+        )
 
     assert isinstance(error.value.__cause__, RuntimeError)
     version.assert_not_called()
     tiers.assert_not_called()
     clearance.assert_not_called()
     task.container.start.assert_not_called()
+
+
+@pytest.mark.parametrize("legacy", [False, True])
+def test_protocol_preflight_reuses_the_resolved_runtime(
+    upgrade_task: SimpleNamespace, mock_runtime: MagicMock, legacy: bool
+) -> None:
+    """Protocol and refresh checks do not repeat expensive runtime resolution."""
+    task = upgrade_task
+    task.container.state = "exited"
+    if legacy:
+        task.container.env = {}
+    with (
+        patch.object(restart._rt, "resolve_runtime", return_value=mock_runtime) as resolve,
+        patch.object(restart, "_validate_shield_bundle_version"),
+        patch.object(restart, "_refresh_shield_tiers"),
+        patch.object(restart, "_refresh_clearance_mode"),
+        patch.object(restart, "_start_and_report_restart") as resume,
+        patch.object(restart, "_recreate_in_place") as recreate,
+    ):
+        restart.task_restart(task.project.name, "1")
+
+    resolve.assert_called_once_with(task.project)
+    assert resume.called is not legacy
+    assert recreate.called is legacy
+    if legacy:
+        task.image_protocol.assert_called_once_with(mock_runtime.image.return_value)

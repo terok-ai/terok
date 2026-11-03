@@ -19,6 +19,7 @@ from pathlib import Path
 from terok_util import read_untrusted_text, write_untrusted_text
 
 from terok.lib.integrations.executor import (
+    MAX_PROMPT_BYTES,
     AgentConfigSpec,
     agent_input_dir,
     prepare_agent_config_dir,
@@ -58,7 +59,6 @@ _PROMPT_FILENAME = "prompt.txt"
 
 #: Host-only task-root file archiving earlier headless prompts.
 _PROMPT_HISTORY_FILENAME = "prompt-history.txt"
-_MAX_PROMPT_BYTES = 1024 * 1024
 _MAX_HISTORY_BYTES = 16 * 1024 * 1024
 
 
@@ -324,11 +324,11 @@ def _inject_followup_prompt(*, task_dir: Path, prompt: str) -> None:
     History stays outside all container mounts. Both sealed and shared tasks
     see the current prompt through the same live, read-only input directory.
     """
-    if len(prompt.encode("utf-8")) > _MAX_PROMPT_BYTES:
-        raise ValueError("Headless prompt exceeds the one-megabyte limit")
+    if len(prompt.encode("utf-8")) > MAX_PROMPT_BYTES:
+        raise ValueError(f"Headless prompt exceeds {MAX_PROMPT_BYTES // 1024} KiB")
     prompt_path = agent_input_dir(task_dir) / _PROMPT_FILENAME
     history_path = task_dir / _PROMPT_HISTORY_FILENAME
-    existing = read_untrusted_text(prompt_path, max_bytes=_MAX_PROMPT_BYTES)
+    existing = read_untrusted_text(prompt_path, max_bytes=MAX_PROMPT_BYTES)
     try:
         history = read_untrusted_text(history_path, max_bytes=_MAX_HISTORY_BYTES)
     except FileNotFoundError:
@@ -385,7 +385,8 @@ def task_followup_headless(
         )
 
     cname = container_name(project.name, "run", task_id)
-    container_state = _rt.resolve_runtime(project).container(cname).state
+    runtime = _rt.resolve_runtime(project)
+    container_state = runtime.container(cname).state
     if container_state == "running":
         raise SystemExit(
             f"Container {cname} is still running. "
@@ -419,7 +420,7 @@ def task_followup_headless(
     # sidecar unless they are refreshed first — today's tiers (an override
     # shortened or removed since), today's clearance mode.  Before the prompt
     # is handed over, so a refusal here leaves the task as it was.
-    _refresh_before_resume(project, cname, task_dir)
+    _refresh_before_resume(project, cname, task_dir, runtime=runtime)
     _inject_followup_prompt(
         task_dir=task_dir,
         prompt=prompt,

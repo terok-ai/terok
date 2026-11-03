@@ -837,8 +837,16 @@ PANIC also immediately kills every live managed container, without a second
 confirmation, and independently attempts network quarantine and supervisor
 termination. It does not parse task status files. A failed or hung step cannot
 prevent the others; the report names failures and timeouts. Containers are not
-removed. `terok panic --clear` clears only the restart interlock — it does not
-restore credentials or restart anything. Save work before testing this button.
+removed. `terok panic --clear` clears only the panic marker — it does not
+restore credentials or restart anything. The marker does not block task launches.
+Save work before testing this button.
+
+The deadline bounds how long PANIC waits, not how long a stuck operation can run.
+In a long-lived TUI or API process, timed-out workers can still purge credentials,
+stop supervisors or write the marker later. Clearing the marker does not wait for
+or cancel those workers. Before restoring credentials or starting tasks, verify
+that shutdown has finished; after a timeout, exit the old application and check
+for remaining shutdown operations before recovery.
 
 ### Task inputs and writable state
 
@@ -855,7 +863,8 @@ The writable marker is delivery state, not proof an agent obeyed the instruction
 These two narrow input/acknowledgement channels stay live even in sealed mode.
 Vendor configuration and sessions keep their existing sealed-copy isolation.
 Headless prompt history stays on the host, outside every task mount. Prompts
-are limited to 1 MiB; archive the host history before it reaches 16 MiB. Work status
+are limited to 120 KiB of UTF-8 bytes so they fit the agent CLIs' argument transport;
+archive the host history before it reaches 16 MiB. Work status
 is bounded, untrusted display data; pending phase commands instead live in the
 host-only `host-control` directory beside `agent-config`.
 

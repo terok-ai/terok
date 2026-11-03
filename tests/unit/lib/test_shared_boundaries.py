@@ -122,12 +122,38 @@ def test_headless_limits_fail_before_either_file_changes(tmp_path, monkeypatch, 
     current.write_text("host prompt")
     history = tmp_path / "prompt-history.txt"
     history.write_text("previous")
-    limit = "_MAX_PROMPT_BYTES" if overflow == "prompt" else "_MAX_HISTORY_BYTES"
+    limit = "MAX_PROMPT_BYTES" if overflow == "prompt" else "_MAX_HISTORY_BYTES"
     monkeypatch.setattr(headless, limit, 2 if overflow == "prompt" else 10)
     with pytest.raises(ValueError, match="exceeds"):
         _inject_followup_prompt(task_dir=tmp_path, prompt="next prompt")
     assert current.read_text() == "host prompt"
     assert history.read_text() == "previous"
+
+
+@pytest.mark.parametrize("character", ["a", "é"])
+@pytest.mark.parametrize("oversized", [False, True])
+def test_followup_prompt_uses_the_shared_utf8_byte_limit(tmp_path, character, oversized):
+    """The argv-safe budget counts encoded bytes and refuses before publishing either file."""
+    from terok.lib.integrations.executor import MAX_PROMPT_BYTES
+
+    inputs = agent_input_dir(tmp_path)
+    inputs.mkdir()
+    current = inputs / "prompt.txt"
+    current.write_text("old prompt")
+    history = tmp_path / "prompt-history.txt"
+    history.write_text("previous\n")
+    prompt = character * (MAX_PROMPT_BYTES // len(character.encode("utf-8")) + oversized)
+
+    if oversized:
+        with pytest.raises(ValueError, match=f"exceeds {MAX_PROMPT_BYTES // 1024} KiB"):
+            _inject_followup_prompt(task_dir=tmp_path, prompt=prompt)
+        assert current.read_text() == "old prompt"
+        assert history.read_text() == "previous\n"
+    else:
+        _inject_followup_prompt(task_dir=tmp_path, prompt=prompt)
+        assert current.read_text() == prompt
+        assert len(current.read_bytes()) == MAX_PROMPT_BYTES
+        assert history.read_text() == "previous\nold prompt\n\n---\n\n"
 
 
 @pytest.mark.parametrize("link", ["workspace", "marker"])

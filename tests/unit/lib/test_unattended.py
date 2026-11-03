@@ -878,7 +878,7 @@ class TestTaskFollowupHeadless:
                 assert "failed to start" in str(ctx.value)
 
     def test_sealed_followup_updates_live_readonly_input(self, mock_runtime) -> None:
-        """Sealed projects inject the follow-up prompt via podman cp, not host files."""
+        """Sealed follow-ups replace the live read-only prompt and archive host-only history."""
         with tempfile.TemporaryDirectory() as td:
             base = Path(td)
 

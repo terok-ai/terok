@@ -574,4 +574,7 @@ Panic inventories actual runtime containers and identifies this installation via
 host-created dossier-path annotations without reading dossier contents, task
 metadata, status or sidecars. Independent deadline-bounded actions kill containers
 by full runtime ID, quarantine networks, kill supervisors, purge passphrases and
-write the restart interlock. No failed action may prevent the others.
+write the panic marker. No failed action may prevent the others. The marker is
+operator-visible state, not an enforced launch gate. Daemon workers may outlive
+the collection deadline, and clearing the marker does not cancel or join them;
+recovery must not overlap unfinished destructive actions.

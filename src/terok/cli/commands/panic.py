@@ -56,7 +56,9 @@ def _cmd_clear() -> None:
     if is_panicked():
         clear_panic_lock()
         print("Panic state cleared.")
-        print("Containers remain stopped. Re-supply the recovery passphrase before restarting.")
+        print("This only removes the marker; it does not wait for or cancel shutdown work.")
+        print("This does not restart containers or restore credentials.")
+        print("Re-supply the recovery passphrase only after shutdown is verified.")
         print(
             "Per-container services (vault, gate) come back automatically when you "
             "start a fresh task — the supervisor stands them up at container launch."

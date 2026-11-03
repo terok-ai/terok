@@ -44,6 +44,8 @@ from .toad import _rehydrate_toad_token, _toad_browser_url, task_run_toad
 if TYPE_CHECKING:
     from pathlib import Path
 
+    from terok.lib.integrations.sandbox import ContainerRuntime
+
     from ...core.project_model import ProjectConfig
 
 
@@ -124,12 +126,14 @@ def _make_running(
         raise SystemExit(f"Task {task_id} has never been run (no mode set)")
 
     cname = container_name(project.name, mode, task_id)
-    container_state = _rt.resolve_runtime(project).container(cname).state
+    runtime = _rt.resolve_runtime(project)
+    container = runtime.container(cname)
+    container_state = container.state
 
     protocol_reason = None
     if container_state is not None:
         try:
-            require_task_input_protocol(_rt.resolve_runtime(project).container(cname))
+            require_task_input_protocol(container)
         except RuntimeError as exc:
             protocol_reason = str(exc)
 
@@ -147,9 +151,7 @@ def _make_running(
 
     if protocol_reason and mode != "run":
         try:
-            require_image_input_protocol(
-                _rt.resolve_runtime(project).image(project_cli_image(project.name))
-            )
+            require_image_input_protocol(runtime.image(project_cli_image(project.name)))
         except RuntimeError as exc:
             raise SystemExit(str(exc)) from exc
 
@@ -166,7 +168,7 @@ def _make_running(
         # it gates on the bundle version — a recreate builds a fresh bundle
         # and must never be blocked by a stale one — and refreshes both from
         # the current roster/config before anything is torn down.
-        _refresh_before_resume(project, cname, project.tasks_root / str(task_id))
+        _refresh_before_resume(project, cname, project.tasks_root / str(task_id), runtime=runtime)
         if container_state == "running":
             _stop_running_container(project, task_id, mode, cname, meta_path)
         try:
@@ -180,7 +182,9 @@ def _make_running(
     )
 
 
-def _refresh_before_resume(project: ProjectConfig, cname: str, task_dir: Path) -> None:
+def _refresh_before_resume(
+    project: ProjectConfig, cname: str, task_dir: Path, *, runtime: ContainerRuntime
+) -> None:
     """Bring an existing container's start-time inputs up to today's config, before it starts.
 
     ``podman start`` replays what the container was created with: its shield
@@ -194,7 +198,7 @@ def _refresh_before_resume(project: ProjectConfig, cname: str, task_dir: Path) -
     untouched; the clearance refresh only warns.
     """
     try:
-        require_task_input_protocol(_rt.resolve_runtime(project).container(cname))
+        require_task_input_protocol(runtime.container(cname))
     except RuntimeError as exc:
         raise SystemExit(str(exc)) from exc
     _validate_shield_bundle_version(cname)

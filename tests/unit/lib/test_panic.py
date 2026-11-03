@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import threading
 import time
+from pathlib import Path
 from unittest.mock import MagicMock
 
 import pytest
@@ -84,7 +85,8 @@ def test_each_failure_is_independent(emergency, tmp_path, monkeypatch):
     assert result.has_errors
     report = panic.format_panic_report(result)
     assert "Containers killed: 1" in report
-    assert "restart interlock:" in report
+    assert "panic marker:" in report
+    assert "--clear does not wait for or cancel it" in report
 
 
 def test_inventory_failure_does_not_skip_global_shutdown(emergency):
@@ -95,6 +97,81 @@ def test_inventory_failure_does_not_skip_global_shutdown(emergency):
     panic._kill_supervisors.assert_called_once()
     panic._stop_vault.assert_called_once()
     assert panic.is_panicked()
+
+
+@pytest.mark.parametrize("exception", [OSError, TimeoutError, RuntimeError, SystemExit])
+@pytest.mark.parametrize(
+    ("action", "field"),
+    [
+        ("_stop_vault", "vault_error"),
+        ("_write_panic_lock", "lock_error"),
+        ("inventory", "discovery_error"),
+    ],
+)
+def test_empty_exception_message_is_still_a_reported_failure(
+    emergency, monkeypatch, action, field, exception
+):
+    """Silent exceptions still make panic fail visibly instead of reporting success."""
+    if action == "inventory":
+        emergency.inventory.side_effect = exception()
+    else:
+        monkeypatch.setattr(panic, action, MagicMock(side_effect=exception()))
+
+    result = panic.execute_panic()
+
+    assert getattr(result, field) == exception.__name__
+    assert result.has_errors
+    assert exception.__name__ in panic.format_panic_report(result)
+
+
+@pytest.mark.parametrize("absolute", [False, True])
+def test_raise_shield_refuses_invalid_annotation(tmp_path, monkeypatch, absolute):
+    """Relative paths and unrelated directories cannot select a quarantine manager."""
+    manager = MagicMock()
+    monkeypatch.setattr("terok.lib.integrations.sandbox.ShieldManager", manager)
+    state_dir = tmp_path / "other" if absolute else Path("relative") / "shield"
+    target = _container(tmp_path, **{panic._SHIELD_ANNOTATION: str(state_dir)})
+
+    with pytest.raises(ValueError, match="Invalid shield state directory"):
+        panic._raise_shield(target)
+
+    manager.assert_not_called()
+
+
+def test_raise_shield_quarantines_exact_runtime_id(tmp_path, monkeypatch):
+    """The validated shield directory selects its parent and the immutable runtime ID."""
+    manager = MagicMock()
+    monkeypatch.setattr("terok.lib.integrations.sandbox.ShieldManager", manager)
+    target = _container(tmp_path, **{panic._SHIELD_ANNOTATION: str(tmp_path / "shield")})
+
+    panic._raise_shield(target)
+
+    manager.assert_called_once_with(tmp_path)
+    manager.return_value.quarantine.assert_called_once_with(target.id)
+
+
+def test_kill_and_quarantine_successes_are_both_collected(emergency, tmp_path):
+    """One container's independent shutdown actions both appear in the final report."""
+    target = _container(tmp_path, **{panic._SHIELD_ANNOTATION: str(tmp_path / "shield")})
+    emergency.inventory.return_value = [target]
+
+    result = panic.execute_panic()
+
+    assert result.containers_stopped == [target.name]
+    assert result.shields_raised == [target.name]
+    assert not result.has_errors
+
+
+def test_expired_discovery_does_not_start_more_workers(tmp_path, monkeypatch):
+    """Targets discovered at the overall deadline are explicit failures, not new work."""
+    target = _container(tmp_path)
+    start = MagicMock()
+    monkeypatch.setattr(panic.time, "monotonic", lambda: 1.0)
+
+    errors = panic._start_container_shutdown(MagicMock(), [target], start, 1.0)
+
+    assert errors == [(target.name, "deadline expired before kill")]
+    start.assert_not_called()
 
 
 def test_one_kill_failure_does_not_skip_another(emergency, tmp_path):
@@ -144,18 +221,20 @@ def test_transitional_live_states_are_also_killed(emergency, tmp_path, state):
     assert panic.execute_panic().containers_stopped == ["task"]
 
 
-def test_worker_start_failure_does_not_skip_other_actions(emergency, monkeypatch):
+@pytest.mark.parametrize("message", ["cannot start worker", ""])
+def test_worker_start_failure_does_not_skip_other_actions(emergency, monkeypatch, message):
     """Thread resource failures are per-action errors rather than aborting panic."""
     original = threading.Thread.start
 
     def start(thread):
         if thread.name == "panic-vault-":
-            raise RuntimeError("cannot start worker")
+            raise RuntimeError(message)
         original(thread)
 
     monkeypatch.setattr(threading.Thread, "start", start)
     result = panic.execute_panic()
-    assert result.vault_error == "cannot start worker"
+    assert result.vault_error == (message or "RuntimeError")
+    assert result.has_errors
     panic._kill_supervisors.assert_called_once()
     emergency.inventory.assert_called_once()
     assert panic.is_panicked()

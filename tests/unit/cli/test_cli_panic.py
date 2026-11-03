@@ -50,6 +50,7 @@ class TestCmdClear:
         mock_clear.assert_called_once()
         out = capsys.readouterr().out
         assert "Panic state cleared" in out
+        assert "does not wait for or cancel shutdown work" in out
         # No host services to restart — per-container vault/gate come back
         # automatically at the next task launch via the supervisor.
         assert "supervisor stands them up" in out

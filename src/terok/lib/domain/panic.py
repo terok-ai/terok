@@ -4,9 +4,9 @@
 """Destructive emergency shutdown, independent of task metadata and telemetry.
 
 Container kills, network quarantine, supervisor kills, vault hard-lock and the
-restart interlock are independent best-effort actions. No failed or hung action
+panic marker are independent best-effort actions. No failed or hung action
 may postpone another. Containers remain on disk; recovery requires the escrowed
-vault passphrase and an explicit clearing of the panic interlock.
+vault passphrase and an explicit clearing of the panic marker.
 """
 
 from __future__ import annotations
@@ -81,17 +81,16 @@ def execute_panic() -> PanicResult:
         """Start one independent action and deliver its outcome to the collector."""
         pending.add((kind, label))
 
-        def run() -> None:
-            try:
-                completed.put((kind, label, action(), None))
-            except (Exception, SystemExit) as exc:
-                completed.put((kind, label, None, str(exc)))
-
         try:
-            threading.Thread(target=run, daemon=True, name=f"panic-{kind}-{label}").start()
+            threading.Thread(
+                target=_run_action,
+                args=(kind, label, action, completed),
+                daemon=True,
+                name=f"panic-{kind}-{label}",
+            ).start()
         except (RuntimeError, OSError) as exc:
             pending.remove((kind, label))
-            _record_failure(result, kind, label, str(exc))
+            _record_failure(result, kind, label, str(exc) or type(exc).__name__)
 
     start("lock", "", _write_panic_lock)
     start("supervisors", "", _kill_supervisors)
@@ -107,32 +106,47 @@ def execute_panic() -> PanicResult:
             _record_failure(result, kind, label, error)
         elif kind == "discovery":
             result.total_running = len(value)
-            for target in value:
-                if time.monotonic() >= deadline:
-                    _record_failure(result, "kill", target.name, "deadline expired before kill")
-                    continue
-                start(
-                    "kill",
-                    target.name,
-                    partial(runtime.force_stop, target.id, timeout=_RUNTIME_TIMEOUT_S),
-                )
-                if _SHIELD_ANNOTATION in target.annotations:
-                    start("shield", target.name, partial(_raise_shield, target))
-        elif kind == "supervisors":
-            for container_id, error in value:
-                if error:
-                    result.supervisor_errors.append((container_id, error))
-                else:
-                    result.supervisors_killed.append(container_id)
-        elif kind == "vault":
-            result.vault_stopped = True
-        elif kind == "kill":
-            result.containers_stopped.append(label)
-        elif kind == "shield":
-            result.shields_raised.append(label)
+            result.container_stop_errors.extend(
+                _start_container_shutdown(runtime, value, start, deadline)
+            )
+        else:
+            _record_success(result, kind, label, value)
     for kind, label in sorted(pending):
         _record_failure(result, kind, label, f"timed out after {_PANIC_TIMEOUT_S}s")
     return result
+
+
+def _run_action(
+    kind: str,
+    label: str,
+    action: Callable[[], Any],
+    completed: Queue[tuple[str, str, Any, str | None]],
+) -> None:
+    """Deliver a worker outcome without mutating the collector's result."""
+    try:
+        completed.put((kind, label, action(), None))
+    except (Exception, SystemExit) as exc:
+        completed.put((kind, label, None, str(exc) or type(exc).__name__))
+
+
+def _start_container_shutdown(
+    runtime: PodmanRuntime,
+    targets: list[RuntimeContainer],
+    start: Callable[[str, str, Callable[[], Any]], None],
+    deadline: float,
+) -> list[tuple[str, str]]:
+    """Launch independent kills and quarantines, reporting any expired kill attempts."""
+    errors = []
+    for target in targets:
+        if time.monotonic() >= deadline:
+            errors.append((target.name, "deadline expired before kill"))
+            continue
+        start(
+            "kill", target.name, partial(runtime.force_stop, target.id, timeout=_RUNTIME_TIMEOUT_S)
+        )
+        if _SHIELD_ANNOTATION in target.annotations:
+            start("shield", target.name, partial(_raise_shield, target))
+    return errors
 
 
 def _discover_targets(runtime: PodmanRuntime) -> list[RuntimeContainer]:
@@ -183,6 +197,23 @@ def _stop_vault() -> None:
     purge_passphrase_tiers(make_sandbox_config())
 
 
+def _record_success(result: PanicResult, kind: str, label: str, value: Any) -> None:
+    """Collect completed actions, including individual supervisor failures."""
+    match kind:
+        case "supervisors":
+            for container_id, error in value:
+                if error:
+                    result.supervisor_errors.append((container_id, error))
+                else:
+                    result.supervisors_killed.append(container_id)
+        case "vault":
+            result.vault_stopped = True
+        case "kill":
+            result.containers_stopped.append(label)
+        case "shield":
+            result.shields_raised.append(label)
+
+
 def _record_failure(result: PanicResult, kind: str, label: str, error: str) -> None:
     """Keep every independent failure visible in the final report."""
     match kind:
@@ -201,17 +232,17 @@ def _record_failure(result: PanicResult, kind: str, label: str, error: str) -> N
 
 
 def is_panicked() -> bool:
-    """Return whether the restart interlock exists."""
+    """Return whether the panic marker exists."""
     return (core_state_dir() / _LOCK_FILENAME).is_file()
 
 
 def clear_panic_lock() -> None:
-    """Remove the restart interlock without restarting containers or services."""
+    """Remove the panic marker without waiting for workers or restarting services."""
     (core_state_dir() / _LOCK_FILENAME).unlink(missing_ok=True)
 
 
 def _write_panic_lock() -> None:
-    """Prevent subsequent task starts until the operator explicitly clears panic."""
+    """Record panic state for the operator; launch paths do not enforce this marker."""
     path = core_state_dir() / _LOCK_FILENAME
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(datetime.now(UTC).isoformat() + "\n")
@@ -234,10 +265,15 @@ def format_panic_report(result: PanicResult) -> str:
     for action, error in (
         ("discovery", result.discovery_error),
         ("vault", result.vault_error),
-        ("restart interlock", result.lock_error),
+        ("panic marker", result.lock_error),
     ):
         if error:
             errors.append(f"  {action}: {error}")
     if errors:
         lines += ["", "Errors:", *errors]
+        lines += [
+            "",
+            "Shutdown work may still be running; --clear does not wait for or cancel it.",
+            "Verify shutdown has finished before restoring credentials or starting tasks.",
+        ]
     return "\n".join(lines)
