@@ -35,7 +35,7 @@ import uuid
 from collections.abc import AsyncIterator
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import pytest
 
@@ -45,6 +45,9 @@ from tests.integration.helpers import (
     podman_subprocess_env,
 )
 from tests.integration.stories.conftest import CapturedRequest
+
+if TYPE_CHECKING:
+    from terok_sandbox import BrokerContext
 
 # This story talks to a real DB + broker.
 pytestmark = pytest.mark.needs_vault
@@ -152,6 +155,7 @@ class RelayEnv:
 @pytest.fixture
 async def relay_broker_socket(
     populated_vault_db: tuple[Path, str, dict[str, Any]],
+    vault_broker_context: BrokerContext,
     redirecting_upstream: RedirectUpstreamState,
     tmp_path: Path,
 ) -> AsyncIterator[RelayEnv]:
@@ -179,7 +183,7 @@ async def relay_broker_socket(
             }
         )
     )
-    app = _build_app(str(db_path), str(routes_path))
+    app = _build_app(str(db_path), str(routes_path), broker_context=vault_broker_context)
 
     socket_path = tmp_path / "vault.sock"
     runner = web.AppRunner(app)
