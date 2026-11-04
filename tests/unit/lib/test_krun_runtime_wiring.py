@@ -15,9 +15,12 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from terok.lib.core.runtime import resolve_runtime
+from terok.lib.core.runtime import resolve_runtime, resolve_runtime_name
 from terok.lib.integrations.sandbox import KrunRuntime, NullRuntime, PodmanRuntime
-from terok.lib.orchestration.task_runners.container import _validate_krun_compatibility
+from terok.lib.orchestration.task_runners.container import (
+    _agent_runner,
+    _validate_krun_compatibility,
+)
 from tests.testfs import MOCK_BASE
 
 
@@ -140,6 +143,30 @@ class TestResolveRuntime:
         monkeypatch.setenv("TEROK_RUNTIME", "tomato")
         with pytest.raises(SystemExit, match="crun.*krun.*null"):
             resolve_runtime(None)
+
+    def test_name_normalizes_env_without_constructing_runtime(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Runtime selection stays cheap and normalizes the existing env override."""
+        monkeypatch.setenv("TEROK_RUNTIME", " KRUN ")
+        with patch("terok.lib.core.runtime.KrunHost") as host:
+            assert resolve_runtime_name(_project(runtime="crun")) == "krun"
+        host.assert_not_called()
+
+    def test_factory_reuses_selected_name(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """A supplied selection is not replaced by a later environment change."""
+        monkeypatch.setenv("TEROK_RUNTIME", "tomato")
+        assert isinstance(
+            resolve_runtime(_project(runtime="krun"), runtime_name="null"), NullRuntime
+        )
+
+    def test_supplied_krun_name_still_requires_experimental(self) -> None:
+        """Reusing a valid name never bypasses the experimental opt-in."""
+        with (
+            patch("terok.lib.core.runtime.is_experimental", return_value=False),
+            pytest.raises(SystemExit, match="experimental"),
+        ):
+            resolve_runtime(runtime_name="krun")
 
 
 class TestKrunCompatibilityGuard:
@@ -390,3 +417,119 @@ class TestKrunDnsTopologyDelegated:
         from terok.lib.orchestration.task_runners import container
 
         assert not hasattr(container, "_chain_krun_dns_rewrite")
+
+
+@pytest.fixture(
+    params=[
+        ("krun", "crun", "crun", "krun"),
+        (None, None, "krun", "krun"),
+        ("crun", "krun", "krun", "crun"),
+        (None, "crun", "krun", "crun"),
+        ("null", "krun", "krun", "null"),
+    ],
+    ids=["env-krun", "global-krun", "env-crun", "project-crun", "env-null"],
+)
+def _runtime_selection(request, monkeypatch: pytest.MonkeyPatch):
+    """Exercise the same effective runtime across all launch decisions."""
+    env_runtime, project_runtime, global_runtime, expected = request.param
+    if env_runtime is None:
+        monkeypatch.delenv("TEROK_RUNTIME", raising=False)
+    else:
+        monkeypatch.setenv("TEROK_RUNTIME", env_runtime)
+    with patch("terok.lib.core.runtime._global_runtime_default", return_value=global_runtime):
+        yield _project(runtime=project_runtime, services_mode="tcp", cpus="2.5"), expected
+
+
+class TestEffectiveRuntimeSelection:
+    """Launch wiring and shield refresh use the factory's runtime precedence."""
+
+    def test_launch_uses_one_runtime_for_factory_flags_annotations_and_hint(
+        self,
+        _runtime_selection,
+        _experimental_enabled,
+        _krun_launch_args_stub,
+        _stub_port_reservation,
+        tmp_path,
+    ) -> None:
+        from terok.lib.integrations.sandbox import BrokerContext
+        from terok.lib.orchestration.task_runners.container import _run_container
+
+        project, expected = _runtime_selection
+        with (
+            patch(
+                "terok.lib.core.runtime.resolve_runtime_name", wraps=resolve_runtime_name
+            ) as select,
+            patch(
+                "terok.lib.orchestration.task_runners.container._agent_runner",
+                side_effect=_agent_runner,
+            ),
+            patch("terok.lib.core.runtime.resolve_runtime") as resolve,
+            patch("terok.lib.orchestration.task_runners.container.Sandbox") as sandbox,
+            patch("terok.lib.orchestration.task_runners.container.AgentRunner") as runner,
+        ):
+            _run_container(
+                cname="runtime-ctr",
+                image="test:latest",
+                env={},
+                volumes=[],
+                project=project,
+                task_id="1",
+                task_dir=tmp_path,
+                broker_context=BrokerContext("test", "1", "default"),
+            )
+
+        select.assert_called_once_with(project)
+        resolve.assert_called_once_with(project, runtime_name=expected)
+        assert sandbox.call_args.kwargs["runtime"] is resolve.return_value
+        kwargs = runner.return_value.launch_prepared.call_args.kwargs
+        assert kwargs["runtime"] == (None if expected == "null" else expected)
+        if expected == "krun":
+            assert kwargs["annotations"]["krun.cpus"] == "3"
+            assert _LAUNCH_ARGS_STUB[0] in kwargs["extra_args"]
+            assert "-p" in kwargs["extra_args"]
+        else:
+            assert "krun.cpus" not in kwargs["annotations"]
+            assert kwargs["extra_args"] == []
+            _krun_launch_args_stub.assert_not_called()
+
+    @pytest.mark.parametrize("incompatible", ["nested_containers", "services_mode"])
+    def test_compatibility_checks_follow_effective_runtime(
+        self, _runtime_selection, _experimental_enabled, incompatible
+    ) -> None:
+        from terok.lib.orchestration.task_runners.container import _project_runtime_flags
+
+        project, expected = _runtime_selection
+        project = project.model_copy(
+            update={incompatible: True if incompatible == "nested_containers" else "socket"}
+        )
+        if expected == "krun":
+            with pytest.raises(SystemExit, match="incompatible"):
+                _project_runtime_flags(project, cname="runtime-ctr")
+        else:
+            flags = _project_runtime_flags(project, cname="runtime-ctr")
+            assert ("label=nested" in flags) == (incompatible == "nested_containers")
+
+    def test_shield_refresh_uses_effective_runtime(self, _runtime_selection, tmp_path) -> None:
+        from terok.lib.orchestration.task_runners.shield import _refresh_shield_tiers
+
+        project, expected = _runtime_selection
+        (tmp_path / "shield").mkdir()
+        with (
+            patch(
+                "terok.lib.core.runtime.resolve_runtime_name", wraps=resolve_runtime_name
+            ) as select,
+            patch(
+                "terok.lib.orchestration.task_runners.shield.get_shield_disable_firewall_no_protection",
+                return_value=False,
+            ),
+            patch("terok.lib.integrations.executor.AgentRoster"),
+            patch("terok.lib.core.runtime.resolve_runtime") as resolve,
+            patch("terok.lib.orchestration.task_runners.container.Sandbox") as sandbox,
+        ):
+            _refresh_shield_tiers(project, "runtime-ctr", tmp_path)
+
+        select.assert_called_once_with(project)
+        resolve.assert_called_once_with(project, runtime_name=expected)
+        assert sandbox.return_value.shield_refresh.call_args.kwargs["runtime"] == (
+            None if expected == "null" else expected
+        )

@@ -693,6 +693,55 @@ def test_make_sandbox_config_credentials_propagation(
     assert sc.db_path == (tmp_path / "creds" / "credentials.db").resolve()
 
 
+@pytest.fixture
+def credential_config_layers(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> tuple[Path, Path]:
+    """Isolate real layer discovery while exercising both configuration readers."""
+    from terok_util import paths
+
+    prefix = tmp_path / "prefix"
+    system = tmp_path / "system" / paths._CONFIG_RELATIVE_PATH
+    user = tmp_path / "user" / system.name
+    monkeypatch.delenv("TEROK_CONFIG_FILE", raising=False)
+    monkeypatch.setattr(paths, "_SYSTEM_CONFIG_FILE", system)
+    monkeypatch.setattr(paths.sys, "prefix", str(prefix))
+    monkeypatch.setattr(paths, "namespace_config_dir", lambda: user.parent)
+    prefix_config = prefix / paths._CONFIG_RELATIVE_PATH
+    prefix_config.parent.mkdir(parents=True)
+    user.parent.mkdir(parents=True)
+    return prefix_config, user
+
+
+def test_prefix_keyring_policy_reaches_sandbox(credential_config_layers: tuple[Path, Path]) -> None:
+    """A prefix-only prohibition reaches the vault without changing its default reader."""
+    prefix, user = credential_config_layers
+    prefix.write_text("credentials:\n  use_desktop_keyring: false\n")
+    assert cfg._load_validated().credentials.use_desktop_keyring is False
+    assert cfg.make_sandbox_config().credentials_use_desktop_keyring is False
+    user.write_text("credentials:\n  use_desktop_keyring: true\n")
+    assert cfg.make_sandbox_config().credentials_use_desktop_keyring is True
+
+
+def test_prefix_keyring_policy_is_not_cached(credential_config_layers: tuple[Path, Path]) -> None:
+    """A cached application config cannot keep a newly disabled source enabled."""
+    prefix, _ = credential_config_layers
+    assert cfg._load_validated().credentials.use_desktop_keyring is True
+    assert cfg.make_sandbox_config().credentials_use_desktop_keyring is True
+    prefix.write_text("credentials:\n  use_desktop_keyring: false\n")
+    assert cfg.make_sandbox_config().credentials_use_desktop_keyring is False
+
+
+def test_invalid_prefix_credentials_fail_closed(
+    credential_config_layers: tuple[Path, Path],
+) -> None:
+    """Malformed prefix credentials cannot fall back to an enabled passphrase source."""
+    from terok.lib.integrations.sandbox import CredentialsConfigError
+
+    prefix, _ = credential_config_layers
+    prefix.write_text("credentials:\n  use_desktop_keyring: [\n")
+    with pytest.raises(CredentialsConfigError, match="credentials"):
+        cfg.make_sandbox_config()
+
+
 def test_make_sandbox_config_shield_disabled(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:

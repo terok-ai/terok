@@ -197,9 +197,7 @@ def task_run_headless(request: HeadlessRunRequest) -> str:
         )
     )
 
-    # Apply provider-aware config resolution with best-effort feature mapping.
-    # CLI flags override config values; unsupported features produce warnings
-    # or prompt augmentation.
+    # Resolve native options and agent-specific instruction delivery.
     pcfg = resolved.apply_config(
         effective,
         CLIOverrides(
@@ -209,11 +207,11 @@ def task_run_headless(request: HeadlessRunRequest) -> str:
         ),
     )
 
-    # Print warnings about unsupported features
+    # Unsupported options are reported, not emulated through the prompt.
     for warning in pcfg.warnings:
         print(f"Warning: {warning}")
 
-    # Augment prompt with best-effort feature analogues for unsupported flags
+    # Agents without a native instruction flag receive the actual instruction text.
     effective_prompt = request.prompt
     if pcfg.prompt_extra:
         effective_prompt = f"{request.prompt}\n\n{pcfg.prompt_extra}"

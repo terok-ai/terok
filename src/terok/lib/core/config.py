@@ -84,19 +84,9 @@ def _config_layers() -> list[tuple[str, Path]]:
     ``TEROK_CONFIG_FILE`` → single override (no layering).
     Otherwise: ``/etc/terok`` → ``sys.prefix/etc/terok`` → ``~/.config/terok``.
     """
-    env_file = os.environ.get("TEROK_CONFIG_FILE")
-    if env_file:
-        return [("override", Path(env_file).expanduser().resolve())]
+    from terok_util import config_file_paths
 
-    etc_cfg = Path("/etc/terok/config.yml")
-    sp_cfg = Path(sys.prefix) / "etc" / "terok" / "config.yml"
-    user_cfg = global_config_path()
-
-    layers: list[tuple[str, Path]] = [("system", etc_cfg)]
-    if sp_cfg.resolve() != etc_cfg.resolve():
-        layers.append(("prefix", sp_cfg))
-    # As root, the user file is the /etc one: it keeps the user layer's place on top.
-    return [*(layer for layer in layers if layer[1] != user_cfg), ("user", user_cfg)]
+    return config_file_paths()
 
 
 def global_config_search_paths() -> list[Path]:

@@ -19,12 +19,15 @@ from terok.lib.integrations.sandbox import (
     CONTAINER_VAULT_SOCKET,
 )
 from terok.lib.orchestration.container_doctor import (
+    _DIAGNOSTIC_OUTPUT_LIMIT,
+    _apply_fix,
     _exec_in_container,
     _gate_token_check,
     _git_identity_check,
     _git_remote_check,
     _port_drift_check,
     _read_desired_shield_state,
+    _run_probe,
     run_container_doctor,
 )
 from tests.testfs import MOCK_BASE
@@ -50,7 +53,30 @@ class TestExecInContainer:
         mock_runtime.exec.assert_called_once()
         args, kwargs = mock_runtime.exec.call_args
         assert args[1] == ["echo", "hello"]
-        assert kwargs == {"timeout": 10}
+        assert kwargs == {"timeout": 10, "max_output_bytes": _DIAGNOSTIC_OUTPUT_LIMIT}
+
+    def test_overflow_is_not_evaluated(self, mock_runtime) -> None:
+        """Oversized replies become warnings rather than partial diagnostic input."""
+        evaluate = MagicMock()
+        check = DoctorCheck("git", "Git identity", ["git", "config"], evaluate)
+        mock_runtime.exec.side_effect = RuntimeError("Command output exceeded 65536 bytes")
+
+        verdict = _run_probe(mock_runtime, "proj-cli-42", check)
+
+        assert verdict.severity == "warn"
+        assert "output exceeded" in verdict.detail
+        evaluate.assert_not_called()
+
+    def test_fix_overflow_is_reported(self, mock_runtime) -> None:
+        """Fix commands use the same bounded execution and cannot report false success."""
+        check = DoctorCheck("git", "Git identity", ["true"], MagicMock(), fix_cmd=["true"])
+        mock_runtime.exec.side_effect = RuntimeError("Command output exceeded 65536 bytes")
+
+        severity, _, detail = _apply_fix(mock_runtime, "proj-cli-42", check)
+
+        assert severity == "warn"
+        assert "output exceeded" in detail
+        assert mock_runtime.exec.call_args.kwargs["max_output_bytes"] == _DIAGNOSTIC_OUTPUT_LIMIT
 
 
 class TestGitIdentityCheck:

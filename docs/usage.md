@@ -603,7 +603,12 @@ terok task delete myproj v9krt
 # View archived (deleted) tasks and their logs
 terok task archive list myproj
 terok task archive logs myproj 20260305T143000Z
+terok task archive logs myproj 20260305T143000Z --raw
 ```
+
+Formatted and archived log views escape task-supplied terminal controls while
+preserving line breaks. Use `--raw` only when you intend to replay those controls;
+it also applies to persisted logs after the container has been removed.
 
 ### Step 8: Log into a Running Container
 

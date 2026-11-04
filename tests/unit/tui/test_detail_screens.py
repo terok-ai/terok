@@ -3071,13 +3071,15 @@ class TestSelinuxFixDispatch:
         instance = mock.Mock()
         instance.push_screen_wait = mock.AsyncMock(return_value=SelinuxFixOutcome.INSTALL_POLICY)
         instance.push_screen = mock.AsyncMock()
-        instance.dispatch_console_command.return_value = self._entry(exit_code=0)
+        instance.dispatch_console_action.return_value = self._entry(exit_code=0)
         instance._run_setup_subprocess = mock.AsyncMock(return_value=True)
         result = run(app_class._offer_selinux_fix(instance))
         assert result is True
-        # The install worker was dispatched (title gives away the branch).
-        title = instance.dispatch_console_command.call_args.kwargs["title"]
-        assert "Installing SELinux policy" in title
+        instance.dispatch_console_action.assert_called_once_with(
+            "terok.tui.worker_actions:selinux_install_policy",
+            title="Installing SELinux policy (sudo bash …)",
+        )
+        instance.dispatch_console_command.assert_not_called()
         instance._run_setup_subprocess.assert_awaited_once()
 
     def test_offer_selinux_fix_tcp_dispatches_then_reruns_setup(self) -> None:
@@ -3088,12 +3090,15 @@ class TestSelinuxFixDispatch:
         instance = mock.Mock()
         instance.push_screen_wait = mock.AsyncMock(return_value=SelinuxFixOutcome.SWITCH_TO_TCP)
         instance.push_screen = mock.AsyncMock()
-        instance.dispatch_console_command.return_value = self._entry(exit_code=0)
+        instance.dispatch_console_action.return_value = self._entry(exit_code=0)
         instance._run_setup_subprocess = mock.AsyncMock(return_value=True)
         result = run(app_class._offer_selinux_fix(instance))
         assert result is True
-        title = instance.dispatch_console_command.call_args.kwargs["title"]
-        assert "Switching services.mode" in title
+        instance.dispatch_console_action.assert_called_once_with(
+            "terok.tui.worker_actions:selinux_switch_to_tcp",
+            title="Switching services.mode to tcp",
+        )
+        instance.dispatch_console_command.assert_not_called()
 
     def test_offer_selinux_fix_skipped_returns_false_no_dispatch(self) -> None:
         """Skip → notifies + returns False; no worker dispatched, no setup re-run."""
@@ -3106,6 +3111,7 @@ class TestSelinuxFixDispatch:
         result = run(app_class._offer_selinux_fix(instance))
         assert result is False
         instance.notify.assert_called_once()
+        instance.dispatch_console_action.assert_not_called()
         instance.dispatch_console_command.assert_not_called()
         instance._run_setup_subprocess.assert_not_awaited()
 
@@ -3117,7 +3123,7 @@ class TestSelinuxFixDispatch:
         instance = mock.Mock()
         instance.push_screen_wait = mock.AsyncMock(return_value=SelinuxFixOutcome.INSTALL_POLICY)
         instance.push_screen = mock.AsyncMock()
-        instance.dispatch_console_command.return_value = self._entry(exit_code=1)
+        instance.dispatch_console_action.return_value = self._entry(exit_code=1)
         instance._run_setup_subprocess = mock.AsyncMock()
         result = run(app_class._offer_selinux_fix(instance))
         assert result is False
