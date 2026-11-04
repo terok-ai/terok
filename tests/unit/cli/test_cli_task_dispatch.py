@@ -111,7 +111,7 @@ class TestArchiveDispatch:
     def test_logs_streams_resolved_file(self, tmp_path, capsys: pytest.CaptureFixture[str]) -> None:
         log = tmp_path / "archive.log"
         log.write_text("hello from archive\n", encoding="utf-8")
-        args = _ns(archive_cmd="logs", project_name=_PROJ, archive_id="42")
+        args = _ns(archive_cmd="logs", project_name=_PROJ, archive_id="42", raw=False)
         with mock.patch.object(task_mod, "task_archive_logs", return_value=log) as m:
             assert task_mod._dispatch_archive_sub(args) is True
         m.assert_called_once_with(_PROJ, "42")

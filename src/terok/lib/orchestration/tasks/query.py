@@ -12,6 +12,8 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import TYPE_CHECKING, Any, Protocol
 
+from terok_util import sanitize_tty
+
 from ...core.project_model import is_valid_project_name
 from ...core.projects import load_project
 from ...core.task_state import TaskState, container_name, effective_status
@@ -413,7 +415,7 @@ def task_list(
         if t.web_port:
             extra.append(f"port={t.web_port}")
         if t.work_status:
-            extra.append(f"work={t.work_status}")
+            extra.append(f"work={sanitize_tty(t.work_status)}")
         extra_s = f" [{'; '.join(extra)}]" if extra else ""
         print(f"- {t.task_id}: {t.name} {t_status}{extra_s}")
 

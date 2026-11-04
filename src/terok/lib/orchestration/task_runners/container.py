@@ -343,8 +343,9 @@ def _run_container(
     # projection, no snapshot — so one annotation is enough.
     task_dossier_path = dossier_path(tasks_meta_dir(project.name), task_id)
     annotations = {"dossier.meta_path": str(task_dossier_path)}
+    runtime_name = _rt.resolve_runtime_name(project)
     merged_args = list(extra_args or ()) + _project_runtime_flags(project, cname=cname)
-    if project.runtime == "krun":
+    if runtime_name == "krun":
         # ``--cpus`` is only a cgroup CFS quota — crun-krun does not
         # read it to size the microVM and defaults to host CPU
         # affinity instead (so ``nproc`` reports all host cores even
@@ -376,7 +377,7 @@ def _run_container(
                 sealed=project.is_sealed,
                 hooks=hooks,
                 extra_args=merged_args,
-                runtime=project.runtime,
+                runtime=_rt.launch_runtime_arg(project),
                 hostname=cname,
                 annotations=annotations,
                 project_id=project.name,  # executor API kwarg is ``project_id``; value is the project name
@@ -430,7 +431,7 @@ def _project_runtime_flags(project: ProjectConfig, *, cname: str) -> list[str]:
     Available on podman v4.5.0+ (April 2023); older podmans error with
     "unknown label option: nested" and the user is expected to upgrade.
 
-    ``run.runtime: krun`` → ``--runtime krun``, a per-container
+    Effective runtime ``krun`` → a per-container
     ``-p 127.0.0.1:<host>:22`` port forward bridging into the guest's
     sshd via podman's passt, **and** a bind-mount of the live host SSH
     public key into the guest's ``/etc/ssh/authorized_keys.d/terok``.
@@ -446,6 +447,7 @@ def _project_runtime_flags(project: ProjectConfig, *, cname: str) -> list[str]:
     ``_run_container`` where the typed ``annotations=`` channel lives.
     """
     del cname  # signature kept for caller stability; no longer read here
+    runtime_name = _rt.resolve_runtime_name(project)
     flags: list[str] = []
     if project.nested_containers:
         flags += ["--security-opt", "label=nested", "--device", "/dev/fuse"]
@@ -454,7 +456,7 @@ def _project_runtime_flags(project: ProjectConfig, *, cname: str) -> list[str]:
         # same gate — a ProjectConfig can be built programmatically, and
         # the launch is the last stop before podman.
         flags += validate_passthrough_args(project.podman_args)
-    if project.runtime == "krun":
+    if runtime_name == "krun":
         _validate_krun_compatibility(project)
         # Reserve a free loopback TCP port and forward it to the guest's
         # sshd.  ``reserve_port`` binds-then-releases, so there's a
