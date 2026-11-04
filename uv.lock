@@ -2534,8 +2534,8 @@ test = [
 
 [[package]]
 name = "terok-clearance"
-version = "0.8.2a5.dev264+g5d78c6f26"
-source = { git = "https://github.com/sliwowitz/terok-clearance?rev=fix%2Fdeep-scan-followups#5d78c6f26f02665078beac5594e523b00a68e64c" }
+version = "0.8.2a5.dev265+g01d7a78d2"
+source = { git = "https://github.com/sliwowitz/terok-clearance?rev=fix%2Fdeep-scan-followups#01d7a78d28d11d8d042cb944dd765b2b3dc2d114" }
 dependencies = [
     { name = "asyncvarlink" },
     { name = "dbus-fast" },
@@ -2545,8 +2545,8 @@ dependencies = [
 
 [[package]]
 name = "terok-executor"
-version = "0.5.1a15.dev537+gc4d77486b"
-source = { git = "https://github.com/sliwowitz/terok-executor?rev=fix%2Fdeep-scan-followups#c4d77486b088dfc0e98aa7b28b530e39b6bddbbd" }
+version = "0.5.1a15.dev538+g5e007300f"
+source = { git = "https://github.com/sliwowitz/terok-executor?rev=fix%2Fdeep-scan-followups#5e007300f88a81a5db00d60a8e39d41642a548b5" }
 dependencies = [
     { name = "agent-client-protocol" },
     { name = "jinja2" },
@@ -2561,8 +2561,8 @@ dependencies = [
 
 [[package]]
 name = "terok-sandbox"
-version = "0.7.0a10.dev538+gad6ca7863"
-source = { git = "https://github.com/sliwowitz/terok-sandbox?rev=fix%2Fdeep-scan-followups#ad6ca78633485437f0d6c754101972091ee9448b" }
+version = "0.7.0a10.dev539+g462eef13a"
+source = { git = "https://github.com/sliwowitz/terok-sandbox?rev=fix%2Fdeep-scan-followups#462eef13a213bb8db67a710ac29b7992061dc66d" }
 dependencies = [
     { name = "aiohttp" },
     { name = "cryptography" },
@@ -2581,8 +2581,8 @@ dependencies = [
 
 [[package]]
 name = "terok-shield"
-version = "0.10.0a6.dev419+g6077d948d"
-source = { git = "https://github.com/sliwowitz/terok-shield?rev=fix%2Fdeep-scan-followups#6077d948d435f8d1a32f9ff0bec05a44150f4d84" }
+version = "0.10.0a6.dev420+gf292847a3"
+source = { git = "https://github.com/sliwowitz/terok-shield?rev=fix%2Fdeep-scan-followups#f292847a3be9e7b13b9af97b2211d692afbffab2" }
 dependencies = [
     { name = "pydantic" },
     { name = "pyyaml" },
@@ -2591,8 +2591,8 @@ dependencies = [
 
 [[package]]
 name = "terok-util"
-version = "0.5.0a5.dev171+gd59967f9d"
-source = { git = "https://github.com/sliwowitz/terok-util?rev=fix%2Fdeep-scan-followups#d59967f9d37cf00d30c71229800c9476a0eff48e" }
+version = "0.5.0a5.dev172+g4ae23f0ee"
+source = { git = "https://github.com/sliwowitz/terok-util?rev=fix%2Fdeep-scan-followups#4ae23f0eeaa2e1fff6bb6f05afd81990a8abadaa" }
 dependencies = [
     { name = "jinja2" },
     { name = "packaging" },

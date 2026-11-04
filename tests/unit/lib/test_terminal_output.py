@@ -11,7 +11,6 @@ from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
-from terok_util import sanitize_tty
 
 from terok.cli.commands import task as task_cli
 from terok.lib.core.projects import load_project
@@ -25,19 +24,13 @@ from terok.lib.orchestration.tasks import (
     task_status,
     write_task_meta,
 )
-from terok.lib.util import ansi
 from terok.lib.util.check_reporter import CheckReporter
 from tests.test_utils import mock_git_config, project_env
 
 _HOSTILE = "before\x1b]52;c;cG9pc29u\x07\r\x9b2Jafter"
+_HOSTILE_SAFE = "before\\x1b]52;c;cG9pc29u\\x07 \\x9b2Jafter"
+_COLOURED = "\x1b[32mok\x1b[0m done"
 _PROJECT = "terminal-output"
-
-
-@pytest.mark.parametrize("text", ["", "first\nsecond\n", f"first\n{_HOSTILE}\nlast"])
-def test_safe_multiline_text_preserves_only_line_breaks(text: str) -> None:
-    """Line layout survives while terminal commands remain visible text."""
-    expected = "\n".join(sanitize_tty(line) for line in text.split("\n"))
-    assert ansi.safe_terminal_text(text) == expected
 
 
 @pytest.mark.parametrize("listing", [False, True])
@@ -56,7 +49,7 @@ def test_status_rendering_does_not_modify_raw_telemetry(
             else:
                 task_status(_PROJECT, task_id)
         output = capsys.readouterr().out
-        assert sanitize_tty(_HOSTILE) in output
+        assert _HOSTILE_SAFE in output
         assert "\x1b" not in output
         assert read_work_status(config_dir).status == _HOSTILE
 
@@ -73,9 +66,8 @@ def test_diagnostic_details_cannot_forge_report_lines(grouped: bool) -> None:
     else:
         reporter.emit("warn", "Credential file", detail)
     output = stream.getvalue()
-    assert sanitize_tty(detail) in output
+    assert f"{_HOSTILE_SAFE} forged check: ok" in output
     assert "\x1b" not in output
-    assert "\nforged" not in output
 
 
 @pytest.mark.parametrize(
@@ -163,12 +155,61 @@ def test_decoded_log_fields_and_fragments_are_terminal_safe(
         assert control not in output
 
 
+@pytest.mark.parametrize(
+    "event",
+    [
+        {
+            "type": "user",
+            "message": {
+                "content": [{"type": "tool_result", "tool_use_id": [1, 2], "content": _HOSTILE}]
+            },
+        },
+        {
+            "type": "result",
+            "num_turns": _HOSTILE,
+            "cost_usd": _HOSTILE,
+            "duration_ms": "abc",
+            "usage": "nope",
+        },
+        {"type": "assistant", "message": {"content": "not a list"}},
+        {"type": "assistant", "message": {"content": [5]}},
+        {"type": "system", "subtype": "init", "tools": 7, "session_id": _HOSTILE},
+        {"type": "content_block_delta", "delta": {"type": "text_delta", "text": [_HOSTILE]}},
+        [_HOSTILE],
+    ],
+    ids=[
+        "list-id",
+        "result-strings",
+        "content-str",
+        "content-int",
+        "tools-int",
+        "delta-list",
+        "json-list",
+    ],
+)
+def test_wrong_typed_event_fields_cannot_crash_the_viewer(
+    event: object, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A task may write any JSON; the viewer shows it escaped instead of dying."""
+    formatter = ClaudeStreamJsonFormatter(color=False)
+    formatter.feed_line(
+        json.dumps({"type": "content_block_start", "content_block": {"type": "text"}})
+    )
+    formatter.feed_line(json.dumps(event))
+    formatter.finish()
+    captured = capsys.readouterr()
+    output = captured.out + captured.err
+    assert "after" in output or json.dumps(event) in output
+    for control in ("\x1b", "\x07", "\r", "\x9b"):
+        assert control not in output
+
+
 def test_plain_log_and_own_formatter_colors_remain_distinct(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    """Application colors remain active, but task-supplied colors and OSC do not."""
-    PlainTextFormatter().feed_line(_HOSTILE)
-    assert capsys.readouterr().out == sanitize_tty(_HOSTILE) + "\n"
+    """Application colors remain active, but task-supplied OSC does not."""
+    PlainTextFormatter(color=False).feed_line(_HOSTILE)
+    assert capsys.readouterr().out == _HOSTILE_SAFE + "\n"
     formatter = ClaudeStreamJsonFormatter(color=True)
     formatter.feed_line(
         json.dumps(
@@ -177,15 +218,25 @@ def test_plain_log_and_own_formatter_colors_remain_distinct(
     )
     output = capsys.readouterr().out
     assert "\x1b[34m" in output
-    assert sanitize_tty(_HOSTILE) in output
+    assert _HOSTILE_SAFE in output
     assert "\x1b]52" not in output
+
+
+@pytest.mark.parametrize("color", [False, True])
+def test_agent_colour_survives_only_on_a_colour_terminal(
+    color: bool, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A legitimate agent's colours reach a terminal and never a redirected log."""
+    PlainTextFormatter(color=color).feed_line(_COLOURED)
+    assert capsys.readouterr().out == (f"{_COLOURED}\x1b[0m\n" if color else "ok done\n")
 
 
 @pytest.mark.parametrize("raw", [False, True])
 def test_archive_view_is_safe_unless_raw_is_explicit(
-    tmp_path: Path, raw: bool, capsys: pytest.CaptureFixture[str]
+    tmp_path: Path, raw: bool, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """Archive bytes remain unchanged; only explicit raw viewing replays terminal controls."""
+    monkeypatch.setenv("NO_COLOR", "1")
     log = tmp_path / "archive.log"
     contents = f"first\n{_HOSTILE}\nlast\n"
     log.write_bytes(contents.encode())
@@ -196,17 +247,21 @@ def test_archive_view_is_safe_unless_raw_is_explicit(
     with patch.object(task_cli, "task_archive_logs", return_value=log):
         task_cli._dispatch_archive_sub(args)
     output = capsys.readouterr().out
-    expected = contents if raw else "\n".join(sanitize_tty(line) for line in contents.split("\n"))
-    assert output == expected
+    assert output == (contents if raw else f"first\n{_HOSTILE_SAFE}\nlast\n")
     assert log.read_bytes() == contents.encode()
 
 
 @pytest.mark.parametrize("raw", [False, True])
 @pytest.mark.parametrize("tail", [None, 1, 0])
 def test_persisted_logs_preserve_explicit_raw_replay(
-    tmp_path: Path, raw: bool, tail: int | None, capsys: pytest.CaptureFixture[str]
+    tmp_path: Path,
+    raw: bool,
+    tail: int | None,
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Removed containers retain the same raw opt-in and tail behavior as live logs."""
+    monkeypatch.setenv("NO_COLOR", "1")
     log = tmp_path / "container.log"
     contents = f"first\n{_HOSTILE}\nlast\n"
     log.write_bytes(contents.encode())
@@ -215,7 +270,7 @@ def test_persisted_logs_preserve_explicit_raw_replay(
 
     expected = "" if tail == 0 else "last\n" if tail == 1 else contents
     if not raw:
-        expected = "\n".join(sanitize_tty(line) for line in expected.split("\n"))
+        expected = expected.replace(_HOSTILE, _HOSTILE_SAFE)
     assert capsys.readouterr().out == expected
 
 
@@ -257,5 +312,5 @@ def test_failed_log_stream_escapes_captured_stderr(
             task_logs(_PROJECT, task_id)
 
         output = capsys.readouterr().out
-        assert sanitize_tty(_HOSTILE) in output
+        assert _HOSTILE_SAFE in output
         assert "\x1b" not in output

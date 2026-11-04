@@ -235,14 +235,14 @@ def _show_persisted_logs(
     """
     from collections import deque
 
+    if tail == 0:
+        return
     formatter = None if raw else auto_detect_formatter(mode, streaming=streaming, agent=agent)
-
     with log_file.open("r", encoding="utf-8", errors="replace", newline="\n") as f:
-        lines = deque(f, maxlen=tail) if tail is not None and tail > 0 else f
-        for line in () if tail == 0 else lines:
+        for line in deque(f, maxlen=tail) if tail else f:
             if formatter is None:
                 print(line, end="")
             else:
-                formatter.feed_line(line.rstrip("\n"))
+                formatter.feed_line(line.rstrip("\r\n"))
     if formatter is not None:
         formatter.finish()

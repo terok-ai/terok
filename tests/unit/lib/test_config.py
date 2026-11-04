@@ -35,7 +35,7 @@ def test_global_config_search_paths_respects_env_override(
 ) -> None:
     config_path = tmp_path / "config.yml"
     monkeypatch.setenv("TEROK_CONFIG_FILE", str(config_path))
-    assert cfg.global_config_search_paths() == [config_path.expanduser().resolve()]
+    assert cfg.global_config_search_paths() == [config_path]
 
 
 def test_global_config_path_prefers_xdg(
@@ -47,7 +47,7 @@ def test_global_config_path_prefers_xdg(
     config_file.parent.mkdir(parents=True, exist_ok=True)
     config_file.write_text("gate_server:\n  port: 7000\n", encoding="utf-8")
     monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
-    assert cfg.global_config_path() == config_file.resolve()
+    assert cfg.global_config_path() == config_file
 
 
 @pytest.mark.parametrize(
@@ -1102,7 +1102,7 @@ class TestLayeredConfig:
 
         with patch.object(
             cfg,
-            "_config_layers",
+            "config_file_paths",
             return_value=[
                 ("system", sys_cfg),
                 ("user", usr_cfg),
@@ -1123,7 +1123,7 @@ class TestLayeredConfig:
 
         with patch.object(
             cfg,
-            "_config_layers",
+            "config_file_paths",
             return_value=[
                 ("system", sys_cfg),
                 ("user", missing_usr),
@@ -1142,7 +1142,7 @@ class TestLayeredConfig:
 
         with patch.object(
             cfg,
-            "_config_layers",
+            "config_file_paths",
             return_value=[
                 ("system", sys_cfg),
                 ("user", usr_cfg),
@@ -1170,7 +1170,7 @@ class TestLayeredConfig:
 
         with mock_patch.object(
             cfg,
-            "_config_layers",
+            "config_file_paths",
             return_value=[
                 ("system", bad_sys),
                 ("user", good_usr),
@@ -1192,7 +1192,7 @@ class TestLayeredConfig:
 
         with patch.object(
             cfg,
-            "_config_layers",
+            "config_file_paths",
             return_value=[
                 ("system", sys_cfg),
                 ("user", usr_cfg),
@@ -1214,7 +1214,7 @@ class TestLayeredConfig:
 
         with patch.object(
             cfg,
-            "_config_layers",
+            "config_file_paths",
             return_value=[("bad", bad), ("good", good)],
         ):
             result = cfg._load_validated()
@@ -1233,7 +1233,7 @@ class TestLayeredConfig:
 
         with patch.object(
             cfg,
-            "_config_layers",
+            "config_file_paths",
             return_value=[("system", sys_cfg), ("user", usr_cfg)],
         ):
             first = cfg.load_global_config()
@@ -1247,14 +1247,14 @@ class TestLayeredConfig:
         """``TEROK_CONFIG_FILE`` returns a single-element layer list."""
         override = tmp_path / "override.yml"
         monkeypatch.setenv("TEROK_CONFIG_FILE", str(override))
-        layers = cfg._config_layers()
+        layers = cfg.config_file_paths()
         assert len(layers) == 1
         assert layers[0][0] == "override"
 
     def test_config_layers_default_order(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Without env override, layers go system → prefix → user."""
         monkeypatch.delenv("TEROK_CONFIG_FILE", raising=False)
-        layers = cfg._config_layers()
+        layers = cfg.config_file_paths()
         labels = [label for label, _ in layers]
         assert labels[0] == "system"
         assert labels[-1] == "user"
@@ -1268,14 +1268,9 @@ class TestRootConfigFile:
         monkeypatch.delenv("TEROK_CONFIG_FILE", raising=False)
         monkeypatch.setattr("terok_util.paths._is_root", lambda: True)
 
-    def test_path_is_the_one_the_executor_writes(self) -> None:
-        from terok_executor.config import writable_config_path
-
-        assert cfg.global_config_path() == writable_config_path()
-
     def test_user_file_stays_the_top_layer_once(self) -> None:
         """An editor replaces the top layer, so root's file has to be the top one."""
-        layers = cfg._config_layers()
+        layers = cfg.config_file_paths()
         assert layers[-1] == ("user", cfg.global_config_path())
         assert [path for _, path in layers].count(cfg.global_config_path()) == 1
 
@@ -1385,7 +1380,7 @@ def _config_layers_in(
     system, user = tmp_path / "system.yml", tmp_path / "user.yml"
     if system_text is not None:
         system.write_text(system_text, encoding="utf-8")
-    monkeypatch.setattr(cfg, "_config_layers", lambda: [("system", system), ("user", user)])
+    monkeypatch.setattr(cfg, "config_file_paths", lambda: [("system", system), ("user", user)])
     return user
 
 
@@ -1540,4 +1535,4 @@ def test_top_config_layer_is_the_user_config_file(
     else:
         monkeypatch.delenv("TEROK_CONFIG_FILE", raising=False)
         monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
-    assert cfg._config_layers()[-1][1] == cfg.global_config_path()
+    assert cfg.config_file_paths()[-1][1] == cfg.global_config_path()

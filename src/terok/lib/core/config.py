@@ -19,6 +19,8 @@ if TYPE_CHECKING:
     from terok.lib.core.yaml_schema import RawGlobalConfig
     from terok.lib.integrations.sandbox import ClearanceMode, SandboxConfig, ServicesMode
 
+from terok_util import config_file_paths, writable_config_path
+
 from ..util.yaml import YAMLError, dump as _yaml_dump, load as _yaml_load
 from .paths import config_root as _config_root_base
 
@@ -78,24 +80,13 @@ def projects_dir() -> Path:
     return _config_root_base().resolve() / "projects"
 
 
-def _config_layers() -> list[tuple[str, Path]]:
-    """Ordered config layers for merging (lowest → highest priority).
-
-    ``TEROK_CONFIG_FILE`` → single override (no layering).
-    Otherwise: ``/etc/terok`` → ``sys.prefix/etc/terok`` → ``~/.config/terok``.
-    """
-    from terok_util import config_file_paths
-
-    return config_file_paths()
-
-
 def global_config_search_paths() -> list[Path]:
     """Config file merge order (lowest → highest priority).
 
     When ``TEROK_CONFIG_FILE`` is set, returns only that single path.
     Otherwise: ``/etc/terok`` → ``sys.prefix/etc/terok`` → ``~/.config/terok``.
     """
-    return [path for _, path in _config_layers()]
+    return [path for _, path in config_file_paths()]
 
 
 def global_config_path() -> Path:
@@ -105,17 +96,14 @@ def global_config_path() -> Path:
     user would edit to customise their setup.  Used for locating sibling
     files (e.g. ``instructions.md``) in the user's config directory.
 
-    When ``TEROK_CONFIG_FILE`` is set, returns that path directly.
-    Otherwise, returns ``~/.config/terok/config.yml`` (or XDG equivalent),
-    and ``/etc/terok/config.yml`` for root: the file the sibling packages
-    write to, so every writer agrees.
+    When ``TEROK_CONFIG_FILE`` is set, that path; otherwise
+    ``~/.config/terok/config.yml`` (or XDG equivalent), and
+    ``/etc/terok/config.yml`` for root.  The same derivation every
+    sibling package uses
+    (``terok_util.writable_config_path``),
+    so every writer agrees.
     """
-    env_file = os.environ.get("TEROK_CONFIG_FILE")
-    if env_file:
-        return Path(env_file).expanduser().resolve()
-    from terok_util import namespace_config_dir
-
-    return namespace_config_dir() / "config.yml"
+    return writable_config_path()
 
 
 # ---------- Global config (cached) ----------
@@ -137,7 +125,7 @@ def _build_config_stack(layers: list[tuple[str, Path]] | None = None) -> ConfigS
     from ..util.logging_utils import warn_user
 
     stack = ConfigStack()
-    for label, path in _config_layers() if layers is None else layers:
+    for label, path in config_file_paths() if layers is None else layers:
         if not path.is_file():
             continue
         try:
@@ -205,7 +193,7 @@ def validate_global_config(text: str) -> str | None:
 
     from .yaml_schema import RawGlobalConfig
 
-    *lower_layers, (label, path) = _config_layers()
+    *lower_layers, (label, path) = config_file_paths()
     try:
         edited = _yaml_load(text) or {}
     except YAMLError:

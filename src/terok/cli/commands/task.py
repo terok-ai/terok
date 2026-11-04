@@ -10,6 +10,8 @@ import json
 import sys
 from typing import Any
 
+from terok_util import sanitize_log_text
+
 from ...lib.api import (
     HeadlessRunRequest,
     LogViewOptions,
@@ -35,7 +37,7 @@ from ...lib.api import (
 )
 from ...lib.core.config import get_logs_partial_streaming as _get_logs_partial_streaming
 from ...lib.orchestration.tasks import resolve_task_id
-from ...lib.util.ansi import safe_terminal_text
+from ...lib.util.ansi import supports_color
 from ...lib.util.output_capture import tee_output
 from ._completers import add_project_name, add_task_id
 
@@ -783,9 +785,10 @@ def _dispatch_archive_sub(args: argparse.Namespace) -> bool:
                 f"No archived logs found for prefix {args.archive_id!r}. "
                 f"Use 'terok task archive list {args.project_name}' to see available archives."
             )
-        with log_file.open("r", encoding="utf-8", errors="replace", newline="") as f:
+        color = supports_color()
+        with log_file.open("r", encoding="utf-8", errors="replace", newline="\n") as f:
             for line in f:
-                print(line if args.raw else safe_terminal_text(line), end="")
+                print(line if args.raw else sanitize_log_text(line, color=color), end="")
     else:
         return False
     return True

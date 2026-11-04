@@ -14,12 +14,13 @@ from __future__ import annotations
 
 import json
 import sys
+from collections.abc import Callable
 from enum import Enum, auto
-from typing import Protocol
+from typing import Protocol, TextIO
 
-from terok_util import sanitize_tty
+from terok_util import sanitize_log_text
 
-from ..util.ansi import blue, green, red, safe_terminal_text, supports_color, yellow
+from ..util.ansi import blue, green, red, supports_color, yellow
 
 # ---------------------------------------------------------------------------
 # Formatter protocol
@@ -44,11 +45,19 @@ class AgentLogFormatter(Protocol):
 
 
 class PlainTextFormatter:
-    """Print plain log text without interpreting task-supplied terminal commands."""
+    """Print plain log text without interpreting task-supplied terminal commands.
+
+    Args:
+        color: Keep the agent's own colours (auto-detected from the terminal if None).
+    """
+
+    def __init__(self, *, color: bool | None = None) -> None:
+        """Remember whether the output is a terminal that renders colour."""
+        self._color = color if color is not None else supports_color()
 
     def feed_line(self, line: str) -> None:
-        """Print *line* with controls escaped and multiline layout preserved."""
-        print(safe_terminal_text(line), flush=True)
+        """Print *line* with controls escaped and its layout and colour preserved."""
+        print(sanitize_log_text(line, color=self._color), flush=True)
 
     def finish(self) -> None:
         """No-op; plain text has no summary."""
@@ -108,20 +117,40 @@ class ClaudeStreamJsonFormatter:
         """Wrap *text* in red ANSI if color is enabled."""
         return red(text, self._color)
 
+    def _emit(
+        self,
+        text: str,
+        paint: Callable[[str], str] | None = None,
+        *,
+        end: str = "\n",
+        file: TextIO | None = None,
+    ) -> None:
+        """The one output boundary: task text becomes terminal-safe, then our styling applies."""
+        safe = sanitize_log_text(text, color=self._color)
+        print(paint(safe) if paint else safe, end=end, file=file, flush=True)
+
     # -- line processing --
 
     def feed_line(self, line: str) -> None:
         """Parse a single NDJSON log line and print formatted output."""
         if not line.strip():
             return
-        stripped = line.strip()
         try:
-            data = json.loads(stripped)
+            data = json.loads(line.strip())
         except (json.JSONDecodeError, ValueError):
-            # Not JSON — print as plain text, preserving leading whitespace
-            print(safe_terminal_text(line.rstrip("\r\n")), flush=True)
+            data = None
+        if not isinstance(data, dict):
+            # Not an event — print as plain text, preserving leading whitespace
+            self._emit(line.rstrip("\r\n"))
             return
+        try:
+            self._dispatch(data)
+        except (AttributeError, LookupError, TypeError, ValueError):
+            # A field of the wrong shape: show the event, never lose the viewer.
+            self._emit(line.rstrip("\r\n"))
 
+    def _dispatch(self, data: dict) -> None:
+        """Route one decoded event to its handler."""
         msg_type = data.get("type", "")
 
         if msg_type == "system":
@@ -147,13 +176,13 @@ class ClaudeStreamJsonFormatter:
             session_id = data.get("session_id", "")
             tools = data.get("tools", [])
             model = data.get("model", "")
-            parts = [f"Session: {sanitize_tty(str(session_id))}"] if session_id else []
+            parts = [f"Session: {session_id}"] if session_id else []
             if model:
-                parts.append(f"model={sanitize_tty(str(model))}")
+                parts.append(f"model={model}")
             if tools:
                 parts.append(f"{len(tools)} tools available")
             if parts:
-                print(self._blue(f"[system] {', '.join(parts)}"), flush=True)
+                self._emit(f"[system] {', '.join(parts)}", self._blue)
 
     def _handle_assistant(self, data: dict) -> None:
         """Handle coalesced assistant messages (used in non-streaming mode)."""
@@ -164,11 +193,11 @@ class ClaudeStreamJsonFormatter:
             if block_type == "text":
                 text = block.get("text", "")
                 if text.strip():
-                    print(safe_terminal_text(text), flush=True)
+                    self._emit(text)
             elif block_type == "tool_use":
                 name = block.get("name", "unknown")
                 tool_input = block.get("input", {})
-                print(self._blue(f"[tool] {sanitize_tty(str(name))}"), flush=True)
+                self._emit(f"[tool] {name}", self._blue)
                 self._print_tool_input(tool_input)
 
     def _handle_user(self, data: dict) -> None:
@@ -195,11 +224,11 @@ class ClaudeStreamJsonFormatter:
                 if len(text) > 500:
                     text = text[:497] + "..."
                 if tool_id:
-                    print(color_fn(f"{label} ({sanitize_tty(tool_id[:8])}...)"), flush=True)
+                    self._emit(f"{label} ({str(tool_id)[:8]}...)", color_fn)
                 else:
-                    print(color_fn(label), flush=True)
+                    self._emit(label, color_fn)
                 if text.strip():
-                    print(f"  {safe_terminal_text(text)}", flush=True)
+                    self._emit(f"  {text}")
 
     def _handle_result(self, data: dict) -> None:
         """Handle final result message (cost, summary)."""
@@ -217,7 +246,7 @@ class ClaudeStreamJsonFormatter:
             self._state = _StreamState.TOOL_USE_BLOCK
             self._current_tool_name = content_block.get("name", "unknown")
             self._tool_input_buf.clear()
-            print(self._blue(f"[tool] {sanitize_tty(str(self._current_tool_name))}"), flush=True)
+            self._emit(f"[tool] {self._current_tool_name}", self._blue)
 
     def _handle_block_delta(self, data: dict) -> None:
         """Process an incremental text or tool-input delta."""
@@ -226,7 +255,7 @@ class ClaudeStreamJsonFormatter:
         if self._state == _StreamState.TEXT_BLOCK and delta_type == "text_delta":
             text = delta.get("text", "")
             if text:
-                print(safe_terminal_text(text), end="", flush=True)
+                self._emit(text, end="")
         elif self._state == _StreamState.TOOL_USE_BLOCK and delta_type == "input_json_delta":
             partial = delta.get("partial_json", "")
             if partial:
@@ -243,7 +272,7 @@ class ClaudeStreamJsonFormatter:
                     parsed = json.loads(accumulated)
                     self._print_tool_input(parsed)
                 except (json.JSONDecodeError, ValueError):
-                    print(self._yellow(f"  {safe_terminal_text(accumulated)}"), flush=True)
+                    self._emit(f"  {accumulated}", self._yellow)
             self._tool_input_buf.clear()
         self._state = _StreamState.IDLE
 
@@ -256,9 +285,9 @@ class ClaudeStreamJsonFormatter:
                 val_str = str(v)
                 if len(val_str) > 200:
                     val_str = val_str[:197] + "..."
-                print(self._yellow(safe_terminal_text(f"  {k}: {val_str}")), flush=True)
+                self._emit(f"  {k}: {val_str}", self._yellow)
         elif tool_input:
-            print(self._yellow(f"  {safe_terminal_text(str(tool_input))}"), flush=True)
+            self._emit(f"  {tool_input}", self._yellow)
 
     # -- finish --
 
@@ -270,7 +299,7 @@ class ClaudeStreamJsonFormatter:
         elif self._state == _StreamState.TOOL_USE_BLOCK:
             accumulated = "".join(self._tool_input_buf)
             if accumulated:
-                print(self._yellow(f"  {safe_terminal_text(accumulated)}"), flush=True)
+                self._emit(f"  {accumulated}", self._yellow)
         self._state = _StreamState.IDLE
 
         if self._result:
@@ -292,22 +321,20 @@ class ClaudeStreamJsonFormatter:
         if is_error:
             parts.append(self._red("FAILED"))
         if num_turns is not None:
-            parts.append(f"turns={sanitize_tty(str(num_turns))}")
-        if cost_usd is not None:
+            parts.append(f"turns={num_turns}")
+        if isinstance(cost_usd, int | float):
             parts.append(f"cost=${cost_usd:.4f}")
-        if duration_ms is not None:
-            secs = duration_ms / 1000
-            parts.append(f"duration={secs:.1f}s")
-        if usage:
+        if isinstance(duration_ms, int | float):
+            parts.append(f"duration={duration_ms / 1000:.1f}s")
+        if isinstance(usage, dict):
             inp = usage.get("input_tokens", 0)
             out = usage.get("output_tokens", 0)
             if inp or out:
-                parts.append(f"tokens={sanitize_tty(str(inp))}in/{sanitize_tty(str(out))}out")
+                parts.append(f"tokens={inp}in/{out}out")
 
         if parts:
-            summary = ", ".join(parts)
             print(file=sys.stderr)
-            print(self._yellow(f"[result] {summary}"), file=sys.stderr, flush=True)
+            self._emit(f"[result] {', '.join(parts)}", self._yellow, file=sys.stderr)
 
 
 # ---------------------------------------------------------------------------
@@ -336,5 +363,4 @@ def auto_detect_formatter(
         effective_agent = agent or "claude"
         if effective_agent == "claude":
             return ClaudeStreamJsonFormatter(streaming=streaming, color=color)
-        return PlainTextFormatter()
-    return PlainTextFormatter()
+    return PlainTextFormatter(color=color)

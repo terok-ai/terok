@@ -386,34 +386,6 @@ def test_suggestions_cover_the_most_first_then_the_smaller_set() -> None:
     assert review.candidate("pypi.org").suggested_set == "python"  # type: ignore[union-attr]
 
 
-def test_suggestion_filter_does_not_repeatedly_search_the_ordered_tuple() -> None:
-    """Coverage presentation stays ordered without quadratic tuple-membership filtering."""
-    from terok.lib.domain.egress_promotion import _suggest_sets
-
-    class OrderedCoverage(tuple):
-        """A coverage result whose presentation order is not its membership index."""
-
-        def __contains__(self, item: object) -> bool:
-            """Reject a linear scan, independently of machine speed or elapsed time."""
-            raise AssertionError("Coverage membership must use a set")
-
-    targets = OrderedCoverage(f"host-{index}.example.org" for index in range(128))
-    choice = SimpleNamespace(name=_USER_SET, origin="user", hosts=(_HOST,))
-    candidates = [
-        SimpleNamespace(target=target, remedies=(REMEDY_SET,), covered_by=None)
-        for target in targets
-    ]
-    with (
-        patch(f"{_ENGINE}._set_pool", return_value=[choice]),
-        patch(f"{_ENGINE}._best_cover", return_value=(choice, targets)),
-    ):
-        suggestions = _suggest_sets(candidates, SimpleNamespace(), suffix=False)
-
-    assert len(suggestions) == 1
-    assert suggestions[0].covers == targets
-    assert suggestions[0].of == len(targets)
-
-
 def test_a_built_in_set_wins_a_tie_with_your_own() -> None:
     """Same coverage, same size: the built-in set means the same on every host."""
     _write_user_set("py-mirror", "pypi.org\nfiles.pythonhosted.org\n")

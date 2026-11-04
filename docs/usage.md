@@ -607,8 +607,9 @@ terok task archive logs myproj 20260305T143000Z --raw
 ```
 
 Formatted and archived log views escape task-supplied terminal controls while
-preserving line breaks. Use `--raw` only when you intend to replay those controls;
-it also applies to persisted logs after the container has been removed.
+keeping line breaks and, on an interactive terminal, the agent's own colours
+(dropped when the output is redirected). Use `--raw` only to replay the controls
+verbatim; it also applies to persisted logs after the container has been removed.
 
 ### Step 8: Log into a Running Container
 
