@@ -344,9 +344,7 @@ def _run_container(
     task_dossier_path = dossier_path(tasks_meta_dir(project.name), task_id)
     annotations = {"dossier.meta_path": str(task_dossier_path)}
     runtime_name = _rt.resolve_runtime_name(project)
-    merged_args = list(extra_args or ()) + _project_runtime_flags(
-        project, cname=cname, runtime_name=runtime_name
-    )
+    merged_args = list(extra_args or ()) + _project_runtime_flags(project, cname=cname)
     if runtime_name == "krun":
         # ``--cpus`` is only a cgroup CFS quota — crun-krun does not
         # read it to size the microVM and defaults to host CPU
@@ -364,7 +362,7 @@ def _run_container(
     project_allow, override = _compose_shield_tiers(project)
     try:
         with timed_phase(f"launch[{cname}]: podman run"):
-            _agent_runner(project, runtime_name=runtime_name).launch_prepared(
+            _agent_runner(project).launch_prepared(
                 env=env,
                 volumes=volumes,
                 image=image,
@@ -379,7 +377,7 @@ def _run_container(
                 sealed=project.is_sealed,
                 hooks=hooks,
                 extra_args=merged_args,
-                runtime=None if runtime_name == "null" else runtime_name,
+                runtime=_rt.launch_runtime_arg(project),
                 hostname=cname,
                 annotations=annotations,
                 project_id=project.name,  # executor API kwarg is ``project_id``; value is the project name
@@ -397,7 +395,7 @@ def _run_container(
         raise SystemExit(str(exc)) from exc
 
 
-def _sandbox(project: ProjectConfig, *, runtime_name: _rt.RuntimeName | None = None) -> Sandbox:
+def _sandbox(project: ProjectConfig) -> Sandbox:
     """Return a `Sandbox` bound to *project*'s resolved runtime.
 
     Resolving the runtime here (rather than letting `Sandbox` default to
@@ -407,22 +405,15 @@ def _sandbox(project: ProjectConfig, *, runtime_name: _rt.RuntimeName | None = N
     (launch) and [`_podman_start`][terok.lib.orchestration.task_runners.container._podman_start]
     (restart) so both speak to the same backend the same way.
     """
-    return Sandbox(
-        make_sandbox_config(project),
-        runtime=_rt.resolve_runtime(project, runtime_name=runtime_name),
-    )
+    return Sandbox(make_sandbox_config(project), runtime=_rt.resolve_runtime(project))
 
 
-def _agent_runner(
-    project: ProjectConfig, *, runtime_name: _rt.RuntimeName | None = None
-) -> AgentRunner:
+def _agent_runner(project: ProjectConfig) -> AgentRunner:
     """Return an `AgentRunner` whose `Sandbox` is bound to *project*'s runtime."""
-    return AgentRunner(sandbox=_sandbox(project, runtime_name=runtime_name))
+    return AgentRunner(sandbox=_sandbox(project))
 
 
-def _project_runtime_flags(
-    project: ProjectConfig, *, cname: str, runtime_name: _rt.RuntimeName | None = None
-) -> list[str]:
+def _project_runtime_flags(project: ProjectConfig, *, cname: str) -> list[str]:
     """Return extra ``podman run`` flags derived from project-level capabilities.
 
     ``run.podman_args`` → appended verbatim, re-gated through
@@ -456,7 +447,7 @@ def _project_runtime_flags(
     ``_run_container`` where the typed ``annotations=`` channel lives.
     """
     del cname  # signature kept for caller stability; no longer read here
-    runtime_name = _rt.resolve_runtime_name(project) if runtime_name is None else runtime_name
+    runtime_name = _rt.resolve_runtime_name(project)
     flags: list[str] = []
     if project.nested_containers:
         flags += ["--security-opt", "label=nested", "--device", "/dev/fuse"]

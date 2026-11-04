@@ -198,13 +198,12 @@ def _refresh_shield_tiers(project: ProjectConfig, cname: str, task_dir: Path) ->
         exposed_credential_providers=exposed_credential_providers()
     )
     project_allow, override = _compose_shield_tiers(project)
-    runtime_name = _rt.resolve_runtime_name(project)
     with timed_phase(f"shield[{cname}]: refresh policy bundle"):
         try:
-            _sandbox(project, runtime_name=runtime_name).shield_refresh(
+            _sandbox(project).shield_refresh(
                 cname,
                 task_dir,
-                runtime=None if runtime_name == "null" else runtime_name,
+                runtime=_rt.launch_runtime_arg(project),
                 security_deny=egress.deny_to_vault,
                 provider_allow=egress.provider_allow,
                 project_allow=project_allow,

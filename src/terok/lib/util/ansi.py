@@ -12,17 +12,6 @@ extra helpers (``yes_no``, ``violet``, ``gray``).
 import os
 import sys
 
-from terok_util import sanitize_tty
-
-
-def safe_terminal_text(text: str) -> str:
-    """Render untrusted multiline text without terminal commands, preserving line breaks.
-
-    Apply before adding application-owned styling. Each fragment is safe on
-    its own, so streamed fragments cannot assemble an escape sequence.
-    """
-    return "\n".join(sanitize_tty(line) for line in text.split("\n"))
-
 
 def supports_color() -> bool:
     """Check if stdout supports color output.
