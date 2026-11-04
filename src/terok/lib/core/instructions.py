@@ -30,8 +30,13 @@ _PER_AGENT_FALLBACK = "_default"
 
 
 def global_instructions_path() -> Path:
-    """Return the global ``instructions.md``, which sits next to the user config file."""
-    return global_config_path().parent / "instructions.md"
+    """Return the global ``instructions.md``, which sits next to the user config file.
+
+    Next to the file itself: a ``TEROK_CONFIG_FILE`` that is a symlink keeps
+    its configured name for display and writes, but the instructions live
+    beside the target it points to.
+    """
+    return global_config_path().resolve().parent / "instructions.md"
 
 
 def with_global_instructions(agent_config: dict[str, Any]) -> dict[str, Any]:

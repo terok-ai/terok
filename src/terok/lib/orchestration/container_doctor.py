@@ -32,7 +32,6 @@ from terok.lib.integrations.sandbox import (
     CheckVerdict,
     ContainerRuntime,
     DoctorCheck,
-    ExecOutputLimitError,
     ExecResult,
     ShieldManager,
     container_diagnostics,
@@ -694,7 +693,10 @@ def _run_probe(runtime: ContainerRuntime, cname: str, check: DoctorCheck) -> Che
         proc = _exec_in_container(runtime, cname, check.probe_cmd)
     except subprocess.TimeoutExpired:
         return CheckVerdict("warn", f"{check.label}: probe timed out")
-    except (OSError, ExecOutputLimitError) as exc:
+    except (OSError, RuntimeError) as exc:
+        # RuntimeError covers the output budget and the krun transport's
+        # own failures (no port mapping, failed mapping query): a warning,
+        # never an aborted diagnosis.
         return CheckVerdict("warn", f"{check.label}: exec failed — {exc}")
 
     try:
@@ -708,7 +710,7 @@ def _apply_fix(runtime: ContainerRuntime, cname: str, check: DoctorCheck) -> _Ch
     _log_debug(f"container_doctor: fixing {check.label}")
     try:
         fix_proc = _exec_in_container(runtime, cname, check.fix_cmd)  # type: ignore[arg-type]
-    except (subprocess.TimeoutExpired, OSError, ExecOutputLimitError) as exc:
+    except (subprocess.TimeoutExpired, OSError, RuntimeError) as exc:
         return ("warn", f"  fix: {check.label}", f"fix failed: {exc}")
     if fix_proc.ok:
         return ("ok", f"  fix: {check.label}", check.fix_description)

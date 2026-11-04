@@ -55,18 +55,24 @@ class TestExecInContainer:
         assert args[1] == ["echo", "hello"]
         assert kwargs == {"timeout": 10}
 
-    def test_overflow_is_not_evaluated(self, mock_runtime) -> None:
-        """Oversized replies become warnings rather than partial diagnostic input."""
+    @pytest.mark.parametrize(
+        "failure",
+        [
+            ExecOutputLimitError("Command output exceeded 16777216 bytes"),
+            RuntimeError("no SSH port mapping for container"),
+        ],
+        ids=["overflow", "transport"],
+    )
+    def test_exec_failures_warn_and_are_not_evaluated(self, mock_runtime, failure) -> None:
+        """An oversized reply or a failed krun transport warns; the probe is never evaluated."""
         evaluate = MagicMock()
         check = DoctorCheck("git", "Git identity", ["git", "config"], evaluate)
-        mock_runtime.exec.side_effect = ExecOutputLimitError(
-            "Command output exceeded 16777216 bytes"
-        )
+        mock_runtime.exec.side_effect = failure
 
         verdict = _run_probe(mock_runtime, "proj-cli-42", check)
 
         assert verdict.severity == "warn"
-        assert "output exceeded" in verdict.detail
+        assert str(failure) in verdict.detail
         evaluate.assert_not_called()
 
     def test_fix_overflow_is_reported(self, mock_runtime) -> None:

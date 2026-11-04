@@ -2545,8 +2545,8 @@ dependencies = [
 
 [[package]]
 name = "terok-executor"
-version = "0.5.1a15.dev540+g0393f42dc"
-source = { git = "https://github.com/sliwowitz/terok-executor?rev=fix%2Fdeep-scan-followups#0393f42dcb319fbd9fda160c0298cd93f38e1c30" }
+version = "0.5.1a15.dev541+g92cfa5e88"
+source = { git = "https://github.com/sliwowitz/terok-executor?rev=fix%2Fdeep-scan-followups#92cfa5e883550a6aa67529b29ce0eead0c5cdfc3" }
 dependencies = [
     { name = "agent-client-protocol" },
     { name = "jinja2" },

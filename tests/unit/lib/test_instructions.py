@@ -216,3 +216,17 @@ class TestInheritSetting:
         with pytest.raises(ValueError, match="not a list"):
             set_instructions_inherit(config, False)
         assert config.read_text(encoding="utf-8") == original
+
+
+def test_global_instructions_sit_beside_the_config_target(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A symlinked ``TEROK_CONFIG_FILE`` keeps its name, but instructions.md lives with the target."""
+    target_dir = tmp_path / "dotfiles"
+    link_dir = tmp_path / "link"
+    target_dir.mkdir()
+    link_dir.mkdir()
+    (target_dir / "config.yml").write_text("")
+    (link_dir / "config.yml").symlink_to(target_dir / "config.yml")
+    monkeypatch.setenv("TEROK_CONFIG_FILE", str(link_dir / "config.yml"))
+    assert global_instructions_path() == target_dir / "instructions.md"
