@@ -59,6 +59,7 @@ _SHIELD_STATE_LABEL = "Shield state"
 _VAULT_SOCKET_RELATIVE_PATH = Path(CONTAINER_VAULT_SOCKET).relative_to(CONTAINER_RUNTIME_DIR)
 _GATE_SOCKET_RELATIVE_PATH = Path(CONTAINER_GATE_SOCKET).relative_to(CONTAINER_RUNTIME_DIR)
 _REACHABILITY_TCP_TIMEOUT_S = 2.0
+_DIAGNOSTIC_OUTPUT_LIMIT = 64 * 1024
 
 _SUPERVISOR_CHECK_LABEL = "Supervisor alive"
 
@@ -99,7 +100,12 @@ def _exec_in_container(
     booted the container — under crun that's ``podman exec``; under
     krun it's SSH over a passt-forwarded TCP port.
     """
-    return runtime.exec(runtime.container(cname), cmd, timeout=timeout)
+    return runtime.exec(
+        runtime.container(cname),
+        cmd,
+        timeout=timeout,
+        max_output_bytes=_DIAGNOSTIC_OUTPUT_LIMIT,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -693,7 +699,7 @@ def _run_probe(runtime: ContainerRuntime, cname: str, check: DoctorCheck) -> Che
         proc = _exec_in_container(runtime, cname, check.probe_cmd)
     except subprocess.TimeoutExpired:
         return CheckVerdict("warn", f"{check.label}: probe timed out")
-    except OSError as exc:
+    except (OSError, RuntimeError) as exc:
         return CheckVerdict("warn", f"{check.label}: exec failed — {exc}")
 
     try:
@@ -707,7 +713,7 @@ def _apply_fix(runtime: ContainerRuntime, cname: str, check: DoctorCheck) -> _Ch
     _log_debug(f"container_doctor: fixing {check.label}")
     try:
         fix_proc = _exec_in_container(runtime, cname, check.fix_cmd)  # type: ignore[arg-type]
-    except (subprocess.TimeoutExpired, OSError) as exc:
+    except (subprocess.TimeoutExpired, OSError, RuntimeError) as exc:
         return ("warn", f"  fix: {check.label}", f"fix failed: {exc}")
     if fix_proc.ok:
         return ("ok", f"  fix: {check.label}", check.fix_description)

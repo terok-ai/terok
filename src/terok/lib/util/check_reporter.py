@@ -25,6 +25,8 @@ from collections.abc import Iterator
 from contextlib import contextmanager
 from typing import Any
 
+from terok_util import sanitize_tty
+
 from .ansi import green, red, supports_color, yellow
 
 #: Default label column — labels are padded with spaces to this width so
@@ -124,7 +126,7 @@ class CheckReporter:
         self._worst = _worse(self._worst, status)
         marker = _paint_marker(status, color_on=self._color)
         if detail:
-            self._stream.write(f"{marker} ({detail})\n")
+            self._stream.write(f"{marker} ({sanitize_tty(detail)})\n")
         else:
             self._stream.write(f"{marker}\n")
         self._stream.flush()
@@ -197,7 +199,7 @@ class CheckReporter:
         for status, _label, detail in results:
             if status != "ok":
                 tag = _paint_marker(status, color_on=self._color)
-                self._stream.write(f"    {tag}: {detail}\n")
+                self._stream.write(f"    {tag}: {sanitize_tty(detail)}\n")
         self._stream.flush()
 
     # ------------------------------------------------------------------

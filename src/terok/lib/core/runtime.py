@@ -37,7 +37,7 @@ reset.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Literal
+from typing import TYPE_CHECKING, Literal, cast
 
 from terok.lib.core.config import is_experimental, make_sandbox_config
 from terok.lib.integrations.executor import KrunHost
@@ -57,7 +57,9 @@ default; ``krun`` selects KVM-microVM isolation; ``null`` is the
 in-memory stub for tests."""
 
 
-def resolve_runtime(project: ProjectConfig | None = None) -> ContainerRuntime:
+def resolve_runtime(
+    project: ProjectConfig | None = None, *, runtime_name: RuntimeName | None = None
+) -> ContainerRuntime:
     """Return the [`ContainerRuntime`][terok_sandbox.ContainerRuntime] for *project*.
 
     See the module docstring for the full priority chain.  Constructs a
@@ -72,8 +74,12 @@ def resolve_runtime(project: ProjectConfig | None = None) -> ContainerRuntime:
     those callers can also instantiate
     [`PodmanRuntime`][terok_sandbox.PodmanRuntime] directly and skip
     the resolver overhead.
+
+    Pass ``runtime_name`` to reuse a selection from
+    [`resolve_runtime_name`][terok.lib.core.runtime.resolve_runtime_name]
+    across the launch flags, runtime factory, and shield policy.
     """
-    backend = _select_backend(project)
+    backend = resolve_runtime_name(project) if runtime_name is None else runtime_name
     if backend == "crun":
         return PodmanRuntime()
     if backend == "null":
@@ -89,21 +95,20 @@ def resolve_runtime(project: ProjectConfig | None = None) -> ContainerRuntime:
     raise SystemExit(f"TEROK_RUNTIME={backend!r}: expected 'crun', 'krun', or 'null'")
 
 
-def _select_backend(project: ProjectConfig | None) -> str:
-    """Walk the priority chain and return the backend name.
-
-    Separated so ``resolve_runtime`` reads top-down — the "what we end
-    up running" decision lives in the lookups; the "how we construct
-    it" decision lives in the dispatch below.
-    """
+def resolve_runtime_name(project: ProjectConfig | None = None) -> RuntimeName:
+    """Select a valid runtime name using env > project > global > crun precedence."""
     import os
 
     env_value = os.environ.get("TEROK_RUNTIME")
     if env_value is not None:
-        return env_value.strip().lower()
-    if project is not None and project.runtime is not None:
-        return project.runtime
-    return _global_runtime_default()
+        backend = env_value.strip().lower()
+    elif project is not None and project.runtime is not None:
+        backend = project.runtime
+    else:
+        backend = _global_runtime_default()
+    if backend not in {"crun", "krun", "null"}:
+        raise SystemExit(f"TEROK_RUNTIME={backend!r}: expected 'crun', 'krun', or 'null'")
+    return cast(RuntimeName, backend)
 
 
 def _global_runtime_default() -> str:

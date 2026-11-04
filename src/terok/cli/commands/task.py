@@ -35,6 +35,7 @@ from ...lib.api import (
 )
 from ...lib.core.config import get_logs_partial_streaming as _get_logs_partial_streaming
 from ...lib.orchestration.tasks import resolve_task_id
+from ...lib.util.ansi import safe_terminal_text
 from ...lib.util.output_capture import tee_output
 from ._completers import add_project_name, add_task_id
 
@@ -395,6 +396,9 @@ def register(
     t_archive_logs.add_argument(
         "archive_id",
         help="Archive ID prefix (timestamp, e.g. 20260305T143000Z)",
+    )
+    t_archive_logs.add_argument(
+        "--raw", action="store_true", help="Replay archived output, including terminal controls"
     )
 
     # login (top-level shortcut — registered after the task group so --help
@@ -779,9 +783,9 @@ def _dispatch_archive_sub(args: argparse.Namespace) -> bool:
                 f"No archived logs found for prefix {args.archive_id!r}. "
                 f"Use 'terok task archive list {args.project_name}' to see available archives."
             )
-        with log_file.open("r", encoding="utf-8", errors="replace") as f:
+        with log_file.open("r", encoding="utf-8", errors="replace", newline="") as f:
             for line in f:
-                print(line, end="")
+                print(line if args.raw else safe_terminal_text(line), end="")
     else:
         return False
     return True
