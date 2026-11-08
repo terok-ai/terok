@@ -25,6 +25,8 @@ agent:
 
 # Runtime settings for this project
 run:
+  # Native Wayland windows on the host desktop; grants compositor access, not audio.
+  # wayland: true
   # Enable GPU passthrough for this project (per-project only). Default is disabled.
   # Accepts boolean true or string "all" to enable; omitted/false disables.
   # Note: GPU-enabled projects typically require a CUDA/NVIDIA-capable base image.

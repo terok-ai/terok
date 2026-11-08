@@ -23,6 +23,19 @@ from tests.testfs import (
 class RawProjectYamlTests(unittest.TestCase):
     """Tests for the top-level project.yml model."""
 
+    def test_wayland_is_project_only(self) -> None:
+        """Desktop access requires an explicit boolean grant in project.yml."""
+        self.assertFalse(RawProjectYaml().run.wayland)
+        for value in (True, False):
+            self.assertIs(
+                RawProjectYaml.model_validate({"run": {"wayland": value}}).run.wayland, value
+            )
+        for value in ("true", "false", 1, 0, None):
+            with self.subTest(value=value), self.assertRaises(ValidationError):
+                RawProjectYaml.model_validate({"run": {"wayland": value}})
+        with self.assertRaises(ValidationError):
+            RawGlobalConfig.model_validate({"run": {"wayland": True}})
+
     def test_minimal_valid_input(self) -> None:
         """Empty dict produces all defaults — base image is the executor's default."""
         from terok.lib.integrations.executor import RawImageSection

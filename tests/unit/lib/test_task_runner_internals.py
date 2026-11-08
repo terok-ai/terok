@@ -953,6 +953,7 @@ class TestRunContainer:
         p = MagicMock(spec=ProjectConfig)
         p.name = "p1"
         p.gpus = None
+        p.wayland = False
         p.root = MOCK_TASK_DIR
         p.isolation = "shared"
         p.is_sealed = False
@@ -969,12 +970,14 @@ class TestRunContainer:
         p.shield_override = ()
         return p
 
-    def test_builds_runspec_and_delegates(self) -> None:
+    @pytest.mark.parametrize("wayland", [False, True])
+    def test_builds_runspec_and_delegates(self, wayland: bool) -> None:
         """_run_container constructs a RunSpec and calls sandbox.run()."""
         from terok_sandbox import VolumeSpec
 
         vol = VolumeSpec(Path("/a"), "/b")
         project = self._make_project()
+        project.wayland = wayland
         with (
             patch(
                 "terok.lib.orchestration.task_runners.container._agent_runner"
@@ -1001,6 +1004,7 @@ class TestRunContainer:
         assert spec.command == ("bash", "-lc", "echo hi")
         assert spec.task_dir == MOCK_TASK_DIR
         assert spec.gpus is None
+        assert sandbox_factory.return_value.launch_prepared.call_args.kwargs["wayland"] is wayland
         assert spec.unrestricted is False  # FOO doesn't have TEROK_UNRESTRICTED
 
     def test_launch_carries_override_expiry_for_the_kernel(self) -> None:
@@ -1723,6 +1727,7 @@ class TestLaunchPreparedIdentity:
         p = MagicMock(spec=ProjectConfig)
         p.name = "proj-id-x"
         p.gpus = None
+        p.wayland = False
         p.root = MOCK_TASK_DIR
         p.isolation = "shared"
         p.is_sealed = False

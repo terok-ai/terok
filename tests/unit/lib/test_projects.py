@@ -70,6 +70,16 @@ def project_yaml(
     return "\n".join(lines) + "\n"
 
 
+@pytest.mark.parametrize("enabled", [None, False, True])
+def test_wayland_project_grant(enabled: bool | None) -> None:
+    """Load the project grant without a global desktop-access default."""
+    yaml = project_yaml("desktop")
+    if enabled is not None:
+        yaml += f"run:\n  wayland: {str(enabled).lower()}\n"
+    with project_env(yaml, project_name="desktop"):
+        assert load_project("desktop").wayland is bool(enabled)
+
+
 @pytest.mark.parametrize("global_value", [None, False, True])
 @pytest.mark.parametrize("project_value", [None, False, True])
 def test_aslr_control_reaches_sandbox(

@@ -105,6 +105,8 @@ class ProjectConfig(BaseModel):
     terok-executor normalizes it at launch via
     [`normalize_gpus`][terok_sandbox.config_schema.normalize_gpus].
     """
+    wayland: bool = False
+    """Grant the current user's desktop compositor socket from ``run.wayland``."""
     nested_containers: bool = False
     """Project runs podman/docker inside its container (see ``run.nested_containers``)."""
     perf: bool = False

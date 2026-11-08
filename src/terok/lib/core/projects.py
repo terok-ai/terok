@@ -339,6 +339,7 @@ def _build_project_config(
         memory=raw.run.memory,
         cpus=raw.run.cpus,
         gpus=raw.run.gpus,
+        wayland=raw.run.wayland,
         nested_containers=raw.run.nested_containers,
         perf=raw.run.perf,
         aslr_control=(

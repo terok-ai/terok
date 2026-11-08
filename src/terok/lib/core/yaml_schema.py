@@ -19,9 +19,9 @@ Sections owned by lower-level packages live in those packages' own
 terok itself owns the remaining four global sections (``tui``,
 ``logs``, ``tasks``-global, ``git``-global) plus every
 ``project.yml``-only section.  Task-lifecycle hooks (``run.hooks``)
-and the ``run:`` section as a whole live in sandbox and inherit
-through to both ``RawProjectYaml`` and ``RawGlobalConfig`` — same
-schema both levels, project values override globals.
+and the base ``run:`` section live in sandbox and inherit through to
+both ``RawProjectYaml`` and ``RawGlobalConfig``. The project schema adds
+explicit desktop-access grants that cannot be enabled globally.
 [`RawGlobalConfig`][terok.lib.core.yaml_schema.RawGlobalConfig]
 inherits from [`ExecutorConfigView`][terok_executor.config_schema.ExecutorConfigView]
 and flips back to ``extra="forbid"`` because terok knows the full
@@ -487,6 +487,16 @@ _DEFAULT_SHELL_DESCRIPTION = (
 )
 
 
+class RawProjectRunSection(RawRunSection):
+    """Project-only desktop access grants alongside sandbox runtime settings."""
+
+    wayland: bool = Field(
+        default=False,
+        strict=True,
+        description="Expose the current user's Wayland socket (no audio or X11); project-only opt-in",
+    )
+
+
 class RawProjectYaml(BaseModel):
     """Validated structure of a ``project.yml`` file."""
 
@@ -498,7 +508,7 @@ class RawProjectYaml(BaseModel):
     tasks: RawTasksSection = Field(default_factory=RawTasksSection)
     gate: RawGateSection = Field(default_factory=RawGateSection)
     gatekeeping: RawGatekeepingSection = Field(default_factory=RawGatekeepingSection)
-    run: RawRunSection = Field(default_factory=RawRunSection)
+    run: RawProjectRunSection = Field(default_factory=RawProjectRunSection)
     shield: RawShieldProjectSection = Field(default_factory=RawShieldProjectSection)
     services: RawServicesProjectSection = Field(default_factory=RawServicesProjectSection)
     image: RawProjectImageSection = Field(default_factory=RawProjectImageSection)

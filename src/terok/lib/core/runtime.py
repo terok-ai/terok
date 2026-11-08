@@ -79,6 +79,8 @@ def resolve_runtime(project: ProjectConfig | None = None) -> ContainerRuntime:
     if backend == "null":
         return NullRuntime()
     if backend == "krun":
+        if project is not None and project.wayland:
+            raise SystemExit("run.wayland is not supported with run.runtime: krun")
         if not is_experimental():
             raise SystemExit(
                 "run.runtime: krun requires the experimental flag.  Set "

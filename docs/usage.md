@@ -22,6 +22,7 @@ Complete guide to installing, configuring, and using terok.
 - [Image Management](#image-management)
 - [Project Management](#project-management)
 - [GPU Passthrough](#gpu-passthrough)
+- [Wayland Desktop Access](#wayland-desktop-access)
 - [Tips](#tips)
 - [FAQ](#faq)
 
@@ -1441,6 +1442,66 @@ against the image's `tzdata`. Omitting `run.timezone` (or setting it to
 an empty value) falls back to host-follow — terok reads the host's
 `$TZ`, then `/etc/timezone`, then the `/etc/localtime` symlink — and
 leaves `TZ` unset if none of those resolve.
+
+---
+
+## Wayland Desktop Access
+
+Native Wayland applications can run **inside a task container** while their
+windows appear on the host desktop. Enable this separately for each project:
+
+```yaml
+run:
+  wayland: true
+```
+
+The default is `false`. This option is accepted only in `project.yml`, not
+global `config.yml`. Start terok as the desktop user from the intended Wayland
+session, with `WAYLAND_DISPLAY` set. A socket name is resolved beneath an
+absolute `XDG_RUNTIME_DIR`; an absolute `WAYLAND_DISPLAY` also works without
+that variable. Terok does not guess `wayland-0` or search other users' sessions.
+The socket must belong to the invoking user, and its parent directory must
+belong to that user without group/other write access. Symlink socket entries
+and socket paths containing commas or double quotes are refused.
+
+Only that socket is bind-mounted, read-only, at `/run/terok-wayland.sock`.
+Inside the container, `WAYLAND_DISPLAY` names this absolute path. The host's
+runtime directory, audio sockets, session D-Bus, and X11 sockets are **not**
+shared. `DISPLAY`, `XAUTHORITY`, and `WAYLAND_SOCKET` are unset for this launch.
+No extra capabilities, host networking, or GPU grants are added.
+
+Install applications and their Wayland/graphics libraries through your
+[project Dockerfile snippet](#image-management). Select the application's
+native Wayland backend if needed. GPU access remains the independent
+[`run.gpus` option](#gpu-passthrough); Wayland does not enable it or change its
+behavior. This feature installs no applications or MCP servers.
+
+**Security boundary:** this is access to the host compositor, not a
+window-only permission or a filtered protocol proxy. Task processes can use
+the protocols that compositor exposes, potentially including clipboard,
+screen capture, or input-control extensions under its policy. Read-only
+mounting prevents filesystem changes through the mount; it does **not**
+restrict socket messages. Enable it only for tasks you trust with that access.
+The network egress firewall does not mediate this local Unix socket.
+
+**Confinement and limitations:** rootful launches, sealed isolation, and
+`krun` microVMs are unsupported. SELinux and AppArmor remain enforced: terok
+does not relabel the host socket, change its permissions, disable labels, or
+modify host policy. On SELinux-enforcing hosts the existing policy may deny
+access; a reviewed host policy is required there, not `label=disable` or `:z` /
+`:Z` on the desktop socket. No automatic SELinux desktop policy is supplied.
+This is for local Linux Podman, not a remote Podman server.
+
+The mount belongs to the session selected when the container is created.
+Recreate the task after changing this setting or after the compositor replaces
+its socket (for example, after logging out and back in). Restarting an existing
+container does not select a new desktop session.
+
+For a manual smoke test, install a native Wayland client in a project image,
+enable the option, create a task, and launch that client from its shell. Its
+window should appear on the host while the process runs in the container.
+Check that there is just one desktop socket mount and that audio, D-Bus, and
+the host runtime directory remain absent.
 
 ---
 

@@ -369,6 +369,7 @@ def _run_container(
                 name=cname,
                 task_dir=task_dir,
                 gpus=project.gpus,
+                wayland=project.wayland,
                 memory=project.memory,
                 cpus=project.cpus,
                 caps=("perfmon",) if project.perf else None,

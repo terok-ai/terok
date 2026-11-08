@@ -65,6 +65,21 @@ def _project(**overrides):  # type: ignore[no-untyped-def]
 class TestResolveRuntime:
     """`resolve_runtime(project)` priority chain: env > project > global > crun."""
 
+    @pytest.mark.parametrize("source", ["project", "global", "env"])
+    def test_wayland_rejects_krun(self, monkeypatch: pytest.MonkeyPatch, source: str) -> None:
+        """A desktop socket cannot cross the microVM boundary, regardless of selector source."""
+        monkeypatch.delenv("TEROK_RUNTIME", raising=False)
+        if source == "env":
+            monkeypatch.setenv("TEROK_RUNTIME", "krun")
+        project = _project(wayland=True, runtime="krun" if source == "project" else None)
+        with (
+            patch("terok.lib.core.runtime._global_runtime_default", return_value="krun"),
+            patch("terok.lib.core.runtime.KrunHost") as host,
+            pytest.raises(SystemExit, match="run.wayland.*krun"),
+        ):
+            resolve_runtime(project)
+        host.assert_not_called()
+
     def test_no_project_no_env_defaults_to_crun(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """The bottom of the fallback chain — every other source unset.
 
