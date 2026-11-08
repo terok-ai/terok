@@ -19,11 +19,16 @@ from __future__ import annotations
 import asyncio
 import os
 import stat
+import threading
+from collections.abc import AsyncIterator
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import patch
 
 import pytest
 from textual.app import App
+from textual.pilot import Pilot
+from textual.screen import ModalScreen
 
 from terok.tui import askpass_protocol as proto
 from terok.tui.askpass_service import (
@@ -33,6 +38,7 @@ from terok.tui.askpass_service import (
     default_socket_path,
     gui_askpass_usable,
 )
+from terok.tui.console_log import ConsoleLogEntry, ConsoleLogRegistry, LogStatus
 
 # ── build_askpass_env ─────────────────────────────────────────────────
 
@@ -58,8 +64,9 @@ class TestBuildEnv:
             socket_path="/run/x.sock",
             helper_bin="/usr/bin/terok-askpass",
         )
-        assert env["SSH_ASKPASS"] == "/usr/libexec/seahorse-askpass"
-        assert "TEROK_ASKPASS_SOCKET" not in env
+        assert env["SSH_ASKPASS"] == "/usr/bin/terok-askpass"
+        assert env["TEROK_ASKPASS_GUI_HELPER"] == "/usr/libexec/seahorse-askpass"
+        assert env["TEROK_ASKPASS_SOCKET"] == "/run/x.sock"
         # REQUIRE=force still applies so the GUI dialog is used even with a tty.
         assert env["SSH_ASKPASS_REQUIRE"] == "force"
 
@@ -70,8 +77,9 @@ class TestBuildEnv:
             socket_path="/run/x.sock",
             helper_bin="/usr/bin/terok-askpass",
         )
-        assert env["SSH_ASKPASS"] == "/usr/bin/custom-askpass"
-        assert "TEROK_ASKPASS_SOCKET" not in env
+        assert env["SSH_ASKPASS"] == "/usr/bin/terok-askpass"
+        assert env["TEROK_ASKPASS_GUI_HELPER"] == "/usr/bin/custom-askpass"
+        assert env["TEROK_ASKPASS_SOCKET"] == "/run/x.sock"
 
     def test_takes_over_when_existing_askpass_has_no_gui(self) -> None:
         """``SSH_ASKPASS`` set but no ``DISPLAY``/``WAYLAND_DISPLAY`` — ours wins.
@@ -342,6 +350,219 @@ class TestServiceRoundTrip:
                 await service.stop()
 
 
+class _PendingApp(App):
+    """Host console actions whose SSH prompts can be opened explicitly."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.console_logs = ConsoleLogRegistry()
+
+
+type _PendingService = tuple[_PendingApp, Pilot, AskpassService, ConsoleLogEntry]
+
+
+@pytest.fixture
+async def pending_service(tmp_path: Path) -> AsyncIterator[_PendingService]:
+    """Run a managed action and its askpass service without any real SSH process."""
+    app = _PendingApp()
+    entry = app.console_logs.create("Gate sync", [], "sync")
+    async with app.run_test() as pilot:
+        service = AskpassService(
+            app, socket_path=tmp_path / "askpass.sock", helper_bin=tmp_path / "helper"
+        )
+        await service.start()
+        try:
+            yield app, pilot, service, entry
+        finally:
+            await service.stop()
+
+
+async def _send_prompt(
+    service: AskpassService, entry: ConsoleLogEntry, *, external: bool = False
+) -> tuple[asyncio.StreamReader, asyncio.StreamWriter]:
+    """Connect a helper and send an attributed prompt, leaving the socket open."""
+    reader, writer = await asyncio.open_unix_connection(service.socket_path)
+    request = proto.make_request("Unlock key", action_id=entry.id, external=external)
+    writer.write(proto.encode(request))
+    await writer.drain()
+    return reader, writer
+
+
+async def test_managed_prompt_notifies_without_stealing_focus(
+    pending_service: _PendingService,
+) -> None:
+    """An explicit open is required; answering restores the action's running state."""
+    app, pilot, service, entry = pending_service
+    original_screen = app.screen
+    with patch.object(app, "notify") as notify:
+        reader, writer = await _send_prompt(service, entry)
+        await pilot.pause()
+        assert app.screen is original_screen
+        assert entry.status is LogStatus.WAITING
+        assert entry.pending_inputs == 1
+        notify.assert_called_once()
+        assert "needs input" in notify.call_args.args[0]
+
+    entry.request_input()
+    await pilot.pause()
+    assert isinstance(app.screen, AskpassModal)
+    app.screen.dismiss("secret")
+    reply = proto.decode(await asyncio.wait_for(reader.readline(), timeout=2))
+    assert reply["answer"] == "secret"
+    await pilot.pause()
+    assert entry.status is LogStatus.RUNNING
+    assert entry.pending_inputs == 0
+    assert entry.lines == []
+    writer.close()
+    await writer.wait_closed()
+
+
+@pytest.mark.parametrize("finished", [False, True])
+async def test_unavailable_action_opens_an_unattributed_prompt(
+    pending_service: _PendingService, finished: bool
+) -> None:
+    """Unknown or finished actions cannot hide an otherwise unreachable question."""
+    app, pilot, service, entry = pending_service
+    if finished:
+        entry.finish(0)
+    action_id = entry.id if finished else entry.id + 1
+    reader, writer = await asyncio.open_unix_connection(service.socket_path)
+    try:
+        writer.write(proto.encode(proto.make_request("Unlock key", action_id=action_id)))
+        await writer.drain()
+        await pilot.pause()
+        assert isinstance(app.screen, AskpassModal)
+        assert entry.pending_inputs == 0
+        app.screen.dismiss("secret")
+        reply = proto.decode(await asyncio.wait_for(reader.readline(), timeout=2))
+        assert reply["answer"] == "secret"
+        assert entry.lines == []
+    finally:
+        writer.close()
+        await writer.wait_closed()
+
+
+async def test_deferred_prompt_remains_reachable(pending_service: _PendingService) -> None:
+    """Escape postpones a managed prompt; explicit Cancel sends the SSH cancellation."""
+    app, pilot, service, entry = pending_service
+    reader, writer = await _send_prompt(service, entry)
+    await pilot.pause()
+    entry.request_input()
+    await pilot.pause()
+    await pilot.press("escape")
+    await pilot.pause()
+    assert not isinstance(app.screen, AskpassModal)
+    assert entry.pending_inputs == 1
+    assert entry.status is LogStatus.WAITING
+    entry.request_input()
+    await pilot.pause()
+    await pilot.click("#askpass-cancel")
+    reply = proto.decode(await asyncio.wait_for(reader.readline(), timeout=2))
+    assert reply["cancel"] is True
+    writer.close()
+    await writer.wait_closed()
+
+
+async def test_concurrent_prompts_keep_action_waiting(pending_service: _PendingService) -> None:
+    """Resolving one request does not clear a second request for the same action."""
+    app, pilot, service, entry = pending_service
+    reader1, writer1 = await _send_prompt(service, entry)
+    reader2, writer2 = await _send_prompt(service, entry)
+    await pilot.pause()
+    assert entry.pending_inputs == 2
+    entry.request_input()
+    await pilot.pause()
+    app.screen.dismiss("first")
+    assert proto.decode(await asyncio.wait_for(reader1.readline(), timeout=2))["answer"] == "first"
+    await pilot.pause()
+    assert entry.pending_inputs == 1
+    assert entry.status is LogStatus.WAITING
+    entry.request_input()
+    await pilot.pause()
+    app.screen.dismiss("second")
+    assert proto.decode(await asyncio.wait_for(reader2.readline(), timeout=2))["answer"] == "second"
+    await pilot.pause()
+    assert entry.status is LogStatus.RUNNING
+    for writer in (writer1, writer2):
+        writer.close()
+        await writer.wait_closed()
+
+
+@pytest.mark.parametrize("open_prompt", [False, True])
+async def test_disconnected_native_prompt_cleans_up(
+    pending_service: _PendingService, open_prompt: bool
+) -> None:
+    """A dead helper cannot leave an action waiting or an obsolete password dialog."""
+    app, pilot, service, entry = pending_service
+    _, writer = await _send_prompt(service, entry)
+    await pilot.pause()
+    if open_prompt:
+        entry.request_input()
+        await pilot.pause()
+    writer.close()
+    await writer.wait_closed()
+    await pilot.pause()
+    assert entry.pending_inputs == 0
+    assert entry.status is LogStatus.RUNNING
+    assert not isinstance(app.screen, AskpassModal)
+
+
+async def test_disconnected_prompt_does_not_pop_another_screen(
+    pending_service: _PendingService,
+) -> None:
+    """An expired prompt closes only after an unrelated overlaid modal is dismissed."""
+    app, pilot, service, entry = pending_service
+    _, writer = await _send_prompt(service, entry)
+    await pilot.pause()
+    entry.request_input()
+    await pilot.pause()
+    overlay = ModalScreen()
+    app.push_screen(overlay)
+    await pilot.pause()
+    writer.close()
+    await writer.wait_closed()
+    await pilot.pause()
+    assert entry.pending_inputs == 0
+    assert app.screen is overlay
+    overlay.dismiss()
+    await pilot.pause()
+    assert not isinstance(app.screen, AskpassModal)
+
+
+async def test_gui_prompt_tracks_connection_without_a_native_dialog(
+    pending_service: _PendingService,
+) -> None:
+    """GUI helper lifetime marks its action waiting without duplicating its prompt."""
+    app, pilot, service, entry = pending_service
+    original_screen = app.screen
+    _, writer = await _send_prompt(service, entry, external=True)
+    await pilot.pause()
+    assert entry.pending_inputs == 1
+    assert entry.status is LogStatus.WAITING
+    with patch.object(app, "notify") as notify:
+        entry.request_input()
+        notify.assert_called_once()
+        assert "desktop dialog" in notify.call_args.args[0]
+    assert app.screen is original_screen
+    writer.close()
+    await writer.wait_closed()
+    await pilot.pause()
+    assert entry.pending_inputs == 0
+
+
+async def test_stop_clears_pending_helpers(pending_service: _PendingService) -> None:
+    """Stopping the service disconnects helpers and removes pending state."""
+    _, pilot, service, entry = pending_service
+    reader, writer = await _send_prompt(service, entry)
+    await pilot.pause()
+    await asyncio.wait_for(service.stop(), timeout=2)
+    assert await asyncio.wait_for(reader.read(), timeout=2) == b""
+    assert entry.pending_inputs == 0
+    assert not service._clients
+    writer.close()
+    await writer.wait_closed()
+
+
 # ── helper exit-code contract ─────────────────────────────────────────
 
 
@@ -375,7 +596,7 @@ class TestHelperMain:
                 if not chunk:
                     break
                 raw += chunk
-            request_id, _ = proto.parse_request(proto.decode(raw))
+            request_id = proto.parse_request(proto.decode(raw)).request_id
             await loop.sock_sendall(conn, proto.encode(proto.make_answer(request_id, "secret")))
             conn.close()
 
@@ -415,7 +636,7 @@ class TestHelperMain:
                 if not chunk:
                     break
                 raw += chunk
-            request_id, _ = proto.parse_request(proto.decode(raw))
+            request_id = proto.parse_request(proto.decode(raw)).request_id
             await loop.sock_sendall(conn, proto.encode(proto.make_cancel(request_id)))
             conn.close()
 
@@ -448,5 +669,72 @@ class TestHelperMain:
         assert helper.main(["terok-askpass", "prompt"]) != 0
 
 
+@pytest.mark.parametrize("exit_code", [0, 1])
+async def test_gui_wrapper_tracks_native_helper_lifetime(
+    pending_service: _PendingService,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    exit_code: int,
+) -> None:
+    """Wrapping a GUI reports waiting, preserves its argv/env, and relays its exit code."""
+    from terok.tui import askpass as helper
+
+    _, pilot, service, entry = pending_service
+    gui_helper = str(tmp_path / "desktop-askpass")
+    monkeypatch.setenv("TEROK_ASKPASS_SOCKET", str(service.socket_path))
+    monkeypatch.setenv(proto.GUI_HELPER_ENV, gui_helper)
+    monkeypatch.setenv(proto.ACTION_ID_ENV, str(entry.id))
+    entered, release = threading.Event(), threading.Event()
+
+    def run_gui(argv: list[str], *, env: dict[str, str], check: bool) -> SimpleNamespace:
+        assert argv == [gui_helper, "Unlock key"]
+        assert env["SSH_ASKPASS"] == gui_helper
+        assert proto.GUI_HELPER_ENV not in env
+        assert check is False
+        entered.set()
+        assert release.wait(timeout=5)
+        return SimpleNamespace(returncode=exit_code)
+
+    with patch.object(helper.subprocess, "run", side_effect=run_gui):
+        task = asyncio.create_task(asyncio.to_thread(helper.main, ["terok-askpass", "Unlock key"]))
+        try:
+            assert await asyncio.to_thread(entered.wait, 2)
+            await pilot.pause()
+            assert entry.pending_inputs == 1
+            assert entry.status is LogStatus.WAITING
+            assert entry.lines == []
+        finally:
+            release.set()
+        assert await asyncio.wait_for(task, timeout=2) == exit_code
+    await pilot.pause()
+    assert entry.pending_inputs == 0
+    assert entry.status is LogStatus.RUNNING
+
+
 # silence pytest about the unused fixture scaffold
 _ = os
+
+
+async def test_shutdown_closes_accepted_client_whose_handler_has_not_started(
+    tmp_path: Path,
+) -> None:
+    """A late accepted handler cannot keep Server.wait_closed blocked at TUI exit."""
+    stopping: list[asyncio.Task[None]] = []
+
+    class StopOnAccept(AskpassService):
+        def _handle_client(self, reader, writer):
+            stopping.append(asyncio.create_task(self.stop()))
+            return super()._handle_client(reader, writer)
+
+    service = StopOnAccept(App(), socket_path=tmp_path / "late-client.sock")
+    await service.start()
+    reader, writer = await asyncio.open_unix_connection(str(service.socket_path))
+    try:
+        assert await asyncio.wait_for(reader.read(), timeout=2) == b""
+        await asyncio.wait_for(asyncio.gather(*stopping), timeout=2)
+        assert not service._clients
+        assert not service.is_running
+    finally:
+        writer.close()
+        await writer.wait_closed()
+        await service.stop()

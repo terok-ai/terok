@@ -199,3 +199,24 @@ async def test_dismiss_button_is_focused_on_mount() -> None:
         await pilot.press("enter")
         await pilot.pause()
         assert not isinstance(pilot.app.screen, WorkerLogScreen)
+
+
+@pytest.mark.asyncio
+async def test_question_button_tracks_requests_without_stealing_focus() -> None:
+    """A prompt arriving with a log open remains reachable without closing the viewer."""
+    entry = _entry()
+    opened: list[bool] = []
+    app = _ViewerHost(entry)
+    async with app.run_test() as pilot:
+        button = app.screen.query_one("#worker-log-input", Button)
+        assert not button.display
+        focused = app.focused
+        entry.add_input("key", lambda: opened.append(True))
+        await pilot.pause()
+        assert button.display
+        assert app.focused is focused
+        await pilot.click("#worker-log-input")
+        assert opened == [True]
+        entry.remove_input("key")
+        await pilot.pause()
+        assert not button.display

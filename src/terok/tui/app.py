@@ -177,6 +177,7 @@ if _HAS_TEXTUAL:
     from .askpass_service import AskpassService
     from .clipboard import get_clipboard_helper_status
     from .console_log import ConsoleLogMixin, ConsoleLogRegistry
+    from .console_output_screen import BackgroundActions
     from .polling import PollingMixin
     from .project_actions import ProjectActionsMixin
     from .screens import (
@@ -337,6 +338,14 @@ if _HAS_TEXTUAL:
         #task-details-content {
             height: 1fr;
         }
+
+        #status-row {
+            height: 1;
+        }
+
+        #status-bar {
+            width: 1fr;
+        }
         """
 
         BINDINGS = [
@@ -487,7 +496,9 @@ if _HAS_TEXTUAL:
                     task_details.border_title = "Task Details"
                     yield task_details
 
-            yield StatusBar(id="status-bar")
+            with Horizontal(id="status-row"):
+                yield StatusBar(id="status-bar")
+                yield BackgroundActions(self.console_logs)
 
             # Use Textual's default Footer which will show key bindings
             yield Footer()

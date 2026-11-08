@@ -9,13 +9,14 @@ escaped; we never need binary framing.
 
 Shape:
 
-- helper → TUI: ``{"request_id": "<uuid>", "prompt": "<ssh-prompt>"}``
+- helper → TUI: ``{"request_id": "<uuid>", "prompt": "<ssh-prompt>",
+  "action_id": 1, "external": false}``
 - TUI → helper (accept): ``{"request_id": "<uuid>", "answer": "<pass>"}``
 - TUI → helper (cancel): ``{"request_id": "<uuid>", "cancel": true}``
 
-``request_id`` lets a listener in principle multiplex, though today the
-TUI pops one modal at a time and a second request waits for the first
-to resolve.
+``action_id`` associates the prompt with a console action; ``null`` means
+unattributed. For external GUI helpers, the connection stays open until
+the helper exits. No answer passes through this protocol in that case.
 
 The module has no I/O.  [`encode`][terok.tui.askpass_protocol.encode] turns a dict into the wire
 bytes, [`decode`][terok.tui.askpass_protocol.decode] turns a line of wire bytes back into a dict,
@@ -29,7 +30,11 @@ from __future__ import annotations
 
 import json
 import uuid
+from dataclasses import dataclass
 from typing import Any
+
+ACTION_ID_ENV = "TEROK_CONSOLE_ACTION_ID"
+GUI_HELPER_ENV = "TEROK_ASKPASS_GUI_HELPER"
 
 
 class AskpassProtocolError(ValueError):
@@ -58,9 +63,20 @@ def decode(line: bytes) -> dict[str, Any]:
     return obj
 
 
-def make_request(prompt: str, *, request_id: str | None = None) -> dict[str, Any]:
+def make_request(
+    prompt: str,
+    *,
+    request_id: str | None = None,
+    action_id: int | None = None,
+    external: bool = False,
+) -> dict[str, Any]:
     """Build a helper → TUI request.  *request_id* defaults to a fresh uuid4."""
-    return {"request_id": request_id or uuid.uuid4().hex, "prompt": prompt}
+    return {
+        "request_id": request_id or uuid.uuid4().hex,
+        "prompt": prompt,
+        "action_id": action_id,
+        "external": external,
+    }
 
 
 def make_answer(request_id: str, answer: str) -> dict[str, Any]:
@@ -73,15 +89,31 @@ def make_cancel(request_id: str) -> dict[str, Any]:
     return {"request_id": request_id, "cancel": True}
 
 
-def parse_request(frame: dict[str, Any]) -> tuple[str, str]:
-    """Validate a helper → TUI request frame, return ``(request_id, prompt)``."""
+@dataclass(frozen=True)
+class AskpassRequest:
+    """One SSH prompt and the console action waiting for its answer."""
+
+    request_id: str
+    prompt: str
+    action_id: int | None = None
+    external: bool = False
+
+
+def parse_request(frame: dict[str, Any]) -> AskpassRequest:
+    """Validate the prompt, action identity, and external-helper flag."""
     request_id = frame.get("request_id")
     prompt = frame.get("prompt")
     if not isinstance(request_id, str) or not request_id:
         raise AskpassProtocolError("request missing non-empty 'request_id'")
     if not isinstance(prompt, str):
         raise AskpassProtocolError("request missing string 'prompt'")
-    return request_id, prompt
+    action_id = frame.get("action_id")
+    if action_id is not None and (type(action_id) is not int or action_id < 1):
+        raise AskpassProtocolError("request 'action_id' must be a positive integer or null")
+    external = frame.get("external", False)
+    if type(external) is not bool:
+        raise AskpassProtocolError("request 'external' must be a boolean")
+    return AskpassRequest(request_id, prompt, action_id, external)
 
 
 def parse_reply(frame: dict[str, Any]) -> tuple[str, str | None]:

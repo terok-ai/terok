@@ -743,119 +743,97 @@ async def test_form_prefill_populates_widgets() -> None:
         assert pressed.name == initial["security_class"]
 
 
-# ── Dispatched init steps (_run_dispatched_step) ──────────────────────
+# ── App-owned initialization action ──────────────────────────────────
 
 
 @pytest.mark.asyncio
-async def test_run_dispatched_step_tails_output_and_completes() -> None:
-    """``_run_dispatched_step`` streams the child's lines into the log and returns on exit 0."""
-    from terok.tui.console_log import ConsoleLogEntry
-    from terok.tui.wizard_screens import InitProgressScreen
-
-    screen = InitProgressScreen("demo")
-    entry = ConsoleLogEntry(id=1, title="Build", argv=["x"], command="x")
-    fake_app = MagicMock()
-    fake_app.dispatch_console_action = MagicMock(return_value=entry)
-    log = MagicMock()
-
-    async def _drive() -> None:
-        # Let _run_dispatched_step reach `await entry.wait()`, then finish it.
-        await asyncio.sleep(0)
-        entry.append("STEP 1/3")
-        entry.finish(0)
-
-    with patch.object(InitProgressScreen, "app", new_callable=PropertyMock, return_value=fake_app):
-        await asyncio.gather(
-            screen._run_dispatched_step(
-                "terok.tui.worker_actions:build",
-                "demo",
-                log=log,
-                title="Building images for demo",
-                env=None,
-                fail_msg="Image build failed",
-            ),
-            _drive(),
-        )
-
-    fake_app.dispatch_console_action.assert_called_once()
-    # The child's output line was tailed into the wizard log pane.
-    assert any("STEP 1/3" in str(call.args[0]) for call in log.write.call_args_list)
-
-
-@pytest.mark.asyncio
-async def test_run_dispatched_step_parses_ansi_colour() -> None:
-    """Tailed child output has its ANSI escapes parsed into styled Text, not printed raw.
-
-    The console-log pump forces colour out of the child
-    (``FORCE_COLOR=1``), so build/git output routinely carries escapes —
-    ``\\x1b[90m…`` must arrive as a coloured span, and the escape bytes
-    must never reach the pane.
-    """
+async def test_dispatched_init_replays_and_tails_ansi_output() -> None:
+    """The view renders captured ANSI lines and releases every subscription on unmount."""
     from rich.text import Text
 
     from terok.tui.console_log import ConsoleLogEntry
-    from terok.tui.wizard_screens import InitProgressScreen
+    from terok.tui.wizard_screens import InitOutcome, InitProgressScreen
 
     screen = InitProgressScreen("demo")
-    entry = ConsoleLogEntry(id=1, title="Build", argv=["x"], command="x")
+    entry = ConsoleLogEntry(id=1, title="Init", argv=["x"], command="x")
+    entry.append("already captured")
     fake_app = MagicMock()
-    fake_app.dispatch_console_action = MagicMock(return_value=entry)
+    fake_app.dispatch_console_action.return_value = entry
     log = MagicMock()
-
-    async def _drive() -> None:
-        await asyncio.sleep(0)
+    with (
+        patch.object(InitProgressScreen, "app", new_callable=PropertyMock, return_value=fake_app),
+        patch.object(screen, "query_one", return_value=log),
+    ):
+        screen._dispatch_initialization(None)
         entry.append("\x1b[90mSTEP 3/15: RUN pip install\x1b[0m done")
+        assert screen._outcome is InitOutcome.BACKGROUND
+        tailed = [c.args[0] for c in log.write.call_args_list if isinstance(c.args[0], Text)]
+        assert [text.plain for text in tailed] == [
+            "already captured",
+            "STEP 3/15: RUN pip install done",
+        ]
+        assert tailed[1].spans
+        screen.on_unmount()
+        log.reset_mock()
+        entry.append("completed after dismissal")
         entry.finish(0)
-
-    with patch.object(InitProgressScreen, "app", new_callable=PropertyMock, return_value=fake_app):
-        await asyncio.gather(
-            screen._run_dispatched_step(
-                "terok.tui.worker_actions:build",
-                "demo",
-                log=log,
-                title="Building images for demo",
-                env=None,
-                fail_msg="Image build failed",
-            ),
-            _drive(),
-        )
-
-    tailed = [c.args[0] for c in log.write.call_args_list if isinstance(c.args[0], Text)]
-    assert len(tailed) == 1
-    text = tailed[0]
-    assert text.plain == "STEP 3/15: RUN pip install done"
-    assert "\x1b" not in text.plain, "escape bytes must not reach the pane"
-    assert text.spans, "the colour escape became a styled span"
+        log.write.assert_not_called()
+        assert not entry._line_subs
+        assert not entry._finish_subs
+    fake_app.dispatch_console_action.assert_called_once()
 
 
 @pytest.mark.asyncio
-async def test_run_dispatched_step_raises_on_nonzero_exit() -> None:
-    """A non-zero child exit raises ``RuntimeError(fail_msg)`` so the step is marked failed."""
+@pytest.mark.parametrize("exit_code", [0, 1])
+async def test_dispatched_init_completion_updates_open_dialog(exit_code: int) -> None:
+    """Finished actions update the visible badge and close outcome without another dispatch."""
+    from terok.tui.console_log import ConsoleLogEntry
+    from terok.tui.wizard_screens import InitOutcome, InitProgressScreen
+
+    screen = InitProgressScreen("demo")
+    entry = ConsoleLogEntry(id=1, title="Init", argv=["x"], command="x")
+    app = _WizardHost(screen)
+    with patch.object(InitProgressScreen, "on_mount", new=AsyncMock()):
+        async with app.run_test() as pilot:
+            app.dispatch_console_action = MagicMock(return_value=entry)
+            screen._dispatch_initialization(None)
+            entry.finish(exit_code)
+            await pilot.pause()
+            button = screen.query_one("#wizard-init-close", Button)
+            assert str(button.label) == ("Done" if exit_code == 0 else "Close")
+            assert not button.disabled
+            await pilot.click(button)
+            assert app.result is (InitOutcome.SUCCESS if exit_code == 0 else InitOutcome.FAILED)
+
+
+@pytest.mark.asyncio
+async def test_init_offers_pending_prompt_without_stealing_focus() -> None:
+    """Input status reveals an explicit prompt button while preserving keyboard focus."""
     from terok.tui.console_log import ConsoleLogEntry
     from terok.tui.wizard_screens import InitProgressScreen
 
     screen = InitProgressScreen("demo")
-    entry = ConsoleLogEntry(id=1, title="Build", argv=["x"], command="x")
-    fake_app = MagicMock()
-    fake_app.dispatch_console_action = MagicMock(return_value=entry)
-
-    async def _drive() -> None:
-        await asyncio.sleep(0)
-        entry.finish(1)
-
-    with patch.object(InitProgressScreen, "app", new_callable=PropertyMock, return_value=fake_app):
-        with pytest.raises(RuntimeError, match="Image build failed"):
-            await asyncio.gather(
-                screen._run_dispatched_step(
-                    "terok.tui.worker_actions:build",
-                    "demo",
-                    log=MagicMock(),
-                    title="Building images for demo",
-                    env=None,
-                    fail_msg="Image build failed",
-                ),
-                _drive(),
-            )
+    entry = ConsoleLogEntry(id=1, title="Init", argv=["x"], command="x")
+    app = _WizardHost(screen)
+    open_prompt = MagicMock()
+    with patch.object(InitProgressScreen, "on_mount", new=AsyncMock()):
+        async with app.run_test() as pilot:
+            app.dispatch_console_action = MagicMock(return_value=entry)
+            screen._dispatch_initialization(None)
+            screen._finish_with_close_button()
+            close = screen.query_one("#wizard-init-close", Button)
+            close.focus()
+            entry.add_input("ssh-question", open_prompt)
+            await pilot.pause()
+            answer = screen.query_one("#wizard-init-answer", Button)
+            assert answer.display
+            assert app.focused is close
+            open_prompt.assert_not_called()
+            await pilot.click(answer)
+            open_prompt.assert_called_once()
+            entry.remove_input("ssh-question")
+            await pilot.pause()
+            assert not answer.display
 
 
 _SSH_RESULT = {
@@ -866,65 +844,83 @@ _SSH_RESULT = {
 }
 
 
-async def _drive_run_init(*, gate_enabled: bool) -> AsyncMock:
-    """Drive ``InitProgressScreen``'s init worker to completion; return the step mock.
-
-    Every facade is mocked and ``_run_dispatched_step`` is a no-op
-    AsyncMock — the point is to exercise ``_run_init``'s own
-    step-marking / dispatch wiring, not the work itself.
-    """
+@pytest.mark.asyncio
+@pytest.mark.parametrize("dismiss", ["button", "escape"])
+@pytest.mark.parametrize("registration", [False, True])
+async def test_init_dismissal_keeps_single_background_action_running(
+    dismiss: str, registration: bool
+) -> None:
+    """Dismissal after SSH preserves the app worker, full log and completion callback."""
+    from terok.tui.console_log import ConsoleLogRegistry
     from terok.tui.wizard_screens import InitOutcome, InitProgressScreen
 
     project = MagicMock()
-    project.config.gate_enabled = gate_enabled
-    project.needs_ssh_key_registration = False
+    project.needs_ssh_key_registration = registration
     project.provision_ssh_key.return_value = _SSH_RESULT
     project.suggested_ssh_key_comment.return_value = None
+    complete = MagicMock()
+    screen = InitProgressScreen("demo", on_complete=complete)
+    release = asyncio.Event()
+    registry = ConsoleLogRegistry()
 
-    class _Host(App):
-        def on_mount(self) -> None:
-            self.push_screen(InitProgressScreen("demo"))
+    class _Host(_WizardHost):
+        def dispatch_console_action(self, ref, *args, title, env, on_complete):
+            """Model a captured app worker without starting Podman."""
+            assert ref == "terok.tui.worker_actions:initialize_project"
+            entry = registry.create(title, ["init"], "init")
 
-    step_mock = AsyncMock()
+            async def initialize():
+                entry.append("=== Generate Dockerfiles ===")
+                entry.append("=== Build images ===")
+                await release.wait()
+                entry.append("=== Sync git gate ===")
+                entry.finish(0)
+                on_complete(entry)
+
+            self.run_worker(initialize())
+            return entry
+
     with (
         patch("terok.lib.api.get_project", return_value=project),
         patch("terok.lib.api.summarize_ssh_init"),
-        patch("terok.lib.api.generate_dockerfiles"),
         patch.object(
             InitProgressScreen, "_askpass_subprocess_env", new=AsyncMock(return_value=None)
         ),
-        patch.object(InitProgressScreen, "_run_dispatched_step", new=step_mock),
     ):
-        app = _Host()
-        async with app.run_test() as pilot:
-            screen = app.screen
-            assert isinstance(screen, InitProgressScreen)
-            for _ in range(80):
-                if screen._outcome is not InitOutcome.FAILED:
-                    break
+        app = _Host(screen)
+        async with app.run_test(size=(100, 40)) as pilot:
+            for _ in range(40):
                 await pilot.pause()
-            assert screen._outcome is InitOutcome.SUCCESS
-    return step_mock
-
-
-@pytest.mark.asyncio
-async def test_run_init_walks_all_four_steps_to_success() -> None:
-    """_run_init runs ssh → generate → build → gate (all mocked) and ends on SUCCESS."""
-    step_mock = await _drive_run_init(gate_enabled=True)
-    # build + gate-sync were both dispatched as captured child processes.
-    refs = [call.args[0] for call in step_mock.await_args_list]
-    assert refs == [
-        "terok.tui.worker_actions:build",
-        "terok.tui.worker_actions:sync_gate",
-    ]
-
-
-@pytest.mark.asyncio
-async def test_run_init_skips_gate_sync_when_gate_disabled() -> None:
-    """With ``gate.enabled: false`` the gate step is marked skipped — only the build dispatches."""
-    step_mock = await _drive_run_init(gate_enabled=False)
-    refs = [call.args[0] for call in step_mock.await_args_list]
-    assert refs == ["terok.tui.worker_actions:build"]
+                if registry.entries or screen.query_one("#wizard-init-ssh-key").display:
+                    break
+            if registration:
+                assert not registry.entries
+                assert screen.query_one("#wizard-init-close", Button).disabled
+                await pilot.click("#wizard-init-ssh-continue")
+            for _ in range(40):
+                await pilot.pause()
+                if registry.entries:
+                    break
+            assert len(registry.entries) == 1
+            entry = registry.entries[0]
+            button = screen.query_one("#wizard-init-close", Button)
+            assert not button.disabled
+            assert str(button.label) == "Dismiss"
+            if dismiss == "button":
+                await pilot.click(button)
+            else:
+                await pilot.press("escape")
+            await pilot.pause()
+            assert app.result is InitOutcome.BACKGROUND
+            assert entry.running
+            assert not entry._line_subs
+            assert not entry._finish_subs
+            complete.assert_not_called()
+            release.set()
+            await app.workers.wait_for_complete()
+            assert entry.ok
+            assert "=== Sync git gate ===" in entry.lines
+            complete.assert_called_once_with(entry)
 
 
 @pytest.mark.asyncio
@@ -948,7 +944,11 @@ async def test_init_offers_editable_key_comment_before_creating(choice: str | No
         patch.object(
             InitProgressScreen, "_askpass_subprocess_env", new=AsyncMock(return_value=None)
         ),
-        patch.object(InitProgressScreen, "_run_dispatched_step", new=AsyncMock()),
+        patch.object(
+            InitProgressScreen,
+            "_dispatch_initialization",
+            side_effect=lambda _env: setattr(screen, "_outcome", InitOutcome.SUCCESS),
+        ),
     ):
         async with app.run_test() as pilot:
             for _ in range(20):

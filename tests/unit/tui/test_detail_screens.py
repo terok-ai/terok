@@ -1237,12 +1237,15 @@ class TestSSHKeyRegistration:
         instance = mock.Mock(spec=mixin)
         instance.current_project_name = "proj"
         instance.push_screen = mock.AsyncMock()
+        instance._refresh_project_state = mock.Mock()
         run(mixin._action_project_init(instance))
         instance.push_screen.assert_awaited_once()
         screen = instance.push_screen.call_args[0][0]
         assert type(screen).__name__ == "InitProgressScreen"
         assert screen._project_name == "proj"
         assert screen._rendered_yaml is None
+        screen._on_complete(mock.Mock(ok=True))
+        instance._refresh_project_state.assert_called_once()
 
 
 class TestShowResolvedInstructions:

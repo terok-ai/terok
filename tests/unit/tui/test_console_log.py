@@ -378,3 +378,73 @@ async def test_caller_supplied_force_color_wins_over_default() -> None:
         )
         await asyncio.wait_for(entry.wait(), timeout=10.0)
     assert "FC=0" in entry.lines
+
+
+def test_pending_requests_keep_action_active_until_all_answered() -> None:
+    """Two simultaneous questions share one active action, not two task counts."""
+    registry = ConsoleLogRegistry()
+    entry = registry.create("setup", ["x"], "x")
+    opened: list[str] = []
+    entry.add_input("first", lambda: opened.append("first"))
+    entry.add_input("second", lambda: opened.append("second"))
+    assert entry.status is LogStatus.WAITING
+    assert entry.pending_inputs == 2
+    assert registry.running == [entry]
+    entry.request_input()
+    assert opened == ["first"]
+    entry.remove_input("first")
+    assert entry.status is LogStatus.WAITING
+    entry.request_input()
+    assert opened == ["first", "second"]
+    entry.remove_input("second")
+    assert entry.status is LogStatus.RUNNING
+    assert entry.pending_inputs == 0
+    entry.request_input()
+    assert opened == ["first", "second"]
+
+
+def test_registry_notifies_creation_and_lifecycle_but_not_output() -> None:
+    """Counters update on meaningful transitions and can safely unsubscribe twice."""
+    registry = ConsoleLogRegistry()
+    counts: list[int] = []
+    unsubscribe = registry.subscribe(lambda: counts.append(len(registry.running)))
+    entry = registry.create("setup", ["x"], "x")
+    assert registry.get(entry.id) is entry
+    assert registry.get(entry.id + 1) is None
+    entry.append("output does not repaint every status view")
+    entry.add_input("key", lambda: None)
+    entry.remove_input("key")
+    entry.finish(0)
+    assert counts == [1, 1, 1, 0]
+    unsubscribe()
+    unsubscribe()
+    registry.create("another", ["x"], "x")
+    assert counts == [1, 1, 1, 0]
+
+
+def test_finishing_clears_questions_without_reviving_the_action() -> None:
+    """Late request cleanup never changes a completed action back to running."""
+    entry = _entry()
+    entry.add_input("key", lambda: pytest.fail("stale question opened"))
+    entry.finish(1)
+    assert entry.pending_inputs == 0
+    entry.remove_input("key")
+    entry.add_input("late", lambda: None)
+    entry.request_input()
+    assert entry.status is LogStatus.FAILED
+    assert entry.pending_inputs == 0
+
+
+@pytest.mark.asyncio
+async def test_dispatch_assigns_action_identity_to_child(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Each process gets its registry ID, overriding an inherited dispatch identity."""
+    monkeypatch.setenv("TEROK_CONSOLE_ACTION_ID", "stale")
+    app = _DispatchHost()
+    async with app.run_test():
+        entry = app.dispatch_console_command(
+            [sys.executable, "-c", "import os; print(os.environ['TEROK_CONSOLE_ACTION_ID'])"],
+            title="action identity",
+        )
+        await asyncio.wait_for(entry.wait(), timeout=10)
+    assert entry.ok
+    assert str(entry.id) in entry.lines

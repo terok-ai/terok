@@ -60,11 +60,24 @@ def init_ssh(project_name: str, comment: str | None = None) -> None:
     summarize_ssh_init(get_project(project_name).provision_ssh_key(comment=comment))
 
 
-# Full project setup ("Full setup" project-screen action) is *not* a
-# worker_actions entrypoint: it needs the interactive deploy-key
-# registration pause, which a stdin-less child process cannot do.  It
-# reuses the wizard's InitProgressScreen instead — see
-# ProjectActionsMixin._action_project_init.
+def initialize_project(project_name: str) -> None:
+    """Finish project initialization after the operator has registered its SSH key.
+
+    All remaining steps share one process and one console log. A failed
+    step stops the workflow rather than starting dependent work.
+    """
+    from terok.lib.api import load_project
+
+    print("=== Generate Dockerfiles ===", flush=True)
+    generate(project_name)
+    print("=== Build images ===", flush=True)
+    build(project_name)
+    if load_project(project_name).gate_enabled:
+        print("=== Sync git gate ===", flush=True)
+        sync_gate(project_name)
+    else:
+        print("Gate disabled in project.yml — skipping gate sync.", flush=True)
+    print(f"Project '{project_name}' is ready.", flush=True)
 
 
 # ── Gate sync ─────────────────────────────────────────────────────────

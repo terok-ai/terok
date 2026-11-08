@@ -1328,6 +1328,27 @@ terok image cleanup --dry-run
 
 ## Project Management
 
+### Background actions in the TUI
+
+After the new-project wizard completes SSH-key setup (including registration
+confirmation when needed), **Dismiss** leaves initialization running. Dockerfile
+generation, image builds, and gate sync appear as one action with a combined log.
+Dismissal does not cancel the workflow; a failed step stops subsequent steps.
+
+The bottom-right **active** counter opens **Console output**, also available
+through `Ctrl+P`. The counter accepts mouse clicks but is skipped by Tab.
+It counts unfinished console actions, including actions waiting for input,
+not periodic status-refresh workers. The list updates live and marks actions
+as running, needing input, done, or failed. Logs remain available for the current
+TUI session; background execution does not imply persistence across TUI restarts.
+
+Personal SSH passphrase requests produce a notification and a persistent
+**needs input** indicator without taking keyboard focus. Select the waiting
+action to answer, or use **Answer prompt** in its open log or initialization
+dialog. **Later** leaves the request pending; **Cancel** rejects it. If a desktop
+askpass helper is configured, answer in its desktop dialog instead. Passphrases
+are not written to console logs.
+
 ### Deleting a Project
 
 Remove a project and all its associated data (tasks, containers, images):

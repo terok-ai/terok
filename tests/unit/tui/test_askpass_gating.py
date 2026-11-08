@@ -97,14 +97,7 @@ async def test_env_is_built_when_project_opts_in(monkeypatch: pytest.MonkeyPatch
 
 @pytest.mark.asyncio
 async def test_env_respects_existing_gui_askpass(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Opt-in + usable GUI askpass → service is NOT started, env uses user's helper.
-
-    This is the "zero cost when not needed" branch on the opt-in side
-    of the fence — the user's desktop askpass (seahorse, gnome-keyring)
-    handles the prompt natively, so we don't bother binding our
-    socket.  Only ``SSH_ASKPASS_REQUIRE=force`` is added so OpenSSH
-    still prefers the GUI helper over any ``/dev/tty`` fallback.
-    """
+    """Opt-in wraps a GUI helper so the service can report pending prompts."""
     monkeypatch.setenv("SSH_ASKPASS", "/usr/libexec/seahorse-askpass")
     monkeypatch.setenv("DISPLAY", ":0")
     monkeypatch.delenv("WAYLAND_DISPLAY", raising=False)
@@ -116,7 +109,8 @@ async def test_env_respects_existing_gui_askpass(monkeypatch: pytest.MonkeyPatch
         env = await screen._askpass_subprocess_env(_FakeProject(ssh_use_personal=True))
 
     assert env is not None
-    assert app.ensure_calls == 0  # no socket bound when GUI helper can render
-    assert env["SSH_ASKPASS"] == "/usr/libexec/seahorse-askpass"
-    assert "TEROK_ASKPASS_SOCKET" not in env
+    assert app.ensure_calls == 1
+    assert env["SSH_ASKPASS"] == str(app._service.helper_bin)
+    assert env["TEROK_ASKPASS_GUI_HELPER"] == "/usr/libexec/seahorse-askpass"
+    assert env["TEROK_ASKPASS_SOCKET"] == str(app._service.socket_path)
     assert env["SSH_ASKPASS_REQUIRE"] == "force"
