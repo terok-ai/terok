@@ -88,10 +88,10 @@ def test_initialize_project_failure_stops_later_steps(step: str) -> None:
         mock.patch.object(worker_actions, "generate") as generate,
         mock.patch.object(worker_actions, "build") as build,
         mock.patch.object(worker_actions, "sync_gate") as gate,
-        pytest.raises(RuntimeError, match="failed"),
     ):
-        {"generate": generate, "build": build}[step].side_effect = RuntimeError("failed")
-        worker_actions.initialize_project("proj")
+        {"generate": generate, "build": build}[step].side_effect = RuntimeError("failed")  # NOSONAR
+        with pytest.raises(RuntimeError, match="failed"):
+            worker_actions.initialize_project("proj")
     gate.assert_not_called()
     if step == "generate":
         build.assert_not_called()

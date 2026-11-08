@@ -37,6 +37,8 @@ from . import askpass_protocol as proto
 if TYPE_CHECKING:
     from textual.app import App
 
+    from .console_log import ConsoleLogEntry
+
 logger = logging.getLogger(__name__)
 
 
@@ -328,7 +330,7 @@ class AskpassService:
     ) -> None:
         """Serve one prompt; keep its pending state tied to the socket lifetime."""
         client = asyncio.current_task()
-        assert client is not None
+        assert client is not None  # nosec B101
         self._clients.add(client)
         try:
             # An accepted connection's handler may start after stop() snapshots clients.
@@ -359,10 +361,7 @@ class AskpassService:
         writer: asyncio.StreamWriter,
     ) -> None:
         """Notify without stealing focus; expose the prompt on its console action."""
-        registry = getattr(self._app, "console_logs", None)
-        entry = registry.get(request.action_id) if registry and request.action_id else None
-        if entry is not None and not entry.running:
-            entry = None
+        entry = self._request_action(request.action_id)
         answer: asyncio.Future[str | None] = asyncio.get_running_loop().create_future()
         disconnected = asyncio.create_task(reader.read())
         prompt_task: asyncio.Task | None = None
@@ -391,16 +390,7 @@ class AskpassService:
                 if entry is None:
                     # No console row exists to reopen an unattributed prompt.
                     open_prompt()
-                await asyncio.wait((answer, disconnected), return_when=asyncio.FIRST_COMPLETED)
-                if answer.done() and not disconnected.done():
-                    value = answer.result()
-                    reply = (
-                        proto.make_cancel(request.request_id)
-                        if value is None
-                        else proto.make_answer(request.request_id, value)
-                    )
-                    writer.write(proto.encode(reply))
-                    await writer.drain()
+                await self._reply_when_answered(request.request_id, answer, disconnected, writer)
         finally:
             if entry is not None:
                 entry.remove_input(request.request_id)
@@ -409,6 +399,32 @@ class AskpassService:
             for task in tasks:
                 task.cancel()
             await asyncio.gather(*tasks, return_exceptions=True)
+
+    def _request_action(self, action_id: int | None) -> ConsoleLogEntry | None:
+        """Associate a question only with an action that is still active."""
+        registry = getattr(self._app, "console_logs", None)
+        if registry is None or action_id is None:
+            return None
+        entry = registry.get(action_id)
+        return entry if entry is not None and entry.running else None
+
+    async def _reply_when_answered(
+        self,
+        request_id: str,
+        answer: asyncio.Future[str | None],
+        disconnected: asyncio.Task[bytes],
+        writer: asyncio.StreamWriter,
+    ) -> None:
+        """Return the operator's answer unless the requesting helper has disconnected."""
+        await asyncio.wait((answer, disconnected), return_when=asyncio.FIRST_COMPLETED)
+        if disconnected.done():
+            return
+        value = answer.result()
+        reply = (
+            proto.make_cancel(request_id) if value is None else proto.make_answer(request_id, value)
+        )
+        writer.write(proto.encode(reply))
+        await writer.drain()
 
     async def _show_prompt(
         self, prompt: str, answer: asyncio.Future[str | None], *, allow_defer: bool

@@ -966,7 +966,7 @@ class InitProgressScreen(ModalScreen[InitOutcome]):
 
     def _on_entry_finished(self) -> None:
         """Reflect completion while the dialog remains open."""
-        assert self._entry is not None
+        assert self._entry is not None  # nosec B101
         self._outcome = InitOutcome.SUCCESS if self._entry.ok else InitOutcome.FAILED
         self._mark("initialize", "done" if self._entry.ok else "failed")
         self._finish_with_close_button()

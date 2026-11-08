@@ -417,6 +417,31 @@ async def test_managed_prompt_notifies_without_stealing_focus(
     await writer.wait_closed()
 
 
+@pytest.mark.parametrize("finished", [False, True])
+async def test_unavailable_action_opens_an_unattributed_prompt(
+    pending_service: _PendingService, finished: bool
+) -> None:
+    """Unknown or finished actions cannot hide an otherwise unreachable question."""
+    app, pilot, service, entry = pending_service
+    if finished:
+        entry.finish(0)
+    action_id = entry.id if finished else entry.id + 1
+    reader, writer = await asyncio.open_unix_connection(service.socket_path)
+    try:
+        writer.write(proto.encode(proto.make_request("Unlock key", action_id=action_id)))
+        await writer.drain()
+        await pilot.pause()
+        assert isinstance(app.screen, AskpassModal)
+        assert entry.pending_inputs == 0
+        app.screen.dismiss("secret")
+        reply = proto.decode(await asyncio.wait_for(reader.readline(), timeout=2))
+        assert reply["answer"] == "secret"
+        assert entry.lines == []
+    finally:
+        writer.close()
+        await writer.wait_closed()
+
+
 async def test_deferred_prompt_remains_reachable(pending_service: _PendingService) -> None:
     """Escape postpones a managed prompt; explicit Cancel sends the SSH cancellation."""
     app, pilot, service, entry = pending_service
