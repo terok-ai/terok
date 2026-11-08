@@ -57,9 +57,44 @@ def test_init_ssh_provisions_and_summarizes(comment: str | None) -> None:
     m_sum.assert_called_once_with("RESULT")
 
 
-# Full project setup has no worker_actions entrypoint — it reuses the
-# wizard's InitProgressScreen (for the interactive deploy-key pause).
-# Its coverage lives in test_detail_screens / test_wizard_screens.
+@pytest.mark.parametrize("gate_enabled", [False, True])
+def test_initialize_project_sequences_remaining_steps(
+    gate_enabled: bool, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """The post-SSH workflow emits one log and skips a disabled gate."""
+    calls = mock.Mock()
+    with (
+        mock.patch.object(worker_actions, "generate", calls.generate),
+        mock.patch.object(worker_actions, "build", calls.build),
+        mock.patch.object(worker_actions, "sync_gate", calls.sync_gate),
+        mock.patch("terok.lib.api.load_project", return_value=mock.Mock(gate_enabled=gate_enabled)),
+    ):
+        worker_actions.initialize_project("proj")
+    expected = [mock.call.generate("proj"), mock.call.build("proj")]
+    if gate_enabled:
+        expected.append(mock.call.sync_gate("proj"))
+    assert calls.mock_calls == expected
+    output = capsys.readouterr().out
+    assert "Generate Dockerfiles" in output
+    assert "Build images" in output
+    assert "Project 'proj' is ready." in output
+    assert ("skipping gate sync" in output) is not gate_enabled
+
+
+@pytest.mark.parametrize("step", ["generate", "build"])
+def test_initialize_project_failure_stops_later_steps(step: str) -> None:
+    """A failed generation or build cannot reach gate sync or report readiness."""
+    with (
+        mock.patch.object(worker_actions, "generate") as generate,
+        mock.patch.object(worker_actions, "build") as build,
+        mock.patch.object(worker_actions, "sync_gate") as gate,
+        pytest.raises(RuntimeError, match="failed"),
+    ):
+        {"generate": generate, "build": build}[step].side_effect = RuntimeError("failed")
+        worker_actions.initialize_project("proj")
+    gate.assert_not_called()
+    if step == "generate":
+        build.assert_not_called()
 
 
 # ── Gate sync ─────────────────────────────────────────────────────────

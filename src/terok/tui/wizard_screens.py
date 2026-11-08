@@ -11,9 +11,8 @@ Three screens drive the flow:
 2. [`ProjectReviewScreen`][terok.tui.wizard_screens.ProjectReviewScreen] — shows the rendered ``project.yml`` in
    a ``TextArea`` for last-minute edits before commit — in ``$EDITOR``
    too, when the operator's settings send edits there.
-3. [`InitProgressScreen`][terok.tui.wizard_screens.InitProgressScreen] — runs ssh-init → generate → build →
-   gate-sync as a background worker, updating a per-step status list
-   and surfacing the public key when the user needs to register it.
+3. [`InitProgressScreen`][terok.tui.wizard_screens.InitProgressScreen] — prepares SSH interactively,
+   then views the app-owned Dockerfile, image-build and gate-sync action.
 
 Each screen is its own ``ModalScreen`` and dismisses with a result;
 the orchestration lives on the main app
@@ -64,7 +63,8 @@ from ..lib.api import (
     write_project_yaml,
 )
 from .agents_screen import AgentsSelectScreen
-from .askpass_service import build_askpass_env, gui_askpass_usable
+from .askpass_service import build_askpass_env
+from .console_log import ConsoleLogEntry
 from .gpu_screen import GpuSelectScreen
 from .ssh_key_screens import ShowSshKeyScreen, SshKeyCommentScreen
 from .text_screens import (
@@ -609,30 +609,25 @@ class ProjectReviewScreen(ModalScreen["str | object | None"]):
 
 
 class InitOutcome(enum.Enum):
-    """Result of [`InitProgressScreen`][terok.tui.wizard_screens.InitProgressScreen] — four distinct states.
+    """Result of the interactive initialization dialog.
 
-    ``SUCCESS`` and ``FAILED`` are the obvious outcomes; ``DECLINED``
-    covers the case where the user deliberately chose not to overwrite
-    an existing ``project.yml``, and ``CANCELLED`` covers Esc-out
-    mid-run.  The caller needs all four to render the right follow-up
-    notification: a decline or a cancellation is a benign no-op, not
-    an error.
+    ``BACKGROUND`` means initialization continues in Console output;
+    it is neither a successful initialization nor a cancellation.
     """
 
     SUCCESS = "success"
     FAILED = "failed"
     DECLINED = "declined"
     CANCELLED = "cancelled"
+    BACKGROUND = "background"
 
 
 class InitProgressScreen(ModalScreen[InitOutcome]):
-    """Run ``cmd_project_init``'s four steps as a background worker.
+    """Prepare SSH interactively, then view an app-owned initialization action.
 
-    Dismisses with one of the [`InitOutcome`][terok.tui.wizard_screens.InitOutcome] values.  The SSH-key
-    registration pause in
-    [`Project.pause_for_ssh_key_registration_if_needed`][terok.lib.domain.project.Project.pause_for_ssh_key_registration_if_needed]
-    is replaced by a mid-wizard continue button that gates the next
-    step — no blocking ``input()`` in a Textual worker.
+    The deploy-key registration pause must finish before Dockerfiles,
+    image builds and gate sync start. After dispatch, dismissing this
+    view leaves the combined action running in Console output.
     """
 
     BINDINGS = [
@@ -707,16 +702,19 @@ class InitProgressScreen(ModalScreen[InitOutcome]):
     }
     """
 
-    #: Ordered list of step keys (must match ``_run_steps`` implementation).
-    _STEP_KEYS: tuple[str, ...] = ("ssh", "generate", "build", "gate")
+    _STEP_KEYS: tuple[str, ...] = ("ssh", "initialize")
     _STEP_LABELS: dict[str, str] = {
         "ssh": "SSH key",
-        "generate": "Dockerfiles",
-        "build": "Build images",
-        "gate": "Gate sync",
+        "initialize": "Dockerfiles → image builds → gate sync",
     }
 
-    def __init__(self, project_name: str, rendered_yaml: str | None = None) -> None:
+    def __init__(
+        self,
+        project_name: str,
+        rendered_yaml: str | None = None,
+        *,
+        on_complete: Callable[[ConsoleLogEntry], None] | None = None,
+    ) -> None:
         """Create the init screen.
 
         *rendered_yaml* is the ``project.yml`` content the new-project
@@ -724,10 +722,17 @@ class InitProgressScreen(ModalScreen[InitOutcome]):
         runs.  ``None`` re-runs init against the *existing* on-disk
         ``project.yml`` — the project-screen "Full setup" action —
         writing and confirming nothing.
+
+        *on_complete* belongs to the app-owned action, not this view;
+        it runs even if the operator dismisses the dialog before completion.
         """
         super().__init__()
         self._project_name = project_name
         self._rendered_yaml = rendered_yaml
+        self._on_complete = on_complete
+        self._entry: ConsoleLogEntry | None = None
+        self._unsubscribe: Callable[[], None] | None = None
+        self._unsubscribe_state: Callable[[], None] | None = None
         self._ssh_continue: Any = None  # an asyncio.Event, set when user clicks continue
         self._running_step: str | None = None  # step key currently in "running" state
         # Default pessimistic — the worker flips this to SUCCESS on a clean
@@ -780,6 +785,9 @@ class InitProgressScreen(ModalScreen[InitOutcome]):
                     )
             yield AnsiLog(id="wizard-init-log", markup=True, wrap=True)
             with Horizontal(id="wizard-init-buttons"):
+                answer = Button("Answer prompt", id="wizard-init-answer", variant="warning")
+                answer.display = False
+                yield answer
                 yield Button("Close", id="wizard-init-close", variant="default", disabled=True)
 
     async def on_mount(self) -> None:
@@ -865,17 +873,10 @@ class InitProgressScreen(ModalScreen[InitOutcome]):
         return bool(await self.app.push_screen_wait(screen_obj))
 
     def _finish_with_close_button(self) -> None:
-        """Enable the Close button after the screen reaches a terminal state.
+        """Enable dismissal after dispatch, or closure after preparation/completion.
 
-        Called from ``on_mount`` when the write fails, from the decline
-        branch in ``_run_init_with_confirm``, and from the worker's
-        ``finally`` block.  Button label/variant mirror the outcome so
-        a declined overwrite doesn't masquerade as a failed init.
-
-        When the user cancels via Esc the worker's ``finally`` still
-        runs after the screen has been dismissed — the Close button
-        has already been torn down, so a failed ``query_one`` is
-        expected and ignored rather than surfaced as a worker error.
+        Cancellation can tear down the view before the preparation
+        worker's ``finally`` runs, so an absent button is harmless.
         """
         if self._outcome is InitOutcome.CANCELLED:
             return
@@ -883,11 +884,13 @@ class InitProgressScreen(ModalScreen[InitOutcome]):
             InitOutcome.SUCCESS: "success",
             InitOutcome.FAILED: "warning",
             InitOutcome.DECLINED: "default",
+            InitOutcome.BACKGROUND: "default",
         }
         label_for = {
             InitOutcome.SUCCESS: "Done",
             InitOutcome.FAILED: "Close",
             InitOutcome.DECLINED: "Close",
+            InitOutcome.BACKGROUND: "Dismiss",
         }
         try:
             button = self.query_one("#wizard-init-close", Button)
@@ -925,32 +928,9 @@ class InitProgressScreen(ModalScreen[InitOutcome]):
         )
 
     async def _askpass_subprocess_env(self, project: Any) -> dict[str, str] | None:
-        """Return extra env for the dispatched build / gate-sync steps.
-
-        ``None`` for projects that don't opt into personal SSH.  Three
-        branches:
-
-        - **Vault-only project (default).**  Return ``None`` so the
-          subprocess inherits the ambient env — no socket, no helper,
-          no cost for users who haven't opted in.
-        - **Personal SSH + usable GUI askpass.**  When the user has a
-          desktop helper wired up (``SSH_ASKPASS`` set and
-          ``DISPLAY``/``WAYLAND_DISPLAY`` reachable), their GUI dialog
-          is a better UX than our modal — skip starting our socket
-          server entirely and just propagate env with
-          ``SSH_ASKPASS_REQUIRE=force`` so OpenSSH uses their helper
-          even with a tty attached.
-        - **Personal SSH, no GUI askpass.**  Start the app's
-          [`AskpassService`][terok.tui.app.AskpassService] (lazily; first call binds the unix
-          socket) and build the env vars OpenSSH needs to route
-          passphrase prompts through [`AskpassModal`][terok.tui.askpass_service.AskpassModal].
-        """
+        """Route personal-SSH prompts through the app's tracked askpass service."""
         if not project.ssh_use_personal:
             return None
-        if gui_askpass_usable(os.environ):
-            # User's GUI helper wins — still enforce REQUIRE=force so
-            # ssh doesn't fall back to /dev/tty on tty-bearing sessions.
-            return {**os.environ, "SSH_ASKPASS_REQUIRE": "force"}
         # ensure_askpass_service is on TerokTUI, not the base App[Any] type.
         service = await self.app.ensure_askpass_service()  # type: ignore[attr-defined]
         return build_askpass_env(
@@ -961,43 +941,51 @@ class InitProgressScreen(ModalScreen[InitOutcome]):
 
     # ── Background worker ─────────────────────────────────────────────
 
-    async def _run_dispatched_step(
-        self,
-        ref: str,
-        *args: object,
-        log: RichLog,
-        title: str,
-        env: dict[str, str] | None,
-        fail_msg: str,
-    ) -> None:
-        """Dispatch worker-action *ref* as a captured child process, tailing it into *log*.
+    def _dispatch_initialization(self, env: dict[str, str] | None) -> None:
+        """Start one app-owned action and subscribe only while this view is mounted."""
+        self._entry = self.app.dispatch_console_action(  # type: ignore[attr-defined]
+            "terok.tui.worker_actions:initialize_project",
+            self._project_name,
+            title=f"Initializing project {self._project_name}",
+            env=env,
+            on_complete=self._on_complete,
+        )
+        self._outcome = InitOutcome.BACKGROUND
+        self._mark("initialize", "running", "may take several minutes")
+        for line in self._entry.lines:
+            self._append_line(line)
+        self._unsubscribe = self._entry.subscribe(self._append_line, self._on_entry_finished)
+        self._unsubscribe_state = self._entry.subscribe_state(self._update_pending_input)
+        self._update_pending_input()
+        if not self._entry.running:
+            self._on_entry_finished()
 
-        The child owns its own file descriptors (no TUI-frame
-        corruption) and its output streams into the wizard's log pane
-        live — a multi-minute build is never a frozen screen.  A
-        non-zero exit raises ``RuntimeError(fail_msg)`` so the caller's
-        failed-step marking and outcome handling fire.
-        """
-        entry = self.app.dispatch_console_action(  # type: ignore[attr-defined]
-            ref, *args, title=title, env=env
+    def _append_line(self, line: str) -> None:
+        """Render captured ANSI output without treating subprocess text as markup."""
+        self.query_one("#wizard-init-log", RichLog).write(Text.from_ansi(line))
+
+    def _on_entry_finished(self) -> None:
+        """Reflect completion while the dialog remains open."""
+        assert self._entry is not None
+        self._outcome = InitOutcome.SUCCESS if self._entry.ok else InitOutcome.FAILED
+        self._mark("initialize", "done" if self._entry.ok else "failed")
+        self._finish_with_close_button()
+
+    def _update_pending_input(self) -> None:
+        """Offer deliberate prompt access without stealing focus."""
+        self.query_one("#wizard-init-answer", Button).display = bool(
+            self._entry and self._entry.pending_inputs
         )
 
-        def _tail(line: str) -> None:
-            # Raw subprocess output — parse ANSI colour escapes (the pump
-            # forces colour out of the child) into a styled Text, which
-            # also keeps stray brackets literal in the markup-enabled pane.
-            log.write(Text.from_ansi(line))
-
-        unsubscribe = entry.subscribe(_tail)
-        try:
-            await entry.wait()
-        finally:
-            unsubscribe()
-        if not entry.ok:
-            raise RuntimeError(fail_msg)
+    def on_unmount(self) -> None:
+        """Drop view subscriptions; the app-owned action continues independently."""
+        if self._unsubscribe is not None:
+            self._unsubscribe()
+        if self._unsubscribe_state is not None:
+            self._unsubscribe_state()
 
     async def _run_init(self) -> None:
-        """Drive the four init steps, updating UI between each.
+        """Prepare SSH interactively, then hand remaining work to the app.
 
         Runs inside the ``@work`` context established by
         `_run_init_with_confirm` — no extra decorator needed;
@@ -1006,7 +994,6 @@ class InitProgressScreen(ModalScreen[InitOutcome]):
         import asyncio
 
         from ..lib.api import (
-            generate_dockerfiles,
             get_project,
             summarize_ssh_init,
         )
@@ -1066,61 +1053,11 @@ class InitProgressScreen(ModalScreen[InitOutcome]):
                 self.query_one("#wizard-init-ssh-key").styles.display = "none"
                 self._apply_ssh_layout()
 
-            # Silent stdout capture — the facade's summarise/print lines
-            # land in the log instead of the terminal.  podman subprocess
-            # output is lost (it writes to a real fd); future work: a
-            # reusable log-tailer widget (see issue #473).
             with _log_capture(log):
                 summarize_ssh_init(result)
 
-            # Step 2: Dockerfiles
-            self._mark("generate", "running")
-            with _log_capture(log):
-                await asyncio.to_thread(generate_dockerfiles, self._project_name)
-            self._mark("generate", "done")
-
-            # ``ProjectConfig`` is what the askpass + gate-enabled checks
-            # read fields off — pull it once from the rich ``Project`` we
-            # already hold so both branches stay aligned on the same
-            # snapshot.
             subprocess_env = await self._askpass_subprocess_env(project.config)
-
-            # Step 3: Build.  ``build_images`` shells out to ``podman
-            # build``; dispatched as a captured ConsoleLog action so the
-            # child process owns its fds — its output streams into the
-            # log pane below instead of corrupting the TUI frame.
-            self._mark("build", "running", "this can take several minutes")
-            log.write("[dim]Building images — output follows.[/]")
-            await self._run_dispatched_step(
-                "terok.tui.worker_actions:build",
-                self._project_name,
-                log=log,
-                title=f"Building images for {self._project_name}",
-                env=subprocess_env,
-                fail_msg="Image build failed",
-            )
-            self._mark("build", "done")
-
-            # Step 4: Gate sync — ``git clone --mirror`` and friends get
-            # the same captured-child treatment as the build.
-            if not project.config.gate_enabled:
-                self._mark("gate", "skipped", "gate.enabled: false")
-                log.write("[dim]Gate disabled in project.yml — skipping gate-sync.[/]")
-            else:
-                self._mark("gate", "running")
-                log.write("[dim]Syncing the git gate — output follows.[/]")
-                await self._run_dispatched_step(
-                    "terok.tui.worker_actions:sync_gate",
-                    self._project_name,
-                    log=log,
-                    title=f"Syncing gate for {self._project_name}",
-                    env=subprocess_env,
-                    fail_msg="Gate sync failed",
-                )
-                self._mark("gate", "done")
-
-            self._outcome = InitOutcome.SUCCESS
-            log.write(f"[green]Project '{self._project_name}' is ready.[/]")
+            self._dispatch_initialization(subprocess_env)
         except (Exception, SystemExit) as exc:
             # Many facade calls (``load_project``, etc.) signal user-
             # friendly errors with ``SystemExit`` which does *not*
@@ -1201,49 +1138,26 @@ class InitProgressScreen(ModalScreen[InitOutcome]):
             return
         self.app.push_screen(ShowSshKeyScreen(key))
 
+    @on(Button.Pressed, "#wizard-init-answer")
+    def _on_answer(self) -> None:
+        """Open the initialization action's pending prompt."""
+        if self._entry is not None:
+            self._entry.request_input()
+
     @on(Button.Pressed, "#wizard-init-close")
     def _on_close(self) -> None:
+        """Dismiss the view without stopping an already-dispatched action."""
         self.dismiss(self._outcome)
 
     def action_cancel(self) -> None:
-        """Esc aborts the wizard at any point in its lifecycle.
-
-        The Close button's ``disabled`` flag is the authoritative
-        "worker finished" signal — ``_outcome`` defaults to FAILED at
-        ``__init__`` time and only gets rewritten on success/decline
-        paths, so reading it to detect completion would falsely
-        classify an in-flight run as already-failed.
-
-        Three cases:
-
-        * **Worker finished** (Close button enabled) — the stored
-          outcome is SUCCESS/FAILED/DECLINED; dismiss with it so the
-          caller's match arms render the correct notification.
-        * **Worker paused on the SSH-key "continue" gate** — the
-          worker is awaiting an [`asyncio.Event`][asyncio.Event]; cancelling
-          raises ``CancelledError`` out of that ``await`` and the
-          worker unwinds cleanly.
-        * **Worker actively running a step** (provision, build,
-          gate-sync) — those steps are ``asyncio.to_thread`` calls;
-          cancelling the Task drops the awaiter but the OS thread
-          keeps running to completion.  That's unavoidable on CPython
-          (threads aren't forcibly cancellable), and the work ends up
-          in a transient state the caller may need to clean up later —
-          but the UI is freed immediately, which is the point.
-        """
+        """Cancel interactive preparation, or dismiss the dispatched action's view."""
         try:
             close_button = self.query_one("#wizard-init-close", Button)
         except NoMatches:
-            # Screen already torn down by a prior dismiss — nothing to do.
             return
         if not close_button.disabled:
             self.dismiss(self._outcome)
             return
-
-        # Cancel the in-flight worker explicitly rather than relying on
-        # dismiss() to tear it down; the worker's ``finally`` touches
-        # widgets (``_finish_with_close_button``) and a concurrent
-        # dismiss would race those queries against screen teardown.
         self.workers.cancel_group(self, "wizard-init")
         self._outcome = InitOutcome.CANCELLED
         self.dismiss(self._outcome)
@@ -1254,14 +1168,7 @@ class InitProgressScreen(ModalScreen[InitOutcome]):
 
 @contextlib.contextmanager
 def _log_capture(log: RichLog) -> Iterator[None]:
-    """Redirect Python-level stdout into *log* for the duration of the block.
-
-    Python-level ``print()`` calls from the facade land in the log
-    pane.  Subprocess output (``podman build``) is not captured — those
-    writes go through the kernel file descriptor, not through
-    ``sys.stdout``.  A richer log-tailer widget that also captures
-    subprocess streams is tracked in issue #473.
-    """
+    """Capture the synchronous SSH summary's Python-level stdout in the log pane."""
     buffer = io.StringIO()
     with contextlib.redirect_stdout(buffer):
         try:

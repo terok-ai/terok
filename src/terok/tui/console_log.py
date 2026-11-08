@@ -44,6 +44,7 @@ from typing import TYPE_CHECKING
 from textual import work
 
 from ..lib.util.subprocess_env import child_process_env
+from .askpass_protocol import ACTION_ID_ENV
 
 if TYPE_CHECKING:
     from textual.app import App
@@ -60,6 +61,7 @@ class LogStatus(enum.Enum):
     """Lifecycle state of a [`ConsoleLogEntry`][terok.tui.console_log.ConsoleLogEntry]."""
 
     RUNNING = "running"
+    WAITING = "needs input"
     DONE = "done"
     FAILED = "failed"
 
@@ -94,7 +96,7 @@ class ConsoleLogEntry:
     ``_worker_entry`` argv is noise, so dispatch passes a tidy display string."""
 
     status: LogStatus = LogStatus.RUNNING
-    """Current lifecycle state — flips to ``DONE`` / ``FAILED`` on exit."""
+    """Running or waiting for input until the child exits as ``DONE`` / ``FAILED``."""
 
     lines: list[str] = field(default_factory=list)
     """Captured output lines, in order, newline-stripped."""
@@ -111,11 +113,47 @@ class ConsoleLogEntry:
     _line_subs: list[Callable[[str], None]] = field(default_factory=list, repr=False)
     _finish_subs: list[Callable[[], None]] = field(default_factory=list, repr=False)
     _done: asyncio.Event = field(default_factory=asyncio.Event, repr=False)
+    _inputs: dict[str, Callable[[], None]] = field(default_factory=dict, repr=False)
+    _state_subs: set[Callable[[], None]] = field(default_factory=set, repr=False)
 
     @property
     def running(self) -> bool:
         """``True`` while the child process has not yet exited."""
-        return self.status is LogStatus.RUNNING
+        return self.status in (LogStatus.RUNNING, LogStatus.WAITING)
+
+    @property
+    def pending_inputs(self) -> int:
+        """Number of unanswered requests, including an already-open prompt."""
+        return len(self._inputs)
+
+    def add_input(self, request_id: str, open_prompt: Callable[[], None]) -> None:
+        """Track an explicit input request without opening it or capturing secrets."""
+        if self.running:
+            self._inputs[request_id] = open_prompt
+            self.status = LogStatus.WAITING
+            self._state_changed()
+
+    def remove_input(self, request_id: str) -> None:
+        """Resolve a request; the action stays waiting until all requests resolve."""
+        self._inputs.pop(request_id, None)
+        if self.running:
+            self.status = LogStatus.WAITING if self._inputs else LogStatus.RUNNING
+            self._state_changed()
+
+    def request_input(self) -> None:
+        """Open the oldest pending question, if one remains."""
+        if self._inputs:
+            next(iter(self._inputs.values()))()
+
+    def subscribe_state(self, callback: Callable[[], None]) -> Callable[[], None]:
+        """Observe lifecycle and pending-input changes; return an unsubscribe handle."""
+        self._state_subs.add(callback)
+        return lambda: self._state_subs.discard(callback)
+
+    def _state_changed(self) -> None:
+        """Notify status views without sending captured output through them."""
+        for callback in tuple(self._state_subs):
+            callback()
 
     @property
     def ok(self) -> bool:
@@ -133,6 +171,9 @@ class ConsoleLogEntry:
         self.exit_code = exit_code
         self.status = LogStatus.DONE if exit_code == 0 else LogStatus.FAILED
         self.ended_at = time.monotonic()
+        self._inputs.clear()
+        self._state_changed()
+        self._state_subs.clear()
         for callback in tuple(self._finish_subs):
             callback()
         self._line_subs.clear()
@@ -189,6 +230,7 @@ class ConsoleLogRegistry:
         """Start an empty registry with a fresh id counter."""
         self._entries: list[ConsoleLogEntry] = []
         self._ids = itertools.count(1)
+        self._subscribers: set[Callable[[], None]] = set()
 
     def create(self, title: str, argv: list[str], command: str) -> ConsoleLogEntry:
         """Register a new ``RUNNING`` entry and return it.
@@ -198,7 +240,23 @@ class ConsoleLogRegistry:
         """
         entry = ConsoleLogEntry(id=next(self._ids), title=title, argv=list(argv), command=command)
         self._entries.append(entry)
+        entry.subscribe_state(self._changed)
+        self._changed()
         return entry
+
+    def get(self, entry_id: int) -> ConsoleLogEntry | None:
+        """Find the action associated with an incoming input request."""
+        return next((entry for entry in self._entries if entry.id == entry_id), None)
+
+    def subscribe(self, callback: Callable[[], None]) -> Callable[[], None]:
+        """Observe new actions and status changes, not output lines."""
+        self._subscribers.add(callback)
+        return lambda: self._subscribers.discard(callback)
+
+    def _changed(self) -> None:
+        """Refresh observers of the session's background actions."""
+        for callback in tuple(self._subscribers):
+            callback()
 
     @property
     def entries(self) -> list[ConsoleLogEntry]:
@@ -312,6 +370,7 @@ class ConsoleLogMixin(_MixinBase):
             "CLICOLOR_FORCE": "1",
             "PYTHONPATH": os.pathsep.join(sys.path),
             **(env or {}),
+            ACTION_ID_ENV: str(entry.id),
         }
         try:
             proc = await asyncio.create_subprocess_exec(

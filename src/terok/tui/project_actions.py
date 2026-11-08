@@ -463,12 +463,9 @@ class ProjectActionsMixin(_MixinBase):
 
         Reuses the wizard's
         [`InitProgressScreen`][terok.tui.wizard_screens.InitProgressScreen]
-        against the existing ``project.yml`` — same per-step badges and
-        log pane, and crucially the **interactive deploy-key
-        registration pause** (with the full public key on screen).
-        Skipping that pause would let gate-sync run before the key is
-        registered upstream and hang on a long timeout — so a single
-        captured child process is the wrong shape for this action.
+        against the existing ``project.yml``. The deploy-key registration
+        pause finishes before the remaining steps are dispatched as one
+        background action. Completion refreshes state even after dismissal.
         """
         if not self.current_project_name:
             self.notify("No project selected.")
@@ -478,7 +475,10 @@ class ProjectActionsMixin(_MixinBase):
         def _on_init_done(_outcome: object) -> None:
             self._refresh_project_state()
 
-        await self.push_screen(InitProgressScreen(self.current_project_name), _on_init_done)
+        await self.push_screen(
+            InitProgressScreen(self.current_project_name, on_complete=_on_init_done),
+            _on_init_done,
+        )
 
     # ---------- Authentication actions ----------
 
@@ -1368,12 +1368,23 @@ class ProjectActionsMixin(_MixinBase):
             break
 
         project_name = str(values["project_name"])
-        outcome = await self.push_screen_wait(InitProgressScreen(project_name, final_yaml))
+
+        def initialized(entry: ConsoleLogEntry) -> None:
+            """Refresh derived state even when the initialization dialog was dismissed."""
+            self.call_later(self.refresh_projects)
+            self._refresh_project_state()
+            if entry.ok:
+                self._maybe_nudge_global_agents(values)
+
+        outcome = await self.push_screen_wait(
+            InitProgressScreen(project_name, final_yaml, on_complete=initialized)
+        )
 
         match outcome:
             case InitOutcome.SUCCESS:
-                self.notify(f"Project '{project_name}' is ready.")
-                self._maybe_nudge_global_agents(values)
+                pass  # The app-owned action already notified on completion.
+            case InitOutcome.BACKGROUND:
+                self.notify("Initialization continues in the background — open Console output.")
             case InitOutcome.DECLINED:
                 # User chose to keep the existing project.yml — benign
                 # no-op, not an error.  No notification needed; the log

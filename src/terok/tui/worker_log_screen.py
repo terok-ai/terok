@@ -11,13 +11,16 @@ textual-serve where there is no terminal to suspend *to* (issue #473).
 ``WorkerLogScreen`` no longer owns the subprocess — the
 [`ConsoleLogRegistry`][terok.tui.console_log.ConsoleLogRegistry] pump
 does.  This screen is a pure *view*: it replays the entry's captured
-lines, tails new ones live, and offers a single button —
+lines, tails new ones live, and offers a dismissal button —
 
 * **Hide** while the action is still running: dismisses the modal but
   the action keeps going in the background (the pump worker is
   app-scoped), fires its completion toast, and stays re-openable from
   the ``Console output`` palette command.
 * **Done** / **Close** once it has finished.
+
+An **Answer prompt** button appears while the action needs input. Opening
+the log never opens a pending prompt automatically.
 
 Escape mirrors the button.  Because dismissing never kills the action,
 Escape is safe at any time — unlike the old owns-the-process screen,
@@ -112,15 +115,17 @@ class WorkerLogScreen(ModalScreen[None]):
         super().__init__()
         self._entry = entry
         self._unsubscribe: Callable[[], None] | None = None
+        self._unsubscribe_state: Callable[[], None] | None = None
 
     def compose(self) -> ComposeResult:
-        """Lay out the command line, log pane, and single-action button row."""
+        """Lay out the command line, log pane, and prompt / dismissal buttons."""
         dialog = Vertical(id="worker-log-dialog")
         dialog.border_title = self._entry.title
         with dialog:
             yield Label(f"$ {self._entry.command}", id="worker-log-command")
             yield AnsiLog(id="worker-log-output", markup=False, wrap=True)
             with Horizontal(id="worker-log-buttons"):
+                yield Button("Answer prompt", id="worker-log-input", variant="primary")
                 yield Button("Hide", id="worker-log-close", variant="default")
 
     def on_mount(self) -> None:
@@ -136,12 +141,26 @@ class WorkerLogScreen(ModalScreen[None]):
         # viewer is read-only otherwise, so there's no other useful
         # focus target.
         self.query_one("#worker-log-close", Button).focus()
+        self._update_input_button()
+        self._unsubscribe_state = self._entry.subscribe_state(self._update_input_button)
 
     def on_unmount(self) -> None:
         """Drop the live subscription so a hidden entry has no dangling viewer."""
         if self._unsubscribe is not None:
             self._unsubscribe()
             self._unsubscribe = None
+        if self._unsubscribe_state is not None:
+            self._unsubscribe_state()
+            self._unsubscribe_state = None
+
+    def _update_input_button(self) -> None:
+        """Expose pending questions without taking focus from the operator."""
+        self.query_one("#worker-log-input", Button).display = bool(self._entry.pending_inputs)
+
+    @on(Button.Pressed, "#worker-log-input")
+    def _on_input(self) -> None:
+        """Open the oldest unanswered question for this action."""
+        self._entry.request_input()
 
     def _append_line(self, line: str) -> None:
         """Write one live-tailed *line* into the log pane.

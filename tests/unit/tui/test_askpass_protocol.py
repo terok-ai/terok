@@ -68,7 +68,7 @@ class TestBuilders:
     def test_make_request_accepts_explicit_id(self) -> None:
         """Tests can pin the id to make assertions deterministic."""
         req = proto.make_request("p", request_id="fixed-id")
-        assert req == {"request_id": "fixed-id", "prompt": "p"}
+        assert proto.parse_request(req) == proto.AskpassRequest("fixed-id", "p")
 
     def test_make_answer_and_cancel_shapes(self) -> None:
         """Accept has ``answer``, cancel has ``cancel: true`` — no overlap."""
@@ -80,8 +80,29 @@ class TestParseRequest:
     """Validate helper → TUI requests."""
 
     def test_valid_request_parses(self) -> None:
-        """Well-formed request returns the id and prompt tuple."""
-        assert proto.parse_request({"request_id": "x", "prompt": "p"}) == ("x", "p")
+        """Well-formed request identifies its prompt and optional action."""
+        assert proto.parse_request({"request_id": "x", "prompt": "p"}) == proto.AskpassRequest(
+            "x", "p"
+        )
+
+    def test_external_action_round_trip(self) -> None:
+        """External-helper requests retain the action that is waiting for input."""
+        frame = proto.make_request("Unlock", request_id="r", action_id=7, external=True)
+        assert proto.parse_request(proto.decode(proto.encode(frame))) == proto.AskpassRequest(
+            "r", "Unlock", 7, True
+        )
+
+    @pytest.mark.parametrize("action_id", [True, 0, -1, "7", 1.5])
+    def test_invalid_action_id_rejected(self, action_id: object) -> None:
+        """Action identities must be positive integers, not truthy substitutes."""
+        with pytest.raises(proto.AskpassProtocolError, match="action_id"):
+            proto.parse_request({"request_id": "r", "prompt": "p", "action_id": action_id})
+
+    @pytest.mark.parametrize("external", [1, "true", None])
+    def test_invalid_external_flag_rejected(self, external: object) -> None:
+        """An external prompt must be identified by a boolean flag."""
+        with pytest.raises(proto.AskpassProtocolError, match="external"):
+            proto.parse_request({"request_id": "r", "prompt": "p", "external": external})
 
     def test_missing_request_id_rejected(self) -> None:
         """No id means we can't correlate the reply — refuse."""

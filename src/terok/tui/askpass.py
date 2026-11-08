@@ -9,9 +9,10 @@ stdout.  When the TUI spawns a subprocess for a project with
 ``ssh.use_personal: true``, it points ``SSH_ASKPASS`` at this helper and
 ``TEROK_ASKPASS_SOCKET`` at a unix socket it's listening on.
 
-This helper is deliberately tiny: open the socket, send one request
-frame, read one reply frame, print the passphrase, exit.  No retries,
-no caching, no local UI.  The TUI side owns everything interactive.
+Native prompts wait for a reply from the TUI. An advertised GUI helper
+instead runs with inherited stdout, so its answer goes straight to OpenSSH.
+Its socket stays open until that helper exits, marking the action as waiting
+without sending the answer to the TUI.
 
 Exit codes:
 
@@ -25,6 +26,7 @@ from __future__ import annotations
 
 import os
 import socket
+import subprocess
 import sys
 
 from . import askpass_protocol as proto
@@ -59,10 +61,21 @@ def main(argv: list[str] | None = None) -> int:
     try:
         with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as sock:
             sock.connect(socket_path)
-            request = proto.make_request(prompt)
+            action_id = os.environ.get(proto.ACTION_ID_ENV)
+            gui_helper = os.environ.get(proto.GUI_HELPER_ENV)
+            request = proto.make_request(
+                prompt,
+                action_id=int(action_id) if action_id else None,
+                external=bool(gui_helper),
+            )
             sock.sendall(proto.encode(request))
+            if gui_helper:
+                # The answer travels straight to OpenSSH, never through the TUI log.
+                env = {**os.environ, "SSH_ASKPASS": gui_helper}
+                env.pop(proto.GUI_HELPER_ENV, None)
+                return subprocess.run([gui_helper, *args[1:]], env=env, check=False).returncode
             raw = _read_line(sock)
-    except OSError as exc:
+    except (OSError, ValueError) as exc:
         print(f"terok-askpass: socket error: {exc}", file=sys.stderr)
         return 1
 

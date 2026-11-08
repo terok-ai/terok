@@ -1,36 +1,22 @@
 # SPDX-FileCopyrightText: 2026 Jiri Vyskocil
 # SPDX-License-Identifier: Apache-2.0
 
-"""TUI-side askpass listener, passphrase modal, and env-injection helper.
+"""Keep background SSH requests visible without stealing keyboard focus.
 
-Four pieces that together let ``use_personal_ssh: true`` projects
-prompt for passphrases through the TUI instead of corrupting the
-terminal frame or silently failing:
+[`AskpassService`][terok.tui.askpass_service.AskpassService] associates explicit
+helper requests with console actions. Native prompts open only when requested;
+advertised desktop helpers keep their native dialog and report its lifetime.
+The service never writes passphrases to console logs.
 
-- [`AskpassService`][terok.tui.askpass_service.AskpassService] — the asyncio-based unix-socket server.
-  Bound lazily from [`start`][terok.tui.askpass_service.AskpassService.start], torn down by [`stop`][terok.tui.askpass_service.AskpassService.stop]; exposes
-  the socket path so callers can inject it into subprocess env.
-- [`AskpassModal`][terok.tui.askpass_service.AskpassModal] — one-line passphrase prompt as a Textual
-  `ModalScreen`.  Dismisses with the passphrase, or ``None`` on
-  cancel.
-- [`gui_askpass_usable`][terok.tui.askpass_service.gui_askpass_usable] — predicate used by callers to decide
-  whether to start the service at all.  When a user's desktop askpass
-  is reachable, we'd rather use it than our modal.
-- [`build_askpass_env`][terok.tui.askpass_service.build_askpass_env] — pure function that injects the helper
-  env vars when we *do* want our own askpass to run.
-
-The service is reachable only via a unix socket under terok's runtime
-namespace ([`Config.runtime_dir`][terok.lib.api.Config]) with mode
-``0600`` — the filesystem is the auth boundary.  No socket is ever
-bound until a project with ``use_personal_ssh=true`` actually spawns
-a subprocess *and* lacks a usable GUI askpass, so users who don't opt
-in pay nothing for this feature.
+The socket is bound lazily for personal-SSH projects under
+[`Config.runtime_dir`][terok.lib.api.Config] with mode ``0600``.
 """
 
 from __future__ import annotations
 
 import asyncio
 import contextlib
+import enum
 import logging
 import os
 import socket as _socket
@@ -66,8 +52,8 @@ def gui_askpass_usable(env: Mapping[str, str]) -> bool:
     never see the prompt.  In that case we want our Textual modal to
     take over instead.
 
-    Callers use this to short-circuit before spinning up an
-    [`AskpassService`][terok.tui.askpass_service.AskpassService] whose socket would never be consulted.
+    This checks advertised environment variables, not display connectivity.
+    The wrapper preserves the selected helper while reporting its lifetime.
     """
     return bool(env.get("SSH_ASKPASS") and (env.get("DISPLAY") or env.get("WAYLAND_DISPLAY")))
 
@@ -78,26 +64,19 @@ def build_askpass_env(
     socket_path: str | os.PathLike[str],
     helper_bin: str | os.PathLike[str],
 ) -> dict[str, str]:
-    """Return a copy of *base_env* with askpass vars injected when appropriate.
+    """Route SSH prompts through the TUI, preserving an advertised GUI helper.
 
-    Policy:
-
-    - If *base_env* already has ``SSH_ASKPASS`` set *and* a graphical
-      session is reachable (``DISPLAY`` or ``WAYLAND_DISPLAY``), leave
-      the user's helper alone — their GUI dialog will pop up and is a
-      nicer UX than our Textual modal.
-    - Otherwise, point ``SSH_ASKPASS`` at *helper_bin* and set
-      ``TEROK_ASKPASS_SOCKET`` so the helper can find us.
-    - Always set ``SSH_ASKPASS_REQUIRE=force`` so OpenSSH uses askpass
-      even when a tty is attached — the wizard path has
-      ``start_new_session=True`` so there's no tty anyway, but
-      ``terok-web serve`` and future non-wizard subprocesses may still
-      inherit one and we don't want OpenSSH falling back to it.
+    GUI prompts keep their native dialog. The wrapper reports their lifetime
+    through the same socket so background actions cannot wait invisibly.
+    ``SSH_ASKPASS_REQUIRE=force`` prevents terminal prompts corrupting the TUI.
     """
     env = dict(base_env)
-    if not gui_askpass_usable(env):
-        env["SSH_ASKPASS"] = str(helper_bin)
-        env["TEROK_ASKPASS_SOCKET"] = str(socket_path)
+    if gui_askpass_usable(env) and env["SSH_ASKPASS"] != str(helper_bin):
+        env[proto.GUI_HELPER_ENV] = env["SSH_ASKPASS"]
+    elif env.get("SSH_ASKPASS") != str(helper_bin):
+        env.pop(proto.GUI_HELPER_ENV, None)
+    env["SSH_ASKPASS"] = str(helper_bin)
+    env["TEROK_ASKPASS_SOCKET"] = str(socket_path)
     env["SSH_ASKPASS_REQUIRE"] = "force"
     return env
 
@@ -132,8 +111,14 @@ def locate_helper_bin() -> Path:
 # ── modal ─────────────────────────────────────────────────────────────
 
 
-class AskpassModal(ModalScreen["str | None"]):
-    """Passphrase prompt — dismisses with the string, or ``None`` on cancel.
+class PromptDisposition(enum.Enum):
+    """A deferred prompt remains pending without answering or cancelling SSH."""
+
+    LATER = "later"
+
+
+class AskpassModal(ModalScreen["str | None | PromptDisposition"]):
+    """Collect a passphrase, cancel SSH, or defer an action's pending prompt.
 
     The prompt text comes straight from OpenSSH (e.g.
     ``"Enter passphrase for key '/home/.../id_ed25519':"``) and is shown
@@ -141,7 +126,7 @@ class AskpassModal(ModalScreen["str | None"]):
     """
 
     BINDINGS = [
-        Binding("escape", "cancel", "Cancel"),
+        Binding("escape", "cancel", "Close"),
     ]
 
     CSS = """
@@ -175,13 +160,15 @@ class AskpassModal(ModalScreen["str | None"]):
     }
     """
 
-    def __init__(self, prompt: str) -> None:
+    def __init__(self, prompt: str, *, allow_defer: bool = False) -> None:
         """Build the modal with *prompt* as the shown label."""
         super().__init__()
         self._prompt = prompt
+        self._allow_defer = allow_defer
+        self._expired = False
 
     def compose(self) -> ComposeResult:
-        """Lay out the prompt label, password input, and two buttons."""
+        """Lay out the prompt, password input, and answer/cancel/defer controls."""
         dialog = Vertical(id="askpass-dialog")
         dialog.border_title = "SSH passphrase"
         with dialog:
@@ -192,6 +179,8 @@ class AskpassModal(ModalScreen["str | None"]):
             yield Static(self._prompt, id="askpass-prompt", markup=False)
             yield Input(password=True, id="askpass-input")
             with Horizontal(id="askpass-buttons"):
+                if self._allow_defer:
+                    yield Button("Later", id="askpass-later", variant="default")
                 yield Button("Cancel", id="askpass-cancel", variant="default")
                 yield Button("Unlock", id="askpass-ok", variant="primary")
 
@@ -200,13 +189,26 @@ class AskpassModal(ModalScreen["str | None"]):
         self.query_one("#askpass-input", Input).focus()
 
     def action_cancel(self) -> None:
-        """Dismiss as cancel — helper exits non-zero, ssh aborts."""
-        self.dismiss(None)
+        """Hide a reachable pending prompt; otherwise cancel the SSH request."""
+        self.dismiss(PromptDisposition.LATER if self._allow_defer else None)
+
+    def expire(self) -> None:
+        """Close a disconnected request without popping an unrelated screen."""
+        self._expired = True
+        if self.is_mounted and self.app.screen is self:
+            self.dismiss(None)
+
+    def on_screen_resume(self) -> None:
+        """Discard a disconnected prompt when an overlaid screen closes."""
+        if self._expired:
+            self.dismiss(None)
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
-        """Handle the two buttons — Cancel returns None, Unlock returns the input value."""
+        """Answer, cancel, or postpone the pending SSH request."""
         if event.button.id == "askpass-cancel":
             self.dismiss(None)
+        elif event.button.id == "askpass-later":
+            self.dismiss(PromptDisposition.LATER)
         elif event.button.id == "askpass-ok":
             self.dismiss(self.query_one("#askpass-input", Input).value)
 
@@ -219,17 +221,11 @@ class AskpassModal(ModalScreen["str | None"]):
 
 
 class AskpassService:
-    """Asyncio unix-socket server that dispatches passphrase modals on the TUI.
+    """Track SSH prompt lifetimes and serialize explicitly opened native dialogs.
 
-    One instance per `App`.  Started lazily by the
-    wizard / subprocess layer only when a project with
-    ``use_personal_ssh=true`` is about to spawn a child — users who
-    don't opt in never trigger a socket bind.
-
-    Concurrency: the listener serialises modal pushes with an
-    [`asyncio.Lock`][asyncio.Lock], so if two helpers connect at once they queue
-    up naturally.  This is deliberate — Textual only renders one modal
-    at a time anyway.
+    Pending requests remain associated with their actions until answered,
+    cancelled, or disconnected. Unattributed prompts open immediately because
+    no console action exists to make them reachable later.
     """
 
     def __init__(
@@ -251,6 +247,7 @@ class AskpassService:
         self._helper_bin = helper_bin
         self._server: asyncio.AbstractServer | None = None
         self._modal_lock = asyncio.Lock()
+        self._clients: set[asyncio.Task] = set()
 
     @property
     def socket_path(self) -> Path:
@@ -314,57 +311,124 @@ class AskpassService:
 
     async def stop(self) -> None:
         """Close the server and unlink the socket.  Idempotent."""
-        if self._server is not None:
-            self._server.close()
-            await self._server.wait_closed()
-            self._server = None
+        server, self._server = self._server, None
+        if server is not None:
+            server.close()
+        clients = tuple(self._clients)
+        for client in clients:
+            client.cancel()
+        await asyncio.gather(*clients, return_exceptions=True)
+        if server is not None:
+            await server.wait_closed()
         self._socket_path.unlink(missing_ok=True)
         logger.debug("askpass service stopped")
 
     async def _handle_client(
         self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter
     ) -> None:
-        """Read one request, dispatch a modal, write the reply, close.
-
-        One request per connection.  The helper is synchronous and
-        short-lived, so there's no benefit to keeping the socket open
-        for a second prompt — simpler to let it reconnect.  The helper
-        tears its end down as soon as it reads our reply, so
-        ``wait_closed`` can race with that teardown — suppressed below.
-        """
+        """Serve one prompt; keep its pending state tied to the socket lifetime."""
+        client = asyncio.current_task()
+        assert client is not None
+        self._clients.add(client)
         try:
+            # An accepted connection's handler may start after stop() snapshots clients.
+            if self._server is None:
+                return
             raw = await reader.readline()
             if not raw:
                 return
             try:
-                request_id, prompt = proto.parse_request(proto.decode(raw))
+                request = proto.parse_request(proto.decode(raw))
             except proto.AskpassProtocolError as exc:
                 logger.warning("askpass: bad request: %s", exc)
                 return
 
-            async with self._modal_lock:
-                # ``push_screen_wait`` requires a running worker context,
-                # which makes the service awkward to drive from plain
-                # asyncio (tests, non-wizard callers).  The callback form
-                # works from any coroutine — bridge it through a future.
-                loop = asyncio.get_running_loop()
-                future: asyncio.Future[str | None] = loop.create_future()
-
-                def _on_dismissed(result: str | None) -> None:
-                    if not future.done():
-                        future.set_result(result)
-
-                self._app.push_screen(AskpassModal(prompt), _on_dismissed)
-                answer = await future
-
-            reply = (
-                proto.make_cancel(request_id)
-                if answer is None
-                else proto.make_answer(request_id, answer)
-            )
-            writer.write(proto.encode(reply))
-            await writer.drain()
+            await self._serve_request(request, reader, writer)
+        except (BrokenPipeError, ConnectionResetError):
+            pass
         finally:
+            self._clients.discard(client)
             writer.close()
             with contextlib.suppress(BrokenPipeError, ConnectionResetError):
                 await writer.wait_closed()
+
+    async def _serve_request(
+        self,
+        request: proto.AskpassRequest,
+        reader: asyncio.StreamReader,
+        writer: asyncio.StreamWriter,
+    ) -> None:
+        """Notify without stealing focus; expose the prompt on its console action."""
+        registry = getattr(self._app, "console_logs", None)
+        entry = registry.get(request.action_id) if registry and request.action_id else None
+        if entry is not None and not entry.running:
+            entry = None
+        answer: asyncio.Future[str | None] = asyncio.get_running_loop().create_future()
+        disconnected = asyncio.create_task(reader.read())
+        prompt_task: asyncio.Task | None = None
+
+        def open_prompt() -> None:
+            """Open one native dialog or point to the existing desktop prompt."""
+            nonlocal prompt_task
+            if request.external:
+                self._app.notify("Answer the SSH prompt in your desktop dialog.", timeout=10)
+            elif not answer.done() and (prompt_task is None or prompt_task.done()):
+                prompt_task = asyncio.create_task(
+                    self._show_prompt(request.prompt, answer, allow_defer=entry is not None)
+                )
+
+        try:
+            if entry is not None:
+                entry.add_input(request.request_id, open_prompt)
+            destination = "desktop dialog" if request.external else "Console output"
+            title = entry.title if entry is not None else "SSH"
+            self._app.notify(
+                f"{title} needs input — open {destination}.", severity="warning", timeout=10
+            )
+            if request.external:
+                await disconnected
+            else:
+                if entry is None:
+                    # No console row exists to reopen an unattributed prompt.
+                    open_prompt()
+                await asyncio.wait((answer, disconnected), return_when=asyncio.FIRST_COMPLETED)
+                if answer.done() and not disconnected.done():
+                    value = answer.result()
+                    reply = (
+                        proto.make_cancel(request.request_id)
+                        if value is None
+                        else proto.make_answer(request.request_id, value)
+                    )
+                    writer.write(proto.encode(reply))
+                    await writer.drain()
+        finally:
+            if entry is not None:
+                entry.remove_input(request.request_id)
+            answer.cancel()
+            tasks = [disconnected, *([prompt_task] if prompt_task else [])]
+            for task in tasks:
+                task.cancel()
+            await asyncio.gather(*tasks, return_exceptions=True)
+
+    async def _show_prompt(
+        self, prompt: str, answer: asyncio.Future[str | None], *, allow_defer: bool
+    ) -> None:
+        """Serialize requested dialogs; Later leaves the SSH request pending."""
+        async with self._modal_lock:
+            result: asyncio.Future[str | None | PromptDisposition] = (
+                asyncio.get_running_loop().create_future()
+            )
+            modal = AskpassModal(prompt, allow_defer=allow_defer)
+
+            def on_dismissed(value: str | None | PromptDisposition) -> None:
+                """Deliver the dialog outcome unless its request was disconnected."""
+                if not result.done():
+                    result.set_result(value)
+
+            self._app.push_screen(modal, on_dismissed)
+            try:
+                value = await result
+                if value is not PromptDisposition.LATER and not answer.done():
+                    answer.set_result(value)
+            finally:
+                modal.expire()
