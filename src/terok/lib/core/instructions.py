@@ -20,8 +20,9 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
+from terok_util import config_file_paths
+
 from ..util.yaml import YAMLError, load as _yaml_load
-from .config import global_config_path
 
 INHERIT = "_inherit"
 """The ``agent.instructions`` list item that stands for the layers below."""
@@ -32,11 +33,15 @@ _PER_AGENT_FALLBACK = "_default"
 def global_instructions_path() -> Path:
     """Return the global ``instructions.md``, which sits next to the user config file.
 
-    Next to the file itself: a ``TEROK_CONFIG_FILE`` that is a symlink keeps
-    its configured name for display and writes, but the instructions live
-    beside the target it points to.
+    In the user's config directory even when ``config.yml`` there is a
+    symlink into a dotfiles checkout.  An explicit ``TEROK_CONFIG_FILE``
+    keeps its configured name for display and writes, but as a symlink it
+    points at the directory holding the real file, and the instructions
+    live beside that target.
     """
-    return global_config_path().resolve().parent / "instructions.md"
+    label, config = config_file_paths()[-1]
+    directory = config.resolve().parent if label == "override" else config.parent
+    return directory / "instructions.md"
 
 
 def with_global_instructions(agent_config: dict[str, Any]) -> dict[str, Any]:
