@@ -88,8 +88,13 @@ def resolve_runtime(project: ProjectConfig | None = None) -> ContainerRuntime:
 
 
 def resolve_runtime_name(project: ProjectConfig | None = None) -> RuntimeName:
-    """The backend the factory builds: the configured selection, else ``crun``."""
-    return _validated(_configured_runtime(project) or "crun")
+    """The backend the factory builds: the configured selection, else ``crun``.
+
+    Only an absent selection falls back; a blank ``TEROK_RUNTIME`` is a
+    selection too, and an invalid one.
+    """
+    selected = _configured_runtime(project)
+    return _validated("crun" if selected is None else selected)
 
 
 def launch_runtime_arg(project: ProjectConfig | None = None) -> str | None:

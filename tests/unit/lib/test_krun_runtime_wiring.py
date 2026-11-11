@@ -138,6 +138,17 @@ class TestResolveRuntime:
         assert rt is fake_runtime
         host_cls.assert_called_once()  # cfg= injected from make_sandbox_config()
 
+    @pytest.mark.parametrize("blank", ["", "  "])
+    def test_blank_env_override_is_loud_everywhere(
+        self, monkeypatch: pytest.MonkeyPatch, blank: str
+    ) -> None:
+        """An empty ``TEROK_RUNTIME`` never silently picks crun over the project's choice."""
+        monkeypatch.setenv("TEROK_RUNTIME", blank)
+        with pytest.raises(SystemExit, match="crun.*krun.*null"):
+            resolve_runtime_name(_project(runtime="krun"))
+        with pytest.raises(SystemExit, match="crun.*krun.*null"):
+            launch_runtime_arg(_project(runtime="krun"))
+
     def test_unknown_value_is_loud(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """An unknown ``TEROK_RUNTIME`` value raises SystemExit (no silent fallback)."""
         monkeypatch.setenv("TEROK_RUNTIME", "tomato")
