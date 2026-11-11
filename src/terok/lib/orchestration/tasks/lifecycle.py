@@ -14,7 +14,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 
-from terok_util import ensure_dir, open_untrusted_directory, write_untrusted_text
+from terok_util import ensure_dir, open_untrusted_directory, sanitize_tty, write_untrusted_text
 
 from terok.lib.integrations.executor import AgentRunner
 from terok.lib.integrations.sandbox import Sandbox, container_diagnostics, remove_container_state
@@ -663,9 +663,9 @@ def task_status(project_name: str, task_id: str, *, verbose: bool = False) -> No
     agent_cfg = tasks_root / task_id / "agent-config"
     ws = read_work_status(agent_cfg)
     if ws.status:
-        print(f"  Work status:     {ws.status}")
+        print(f"  Work status:     {sanitize_tty(ws.status)}")
         if ws.message:
-            print(f"  Work message:    {ws.message}")
+            print(f"  Work message:    {sanitize_tty(ws.message)}")
 
     if verbose:
         cid = container.id if container is not None else None

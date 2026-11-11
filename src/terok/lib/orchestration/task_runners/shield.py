@@ -203,7 +203,7 @@ def _refresh_shield_tiers(project: ProjectConfig, cname: str, task_dir: Path) ->
             _sandbox(project).shield_refresh(
                 cname,
                 task_dir,
-                runtime=project.runtime,
+                runtime=_rt.launch_runtime_arg(project),
                 security_deny=egress.deny_to_vault,
                 provider_allow=egress.provider_allow,
                 project_allow=project_allow,

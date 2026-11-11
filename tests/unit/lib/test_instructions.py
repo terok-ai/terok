@@ -5,6 +5,7 @@
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 from typing import Any
 
@@ -216,3 +217,24 @@ class TestInheritSetting:
         with pytest.raises(ValueError, match="not a list"):
             set_instructions_inherit(config, False)
         assert config.read_text(encoding="utf-8") == original
+
+
+@pytest.mark.parametrize("override", [True, False], ids=["TEROK_CONFIG_FILE", "default"])
+def test_symlinked_config_keeps_instructions_where_they_were(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, override: bool
+) -> None:
+    """An explicit override looks beside its target; the user directory stays authoritative."""
+    target_dir = tmp_path / "dotfiles"
+    target_dir.mkdir()
+    (target_dir / "config.yml").write_text("")
+    if override:
+        link_dir = tmp_path / "link"
+        monkeypatch.setenv("TEROK_CONFIG_FILE", str(link_dir / "config.yml"))
+        expected = target_dir
+    else:
+        monkeypatch.delenv("TEROK_CONFIG_FILE", raising=False)
+        link_dir = Path(os.environ["XDG_CONFIG_HOME"]) / "terok"
+        expected = link_dir
+    link_dir.mkdir(parents=True, exist_ok=True)
+    (link_dir / "config.yml").symlink_to(target_dir / "config.yml")
+    assert global_instructions_path() == expected / "instructions.md"

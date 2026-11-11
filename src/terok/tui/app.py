@@ -1231,23 +1231,13 @@ if _HAS_TEXTUAL:
                 )
                 return False
             if outcome is SelinuxFixOutcome.INSTALL_POLICY:
-                entry = self.dispatch_console_command(
-                    [
-                        "python",
-                        "-c",
-                        "from terok.tui.worker_actions import selinux_install_policy; "
-                        "selinux_install_policy()",
-                    ],
+                entry = self.dispatch_console_action(
+                    "terok.tui.worker_actions:selinux_install_policy",
                     title="Installing SELinux policy (sudo bash …)",
                 )
             else:  # SWITCH_TO_TCP
-                entry = self.dispatch_console_command(
-                    [
-                        "python",
-                        "-c",
-                        "from terok.tui.worker_actions import selinux_switch_to_tcp; "
-                        "selinux_switch_to_tcp()",
-                    ],
+                entry = self.dispatch_console_action(
+                    "terok.tui.worker_actions:selinux_switch_to_tcp",
                     title="Switching services.mode to tcp",
                 )
             await self.push_screen(WorkerLogScreen(entry))

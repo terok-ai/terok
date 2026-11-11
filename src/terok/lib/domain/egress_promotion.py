@@ -1202,7 +1202,8 @@ def _suggest_sets(
         suggestions.append(
             SetSuggestion(choice.name, choice.origin, covered, len(wanted), len(choice.hosts))
         )
-        remaining = [target for target in remaining if target not in covered]
+        covered_set = set(covered)
+        remaining = [target for target in remaining if target not in covered_set]
         pool.remove(choice)
     return tuple(suggestions)
 

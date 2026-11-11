@@ -16,7 +16,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from terok_util import require_host_tool
+from terok_util import require_host_tool, sanitize_tty
 
 from terok.lib.integrations.executor import AgentRunner
 
@@ -113,6 +113,7 @@ def task_logs(
                 streaming=options.streaming,
                 mode=mode,
                 agent=meta.get("agent"),
+                raw=options.raw,
             )
             return
         raise SystemExit(
@@ -209,7 +210,9 @@ def task_logs(
     if not interrupted and proc.returncode and proc.returncode != 0:
         stderr_text = stderr_output.decode("utf-8", errors="replace").strip()
         if stderr_text:
-            print(f"Warning: podman logs exited with code {proc.returncode}: {stderr_text}")
+            print(
+                f"Warning: podman logs exited with code {proc.returncode}: {sanitize_tty(stderr_text)}"
+            )
 
     if interrupted:
         print()
@@ -222,24 +225,24 @@ def _show_persisted_logs(
     streaming: bool = True,
     mode: str | None = None,
     agent: str | None = None,
+    raw: bool = False,
 ) -> None:
     """Display logs from a persisted log file on disk.
 
-    Applies the same formatter pipeline as live container logs so output
-    is consistent whether reading from podman or from the host filesystem.
+    Applies the same formatter pipeline, or explicit raw replay, as live
+    container logs so output is consistent after a container is removed.
     Streams the file line-by-line to avoid loading the entire log into memory.
     """
     from collections import deque
 
-    formatter = auto_detect_formatter(mode, streaming=streaming, agent=agent)
-
-    with log_file.open("r", encoding="utf-8", errors="replace") as f:
-        if tail is not None and tail > 0:
-            for line in deque((ln.rstrip("\n") for ln in f), maxlen=tail):
-                formatter.feed_line(line)
-        elif tail == 0:
-            pass  # tail=0 means show nothing
-        else:
-            for line in f:
-                formatter.feed_line(line.rstrip("\n"))
-    formatter.finish()
+    if tail == 0:
+        return
+    formatter = None if raw else auto_detect_formatter(mode, streaming=streaming, agent=agent)
+    with log_file.open("r", encoding="utf-8", errors="replace", newline="\n") as f:
+        for line in deque(f, maxlen=tail) if tail else f:
+            if formatter is None:
+                print(line, end="")
+            else:
+                formatter.feed_line(line.rstrip("\r\n"))
+    if formatter is not None:
+        formatter.finish()

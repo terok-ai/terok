@@ -37,9 +37,9 @@ reset.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Literal
+from typing import TYPE_CHECKING, Literal, cast, get_args
 
-from terok.lib.core.config import is_experimental, make_sandbox_config
+from terok.lib.core.config import get_global_run_runtime, is_experimental, make_sandbox_config
 from terok.lib.integrations.executor import KrunHost
 from terok.lib.integrations.sandbox import (
     ContainerRuntime,
@@ -73,29 +73,48 @@ def resolve_runtime(project: ProjectConfig | None = None) -> ContainerRuntime:
     [`PodmanRuntime`][terok_sandbox.PodmanRuntime] directly and skip
     the resolver overhead.
     """
-    backend = _select_backend(project)
+    backend = resolve_runtime_name(project)
     if backend == "crun":
         return PodmanRuntime()
     if backend == "null":
         return NullRuntime()
-    if backend == "krun":
-        if not is_experimental():
-            raise SystemExit(
-                "run.runtime: krun requires the experimental flag.  Set "
-                "`experimental: true` in your config.yml, or pass "
-                "`--experimental` on the command line."
-            )
-        return KrunHost(cfg=make_sandbox_config()).runtime()
-    raise SystemExit(f"TEROK_RUNTIME={backend!r}: expected 'crun', 'krun', or 'null'")
+    if not is_experimental():
+        raise SystemExit(
+            "run.runtime: krun requires the experimental flag.  Set "
+            "`experimental: true` in your config.yml, or pass "
+            "`--experimental` on the command line."
+        )
+    return KrunHost(cfg=make_sandbox_config()).runtime()
 
 
-def _select_backend(project: ProjectConfig | None) -> str:
-    """Walk the priority chain and return the backend name.
+def resolve_runtime_name(project: ProjectConfig | None = None) -> RuntimeName:
+    """The backend the factory builds: the configured selection, else ``crun``.
 
-    Separated so ``resolve_runtime`` reads top-down — the "what we end
-    up running" decision lives in the lookups; the "how we construct
-    it" decision lives in the dispatch below.
+    Only an absent selection falls back; a blank ``TEROK_RUNTIME`` is a
+    selection too, and an invalid one.
     """
+    selected = _configured_runtime(project)
+    return _validated("crun" if selected is None else selected)
+
+
+def launch_runtime_arg(project: ProjectConfig | None = None) -> str | None:
+    """The ``--runtime`` podman receives at launch, or ``None`` to inherit its default.
+
+    Only a configured selection (``TEROK_RUNTIME``, the project's
+    ``run.runtime`` or the global one) is forwarded, so an unconfigured
+    host keeps the runtime podman itself defaults to — crun on most
+    distributions, runc on some.  The ``null`` test backend never reaches
+    podman and forwards nothing.
+    """
+    selected = _configured_runtime(project)
+    if selected is None:
+        return None
+    name = _validated(selected)
+    return None if name == "null" else name
+
+
+def _configured_runtime(project: ProjectConfig | None) -> str | None:
+    """The operator's selection, highest source first; ``None`` when nothing is set."""
     import os
 
     env_value = os.environ.get("TEROK_RUNTIME")
@@ -103,16 +122,11 @@ def _select_backend(project: ProjectConfig | None) -> str:
         return env_value.strip().lower()
     if project is not None and project.runtime is not None:
         return project.runtime
-    return _global_runtime_default()
+    return get_global_run_runtime()
 
 
-def _global_runtime_default() -> str:
-    """Resolve the global ``run.runtime`` default from ``config.yml``.
-
-    Falls through to ``"crun"`` when unset — that's the OCI runtime
-    podman drives by default on every distro terok supports, so the
-    fallback matches what an unconfigured host would do anyway.
-    """
-    from terok.lib.core.config import get_global_run_runtime
-
-    return get_global_run_runtime() or "crun"
+def _validated(name: str) -> RuntimeName:
+    """Refuse anything outside ``RuntimeName`` loudly: a typo never boots a backend."""
+    if name not in get_args(RuntimeName):
+        raise SystemExit(f"run.runtime {name!r}: expected 'crun', 'krun', or 'null'")
+    return cast(RuntimeName, name)
