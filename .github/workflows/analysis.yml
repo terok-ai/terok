@@ -19,9 +19,15 @@ jobs:
   # On pull requests they also capture a tiny PR metadata artifact so the
   # privileged workflow_run-based Sonar scan can analyze fork PRs safely.
   unit-tests:
-    name: Unit tests
+    name: Unit tests (Python ${{ matrix.python-version }})
     if: github.repository == 'terok-ai/terok'
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.12", "3.15"]
+    env:
+      UV_PYTHON: ${{ matrix.python-version }}
     steps:
       - uses: actions/checkout@v7
         with:
@@ -31,7 +37,7 @@ jobs:
         id: setup-python
         uses: actions/setup-python@v7
         with:
-          python-version: "3.12"
+          python-version: ${{ matrix.python-version }}
 
       - name: Install uv
         uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
@@ -47,6 +53,7 @@ jobs:
         run: make test-unit
 
       - name: Upload coverage for SonarQube Cloud and docs treemap
+        if: matrix.python-version == '3.12'
         uses: actions/upload-artifact@v7
         with:
           name: coverage
@@ -56,7 +63,7 @@ jobs:
           retention-days: 14
 
       - name: Save PR metadata
-        if: github.event_name == 'pull_request'
+        if: matrix.python-version == '3.12' && github.event_name == 'pull_request'
         env:
           PR_NUMBER: ${{ github.event.pull_request.number }}
           PR_BASE: ${{ github.event.pull_request.base.ref }}
@@ -72,7 +79,7 @@ jobs:
           printf '%s\n' "$PR_SHA" > reports/pr/sha
 
       - name: Upload PR metadata
-        if: github.event_name == 'pull_request'
+        if: matrix.python-version == '3.12' && github.event_name == 'pull_request'
         uses: actions/upload-artifact@v7
         with:
           name: pr
@@ -80,6 +87,7 @@ jobs:
           retention-days: 1
 
       - name: Upload coverage to Codecov
+        if: matrix.python-version == '3.12'
         uses: codecov/codecov-action@303a32d7a59b442fa8d48b6a1cc6825c09c847a5 # v5
         with:
           files: ./reports/coverage.xml
@@ -87,7 +95,7 @@ jobs:
           token: ${{ secrets.CODECOV_TOKEN }}
 
       - name: Upload test results to Codecov
-        if: ${{ !cancelled() }}
+        if: ${{ !cancelled() && matrix.python-version == '3.12' }}
         uses: codecov/codecov-action@303a32d7a59b442fa8d48b6a1cc6825c09c847a5 # v5
         with:
           files: ./reports/unit.junit.xml

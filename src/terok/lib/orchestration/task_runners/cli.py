@@ -14,6 +14,7 @@ from __future__ import annotations
 from datetime import UTC, datetime
 
 from terok.lib.integrations.executor import resolve_agent_value
+from terok.lib.integrations.sandbox import LifecycleHooks
 
 from ...core import runtime as _rt
 from ...core.images import project_cli_image
@@ -34,6 +35,7 @@ from .container import (
     _assert_running,
     _print_login_instructions,
     _refuse_existing_container,
+    _repeat_startup_warnings,
     _run_container,
 )
 from .shield import _apply_shield_policy
@@ -95,6 +97,7 @@ def task_run_cli(
         task_dir=task_dir,
         meta_path=meta_path,
     )
+    startup_warnings: list[str] = []
     _run_container(
         cname=cname,
         image=project_cli_image(project.name),
@@ -109,6 +112,7 @@ def task_run_cli(
         allow_debugger=debug,
         egress=egress,
         broker_context=broker_context,
+        hooks=LifecycleHooks(warning=startup_warnings.append),
     )
     _apply_shield_policy(project, cname, task_dir, is_restart=False)
     run_hook(
@@ -155,6 +159,7 @@ def task_run_cli(
     )
     _print_login_instructions(project.name, task_id, cname, color_enabled)
     print(f"- To stop:  {_red(f'podman stop {cname}', color_enabled)}\n")
+    _repeat_startup_warnings(startup_warnings)
 
 
 __all__ = [

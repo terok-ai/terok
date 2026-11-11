@@ -19,6 +19,8 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, computed_field
 
+from terok.lib.integrations.sandbox import WaylandMode
+
 
 class ShieldOverride(BaseModel):
     """A resolved break-glass override — shield's t10 tier (above the deny).
@@ -104,6 +106,11 @@ class ProjectConfig(BaseModel):
     (``"amd:1"``) grants single devices.  Kept in the raw config shape —
     terok-executor normalizes it at launch via
     [`normalize_gpus`][terok_sandbox.config_schema.normalize_gpus].
+    """
+    wayland: WaylandMode = WaylandMode.NONE
+    """Project-only Wayland desktop access; independent of GPU passthrough.
+
+    Both enabled modes require the global experimental opt-in at task start.
     """
     nested_containers: bool = False
     """Project runs podman/docker inside its container (see ``run.nested_containers``)."""

@@ -29,10 +29,11 @@ from __future__ import annotations
 
 import argparse
 import sys
-from contextlib import nullcontext
+from collections.abc import Iterator
+from contextlib import contextmanager, nullcontext
 from typing import TYPE_CHECKING
 
-from terok_util import find_host_tool, setup_lock
+from terok_util import find_host_tool, sanitize_tty, setup_lock
 
 from terok.lib.api import bold, red, stage_line, yellow
 
@@ -63,6 +64,11 @@ def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) ->
             "via ``terok_executor.ensure_sandbox_ready``; installs the XDG "
             "desktop entry for ``terok-tui`` on top.  Safe to re-run."
         ),
+    )
+    p_setup.add_argument(
+        "--allow-downgrade",
+        action="store_true",
+        help="Explicitly replace newer host setup; older code may not understand newer state",
     )
     desktop_group = p_setup.add_mutually_exclusive_group()
     desktop_group.add_argument(
@@ -121,6 +127,16 @@ def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) ->
         help="With a component: print the rules it would install, then exit",
     )
     p_setup.add_argument(
+        "--with-wayland",
+        action="store_true",
+        help="With selinux: also install the optional confined Wayland proxy policy",
+    )
+    p_setup.add_argument(
+        "--with-wayland-direct",
+        action="store_true",
+        help="With selinux: install the separate direct desktop-access policy",
+    )
+    p_setup.add_argument(
         "--passphrase-tier",
         default=None,
         help=(
@@ -137,12 +153,14 @@ def dispatch(args: argparse.Namespace) -> bool:
         return False
     component = getattr(args, "component", None)
     show = getattr(args, "show", False)
-    if component is not None or show:
+    if (
+        component is not None
+        or show
+        or getattr(args, "with_wayland", False)
+        or getattr(args, "with_wayland_direct", False)
+    ):
         _run_component_setup(component, show=show, args=args)
-    from terok.lib.api.setup import preflight_setup
-
-    with setup_lock():
-        preflight_setup()
+    with _setup_transaction(allow_downgrade=getattr(args, "allow_downgrade", False)):
         with tee_output("setup"):
             cmd_setup(
                 no_desktop_entry=getattr(args, "no_desktop_entry", False),
@@ -155,6 +173,29 @@ def dispatch(args: argparse.Namespace) -> bool:
 
 
 # ── Orchestrator ───────────────────────────────────────────────────────
+
+
+@contextmanager
+def _setup_transaction(*, allow_downgrade: bool) -> Iterator[None]:
+    """Preflight one CLI setup, with an explicit override for every nested installer.
+
+    The flag authorizes replacing setup artifacts, not running tasks against
+    mismatched receipts or certifying failed installations.
+    """
+    from terok.lib.api.setup import SetupStatus, check_setup, preflight_setup
+
+    with setup_lock(allow_downgrade=allow_downgrade):
+        preflight_setup()
+        if allow_downgrade:
+            print(
+                "WARNING: --allow-downgrade permits replacing newer host setup. "
+                "Older code may not understand newer state.",
+                file=sys.stderr,
+            )
+            for check in check_setup():
+                if check.status is SetupStatus.DOWNGRADE:
+                    print(sanitize_tty(f"  {check.owner}: {check.diagnostic}"), file=sys.stderr)
+        yield
 
 
 #: dest → flag spelling for options that only the full bootstrap consumes.
@@ -195,12 +236,22 @@ def _run_component_setup(component: str | None, *, show: bool, args: argparse.Na
             f"{', '.join(passed)} belongs to the full 'terok setup', "
             f"not to 'terok setup {component}'"
         )
-    from terok.lib.api.setup import handle_setup_component, preflight_setup
+    from terok.lib.api.setup import handle_setup_component
 
-    with nullcontext() if show else setup_lock():
-        if not show:
-            preflight_setup()
-        sys.exit(handle_setup_component(component, show_only=show))
+    transaction = (
+        nullcontext()
+        if show
+        else _setup_transaction(allow_downgrade=getattr(args, "allow_downgrade", False))
+    )
+    with transaction:
+        sys.exit(
+            handle_setup_component(
+                component,
+                show_only=show,
+                with_wayland=getattr(args, "with_wayland", False),
+                with_wayland_direct=getattr(args, "with_wayland_direct", False),
+            )
+        )
 
 
 @setup_lock()

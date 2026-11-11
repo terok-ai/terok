@@ -12,7 +12,9 @@ and ``_project_runtime_flags`` assemble the podman invocation.
 from __future__ import annotations
 
 import math
+import os
 import shlex
+import sys
 from collections.abc import Iterable
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -34,6 +36,7 @@ from terok.lib.integrations.sandbox import (
     PodmanRuntime,
     Sandbox,
     VolumeSpec,
+    WaylandMode,
     validate_passthrough_args,
 )
 
@@ -41,7 +44,12 @@ from ...core import runtime as _rt
 from ...core.config import make_sandbox_config
 from ...core.egress_sets import resolve_egress_sets
 from ...core.projects import load_project
-from ...util.ansi import blue as _blue, supports_color as _supports_color, yellow as _yellow
+from ...util.ansi import (
+    blue as _blue,
+    red as _red,
+    supports_color as _supports_color,
+    yellow as _yellow,
+)
 from ...util.logging_utils import timed_phase
 from ...util.net import git_remote_host
 from ..tasks import dossier_path, tasks_meta_dir
@@ -123,7 +131,9 @@ def _override_line(override: ShieldOverride) -> str:
     return f"{override.host} {_EXPIRES_MARKER}{override.expires.isoformat()}"
 
 
-def _podman_start(project: ProjectConfig, cname: str) -> None:
+def _podman_start(
+    project: ProjectConfig, cname: str, *, hooks: LifecycleHooks | None = None
+) -> None:
     """Start an existing container, raising SystemExit on failure.
 
     Routes through [`Sandbox.start`][terok_sandbox.Sandbox.start] so the
@@ -133,13 +143,13 @@ def _podman_start(project: ProjectConfig, cname: str) -> None:
     container" is one sandbox call.
     """
     try:
-        _sandbox(project).start(cname)
+        _sandbox(project).start(cname, hooks=hooks)
     except FileNotFoundError:
         raise SystemExit("podman not found; please install podman")
     except SetupRequiredError:
         raise
     except RuntimeError as exc:
-        raise SystemExit(f"Failed to start container:\n{exc}")
+        raise SystemExit(f"Failed to start container:\n{exc}") from exc
 
 
 def _refuse_existing_container(
@@ -187,6 +197,19 @@ def _print_login_instructions(project_name: str, task_id: str, cname: str, color
     print(f"Login with: {_blue(login_cmd, color)}")
     print(f"  (or:      {_blue(raw_cmd, color)})")
     _maybe_warn_recovery_unconfirmed(color)
+
+
+def _repeat_startup_warnings(warnings: Iterable[str]) -> None:
+    """Repeat launch warnings after initialization output, without changing their wording."""
+    sys.stdout.flush()
+    for warning in warnings:
+        if warning.startswith(f"WARNING: Wayland ({WaylandMode.DIRECT})"):
+            warning = warning.replace(
+                "WARNING:",
+                _red("WARNING:", sys.stderr.isatty() and "NO_COLOR" not in os.environ),
+                1,
+            )
+        print(warning, file=sys.stderr)
 
 
 def _maybe_warn_recovery_unconfirmed(color: bool) -> None:
@@ -336,6 +359,7 @@ def _run_container(
             [`AgentRunner.launch_prepared`][terok_executor.AgentRunner.launch_prepared]'s
             ``allow_debugger`` kwarg, which writes it into the sidecar.
     """
+    _require_wayland_experimental(project.wayland)
     # OCI annotation under the ``dossier.*`` namespace flows through to
     # the shield reader, which picks it up at hook spawn time and uses
     # the pointed-at JSON file as ``ClearanceEvent.dossier`` on every
@@ -370,6 +394,7 @@ def _run_container(
                 name=cname,
                 task_dir=task_dir,
                 gpus=project.gpus,
+                wayland=project.wayland,
                 memory=project.memory,
                 cpus=project.cpus,
                 caps=("perfmon",) if project.perf else None,
@@ -393,6 +418,16 @@ def _run_container(
         raise SystemExit(f"podman not found; please install podman ({exc})") from exc
     except BuildError as exc:
         raise SystemExit(str(exc)) from exc
+
+
+def _require_wayland_experimental(mode: WaylandMode) -> None:
+    """Refuse experimental desktop access without the existing global opt-in."""
+    if mode != WaylandMode.NONE and not is_experimental():
+        raise SystemExit(
+            f"Wayland ({mode}) requires the experimental flag. Set "
+            "`experimental: true` in your config.yml, or pass "
+            "`--experimental` on the command line."
+        )
 
 
 def _sandbox(project: ProjectConfig) -> Sandbox:
