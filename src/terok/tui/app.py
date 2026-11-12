@@ -731,8 +731,8 @@ if _HAS_TEXTUAL:
                     )
                 case SetupOutcome.REFUSED:
                     self.notify(
-                        "Setup refused due to a downgrade. Upgrade back to the "
-                        "installed setup version; downgrades are not supported.",
+                        "Setup refused due to a downgrade. Upgrade back, or run "
+                        "terok setup --allow-downgrade in a terminal at your own risk.",
                         severity="error",
                         timeout=15,
                     )

@@ -435,6 +435,20 @@ class RawGlobalConfigTests(unittest.TestCase):
         self.assertEqual(raw.run.memory, "8g")
         self.assertEqual(raw.run.cpus, "4.0")
 
+    def test_wayland_modes_are_project_only(self) -> None:
+        """Desktop access requires a per-project opt-in, never a global default."""
+        from terok.lib.integrations.sandbox import WaylandMode
+
+        self.assertIs(RawProjectYaml().run.wayland, WaylandMode.NONE)
+        for mode in WaylandMode:
+            raw = RawProjectYaml.model_validate({"run": {"wayland": mode.value}})
+            self.assertIs(raw.run.wayland, mode)
+            with self.assertRaises(ValidationError):
+                RawGlobalConfig.model_validate({"run": {"wayland": mode.value}})
+        for invalid in (True, False, None, "auto", "x11", "unsafe", "wl-filtered", "wl-unsafe"):
+            with self.subTest(invalid=invalid), self.assertRaises(ValidationError):
+                RawProjectYaml.model_validate({"run": {"wayland": invalid}})
+
     def test_run_memory_and_cpus_default_none(self) -> None:
         """Memory and CPU limits default to None."""
         raw = RawProjectYaml.model_validate({})

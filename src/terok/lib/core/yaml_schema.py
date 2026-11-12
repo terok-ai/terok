@@ -19,9 +19,8 @@ Sections owned by lower-level packages live in those packages' own
 terok itself owns the remaining four global sections (``tui``,
 ``logs``, ``tasks``-global, ``git``-global) plus every
 ``project.yml``-only section.  Task-lifecycle hooks (``run.hooks``)
-and the ``run:`` section as a whole live in sandbox and inherit
-through to both ``RawProjectYaml`` and ``RawGlobalConfig`` — same
-schema both levels, project values override globals.
+and the shared ``run:`` settings live in sandbox. Project-only desktop
+access extends that schema in ``RawProjectRunSection``.
 [`RawGlobalConfig`][terok.lib.core.yaml_schema.RawGlobalConfig]
 inherits from [`ExecutorConfigView`][terok_executor.config_schema.ExecutorConfigView]
 and flips back to ``extra="forbid"`` because terok knows the full
@@ -42,6 +41,7 @@ from terok.lib.integrations.sandbox import (
     RawRunSection,
     RawSSHSection,
     ServicesMode,
+    WaylandMode,
 )
 
 # ---------------------------------------------------------------------------
@@ -453,6 +453,19 @@ class RawCredentialsSection(BaseModel):
     )
 
 
+class RawProjectRunSection(RawRunSection):
+    """Project launch settings, including an explicit desktop-access grant."""
+
+    wayland: WaylandMode = Field(
+        default=WaylandMode.NONE,
+        description=(
+            "Desktop access: none (default), wl-mitm, or wl-direct; "
+            "both enabled modes require global experimental: true or --experimental "
+            "and add host attack surface"
+        ),
+    )
+
+
 class RawProjectImageSection(RawImageSection):
     """The ``image:`` section of project.yml — the config.yml image keys plus a Dockerfile snippet.
 
@@ -498,7 +511,7 @@ class RawProjectYaml(BaseModel):
     tasks: RawTasksSection = Field(default_factory=RawTasksSection)
     gate: RawGateSection = Field(default_factory=RawGateSection)
     gatekeeping: RawGatekeepingSection = Field(default_factory=RawGatekeepingSection)
-    run: RawRunSection = Field(default_factory=RawRunSection)
+    run: RawProjectRunSection = Field(default_factory=RawProjectRunSection)
     shield: RawShieldProjectSection = Field(default_factory=RawShieldProjectSection)
     services: RawServicesProjectSection = Field(default_factory=RawServicesProjectSection)
     image: RawProjectImageSection = Field(default_factory=RawProjectImageSection)

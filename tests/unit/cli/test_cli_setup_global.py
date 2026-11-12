@@ -13,14 +13,24 @@ from __future__ import annotations
 
 import argparse
 from concurrent.futures import ThreadPoolExecutor
+from dataclasses import replace
 from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
 import pytest
-from terok_util import SetupCheck, SetupDowngradeError, SetupRequiredError, SetupStatus, setup_lock
+from terok_util import (
+    SetupCheck,
+    SetupDowngradeError,
+    SetupReceipt,
+    SetupRequiredError,
+    SetupStatus,
+    require_no_downgrade,
+    setup_lock,
+)
 
-from terok.cli.commands.setup import cmd_setup, dispatch
+from terok.cli.commands.setup import cmd_setup, dispatch, register
 from terok.cli.commands.uninstall import cmd_uninstall
+from terok.lib.core import setup as owned_setup
 
 
 @pytest.fixture(autouse=True)
@@ -36,10 +46,23 @@ def _ready_dependencies():
 class TestComponentSubcommands:
     """``terok setup selinux|apparmor`` routes to sandbox's interactive flow."""
 
-    def _dispatch(self, component: str, *, show: bool = False) -> int:
+    def _dispatch(
+        self,
+        component: str | None,
+        *,
+        show: bool = False,
+        with_wayland: bool = False,
+        with_wayland_direct: bool = False,
+    ) -> int:
         import argparse
 
-        ns = argparse.Namespace(cmd="setup", component=component, show=show)
+        ns = argparse.Namespace(
+            cmd="setup",
+            component=component,
+            show=show,
+            with_wayland=with_wayland,
+            with_wayland_direct=with_wayland_direct,
+        )
         with (
             patch("terok.lib.api.setup.handle_setup_component", return_value=3) as handler,
             patch("terok.cli.commands.setup.tee_output") as tee,
@@ -54,7 +77,11 @@ class TestComponentSubcommands:
         assert self._dispatch("selinux") == 3
         args, kwargs = self.handler.call_args
         assert args == ("selinux",)
-        assert kwargs == {"show_only": False}, (
+        assert kwargs == {
+            "show_only": False,
+            "with_wayland": False,
+            "with_wayland_direct": False,
+        }, (
             "config and the sandbox-live root resolve inside sandbox, from the "
             "same files and env this process reads — nothing to plumb"
         )
@@ -63,6 +90,17 @@ class TestComponentSubcommands:
         self._dispatch("apparmor", show=True)
         assert self.handler.call_args.kwargs["show_only"] is True
 
+    @pytest.mark.parametrize("component", ["selinux", "apparmor", None])
+    @pytest.mark.parametrize("filtered,direct", [(True, False), (False, True), (True, True)])
+    def test_wayland_option_routes_to_component_validation(
+        self, component: str | None, filtered: bool, direct: bool
+    ) -> None:
+        """Sandbox validates the policy option; it never triggers the full bootstrap."""
+        self._dispatch(component, show=True, with_wayland=filtered, with_wayland_direct=direct)
+        self.handler.assert_called_once_with(
+            component, show_only=True, with_wayland=filtered, with_wayland_direct=direct
+        )
+
     def test_parser_accepts_the_components_and_rejects_others(self) -> None:
         import argparse
 
@@ -70,8 +108,14 @@ class TestComponentSubcommands:
 
         parser = argparse.ArgumentParser()
         register(parser.add_subparsers(dest="cmd"))
-        ns = parser.parse_args(["setup", "selinux", "--show"])
+        ns = parser.parse_args(
+            ["setup", "selinux", "--show", "--with-wayland", "--with-wayland-direct"]
+        )
         assert (ns.component, ns.show) == ("selinux", True)
+        assert ns.with_wayland is True
+        assert ns.with_wayland_direct is True
+        assert parser.parse_args(["setup", "selinux"]).with_wayland is False
+        assert parser.parse_args(["setup", "selinux"]).with_wayland_direct is False
         assert parser.parse_args(["setup"]).component is None
         with pytest.raises(SystemExit):
             parser.parse_args(["setup", "bogus"])
@@ -103,7 +147,9 @@ class TestComponentSubcommands:
         ):
             dispatch(ns)
         full_setup.assert_not_called()
-        handler.assert_called_once_with(None, show_only=True)
+        handler.assert_called_once_with(
+            None, show_only=True, with_wayland=False, with_wayland_direct=False
+        )
         assert "needs a component" in str(exc_info.value.code)
 
     def test_full_setup_flags_are_rejected_with_a_component(self) -> None:
@@ -672,6 +718,134 @@ class TestSetupOutputPersistence:
         tee.assert_called_once_with("setup")
 
 
+class TestSetupDowngradeOverride:
+    """Explicit CLI consent repairs receipts without bypassing final readiness checks."""
+
+    @pytest.fixture
+    def installation(self, tmp_path):
+        """Keep real parent/child receipts while replacing only host installation phases."""
+        child = SetupReceipt(tmp_path / "child.json", "child", "1.0.0", {})
+
+        @setup_lock()
+        def install_child(**_kwargs):
+            require_no_downgrade((child.check(),))
+            child.clear()
+            child.write()
+
+        with (
+            patch.object(owned_setup, "version", return_value="1.0.0"),
+            patch.object(
+                owned_setup.executor, "check_setup", side_effect=lambda *_a, **_kw: (child.check(),)
+            ),
+            patch(
+                "terok.lib.api.agents.ensure_sandbox_ready", side_effect=install_child
+            ) as install,
+            patch("terok.lib.api.agents.load_auth_providers", return_value={}),
+            patch("terok.cli.commands.setup._ensure_desktop_entry", return_value=True),
+            patch("terok.cli.commands.setup._ensure_shell_completions"),
+            patch("terok.cli.commands.setup.tee_output"),
+        ):
+            parent = owned_setup._receipt()
+            for receipt in (parent, child):
+                replace(receipt, version="2.0.0").write()
+            yield parent, child, install
+
+    @staticmethod
+    def arguments(*flags):
+        """Exercise the actual parser rather than constructing an override-only namespace."""
+        parser = argparse.ArgumentParser()
+        register(parser.add_subparsers(dest="cmd"))
+        return parser.parse_args(["setup", *flags])
+
+    def test_default_still_refuses_real_newer_receipts(self, installation):
+        parent, child, install = installation
+        before = [receipt.path.read_bytes() for receipt in (parent, child)]
+        with pytest.raises(SetupDowngradeError):
+            dispatch(self.arguments())
+        install.assert_not_called()
+        assert [receipt.path.read_bytes() for receipt in (parent, child)] == before
+
+    def test_override_reaches_nested_installers_and_expires(self, installation, capsys):
+        parent, child, install = installation
+        assert dispatch(self.arguments("--allow-downgrade")) is True
+        install.assert_called_once()
+        assert parent.check().status is child.check().status is SetupStatus.READY
+        warning = capsys.readouterr().err
+        assert "WARNING: --allow-downgrade" in warning
+        assert "newer terok 2.0.0; running 1.0.0" in warning
+        assert "newer child 2.0.0; running 1.0.0" in warning
+        with pytest.raises(SetupDowngradeError):
+            replace(child, version="0.9.0").clear()
+
+    @pytest.mark.parametrize("failure", [RuntimeError("install failed"), SystemExit(1)])
+    def test_failed_child_preserves_parent_and_restores_denial(self, installation, failure):
+        parent, child, install = installation
+        before = [receipt.path.read_bytes() for receipt in (parent, child)]
+        install.side_effect = failure
+        with pytest.raises(type(failure)):
+            dispatch(self.arguments("--allow-downgrade"))
+        assert [receipt.path.read_bytes() for receipt in (parent, child)] == before
+        with pytest.raises(SetupDowngradeError):
+            owned_setup.preflight_setup()
+
+    def test_unrepaired_child_cannot_certify_parent(self, installation):
+        parent, child, install = installation
+        install.side_effect = None
+        with pytest.raises(SetupDowngradeError):
+            dispatch(self.arguments("--allow-downgrade"))
+        assert child.check().status is SetupStatus.DOWNGRADE
+        assert parent.check().status is SetupStatus.MISSING
+        with pytest.raises(SetupDowngradeError):
+            owned_setup.preflight_setup()
+
+    def test_component_override_is_scoped_to_installation(self, installation):
+        parent, child, _install = installation
+
+        @setup_lock()
+        def install_policy(*_args, **_kwargs):
+            owned_setup.preflight_setup()
+            return 0
+
+        with (
+            patch("terok.lib.api.setup.handle_setup_component", side_effect=install_policy),
+            pytest.raises(SystemExit) as exc,
+        ):
+            dispatch(self.arguments("selinux", "--allow-downgrade"))
+        assert exc.value.code == 0
+        assert parent.check().status is child.check().status is SetupStatus.DOWNGRADE
+        with pytest.raises(SetupDowngradeError):
+            owned_setup.preflight_setup()
+
+    def test_show_with_override_remains_read_only(self, installation, capsys):
+        parent, child, install = installation
+        before = [receipt.path.read_bytes() for receipt in (parent, child)]
+        with (
+            patch("terok.cli.commands.setup.setup_lock") as lock,
+            patch("terok.lib.api.setup.handle_setup_component", return_value=0),
+            pytest.raises(SystemExit) as exc,
+        ):
+            dispatch(self.arguments("selinux", "--show", "--allow-downgrade"))
+        assert exc.value.code == 0
+        lock.assert_not_called()
+        install.assert_not_called()
+        assert [receipt.path.read_bytes() for receipt in (parent, child)] == before
+        assert parent.check().status is child.check().status is SetupStatus.DOWNGRADE
+        assert not capsys.readouterr().err
+
+    def test_warning_sanitizes_dependency_diagnostics(self, capsys):
+        check = SetupCheck("child\x1b[2J", "receipt", SetupStatus.DOWNGRADE, "newer\rhidden\x07")
+        with (
+            patch("terok.lib.core.setup.check_setup", return_value=(check,)),
+            patch("terok.lib.api.setup.check_setup", return_value=(check,)),
+            patch("terok.cli.commands.setup.cmd_setup"),
+            patch("terok.cli.commands.setup.tee_output"),
+        ):
+            dispatch(self.arguments("--allow-downgrade"))
+        warning = capsys.readouterr().err
+        assert "child\\x1b[2J: newer hidden\\x07" in warning
+        assert all(control not in warning for control in ("\x1b", "\r", "\x07"))
+
+
 @pytest.mark.parametrize("entry", ["dispatch", "direct", "component", "uninstall"])
 def test_concurrent_setup_is_rejected_before_preflight_or_writes(entry: str) -> None:
     """Every mutating entry point shares the lock, including direct TUI calls."""
@@ -708,4 +882,6 @@ def test_component_show_remains_available_during_setup() -> None:
             future.result(timeout=5)
     assert exc.value.code == 0
     preflight.assert_not_called()
-    show.assert_called_once_with("apparmor", show_only=True)
+    show.assert_called_once_with(
+        "apparmor", show_only=True, with_wayland=False, with_wayland_direct=False
+    )

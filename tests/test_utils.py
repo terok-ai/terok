@@ -153,6 +153,7 @@ def captured_runspec(agent_runner_mock: unittest.mock.Mock) -> Any:
         command=tuple(kwargs["command"]),
         task_dir=kwargs["task_dir"],
         gpus=kwargs.get("gpus"),
+        wayland=kwargs.get("wayland", "none"),
         memory=kwargs.get("memory"),
         cpus=kwargs.get("cpus"),
         caps=tuple(kwargs.get("caps") or ()),

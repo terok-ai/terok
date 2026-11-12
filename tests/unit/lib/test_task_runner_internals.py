@@ -74,6 +74,16 @@ class TestStrToBool:
 class TestPodmanStart:
     """Verify _podman_start error handling."""
 
+    def test_forwards_lifecycle_hooks(self) -> None:
+        """Restart observers reach the same sandbox lifecycle as fresh launches."""
+        from terok.lib.integrations.sandbox import LifecycleHooks
+        from terok.lib.orchestration.task_runners.container import _podman_start
+
+        hooks = LifecycleHooks(warning=Mock())
+        with patch("terok.lib.orchestration.task_runners.container._sandbox") as sandbox:
+            _podman_start(Mock(), "test-ctr", hooks=hooks)
+        sandbox.return_value.start.assert_called_once_with("test-ctr", hooks=hooks)
+
     def test_raises_on_missing_podman(self, mock_runtime) -> None:
         """FileNotFoundError becomes SystemExit with install hint."""
         from terok.lib.orchestration.task_runners.container import _podman_start
@@ -953,6 +963,7 @@ class TestRunContainer:
         p = MagicMock(spec=ProjectConfig)
         p.name = "p1"
         p.gpus = None
+        p.wayland = "none"
         p.root = MOCK_TASK_DIR
         p.isolation = "shared"
         p.is_sealed = False
@@ -1077,11 +1088,16 @@ class TestRunContainer:
         spec = captured_runspec(sandbox_factory)
         assert spec.unrestricted is True
 
-    def test_gpu_selector_from_project(self) -> None:
-        """RunSpec.gpus carries the project's run.gpus selector verbatim."""
+    @pytest.mark.parametrize("wayland", ["none", "wl-mitm", "wl-direct"])
+    def test_gpu_and_wayland_selectors_from_project(self, wayland: str) -> None:
+        """Desktop access and GPU passthrough are independent explicit grants."""
         project = self._make_project()
         project.gpus = "all"
+        project.wayland = wayland
         with (
+            patch(
+                "terok.lib.orchestration.task_runners.container.is_experimental", return_value=True
+            ),
             patch(
                 "terok.lib.orchestration.task_runners.container._agent_runner"
             ) as sandbox_factory,
@@ -1099,6 +1115,7 @@ class TestRunContainer:
 
         spec = captured_runspec(sandbox_factory)
         assert spec.gpus == "all"
+        assert spec.wayland == wayland
 
     def test_extra_args_and_command(self) -> None:
         """extra_args and command are converted to tuples in RunSpec."""
@@ -1723,6 +1740,7 @@ class TestLaunchPreparedIdentity:
         p = MagicMock(spec=ProjectConfig)
         p.name = "proj-id-x"
         p.gpus = None
+        p.wayland = "none"
         p.root = MOCK_TASK_DIR
         p.isolation = "shared"
         p.is_sealed = False

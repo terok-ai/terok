@@ -44,12 +44,33 @@ pip install terok
 After install, the `terok` command is on `$PATH`.  Run it with no arguments
 on a TTY to launch the TUI; pass a subcommand to drive the CLI.
 
+### Reapplying setup after a downgrade
+
+Normal setup and the TUI refuse to replace setup recorded by a newer package.
+This can also happen after squashing a development branch, which lowers its
+Git-derived version. To deliberately reinstall host setup with the current code:
+
+```bash
+terok setup --allow-downgrade
+```
+
+The command warns about affected packages and reruns the normal installers.
+It does not guarantee that older code can read newer application state. The
+override applies only to this setup invocation; task startup and final setup
+verification still require current, successful setup. No receipt deletion is
+needed. The TUI does not offer this override.
+
+The flag also works with component installation, such as
+`terok setup selinux --with-wayland --allow-downgrade`. That only installs the
+requested policy; run full setup to refresh package receipts. `--show` remains
+read-only, even when the override is supplied.
+
 ### Global Flags
 
 | Flag | Description |
 |------|-------------|
 | `--no-emoji` | Replace emojis with text labels (e.g. `[gate]` instead of emoji) |
-| `--experimental` | Enable experimental features (e.g. web tasks, krun runtime) |
+| `--experimental` | Enable experimental features (e.g. web tasks, krun runtime, Wayland desktop access) |
 
 ### Subsystem Surfaces
 
@@ -1588,6 +1609,186 @@ container that was granted several devices, the vendors' own selectors
 still work: `CUDA_VISIBLE_DEVICES` (NVIDIA), `ROCR_VISIBLE_DEVICES` /
 `HIP_VISIBLE_DEVICES` (AMD), `ONEAPI_DEVICE_SELECTOR` /
 `ZE_AFFINITY_MASK` (Intel) — indices are container-local.
+
+---
+
+## Wayland desktop access
+
+Desktop access is **off by default**. Both `wl-mitm` and `wl-direct` are
+**experimental** and require the existing global opt-in:
+
+```yaml
+# config.yml
+experimental: true
+```
+
+Alternatively, pass the root CLI flag for each invocation, for example
+`terok --experimental task run PROJECT`. Then choose the mode per project:
+
+```yaml
+# project.yml
+run:
+  wayland: wl-mitm  # none (default) | wl-mitm | wl-direct
+  # gpus: all      # independent opt-in; existing GPU passthrough is unchanged
+```
+
+Without that opt-in, terok refuses container creation or recreation with either
+enabled mode and plain restart of tasks whose saved mode enables Wayland. Turning off
+experimental features does not revoke access from already-running containers.
+Set `run.wayland: none` and recreate the task to remove access; the default
+`none` mode does not require experimental features.
+
+Use a local, rootless Podman container from a logged-in Wayland session.
+Sealed isolation and krun do not support this desktop channel; a request in
+either mode warns and leaves GUI access disabled.
+For filtered mode, install [wl-mitm](https://github.com/PeterCxy/wl-mitm) on the host yourself;
+terok discovers it on the invoking user's absolute `PATH` entries. It does
+not install or download the binary. Install GUI programs and their libraries
+in your image through a [user Dockerfile snippet](custom-images.md).
+The program runs **inside the task container**; its windows appear on the
+host desktop. There is no audio, X11, or automatic GPU grant.
+
+### Filtered and direct modes
+
+**Both enabled modes increase the host attack surface.** Filtering restricts
+available protocols; it does not make the compositor or proxy a complete
+isolation boundary. Terok prints this warning at launch and repeats startup
+warnings after initialization, beside the task's login instructions.
+
+`wl-mitm` runs one supervised wl-mitm host proxy per task. The container receives
+only that proxy's socket, not the real compositor socket or the host's
+runtime directory. A host-controlled allowlist permits application windows,
+focused input and rendering protocols, including pointer controls for games.
+Clipboard/drag-and-drop, screen capture, synthetic input, desktop management
+and unknown extensions are not granted. Applications requiring a denied or
+unsupported protocol may not work. This is protocol filtering, not a promise
+that the proxy or compositor is free of implementation bugs.
+Normal application capabilities remain, including fullscreen windows, output
+layout information and input while focused. Do not treat a container's window
+as a trusted host prompt.
+
+`wl-direct` mounts the selected compositor socket directly, **without terok protocol filtering**.
+The client can use any protocol the compositor makes available to that
+connection. A read-only socket mount does not make the protocol read-only.
+Use this only when you trust the task with that desktop access. Terok never
+falls back to this mode automatically and never relabels the real compositor
+socket.
+
+Both modes leave GPU permissions independent. For a 3D application, select
+the required GPU separately and install compatible graphics libraries in
+the image. No application-specific integration or MCP server is added.
+
+### Trying wl-mitm
+
+Install a native host executable, not a Toolbox launcher. With a current
+stable Rust/Cargo toolchain and a C linker available, follow the
+[upstream build procedure](https://github.com/PeterCxy/wl-mitm#readme):
+
+```bash
+git clone https://github.com/PeterCxy/wl-mitm.git
+cd wl-mitm
+./generate.sh
+cargo build --release --locked
+install -Dm755 target/release/wl-mitm "$HOME/.local/bin/wl-mitm"
+export PATH="$HOME/.local/bin:$PATH"
+command -v wl-mitm
+```
+
+Run the generator before building; `cargo install --git` alone does not
+generate the protocol sources. Terok supplies the configuration and manages
+one proxy per task, so do not start a separate daemon. The upstream executable
+treats its first argument as a configuration path, not a `--version` option.
+
+On an enforcing SELinux host, install the independent proxy policy with
+`terok setup selinux --with-wayland`; the direct-mode policy does not replace
+it. Set `run.wayland: wl-mitm` in the project and start a **new task** from
+the intended desktop session. Keep the working image, application workaround
+and GPU settings unchanged to isolate the proxy test. Switching this mode
+does not require an image rebuild. Plain restart preserves an existing
+container's mode; changing it requires explicit recreation.
+Packages and test files installed only inside the earlier task are not
+inherited by a new one; include them in the image or repeat their setup.
+
+Run the same GUI application inside the new task. If GUI access fails,
+`terok task status myproj TASK_ID --verbose` reports the supervisor log path
+and mounts. The source should be the task's private proxy directory, not the
+compositor socket. Terok never retries with direct access when the proxy fails.
+
+### Application runtime and libraries
+
+When desktop wiring is prepared, terok sets `XDG_RUNTIME_DIR` to a private
+in-container tmpfs owned by the container's initial user, with mode `0700`.
+It is separate from the read-only Wayland endpoint and exposes no host runtime
+directory. Its contents disappear when the container stops. Recreate older
+containers to acquire this mount and environment; an image rebuild is not
+needed for the runtime directory.
+
+L0 also creates `/home/dev/.config` as a dev-owned directory before agent
+configuration submounts are attached. To replace older images with a root-owned
+parent, update terok and run `terok project build myproj --refresh-agents`, then
+start a new task or explicitly recreate the existing container. This rebuilds
+L0 with caching, followed by L1 and L2; a full no-cache rebuild is unnecessary.
+A plain project build or container restart can retain the old filesystem.
+Terok does not repair ownership recursively across mounted configuration.
+
+GUI libraries, fonts and rendering drivers remain part of the application's
+image setup. Some Fedora image-loader combinations fail inside nested
+containers with a glycin/bubblewrap `devpts` permission error; see the
+[Fedora report](https://bugzilla.redhat.com/show_bug.cgi?id=2412232).
+For an application using libdecor, a narrow workaround is to set
+`LIBDECOR_PLUGIN_DIR` for that application to a directory containing only its
+installed `libdecor-cairo.so` plugin. This is an
+[upstream-supported override](https://gitlab.freedesktop.org/libdecor/libdecor/-/blob/0.2.5/README.md).
+It avoids libdecor's GTK decoration path, not all GTK image loading. Do not
+disable image-loader sandboxing or container confinement globally to work
+around this application-specific failure.
+
+### Session changes and failures
+
+Terok resolves `WAYLAND_DISPLAY` and `XDG_RUNTIME_DIR` from the invoking
+session on each start, including plain restart after a host reboot. Run
+terok from the intended desktop session rather than relying on a stale
+service-manager environment.
+
+An unavailable desktop, missing proxy, proxy failure or socket permission
+denial produces a warning: **the task continues without working GUI access**.
+Filtered mode never becomes direct mode. Supervisor logs and `terok sickbay`
+help distinguish proxy failure from a socket inaccessible inside the container.
+
+Plain restart retains the container's saved mode, even if `project.yml` has
+changed. **Disabling or changing a granted mode requires container recreation.**
+Tasks saved with obsolete experimental mode names also require recreation;
+renaming the project setting cannot remove an existing socket mount.
+In direct mode,
+Podman also cannot retarget a saved bind mount on plain restart. If the
+original socket path is missing or the session resolves to another path,
+terok reports **recreation required** instead of starting with the wrong
+desktop connection. A new socket at the same path after reboot can be used.
+
+On an enforcing SELinux host, install the policy for the selected mode.
+The [optional Wayland policies](selinux.md#optional-wayland-proxy-policy) have
+independent opt-ins:
+
+```bash
+terok setup selinux --with-wayland --show
+terok setup selinux --with-wayland
+# For wl-direct instead:
+terok setup selinux --with-wayland-direct --show
+terok setup selinux --with-wayland-direct
+```
+
+Both flags are off by default and can be combined. Installing one does not
+install the other. Direct-policy compilation has additional
+[host build prerequisites, including Silverblue instructions](selinux.md#direct-desktop-access-is-a-separate-opt-in).
+A newly created direct-mode task uses its dedicated
+SELinux container domain only when that policy is installed. Existing tasks
+must be recreated to change domains. Removing the policy of an existing
+direct-domain container requires restoring it or recreating that container
+before restart; terok never silently disables its SELinux label.
+
+No policy installation or privilege escalation
+occurs during task launch. Selecting `services.mode: tcp` for terok's other
+services does not turn Wayland into TCP or grant desktop access.
 
 ---
 

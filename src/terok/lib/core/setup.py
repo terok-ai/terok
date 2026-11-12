@@ -27,7 +27,7 @@ def check_setup(*, live: bool = False) -> tuple[SetupCheck, ...]:
 
 
 def preflight_setup() -> None:
-    """Reject downgrades throughout the closure before setup writes anything."""
+    """Reject unapproved downgrades throughout the closure before setup writes anything."""
     require_no_downgrade(check_setup())
 
 

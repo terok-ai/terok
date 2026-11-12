@@ -40,7 +40,7 @@ def test_downgrade_exits_four_without_override_hint(capsys: pytest.CaptureFixtur
     assert exc.value.code == 4
     err = capsys.readouterr().err
     assert "newer child 1.0; running 0.9" in err
-    assert "Downgrades are not supported" in err
+    assert "Downgrade requires explicit setup authorization" in err
     assert "rm " not in err
     assert "stamp" not in err
 

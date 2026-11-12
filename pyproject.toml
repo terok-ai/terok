@@ -25,11 +25,12 @@ classifiers = [
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
     "Programming Language :: Python :: 3.14",
+    "Programming Language :: Python :: 3.15",
     "Topic :: Security",
     "Topic :: System :: Systems Administration",
     "Typing :: Typed",
 ]
-requires-python = ">=3.12,<3.15"
+requires-python = ">=3.12,<3.16"
 dynamic = ["version"]
 # Dependency pins follow the policy in AGENTS.md ("Dependency Pinning &
 # pyproject.toml Hygiene").  Keep the dependency list comment-free.
@@ -44,11 +45,11 @@ dependencies = [
     "unique-namer~=1.6",
     "textual-serve~=1.1",
     "jinja2~=3.1",
-    "terok-executor @ https://github.com/terok-ai/terok-executor/releases/download/v0.5.1a15/terok_executor-0.5.1a15-py3-none-any.whl",
-    "terok-sandbox @ https://github.com/terok-ai/terok-sandbox/releases/download/v0.7.0a10/terok_sandbox-0.7.0a10-py3-none-any.whl",
-    "terok-shield @ https://github.com/terok-ai/terok-shield/releases/download/v0.10.0a6/terok_shield-0.10.0a6-py3-none-any.whl",
-    "terok-clearance @ https://github.com/terok-ai/terok-clearance/releases/download/v0.8.2a5/terok_clearance-0.8.2a5-py3-none-any.whl",
-    "terok-util @ https://github.com/terok-ai/terok-util/releases/download/v0.5.0a5/terok_util-0.5.0a5-py3-none-any.whl",
+    "terok-executor @ git+https://github.com/sliwowitz/terok-executor@feat/wayland-modes",
+    "terok-sandbox @ git+https://github.com/sliwowitz/terok-sandbox@feat/wayland-modes",
+    "terok-shield @ git+https://github.com/sliwowitz/terok-shield@feat/setup-allow-downgrade",
+    "terok-clearance @ git+https://github.com/sliwowitz/terok-clearance@feat/setup-allow-downgrade",
+    "terok-util @ git+https://github.com/sliwowitz/terok-util@feat/setup-allow-downgrade",
 ]
 
 [project.urls]

@@ -19,6 +19,7 @@ from typing import TYPE_CHECKING
 from terok_util import write_untrusted_text
 
 from terok.lib.integrations.executor import agent_input_dir, resolve_agent_value
+from terok.lib.integrations.sandbox import LifecycleHooks
 
 from ...core import runtime as _rt
 from ...core.config import get_public_host
@@ -45,7 +46,7 @@ from ..tasks import (
     write_task_state,
 )
 from .config import _apply_unrestricted_env, _prepare_agent_config, _str_to_bool
-from .container import _refuse_existing_container, _run_container
+from .container import _refuse_existing_container, _repeat_startup_warnings, _run_container
 from .shield import _apply_shield_policy
 
 if TYPE_CHECKING:
@@ -181,6 +182,7 @@ def task_run_toad(
         task_dir=task_dir,
         meta_path=meta_path,
     )
+    startup_warnings: list[str] = []
     _run_container(
         cname=cname,
         image=project_cli_image(project.name),
@@ -194,6 +196,7 @@ def task_run_toad(
         allow_debugger=debug,
         egress=egress,
         broker_context=broker_context,
+        hooks=LifecycleHooks(warning=startup_warnings.append),
     )
     _apply_shield_policy(project, cname, task_dir, is_restart=False)
     run_hook(
@@ -246,6 +249,7 @@ def task_run_toad(
         f"\n- Logs: {_yellow(f'podman logs -f {cname}', color_enabled)}"
         f"\n- Stop: {_red(f'podman stop {cname}', color_enabled)}"
     )
+    _repeat_startup_warnings(startup_warnings)
 
 
 __all__ = [

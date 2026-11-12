@@ -54,6 +54,7 @@ def render_project_loading(
     lines += [
         Text(upstream),
         Text(""),
+        Text(f"Base image:  {project.base_image}"),
         Text("Loading details..."),
         tasks_line,
     ]
@@ -212,6 +213,7 @@ def render_project_details(
     lines += [
         Text(upstream),
         Text(""),
+        Text(f"Base image:  {project.base_image}"),
         Text.assemble("Dockerfiles: ", docker_s),
         Text.assemble("Images:      ", images_s),
         Text.assemble("SSH dir:     ", ssh_s),

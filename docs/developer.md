@@ -536,6 +536,35 @@ terminal run as captured child processes instead:
 
 ---
 
+### Wayland host acceptance checks
+
+The unit suite uses local sockets and fake runtimes. It does not prove
+desktop compatibility or SELinux enforcement. Before releasing desktop
+forwarding, run these checks on the latest Ubuntu LTS and Fedora, with
+GNOME and KDE Wayland sessions where available:
+
+| Scenario | Expected result |
+| --- | --- |
+| Default project | No desktop socket, proxy or display grant |
+| `wl-mitm`, ordinary GUI | Window and focused input work; executable runs in the container |
+| `wl-mitm`, 3D application, explicit GPU grant | Rendering and pointer controls work with image-provided graphics libraries |
+| Clipboard, capture, synthetic-input and desktop-management clients | Denied globals cannot be bound, including by guessed registry IDs |
+| Missing binary, absent desktop, denied socket, proxy exits | Loud warning; task remains running; no direct-socket fallback |
+| Two tasks | Separate proxies, sockets and logs; stopping one leaves the other alive |
+| Task stop, forced removal, supervisor or wrapper death | Proxy and task-owned listener are cleaned up; compositor is untouched |
+| Plain restart after host reboot or desktop-session change | Filtered mode resolves the current session and starts a fresh proxy |
+| Direct mode restart with missing or changed socket path | Explicit recreation-required error; no placeholder directory or implicit recreation |
+| Other services use TCP | Wayland still uses its own socket; other transports are unchanged |
+| Fedora enforcing, optional policy present/absent/removed | Dedicated proxy domain when installed; transition denial never retries unconfined; container-side connection denial is diagnosed |
+| `wl-direct`, separate direct policy absent/present | Only the selected socket is mounted without relabeling; default domain without the policy, dedicated container domain with it; ordinary containers gain no desktop permission |
+| Direct policy installed or removed after creation | Saved process domain is retained; recreation applies a new domain; a removed saved domain requires policy restoration or recreation |
+| Missing session and denied in-container probe | Original warning appears after initialization; no probe when no endpoint was prepared; no traceback in the user summary |
+
+Inspect the proxy's process domain and audit denials on the enforcing host;
+policy compilation alone is not an enforcement test. Do not disable SELinux
+or add broad host-socket permissions to make a failing check pass. Record
+compositor, wl-mitm, graphics-driver and policy versions with the results.
+
 ## Making a Release
 
 1. Update `version` in `pyproject.toml`
