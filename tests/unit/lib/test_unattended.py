@@ -213,12 +213,12 @@ def run_followup_request(
 
     state_patch: contextlib.AbstractContextManager
     if isinstance(container_state, list):
-        # Existence and protocol inspection both precede the start transition.
+        # Existence, protocol and desktop inspections precede the start transition.
         state_patch = unittest.mock.patch.object(
             type(container),
             "state",
             new_callable=unittest.mock.PropertyMock,
-            side_effect=iter([container_state[0], *container_state]).__next__,
+            side_effect=iter([container_state[0], container_state[0], *container_state]).__next__,
             create=True,
         )
     else:
@@ -861,14 +861,8 @@ class TestTaskFollowupHeadless:
             task_id = self._create_completed_task(base, "proj_startfail")
             container_mock = mock_runtime.container.return_value
 
+            container_mock.state = "exited"
             with (
-                unittest.mock.patch.object(
-                    type(container_mock),
-                    "state",
-                    new_callable=unittest.mock.PropertyMock,
-                    side_effect=iter(["exited", "exited", "exited"]).__next__,
-                    create=True,
-                ),
                 unittest.mock.patch.dict(
                     os.environ, runner_env_vars(base, base / "config.yml"), clear=True
                 ),
@@ -898,14 +892,9 @@ class TestTaskFollowupHeadless:
 
             container_mock = mock_runtime.container.return_value
 
+            container_mock.state = "exited"
+            container_mock.start.side_effect = lambda: setattr(container_mock, "state", "running")
             with (
-                unittest.mock.patch.object(
-                    type(container_mock),
-                    "state",
-                    new_callable=unittest.mock.PropertyMock,
-                    side_effect=iter(["exited", "exited", "running"]).__next__,
-                    create=True,
-                ),
                 unittest.mock.patch.dict(
                     os.environ, runner_env_vars(base, config_file), clear=True
                 ),

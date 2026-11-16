@@ -251,6 +251,38 @@ def test_wayland_recreation_required_never_removes_the_retained_container(
     task.toad.assert_not_called()
 
 
+@pytest.mark.parametrize("mode", ["cli", "toad", "run"])
+@pytest.mark.parametrize("state", ["running", "exited"])
+@pytest.mark.parametrize("failure", [WaylandRecreationRequired, RuntimeInspectionError])
+def test_wayland_preflight_preserves_task_before_any_restart_mutation(
+    upgrade_task: SimpleNamespace, mode: str, state: str, failure: type[RuntimeError]
+) -> None:
+    """Incompatible or unverifiable desktop grants never stop a task or rewrite its inputs."""
+    task = upgrade_task
+    task.meta["mode"] = mode
+    task.container.state = state
+    before = task.meta.copy()
+    fault = failure("cannot verify desktop access")
+    task.sandbox.wayland_preflight.side_effect = fault
+    with (
+        patch.object(restart, "_refresh_before_resume") as refresh,
+        patch.object(restart, "_start_and_report_restart") as start,
+        pytest.raises(SystemExit, match="cannot verify desktop access") as raised,
+    ):
+        restart.task_restart(task.project.name, "1")
+
+    assert raised.value.__cause__ is fault
+    assert task.meta == before
+    task.sandbox.wayland_preflight.assert_called_once_with(f"{task.project.name}-{mode}-1")
+    task.preconditions.assert_not_called()
+    refresh.assert_not_called()
+    start.assert_not_called()
+    task.container.stop.assert_not_called()
+    task.sandbox.rm.assert_not_called()
+    task.cli.assert_not_called()
+    task.toad.assert_not_called()
+
+
 def test_resume_protocol_guard_runs_before_mutating_start_inputs(
     upgrade_task: SimpleNamespace, mock_runtime: MagicMock
 ) -> None:

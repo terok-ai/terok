@@ -162,6 +162,10 @@ def _make_running(
 
     if reason is None:
         _require_saved_wayland_experimental(cname)
+        try:
+            _sandbox(project).wayland_preflight(cname)
+        except RuntimeError as exc:
+            raise SystemExit(str(exc)) from exc
 
     if bounce:
         print(f"Restarting task {project_name}/{task_id} ({mode})...")

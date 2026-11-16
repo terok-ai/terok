@@ -85,6 +85,7 @@ def retained_task(tmp_path: Path, mock_runtime: MagicMock) -> Iterator[SimpleNam
     with (
         patch.object(restart, "load_project", return_value=project),
         patch.object(restart, "load_task_meta", return_value=(meta, tmp_path / "dossier.json")),
+        patch.object(restart, "_sandbox") as sandbox,
         patch.object(restart, "make_sandbox_config") as sandbox_config,
         patch.object(restart, "load_sidecar", return_value=sidecar) as load_sidecar,
         patch.object(restart, "_validate_restart_preconditions") as preconditions,
@@ -103,6 +104,7 @@ def retained_task(tmp_path: Path, mock_runtime: MagicMock) -> Iterator[SimpleNam
             load_sidecar=load_sidecar,
             container=mock_runtime.container.return_value,
             preconditions=preconditions,
+            desktop_preflight=sandbox.return_value.wayland_preflight,
             refresh=refresh,
             stop=stop,
             start=start,
@@ -125,6 +127,7 @@ def test_plain_restart_checks_saved_mode_before_stop_or_fallback(
     with pytest.raises(SystemExit, match="requires the experimental flag"):
         restart.task_restart(task.project.name, "1")
 
+    task.desktop_preflight.assert_not_called()
     task.preconditions.assert_not_called()
     task.refresh.assert_not_called()
     task.stop.assert_not_called()
@@ -143,6 +146,7 @@ def test_invalid_sidecar_refuses_before_mutating_retained_task(
     with pytest.raises(SystemExit):
         restart.task_restart(task.project.name, "1")
 
+    task.desktop_preflight.assert_not_called()
     task.preconditions.assert_not_called()
     task.refresh.assert_not_called()
     task.stop.assert_not_called()
@@ -164,6 +168,7 @@ def test_authorized_restart_preserves_saved_mode(
 
     restart.task_restart(task.project.name, "1")
 
+    task.desktop_preflight.assert_called_once_with(f"{task.project.name}-cli-1")
     task.start.assert_called_once()
     task.recreate.assert_not_called()
     assert task.sidecar.wayland.mode == mode
