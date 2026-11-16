@@ -442,7 +442,9 @@ def _setup_verdict_or_exit() -> None:
     try:
         require_setup(check_setup(live=True))
     except SetupDowngradeError as exc:
-        print(f"terok: refusing to run — {exc}", file=sys.stderr)
+        from .setup import DOWNGRADE_HINT
+
+        print(f"terok: refusing to run — {exc}\n  Fix: {DOWNGRADE_HINT}", file=sys.stderr)
         raise SystemExit(4) from exc
     except SetupRequiredError as exc:
         print(f"terok: {exc}\n  Fix: terok setup", file=sys.stderr)

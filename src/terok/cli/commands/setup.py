@@ -198,6 +198,9 @@ def _setup_transaction(*, allow_downgrade: bool) -> Iterator[None]:
         yield
 
 
+DOWNGRADE_HINT = "upgrade back, or run `terok setup --allow-downgrade`"
+"""How an operator gets past a refused downgrade; the escape hatch is theirs to pull."""
+
 #: dest → flag spelling for options that only the full bootstrap consumes.
 #: Rejected (not silently dropped) when a component is given.
 _FULL_SETUP_ONLY_FLAGS = {

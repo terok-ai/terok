@@ -348,7 +348,9 @@ def main(prog: str = "terok") -> None:
             if dispatch(args):
                 return
     except SetupDowngradeError as exc:
-        print(f"error: {exc}", file=sys.stderr)
+        from .commands.setup import DOWNGRADE_HINT
+
+        print(f"error: {exc}\nhint: {DOWNGRADE_HINT}.", file=sys.stderr)
         sys.exit(4)
     except SetupRequiredError as exc:
         print(f"error: {exc}\nhint: run `terok setup`.", file=sys.stderr)

@@ -28,7 +28,7 @@ def test_setup_needed_checks_exit_three(
     assert "terok setup" in err
 
 
-def test_downgrade_exits_four_without_override_hint(capsys: pytest.CaptureFixture[str]) -> None:
+def test_downgrade_exits_four_and_names_the_way_out(capsys: pytest.CaptureFixture[str]) -> None:
     """A lower owner's downgrade wins over missing upper setup, without inspecting its file."""
     checks = [
         SetupCheck("terok", "receipt", SetupStatus.MISSING),
@@ -41,8 +41,7 @@ def test_downgrade_exits_four_without_override_hint(capsys: pytest.CaptureFixtur
     err = capsys.readouterr().err
     assert "newer child 1.0; running 0.9" in err
     assert "Downgrade requires explicit setup authorization" in err
-    assert "rm " not in err
-    assert "stamp" not in err
+    assert "terok setup --allow-downgrade" in err
 
 
 def test_ready_checks_return_silently(capsys: pytest.CaptureFixture[str]) -> None:
