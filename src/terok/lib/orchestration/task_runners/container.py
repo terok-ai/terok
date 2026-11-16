@@ -15,6 +15,7 @@ import math
 import shlex
 import sys
 from collections.abc import Iterable
+from dataclasses import replace
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -126,9 +127,7 @@ def _override_line(override: ShieldOverride) -> str:
     return f"{override.host} {_EXPIRES_MARKER}{override.expires.isoformat()}"
 
 
-def _podman_start(
-    project: ProjectConfig, cname: str, *, hooks: LifecycleHooks | None = None
-) -> None:
+def _podman_start(project: ProjectConfig, cname: str) -> list[str]:
     """Start an existing container, raising SystemExit on failure.
 
     Routes through [`Sandbox.start`][terok_sandbox.Sandbox.start] so the
@@ -136,15 +135,21 @@ def _podman_start(
     ``/run/terok`` bind-mount source that a reboot wipes — as part of the
     start.  terok stays ignorant of that precondition; "start an existing
     container" is one sandbox call.
+
+    Returns the warnings the start printed, for
+    [`_repeat_startup_warnings`][terok.lib.orchestration.task_runners.container._repeat_startup_warnings]
+    once the caller's own output has scrolled them away.
     """
+    warnings: list[str] = []
     try:
-        _sandbox(project).start(cname, hooks=hooks)
+        _sandbox(project).start(cname, hooks=LifecycleHooks(warning=warnings.append))
     except FileNotFoundError:
         raise SystemExit("podman not found; please install podman")
     except SetupRequiredError:
         raise
     except RuntimeError as exc:
         raise SystemExit(f"Failed to start container:\n{exc}") from exc
+    return warnings
 
 
 def _refuse_existing_container(
@@ -304,7 +309,7 @@ def _run_container(
     hooks: LifecycleHooks | None = None,
     allow_debugger: bool = False,
     egress: EgressProjection = _NO_EGRESS,
-) -> None:
+) -> list[str]:
     """Launch a detached task container, annotated for clearance enrichment.
 
     A single ``dossier.meta_path`` OCI annotation binds the container
@@ -340,15 +345,24 @@ def _run_container(
         extra_args: Additional ``podman run`` flags inserted after the GPU
             args (e.g. ``["-p", "127.0.0.1:8080:7860"]``).
         command: Optional command + args appended after the image name.
-        hooks: Optional lifecycle callbacks fired around the launch.
+        hooks: Optional lifecycle callbacks fired around the launch.  Its
+            warning observer is replaced by the collector behind the
+            return value.
         allow_debugger: Launch in debug mode — the supervisor children
             stay ptrace-able so a debugger can attach (only the
             ``PR_SET_DUMPABLE`` clear is skipped; core-limit + mlockall
             still apply).  Forwarded to
             [`AgentRunner.launch_prepared`][terok_executor.AgentRunner.launch_prepared]'s
             ``allow_debugger`` kwarg, which writes it into the sidecar.
+
+    Returns:
+        The warnings the launch printed, for
+        [`_repeat_startup_warnings`][terok.lib.orchestration.task_runners.container._repeat_startup_warnings]
+        once the caller's own output has scrolled them away.
     """
     _require_wayland_experimental(project.wayland)
+    warnings: list[str] = []
+    hooks = replace(hooks or LifecycleHooks(), warning=warnings.append)
     # OCI annotation under the ``dossier.*`` namespace flows through to
     # the shield reader, which picks it up at hook spawn time and uses
     # the pointed-at JSON file as ``ClearanceEvent.dossier`` on every
@@ -407,6 +421,7 @@ def _run_container(
         raise SystemExit(f"podman not found; please install podman ({exc})") from exc
     except BuildError as exc:
         raise SystemExit(str(exc)) from exc
+    return warnings
 
 
 def _require_wayland_experimental(mode: WaylandMode) -> None:

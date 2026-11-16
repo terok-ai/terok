@@ -23,7 +23,6 @@ from terok.lib.integrations.executor import (
 )
 from terok.lib.integrations.sandbox import (
     BUNDLE_VERSION,
-    LifecycleHooks,
     WaylandRecreationRequired,
     load_sidecar,
     resolve_container_shield_version,
@@ -510,8 +509,7 @@ def _start_and_report_restart(
 ) -> None:
     """Start the (stopped) container, apply shield policy, print how to reach it."""
     task_dir = project.tasks_root / str(task_id)
-    startup_warnings: list[str] = []
-    _podman_start(project, cname, hooks=LifecycleHooks(warning=startup_warnings.append))
+    startup_warnings = _podman_start(project, cname)
     _assert_running(project, cname)
     run_hook(
         "post_start",

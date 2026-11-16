@@ -74,15 +74,13 @@ class TestStrToBool:
 class TestPodmanStart:
     """Verify _podman_start error handling."""
 
-    def test_forwards_lifecycle_hooks(self) -> None:
-        """Restart observers reach the same sandbox lifecycle as fresh launches."""
-        from terok.lib.integrations.sandbox import LifecycleHooks
+    def test_returns_what_the_start_warned_about(self) -> None:
+        """A restart hands its warnings back for the same repeat as a fresh launch."""
         from terok.lib.orchestration.task_runners.container import _podman_start
 
-        hooks = LifecycleHooks(warning=Mock())
         with patch("terok.lib.orchestration.task_runners.container._sandbox") as sandbox:
-            _podman_start(Mock(), "test-ctr", hooks=hooks)
-        sandbox.return_value.start.assert_called_once_with("test-ctr", hooks=hooks)
+            sandbox.return_value.start.side_effect = lambda _name, *, hooks: hooks.warning("heed")
+            assert _podman_start(Mock(), "test-ctr") == ["heed"]
 
     def test_raises_on_missing_podman(self, mock_runtime) -> None:
         """FileNotFoundError becomes SystemExit with install hint."""
@@ -1375,7 +1373,30 @@ class TestRunContainer:
                 hooks=hooks,
             )
 
-        assert sandbox_factory.return_value.launch_prepared.call_args.kwargs["hooks"] is hooks
+        forwarded = sandbox_factory.return_value.launch_prepared.call_args.kwargs["hooks"]
+        assert forwarded.pre_start is hooks.pre_start
+
+    def test_returns_what_the_launch_warned_about(self) -> None:
+        """Whatever hooks the caller brings, the launch's warnings come back for the repeat."""
+
+        def launch_that_warns(**launch) -> None:
+            launch["hooks"].warning("heed")
+
+        with patch(
+            "terok.lib.orchestration.task_runners.container._agent_runner"
+        ) as sandbox_factory:
+            sandbox_factory.return_value.launch_prepared.side_effect = launch_that_warns
+            warnings = _run_container(
+                broker_context=BrokerContext("test", "task", "default"),
+                task_id="t1",
+                cname="ctr",
+                image="img",
+                env={},
+                volumes=[],
+                project=self._make_project(),
+                task_dir=MOCK_TASK_DIR,
+            )
+        assert warnings == ["heed"]
 
     def test_none_command_becomes_empty_tuple(self) -> None:
         """command=None results in an empty tuple in the RunSpec."""

@@ -474,9 +474,10 @@ class TestTaskRunHeadless:
         """Persisting launch state must not undo a rename made during container startup."""
         project_name = "proj_headless_rename"
 
-        def rename_during_launch(**kwargs) -> None:
-            """Rename after the runner has read the original metadata."""
+        def rename_during_launch(**kwargs) -> list[str]:
+            """Rename after the runner has read the original metadata; the launch warns of nothing."""
             task_rename(project_name, kwargs["task_id"], "edited-name")
+            return []
 
         with unittest.mock.patch(
             "terok.lib.orchestration.task_runners.headless._run_container",

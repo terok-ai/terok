@@ -26,7 +26,6 @@ from terok.lib.integrations.executor import (
     resolve_agent_value,
     resolve_instructions,
 )
-from terok.lib.integrations.sandbox import LifecycleHooks
 
 from ...core import runtime as _rt
 from ...core.images import project_cli_image, require_agent_installed
@@ -269,8 +268,7 @@ def task_run_headless(request: HeadlessRunRequest) -> str:
         task_dir=task_dir,
         meta_path=meta_path,
     )
-    startup_warnings: list[str] = []
-    _run_container(
+    startup_warnings = _run_container(
         cname=cname,
         image=project_cli_image(project.name),
         env=env,
@@ -282,7 +280,6 @@ def task_run_headless(request: HeadlessRunRequest) -> str:
         allow_debugger=request.debug,
         egress=egress,
         broker_context=broker_context,
-        hooks=LifecycleHooks(warning=startup_warnings.append),
     )
     _apply_shield_policy(project, cname, task_dir, is_restart=False)
     run_hook(
@@ -431,8 +428,7 @@ def task_followup_headless(
 
     # Restart the existing container (re-runs the original bash command,
     # which reads prompt.txt and session files from the volume)
-    startup_warnings: list[str] = []
-    _podman_start(project, cname, hooks=LifecycleHooks(warning=startup_warnings.append))
+    startup_warnings = _podman_start(project, cname)
     _assert_running(project, cname)
     run_hook(
         "post_start",

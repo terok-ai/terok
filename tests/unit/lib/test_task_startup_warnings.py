@@ -51,13 +51,13 @@ def test_warning_replay_preserves_stderr(warnings, capsys) -> None:
 
 @pytest.fixture
 def launch_with_warnings(mock_runtime):
-    """Simulate the sandbox's immediate warnings and observer notifications."""
+    """Simulate a launch that prints its warnings at once and hands them back."""
 
-    def launch(*_args, hooks, **_kwargs) -> None:
+    def launch(*_args, **_kwargs) -> list[str]:
         mock_runtime.container.return_value.state = "running"
         for warning in _WARNINGS:
             print(warning, file=sys.stderr)
-            hooks.warning(warning)
+        return list(_WARNINGS)
 
     return launch
 
