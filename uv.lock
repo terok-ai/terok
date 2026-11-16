@@ -1665,16 +1665,12 @@ wheels = [
 
 [[package]]
 name = "mkdocs-terok"
-version = "0.8.3"
-source = { registry = "https://pypi.org/simple" }
+version = "0.8.4.dev152+g57270dad5"
+source = { git = "https://github.com/sliwowitz/mkdocs-terok?rev=fix%2Fpython-315-support#57270dad5b8aab55faf96e27b1f53458920d4764" }
 dependencies = [
     { name = "properdocs" },
     { name = "pyyaml" },
     { name = "squarify" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/72/bb/3349509cec057cd7c18c344effff8a6c4fc2dd5e191278fc841769e7fd84/mkdocs_terok-0.8.3.tar.gz", hash = "sha256:0e977dcbedc4dd0660aab0a40669b7a8c85760f3a3e2f4b55c82556f948b41bd", size = 145996, upload-time = "2026-10-28T21:33:57.254Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/d0/8d/4bc73bbcf253c60255dbe7ad11fcfc059a850cca5620c44691bc7bf670db/mkdocs_terok-0.8.3-py3-none-any.whl", hash = "sha256:c4247ebf3ce0b5ff77cee6986fe939c28b0b78cb48fa06ae460467777d645f61", size = 42752, upload-time = "2026-10-28T21:33:55.953Z" },
 ]
 
 [[package]]
@@ -2872,7 +2868,7 @@ docs = [
     { name = "mkdocs-literate-nav", specifier = ">=0.6" },
     { name = "mkdocs-material", specifier = ">=9.7.6" },
     { name = "mkdocs-section-index", specifier = ">=0.3" },
-    { name = "mkdocs-terok", specifier = "~=0.8.0" },
+    { name = "mkdocs-terok", git = "https://github.com/sliwowitz/mkdocs-terok?rev=fix%2Fpython-315-support" },
     { name = "mkdocstrings", extras = ["python"], specifier = ">=1.0.5" },
     { name = "properdocs", specifier = ">=1.6.7" },
 ]
@@ -2886,8 +2882,8 @@ test = [
 
 [[package]]
 name = "terok-clearance"
-version = "0.8.2a6.dev265+g5cece55c1"
-source = { git = "https://github.com/sliwowitz/terok-clearance?rev=feat%2Fsetup-allow-downgrade#5cece55c17428f166979da3bc5b2170c8b6028cf" }
+version = "0.8.2a6.dev267+gacd9a97b5"
+source = { git = "https://github.com/sliwowitz/terok-clearance?rev=feat%2Fsetup-allow-downgrade#acd9a97b521edfba35f2f8c749dcf6ac376800a6" }
 dependencies = [
     { name = "asyncvarlink" },
     { name = "dbus-fast" },
@@ -2897,8 +2893,8 @@ dependencies = [
 
 [[package]]
 name = "terok-executor"
-version = "0.5.1a16.dev539+gbccd5145e"
-source = { git = "https://github.com/sliwowitz/terok-executor?rev=feat%2Fwayland-modes#bccd5145efbc7962cfa8a77f04a243b3f695ae7f" }
+version = "0.5.1a16.dev541+gd6003a63c"
+source = { git = "https://github.com/sliwowitz/terok-executor?rev=feat%2Fwayland-modes#d6003a63cab9186db04a9a08d2d3ab1d545c6021" }
 dependencies = [
     { name = "agent-client-protocol" },
     { name = "jinja2" },
@@ -2913,8 +2909,8 @@ dependencies = [
 
 [[package]]
 name = "terok-sandbox"
-version = "0.7.0a11.dev540+gedfa489fc"
-source = { git = "https://github.com/sliwowitz/terok-sandbox?rev=feat%2Fwayland-modes#edfa489fc4b031d92c47026eafd42ed831efc9bd" }
+version = "0.7.0a11.dev542+g023bf4141"
+source = { git = "https://github.com/sliwowitz/terok-sandbox?rev=feat%2Fwayland-modes#023bf4141248df31e4561dfa9c0d1f3c9a8379fa" }
 dependencies = [
     { name = "aiohttp" },
     { name = "cryptography" },
@@ -2933,8 +2929,8 @@ dependencies = [
 
 [[package]]
 name = "terok-shield"
-version = "0.10.0a7.dev420+g80760d0a5"
-source = { git = "https://github.com/sliwowitz/terok-shield?rev=feat%2Fsetup-allow-downgrade#80760d0a5e11b06376f28e7a67509de081eb5b5a" }
+version = "0.10.0a7.dev422+g42141c8fe"
+source = { git = "https://github.com/sliwowitz/terok-shield?rev=feat%2Fsetup-allow-downgrade#42141c8fe5f03e43182cfd3e5164dff8c002e1af" }
 dependencies = [
     { name = "pydantic" },
     { name = "pyyaml" },
@@ -2943,8 +2939,8 @@ dependencies = [
 
 [[package]]
 name = "terok-util"
-version = "0.5.0a6.dev178+gea7c1ac68"
-source = { git = "https://github.com/sliwowitz/terok-util?rev=feat%2Fsetup-allow-downgrade#ea7c1ac68af31edc4f10af3c6f718261cec6e35c" }
+version = "0.5.0a6.dev179+gc05afe0d3"
+source = { git = "https://github.com/sliwowitz/terok-util?rev=feat%2Fsetup-allow-downgrade#c05afe0d3f8fac7c7f323a26911519ff089917de" }
 dependencies = [
     { name = "jinja2" },
     { name = "packaging" },
