@@ -459,9 +459,8 @@ class RawProjectRunSection(RawRunSection):
     wayland: WaylandMode = Field(
         default=WaylandMode.NONE,
         description=(
-            "Desktop access: none (default), wl-mitm, or wl-direct; "
-            "both enabled modes require global experimental: true or --experimental "
-            "and add host attack surface"
+            "Wayland desktop access for the project's tasks; both enabled modes "
+            "require global experimental: true or --experimental and add host attack surface"
         ),
     )
 
@@ -663,7 +662,7 @@ class RawGlobalConfig(ExecutorConfigView):
       [`ExecutorConfigView`][terok_executor.config_schema.ExecutorConfigView].
     - The ``run`` section (including the nested ``hooks``) is
       inherited transparently from sandbox via the same chain — the
-      same schema applies at both project and global level, with
+      shared run settings apply at both project and global level, with
       project values overriding globals per the resolver below.
     - The four terok-owned global sections (``tui``, ``logs``,
       ``tasks``-global, ``git``-global) are added explicitly.

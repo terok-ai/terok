@@ -11,7 +11,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from terok.lib.core import config
-from terok.lib.integrations.sandbox import WaylandMode
+from terok.lib.integrations.sandbox import WaylandMode, WaylandRecreationRequired
 from terok.lib.orchestration.task_runners import container, headless, restart
 
 
@@ -154,6 +154,21 @@ def test_invalid_sidecar_refuses_before_mutating_retained_task(
     task.recreate.assert_not_called()
 
 
+def test_opt_in_leaves_an_unreadable_sidecar_to_the_sandbox_preflight(
+    retained_task: SimpleNamespace,
+) -> None:
+    """With the opt-in on, nothing is left for terok to verify in the saved mode."""
+    task = retained_task
+    task.load_sidecar.return_value = None
+    config.set_experimental(True)
+
+    restart.task_restart(task.project.name, "1")
+
+    task.load_sidecar.assert_not_called()
+    task.desktop_preflight.assert_called_once_with(f"{task.project.name}-cli-1")
+    task.start.assert_called_once()
+
+
 @pytest.mark.parametrize(
     ("mode", "experimental"),
     [(WaylandMode.NONE, False), (WaylandMode.DIRECT, True), (WaylandMode.MITM, True)],
@@ -237,6 +252,31 @@ def test_followup_refuses_before_prompt_injection(
         patch.object(headless, "_inject_followup_prompt") as inject,
         patch.object(headless, "_podman_start") as start,
         pytest.raises(SystemExit, match="requires the experimental flag"),
+    ):
+        headless.task_followup_headless(task.project.name, "1", "Continue", follow=False)
+
+    inject.assert_not_called()
+    start.assert_not_called()
+    task.refresh.assert_not_called()
+
+
+def test_followup_keeps_its_prompt_when_the_desktop_grant_cannot_be_kept(
+    retained_task: SimpleNamespace, tmp_path: Path
+) -> None:
+    """A follow-up learns that recreation is required before its prompt is replaced."""
+    task = retained_task
+    task.meta["mode"] = "run"
+    task.sidecar.wayland.mode = WaylandMode.DIRECT
+    config.set_experimental(True)
+    task.desktop_preflight.side_effect = WaylandRecreationRequired("wl-direct recreation required")
+    with (
+        patch.object(headless, "load_project", return_value=task.project),
+        patch.object(
+            headless, "load_task_meta", return_value=(task.meta, tmp_path / "dossier.json")
+        ),
+        patch.object(headless, "_inject_followup_prompt") as inject,
+        patch.object(headless, "_podman_start") as start,
+        pytest.raises(SystemExit, match="recreation required"),
     ):
         headless.task_followup_headless(task.project.name, "1", "Continue", follow=False)
 

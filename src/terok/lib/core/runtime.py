@@ -39,7 +39,11 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Literal, cast, get_args
 
-from terok.lib.core.config import get_global_run_runtime, is_experimental, make_sandbox_config
+from terok.lib.core.config import (
+    get_global_run_runtime,
+    make_sandbox_config,
+    require_experimental,
+)
 from terok.lib.integrations.executor import KrunHost
 from terok.lib.integrations.sandbox import (
     ContainerRuntime,
@@ -78,12 +82,7 @@ def resolve_runtime(project: ProjectConfig | None = None) -> ContainerRuntime:
         return PodmanRuntime()
     if backend == "null":
         return NullRuntime()
-    if not is_experimental():
-        raise SystemExit(
-            "run.runtime: krun requires the experimental flag.  Set "
-            "`experimental: true` in your config.yml, or pass "
-            "`--experimental` on the command line."
-        )
+    require_experimental("run.runtime: krun")
     return KrunHost(cfg=make_sandbox_config()).runtime()
 
 

@@ -11,6 +11,7 @@ from unittest.mock import patch
 import pytest
 
 from terok.lib.core.projects import load_project
+from terok.lib.integrations.sandbox import emit_warning
 from terok.lib.orchestration.task_runners import cli, headless, restart, toad
 from terok.lib.orchestration.task_runners.container import _repeat_startup_warnings
 from terok.lib.orchestration.tasks import load_task_meta, task_new
@@ -25,29 +26,18 @@ _PROJECT = "startup-warnings"
 
 
 @pytest.mark.parametrize("mode", ["wl-direct", "wl-mitm"])
-@pytest.mark.parametrize("tty,no_color", [(True, False), (False, False), (True, True)])
-@pytest.mark.parametrize("detail", ["significantly increases host attack surface.", "unavailable."])
-def test_only_direct_warning_marker_is_red(
-    mode, tty, no_color, detail, monkeypatch, capsys
-) -> None:
-    """Replay highlights only the direct marker on a terminal that accepts color."""
-    monkeypatch.setattr(sys.stderr, "isatty", lambda: tty)
-    monkeypatch.setattr(sys.stdout, "isatty", lambda: False)
-    monkeypatch.setenv("FORCE_COLOR", "1")
-    if no_color:
-        monkeypatch.setenv("NO_COLOR", "")
-    else:
-        monkeypatch.delenv("NO_COLOR", raising=False)
-    message = f"WARNING: Wayland ({mode}) {detail}"
+def test_replay_presents_warnings_as_the_launch_did(mode: str, monkeypatch, capsys) -> None:
+    """Replay shares the launch's renderer, so emphasis cannot drift between the two."""
+    monkeypatch.setattr(sys.stderr, "isatty", lambda: True)
+    monkeypatch.delenv("NO_COLOR", raising=False)
+    message = f"WARNING: Wayland ({mode}) significantly increases host attack surface."
 
+    emit_warning(message)
+    launched = capsys.readouterr()
     _repeat_startup_warnings([message])
 
-    prefix = (
-        "\x1b[31mWARNING:\x1b[0m" if mode == "wl-direct" and tty and not no_color else "WARNING:"
-    )
-    captured = capsys.readouterr()
-    assert captured.out == ""
-    assert captured.err == message.replace("WARNING:", prefix, 1) + "\n"
+    assert capsys.readouterr() == launched
+    assert launched.out == "" and launched.err.endswith(message.removeprefix("WARNING:") + "\n")
 
 
 @pytest.mark.parametrize("warnings", [(), _WARNINGS])

@@ -12,7 +12,6 @@ and ``_project_runtime_flags`` assemble the podman invocation.
 from __future__ import annotations
 
 import math
-import os
 import shlex
 import sys
 from collections.abc import Iterable
@@ -21,7 +20,7 @@ from typing import TYPE_CHECKING
 
 from terok_util import SetupRequiredError
 
-from terok.lib.core.config import is_experimental
+from terok.lib.core.config import require_experimental
 from terok.lib.integrations.executor import (
     AgentRunner,
     BuildError,
@@ -37,6 +36,7 @@ from terok.lib.integrations.sandbox import (
     Sandbox,
     VolumeSpec,
     WaylandMode,
+    emit_warning,
     validate_passthrough_args,
 )
 
@@ -44,12 +44,7 @@ from ...core import runtime as _rt
 from ...core.config import make_sandbox_config
 from ...core.egress_sets import resolve_egress_sets
 from ...core.projects import load_project
-from ...util.ansi import (
-    blue as _blue,
-    red as _red,
-    supports_color as _supports_color,
-    yellow as _yellow,
-)
+from ...util.ansi import blue as _blue, supports_color as _supports_color, yellow as _yellow
 from ...util.logging_utils import timed_phase
 from ...util.net import git_remote_host
 from ..tasks import dossier_path, tasks_meta_dir
@@ -200,16 +195,10 @@ def _print_login_instructions(project_name: str, task_id: str, cname: str, color
 
 
 def _repeat_startup_warnings(warnings: Iterable[str]) -> None:
-    """Repeat launch warnings after initialization output, without changing their wording."""
+    """Repeat launch warnings after initialization output, presented as the launch showed them."""
     sys.stdout.flush()
     for warning in warnings:
-        if warning.startswith(f"WARNING: Wayland ({WaylandMode.DIRECT})"):
-            warning = warning.replace(
-                "WARNING:",
-                _red("WARNING:", sys.stderr.isatty() and "NO_COLOR" not in os.environ),
-                1,
-            )
-        print(warning, file=sys.stderr)
+        emit_warning(warning)
 
 
 def _maybe_warn_recovery_unconfirmed(color: bool) -> None:
@@ -422,12 +411,8 @@ def _run_container(
 
 def _require_wayland_experimental(mode: WaylandMode) -> None:
     """Refuse experimental desktop access without the existing global opt-in."""
-    if mode != WaylandMode.NONE and not is_experimental():
-        raise SystemExit(
-            f"Wayland ({mode}) requires the experimental flag. Set "
-            "`experimental: true` in your config.yml, or pass "
-            "`--experimental` on the command line."
-        )
+    if mode != WaylandMode.NONE:
+        require_experimental(f"Wayland ({mode})")
 
 
 def _sandbox(project: ProjectConfig) -> Sandbox:
@@ -532,12 +517,7 @@ def _validate_krun_compatibility(project: ProjectConfig) -> None:
       shared mount namespace), so token-broker and ssh-signer bridges
       silently fail to establish.
     """
-    if not is_experimental():
-        raise SystemExit(
-            "run.runtime: krun requires the experimental flag.  Set "
-            "`experimental: true` in your config.yml, or pass "
-            "`--experimental` on the command line."
-        )
+    require_experimental("run.runtime: krun")
 
     if project.nested_containers:
         raise SystemExit(

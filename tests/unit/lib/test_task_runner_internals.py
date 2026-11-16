@@ -1095,9 +1095,7 @@ class TestRunContainer:
         project.gpus = "all"
         project.wayland = wayland
         with (
-            patch(
-                "terok.lib.orchestration.task_runners.container.is_experimental", return_value=True
-            ),
+            patch("terok.lib.core.config.is_experimental", return_value=True),
             patch(
                 "terok.lib.orchestration.task_runners.container._agent_runner"
             ) as sandbox_factory,

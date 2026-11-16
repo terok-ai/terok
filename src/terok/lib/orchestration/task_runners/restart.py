@@ -30,7 +30,7 @@ from terok.lib.integrations.sandbox import (
 )
 
 from ...core import runtime as _rt
-from ...core.config import get_public_host, make_sandbox_config
+from ...core.config import get_public_host, is_experimental, make_sandbox_config
 from ...core.images import project_cli_image
 from ...core.projects import load_project
 from ...core.setup import validate_host_setup
@@ -161,11 +161,7 @@ def _make_running(
         return
 
     if reason is None:
-        _require_saved_wayland_experimental(cname)
-        try:
-            _sandbox(project).wayland_preflight(cname)
-        except RuntimeError as exc:
-            raise SystemExit(str(exc)) from exc
+        _preflight_retained_desktop(project, cname)
 
     if bounce:
         print(f"Restarting task {project_name}/{task_id} ({mode})...")
@@ -258,8 +254,25 @@ def _preflight_replacement_image(project: ProjectConfig, runtime: ContainerRunti
         raise SystemExit(str(exc)) from exc
 
 
+def _preflight_retained_desktop(project: ProjectConfig, cname: str) -> None:
+    """Refuse a resume that cannot keep its desktop grant, before anything is disturbed.
+
+    Every path that starts an existing container runs this first, ahead of
+    the steps that rewrite its inputs or stop it.  The saved mode — not the
+    project's current selection — needs today's experimental opt-in, and the
+    sandbox must still be able to verify the grant the container retains.
+    """
+    _require_saved_wayland_experimental(cname)
+    try:
+        _sandbox(project).wayland_preflight(cname)
+    except RuntimeError as exc:
+        raise SystemExit(str(exc)) from exc
+
+
 def _require_saved_wayland_experimental(cname: str) -> None:
-    """Check retained desktop grants before restart preconditions can rewrite inputs."""
+    """Hold a retained desktop grant to the opt-in; an unreadable one fails closed."""
+    if is_experimental():
+        return
     sidecar_path = make_sandbox_config().sidecar_path(cname)
     if not sidecar_path.exists():
         return
@@ -284,10 +297,8 @@ def _refresh_before_resume(
     start), the tier refresh (a shortened or deleted override must not be
     replayed from the old bundle), and the clearance-mode refresh.  Raises
     ``SystemExit`` from the gate or the tier refresh, with the container
-    untouched; the clearance refresh only warns. Saved desktop access requires
-    the current experimental opt-in, regardless of the project's new selection.
+    untouched; the clearance refresh only warns.
     """
-    _require_saved_wayland_experimental(cname)
     try:
         require_task_input_protocol(runtime.container(cname))
     except RuntimeError as exc:

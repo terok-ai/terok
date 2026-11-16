@@ -182,17 +182,17 @@ def _setup_transaction(*, allow_downgrade: bool) -> Iterator[None]:
     The flag authorizes replacing setup artifacts, not running tasks against
     mismatched receipts or certifying failed installations.
     """
-    from terok.lib.api.setup import SetupStatus, check_setup, preflight_setup
+    from terok.lib.api.setup import SetupStatus, preflight_setup
 
     with setup_lock(allow_downgrade=allow_downgrade):
-        preflight_setup()
+        checks = preflight_setup()
         if allow_downgrade:
             print(
                 "WARNING: --allow-downgrade permits replacing newer host setup. "
                 "Older code may not understand newer state.",
                 file=sys.stderr,
             )
-            for check in check_setup():
+            for check in checks:
                 if check.status is SetupStatus.DOWNGRADE:
                     print(sanitize_tty(f"  {check.owner}: {check.diagnostic}"), file=sys.stderr)
         yield

@@ -5,6 +5,7 @@
 
 from __future__ import annotations
 
+from enum import StrEnum
 from typing import Any, Literal
 
 import pytest
@@ -27,10 +28,16 @@ class _Item(BaseModel):
     host: str = Field(description="Where.")
 
 
+class _Level(StrEnum):
+    LOW = "low"
+    HIGH = "high"
+
+
 class _Sample(BaseModel):
     name: str = Field(description="A name.")
     flag: bool = Field(default=True, description="A flag.")
     mode: Literal["fast", "slow"] = Field(default="fast", description="A mode.")
+    level: _Level = Field(default=_Level.LOW, description="A level.")
     limit: int | None = None
     tags: list[str] = Field(default_factory=list, description="Some tags.")
     extra: dict[str, Any] = Field(default_factory=dict, description="More.")
@@ -76,6 +83,9 @@ class TestRendering:
 
     def test_choices_are_listed(self, reference: str) -> None:
         assert "one of `fast`, `slow` · default `fast`" in _option(reference, "mode")
+
+    def test_enum_choices_are_listed_by_value(self, reference: str) -> None:
+        assert "one of `low`, `high` · default `low`" in _option(reference, "level")
 
     def test_optional_value_without_a_default(self, reference: str) -> None:
         assert "integer · unset by default" in _option(reference, "limit")

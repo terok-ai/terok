@@ -783,6 +783,16 @@ def is_experimental() -> bool:
     return _experimental or _load_validated().experimental
 
 
+def require_experimental(feature: str) -> None:
+    """Refuse *feature* without the experimental opt-in, naming both ways to give it."""
+    if not is_experimental():
+        raise SystemExit(
+            f"{feature} requires the experimental flag.  Set "
+            "`experimental: true` in your config.yml, or pass "
+            "`--experimental` on the command line."
+        )
+
+
 def set_experimental(value: bool) -> None:
     """Enable or disable experimental features globally."""
     global _experimental  # noqa: PLW0603

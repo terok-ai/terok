@@ -60,6 +60,11 @@ override applies only to this setup invocation; task startup and final setup
 verification still require current, successful setup. No receipt deletion is
 needed. The TUI does not offer this override.
 
+Setup does not reinstall the firewall while it is opted out with
+`shield.disable_firewall_no_protection`, so the override cannot replace a newer
+firewall installation: setup still ends with a downgrade refusal. Remove the
+opt-out for the override run, or upgrade back.
+
 The flag also works with component installation, such as
 `terok setup selinux --with-wayland --allow-downgrade`. That only installs the
 requested policy; run full setup to refresh package receipts. `--show` remains
@@ -1652,8 +1657,9 @@ host desktop. There is no audio, X11, or automatic GPU grant.
 
 **Both enabled modes increase the host attack surface.** Filtering restricts
 available protocols; it does not make the compositor or proxy a complete
-isolation boundary. Terok prints this warning at launch and repeats startup
-warnings after initialization, beside the task's login instructions.
+isolation boundary. Terok prints this warning at each launch that wires
+desktop access and repeats startup warnings after initialization, beside the
+task's login instructions.
 
 `wl-mitm` runs one supervised wl-mitm host proxy per task. The container receives
 only that proxy's socket, not the real compositor socket or the host's
@@ -1669,7 +1675,9 @@ as a trusted host prompt.
 
 `wl-direct` mounts the selected compositor socket directly, **without terok protocol filtering**.
 The client can use any protocol the compositor makes available to that
-connection. A read-only socket mount does not make the protocol read-only.
+connection. That includes the clipboard and, depending on the compositor,
+can include screen capture and synthetic input.
+A read-only socket mount does not make the protocol read-only.
 Use this only when you trust the task with that desktop access. Terok never
 falls back to this mode automatically and never relabels the real compositor
 socket.
@@ -1702,8 +1710,7 @@ treats its first argument as a configuration path, not a `--version` option.
 On an enforcing SELinux host, install the independent proxy policy with
 `terok setup selinux --with-wayland`; the direct-mode policy does not replace
 it. Set `run.wayland: wl-mitm` in the project and start a **new task** from
-the intended desktop session. Keep the working image, application workaround
-and GPU settings unchanged to isolate the proxy test. Switching this mode
+the intended desktop session. Switching this mode
 does not require an image rebuild. Plain restart preserves an existing
 container's mode; changing it requires explicit recreation.
 Packages and test files installed only inside the earlier task are not
@@ -1757,13 +1764,14 @@ help distinguish proxy failure from a socket inaccessible inside the container.
 
 Plain restart retains the container's saved mode, even if `project.yml` has
 changed. **Disabling or changing a granted mode requires container recreation.**
-Tasks saved with obsolete experimental mode names also require recreation;
-renaming the project setting cannot remove an existing socket mount.
 In direct mode,
 Podman also cannot retarget a saved bind mount on plain restart. If the
 original socket path is missing or the session resolves to another path,
 terok reports **recreation required** instead of starting with the wrong
 desktop connection. A new socket at the same path after reboot can be used.
+A direct-mode task created while no desktop was reachable has no socket mount
+at all: it keeps starting without GUI access until it is recreated from a
+desktop session.
 
 On an enforcing SELinux host, install the policy for the selected mode.
 The [optional Wayland policies](selinux.md#optional-wayland-proxy-policy) have

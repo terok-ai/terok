@@ -52,7 +52,7 @@ from ..tasks import (
 )
 from .config import _apply_unrestricted_env, _str_to_bool
 from .container import _assert_running, _podman_start, _repeat_startup_warnings, _run_container
-from .restart import _refresh_before_resume
+from .restart import _preflight_retained_desktop, _refresh_before_resume
 from .shield import _apply_shield_policy
 
 #: Read-only task input holding the current headless prompt.
@@ -422,6 +422,7 @@ def task_followup_headless(
     # sidecar unless they are refreshed first — today's tiers (an override
     # shortened or removed since), today's clearance mode.  Before the prompt
     # is handed over, so a refusal here leaves the task as it was.
+    _preflight_retained_desktop(project, cname)
     _refresh_before_resume(project, cname, task_dir, runtime=runtime)
     _inject_followup_prompt(
         task_dir=task_dir,

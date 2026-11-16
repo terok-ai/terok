@@ -99,7 +99,7 @@ class TestResolveRuntime:
         fake_runtime = MagicMock(spec=KrunRuntime)
         with (
             patch("terok.lib.core.runtime.get_global_run_runtime", return_value="krun"),
-            patch("terok.lib.core.runtime.is_experimental", return_value=True),
+            patch("terok.lib.core.config.is_experimental", return_value=True),
             patch(
                 "terok.lib.core.runtime.KrunHost",
                 return_value=MagicMock(runtime=MagicMock(return_value=fake_runtime)),
@@ -112,7 +112,7 @@ class TestResolveRuntime:
     def test_krun_requires_experimental_flag(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Without ``experimental: true``, krun selection is refused loudly."""
         monkeypatch.setenv("TEROK_RUNTIME", "krun")
-        with patch("terok.lib.core.runtime.is_experimental", return_value=False):
+        with patch("terok.lib.core.config.is_experimental", return_value=False):
             with pytest.raises(SystemExit, match="experimental"):
                 resolve_runtime(None)
 
@@ -128,7 +128,7 @@ class TestResolveRuntime:
         monkeypatch.setenv("TEROK_RUNTIME", "krun")
         fake_runtime = MagicMock(spec=KrunRuntime)
         with (
-            patch("terok.lib.core.runtime.is_experimental", return_value=True),
+            patch("terok.lib.core.config.is_experimental", return_value=True),
             patch(
                 "terok.lib.core.runtime.KrunHost",
                 return_value=MagicMock(runtime=MagicMock(return_value=fake_runtime)),
@@ -189,7 +189,7 @@ class TestKrunCompatibilityGuard:
         project = _krun_project()
         with (
             patch(
-                "terok.lib.orchestration.task_runners.container.is_experimental",
+                "terok.lib.core.config.is_experimental",
                 return_value=False,
             ),
             pytest.raises(SystemExit, match="requires the experimental flag"),
@@ -208,7 +208,7 @@ class TestKrunCompatibilityGuard:
         project = _krun_project(services_mode="socket")
         with (
             patch(
-                "terok.lib.orchestration.task_runners.container.is_experimental",
+                "terok.lib.core.config.is_experimental",
                 return_value=True,
             ),
             pytest.raises(SystemExit, match="incompatible.*services.mode: socket"),
@@ -226,7 +226,7 @@ def _experimental_enabled():
     ``_krun_project`` already builds a ``services_mode="tcp"`` project.
     """
     with patch(
-        "terok.lib.orchestration.task_runners.container.is_experimental",
+        "terok.lib.core.config.is_experimental",
         return_value=True,
     ):
         yield
@@ -380,7 +380,7 @@ class TestProjectRuntimeFlags:
 
         with (
             patch(
-                "terok.lib.orchestration.task_runners.container.is_experimental",
+                "terok.lib.core.config.is_experimental",
                 return_value=False,
             ),
             pytest.raises(SystemExit, match="requires the experimental flag"),

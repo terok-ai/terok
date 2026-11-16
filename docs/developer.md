@@ -554,6 +554,7 @@ GNOME and KDE Wayland sessions where available:
 | Task stop, forced removal, supervisor or wrapper death | Proxy and task-owned listener are cleaned up; compositor is untouched |
 | Plain restart after host reboot or desktop-session change | Filtered mode resolves the current session and starts a fresh proxy |
 | Direct mode restart with missing or changed socket path | Explicit recreation-required error; no placeholder directory or implicit recreation |
+| Direct mode task created without a reachable desktop | No socket mount; starts and restarts without GUI access, warning that recreation enables it |
 | Other services use TCP | Wayland still uses its own socket; other transports are unchanged |
 | Fedora enforcing, optional policy present/absent/removed | Dedicated proxy domain when installed; transition denial never retries unconfined; container-side connection denial is diagnosed |
 | `wl-direct`, separate direct policy absent/present | Only the selected socket is mounted without relabeling; default domain without the policy, dedicated container domain with it; ordinary containers gain no desktop permission |

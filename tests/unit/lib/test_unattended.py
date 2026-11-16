@@ -213,12 +213,13 @@ def run_followup_request(
 
     state_patch: contextlib.AbstractContextManager
     if isinstance(container_state, list):
-        # Existence, protocol and desktop inspections precede the start transition.
+        # The existence check, the desktop preflight and the protocol inspection
+        # precede the start, which observes the container once more before it runs.
         state_patch = unittest.mock.patch.object(
             type(container),
             "state",
             new_callable=unittest.mock.PropertyMock,
-            side_effect=iter([container_state[0], container_state[0], *container_state]).__next__,
+            side_effect=iter([*[container_state[0]] * 3, *container_state]).__next__,
             create=True,
         )
     else:

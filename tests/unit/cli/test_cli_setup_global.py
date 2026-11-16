@@ -90,15 +90,20 @@ class TestComponentSubcommands:
         self._dispatch("apparmor", show=True)
         assert self.handler.call_args.kwargs["show_only"] is True
 
+    @pytest.mark.parametrize("show", [False, True])
     @pytest.mark.parametrize("component", ["selinux", "apparmor", None])
     @pytest.mark.parametrize("filtered,direct", [(True, False), (False, True), (True, True)])
     def test_wayland_option_routes_to_component_validation(
-        self, component: str | None, filtered: bool, direct: bool
+        self, component: str | None, filtered: bool, direct: bool, show: bool
     ) -> None:
-        """Sandbox validates the policy option; it never triggers the full bootstrap."""
-        self._dispatch(component, show=True, with_wayland=filtered, with_wayland_direct=direct)
+        """Sandbox validates the policy option; it never triggers the full bootstrap.
+
+        Without ``--show`` and without a component, the option alone is what
+        keeps the request away from the bootstrap.
+        """
+        self._dispatch(component, show=show, with_wayland=filtered, with_wayland_direct=direct)
         self.handler.assert_called_once_with(
-            component, show_only=True, with_wayland=filtered, with_wayland_direct=direct
+            component, show_only=show, with_wayland=filtered, with_wayland_direct=direct
         )
 
     def test_parser_accepts_the_components_and_rejects_others(self) -> None:

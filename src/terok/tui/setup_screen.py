@@ -56,6 +56,11 @@ class SetupOutcome(enum.Enum):
     CANCELLED = "cancelled"
 
 
+DOWNGRADE_REMEDY = (
+    "Upgrade back, or run terok setup --allow-downgrade in a terminal at your own risk."
+)
+"""What an operator can do about a refused downgrade; the TUI never offers the override itself."""
+
 _VERDICT_HEADLINE: dict[SetupStatus, str] = {
     SetupStatus.READY: "Host services are already set up — re-running is safe but optional.",
     SetupStatus.MISSING: "First run detected — host services have not been initialised yet.",
@@ -155,10 +160,7 @@ class SetupScreen(ModalScreen[SetupOutcome]):
     def _blurb_for(verdict: SetupStatus) -> str:
         """Return the per-verdict explanation rendered below the headline."""
         if verdict is SetupStatus.DOWNGRADE:
-            return (
-                "Older code may not read newer state correctly. Upgrade back, "
-                "or run terok setup --allow-downgrade in a terminal at your own risk."
-            )
+            return f"Older code may not read newer state correctly. {DOWNGRADE_REMEDY}"
         return (
             "Installs the sandbox stack (shield + vault + gate + clearance) "
             "and the XDG desktop entry for terok-tui.  Idempotent — safe to "
