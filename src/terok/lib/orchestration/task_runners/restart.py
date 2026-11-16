@@ -160,13 +160,14 @@ def _make_running(
         _print_reach_footer(project, task_id, mode, cname, meta)
         return
 
-    if reason is None:
-        _preflight_retained_desktop(project, cname)
-
     if bounce:
         print(f"Restarting task {project_name}/{task_id} ({mode})...")
 
-    if reason is not None and mode != "run":
+    # Either rung is refused here, before anything is disturbed: a resume
+    # must be able to keep its desktop grant, a replacement needs its image.
+    if reason is None:
+        _preflight_retained_desktop(project, cname)
+    elif mode != "run":
         _preflight_replacement_image(project, runtime)
 
     if container_state is not None:

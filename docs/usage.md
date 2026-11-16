@@ -1640,6 +1640,8 @@ run:
 Without that opt-in, terok refuses container creation or recreation with either
 enabled mode and plain restart of tasks whose saved mode enables Wayland. Turning off
 experimental features does not revoke access from already-running containers.
+The check belongs to terok's task commands: a lower-level start
+(`terok executor start`, `podman start`) keeps whatever the container was created with.
 Set `run.wayland: none` and recreate the task to remove access; the default
 `none` mode does not require experimental features.
 
