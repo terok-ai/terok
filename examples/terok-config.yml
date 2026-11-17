@@ -61,6 +61,13 @@ git:
 #   # Refusals stay enforced either way; the audit log is then their record.
 #   # clearance: prompt
 
+# Clearance prompts (clearance-owned; global only).
+# clearance:
+#   # How long an unanswered Allow/Deny prompt can still be answered: seconds,
+#   # or a count with s, m, h or d. "never" keeps it until the container ends.
+#   # Default: 24h. A change applies at the task's next start.
+#   # verdict_ttl: 24h
+
 # TUI Configuration
 tui:
   # Default to launching the TUI in tmux mode (equivalent to always using --tmux).
