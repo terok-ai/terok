@@ -95,7 +95,7 @@ test = [
 # job (and the setup-uv cache) from carrying its wheel.  Opt in with
 # ``uv sync --group ide``.
 ide = [
-    "pydevd-pycharm==263.7031.30",
+    "pydevd-pycharm==263.7307.206",
 ]
 # Outside default-groups -- only the matrix runner pulls this in.
 # Keeping python-dbusmock here (rather than in "test") keeps CI's
