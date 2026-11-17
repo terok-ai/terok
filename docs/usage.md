@@ -1788,7 +1788,7 @@ terok setup selinux --with-wayland-direct
 ```
 
 Both flags are off by default and can be combined. Installing one does not
-install the other. Direct-policy compilation has additional
+install the other. Compiling either policy has
 [host build prerequisites, including Silverblue instructions](selinux.md#direct-desktop-access-is-a-separate-opt-in).
 A newly created direct-mode task uses its dedicated
 SELinux container domain only when that policy is installed. Existing tasks

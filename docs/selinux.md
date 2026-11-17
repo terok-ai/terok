@@ -68,7 +68,9 @@ terok setup selinux --with-wayland
 The installer still installs the base socket policy. Without `--with-wayland`
 its behavior is unchanged; omitting the flag does not remove an optional
 module installed earlier. The flag is only valid for `setup selinux`.
-The operator installs wl-mitm separately.
+The operator installs wl-mitm separately. Compiling the module needs the
+host's policy development files; see the
+[build prerequisites](#direct-desktop-access-is-a-separate-opt-in) below.
 
 The optional module supplies a dedicated domain for the stock wl-mitm
 process. It does not grant containers access to all `unconfined_t` host
@@ -109,13 +111,12 @@ terok setup selinux --with-wayland-direct --show
 terok setup selinux --with-wayland-direct
 ```
 
-The two flags can be combined; neither implies the other. Direct policy
-compilation additionally needs `make`, `m4`, `selinux-policy-devel` and
-`container-selinux`. The base socket and filtered-proxy policies compile
-directly with `checkmodule`; the direct policy uses the distro's
-container and virt baseline interfaces to retain normal container confinement,
-including execution of host-mounted init helpers. These interfaces need the
-SELinux development Makefile and container interfaces.
+The two flags can be combined; neither implies the other. Compiling either
+optional policy needs `make`, `m4` and `selinux-policy-devel`. The direct
+policy also needs `container-selinux`: it uses the distro's container and virt
+baseline interfaces to retain normal container confinement, including
+execution of host-mounted init helpers. Only the base socket policy compiles
+directly with `checkmodule`.
 These are **host build-time prerequisites**, not dependencies of task startup.
 The installer checks for them before compiling any module and reports missing
 files with package-install hints.
@@ -131,7 +132,7 @@ If only the development Makefile is missing:
 
 ```bash
 sudo rpm-ostree install --apply-live selinux-policy-devel
-terok setup selinux --with-wayland-direct
+terok setup selinux --with-wayland          # or --with-wayland-direct
 ```
 
 Add other missing prerequisite packages to that install command if needed.
