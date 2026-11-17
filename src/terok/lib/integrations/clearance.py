@@ -20,6 +20,10 @@ caller with no live subscription uses to mute a container's prompts and to
 read the mutes back.  Both address the hub by the 12-character short
 container id its events carry, and both raise when the hub cannot be
 reached — an unknown state is never reported as audible.
+
+``RawClearanceSection`` is the schema of the ``clearance:`` section of
+``config.yml``, which the clearance hub reads.  terok composes it into its
+global schema, so an option that clearance accepts is one that terok accepts.
 """
 
 from __future__ import annotations
@@ -37,6 +41,7 @@ if TYPE_CHECKING:
         EventSubscriber as EventSubscriber,
         MultiSocketSubscriber as MultiSocketSubscriber,
         Notification as Notification,
+        RawClearanceSection as RawClearanceSection,
         container_mutes as container_mutes,
         create_notifier as create_notifier,
         set_container_mute as set_container_mute,
@@ -52,6 +57,7 @@ _LAZY: dict[str, str] = {
     "NOTIFY_BLOCKED": "terok_clearance",
     "NOTIFY_VERDICT": "terok_clearance",
     "Notification": "terok_clearance",
+    "RawClearanceSection": "terok_clearance",
     "container_mutes": "terok_clearance",
     "create_notifier": "terok_clearance",
     "set_container_mute": "terok_clearance",
@@ -66,6 +72,7 @@ __all__ = [
     "NOTIFY_BLOCKED",
     "NOTIFY_VERDICT",
     "Notification",
+    "RawClearanceSection",
     "container_mutes",
     "create_notifier",
     "set_container_mute",

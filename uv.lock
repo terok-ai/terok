@@ -1,5 +1,5 @@
 version = 1
-revision = 3
+revision = 5
 requires-python = ">=3.12, <3.16"
 resolution-markers = [
     "python_full_version >= '3.15'",
@@ -2776,6 +2776,7 @@ wheels = [
 [[package]]
 name = "terok"
 source = { editable = "." }
+default-groups = ["dev", "test"]
 dependencies = [
     { name = "argcomplete" },
     { name = "jinja2" },
@@ -2840,7 +2841,7 @@ requires-dist = [
     { name = "requests", specifier = "~=2.34" },
     { name = "rich", specifier = "~=15.0" },
     { name = "ruamel-yaml", specifier = "==0.19.1" },
-    { name = "terok-clearance", specifier = ">=0.8.2,<0.9.0" },
+    { name = "terok-clearance", git = "https://github.com/sliwowitz/terok-clearance?rev=feat%2Fconfig-schema" },
     { name = "terok-executor", specifier = ">=0.5.1,<0.6.0" },
     { name = "terok-sandbox", specifier = ">=0.7.0,<0.8.0" },
     { name = "terok-shield", specifier = ">=0.10.0,<0.11.0" },
@@ -2885,17 +2886,14 @@ test = [
 
 [[package]]
 name = "terok-clearance"
-version = "0.8.2"
-source = { registry = "https://pypi.org/simple" }
+version = "0.8.3.dev268+g339210420"
+source = { git = "https://github.com/sliwowitz/terok-clearance?rev=feat%2Fconfig-schema#3392104205282d614541728cdb8d881c3bec7403" }
 dependencies = [
     { name = "asyncvarlink" },
     { name = "dbus-fast" },
+    { name = "pydantic" },
     { name = "pyyaml" },
     { name = "terok-util" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/ec/e3/0b4131bff1ffc861b7b1968213a34a397130788cc9c4603f628695b71d7e/terok_clearance-0.8.2.tar.gz", hash = "sha256:f9fe9bdecbeabaf3bf3e1dc09c4ed5348f097e2f7923f73f32b4adc4dd97b486", size = 247168, upload-time = "2026-11-17T02:57:27.062Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/10/a7/7a1ada3aba6b0bc534b49cb5d642bf3e81b19b9a4dfb8a4f20e7dc8e4338/terok_clearance-0.8.2-py3-none-any.whl", hash = "sha256:f41301fa9fb2c227fc6388ad685e2c51438169910623ea4b927ad7a9bebf313a", size = 86560, upload-time = "2026-11-17T02:57:25.512Z" },
 ]
 
 [[package]]
