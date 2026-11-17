@@ -491,6 +491,21 @@ recorded.  An unknown value in `config.yml` warns and reads as
 `prompt`; an unknown value in `project.yml` fails the project's load and
 names the key, for you to fix.
 
+### How long a prompt waits: `clearance.verdict_ttl`
+
+A prompt that nobody answers expires after 24 hours.  The global
+`config.yml` sets another lifetime; `project.yml` has no such key:
+
+```yaml
+clearance:
+  verdict_ttl: 2h        # seconds, or a count with s, m, h or d
+  # verdict_ttl: never   # a prompt waits until its container ends
+```
+
+An expired prompt can no longer be answered.  The connection was refused
+when it was made, and it stays refused.  Like the mode, a changed lifetime
+applies at the task's next start.
+
 ---
 
 ## Reading Back What a Task Needed

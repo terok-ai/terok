@@ -15,6 +15,7 @@ Sections owned by lower-level packages live in those packages' own
   ``vault``, ``gate_server``, ``services``, ``shield``, ``network``,
   ``ssh`` (eight sandbox-consumed sections).
 - [`terok_executor.config_schema`][terok_executor.config_schema] owns ``image``.
+- ``terok_clearance.config_schema`` owns ``clearance``.
 
 terok itself owns the remaining four global sections (``tui``,
 ``logs``, ``tasks``-global, ``git``-global) plus every
@@ -35,6 +36,7 @@ from typing import Annotated, Any, ClassVar, Literal
 
 from pydantic import BaseModel, BeforeValidator, ConfigDict, Field, field_validator, model_validator
 
+from terok.lib.integrations.clearance import RawClearanceSection
 from terok.lib.integrations.executor import ExecutorConfigView, RawImageSection
 from terok.lib.integrations.sandbox import (
     ClearanceMode,
@@ -660,6 +662,8 @@ class RawGlobalConfig(ExecutorConfigView):
       via [`ExecutorConfigView`][terok_executor.config_schema.ExecutorConfigView].
     - Executor-owned ``image`` comes from
       [`ExecutorConfigView`][terok_executor.config_schema.ExecutorConfigView].
+    - Clearance-owned ``clearance`` is ``terok_clearance.RawClearanceSection``,
+      added here: neither view below composes it, and both tolerate it.
     - The ``run`` section (including the nested ``hooks``) is
       inherited transparently from sandbox via the same chain — the
       shared run settings apply at both project and global level, with
@@ -679,6 +683,7 @@ class RawGlobalConfig(ExecutorConfigView):
     logs: RawLogsSection = Field(default_factory=RawLogsSection)
     tasks: RawTasksGlobalSection = Field(default_factory=RawTasksGlobalSection)
     git: RawGlobalGitSection = Field(default_factory=RawGlobalGitSection)
+    clearance: RawClearanceSection = Field(default_factory=RawClearanceSection)
     default_agent: str | None = Field(default=None, description=_DEFAULT_AGENT_DESCRIPTION)
     default_provider: str | None = Field(default=None, description=_DEFAULT_PROVIDER_DESCRIPTION)
     default_shell: str | None = Field(default=None, description=_DEFAULT_SHELL_DESCRIPTION)
@@ -707,6 +712,7 @@ class RawGlobalConfig(ExecutorConfigView):
             "ssh",
             "tasks",
             "git",
+            "clearance",
             "run",
             "image",
             "agent",

@@ -339,6 +339,43 @@ class TestLockedVaultRendering:
         assert "terok vault unlock" in err
 
 
+class TestCredentialsConfigErrorRendering:
+    """When the ``credentials:`` section of ``config.yml`` cannot be used, say so plainly.
+
+    Sandbox refuses to guess where the vault passphrase lives from a
+    section it cannot validate.  Its message names the files and, for the
+    renamed ``credentials.use_keyring``, the new key.  The CLI prints that
+    message as an error; a traceback would bury the one line the operator
+    has to act on.
+    """
+
+    def test_removed_keyring_key_names_the_new_key_without_a_traceback(
+        self, capsys, tmp_path
+    ) -> None:
+        """An operator who upgrades with the old key reads what to rename, and nothing else."""
+        from terok_sandbox import CredentialsConfigError
+
+        from terok.cli.main import main as cli_main
+
+        config_file = tmp_path / "config.yml"
+
+        def _raise(_args: object) -> bool:
+            raise CredentialsConfigError((config_file,), uses_removed_key=True)
+
+        with (
+            patch("terok.cli.commands.info.dispatch", _raise),
+            patch("sys.argv", ["terok", "config", "paths"]),
+            pytest.raises(SystemExit) as exc_info,
+        ):
+            cli_main()
+        assert exc_info.value.code == 2
+        err = capsys.readouterr().err
+        assert err.startswith("error: Cannot read or validate credentials configuration")
+        assert str(config_file) in err
+        assert "Rename credentials.use_keyring to credentials.use_desktop_keyring" in err
+        assert "Traceback" not in err
+
+
 class TestShieldSetupFailureRendering:
     """When a launch hits ``ShieldSetupError``, name the remedy here.
 

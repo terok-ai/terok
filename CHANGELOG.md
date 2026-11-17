@@ -6,6 +6,10 @@
      hand-kept section above the ledger is never promoted, and pushes the next
      generated section out of order. -->
 
+## v0.10.1 — Twenty-Six Hours
+
+Hotfix for certain upgrade paths: accept the clearance config section and report an unusable credentials section plainly in https://github.com/terok-ai/terok/pull/1355
+
 ## v0.10.0 — A Man Alone
 
 ## Upgrading

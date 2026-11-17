@@ -335,7 +335,7 @@ def main(prog: str = "terok") -> None:
         return  # type: ignore[unreachable]  # in tests os.execlp is mocked
 
     from terok.lib.api.shield import ShieldSetupError
-    from terok.lib.api.vault import NoPassphraseError
+    from terok.lib.api.vault import CredentialsConfigError, NoPassphraseError
 
     # Dispatch chain — tried in order; first True wins.  Only the modules we
     # actually loaded contribute a ``dispatch`` (own verbs are disjoint, so at
@@ -364,6 +364,12 @@ def main(prog: str = "terok") -> None:
             "hint:  run `terok vault unlock` to provision the vault passphrase for this session.",
             file=sys.stderr,
         )
+        sys.exit(2)
+    except CredentialsConfigError as exc:
+        # The message is complete as sandbox raises it: it names the config
+        # files and, for a key that was renamed, the new name.  It shows no
+        # config value, so it is safe to print as it is.
+        print(f"error: {exc}", file=sys.stderr)
         sys.exit(2)
     except ShieldSetupError as exc:
         # Same split: sandbox reports what failed and what it refused; the

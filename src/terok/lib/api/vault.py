@@ -39,6 +39,7 @@ if TYPE_CHECKING:
         wait_for_db_release as wait_for_db_release,
     )
     from terok.lib.integrations.sandbox import (
+        CredentialsConfigError as CredentialsConfigError,
         NoPassphraseError as NoPassphraseError,
         PassphraseChangeResult as PassphraseChangeResult,
         PassphraseTier as PassphraseTier,
@@ -69,6 +70,7 @@ if TYPE_CHECKING:
 #: this module (e.g. for [`load_vault_status`][terok.lib.api.vault.load_vault_status])
 #: does not pull the sandbox wheel until a sandbox-backed name is touched.
 _LAZY: dict[str, str] = {
+    "CredentialsConfigError": "terok.lib.integrations.sandbox",
     "DbHolder": "terok.lib.domain.vault_rekey",
     "NoPassphraseError": "terok.lib.integrations.sandbox",
     "PassphraseChangeResult": "terok.lib.integrations.sandbox",  # nosec: B105 - export-map path, not a secret
@@ -124,6 +126,7 @@ def load_vault_status() -> VaultStatus:
 
 
 __all__ = [
+    "CredentialsConfigError",
     "DbHolder",
     "NoPassphraseError",
     "PassphraseChangeResult",

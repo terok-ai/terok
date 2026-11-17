@@ -353,6 +353,21 @@ class RawGlobalConfigTests(unittest.TestCase):
         self.assertFalse(cfg.tui.default_tmux)
         self.assertTrue(cfg.logs.partial_streaming)
 
+    def test_clearance_section_is_the_one_clearance_owns(self) -> None:
+        """terok validates ``clearance:`` with clearance's own model, so the two cannot differ."""
+        from terok_clearance import RawClearanceSection
+
+        self.assertIs(RawGlobalConfig.model_fields["clearance"].annotation, RawClearanceSection)
+
+    def test_clearance_section(self) -> None:
+        """An option of the clearance hub loads; a value the hub could not parse does not."""
+        cfg = RawGlobalConfig.model_validate({"clearance": {"verdict_ttl": "2h"}})
+        self.assertEqual(cfg.clearance.verdict_ttl, "2h")
+        self.assertIsNone(RawGlobalConfig.model_validate({"clearance": None}).clearance.verdict_ttl)
+        with self.assertRaises(ValidationError) as ctx:
+            RawGlobalConfig.model_validate({"clearance": {"verdict_ttl": "soon"}})
+        self.assertIn("clearance.verdict_ttl", str(ctx.exception))
+
     def test_git_section(self) -> None:
         """Global git section parses correctly."""
         cfg = RawGlobalConfig.model_validate(

@@ -287,6 +287,11 @@ prompt is raised and no verdict path exists; `mute` starts both, the hub
 with the container already muted; `prompt` is the default.  See
 [Shield Security](shield-security.md#muting-the-prompts-not-the-shield).
 
+`clearance.verdict_ttl` travels the same way (sidecar field
+`clearance_verdict_ttl`).  The hub would read the key itself, but its child
+is confined before the hub starts and cannot read `config.yml`, so the
+launcher reads it and the child hands it to the hub.
+
 ### Socket layout
 
 Per-container endpoints, all on the host:

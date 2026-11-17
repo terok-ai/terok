@@ -7,10 +7,11 @@
 # Notes:
 #  - The CLI command `terok config` shows which paths and files are used.
 
-ui:
-  # Default first task port for UI mode (subsequent tasks will auto-increment
-  # from this base if the port is busy).
-  base_port: 7860
+# Range that terok takes the host ports of tasks and services from.
+# Defaults: 18700 to 32700.
+# network:
+#   port_range_start: 18700
+#   port_range_end: 32700
 
 vault:
   # Host-only credential storage (proxy DB, SSH key mapping, proxy routes).
@@ -59,6 +60,13 @@ git:
 #   # operator, live), mute (tasks start muted) or off (no clearance hub at all).
 #   # Refusals stay enforced either way; the audit log is then their record.
 #   # clearance: prompt
+
+# Clearance prompts (clearance-owned; global only).
+# clearance:
+#   # How long an unanswered Allow/Deny prompt can still be answered: seconds,
+#   # or a count with s, m, h or d. "never" keeps it until the container ends.
+#   # Default: 24h. A change applies at the task's next start.
+#   # verdict_ttl: 24h
 
 # TUI Configuration
 tui:
