@@ -568,6 +568,28 @@ def test_make_sandbox_config_carries_the_clearance_mode(
     assert cfg.get_services_clearance() == "mute"
 
 
+def test_make_sandbox_config_carries_the_clearance_prompt_lifetime(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """``clearance.verdict_ttl`` rides to the sidecar for every project; it has no project value.
+
+    The clearance hub cannot read the key in its confined child, so the
+    sandbox config has to carry it.  terok validates the same key through
+    clearance's schema, and the two reads must agree.
+    """
+    from types import SimpleNamespace
+
+    monkeypatch.setenv(
+        "TEROK_CONFIG_FILE", str(write_config(tmp_path, "clearance:\n  verdict_ttl: 2h\n"))
+    )
+    project = SimpleNamespace(
+        services_mode="socket", clearance="prompt", aslr_control=False, hosts_file="none"
+    )
+    assert cfg.make_sandbox_config(project).clearance_verdict_ttl == "2h"  # type: ignore[arg-type]
+    assert cfg.make_sandbox_config().clearance_verdict_ttl == "2h"
+    assert cfg._load_validated().clearance.verdict_ttl == "2h"
+
+
 def test_global_clearance_defaults_to_prompt(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:

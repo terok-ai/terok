@@ -2843,7 +2843,7 @@ requires-dist = [
     { name = "ruamel-yaml", specifier = "==0.19.1" },
     { name = "terok-clearance", git = "https://github.com/sliwowitz/terok-clearance?rev=feat%2Fconfig-schema" },
     { name = "terok-executor", specifier = ">=0.5.1,<0.6.0" },
-    { name = "terok-sandbox", specifier = ">=0.7.0,<0.8.0" },
+    { name = "terok-sandbox", git = "https://github.com/sliwowitz/terok-sandbox?rev=fix%2Fclearance-verdict-ttl" },
     { name = "terok-shield", specifier = ">=0.10.0,<0.11.0" },
     { name = "terok-util", specifier = ">=0.5.0,<0.6.0" },
     { name = "textual", extras = ["syntax"], specifier = "~=8.2.8" },
@@ -2886,8 +2886,8 @@ test = [
 
 [[package]]
 name = "terok-clearance"
-version = "0.8.3.dev269+gd7f830b1c"
-source = { git = "https://github.com/sliwowitz/terok-clearance?rev=feat%2Fconfig-schema#d7f830b1c69fbc11929c47b7dbcf9eac9f353c84" }
+version = "0.8.3.dev271+g30e591a91"
+source = { git = "https://github.com/sliwowitz/terok-clearance?rev=feat%2Fconfig-schema#30e591a91eeba376d9ec0f80d6527e5f126a36e1" }
 dependencies = [
     { name = "asyncvarlink" },
     { name = "dbus-fast" },
@@ -2918,8 +2918,8 @@ wheels = [
 
 [[package]]
 name = "terok-sandbox"
-version = "0.7.0"
-source = { registry = "https://pypi.org/simple" }
+version = "0.7.1.dev543+gd8226e49d"
+source = { git = "https://github.com/sliwowitz/terok-sandbox?rev=fix%2Fclearance-verdict-ttl#d8226e49dba2921cf708cab51aa5d94e6d48739a" }
 dependencies = [
     { name = "aiohttp" },
     { name = "cryptography" },
@@ -2934,10 +2934,6 @@ dependencies = [
     { name = "terok-clearance" },
     { name = "terok-shield" },
     { name = "terok-util" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/d1/3c/375b2ab5e9d8c2625f5679bff7de6a2e18fdaacd54738ed3857d55036bf6/terok_sandbox-0.7.0.tar.gz", hash = "sha256:0580a26d42bfae97e51a76a2dea0313b940329b4efb6fdc6f33e2c7eb276a093", size = 1105759, upload-time = "2026-11-17T03:19:02.462Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/fa/25/11f42ab4046b70356bfb61d1faf2d933a49ce3204e6f4ca49403d582ac65/terok_sandbox-0.7.0-py3-none-any.whl", hash = "sha256:5f2b31faadfad847ddd4ab5c54e49e4a3372a64e2da39df7c4659441dc2da7ce", size = 488263, upload-time = "2026-11-17T03:19:00.911Z" },
 ]
 
 [[package]]

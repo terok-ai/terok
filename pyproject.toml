@@ -46,7 +46,7 @@ dependencies = [
     "textual-serve~=1.1",
     "jinja2~=3.1",
     "terok-executor>=0.5.1,<0.6.0",
-    "terok-sandbox>=0.7.0,<0.8.0",
+    "terok-sandbox @ git+https://github.com/sliwowitz/terok-sandbox@fix/clearance-verdict-ttl",
     "terok-shield>=0.10.0,<0.11.0",
     "terok-clearance @ git+https://github.com/sliwowitz/terok-clearance@feat/config-schema",
     "terok-util>=0.5.0,<0.6.0",
