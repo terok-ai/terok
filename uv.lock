@@ -1665,12 +1665,16 @@ wheels = [
 
 [[package]]
 name = "mkdocs-terok"
-version = "0.8.4.dev152+g57270dad5"
-source = { git = "https://github.com/sliwowitz/mkdocs-terok?rev=fix%2Fpython-315-support#57270dad5b8aab55faf96e27b1f53458920d4764" }
+version = "0.8.3"
+source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "properdocs" },
     { name = "pyyaml" },
     { name = "squarify" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/72/bb/3349509cec057cd7c18c344effff8a6c4fc2dd5e191278fc841769e7fd84/mkdocs_terok-0.8.3.tar.gz", hash = "sha256:0e977dcbedc4dd0660aab0a40669b7a8c85760f3a3e2f4b55c82556f948b41bd", size = 145996, upload-time = "2026-10-28T21:33:57.254Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/d0/8d/4bc73bbcf253c60255dbe7ad11fcfc059a850cca5620c44691bc7bf670db/mkdocs_terok-0.8.3-py3-none-any.whl", hash = "sha256:c4247ebf3ce0b5ff77cee6986fe939c28b0b78cb48fa06ae460467777d645f61", size = 42752, upload-time = "2026-10-28T21:33:55.953Z" },
 ]
 
 [[package]]
@@ -2868,7 +2872,7 @@ docs = [
     { name = "mkdocs-literate-nav", specifier = ">=0.6" },
     { name = "mkdocs-material", specifier = ">=9.7.6" },
     { name = "mkdocs-section-index", specifier = ">=0.3" },
-    { name = "mkdocs-terok", git = "https://github.com/sliwowitz/mkdocs-terok?rev=fix%2Fpython-315-support" },
+    { name = "mkdocs-terok", specifier = "~=0.8.0" },
     { name = "mkdocstrings", extras = ["python"], specifier = ">=1.0.5" },
     { name = "properdocs", specifier = ">=1.6.7" },
 ]
