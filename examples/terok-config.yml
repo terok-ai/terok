@@ -7,10 +7,11 @@
 # Notes:
 #  - The CLI command `terok config` shows which paths and files are used.
 
-ui:
-  # Default first task port for UI mode (subsequent tasks will auto-increment
-  # from this base if the port is busy).
-  base_port: 7860
+network:
+  # Range that terok takes the host ports of tasks and services from.
+  # Defaults: 18700 to 32700.
+  # port_range_start: 18700
+  # port_range_end: 32700
 
 vault:
   # Host-only credential storage (proxy DB, SSH key mapping, proxy routes).

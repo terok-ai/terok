@@ -1369,6 +1369,9 @@ class TestTuiThemePersistence:
 
 # ── validate_global_config ────────────────────────────────────────────
 
+_EXAMPLE_CONFIG = Path(__file__).parents[3] / "examples" / "terok-config.yml"
+"""The global config that the usage guide tells an operator to start from."""
+
 
 def _config_layers_in(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path, *, system_text: str | None = None
@@ -1391,6 +1394,14 @@ def test_validate_global_config_accepts_a_partial_file_and_writes_nothing(
     assert cfg.validate_global_config("tui:\n  default_tmux: true\n") is None
     assert cfg.validate_global_config("") is None
     assert not user.exists()
+
+
+def test_validate_global_config_accepts_the_example_config(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """``docs/usage.md`` says to copy the example, so the example must load as it is."""
+    _config_layers_in(monkeypatch, tmp_path)
+    assert cfg.validate_global_config(_EXAMPLE_CONFIG.read_text(encoding="utf-8")) is None
 
 
 @pytest.mark.parametrize(
