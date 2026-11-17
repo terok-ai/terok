@@ -2893,8 +2893,8 @@ dependencies = [
 
 [[package]]
 name = "terok-executor"
-version = "0.5.1a16.dev547+gf145630dc"
-source = { git = "https://github.com/sliwowitz/terok-executor?rev=feat%2Fwayland-modes#f145630dc44f9079f60e289221f10e12b835da4e" }
+version = "0.5.1a16.dev548+g0278f1cd4"
+source = { git = "https://github.com/sliwowitz/terok-executor?rev=feat%2Fwayland-modes#0278f1cd495b42b21b503269bf8650daf993474b" }
 dependencies = [
     { name = "agent-client-protocol" },
     { name = "jinja2" },
@@ -2909,8 +2909,8 @@ dependencies = [
 
 [[package]]
 name = "terok-sandbox"
-version = "0.7.0a11.dev552+g0dcf9d710"
-source = { git = "https://github.com/sliwowitz/terok-sandbox?rev=feat%2Fwayland-modes#0dcf9d71026e549dcfcd1a6fbd16b9c2b85e681b" }
+version = "0.7.0a11.dev554+g8c628571c"
+source = { git = "https://github.com/sliwowitz/terok-sandbox?rev=feat%2Fwayland-modes#8c628571c0aea2ac5dea8d71caa2b9172832b71e" }
 dependencies = [
     { name = "aiohttp" },
     { name = "cryptography" },
