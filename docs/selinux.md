@@ -109,18 +109,42 @@ terok setup selinux --with-wayland-direct --show
 terok setup selinux --with-wayland-direct
 ```
 
-The two flags can be combined; neither implies the other. All three modules
-are written in plain module syntax and build with `checkmodule` and
-`semodule_package`; no policy development packages are needed, on Silverblue
-either.
+The two flags can be combined; neither implies the other. Direct policy
+compilation additionally needs `make`, `m4`, `selinux-policy-devel` and
+`container-selinux`. The base socket and filtered-proxy policies compile
+directly with `checkmodule`; the direct policy uses the distro's
+container and virt baseline interfaces to retain normal container confinement,
+including execution of host-mounted init helpers. These interfaces need the
+SELinux development Makefile and container interfaces.
+These are **host build-time prerequisites**, not dependencies of task startup.
+The installer checks for them before compiling any module and reports missing
+files with package-install hints.
+
+On Fedora Workstation:
+
+```bash
+sudo dnf install selinux-policy-devel container-selinux make m4
+```
+
+On Silverblue, install missing packages **on the host**, not in Toolbox.
+If only the development Makefile is missing:
+
+```bash
+sudo rpm-ostree install --apply-live selinux-policy-devel
+terok setup selinux --with-wayland-direct
+```
+
+Add other missing prerequisite packages to that install command if needed.
+If pending deployment changes prevent live application, install without
+`--apply-live`, reboot into the new deployment, then retry the policy setup.
+See the [rpm-ostree package-layering documentation](https://coreos.github.io/rpm-ostree/administrator-handbook/#live-applying-package-additions).
 
 Only newly created `wl-direct` tasks select `terok_wayland_direct_t`.
-This domain is `container_t` plus desktop access: it joins the attributes
-`container_t` carries, so it keeps the stock container rules, Podman's per-task
-MCS categories and the host's booleans, including the one for NVIDIA device
-access; the module does not enable them or mount GPU devices. Ordinary
-containers receive no additional desktop permissions. Neither mode relabels
-the host compositor socket.
+This domain reuses Fedora's container baseline, audited against Fedora 45,
+and keeps Podman's per-task MCS categories. Existing host booleans still
+control conditional grants, including NVIDIA device access; the module does
+not enable them or mount GPU devices. Ordinary containers receive no additional
+desktop permissions. Neither mode relabels the host compositor socket.
 
 **Both modes increase host attack surface.** Direct mode adds no protocol
 filter. Its SELinux permissions cover reachable host sockets with the same
