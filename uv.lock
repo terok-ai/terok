@@ -2886,8 +2886,8 @@ test = [
 
 [[package]]
 name = "terok-clearance"
-version = "0.8.3.dev268+g339210420"
-source = { git = "https://github.com/sliwowitz/terok-clearance?rev=feat%2Fconfig-schema#3392104205282d614541728cdb8d881c3bec7403" }
+version = "0.8.3.dev269+gd7f830b1c"
+source = { git = "https://github.com/sliwowitz/terok-clearance?rev=feat%2Fconfig-schema#d7f830b1c69fbc11929c47b7dbcf9eac9f353c84" }
 dependencies = [
     { name = "asyncvarlink" },
     { name = "dbus-fast" },
