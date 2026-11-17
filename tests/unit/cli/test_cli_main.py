@@ -23,9 +23,15 @@ def tui_binary(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> str:
     return str(binary)
 
 
-@pytest.mark.parametrize("error,code", [(SetupRequiredError, 3), (SetupDowngradeError, 4)])
+@pytest.mark.parametrize(
+    "error,code,remedy",
+    [
+        (SetupRequiredError, 3, "run `terok setup`"),
+        (SetupDowngradeError, 4, "terok setup --allow-downgrade"),
+    ],
+)
 def test_setup_errors_render_without_tracebacks(
-    error: type[SetupRequiredError], code: int, capsys: pytest.CaptureFixture[str]
+    error: type[SetupRequiredError], code: int, remedy: str, capsys: pytest.CaptureFixture[str]
 ) -> None:
     """Setup and late launch errors retain typed exit codes at the CLI boundary."""
     from terok.cli.main import main
@@ -39,7 +45,7 @@ def test_setup_errors_render_without_tracebacks(
     assert exc.value.code == code
     diagnostic = capsys.readouterr().err
     assert "owner setup diagnostic" in diagnostic
-    assert ("terok setup" in diagnostic) is (code == 3)
+    assert remedy in diagnostic
 
 
 def _run_cli(*args: str, check: bool = False) -> subprocess.CompletedProcess[str]:

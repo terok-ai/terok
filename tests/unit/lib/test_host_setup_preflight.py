@@ -62,6 +62,7 @@ def test_setup_failure_during_start_never_recreates(tmp_path, mock_runtime) -> N
         patch.object(restart, "load_project", return_value=project),
         patch.object(restart, "load_task_meta", return_value=({"mode": "cli"}, tmp_path)),
         patch.object(restart._rt, "resolve_runtime", return_value=mock_runtime) as runtime,
+        patch.object(restart, "_sandbox"),
         patch.object(restart, "_validate_restart_preconditions"),
         patch.object(restart, "_validate_shield_bundle_version"),
         patch.object(restart, "_refresh_shield_tiers"),

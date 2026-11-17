@@ -14,8 +14,8 @@ The verdict probe (``terok.lib.core.setup.check_setup``) is the same one
 ``terok task run`` enforces in
 `terok.cli.commands.task._setup_verdict_or_exit` — so a verdict
 of ``READY`` short-circuits with a banner instead of nudging the user
-toward a slow re-run, and a ``DOWNGRADE`` refuses outright
-with the same wording the CLI uses.
+toward a slow re-run, and a ``DOWNGRADE`` refuses automatic setup
+while pointing to the explicit CLI override.
 """
 
 from __future__ import annotations
@@ -56,12 +56,17 @@ class SetupOutcome(enum.Enum):
     CANCELLED = "cancelled"
 
 
+DOWNGRADE_REMEDY = (
+    "Upgrade back, or run terok setup --allow-downgrade in a terminal at your own risk."
+)
+"""What an operator can do about a refused downgrade; the TUI never offers the override itself."""
+
 _VERDICT_HEADLINE: dict[SetupStatus, str] = {
     SetupStatus.READY: "Host services are already set up — re-running is safe but optional.",
     SetupStatus.MISSING: "First run detected — host services have not been initialised yet.",
     SetupStatus.STALE: ("Package versions or setup inputs changed — re-run setup to apply."),
     SetupStatus.INVALID: "Setup state is invalid — re-run setup to refresh it.",
-    SetupStatus.DOWNGRADE: ("Downgrade detected — upgrade back before running setup."),
+    SetupStatus.DOWNGRADE: ("Downgrade detected — explicit CLI setup is required."),
 }
 
 
@@ -76,7 +81,7 @@ class SetupScreen(ModalScreen[SetupOutcome]):
        open a [`WorkerLogScreen`][terok.tui.worker_log_screen.WorkerLogScreen]
        view of its streaming output.
     2. *Downgrade verdict* — Run is hidden; the only exit dismisses
-       with [`SetupOutcome.REFUSED`][terok.tui.setup_screen.SetupOutcome.REFUSED].  The CLI refuses with exit
+       with [`SetupOutcome.REFUSED`][terok.tui.setup_screen.SetupOutcome.REFUSED].  The CLI defaults to exit
        code 4 here; this mirrors that contract by *not* offering an
        option that would make the contract meaningless.
     """
@@ -155,10 +160,7 @@ class SetupScreen(ModalScreen[SetupOutcome]):
     def _blurb_for(verdict: SetupStatus) -> str:
         """Return the per-verdict explanation rendered below the headline."""
         if verdict is SetupStatus.DOWNGRADE:
-            return (
-                "Older code may not read newer state correctly. Upgrade back "
-                "to the installed setup version. Downgrades are not supported."
-            )
+            return f"Older code may not read newer state correctly. {DOWNGRADE_REMEDY}"
         return (
             "Installs the sandbox stack (shield + vault + gate + clearance) "
             "and the XDG desktop entry for terok-tui.  Idempotent — safe to "

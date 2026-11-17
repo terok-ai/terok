@@ -97,6 +97,8 @@ def _type_text(annotation: Any) -> str:
             return f"list of {_type_text(item)}"
         case origin, _ if origin is dict:
             return "mapping"
+    if isinstance(annotation, type) and issubclass(annotation, Enum):
+        return "one of " + ", ".join(f"`{member.value}`" for member in annotation)
     return _TYPE_NAMES.get(annotation, getattr(annotation, "__name__", str(annotation)).lower())
 
 

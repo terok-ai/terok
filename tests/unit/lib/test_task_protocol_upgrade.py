@@ -11,7 +11,11 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from terok.lib.integrations.sandbox import RuntimeInspectionError
+from terok.lib.integrations.sandbox import (
+    RuntimeInspectionError,
+    WaylandMode,
+    WaylandRecreationRequired,
+)
 from terok.lib.orchestration.task_runners import restart
 from terok.lib.util.host_cmd import WORKSPACE_DANGEROUS_DIRNAME
 from tests.testfs import WORKSPACE_ROOT
@@ -26,6 +30,7 @@ def upgrade_task(tmp_path: Path, mock_runtime: MagicMock) -> Iterator[SimpleName
         shutdown_timeout=10,
         hook_post_stop=None,
         is_sealed=False,
+        wayland=WaylandMode.NONE,
     )
     mock_runtime.container.return_value.mounts = [
         (str(project.tasks_root / "1" / WORKSPACE_DANGEROUS_DIRNAME), str(WORKSPACE_ROOT))
@@ -215,6 +220,63 @@ def test_failed_resume_preserves_container_when_recreation_is_unsafe(
         restart.task_restart(task.project.name, "1")
 
     assert task.image_protocol.call_count == (0 if mode == "run" else 1)
+    task.container.stop.assert_not_called()
+    task.sandbox.rm.assert_not_called()
+    task.cli.assert_not_called()
+    task.toad.assert_not_called()
+
+
+@pytest.mark.parametrize("entrypoint", [restart.ensure_task_running, restart.task_restart])
+@pytest.mark.parametrize("mode", ["cli", "toad", "run"])
+def test_wayland_recreation_required_never_removes_the_retained_container(
+    upgrade_task: SimpleNamespace, entrypoint, mode: str
+) -> None:
+    """A changed direct desktop grant requires an explicit recreation, not the fallback."""
+    task = upgrade_task
+    task.meta["mode"] = mode
+    task.container.state = "exited"
+    fault = WaylandRecreationRequired("wl-direct recreation required: restore its SELinux policy")
+    with (
+        patch.object(restart, "_refresh_before_resume"),
+        patch("terok.lib.orchestration.task_runners.container._sandbox") as sandbox,
+        pytest.raises(SystemExit, match="wl-direct recreation required") as raised,
+    ):
+        sandbox.return_value.start.side_effect = fault
+        entrypoint(task.project.name, "1")
+
+    assert raised.value.__cause__ is fault
+    task.image_protocol.assert_not_called()
+    task.sandbox.rm.assert_not_called()
+    task.cli.assert_not_called()
+    task.toad.assert_not_called()
+
+
+@pytest.mark.parametrize("mode", ["cli", "toad", "run"])
+@pytest.mark.parametrize("state", ["running", "exited"])
+@pytest.mark.parametrize("failure", [WaylandRecreationRequired, RuntimeInspectionError])
+def test_wayland_preflight_preserves_task_before_any_restart_mutation(
+    upgrade_task: SimpleNamespace, mode: str, state: str, failure: type[RuntimeError]
+) -> None:
+    """Incompatible or unverifiable desktop grants never stop a task or rewrite its inputs."""
+    task = upgrade_task
+    task.meta["mode"] = mode
+    task.container.state = state
+    before = task.meta.copy()
+    fault = failure("cannot verify desktop access")
+    task.sandbox.wayland_preflight.side_effect = fault
+    with (
+        patch.object(restart, "_refresh_before_resume") as refresh,
+        patch.object(restart, "_start_and_report_restart") as start,
+        pytest.raises(SystemExit, match="cannot verify desktop access") as raised,
+    ):
+        restart.task_restart(task.project.name, "1")
+
+    assert raised.value.__cause__ is fault
+    assert task.meta == before
+    task.sandbox.wayland_preflight.assert_called_once_with(f"{task.project.name}-{mode}-1")
+    task.preconditions.assert_not_called()
+    refresh.assert_not_called()
+    start.assert_not_called()
     task.container.stop.assert_not_called()
     task.sandbox.rm.assert_not_called()
     task.cli.assert_not_called()

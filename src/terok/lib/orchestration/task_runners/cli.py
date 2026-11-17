@@ -34,6 +34,7 @@ from .container import (
     _assert_running,
     _print_login_instructions,
     _refuse_existing_container,
+    _repeat_startup_warnings,
     _run_container,
 )
 from .shield import _apply_shield_policy
@@ -95,7 +96,7 @@ def task_run_cli(
         task_dir=task_dir,
         meta_path=meta_path,
     )
-    _run_container(
+    startup_warnings = _run_container(
         cname=cname,
         image=project_cli_image(project.name),
         env=env,
@@ -155,6 +156,7 @@ def task_run_cli(
     )
     _print_login_instructions(project.name, task_id, cname, color_enabled)
     print(f"- To stop:  {_red(f'podman stop {cname}', color_enabled)}\n")
+    _repeat_startup_warnings(startup_warnings)
 
 
 __all__ = [

@@ -109,8 +109,8 @@ def test_setup_screen_probe_error_is_invalid() -> None:
 
 
 def test_downgrade_screen_has_no_override_action() -> None:
-    """The UI offers no receipt deletion or forced setup escape hatch."""
+    """The UI explains the explicit CLI override but never offers to run it."""
     buttons = list(SetupScreen._buttons_for(SetupStatus.DOWNGRADE))
     assert [button.id for button in buttons] == ["setup-refused", "setup-close"]
     assert buttons[0].disabled
-    assert "Downgrades are not supported" in SetupScreen._blurb_for(SetupStatus.DOWNGRADE)
+    assert "terok setup --allow-downgrade" in SetupScreen._blurb_for(SetupStatus.DOWNGRADE)

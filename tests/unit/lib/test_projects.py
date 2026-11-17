@@ -919,6 +919,21 @@ class TestProject:
         ):
             assert load_project("proj-tz").timezone == "Europe/Prague"
 
+    @pytest.mark.parametrize("mode", ["none", "wl-mitm", "wl-direct"])
+    def test_wayland_mode_from_project(self, mode: str) -> None:
+        """The explicit project grant reaches the resolved launch configuration."""
+        from terok.lib.integrations.sandbox import WaylandMode
+
+        yaml_text = project_yaml("proj-desktop") + f"run:\n  wayland: {mode}\n"
+        with project_env(yaml_text, project_name="proj-desktop"):
+            assert load_project("proj-desktop").wayland is WaylandMode(mode)
+
+    def test_wayland_defaults_off(self) -> None:
+        from terok.lib.integrations.sandbox import WaylandMode
+
+        with project_env(project_yaml("proj-headless"), project_name="proj-headless"):
+            assert load_project("proj-headless").wayland is WaylandMode.NONE
+
     def test_timezone_omitted_is_none(self) -> None:
         """Without ``run.timezone`` the field is ``None`` — terok-executor will follow the host."""
         with project_env(project_yaml("proj-no-tz"), project_name="proj-no-tz"):

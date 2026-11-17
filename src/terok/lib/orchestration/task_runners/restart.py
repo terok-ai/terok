@@ -21,10 +21,15 @@ from terok.lib.integrations.executor import (
     require_image_input_protocol,
     require_task_input_protocol,
 )
-from terok.lib.integrations.sandbox import BUNDLE_VERSION, resolve_container_shield_version
+from terok.lib.integrations.sandbox import (
+    BUNDLE_VERSION,
+    WaylandRecreationRequired,
+    load_sidecar,
+    resolve_container_shield_version,
+)
 
 from ...core import runtime as _rt
-from ...core.config import get_public_host
+from ...core.config import get_public_host, is_experimental, make_sandbox_config
 from ...core.images import project_cli_image
 from ...core.projects import load_project
 from ...core.setup import validate_host_setup
@@ -40,7 +45,14 @@ from ..hooks import run_hook
 from ..ports import assign_web_port, release_web_port
 from ..tasks import container_name, load_task_meta
 from .cli import task_run_cli
-from .container import _assert_running, _podman_start, _print_login_instructions, _sandbox
+from .container import (
+    _assert_running,
+    _podman_start,
+    _print_login_instructions,
+    _repeat_startup_warnings,
+    _require_wayland_experimental,
+    _sandbox,
+)
 from .shield import _apply_shield_policy, _refresh_shield_tiers
 from .toad import _rehydrate_toad_token, _toad_browser_url, task_run_toad
 
@@ -150,7 +162,11 @@ def _make_running(
     if bounce:
         print(f"Restarting task {project_name}/{task_id} ({mode})...")
 
-    if reason is not None and mode != "run":
+    # Either rung is refused here, before anything is disturbed: a resume
+    # must be able to keep its desktop grant, a replacement needs its image.
+    if reason is None:
+        _preflight_retained_desktop(project, cname)
+    elif mode != "run":
         _preflight_replacement_image(project, runtime)
 
     if container_state is not None:
@@ -191,6 +207,8 @@ def _resume_failure_reason(
     try:
         _start_and_report_restart(project, task_id, mode, cname, meta, meta_path)
     except SystemExit as exc:
+        if isinstance(exc.__cause__, WaylandRecreationRequired):
+            raise
         if mode != "run":
             _preflight_replacement_image(project, runtime)
         return str(exc) or "podman start failed"
@@ -228,11 +246,42 @@ def _warn_container_only_workspace(
 
 
 def _preflight_replacement_image(project: ProjectConfig, runtime: ContainerRuntime) -> None:
-    """Reject obsolete replacement images before any recreation tears down a task."""
+    """Reject disabled desktop access or obsolete images before recreating a task."""
+    _require_wayland_experimental(project.wayland)
     try:
         require_image_input_protocol(runtime.image(project_cli_image(project.name)))
     except RuntimeError as exc:
         raise SystemExit(str(exc)) from exc
+
+
+def _preflight_retained_desktop(project: ProjectConfig, cname: str) -> None:
+    """Refuse a resume that cannot keep its desktop grant, before anything is disturbed.
+
+    Every path that starts an existing container runs this first, ahead of
+    the steps that rewrite its inputs or stop it.  The saved mode — not the
+    project's current selection — needs today's experimental opt-in, and the
+    sandbox must still be able to verify the grant the container retains.
+    """
+    _require_saved_wayland_experimental(cname)
+    try:
+        _sandbox(project).wayland_preflight(cname)
+    except RuntimeError as exc:
+        raise SystemExit(str(exc)) from exc
+
+
+def _require_saved_wayland_experimental(cname: str) -> None:
+    """Hold a retained desktop grant to the opt-in; an unreadable one fails closed."""
+    if is_experimental():
+        return
+    sidecar_path = make_sandbox_config().sidecar_path(cname)
+    if not sidecar_path.exists():
+        return
+    if (sidecar := load_sidecar(sidecar_path)) is None:
+        raise SystemExit(
+            "Cannot verify saved Wayland mode: supervisor sidecar is invalid. "
+            "Repair the sidecar or explicitly recreate the task."
+        )
+    _require_wayland_experimental(sidecar.wayland.mode)
 
 
 def _refresh_before_resume(
@@ -460,7 +509,7 @@ def _start_and_report_restart(
 ) -> None:
     """Start the (stopped) container, apply shield policy, print how to reach it."""
     task_dir = project.tasks_root / str(task_id)
-    _podman_start(project, cname)
+    startup_warnings = _podman_start(project, cname)
     _assert_running(project, cname)
     run_hook(
         "post_start",
@@ -477,6 +526,7 @@ def _start_and_report_restart(
     _warn_if_stale_image(project, task_id, mode, cname)
     print(f"Restarted task {task_id}: {_green(cname, _supports_color())}")
     _print_reach_footer(project, task_id, mode, cname, meta)
+    _repeat_startup_warnings(startup_warnings)
 
 
 def _print_reach_footer(

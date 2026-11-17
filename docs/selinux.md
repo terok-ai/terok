@@ -54,6 +54,116 @@ containers can connect to the gate / vault / SSH-signer sockets.
 sudo semodule -r terok_socket
 ```
 
+## Optional Wayland proxy policy
+
+The base `terok_socket` policy is not a desktop-access grant. Projects using
+`run.wayland: wl-mitm` can additionally install the separate optional
+Wayland module:
+
+```bash
+terok setup selinux --with-wayland --show
+terok setup selinux --with-wayland
+```
+
+The installer still installs the base socket policy. Without `--with-wayland`
+its behavior is unchanged; omitting the flag does not remove an optional
+module installed earlier. The flag is only valid for `setup selinux`.
+The operator installs wl-mitm separately. Compiling the module needs the
+host's policy development files; see the
+[build prerequisites](#direct-desktop-access-is-a-separate-opt-in) below.
+
+The optional module supplies a dedicated domain for the stock wl-mitm
+process. It does not grant containers access to all `unconfined_t` host
+sockets and does not change the real compositor socket's label. The proxy
+uses its own listener and forwards file descriptors required for rendering.
+An installed policy whose domain transition fails does not trigger an
+unconfined retry.
+
+While Wayland access is experimental that domain may open, read and run every
+file the base policy does not class as a security file, so the proxy starts
+from any Python or wl-mitm install layout. That reach includes the invoking
+user's SSH and GPG keys, and it lets the domain write container files and
+append to temporary files by path; shadow passwords, Kerberos keytabs and
+SELinux's own configuration stay closed. Landlock still confines the proxy
+process itself to reading system directories and writing its own runtime
+directory. This breadth is to be reduced before the feature leaves
+experimental status.
+
+This policy is defense in depth, not endpoint-specific IPC isolation.
+Desktop socket labels can be shared by unrelated host sockets, and the
+filesystem confinement helper does not mediate Unix-socket connections.
+A compromised proxy must not be assumed unable to reach every other host
+service. The protocol allowlist remains a separate control.
+
+If SELinux, AppArmor or ordinary file permissions deny access, the task
+continues with a warning and GUI access is unavailable. Terok checks from
+inside the container; seeing a socket on the host alone does not prove it
+is usable. No policy is installed automatically during launch. Administrator
+policies may already permit the connection without this optional module.
+
+### Direct desktop access is a separate opt-in
+
+The proxy policy does not enable `wl-direct`. Install the independent
+`terok_wayland_direct` module explicitly:
+
+```bash
+terok setup selinux --with-wayland-direct --show
+terok setup selinux --with-wayland-direct
+```
+
+The two flags can be combined; neither implies the other. Compiling either
+optional policy needs `make`, `m4` and `selinux-policy-devel`. The direct
+policy also needs `container-selinux`: it uses the distro's container and virt
+baseline interfaces to retain normal container confinement, including
+execution of host-mounted init helpers. Only the base socket policy compiles
+directly with `checkmodule`.
+These are **host build-time prerequisites**, not dependencies of task startup.
+The installer checks for them before compiling any module and reports missing
+files with package-install hints.
+
+On Fedora Workstation:
+
+```bash
+sudo dnf install selinux-policy-devel container-selinux make m4
+```
+
+On Silverblue, install missing packages **on the host**, not in Toolbox.
+If only the development Makefile is missing:
+
+```bash
+sudo rpm-ostree install --apply-live selinux-policy-devel
+terok setup selinux --with-wayland          # or --with-wayland-direct
+```
+
+Add other missing prerequisite packages to that install command if needed.
+If pending deployment changes prevent live application, install without
+`--apply-live`, reboot into the new deployment, then retry the policy setup.
+See the [rpm-ostree package-layering documentation](https://coreos.github.io/rpm-ostree/administrator-handbook/#live-applying-package-additions).
+
+Only newly created `wl-direct` tasks select `terok_wayland_direct_t`.
+This domain reuses Fedora's container baseline, audited against Fedora 45,
+and keeps Podman's per-task MCS categories. Existing host booleans still
+control conditional grants, including NVIDIA device access; the module does
+not enable them or mount GPU devices. Ordinary containers receive no additional
+desktop permissions. Neither mode relabels the host compositor socket.
+
+**Both modes increase host attack surface.** Direct mode adds no protocol
+filter. Its SELinux permissions cover reachable host sockets with the same
+labels, not uniquely the compositor; the single-socket mount and container
+namespaces remain essential restrictions.
+
+After a package update changes this policy, rerun
+`terok setup selinux --with-wayland-direct` to replace the loaded module.
+Updating the Python package alone does not update the host's SELinux policy.
+An existing container retains its creation-time domain: recreate it if it
+was created before the direct policy was installed. Containers already using
+`terok_wayland_direct_t` receive updated rules without recreation.
+Before removing `terok_wayland_direct`, stop its containers; restarting them
+afterward requires restoring the module or recreating them. Terok never falls
+back to `label=disable`.
+
+Switching other services to TCP does not bypass Wayland's socket permissions.
+
 ## Opting out: the TCP transport
 
 If you can't or don't want to install the policy — shared host where

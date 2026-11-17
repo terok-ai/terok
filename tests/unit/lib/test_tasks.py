@@ -717,10 +717,10 @@ class TestTask:
             # The drift probe compares container vs project image IDs;
             # share the handle so the resume rung stays open.
             mock_runtime.image.return_value = mock_runtime.container.return_value.image
-            with (
-                _set_state_sequence(mock_runtime, ["exited", "exited", "running"]),
-                mock_git_config(),
-            ):
+            retained = mock_runtime.container.return_value
+            retained.state = "exited"
+            retained.start.side_effect = lambda: setattr(retained, "state", "running")
+            with mock_git_config():
                 buffer = StringIO()
                 with redirect_stdout(buffer):
                     ensure_task_running(project_name, tid)

@@ -45,7 +45,7 @@ from ..tasks import (
     write_task_state,
 )
 from .config import _apply_unrestricted_env, _prepare_agent_config, _str_to_bool
-from .container import _refuse_existing_container, _run_container
+from .container import _refuse_existing_container, _repeat_startup_warnings, _run_container
 from .shield import _apply_shield_policy
 
 if TYPE_CHECKING:
@@ -181,7 +181,7 @@ def task_run_toad(
         task_dir=task_dir,
         meta_path=meta_path,
     )
-    _run_container(
+    startup_warnings = _run_container(
         cname=cname,
         image=project_cli_image(project.name),
         env=env,
@@ -246,6 +246,7 @@ def task_run_toad(
         f"\n- Logs: {_yellow(f'podman logs -f {cname}', color_enabled)}"
         f"\n- Stop: {_red(f'podman stop {cname}', color_enabled)}"
     )
+    _repeat_startup_warnings(startup_warnings)
 
 
 __all__ = [

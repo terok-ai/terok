@@ -50,8 +50,8 @@ from ..tasks import (
     write_task_state,
 )
 from .config import _apply_unrestricted_env, _str_to_bool
-from .container import _assert_running, _podman_start, _run_container
-from .restart import _refresh_before_resume
+from .container import _assert_running, _podman_start, _repeat_startup_warnings, _run_container
+from .restart import _preflight_retained_desktop, _refresh_before_resume
 from .shield import _apply_shield_policy
 
 #: Read-only task input holding the current headless prompt.
@@ -268,7 +268,7 @@ def task_run_headless(request: HeadlessRunRequest) -> str:
         task_dir=task_dir,
         meta_path=meta_path,
     )
-    _run_container(
+    startup_warnings = _run_container(
         cname=cname,
         image=project_cli_image(project.name),
         env=env,
@@ -312,6 +312,7 @@ def task_run_headless(request: HeadlessRunRequest) -> str:
         label=resolved.label,
         detached_label=f"Headless {resolved.label} task started (detached).",
     )
+    _repeat_startup_warnings(startup_warnings)
 
     return task_id
 
@@ -418,6 +419,7 @@ def task_followup_headless(
     # sidecar unless they are refreshed first — today's tiers (an override
     # shortened or removed since), today's clearance mode.  Before the prompt
     # is handed over, so a refusal here leaves the task as it was.
+    _preflight_retained_desktop(project, cname)
     _refresh_before_resume(project, cname, task_dir, runtime=runtime)
     _inject_followup_prompt(
         task_dir=task_dir,
@@ -426,7 +428,7 @@ def task_followup_headless(
 
     # Restart the existing container (re-runs the original bash command,
     # which reads prompt.txt and session files from the volume)
-    _podman_start(project, cname)
+    startup_warnings = _podman_start(project, cname)
     _assert_running(project, cname)
     run_hook(
         "post_start",
@@ -453,6 +455,7 @@ def task_followup_headless(
         label=label,
         detached_label="Follow-up started (detached).",
     )
+    _repeat_startup_warnings(startup_warnings)
 
 
 __all__ = [

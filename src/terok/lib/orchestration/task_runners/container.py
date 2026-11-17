@@ -13,13 +13,15 @@ from __future__ import annotations
 
 import math
 import shlex
+import sys
 from collections.abc import Iterable
+from dataclasses import replace
 from pathlib import Path
 from typing import TYPE_CHECKING
 
 from terok_util import SetupRequiredError
 
-from terok.lib.core.config import is_experimental
+from terok.lib.core.config import require_experimental
 from terok.lib.integrations.executor import (
     AgentRunner,
     BuildError,
@@ -34,6 +36,8 @@ from terok.lib.integrations.sandbox import (
     PodmanRuntime,
     Sandbox,
     VolumeSpec,
+    WaylandMode,
+    emit_warning,
     validate_passthrough_args,
 )
 
@@ -123,7 +127,7 @@ def _override_line(override: ShieldOverride) -> str:
     return f"{override.host} {_EXPIRES_MARKER}{override.expires.isoformat()}"
 
 
-def _podman_start(project: ProjectConfig, cname: str) -> None:
+def _podman_start(project: ProjectConfig, cname: str) -> list[str]:
     """Start an existing container, raising SystemExit on failure.
 
     Routes through [`Sandbox.start`][terok_sandbox.Sandbox.start] so the
@@ -131,15 +135,21 @@ def _podman_start(project: ProjectConfig, cname: str) -> None:
     ``/run/terok`` bind-mount source that a reboot wipes — as part of the
     start.  terok stays ignorant of that precondition; "start an existing
     container" is one sandbox call.
+
+    Returns the warnings the start printed, for
+    [`_repeat_startup_warnings`][terok.lib.orchestration.task_runners.container._repeat_startup_warnings]
+    once the caller's own output has scrolled them away.
     """
+    warnings: list[str] = []
     try:
-        _sandbox(project).start(cname)
+        _sandbox(project).start(cname, hooks=LifecycleHooks(warning=warnings.append))
     except FileNotFoundError:
         raise SystemExit("podman not found; please install podman")
     except SetupRequiredError:
         raise
     except RuntimeError as exc:
-        raise SystemExit(f"Failed to start container:\n{exc}")
+        raise SystemExit(f"Failed to start container:\n{exc}") from exc
+    return warnings
 
 
 def _refuse_existing_container(
@@ -187,6 +197,13 @@ def _print_login_instructions(project_name: str, task_id: str, cname: str, color
     print(f"Login with: {_blue(login_cmd, color)}")
     print(f"  (or:      {_blue(raw_cmd, color)})")
     _maybe_warn_recovery_unconfirmed(color)
+
+
+def _repeat_startup_warnings(warnings: Iterable[str]) -> None:
+    """Repeat launch warnings after initialization output, presented as the launch showed them."""
+    sys.stdout.flush()
+    for warning in warnings:
+        emit_warning(warning)
 
 
 def _maybe_warn_recovery_unconfirmed(color: bool) -> None:
@@ -292,7 +309,7 @@ def _run_container(
     hooks: LifecycleHooks | None = None,
     allow_debugger: bool = False,
     egress: EgressProjection = _NO_EGRESS,
-) -> None:
+) -> list[str]:
     """Launch a detached task container, annotated for clearance enrichment.
 
     A single ``dossier.meta_path`` OCI annotation binds the container
@@ -328,14 +345,24 @@ def _run_container(
         extra_args: Additional ``podman run`` flags inserted after the GPU
             args (e.g. ``["-p", "127.0.0.1:8080:7860"]``).
         command: Optional command + args appended after the image name.
-        hooks: Optional lifecycle callbacks fired around the launch.
+        hooks: Optional lifecycle callbacks fired around the launch.  Its
+            warning observer is replaced by the collector behind the
+            return value.
         allow_debugger: Launch in debug mode — the supervisor children
             stay ptrace-able so a debugger can attach (only the
             ``PR_SET_DUMPABLE`` clear is skipped; core-limit + mlockall
             still apply).  Forwarded to
             [`AgentRunner.launch_prepared`][terok_executor.AgentRunner.launch_prepared]'s
             ``allow_debugger`` kwarg, which writes it into the sidecar.
+
+    Returns:
+        The warnings the launch printed, for
+        [`_repeat_startup_warnings`][terok.lib.orchestration.task_runners.container._repeat_startup_warnings]
+        once the caller's own output has scrolled them away.
     """
+    _require_wayland_experimental(project.wayland)
+    warnings: list[str] = []
+    hooks = replace(hooks or LifecycleHooks(), warning=warnings.append)
     # OCI annotation under the ``dossier.*`` namespace flows through to
     # the shield reader, which picks it up at hook spawn time and uses
     # the pointed-at JSON file as ``ClearanceEvent.dossier`` on every
@@ -370,6 +397,7 @@ def _run_container(
                 name=cname,
                 task_dir=task_dir,
                 gpus=project.gpus,
+                wayland=project.wayland,
                 memory=project.memory,
                 cpus=project.cpus,
                 caps=("perfmon",) if project.perf else None,
@@ -393,6 +421,13 @@ def _run_container(
         raise SystemExit(f"podman not found; please install podman ({exc})") from exc
     except BuildError as exc:
         raise SystemExit(str(exc)) from exc
+    return warnings
+
+
+def _require_wayland_experimental(mode: WaylandMode) -> None:
+    """Refuse experimental desktop access without the existing global opt-in."""
+    if mode != WaylandMode.NONE:
+        require_experimental(f"Wayland ({mode})")
 
 
 def _sandbox(project: ProjectConfig) -> Sandbox:
@@ -497,12 +532,7 @@ def _validate_krun_compatibility(project: ProjectConfig) -> None:
       shared mount namespace), so token-broker and ssh-signer bridges
       silently fail to establish.
     """
-    if not is_experimental():
-        raise SystemExit(
-            "run.runtime: krun requires the experimental flag.  Set "
-            "`experimental: true` in your config.yml, or pass "
-            "`--experimental` on the command line."
-        )
+    require_experimental("run.runtime: krun")
 
     if project.nested_containers:
         raise SystemExit(

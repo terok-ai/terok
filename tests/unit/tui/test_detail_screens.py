@@ -9,6 +9,7 @@ import inspect
 import sys
 from collections.abc import Callable
 from datetime import datetime, timedelta
+from pathlib import Path
 from types import SimpleNamespace
 from unittest import mock
 
@@ -16,6 +17,7 @@ import pytest
 import textual.theme  # noqa: F401 - prime the real module; see comment below
 from rich.text import Text
 
+from tests.test_utils import write_project
 from tests.testfs import MOCK_BASE, MOCK_CONFIG_ROOT
 from tests.testnet import TEST_EGRESS_URL, TEST_UPSTREAM_URL
 from tests.unit.tui.tui_test_helpers import (
@@ -169,6 +171,30 @@ class TestRenderHelpers:
         result = widgets.render_project_details(project, state, task_count=5)
         text_str = str(result)
         assert f"Config: {TEST_PROJECT_ROOT}" in text_str
+
+    @pytest.mark.parametrize("base_image", [None, "nvidia/cuda:12.0"])
+    @pytest.mark.parametrize("loading", [False, True])
+    def test_project_details_show_resolved_base_image(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, base_image: str | None, loading: bool
+    ) -> None:
+        """Both renderers show the loaded image, including an omitted configuration value."""
+        from terok.lib.api import load_project
+
+        config = f"project:\n  name: {TEST_PROJECT_NAME}\n"
+        if base_image is not None:
+            config += f"image:\n  base_image: {base_image}\n"
+        write_project(tmp_path / "projects", TEST_PROJECT_NAME, config)
+        monkeypatch.setenv("TEROK_CONFIG_DIR", str(tmp_path))
+        project = load_project(TEST_PROJECT_NAME)
+        widgets = import_widgets()
+
+        result = (
+            widgets.render_project_loading(project)
+            if loading
+            else widgets.render_project_details(project, {})
+        )
+
+        assert f"Base image:  {project.base_image}" in result.plain.splitlines()
 
     def test_render_project_details_shows_review_lag(self) -> None:
         widgets = import_widgets()

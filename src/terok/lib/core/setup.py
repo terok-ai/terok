@@ -26,9 +26,15 @@ def check_setup(*, live: bool = False) -> tuple[SetupCheck, ...]:
     return (_receipt().check(), *executor.check_setup(make_sandbox_config(), live=live))
 
 
-def preflight_setup() -> None:
-    """Reject downgrades throughout the closure before setup writes anything."""
-    require_no_downgrade(check_setup())
+def preflight_setup() -> tuple[SetupCheck, ...]:
+    """Reject unapproved downgrades throughout the closure before setup writes anything.
+
+    Returns the checks it judged, so a caller reporting on an approved
+    downgrade describes the same state that was let through.
+    """
+    checks = check_setup()
+    require_no_downgrade(checks)
+    return checks
 
 
 def invalidate_setup() -> None:

@@ -213,12 +213,13 @@ def run_followup_request(
 
     state_patch: contextlib.AbstractContextManager
     if isinstance(container_state, list):
-        # Existence and protocol inspection both precede the start transition.
+        # The existence check, the desktop preflight and the protocol inspection
+        # precede the start, which observes the container once more before it runs.
         state_patch = unittest.mock.patch.object(
             type(container),
             "state",
             new_callable=unittest.mock.PropertyMock,
-            side_effect=iter([container_state[0], *container_state]).__next__,
+            side_effect=iter([*[container_state[0]] * 3, *container_state]).__next__,
             create=True,
         )
     else:
@@ -473,9 +474,10 @@ class TestTaskRunHeadless:
         """Persisting launch state must not undo a rename made during container startup."""
         project_name = "proj_headless_rename"
 
-        def rename_during_launch(**kwargs) -> None:
-            """Rename after the runner has read the original metadata."""
+        def rename_during_launch(**kwargs) -> list[str]:
+            """Rename after the runner has read the original metadata; the launch warns of nothing."""
             task_rename(project_name, kwargs["task_id"], "edited-name")
+            return []
 
         with unittest.mock.patch(
             "terok.lib.orchestration.task_runners.headless._run_container",
@@ -861,14 +863,8 @@ class TestTaskFollowupHeadless:
             task_id = self._create_completed_task(base, "proj_startfail")
             container_mock = mock_runtime.container.return_value
 
+            container_mock.state = "exited"
             with (
-                unittest.mock.patch.object(
-                    type(container_mock),
-                    "state",
-                    new_callable=unittest.mock.PropertyMock,
-                    side_effect=iter(["exited", "exited", "exited"]).__next__,
-                    create=True,
-                ),
                 unittest.mock.patch.dict(
                     os.environ, runner_env_vars(base, base / "config.yml"), clear=True
                 ),
@@ -898,14 +894,9 @@ class TestTaskFollowupHeadless:
 
             container_mock = mock_runtime.container.return_value
 
+            container_mock.state = "exited"
+            container_mock.start.side_effect = lambda: setattr(container_mock, "state", "running")
             with (
-                unittest.mock.patch.object(
-                    type(container_mock),
-                    "state",
-                    new_callable=unittest.mock.PropertyMock,
-                    side_effect=iter(["exited", "exited", "running"]).__next__,
-                    create=True,
-                ),
                 unittest.mock.patch.dict(
                     os.environ, runner_env_vars(base, config_file), clear=True
                 ),

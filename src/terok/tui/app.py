@@ -191,7 +191,7 @@ if _HAS_TEXTUAL:
         VaultScreen,
         VaultUnlockModal,
     )
-    from .setup_screen import SetupOutcome, SetupScreen
+    from .setup_screen import DOWNGRADE_REMEDY, SetupOutcome, SetupScreen
     from .task_actions import TaskActionsMixin
     from .task_watcher import TaskWatcher
     from .widgets import (
@@ -731,8 +731,7 @@ if _HAS_TEXTUAL:
                     )
                 case SetupOutcome.REFUSED:
                     self.notify(
-                        "Setup refused due to a downgrade. Upgrade back to the "
-                        "installed setup version; downgrades are not supported.",
+                        f"Setup refused due to a downgrade. {DOWNGRADE_REMEDY}",
                         severity="error",
                         timeout=15,
                     )
