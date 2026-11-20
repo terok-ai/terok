@@ -1665,16 +1665,16 @@ wheels = [
 
 [[package]]
 name = "mkdocs-terok"
-version = "0.8.3"
+version = "0.8.4"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "properdocs" },
     { name = "pyyaml" },
     { name = "squarify" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/72/bb/3349509cec057cd7c18c344effff8a6c4fc2dd5e191278fc841769e7fd84/mkdocs_terok-0.8.3.tar.gz", hash = "sha256:0e977dcbedc4dd0660aab0a40669b7a8c85760f3a3e2f4b55c82556f948b41bd", size = 145996, upload-time = "2026-10-28T21:33:57.254Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/49/b8/3f4066e8c0d871d60f148a517473d01403542968b06b7732524d093d7d77/mkdocs_terok-0.8.4.tar.gz", hash = "sha256:b4b78d2f91bb3d6bb57c4d702db733c156dfe6a6a0f0d7f1e3f343ae9ce65f95", size = 155388, upload-time = "2026-11-17T01:47:32.935Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/d0/8d/4bc73bbcf253c60255dbe7ad11fcfc059a850cca5620c44691bc7bf670db/mkdocs_terok-0.8.3-py3-none-any.whl", hash = "sha256:c4247ebf3ce0b5ff77cee6986fe939c28b0b78cb48fa06ae460467777d645f61", size = 42752, upload-time = "2026-10-28T21:33:55.953Z" },
+    { url = "https://files.pythonhosted.org/packages/9e/af/f2a64930fed6ee80029b496209f84d03d6c7f5de9eeb670be66ffd8f8323/mkdocs_terok-0.8.4-py3-none-any.whl", hash = "sha256:a29fea8e8f558593bedbf9a9094197ae54ebbd6a5d616bae17986b4bd552f5c8", size = 42757, upload-time = "2026-11-17T01:47:31.65Z" },
 ]
 
 [[package]]
