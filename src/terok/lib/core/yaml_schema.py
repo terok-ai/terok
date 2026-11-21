@@ -36,6 +36,7 @@ from typing import Annotated, Any, ClassVar, Literal
 
 from pydantic import BaseModel, BeforeValidator, ConfigDict, Field, field_validator, model_validator
 
+from terok.lib.core.project_model import validate_branch_name
 from terok.lib.integrations.clearance import RawClearanceSection
 from terok.lib.integrations.executor import ExecutorConfigView, RawImageSection
 from terok.lib.integrations.sandbox import (
@@ -160,6 +161,15 @@ class RawGitSection(BaseModel):
     human_name: str | None = Field(
         default=None, description="Human name for git committer identity"
     )
+
+    @field_validator("default_branch")
+    @classmethod
+    def _branch_git_accepts(cls, value: str | None) -> str | None:
+        """The branch reaches a Dockerfile ``ENV`` line and git itself; refuse what either chokes on."""
+        if value:
+            validate_branch_name(value)
+        return value
+
     human_email: str | None = Field(
         default=None, description="Human email for git committer identity"
     )

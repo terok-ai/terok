@@ -211,9 +211,17 @@ def _dossier_handle_to_dir_and_id(path: Path) -> tuple[Path, str]:
 
 
 def _atomic_write(path: Path, text: str) -> None:
-    """Stage to ``<path>.tmp`` and rename — POSIX-atomic on the same filesystem."""
+    """Stage to ``<path>.tmp`` as a private file and rename — POSIX-atomic on the same filesystem.
+
+    The metadata carries the task's gate and web tokens, so the staged
+    file is ``0o600`` whatever the umask says; a stale stage left behind
+    by a crash is tightened before it is reused.
+    """
     tmp = path.with_suffix(path.suffix + ".tmp")
-    tmp.write_text(text, encoding="utf-8")
+    fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC | os.O_NOFOLLOW, 0o600)
+    with os.fdopen(fd, "w", encoding="utf-8") as staged:
+        os.fchmod(fd, 0o600)
+        staged.write(text)
     os.replace(tmp, path)
 
 

@@ -13,6 +13,7 @@ have no behavior beyond computed paths.
 """
 
 import re
+import unicodedata
 from datetime import date
 from pathlib import Path
 from typing import Any, Literal
@@ -292,6 +293,41 @@ def is_valid_project_name(project_name: str) -> bool:
     dropping it from the listing.
     """
     return bool(project_name) and _PROJECT_NAME_RE.fullmatch(project_name) is not None
+
+
+_BRANCH_FORBIDDEN_CHARS = frozenset(' ~^:?*[\\"$`')
+"""Characters git refuses in a ref name, plus the quote, dollar and backtick
+that would break the quoted YAML scalar and the Dockerfile ``ENV`` line a
+branch name is written into."""
+
+
+def validate_branch_name(branch: str) -> None:
+    """Refuse a branch name git would refuse, or one the project templates cannot carry.
+
+    Mirrors ``git check-ref-format --branch``: no control characters, no
+    ``..`` or ``@{``, no leading ``-``, no trailing ``.``, and no path
+    component that is empty, starts with ``.`` or ends in ``.lock``.
+    Raises ValueError naming the offending value.
+    """
+    components = branch.split("/")
+    offending = (
+        not branch
+        or branch == "@"
+        or any(
+            ch in _BRANCH_FORBIDDEN_CHARS or unicodedata.category(ch).startswith("C")
+            for ch in branch
+        )
+        or ".." in branch
+        or "@{" in branch
+        or branch.startswith("-")
+        or branch.endswith(".")
+        or any(not part or part.startswith(".") or part.endswith(".lock") for part in components)
+    )
+    if offending:
+        raise ValueError(
+            f"Invalid branch name {branch!r}: use the characters git accepts in a ref name, "
+            "without quotes, '$' or '`'"
+        )
 
 
 def validate_project_name(project_name: str) -> None:
