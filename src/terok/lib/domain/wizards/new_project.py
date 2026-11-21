@@ -43,7 +43,7 @@ from terok.ui_utils.editor import open_in_editor
 
 from ...core.config import user_projects_dir
 from ...core.egress_sets import RECOMMENDED_SET
-from ...core.project_model import validate_project_name
+from ...core.project_model import validate_branch_name, validate_project_name
 
 # ── Vocabulary ────────────────────────────────────────────────────────
 
@@ -321,6 +321,20 @@ class Question:
         return self.choices_loader() if self.choices_loader is not None else self.choices
 
 
+def validate_branch(branch: str) -> str | None:
+    """Return an error message if *branch* is not a name git and the templates accept.
+
+    Empty means "the remote's default" and is accepted.
+    """
+    if not branch:
+        return None
+    try:
+        validate_branch_name(branch)
+    except ValueError as exc:
+        return str(exc)
+    return None
+
+
 def _validate_project_name(project_name: str) -> str | None:
     """Return an error message if *project_name* is invalid, else ``None``."""
     if not project_name:
@@ -450,6 +464,7 @@ QUESTIONS: tuple[Question, ...] = (
         help="Leave empty to use the remote's default (or ``main`` when no remote).",
         placeholder="main",
         default_visible=True,
+        validate=lambda value: validate_branch(value),
     ),
     Question(
         key="user_snippet",

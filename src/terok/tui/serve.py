@@ -26,6 +26,7 @@ import sys
 from base64 import b64decode, urlsafe_b64decode, urlsafe_b64encode
 from pathlib import Path
 from typing import TYPE_CHECKING
+from urllib.parse import urlsplit
 
 from ..lib.api import get_config
 from ..lib.util.ansi import red, supports_color
@@ -70,8 +71,8 @@ def main() -> None:
 
     _require_textual_serve()
     _warn_if_cleartext_basic_auth(args.host, args.public_url)
-    stored_hash = _bootstrap_password(path)
-    server = _build_server("terok-tui", args.host, args.port, args.public_url, stored_hash)
+    _bootstrap_password(path)
+    server = _build_server("terok-tui", args.host, args.port, args.public_url, path)
     display_url = args.public_url or f"http://{url_host(args.host)}:{args.port}/"
     print(
         f"terok-web: serving at {display_url} (user '{_AUTH_USER}', hash in {path})",
@@ -133,7 +134,7 @@ def _print_first_run_banner(password: str) -> None:
 
 
 def _build_server(
-    command: str, host: str, port: int, public_url: str | None, stored_hash: str
+    command: str, host: str, port: int, public_url: str | None, password_path: Path
 ) -> Server:
     """A textual-serve [`Server`][asyncio.Server] with Basic-auth middleware already attached.
 
@@ -143,7 +144,7 @@ def _build_server(
     """
     from textual_serve.server import Server
 
-    mw = _basic_auth_middleware(stored_hash)
+    mw = _basic_auth_middleware(password_path, public_url)
     server = Server(command, host=host, port=port, public_url=public_url)
     original_make_app = server._make_app
 
@@ -159,23 +160,38 @@ def _build_server(
     return server
 
 
-def _basic_auth_middleware(stored_hash: str) -> Callable[..., Awaitable[web.StreamResponse]]:
-    """Basic-auth gate that verifies the user's password against *stored_hash*.
+def _basic_auth_middleware(
+    password_path: Path, public_url: str | None
+) -> Callable[..., Awaitable[web.StreamResponse]]:
+    """Basic-auth gate on the stored record, same-origin on WebSocket upgrades.
 
+    The record at *password_path* is read on every request, which is what
+    lets ``--set-password`` take effect on the next request rather than
+    the next restart: one small file read beside a full scrypt verify,
+    which stays as the deliberate rate limit against online guessing.
     Browsers cache Basic credentials for the origin, so the prompt fires
-    at most once per session.  Each request still pays a full scrypt
-    verify — deliberate rate limit against online guessing.
+    at most once per session.
+
+    A browser also attaches those cached credentials to a WebSocket
+    handshake whichever page opened it, so an upgrade is accepted only
+    from a page this server serves: its ``Origin`` must name the host the
+    request arrived at, or the advertised *public_url* behind a proxy.
     """
     from aiohttp import web
 
     challenge = {"WWW-Authenticate": f'Basic realm="{_AUTH_REALM}"'}
     user_prefix = f"{_AUTH_USER}:".encode()
+    proxied = frozenset({urlsplit(public_url).netloc.lower()} if public_url else ())
 
     @web.middleware
     async def mw(
         request: web.Request,
         handler: Callable[[web.Request], Awaitable[web.StreamResponse]],
     ) -> web.StreamResponse:
+        if request.headers.get("Upgrade", "").lower() == "websocket" and not _same_origin(
+            request, proxied
+        ):
+            return web.Response(status=403, text="Forbidden: cross-origin WebSocket")
         header = request.headers.get("Authorization", "")
         scheme, _, payload = header.partition(" ")
         if scheme.lower() == "basic":
@@ -185,11 +201,20 @@ def _basic_auth_middleware(stored_hash: str) -> Callable[..., Awaitable[web.Stre
                 decoded = b""
             if decoded.startswith(user_prefix):
                 candidate = decoded[len(user_prefix) :].decode("utf-8", errors="replace")
-                if _verify_password(candidate, stored_hash):
+                stored = _load_password_record(password_path)
+                if stored is not None and _verify_password(candidate, stored):
                     return await handler(request)
         return web.Response(status=401, headers=challenge, text="Unauthorized")
 
     return mw
+
+
+def _same_origin(request: web.Request, proxied: frozenset[str]) -> bool:
+    """Whether a browser's ``Origin`` names this server; a request without one is not a browser's."""
+    origin = request.headers.get("Origin")
+    if origin is None:
+        return True
+    return urlsplit(origin).netloc.lower() in {request.host.lower(), *proxied}
 
 
 # ── scrypt hashing ──────────────────────────────────────────────────────

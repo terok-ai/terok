@@ -607,7 +607,7 @@ depends_on = [
 [[modules]]
 path = "terok.lib.core.yaml_schema"
 layer = "core"
-depends_on = []
+depends_on = ["terok.lib.core.project_model"]
 
 # Project discovery and loading
 [[modules]]
@@ -766,6 +766,7 @@ expose = [
     "ProjectConfig",
     "ShieldOverride",
     "is_valid_project_name",
+    "validate_branch_name",
     "validate_project_name",
 ]
 from = ["terok.lib.core.project_model"]
@@ -817,6 +818,7 @@ expose = [
     "enable_project_shield_set",
     "add_project_shield_override",
     "egress_set_users",
+    "validate_branch_name",
     "validate_project_name",
     "validate_project_yaml",
 ]

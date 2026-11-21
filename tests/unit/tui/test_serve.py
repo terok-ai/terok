@@ -244,50 +244,149 @@ class TestBootstrap:
         assert "Password:" not in second_err
 
 
+@pytest.fixture
+def password_file(tmp_path: Path) -> Path:
+    """A stored record for the password ``secret``."""
+    from terok.tui.serve import _save_password
+
+    path = tmp_path / "serve.password"
+    _save_password(path, "secret")
+    return path
+
+
+def _basic(password: str) -> dict[str, str]:
+    from base64 import b64encode
+
+    return {"Authorization": "Basic " + b64encode(f"terok:{password}".encode()).decode()}
+
+
+async def _no_content(_request: object) -> object:
+    from aiohttp import web
+
+    return web.Response(status=204)
+
+
 class TestBasicAuthMiddleware:
     """Tests for the basic-auth aiohttp middleware."""
 
-    async def test_rejects_without_credentials(self) -> None:
+    async def test_rejects_without_credentials(self, password_file: Path) -> None:
         """A request without Authorization gets a 401 + Basic challenge."""
         from aiohttp.test_utils import make_mocked_request
 
-        from terok.tui.serve import _basic_auth_middleware, _hash_password
+        from terok.tui.serve import _basic_auth_middleware
 
-        mw = _basic_auth_middleware(_hash_password("secret"))
+        mw = _basic_auth_middleware(password_file, None)
         req = make_mocked_request("GET", "/")
         resp = await mw(req, lambda _: None)
         assert resp.status == 401
         assert "Basic" in resp.headers["WWW-Authenticate"]
 
-    async def test_accepts_correct_credentials(self) -> None:
+    async def test_accepts_correct_credentials(self, password_file: Path) -> None:
         """Valid Basic auth passes through to the inner handler."""
-        from base64 import b64encode
-
-        from aiohttp import web
         from aiohttp.test_utils import make_mocked_request
 
-        from terok.tui.serve import _basic_auth_middleware, _hash_password
+        from terok.tui.serve import _basic_auth_middleware
 
-        mw = _basic_auth_middleware(_hash_password("secret"))
-        token = b64encode(b"terok:secret").decode()
-        req = make_mocked_request("GET", "/", headers={"Authorization": f"Basic {token}"})
-
-        async def inner(_request: web.Request) -> web.Response:
-            return web.Response(status=204)
-
-        resp = await mw(req, inner)
+        mw = _basic_auth_middleware(password_file, None)
+        req = make_mocked_request("GET", "/", headers=_basic("secret"))
+        resp = await mw(req, _no_content)
         assert resp.status == 204
 
-    async def test_rejects_wrong_password(self) -> None:
+    async def test_rejects_wrong_password(self, password_file: Path) -> None:
         """Wrong password still yields a 401 rather than passing through."""
-        from base64 import b64encode
-
         from aiohttp.test_utils import make_mocked_request
 
-        from terok.tui.serve import _basic_auth_middleware, _hash_password
+        from terok.tui.serve import _basic_auth_middleware
 
-        mw = _basic_auth_middleware(_hash_password("secret"))
-        token = b64encode(b"terok:wrong").decode()
-        req = make_mocked_request("GET", "/", headers={"Authorization": f"Basic {token}"})
+        mw = _basic_auth_middleware(password_file, None)
+        req = make_mocked_request("GET", "/", headers=_basic("wrong"))
         resp = await mw(req, lambda _: None)
         assert resp.status == 401
+
+    async def test_new_password_applies_without_a_restart(self, password_file: Path) -> None:
+        """``--set-password`` rewrites the record; the running gateway follows on the next request."""
+        from aiohttp.test_utils import make_mocked_request
+
+        from terok.tui.serve import _basic_auth_middleware, _save_password
+
+        mw = _basic_auth_middleware(password_file, None)
+        _save_password(password_file, "rotated")
+        old = await mw(make_mocked_request("GET", "/", headers=_basic("secret")), _no_content)
+        new = await mw(make_mocked_request("GET", "/", headers=_basic("rotated")), _no_content)
+        assert (old.status, new.status) == (401, 204)
+
+    async def test_missing_record_fails_closed(self, password_file: Path) -> None:
+        """No record on disk means nobody authenticates, not everybody."""
+        from aiohttp.test_utils import make_mocked_request
+
+        from terok.tui.serve import _basic_auth_middleware
+
+        mw = _basic_auth_middleware(password_file, None)
+        password_file.unlink()
+        resp = await mw(make_mocked_request("GET", "/", headers=_basic("secret")), _no_content)
+        assert resp.status == 401
+
+
+_UPGRADE = {"Upgrade": "websocket", "Connection": "Upgrade", "Host": "localhost:8566"}
+
+
+class TestWebSocketOrigin:
+    """A WebSocket handshake carries cached credentials from any page; only our own page may open one."""
+
+    async def test_cross_origin_upgrade_is_refused_despite_credentials(
+        self, password_file: Path
+    ) -> None:
+        from aiohttp.test_utils import make_mocked_request
+
+        from terok.tui.serve import _basic_auth_middleware
+
+        mw = _basic_auth_middleware(password_file, None)
+        headers = {**_UPGRADE, "Origin": "http://evil.example", **_basic("secret")}
+        resp = await mw(make_mocked_request("GET", "/ws", headers=headers), _no_content)
+        assert resp.status == 403
+
+    @pytest.mark.parametrize(
+        ("public_url", "origin"),
+        [
+            (None, "http://localhost:8566"),
+            (None, "http://LOCALHOST:8566"),
+            ("https://tui.example.org", "https://tui.example.org"),
+        ],
+        ids=["own-host", "case-insensitive", "advertised-proxy"],
+    )
+    async def test_own_origin_upgrade_passes(
+        self, password_file: Path, public_url: str | None, origin: str
+    ) -> None:
+        from aiohttp.test_utils import make_mocked_request
+
+        from terok.tui.serve import _basic_auth_middleware
+
+        mw = _basic_auth_middleware(password_file, public_url)
+        headers = {**_UPGRADE, "Origin": origin, **_basic("secret")}
+        resp = await mw(make_mocked_request("GET", "/ws", headers=headers), _no_content)
+        assert resp.status == 204
+
+    async def test_non_browser_upgrade_without_origin_still_needs_the_password(
+        self, password_file: Path
+    ) -> None:
+        from aiohttp.test_utils import make_mocked_request
+
+        from terok.tui.serve import _basic_auth_middleware
+
+        mw = _basic_auth_middleware(password_file, None)
+        ok = await mw(
+            make_mocked_request("GET", "/ws", headers={**_UPGRADE, **_basic("secret")}), _no_content
+        )
+        anon = await mw(make_mocked_request("GET", "/ws", headers=_UPGRADE), _no_content)
+        assert (ok.status, anon.status) == (204, 401)
+
+    async def test_origin_is_only_checked_on_upgrades(self, password_file: Path) -> None:
+        """Plain page loads keep working from anywhere; Basic auth alone guards them."""
+        from aiohttp.test_utils import make_mocked_request
+
+        from terok.tui.serve import _basic_auth_middleware
+
+        mw = _basic_auth_middleware(password_file, None)
+        headers = {"Origin": "http://evil.example", "Host": "localhost:8566", **_basic("secret")}
+        resp = await mw(make_mocked_request("GET", "/", headers=headers), _no_content)
+        assert resp.status == 204
