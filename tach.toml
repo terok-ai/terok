@@ -66,6 +66,7 @@ depends_on = [
     "terok.lib.core.yaml_schema",
     "terok.lib.domain.storage",
     "terok.lib.util.ansi",
+    "terok.lib.util.confirm",
     "terok.lib.util.emoji",
     "terok.lib.util.yaml",
     "terok.lib.domain.wizards.new_project",
@@ -496,6 +497,7 @@ depends_on = [
     "terok.lib.core.config",
     "terok.lib.core.projects",
     "terok.lib.orchestration.tasks",
+    "terok.lib.util.confirm",
     "terok.lib.util.fs",
     "terok.lib.util.host_cmd",
 ]
@@ -677,6 +679,13 @@ utility = true
 # Archive directory and filename helpers (timestamp + collision-free names)
 [[modules]]
 path = "terok.lib.util.fs"
+layer = "core"
+depends_on = []
+utility = true
+
+# One launch question, answerable by --yes
+[[modules]]
+path = "terok.lib.util.confirm"
 layer = "core"
 depends_on = []
 utility = true

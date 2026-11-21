@@ -944,6 +944,7 @@ terok task run myproj --mode headless --prompt "Add unit tests for utils.py" --m
 
 # Detach immediately (don't stream output)
 terok task run myproj --mode headless --prompt "Refactor the database layer" --no-follow
+terok task run myproj --mode headless --prompt "Fix the auth bug" --yes   # answers launch questions, e.g. credential files readable by the task
 
 # Use a specific agent
 terok task run myproj --mode headless --prompt "Fix the auth bug" --agent codex

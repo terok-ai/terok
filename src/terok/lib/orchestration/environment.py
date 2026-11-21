@@ -35,6 +35,7 @@ from ..core.config import (
     sandbox_live_mounts_dir,
 )
 from ..core.projects import ProjectConfig
+from ..util.confirm import confirm_or_exit
 from ..util.host_cmd import WORKSPACE_DANGEROUS_DIRNAME, WORKSPACE_SEED_PENDING
 
 if TYPE_CHECKING:
@@ -553,15 +554,18 @@ def _vault_patch_provider_sets(
     return enabled, disabled
 
 
-def _report_leaked_credentials(mounts_dir: Path) -> None:
-    """Report real credential files found in shared mounts.
+def _confirm_leaked_credentials(mounts_dir: Path) -> None:
+    """Report real credential files found in shared mounts and let the operator decide.
 
     A real credential in a shared mount is a containment failure — every
     task container can read it — so each finding is printed as a red
-    error.  The deliberate exceptions are the explicitly enabled
-    exposed-OAuth modes (Claude subscription features, direct Codex
-    control): those suppress the error and print a loud yellow banner
-    instead, so the user still can't miss that a real token is mounted.
+    error, and the launch goes on only when the operator says so: a
+    question on a terminal, ``--yes`` for an unattended run, otherwise a
+    stop that names the remedy (``terok vault clean``).  The deliberate
+    exceptions are the explicitly enabled exposed-OAuth modes (Claude
+    subscription features, direct Codex control): those suppress the
+    error and print a loud yellow banner instead, so the user still
+    can't miss that a real token is mounted.
 
     *mounts_dir* is the project's effective agent-config mount tree —
     shared or project-scoped per
@@ -608,6 +612,13 @@ def _report_leaked_credentials(mounts_dir: Path) -> None:
         )
         for provider, path in leaked:
             _logger.debug("Leaked credential for %s: %s", provider, path)
+        confirm_or_exit(
+            "Launch anyway, with these credentials readable by the task?",
+            hint=(
+                "Launch stopped: real credential files are readable by every task.  "
+                "Run `terok vault clean` to remove them, or pass --yes to launch anyway."
+            ),
+        )
 
 
 # ---------- Clone-cache workspace seeding ----------
@@ -802,7 +813,7 @@ class TaskEnvironment:
         # then the launch-time hint for a default agent the task cannot authenticate.
         if not vault_bypass:
             oauth_skipped = _apply_claude_oauth_overrides(env)
-            _report_leaked_credentials(mounts_dir)
+            _confirm_leaked_credentials(mounts_dir)
             _warn_unready_default_agent(
                 env,
                 roster,

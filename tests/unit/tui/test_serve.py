@@ -117,6 +117,7 @@ class TestMain:
         monkeypatch.setitem(sys.modules, "textual_serve.server", server_mod)
         monkeypatch.setattr("sys.argv", ["terok-web", "--host", "0.0.0.0", "--port", "9000"])
         monkeypatch.setenv("TEROK_CONFIG_DIR", str(tmp_path))
+        monkeypatch.setenv("TEROK_ALLOW_CLEARTEXT", "1")
 
         main()
 
@@ -124,6 +125,25 @@ class TestMain:
             "terok-tui", host="0.0.0.0", port=9000, public_url=None
         )
         mock_server_instance.serve.assert_called_once()
+
+    def test_non_loopback_bind_is_refused_without_the_opt_in(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        """Basic auth beyond loopback is plain text; without the opt-in nothing listens."""
+        mock_server_cls = mock.MagicMock()
+        server_mod = mock.MagicMock()
+        server_mod.Server = mock_server_cls
+
+        monkeypatch.setitem(sys.modules, "textual_serve", mock.MagicMock())
+        monkeypatch.setitem(sys.modules, "textual_serve.server", server_mod)
+        monkeypatch.setattr("sys.argv", ["terok-web", "--host", "0.0.0.0"])
+        monkeypatch.setenv("TEROK_CONFIG_DIR", str(tmp_path))
+        monkeypatch.delenv("TEROK_ALLOW_CLEARTEXT", raising=False)
+
+        with pytest.raises(SystemExit, match="TEROK_ALLOW_CLEARTEXT"):
+            main()
+
+        mock_server_cls.assert_not_called()
 
 
 class TestPasswordHashing:
