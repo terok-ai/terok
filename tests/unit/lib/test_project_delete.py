@@ -242,3 +242,55 @@ class TestManagedRootGuard:
         monkeypatch.setenv("TEROK_VAULT_DIR", str(tmp_path / "creds"))
         monkeypatch.setenv("TEROK_CONFIG_FILE", str(tmp_path / "empty.yml"))
         assert not _is_under_terok_root(Path("/home/user/.ssh"))
+
+
+class TestRmtreeManagedIdentity:
+    """Deletion acts on the directory the containment check approved, never a swapped ancestor."""
+
+    def test_deletes_a_checked_managed_directory(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from terok.lib.domain import project as project_mod
+
+        victim = tmp_path.resolve() / "root" / "mid" / "victim"
+        victim.mkdir(parents=True)
+        (victim / "file").write_text("x")
+        monkeypatch.setattr(project_mod, "_is_under_terok_root", lambda _path: True)
+        deleted: list[str] = []
+        skipped: list[str] = []
+
+        project_mod._rmtree_managed(victim, "Tasks root", deleted, skipped)
+
+        assert not victim.exists()
+        assert deleted == [str(victim)]
+        assert skipped == []
+
+    def test_refuses_an_ancestor_swapped_after_the_check(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A rename racing the check turns the approved path into a link to an outside tree."""
+        from terok.lib.domain import project as project_mod
+
+        base = tmp_path.resolve()
+        mid = base / "root" / "mid"
+        victim = mid / "victim"
+        victim.mkdir(parents=True)
+        outside = base / "outside" / "victim"
+        outside.mkdir(parents=True)
+        canary = outside / "canary"
+        canary.write_text("keep me")
+
+        def approve_then_swap(_path: Path) -> bool:
+            mid.rename(base / "moved-away")
+            mid.symlink_to(base / "outside", target_is_directory=True)
+            return True
+
+        monkeypatch.setattr(project_mod, "_is_under_terok_root", approve_then_swap)
+        deleted: list[str] = []
+        skipped: list[str] = []
+
+        project_mod._rmtree_managed(victim, "Tasks root", deleted, skipped)
+
+        assert canary.read_text() == "keep me"
+        assert deleted == []
+        assert len(skipped) == 1 and "changed under the containment check" in skipped[0]

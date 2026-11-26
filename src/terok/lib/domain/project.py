@@ -50,6 +50,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, TypedDict
 
+from terok_util import UnsafePathError, open_untrusted_directory
+
 from terok.lib.integrations.executor import (
     AGENTS_LABEL,
     ACPEndpointStatus,
@@ -565,13 +567,24 @@ def _rmtree_managed(path: Path, label: str, deleted: list[str], skipped: list[st
     A safety guard: user-configurable paths (``gate_path``, ``staging_root``)
     might point outside managed storage — in that case the directory is
     skipped rather than deleted.
+
+    The deletion is bound to the directory the check approved.  The path
+    is resolved once; the removal then walks that resolved parent without
+    following any link, so an ancestor swapped for a symlink after the
+    check is refused instead of followed into a tree outside storage.
     """
     if not path.is_dir():
         return
-    if not _is_under_terok_root(path):
+    resolved = path.resolve()
+    if not _is_under_terok_root(resolved):
         skipped.append(f"{label} {path} outside managed storage, not deleted")
         return
-    shutil.rmtree(path)
+    try:
+        with open_untrusted_directory(resolved.parent) as parent_fd:
+            shutil.rmtree(resolved.name, dir_fd=parent_fd)
+    except UnsafePathError:
+        skipped.append(f"{label} {path} changed under the containment check, not deleted")
+        return
     deleted.append(str(path))
 
 

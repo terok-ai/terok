@@ -66,13 +66,15 @@ def create_archive_file(root: Path, base_name: str, suffix: str = ".tar.gz") -> 
     safe against concurrent processes.
 
     *root* is created (with parents) if it does not already exist.
-    The file is created empty; the caller is responsible for writing content.
+    The file is created empty and private (``0o600``), whatever the
+    umask says: callers put project configuration in it.  The caller
+    writes the content.
     """
     ensure_dir(root)
     while True:
         candidate = unique_archive_path(root, base_name, suffix=suffix)
         try:
-            fd = os.open(candidate, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+            fd = os.open(candidate, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
             os.close(fd)
             return candidate
         except FileExistsError:
