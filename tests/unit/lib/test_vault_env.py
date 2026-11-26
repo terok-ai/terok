@@ -401,7 +401,7 @@ def test_materialize_with_the_vault_on_warns_about_an_unrouted_claude_login(tmp_
         patch("terok.lib.integrations.executor.assemble_container_env", return_value=assembled),
         patch(f"{env_module}.exposed_credential_providers", return_value=frozenset()),
         patch(f"{env_module}._apply_claude_oauth_overrides", return_value=True),
-        patch(f"{env_module}._report_leaked_credentials") as leaked,
+        patch(f"{env_module}._confirm_leaked_credentials") as leaked,
         patch(f"{env_module}._warn_unready_default_agent") as warn,
     ):
         TaskEnvironment(project, "1").materialize()
@@ -413,14 +413,18 @@ def test_materialize_with_the_vault_on_warns_about_an_unrouted_claude_login(tmp_
 
 
 class TestLeakedCredentialsScan:
-    """Verify _report_leaked_credentials with exposed-token filtering."""
+    """Verify _confirm_leaked_credentials with exposed-token filtering."""
 
     def test_reports_leaked_files_as_red_errors(
-        self, capsys: pytest.CaptureFixture[str], caplog: pytest.LogCaptureFixture
+        self,
+        capsys: pytest.CaptureFixture[str],
+        caplog: pytest.LogCaptureFixture,
+        monkeypatch: pytest.MonkeyPatch,
     ) -> None:
-        """Leaked credential files print a red ERROR block to stderr."""
-        from terok.lib.orchestration.environment import _report_leaked_credentials
+        """Leaked credential files print a red ERROR block to stderr; --yes lets the launch go on."""
+        from terok.lib.orchestration.environment import _confirm_leaked_credentials
 
+        monkeypatch.setenv("TEROK_ASSUME_YES", "1")
         mounts = Path("/tmp/terok-testing/mounts")
         with (
             caplog.at_level(logging.DEBUG, logger="terok.lib.orchestration.environment"),
@@ -431,7 +435,7 @@ class TestLeakedCredentialsScan:
             patch("terok.lib.core.config.is_claude_oauth_exposed", return_value=False),
             patch("terok.lib.core.config.is_codex_oauth_exposed", return_value=False),
         ):
-            _report_leaked_credentials(mounts)
+            _confirm_leaked_credentials(mounts)
 
         err = capsys.readouterr().err
         assert "ERROR" in err and "claude" in err
@@ -444,11 +448,12 @@ class TestLeakedCredentialsScan:
         mock_scan.assert_called_once_with(mounts)
 
     def test_exposed_token_suppresses_claude_error(
-        self, capsys: pytest.CaptureFixture[str]
+        self, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """Exposed Claude OAuth token: Claude error suppressed, other providers still red."""
-        from terok.lib.orchestration.environment import _report_leaked_credentials
+        from terok.lib.orchestration.environment import _confirm_leaked_credentials
 
+        monkeypatch.setenv("TEROK_ASSUME_YES", "1")
         with (
             patch(
                 "terok.lib.integrations.executor.scan_leaked_credentials",
@@ -460,7 +465,7 @@ class TestLeakedCredentialsScan:
             patch("terok.lib.core.config.is_claude_oauth_exposed", return_value=True),
             patch("terok.lib.core.config.is_codex_oauth_exposed", return_value=False),
         ):
-            _report_leaked_credentials(Path("/tmp/terok-testing/mounts"))
+            _confirm_leaked_credentials(Path("/tmp/terok-testing/mounts"))
 
         # Exposed-token warning printed to stderr
         err = capsys.readouterr().err
@@ -471,11 +476,12 @@ class TestLeakedCredentialsScan:
         assert "vibe" in error_block
 
     def test_exposed_codex_token_suppresses_codex_error(
-        self, capsys: pytest.CaptureFixture[str]
+        self, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """Exposed Codex OAuth token: Codex error suppressed, banner printed."""
-        from terok.lib.orchestration.environment import _report_leaked_credentials
+        from terok.lib.orchestration.environment import _confirm_leaked_credentials
 
+        monkeypatch.setenv("TEROK_ASSUME_YES", "1")
         with (
             patch(
                 "terok.lib.integrations.executor.scan_leaked_credentials",
@@ -487,7 +493,7 @@ class TestLeakedCredentialsScan:
             patch("terok.lib.core.config.is_claude_oauth_exposed", return_value=False),
             patch("terok.lib.core.config.is_codex_oauth_exposed", return_value=True),
         ):
-            _report_leaked_credentials(Path("/tmp/terok-testing/mounts"))
+            _confirm_leaked_credentials(Path("/tmp/terok-testing/mounts"))
 
         err = capsys.readouterr().err
         assert "Codex" in err and "EXPOSED" in err
@@ -495,9 +501,31 @@ class TestLeakedCredentialsScan:
         assert "codex" not in error_block
         assert "vibe" in error_block
 
+    def test_leaked_files_stop_an_unattended_launch(
+        self, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Without a terminal and without --yes, the launch stops and names the remedy."""
+        from terok.lib.orchestration.environment import _confirm_leaked_credentials
+
+        monkeypatch.delenv("TEROK_ASSUME_YES", raising=False)
+        with (
+            patch(
+                "terok.lib.integrations.executor.scan_leaked_credentials",
+                return_value=[("claude", Path("/tmp/terok-testing/m/.credentials.json"))],
+            ),
+            patch("terok.lib.core.config.is_claude_oauth_exposed", return_value=False),
+            patch("terok.lib.core.config.is_codex_oauth_exposed", return_value=False),
+            pytest.raises(SystemExit) as stop,
+        ):
+            _confirm_leaked_credentials(Path("/tmp/terok-testing/mounts"))
+
+        assert "terok vault clean" in str(stop.value)
+        assert "--yes" in str(stop.value)
+        assert "ERROR" in capsys.readouterr().err
+
     def test_no_output_when_nothing_leaked(self, capsys: pytest.CaptureFixture[str]) -> None:
         """A clean scan prints nothing — no empty ERROR block."""
-        from terok.lib.orchestration.environment import _report_leaked_credentials
+        from terok.lib.orchestration.environment import _confirm_leaked_credentials
 
         with (
             patch(
@@ -507,6 +535,6 @@ class TestLeakedCredentialsScan:
             patch("terok.lib.core.config.is_claude_oauth_exposed", return_value=False),
             patch("terok.lib.core.config.is_codex_oauth_exposed", return_value=False),
         ):
-            _report_leaked_credentials(Path("/tmp/terok-testing/mounts"))
+            _confirm_leaked_credentials(Path("/tmp/terok-testing/mounts"))
 
         assert capsys.readouterr().err == ""

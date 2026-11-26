@@ -34,7 +34,7 @@ from ...util.ansi import (
     yellow as _yellow,
 )
 from ...util.logging_utils import timed_phase
-from ...util.net import url_host
+from ...util.net import is_loopback_host, require_cleartext_opt_in, url_host
 from ..agent_config import resolve_agent_config
 from ..environment import build_task_env_and_volumes
 from ..hooks import run_hook
@@ -54,7 +54,6 @@ if TYPE_CHECKING:
     from ...core.project_model import ProjectConfig
 
 _LOCALHOST = "127.0.0.1"
-_LOOPBACK_HOSTS = frozenset({"127.0.0.1", "localhost", "::1"})
 _TOAD_PUBLIC_PORT = 8080
 """Port that Caddy binds inside the container — the one podman publishes."""
 _TOAD_INTERNAL_PORT = 8081
@@ -119,6 +118,7 @@ def task_run_toad(
     _refuse_existing_container(runtime, project.name, cname, task_id)
 
     pub_host = get_public_host()
+    require_cleartext_opt_in(pub_host, what="The task web link, token included,")
 
     # New container — allocate a fresh port.
     port = assign_web_port(project.name, task_id)
@@ -159,7 +159,7 @@ def task_run_toad(
     # unreachable.  LAN exposure still goes to ``0.0.0.0``.
     if pub_host == "::1":
         bind_addr = "[::1]"
-    elif pub_host in _LOOPBACK_HOSTS:
+    elif is_loopback_host(pub_host):
         bind_addr = _LOCALHOST
     else:
         bind_addr = "0.0.0.0"  # nosec B104

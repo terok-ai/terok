@@ -660,8 +660,9 @@ class TestTask:
             with_config_file=True,
             clear_env=True,
         ):
-            # Re-apply after clear_env
+            # Re-apply after clear_env; a LAN host is a declared-trusted network here.
             monkeypatch.setenv("TEROK_PUBLIC_HOST", "myserver")
+            monkeypatch.setenv("TEROK_ALLOW_CLEARTEXT", "1")
             tid = task_new(project_name)
             mock_runtime.container.return_value.state = None
             mock_runtime.container.return_value.running = True

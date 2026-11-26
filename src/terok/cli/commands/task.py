@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 from typing import Any
 
@@ -38,6 +39,7 @@ from ...lib.api import (
 from ...lib.core.config import get_logs_partial_streaming as _get_logs_partial_streaming
 from ...lib.orchestration.tasks import resolve_task_id
 from ...lib.util.ansi import supports_color
+from ...lib.util.confirm import ASSUME_YES_ENV
 from ...lib.util.output_capture import tee_output
 from ._completers import add_project_name, add_task_id
 
@@ -154,6 +156,14 @@ def register(
         help="Runtime mode: cli (interactive, default), toad (browser TUI), headless (unattended)",
     )
     t_run.add_argument(
+        "-y",
+        "--yes",
+        dest="assume_yes",
+        action="store_true",
+        help="Answer yes to launch questions, such as launching while credential files are "
+        "readable by the task (unattended runs)",
+    )
+    t_run.add_argument(
         "--prompt",
         default=None,
         help="Agent prompt — required when --mode=headless, ignored otherwise",
@@ -248,6 +258,14 @@ def register(
             default="cli",
             help="Runtime mode: cli (default) or toad",
         )
+        t_attach.add_argument(
+            "-y",
+            "--yes",
+            dest="assume_yes",
+            action="store_true",
+            help="Answer yes to launch questions, such as launching while credential files are "
+            "readable by the task (unattended runs)",
+        )
         _add_restriction_flags(t_attach)
 
     t_list = tsub.add_parser("list", help="List tasks")
@@ -286,6 +304,14 @@ def register(
         action="store_true",
         help="Recreate the container instead of resuming it, picking up a "
         "rebuilt project image; the workspace is kept as-is",
+    )
+    t_restart.add_argument(
+        "-y",
+        "--yes",
+        dest="assume_yes",
+        action="store_true",
+        help="Answer yes to launch questions, such as launching while credential files are "
+        "readable by the task (unattended runs)",
     )
     _add_project_task_args(t_restart)
 
@@ -667,6 +693,8 @@ def _resolve_required_task_id(args: argparse.Namespace) -> str:
 
 def _dispatch_task_sub(args: argparse.Namespace) -> bool:
     """Dispatch ``task <subcommand>`` to the right handler."""
+    if getattr(args, "assume_yes", False):
+        os.environ[ASSUME_YES_ENV] = "1"
     # ``task run`` creates a new task (no task_id to resolve yet).
     if args.task_cmd == "run":
         _cmd_task_run(args)

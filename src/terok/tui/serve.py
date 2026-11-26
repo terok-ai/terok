@@ -29,7 +29,7 @@ from typing import TYPE_CHECKING
 
 from ..lib.api import get_config
 from ..lib.util.ansi import red, supports_color
-from ..lib.util.net import url_host
+from ..lib.util.net import require_cleartext_opt_in, url_host
 
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable
@@ -69,7 +69,7 @@ def main() -> None:
         return
 
     _require_textual_serve()
-    _warn_if_cleartext_basic_auth(args.host, args.public_url)
+    require_cleartext_opt_in(args.host, what="The terok-web Basic-auth password")
     stored_hash = _bootstrap_password(path)
     server = _build_server("terok-tui", args.host, args.port, args.public_url, stored_hash)
     display_url = args.public_url or f"http://{url_host(args.host)}:{args.port}/"
@@ -359,35 +359,6 @@ def _valid_port(value: str) -> int:
             f"invalid port value: {value!r} (must be between 1 and 65535)"
         )
     return port
-
-
-_LOOPBACK_HOSTS = frozenset({"127.0.0.1", "localhost", "::1", "[::1]"})
-
-
-def _warn_if_cleartext_basic_auth(host: str, public_url: str | None) -> None:
-    """Warn when Basic-auth credentials would travel the network in cleartext.
-
-    The only genuinely safe case is a loopback bind — anyone who can
-    read ``lo`` already owns the UID we run as.  A non-loopback bind
-    exposes the socket to every client on the segment; an
-    ``https://…`` advertisement via ``--public-url`` doesn't change
-    that, because the unencrypted port is still reachable directly.
-    The fix for that setup is ``--host 127.0.0.1`` + a reverse proxy,
-    not a URL string, so we warn loudly and keep going.
-    """
-    if host in _LOOPBACK_HOSTS:
-        return
-    detail = (
-        " (note: https:// --public-url advertises the reverse-proxy URL,"
-        " but the raw listener on this host is still plaintext)"
-        if public_url and public_url.lower().startswith("https://")
-        else ""
-    )
-    print(
-        f"terok-web: WARNING — binding non-loopback means Basic-auth credentials "
-        f"travel the wire in cleartext.{detail}",
-        file=sys.stderr,
-    )
 
 
 def _require_textual_serve() -> None:

@@ -69,7 +69,13 @@ The entrypoint automatically fixes ownership of mounted directories.
 
 The web TUI binds to `0.0.0.0` (the entrypoint passes
 `--host 0.0.0.0` to `terok-web`), so it is LAN-reachable out of the box
-with `--network host`.
+with `--network host`. That is plain HTTP: the Basic-auth password and
+the tokens in task links cross the network readable, which is acceptable
+on a trusted LAN only. Outside the image, terok refuses a non-loopback
+listener or a non-loopback `TEROK_PUBLIC_HOST` unless
+`TEROK_ALLOW_CLEARTEXT=1` is set; the entrypoint sets it, because the
+image exists to be reached over the network. For anything beyond a
+trusted LAN, put a TLS reverse proxy in front.
 
 To make the TUI's WebSocket links and toad URLs display the correct
 external address, set `TEROK_PUBLIC_URL` and optionally
@@ -125,7 +131,8 @@ bind-mount ownership) and then drops to `podman` internally.
 | Variable | Purpose |
 |----------|---------|
 | `TEROK_PUBLIC_URL` | Browser-facing URL for the web TUI (passed to `terok-web --public-url` by the entrypoint) |
-| `TEROK_PUBLIC_HOST` | Hostname/IP advertised in toad URLs (default `127.0.0.1`; display only, does not change bind addresses) |
+| `TEROK_PUBLIC_HOST` | Hostname/IP advertised in toad URLs (default `127.0.0.1`); a non-loopback value also publishes the toad ports on all interfaces |
+| `TEROK_ALLOW_CLEARTEXT` | Allow plain HTTP beyond loopback for `terok-web` and toad links (the entrypoint sets `1`; a trusted LAN only, otherwise use a TLS reverse proxy) |
 
 ## Known limitations
 

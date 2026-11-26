@@ -381,6 +381,25 @@ class TestTaskRunInteractive:
         # --no-attach must suppress the login exec in every interactive mode.
         mock_task_login.assert_not_called()
 
+    @pytest.mark.parametrize("flag", [[], ["--yes"]], ids=["ask", "yes"])
+    def test_yes_answers_launch_questions_for_the_whole_run(
+        self, flag: list[str], monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """``--yes`` reaches every launch question through the environment; without it nothing is assumed."""
+        import os
+
+        from terok.lib.util.confirm import ASSUME_YES_ENV
+
+        monkeypatch.delenv(ASSUME_YES_ENV, raising=False)
+        with (
+            unittest.mock.patch("terok.cli.commands.task.project_image_exists", return_value=True),
+            unittest.mock.patch("terok.cli.commands.task.task_new", return_value="7"),
+            unittest.mock.patch("terok.cli.commands.task.task_login"),
+            unittest.mock.patch("terok.cli.commands.task.task_run_cli"),
+        ):
+            run_main(["terok", "task", "run", "proj1", *flag, "--no-attach"])
+        assert (os.environ.get(ASSUME_YES_ENV) == "1") is bool(flag)
+
     @pytest.mark.parametrize(
         ("argv", "patch_target", "expected_call"),
         [

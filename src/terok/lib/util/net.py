@@ -5,6 +5,7 @@
 
 from __future__ import annotations
 
+import os
 from urllib.parse import urlsplit
 
 
@@ -32,3 +33,33 @@ def url_host(host: str) -> str:
     Already-bracketed input is left alone to avoid double-wrapping.
     """
     return f"[{host}]" if ":" in host and not host.startswith("[") else host
+
+
+LOOPBACK_HOSTS = frozenset({"127.0.0.1", "localhost", "::1", "[::1]"})
+"""Spellings of this machine's loopback: bound or advertised here, a web endpoint never leaves it."""
+
+ALLOW_CLEARTEXT_ENV = "TEROK_ALLOW_CLEARTEXT"
+"""Set to ``1`` to serve plain HTTP beyond loopback on a trusted LAN."""
+
+
+def is_loopback_host(host: str) -> bool:
+    """Whether *host* names this machine's loopback interface."""
+    return host.strip().lower() in LOOPBACK_HOSTS
+
+
+def require_cleartext_opt_in(host: str, *, what: str) -> None:
+    """Refuse *what* beyond loopback unless ``TEROK_ALLOW_CLEARTEXT`` says the network is trusted.
+
+    Plain HTTP beyond loopback carries the web TUI's Basic-auth password and
+    the task tokens readable to anyone on the path.  The supported shape for
+    anything beyond a trusted LAN is a TLS reverse proxy in front of a
+    loopback listener; the opt-in states that this network is trusted.
+    """
+    if is_loopback_host(host):
+        return
+    if os.environ.get(ALLOW_CLEARTEXT_ENV, "").strip().lower() in ("1", "true", "yes"):
+        return
+    raise SystemExit(
+        f"{what} would travel as plain HTTP beyond loopback ({host}).  Keep the listener on "
+        f"127.0.0.1 behind a TLS reverse proxy, or set {ALLOW_CLEARTEXT_ENV}=1 on a trusted LAN."
+    )

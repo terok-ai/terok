@@ -58,7 +58,7 @@ RUN printf '%s\n' '#!/bin/sh' \
         '    mkdir -p "$d"; chown -R podman:podman "$d"' \
         'done' \
         'if [ $# -gt 0 ]; then exec su -m podman -s /bin/sh -c '"'"'exec "$@"'"'"' sh "$@"; fi' \
-        'exec su -m podman -s /bin/sh -c "exec terok-web --host 0.0.0.0 --port 8566 ${TEROK_PUBLIC_URL:+--public-url \"$TEROK_PUBLIC_URL\"}"' \
+        'exec su -m podman -s /bin/sh -c "TEROK_ALLOW_CLEARTEXT=${TEROK_ALLOW_CLEARTEXT:-1} exec terok-web --host 0.0.0.0 --port 8566 ${TEROK_PUBLIC_URL:+--public-url \"$TEROK_PUBLIC_URL\"}"' \
         > /usr/local/bin/docker-entrypoint.sh \
     && chmod +x /usr/local/bin/docker-entrypoint.sh
 
